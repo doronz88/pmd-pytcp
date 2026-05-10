@@ -27,9 +27,10 @@ This module contains packet handler for the outbound IPv6 packets.
 
 pytcp/subsystems/packet_handler/packet_handler__ip6__tx.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
+import time
 from abc import ABC
 from typing import TYPE_CHECKING, Any
 
@@ -44,8 +45,13 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.ip6_source_selection import (
+    common_prefix_len,
+    ip6_address_scope,
+)
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddressState
 
 
 class PacketHandlerIp6Tx(ABC):
@@ -57,6 +63,7 @@ class PacketHandlerIp6Tx(ABC):
         from net_addr import Ip6Host
         from net_proto import EthernetPayload, Ip6Payload, Tracker
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
@@ -64,6 +71,7 @@ class PacketHandlerIp6Tx(ABC):
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int
+        _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
 
         # pylint: disable=unused-argument
 
@@ -219,36 +227,6 @@ class PacketHandlerIp6Tx(ABC):
             )
             return TxStatus.DROPPED__IP6__SRC_MULTICAST
 
-        # If source is unspecified and destination belongs to any of local networks
-        # then pick source address from that network.
-        if ip6__src.is_unspecified:
-            for ip6_host in self._ip6_host:
-                if ip6__dst in ip6_host.network:
-                    self._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
-                    ip6__src = ip6_host.address
-                    __debug__ and log(
-                        "ip6",
-                        f"{tracker} - Packet source is unspecified, replaced "
-                        f"source with IPv6 address {ip6__src} from the local "
-                        "destination subnet",
-                    )
-                    return ip6__src
-
-        # If source is unspecified and destination is external pick source from
-        # first network that has default gateway set.
-        if ip6__src.is_unspecified and ip6__dst.is_unicast:
-            for ip6_host in self._ip6_host:
-                if ip6_host.gateway:
-                    self._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
-                    ip6__src = ip6_host.address
-                    __debug__ and log(
-                        "ip6",
-                        f"{tracker} - Packet source is unspecified, replaced "
-                        f"source with IPv6 address {ip6__src} that has gateway "
-                        "available",
-                    )
-                    return ip6__src
-
         # If src is unspecified and stack is sending an ICMPv6
         # ND Neighbor Solicitation. Per RFC 4861 §4.3 / §7.2.2 a
         # DAD probe is the canonical NS form with src=:: and
@@ -257,6 +235,9 @@ class PacketHandlerIp6Tx(ABC):
         # additionally allows a Nonce option for Enhanced DAD,
         # so the option list is no longer a reliable
         # "is DAD probe" proxy — match on message type instead.
+        # This branch precedes RFC 6724 source selection: a DAD
+        # probe MUST emit src=:: regardless of the stack's other
+        # owned addresses.
         if (
             ip6__src.is_unspecified
             and isinstance(ip6__payload, Icmp6)
@@ -283,6 +264,31 @@ class PacketHandlerIp6Tx(ABC):
             )
             return ip6__src
 
+        # If source is unspecified and destination is unicast,
+        # run RFC 6724 default source-address selection across
+        # the owned candidate set. Multicast destinations with
+        # src=:: are intentionally not handled here — the
+        # DAD-probe and MLDv2-report branches above carry the
+        # only legitimate src=:: multicast forms, and any other
+        # multicast packet with src=:: is treated as malformed
+        # and falls through to the drop branch below. The
+        # local/external split is preserved at the stat-counter
+        # level for backwards compatibility with existing
+        # observability dashboards.
+        if ip6__src.is_unspecified and ip6__dst.is_unicast:
+            selected = self._select_ip6_source(ip6__dst=ip6__dst)
+            if selected is not None:
+                if any(ip6__dst in host.network for host in self._ip6_host):
+                    self._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
+                else:
+                    self._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
+                __debug__ and log(
+                    "ip6",
+                    f"{tracker} - Packet source is unspecified, RFC 6724 "
+                    f"selector picked source IPv6 address {selected}",
+                )
+                return selected
+
         # If src is unspecified and stack can't replace it.
         if ip6__src.is_unspecified:
             self._packet_stats_tx.ip6__src_unspecified__drop += 1
@@ -294,6 +300,68 @@ class PacketHandlerIp6Tx(ABC):
 
         # If nothing above applies return the src address intact.
         return ip6__src
+
+    def _select_ip6_source(self, *, ip6__dst: Ip6Address) -> Ip6Address | None:
+        """
+        Run RFC 6724 default source-address selection over the
+        candidate set in '_ip6_host' and return the winner.
+
+        The candidate set is the addresses owned by the stack;
+        rule 1 short-circuits when the destination is itself
+        owned. Otherwise the candidates are sorted by a
+        lexicographic key that encodes rules 2 (scope), 3 (avoid
+        deprecated), and 8 (longest matching prefix), in that
+        priority order. Rules 4 (home address), 5 (outgoing
+        interface), 5.5 (next-hop), 6 (matching label), and 7
+        (temp-address preference) are out of scope for this
+        phase. Rules 4/5/5.5 do not apply to a single-interface
+        host stack; rule 6 (policy table) and rule 7 ship in
+        follow-up phases.
+
+        Returns None when no candidate exists. The TX path
+        falls back to the existing
+        DROPPED__IP6__SRC_UNSPECIFIED handling.
+        """
+
+        candidates = [host.address for host in self._ip6_host]
+        if not candidates:
+            return None
+
+        # Rule 1 — prefer same address.
+        if ip6__dst in candidates:
+            return ip6__dst
+
+        now = time.monotonic()
+        deprecated_addresses = {
+            entry.address
+            for entry in self._icmp6_slaac_addresses
+            if entry.state(now) is Icmp6SlaacAddressState.DEPRECATED
+        }
+        dst_scope = ip6_address_scope(ip6__dst)
+
+        def sort_key(src: Ip6Address) -> tuple[tuple[int, int], int, int]:
+            """
+            Build the rule-2/3/8 lexicographic sort key. Higher
+            tuples win under descending sort.
+            """
+
+            src_scope = ip6_address_scope(src)
+            # Rule 2 — partition by 'scope >= dst_scope', then
+            # prefer the smallest scope still >= dst_scope; for
+            # candidates below dst_scope, prefer the largest
+            # available.
+            if src_scope >= dst_scope:
+                rule2 = (1, -src_scope)
+            else:
+                rule2 = (0, src_scope)
+            # Rule 3 — prefer non-deprecated.
+            rule3 = 0 if src in deprecated_addresses else 1
+            # Rule 8 — prefer longest common prefix.
+            rule8 = common_prefix_len(src, ip6__dst)
+            return (rule2, rule3, rule8)
+
+        candidates.sort(key=sort_key, reverse=True)
+        return candidates[0]
 
     def __validate_dst_ip6_address(
         self,
