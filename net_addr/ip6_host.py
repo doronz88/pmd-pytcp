@@ -30,6 +30,7 @@ net_addr/ip6_host.py
 ver 3.0.4
 """
 
+import hashlib
 import time
 from typing import Self, override
 
@@ -147,6 +148,70 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
         return cls(
             (
                 Ip6Address(int(ip6_network.address) | interface_id),
+                Ip6Mask("/64"),
+            )
+        )
+
+    @classmethod
+    def from_rfc7217(
+        cls,
+        *,
+        ip6_network: Ip6Network,
+        mac_address: MacAddress,
+        secret_key: bytes,
+        dad_counter: int = 0,
+        network_id: bytes = b"",
+    ) -> Self:
+        """
+        Create an IPv6 host address with a stable opaque
+        Interface Identifier per RFC 7217 §5:
+
+            RID = SHA-256(Prefix || Net_Iface || Network_ID || DAD_Counter || secret_key)
+            IID = least-significant 64 bits of RID
+
+        The result is stable per (prefix, mac, secret_key,
+        dad_counter, network_id) tuple but unlinkable across
+        prefixes — a host at two different networks will look
+        like two unrelated hosts to passive observers, which
+        the EUI-64 form does not satisfy because it embeds the
+        permanent MAC in every IID.
+
+        Per RFC 7217 §5 'secret_key' MUST be at least 128 bits
+        (16 bytes); shorter keys are rejected. PyTCP regenerates
+        the secret per process at stack init; persistent
+        per-machine keys (Linux's 'stable_secret') are out of
+        scope for a libray-style stack.
+
+        Reference: RFC 7217 §5 (Algorithm Specification).
+        """
+
+        assert (
+            len(ip6_network.mask) == 64
+        ), f"The IPv6 RFC 7217 network address mask must be /64. Got: {ip6_network.mask}"
+
+        assert (
+            len(secret_key) >= 16
+        ), f"RFC 7217 §5 mandates secret_key length ≥ 128 bits (16 bytes). Got: {len(secret_key)} bytes"
+
+        # Concatenate the PRF inputs in the order specified by
+        # RFC 7217 §5. Net_Iface = MAC bytes; DAD_Counter =
+        # 1-byte counter (sufficient for any plausible run of
+        # consecutive conflicts on a host).
+        prf_input = (
+            bytes(ip6_network.address)
+            + int(mac_address).to_bytes(6, byteorder="big")
+            + network_id
+            + dad_counter.to_bytes(1, byteorder="big")
+            + secret_key
+        )
+        rid = hashlib.sha256(prf_input).digest()
+        # Take the least-significant 64 bits of the SHA-256
+        # output as the IID (per RFC 7217 §5).
+        iid = int.from_bytes(rid[-8:], byteorder="big")
+
+        return cls(
+            (
+                Ip6Address((int(ip6_network.address) & ((1 << 128) - (1 << 64))) | iid),
                 Ip6Mask("/64"),
             )
         )

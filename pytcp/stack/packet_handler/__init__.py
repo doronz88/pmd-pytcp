@@ -125,6 +125,7 @@ class PacketHandler(Subsystem, ABC):
     _mac_unicast: MacAddress
     _icmp6_default_routers: list[Icmp6DefaultRouter]
     _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
+    _icmp6_slaac__secret_key: bytes
     _icmp6_ra_parameters: Icmp6RaParameters
 
     @override
@@ -567,10 +568,7 @@ class PacketHandler(Subsystem, ABC):
             else:
                 new_valid_lifetime = two_hour_s
 
-        address = Ip6Host.from_eui64(
-            mac_address=self._mac_unicast,
-            ip6_network=prefix,
-        ).address
+        address = self._derive_ip6_host(ip6_network=prefix).address
 
         self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
         self._icmp6_slaac_addresses.append(
@@ -674,6 +672,29 @@ class PacketHandler(Subsystem, ABC):
         """
 
         return self._icmp6_ra_parameters
+
+    def _derive_ip6_host(self, *, ip6_network: Ip6Network) -> Ip6Host:
+        """
+        Derive the host's IPv6 address for 'ip6_network' using
+        either RFC 7217 stable opaque IIDs (default; modern
+        Linux equivalent of 'addr_gen_mode = 2') or legacy
+        EUI-64. Selection is gated by the 'icmp6.use_rfc7217'
+        sysctl.
+
+        Reference: RFC 7217 §5 (algorithm specification).
+        Reference: RFC 4291 §2.5.1 (legacy EUI-64 fallback).
+        """
+
+        if nd__constants.ICMP6__USE_RFC7217:
+            return Ip6Host.from_rfc7217(
+                ip6_network=ip6_network,
+                mac_address=self._mac_unicast,
+                secret_key=self._icmp6_slaac__secret_key,
+            )
+        return Ip6Host.from_eui64(
+            mac_address=self._mac_unicast,
+            ip6_network=ip6_network,
+        )
 
     def _effective_ip6_hop_limit(self) -> int:
         """
@@ -807,6 +828,12 @@ class PacketHandlerL2(
         # the ones we've emitted in the current DAD session so
         # the NS-RX path can drop loop-hairpin echoes.
         self._icmp6_nd_dad__nonces: set[bytes] = set()
+
+        # RFC 7217 §5 secret_key — generated once per process
+        # at handler init. PyTCP doesn't persist this to disk;
+        # an OS-style "stable_secret" file is out of scope. The
+        # 128-bit minimum is per RFC 7217 §5.
+        self._icmp6_slaac__secret_key = secrets.token_bytes(16)
 
         # Used for the ICMPv6 ND RA address auto configuration.
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
@@ -979,10 +1006,7 @@ class PacketHandlerL2(
 
         # Configure Link Local address automatically.
         if self._ip6_lla_autoconfig:
-            ip6_host = Ip6Host.from_eui64(
-                mac_address=self._mac_unicast,
-                ip6_network=Ip6Network("fe80::/64"),
-            )
+            ip6_host = self._derive_ip6_host(ip6_network=Ip6Network("fe80::/64"))
             ip6_host.gateway = None
             _claim_ip6_address(ip6_host)
 
@@ -1011,10 +1035,7 @@ class PacketHandlerL2(
                     "stack",
                     f"Attempting IPv6 address auto configuration for RA " f"prefix {prefix}",
                 )
-                ip6_address = Ip6Host.from_eui64(
-                    mac_address=self._mac_unicast,
-                    ip6_network=prefix,
-                )
+                ip6_address = self._derive_ip6_host(ip6_network=prefix)
                 ip6_address.gateway = gateway
                 _claim_ip6_address(ip6_address)
 

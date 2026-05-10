@@ -144,6 +144,17 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # NS targeting our tentative address aborts the claim.
 ICMP6__ENHANCED_DAD = 1
 
+# RFC 7217 stable opaque IIDs — when enabled, SLAAC derives
+# the Interface Identifier via SHA-256(prefix || mac ||
+# dad_counter || secret_key) instead of the legacy EUI-64
+# scheme that embeds the MAC unmodified. Stable per network
+# but unlinkable across networks. Default 1, mirroring
+# Linux's modern 'addr_gen_mode = 2' (the kernel default
+# since 4.16). 0 falls back to EUI-64 — useful for testing
+# and for callers that need MAC-derived addresses for
+# legacy interop.
+ICMP6__USE_RFC7217 = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -266,6 +277,16 @@ def _enhanced_dad_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.enhanced_dad' must be 0 or 1; got {value!r}")
 
 
+def _use_rfc7217_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected explicitly
+    because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'icmp6.use_rfc7217' must be 0 or 1; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -368,5 +389,15 @@ register(
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
+    ),
+)
+register(
+    key="icmp6.use_rfc7217",
+    module_name=__name__,
+    attr="ICMP6__USE_RFC7217",
+    default=ICMP6__USE_RFC7217,
+    validator=_use_rfc7217_validator,
+    description=(
+        "RFC 7217 stable opaque IIDs (Linux 'addr_gen_mode = 2'); " "default 1. 0 falls back to legacy EUI-64 IIDs."
     ),
 )

@@ -787,31 +787,56 @@ Linux parity (`net/ipv6/ndisc.c`).
 
 ---
 
-## §17 — Tier 4: RFC 7217 stable opaque IID
+## §17 — Tier 4: RFC 7217 stable opaque IID ✓
 
-PyTCP today uses EUI-64 IIDs which embed the MAC address
-and stay stable across networks. RFC 7217 generates
-`F(prefix, network_id, dad_counter, secret_key)` cryptographic
-hashes — stable per network but unlinkable across networks.
+**Shipped.** PyTCP now generates SLAAC IIDs via the RFC 7217 §5
+cryptographic algorithm by default, mirroring Linux's modern
+`addr_gen_mode = 2`. Legacy EUI-64 stays available behind the
+`icmp6.use_rfc7217 = 0` sysctl.
 
-### Implementation sketch
+### Implementation
 
-1. New `Ip6Host.from_rfc7217(prefix, mac, secret_key, dad_counter)`
-   classmethod — same shape as `from_eui64` but cryptographically
-   derived.
-2. Sysctl `icmp6.use_rfc7217` (Linux:
-   `addr_gen_mode = 2`, default on modern Linux). When set,
-   SLAAC uses RFC 7217 in place of EUI-64.
+* `Ip6Host.from_rfc7217(*, ip6_network, mac_address, secret_key,
+  dad_counter=0, network_id=b"")` classmethod at
+  `net_addr/ip6_host.py`. PRF = SHA-256; IID = least-significant
+  64 bits of the digest. Constructor rejects `secret_key < 16
+  bytes` per RFC 7217 §5's 128-bit minimum.
+* `_icmp6_slaac__secret_key: bytes` on `PacketHandler` —
+  generated via `secrets.token_bytes(16)` in `PacketHandlerL2.__init__`.
+  Per-process; persistent `/stable_secret` file is out of scope.
+* `_derive_ip6_host(ip6_network=...)` helper on PacketHandler
+  picks RFC 7217 vs EUI-64 based on `icmp6.use_rfc7217`. All
+  three EUI-64 callsites in the boot / SLAAC flow rewritten to
+  use it (link-local LLA derivation, GUA from RA prefix, SLAAC
+  per-PI address derivation).
+* `icmp6.use_rfc7217` sysctl registered with default 1.
 
-### Effort
+### Tests
 
-Medium — ~100 lines + tests pinning the hash recipe.
-Couples with the RFC 7217 stub adherence record at
-`docs/rfc/icmp6/rfc7217__stable_iid/`.
+Wire-format tests at `net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc7217`
+cover the algorithm (deterministic, prefix-varying, MAC-varying,
+secret-varying, DAD-counter-varying, /64-mask requirement,
+secret-key length floor).
+
+Integration tests at
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py`
+cover the SLAAC consumer wiring (default uses RFC 7217;
+`use_rfc7217=0` reverts to EUI-64; secret_key is 16 bytes).
+
+### Deferred refinements
+
+- **DAD_counter increment on conflict** (RFC 7217 §6): currently
+  PyTCP abandons the address on DAD failure. Bumping the counter
+  and re-deriving is a small follow-up; not wired.
+- **Persistent secret_key**: Linux's `/stable_secret` lets
+  addresses survive process restarts. PyTCP regenerates per
+  process — acceptable for the library-style deployment.
 
 ### RFC reference
 
-RFC 7217 §5.
+RFC 7217 §5 (algorithm), §6 (DAD conflict resolution).
+RFC 8504 §6.3 (RECOMMENDED for SLAAC by RFC 8064).
+Linux: `net.ipv6.conf.<iface>.addr_gen_mode = 2`.
 
 ---
 

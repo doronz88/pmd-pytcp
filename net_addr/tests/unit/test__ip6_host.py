@@ -547,6 +547,206 @@ class TestNetAddrIp6HostFromEui64(TestCase):
             )
 
 
+class TestNetAddrIp6HostFromRfc7217(TestCase):
+    """
+    The NetAddr IPv6 host 'from_rfc7217()' classmethod tests
+    — cryptographic stable-opaque IIDs.
+    """
+
+    def test__net_addr__ip6_host__from_rfc7217__deterministic(self) -> None:
+        """
+        Ensure two calls with identical inputs produce the
+        same address (the IID is a deterministic PRF output).
+
+        Reference: RFC 7217 §5 (Algorithm Specification).
+        """
+
+        host_a = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+        host_b = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+
+        self.assertEqual(
+            host_a.address,
+            host_b.address,
+            msg=f"Same inputs must produce the same RFC 7217 address. Got: {host_a!r} vs {host_b!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__different_prefix(self) -> None:
+        """
+        Ensure two different prefixes produce different IIDs —
+        the design goal that prevents host correlation across
+        networks.
+
+        Reference: RFC 7217 §3 (design goals).
+        """
+
+        host_a = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8:0:1::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+        host_b = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8:0:2::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+
+        self.assertNotEqual(
+            int(host_a.address) & ((1 << 64) - 1),
+            int(host_b.address) & ((1 << 64) - 1),
+            msg=(
+                "Different prefixes must yield different IIDs "
+                f"(unlinkability). Got IID(a)={int(host_a.address) & ((1 << 64) - 1):x}, "
+                f"IID(b)={int(host_b.address) & ((1 << 64) - 1):x}"
+            ),
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__different_mac(self) -> None:
+        """
+        Ensure different MAC addresses produce different IIDs.
+
+        Reference: RFC 7217 §5 (Net_Iface in PRF input).
+        """
+
+        host_a = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+        host_b = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:aa:bb:cc"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+
+        self.assertNotEqual(
+            host_a.address,
+            host_b.address,
+            msg=f"Different MACs must yield different addresses. Got: {host_a!r} vs {host_b!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__different_secret_key(self) -> None:
+        """
+        Ensure different secret keys produce different IIDs.
+
+        Reference: RFC 7217 §5 (secret_key in PRF input).
+        """
+
+        host_a = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"first-128-bit-secret-key-bytes--",
+        )
+        host_b = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"second-128-bit-secret-key-bytes-",
+        )
+
+        self.assertNotEqual(
+            host_a.address,
+            host_b.address,
+            msg=f"Different secret keys must yield different addresses. Got: {host_a!r} vs {host_b!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__dad_counter_changes_iid(self) -> None:
+        """
+        Ensure incrementing the DAD counter (which the host
+        does on a DAD conflict) yields a different IID for the
+        same {prefix, mac, secret_key} tuple.
+
+        Reference: RFC 7217 §5 (DAD_Counter input + §6 conflict resolution).
+        """
+
+        host_0 = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+            dad_counter=0,
+        )
+        host_1 = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+            dad_counter=1,
+        )
+
+        self.assertNotEqual(
+            host_0.address,
+            host_1.address,
+            msg=f"Different DAD counters must yield different IIDs. Got: {host_0!r} vs {host_1!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__keeps_prefix(self) -> None:
+        """
+        Ensure the resulting address keeps the source /64
+        network — only the IID changes.
+
+        Reference: RFC 7217 §5 (PRF output replaces IID, prefix preserved).
+        """
+
+        host = Ip6Host.from_rfc7217(
+            ip6_network=Ip6Network("2001:db8:cafe::/64"),
+            mac_address=MacAddress("02:00:00:11:22:33"),
+            secret_key=b"a-fixed-128-bit-secret-key-bytes",
+        )
+
+        self.assertEqual(
+            host.network,
+            Ip6Network("2001:db8:cafe::/64"),
+            msg=f"RFC 7217 host must keep the source /64 network. Got: {host!r}",
+        )
+        # Address upper 64 bits = network upper 64 bits.
+        self.assertEqual(
+            int(host.address) >> 64,
+            int(Ip6Address("2001:db8:cafe::")) >> 64,
+            msg=f"Address upper-64 must equal prefix. Got: {host.address!r}",
+        )
+
+    def test__net_addr__ip6_host__from_rfc7217__non_64_mask_raises(self) -> None:
+        """
+        Ensure 'from_rfc7217()' rejects a network whose mask is
+        not /64 (the same constraint as 'from_eui64').
+
+        Reference: RFC 4291 §2.5.1 (modified EUI-64 IIDs are 64 bits).
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="from_rfc7217() must reject a network whose mask is not /64.",
+        ):
+            Ip6Host.from_rfc7217(
+                ip6_network=Ip6Network("2001:db8::/48"),
+                mac_address=MacAddress("02:00:00:11:22:33"),
+                secret_key=b"a-fixed-128-bit-secret-key-bytes",
+            )
+
+    def test__net_addr__ip6_host__from_rfc7217__rejects_short_secret_key(self) -> None:
+        """
+        Ensure 'from_rfc7217()' rejects a secret_key shorter
+        than 16 bytes — RFC 7217 §5 mandates ≥ 128 bits.
+
+        Reference: RFC 7217 §5 (secret_key SHOULD be ≥ 128 bits).
+        """
+
+        with self.assertRaises(
+            AssertionError,
+            msg="from_rfc7217() must reject a secret_key < 16 bytes (128 bits).",
+        ):
+            Ip6Host.from_rfc7217(
+                ip6_network=Ip6Network("2001:db8::/64"),
+                mac_address=MacAddress("02:00:00:11:22:33"),
+                secret_key=b"too-short",
+            )
+
+
 @parameterized_class(
     [
         {
