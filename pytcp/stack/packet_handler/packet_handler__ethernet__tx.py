@@ -150,6 +150,13 @@ class PacketHandlerEthernetTx(ABC):
                         self.__send_out_packet(ethernet_packet_tx)
                         return TxStatus.PASSED__ETHERNET__TO_TX_RING
                     self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop += 1
+                    # RFC 1122 §2.3.2.2 (IPv6 mirror): save the
+                    # most recently dropped packet for delivery
+                    # once the gateway MAC has been resolved.
+                    stack.nd_cache.enqueue_pending(
+                        ip6_address=ip6_host.gateway,
+                        ethernet_packet_tx=ethernet_packet_tx,
+                    )
                     return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
 
             # Send out packet if we are able to obtain destination MAC
@@ -172,6 +179,13 @@ class PacketHandlerEthernetTx(ABC):
                 "ether",
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 f"MAC could be obtained from ND cache, dropping</>",
+            )
+            # RFC 1122 §2.3.2.2 (IPv6 mirror): save the most
+            # recently dropped packet for delivery once the
+            # destination MAC has been resolved.
+            stack.nd_cache.enqueue_pending(
+                ip6_address=ip6_dst,
+                ethernet_packet_tx=ethernet_packet_tx,
             )
             return TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS
 

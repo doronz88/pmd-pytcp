@@ -332,6 +332,41 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         )
         self._tx_ring.enqueue.assert_not_called()
 
+    def test__stack__packet_handler__ethernet__tx__ip6_localnet_nd_miss_enqueues_pending(self) -> None:
+        """
+        Ensure an IPv6 on-link destination that misses the ND cache
+        also calls 'nd_cache.enqueue_pending(...)' so the dropped
+        Ethernet packet can be redelivered once a Neighbor
+        Advertisement resolves the destination MAC.
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
+        Reference: RFC 4861 §7.2.2 (NS multicast for INCOMPLETE state).
+        """
+
+        self._nd_cache.find_entry.return_value = None
+
+        ip6 = _build_ip6_assembler(src=STACK__IP6_HOST.address, dst=HOST_B__IP6)
+        self._handler._phtx_ethernet(ethernet__payload=ip6)
+
+        self._nd_cache.enqueue_pending.assert_called_once()
+        kwargs = self._nd_cache.enqueue_pending.call_args.kwargs
+        self.assertEqual(
+            kwargs["ip6_address"],
+            HOST_B__IP6,
+            msg=(
+                "enqueue_pending must be keyed by the unresolved destination IP "
+                "so 'add_entry' on the matching Neighbor Advertisement can find and flush it."
+            ),
+        )
+        self.assertIs(
+            kwargs["ethernet_packet_tx"].payload,
+            ip6,
+            msg=(
+                "The queued EthernetAssembler must wrap the original IPv6 "
+                "payload so the post-resolution flush re-emits the same packet."
+            ),
+        )
+
     def test__stack__packet_handler__ethernet__tx__ip6_extnet_uses_gateway_mac(self) -> None:
         """
         Ensure an IPv6 off-link destination resolves via the gateway MAC
@@ -387,6 +422,42 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
             status,
             TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             msg="IPv6 extnet with a gateway but ND miss must drop with DST_GATEWAY_ND_CACHE_MISS.",
+        )
+
+    def test__stack__packet_handler__ethernet__tx__ip6_extnet_gateway_nd_miss_enqueues_pending(self) -> None:
+        """
+        Ensure an IPv6 off-link destination whose gateway misses the ND
+        cache also calls 'nd_cache.enqueue_pending(...)' keyed by the
+        gateway's IPv6 address so the dropped Ethernet packet can be
+        redelivered once a Neighbor Advertisement from the gateway
+        resolves the gateway MAC.
+
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
+        Reference: RFC 4861 §6.3.4 (default-router selection / gateway MAC resolution).
+        """
+
+        self._nd_cache.find_entry.return_value = None
+
+        ip6 = _build_ip6_assembler(src=STACK__IP6_HOST.address, dst=HOST_C__IP6)
+        self._handler._phtx_ethernet(ethernet__payload=ip6)
+
+        self._nd_cache.enqueue_pending.assert_called_once()
+        kwargs = self._nd_cache.enqueue_pending.call_args.kwargs
+        self.assertEqual(
+            kwargs["ip6_address"],
+            STACK__IP6_GATEWAY,
+            msg=(
+                "enqueue_pending must be keyed by the gateway's IPv6 address — "
+                "the unresolved next-hop, not the final destination."
+            ),
+        )
+        self.assertIs(
+            kwargs["ethernet_packet_tx"].payload,
+            ip6,
+            msg=(
+                "The queued EthernetAssembler must wrap the original IPv6 "
+                "payload so the post-resolution flush re-emits the same packet."
+            ),
         )
 
 

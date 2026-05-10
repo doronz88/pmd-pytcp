@@ -276,17 +276,19 @@ class TestNdCacheConstruction(_NdCacheFixture):
             msg="A fresh NdCache must have zero entries.",
         )
 
-    def test__nd_cache__no_flush_callback_wired(self) -> None:
+    def test__nd_cache__flush_callback_wired(self) -> None:
         """
-        Ensure 'NdCache' constructs with 'flush_callback=None'.
-        IPv6 TX path does not currently queue packets on cache
-        miss, so the queued-packet-flush hook is intentionally
-        unwired; the parent class handles None gracefully.
+        Ensure 'NdCache' constructs with its '_flush_packet'
+        method as the flush_callback so a queued Ethernet
+        frame parked by 'enqueue_pending' is re-emitted through
+        the TX ring when a Neighbor Advertisement resolves the
+        destination MAC.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 1122 §2.3.2.2 (save at least one unresolved packet).
         """
 
-        self.assertIsNone(
+        self.assertEqual(
             self._cache._flush_callback,
-            msg="NdCache must initialise with no flush_callback (no queued-packet semantics today).",
+            self._cache._flush_packet,
+            msg="NdCache must wire '_flush_packet' as the queued-packet flush hook.",
         )

@@ -48,6 +48,7 @@ from pytcp.lib.neighbor import NeighborCache
 
 if TYPE_CHECKING:
     from net_addr import Ip6Address, MacAddress
+    from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 
 
 class NdCache(NeighborCache["Ip6Address"]):
@@ -60,12 +61,12 @@ class NdCache(NeighborCache["Ip6Address"]):
     ('ip6_address=', 'mac_address=') that match the established
     PyTCP convention.
 
-    Queued-packet semantics ('flush_callback') are not wired —
-    PyTCP's IPv6 TX path does not currently queue packets on
-    cache miss. The base class accepts a None flush_callback
-    and silently drops queued packets; if PyTCP grows IPv6
-    packet-queueing later, this adapter supplies the
-    flush_callback at that point.
+    Queued-packet semantics mirror the IPv4 ArpCache:
+    'enqueue_pending' parks the EthernetAssembler that
+    couldn't resolve, '_flush_packet' re-emits it through the
+    TX ring once an inbound Neighbor Advertisement resolves
+    the destination MAC (RFC 1122 §2.3.2.2; the IPv6
+    equivalent of the ARP unresolved-queue behaviour).
     """
 
     @override
@@ -79,7 +80,7 @@ class NdCache(NeighborCache["Ip6Address"]):
         super().__init__(
             name="ICMPv6 ND Cache",
             solicit_callback=self._solicit_ns,
-            flush_callback=None,
+            flush_callback=self._flush_packet,
         )
 
     # ------------------------------------------------------------
@@ -133,8 +134,24 @@ class NdCache(NeighborCache["Ip6Address"]):
 
         self._confirm_reachability(ip6_address)
 
+    def enqueue_pending(
+        self,
+        *,
+        ip6_address: "Ip6Address",
+        ethernet_packet_tx: "EthernetAssembler",
+    ) -> None:
+        """
+        Save the most recently dropped outbound Ethernet
+        packet for an unresolved IPv6 address so the FSM can
+        deliver it post-resolution (RFC 1122 §2.3.2.2 — the
+        IPv6 equivalent of the IPv4 ARP unresolved-queue
+        SHOULD).
+        """
+
+        self._enqueue_pending(ip6_address, ethernet_packet_tx)
+
     # ------------------------------------------------------------
-    # Protocol-specific callback consumed by NeighborCache.
+    # Protocol-specific callbacks consumed by NeighborCache.
     # ------------------------------------------------------------
 
     def _solicit_ns(
@@ -166,3 +183,22 @@ class NdCache(NeighborCache["Ip6Address"]):
             stack.packet_handler.send_icmp6_neighbor_solicitation_unicast(
                 icmp6_ns_target_address=ip6_address,
             )
+
+    def _flush_packet(self, packet: object, mac_address: "MacAddress") -> None:
+        """
+        Dispatch a queued Ethernet packet through the TX ring
+        with the destination MAC rewritten to the resolved
+        value. The 'object' parameter type comes from the
+        generic 'NeighborCache' surface; the actual type at
+        runtime is always 'EthernetAssembler' for ND.
+        """
+
+        from net_proto.protocols.ethernet.ethernet__assembler import (
+            EthernetAssembler,
+        )
+
+        assert isinstance(
+            packet, EthernetAssembler
+        ), f"NdCache._flush_packet got non-Ethernet payload: {type(packet)!r}"
+        packet.dst = mac_address
+        stack.tx_ring.enqueue(packet)

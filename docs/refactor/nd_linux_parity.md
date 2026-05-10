@@ -107,15 +107,6 @@ the last ND-adjacent track has shipped its four phases.
 These touch ND-adjacent behaviour but are not host-stack
 parity gaps:
 
-- **Cache-miss packet queue.** On a TX-time ND cache miss
-  PyTCP fires the solicit asynchronously but **drops the
-  packet** that triggered the miss
-  (`DROPPED__ETHERNET__DST_ND_CACHE_MISS` /
-  `..._ARP_CACHE_MISS`); Linux queues up to
-  `unres_qlen_bytes` of pending packets on the neighbor
-  entry and flushes them when the resolution lands. Same
-  behaviour for ARP. Generic-neighbor concern, not
-  ND-specific.
 - **`ip addrlabel`-style runtime override of the RFC 6724
   §10.3 policy table.** Default table matches Linux
   `/etc/gai.conf`; override deferred until a real consumer
@@ -124,6 +115,12 @@ parity gaps:
   D1-D8).** A DNS-resolution-time concern; PyTCP delegates
   to stdlib `getaddrinfo`, so there is no stack-layer
   consumer.
+- **Multi-packet unresolved-queue (Linux
+  `unres_qlen_bytes`).** PyTCP saves the **most recent**
+  packet per unresolved neighbor entry (RFC 1122 §2.3.2.2
+  SHOULD: "at least one (the latest)"); Linux keeps a
+  bounded byte-budgeted FIFO. Bumping from 1-slot to
+  N-slot is straightforward when there's an observed need.
 
 ---
 
