@@ -50,6 +50,7 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6NdDadSignalResult
 from pytcp.stack.packet_handler.packet_handler__icmp6__rx import (
     PacketHandlerIcmp6Rx,
 )
@@ -91,10 +92,35 @@ class _StubHandler(PacketHandlerIcmp6Rx):
         self._icmp6_nd_dad__events: dict[Ip6Address, threading.Event] = {}
         self._icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]] = {}
         self._icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None] = {}
+        self._icmp6_nd_dad__lock = threading.Lock()
         self._icmp6_ra__event = threading.Semaphore(0)
         self._icmp6_ra__prefixes = []
 
         self.icmp6_tx_calls: list[dict[str, object]] = []
+
+    # Mirror of the full-handler helper used by the RX mixin to
+    # atomically check + signal the per-address DAD slot. The
+    # stub re-implements rather than imports to keep this test
+    # module decoupled from the full 'PacketHandlerL2' class
+    # graph (mirrors how the other RX-mixin entry points like
+    # '_phtx_icmp6' and 'send_icmp6_neighbor_advertisement' are
+    # stubbed here). Covered properly by
+    # 'pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_slot_lock.py'.
+    def _icmp6_nd_dad__try_signal_conflict(
+        self,
+        *,
+        target_address: Ip6Address,
+        tlla: MacAddress | None,
+        inbound_nonce: bytes | None,
+    ) -> Icmp6NdDadSignalResult:
+        with self._icmp6_nd_dad__lock:
+            if target_address not in self._icmp6_nd_dad__events:
+                return Icmp6NdDadSignalResult.NOT_DAD
+            if inbound_nonce is not None and inbound_nonce in self._icmp6_nd_dad__nonces[target_address]:
+                return Icmp6NdDadSignalResult.LOOP_HAIRPIN
+            self._icmp6_nd_dad__tllas[target_address] = tlla
+            self._icmp6_nd_dad__events[target_address].set()
+            return Icmp6NdDadSignalResult.SIGNALED
 
     @property
     def ip6_unicast(self) -> list[Ip6Address]:

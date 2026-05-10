@@ -56,6 +56,7 @@ from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp6.nd import nd__constants
+from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6NdDadSignalResult
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
@@ -73,7 +74,6 @@ class PacketHandlerIcmp6Rx(ABC):
     """
 
     if TYPE_CHECKING:
-        import threading
         from threading import Semaphore
 
         from net_addr import Ip6Network, MacAddress
@@ -83,11 +83,16 @@ class PacketHandlerIcmp6Rx(ABC):
 
         _packet_stats_rx: PacketStatsRx
         _mac_unicast: MacAddress
-        _icmp6_nd_dad__events: dict[Ip6Address, threading.Event]
-        _icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None]
-        _icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]]
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
+
+        def _icmp6_nd_dad__try_signal_conflict(
+            self,
+            *,
+            target_address: Ip6Address,
+            tlla: MacAddress | None,
+            inbound_nonce: bytes | None,
+        ) -> Icmp6NdDadSignalResult: ...
 
         # pylint: disable=unused-argument
 
@@ -863,25 +868,31 @@ class PacketHandlerIcmp6Rx(ABC):
         # early-return because tentative candidates are NOT in
         # 'ip6_unicast' until DAD passes (under strict DAD) or
         # may already be there as OPTIMISTIC under §20.
+        #
+        # The slot check + nonce-test + tlla-write + event.set()
+        # is atomic under '_icmp6_nd_dad__lock' so the worker
+        # thread cannot tear down the slot between the check
+        # and the signal — see '_icmp6_nd_dad__try_signal_conflict'.
         target_address = packet_rx.icmp6.message.target_address
-        if target_address in self._icmp6_nd_dad__events:
+        dad_signal = self._icmp6_nd_dad__try_signal_conflict(
+            target_address=target_address,
+            tlla=None,
+            inbound_nonce=packet_rx.icmp6.message.option_nonce,
+        )
+        if dad_signal is Icmp6NdDadSignalResult.LOOP_HAIRPIN:
             # RFC 7527 §4.2 Enhanced DAD: a Nonce option matching
             # one we emitted for this candidate means this NS is
             # a loop-hairpin echo of our own probe (a switch
-            # reflecting traffic back). Drop silently — DON'T
-            # signal the per-address DAD Event.
-            inbound_nonce = packet_rx.icmp6.message.option_nonce
-            our_nonces = self._icmp6_nd_dad__nonces.get(target_address, set())
-            if inbound_nonce is not None and inbound_nonce in our_nonces:
-                self._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
-                __debug__ and log(
-                    "icmp6",
-                    f"{packet_rx.tracker} - <INFO>Loop-hairpin DAD echo "
-                    f"detected (Nonce match) for "
-                    f"{target_address}; dropped</>",
-                )
-                return
-
+            # reflecting traffic back). Drop silently.
+            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - <INFO>Loop-hairpin DAD echo "
+                f"detected (Nonce match) for "
+                f"{target_address}; dropped</>",
+            )
+            return
+        if dad_signal is Icmp6NdDadSignalResult.SIGNALED:
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
             __debug__ and log(
                 "icmp6",
@@ -889,8 +900,6 @@ class PacketHandlerIcmp6Rx(ABC):
                 f"peer {packet_rx.ip6.src} probing our tentative address "
                 f"{target_address}; aborting our DAD</>",
             )
-            self._icmp6_nd_dad__tllas[target_address] = None
-            self._icmp6_nd_dad__events[target_address].set()
             return
 
         # Check if request is for one of stack's IPv6 unicast addresses.
@@ -962,12 +971,21 @@ class PacketHandlerIcmp6Rx(ABC):
             f"from {packet_rx.ip6.src}",
         )
 
-        # Run ND Duplicate Address Detection check.
+        # Run ND Duplicate Address Detection check. The
+        # slot check + tlla-write + event.set() is atomic
+        # under '_icmp6_nd_dad__lock' so the worker thread
+        # cannot tear down the slot between the check and the
+        # signal — see '_icmp6_nd_dad__try_signal_conflict'.
+        # NA messages carry no Nonce option (RFC 4861 §4.4),
+        # so 'inbound_nonce=None' skips the hairpin check.
         target_address = packet_rx.icmp6.message.target_address
-        if target_address in self._icmp6_nd_dad__events:
+        dad_signal = self._icmp6_nd_dad__try_signal_conflict(
+            target_address=target_address,
+            tlla=packet_rx.icmp6.message.option_tlla,
+            inbound_nonce=None,
+        )
+        if dad_signal is Icmp6NdDadSignalResult.SIGNALED:
             self._packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad += 1
-            self._icmp6_nd_dad__tllas[target_address] = packet_rx.icmp6.message.option_tlla
-            self._icmp6_nd_dad__events[target_address].set()
             return
 
         # Update ICMPv6 ND cache.

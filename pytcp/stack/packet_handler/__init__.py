@@ -69,6 +69,7 @@ from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6DadState,
     Icmp6DefaultRouter,
+    Icmp6NdDadSignalResult,
     Icmp6RaParameters,
     Icmp6SlaacAddress,
     Icmp6SlaacAddressState,
@@ -1231,6 +1232,7 @@ class PacketHandlerL2(
     _icmp6_nd_dad__events: dict[Ip6Address, threading.Event]
     _icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None]
     _icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]]
+    _icmp6_nd_dad__lock: threading.Lock
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
 
@@ -1308,6 +1310,16 @@ class PacketHandlerL2(
         self._icmp6_nd_dad__events: dict[Ip6Address, threading.Event] = {}
         self._icmp6_nd_dad__tllas: dict[Ip6Address, MacAddress | None] = {}
         self._icmp6_nd_dad__nonces: dict[Ip6Address, set[bytes]] = {}
+        # Guards every cross-thread access to the three slot
+        # dicts above. The worker thread takes it for slot
+        # install (before the first probe TX), nonce-set
+        # mutation (during the probe loop), '_tllas' read
+        # (after the wait returns), and tear-down (after the
+        # state transition); the RX subsystem thread takes it
+        # for the atomic check + signal entry point
+        # '_icmp6_nd_dad__try_signal_conflict' used by both
+        # the NS and NA RX paths.
+        self._icmp6_nd_dad__lock: threading.Lock = threading.Lock()
 
         # RFC 7217 §5 secret_key — generated once per process
         # at handler init. PyTCP doesn't persist this to disk;
@@ -1431,6 +1443,52 @@ class PacketHandlerL2(
                 return
             rt_ms = min(2 * rt_ms, mrt_ms)
 
+    def _icmp6_nd_dad__try_signal_conflict(
+        self,
+        *,
+        target_address: Ip6Address,
+        tlla: MacAddress | None,
+        inbound_nonce: bytes | None,
+    ) -> Icmp6NdDadSignalResult:
+        """
+        Atomically check the per-address DAD slot for
+        'target_address' and, if a slot exists, either drop
+        the inbound as a loop-hairpin (the inbound nonce
+        matches one of our own emitted probes — RFC 7527 §4.2)
+        or signal a peer conflict (write 'tlla' into
+        '_icmp6_nd_dad__tllas' and set the slot Event so the
+        worker thread's DAD wait wakes — RFC 4862 §5.4.3 case
+        (b)).
+
+        All four dict accesses run inside the
+        '_icmp6_nd_dad__lock' so the RX path cannot KeyError
+        on a slot the worker tore down between the membership
+        check and the '_tllas[]=' / 'event.set()' lines, and
+        the worker's nonce-set mutation cannot interleave
+        with the nonce-membership read here.
+
+        Returns:
+            NOT_DAD       — no slot for 'target_address'; the
+                            caller falls through to its normal
+                            non-DAD processing path.
+            LOOP_HAIRPIN  — 'inbound_nonce' is in the slot's
+                            nonce set; the caller drops the
+                            inbound silently.
+            SIGNALED      — slot Event has been set with
+                            '_tllas[target_address] = tlla';
+                            the caller charges a peer-conflict
+                            packet-stat counter.
+        """
+
+        with self._icmp6_nd_dad__lock:
+            if target_address not in self._icmp6_nd_dad__events:
+                return Icmp6NdDadSignalResult.NOT_DAD
+            if inbound_nonce is not None and inbound_nonce in self._icmp6_nd_dad__nonces[target_address]:
+                return Icmp6NdDadSignalResult.LOOP_HAIRPIN
+            self._icmp6_nd_dad__tllas[target_address] = tlla
+            self._icmp6_nd_dad__events[target_address].set()
+            return Icmp6NdDadSignalResult.SIGNALED
+
     def _perform_ip6_nd_dad(self, *, ip6_unicast_candidate: Ip6Address) -> bool:
         """
         Perform IPv6 ND Duplicate Address Detection, return True if passed.
@@ -1475,9 +1533,12 @@ class PacketHandlerL2(
         # Per-address DAD slot. Populated BEFORE the first probe
         # TX so the RX dispatch can find this candidate's Event /
         # nonce-set / tlla slot when peer NS / NA arrives.
-        self._icmp6_nd_dad__events[ip6_unicast_candidate] = threading.Event()
-        self._icmp6_nd_dad__nonces[ip6_unicast_candidate] = set()
-        self._icmp6_nd_dad__tllas[ip6_unicast_candidate] = None
+        # All three dicts mutate under '_icmp6_nd_dad__lock' so
+        # the RX path cannot observe a partial install.
+        with self._icmp6_nd_dad__lock:
+            self._icmp6_nd_dad__events[ip6_unicast_candidate] = threading.Event()
+            self._icmp6_nd_dad__nonces[ip6_unicast_candidate] = set()
+            self._icmp6_nd_dad__tllas[ip6_unicast_candidate] = None
         # Default to TENTATIVE; the Optimistic-DAD wrapper
         # promotes this to OPTIMISTIC before invoking us.
         self._icmp6_dad__states.setdefault(ip6_unicast_candidate, Icmp6DadState.TENTATIVE)
@@ -1506,18 +1567,25 @@ class PacketHandlerL2(
         # mirror is captured by §13a; consumer wiring is §13b.
         effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or nd__constants.ICMP6__RETRANS_TIMER_MS
         retrans_timer_s = effective_retrans_timer_ms / 1000.0
-        dad_event = self._icmp6_nd_dad__events[ip6_unicast_candidate]
-        nonce_set = self._icmp6_nd_dad__nonces[ip6_unicast_candidate]
+        # Capture the Event reference under the lock. Event
+        # itself is thread-safe; the lock only guards the dict
+        # lookup.
+        with self._icmp6_nd_dad__lock:
+            dad_event = self._icmp6_nd_dad__events[ip6_unicast_candidate]
         conflict = False
         for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
             # RFC 7527 §4.1: every NS(DAD) carries a fresh
             # random nonce when Enhanced DAD is enabled. The
             # nonce is tracked per-candidate so the NS-RX path
-            # can drop loop-hairpin echoes.
+            # can drop loop-hairpin echoes. The 'nonce_set.add'
+            # mutation runs under the lock so the RX nonce-
+            # membership read in '_icmp6_nd_dad__try_signal_conflict'
+            # cannot observe a partially-mutated set.
             nonce: bytes | None = None
             if nd__constants.ICMP6__ENHANCED_DAD:
                 nonce = secrets.token_bytes(6)
-                nonce_set.add(nonce)
+                with self._icmp6_nd_dad__lock:
+                    self._icmp6_nd_dad__nonces[ip6_unicast_candidate].add(nonce)
             self._send_icmp6_nd_dad_message(
                 ip6_unicast_candidate=ip6_unicast_candidate,
                 nonce=nonce,
@@ -1527,11 +1595,16 @@ class PacketHandlerL2(
                 break
 
         if conflict:
+            # Read the captured TLLA under the lock; the RX
+            # path that signalled the Event also wrote '_tllas'
+            # under the same lock, so we observe the same value.
+            with self._icmp6_nd_dad__lock:
+                conflict_tlla = self._icmp6_nd_dad__tllas[ip6_unicast_candidate]
             __debug__ and log(
                 "stack",
                 "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
                 f"{ip6_unicast_candidate} advertised by "
-                f"{self._icmp6_nd_dad__tllas[ip6_unicast_candidate]}</>",
+                f"{conflict_tlla}</>",
             )
             # Conflict — drop the per-address state entry; the
             # caller is responsible for reverting any pre-claim
@@ -1558,10 +1631,14 @@ class PacketHandlerL2(
 
         # Pop per-address DAD slot. Order: clear the Event slot
         # AFTER the state-transition above so the RX dispatch
-        # cannot signal a slot that's about to be popped.
-        self._icmp6_nd_dad__events.pop(ip6_unicast_candidate, None)
-        self._icmp6_nd_dad__nonces.pop(ip6_unicast_candidate, None)
-        self._icmp6_nd_dad__tllas.pop(ip6_unicast_candidate, None)
+        # cannot signal a slot that's about to be popped. The
+        # three pops run under '_icmp6_nd_dad__lock' so an
+        # in-flight RX '_icmp6_nd_dad__try_signal_conflict'
+        # call cannot observe a half-popped slot.
+        with self._icmp6_nd_dad__lock:
+            self._icmp6_nd_dad__events.pop(ip6_unicast_candidate, None)
+            self._icmp6_nd_dad__nonces.pop(ip6_unicast_candidate, None)
+            self._icmp6_nd_dad__tllas.pop(ip6_unicast_candidate, None)
         if joined_for_dad:
             self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
         return not conflict
