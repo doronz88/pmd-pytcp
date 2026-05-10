@@ -63,7 +63,10 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__PROBE_WAIT,
 )
 from pytcp.protocols.icmp6.nd import nd__constants
-from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DefaultRouter
+from pytcp.protocols.icmp6.nd.nd__router_state import (
+    Icmp6DefaultRouter,
+    Icmp6SlaacPrefix,
+)
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
@@ -117,6 +120,7 @@ class PacketHandler(Subsystem, ABC):
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
     _icmp6_default_routers: list[Icmp6DefaultRouter]
+    _icmp6_slaac_prefixes: list[Icmp6SlaacPrefix]
 
     @override
     def __init__(
@@ -487,6 +491,58 @@ class PacketHandler(Subsystem, ABC):
         now = time.monotonic()
         return [r for r in self._icmp6_default_routers if r.expires_at > now]
 
+    def _update_icmp6_slaac_prefix(
+        self,
+        *,
+        prefix: Ip6Network,
+        valid_lifetime: int,
+        preferred_lifetime: int,
+    ) -> None:
+        """
+        Apply an inbound Prefix-Information option to the SLAAC
+        prefix table per RFC 4862 §5.5.3. A non-zero
+        'valid_lifetime' installs / refreshes the entry; zero
+        'valid_lifetime' removes a matching entry (the §5.5.3
+        (e)(6)(a) "advertised lifetime overwrites address valid
+        lifetime" rule collapses to removal at value 0). Bumps
+        'pi__update_prefix' / 'pi__remove_prefix' counters only
+        when the table actually changes. Phase 2: §12b will add
+        the (e)(6)(b)/(c) 2-hour-rule clamp.
+        """
+
+        existing = next(
+            (p for p in self._icmp6_slaac_prefixes if p.prefix == prefix),
+            None,
+        )
+
+        if valid_lifetime > 0:
+            now = time.monotonic()
+            self._icmp6_slaac_prefixes = [p for p in self._icmp6_slaac_prefixes if p.prefix != prefix]
+            self._icmp6_slaac_prefixes.append(
+                Icmp6SlaacPrefix(
+                    prefix=prefix,
+                    preferred_until=now + preferred_lifetime,
+                    valid_until=now + valid_lifetime,
+                ),
+            )
+            self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_prefix += 1
+            return
+
+        if existing is not None:
+            self._icmp6_slaac_prefixes = [p for p in self._icmp6_slaac_prefixes if p.prefix != prefix]
+            self._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_prefix += 1
+
+    def get_icmp6_slaac_prefixes(self) -> list[Icmp6SlaacPrefix]:
+        """
+        Get the list of currently-active SLAAC prefix entries
+        per RFC 4862 §5.5.3. Lazy-aged: entries whose
+        'valid_until' deadline has passed are filtered out at
+        access time instead of removed by a background sweep.
+        """
+
+        now = time.monotonic()
+        return [p for p in self._icmp6_slaac_prefixes if p.valid_until > now]
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -611,6 +667,14 @@ class PacketHandlerL2(
         # a background sweep, mirroring how Linux's
         # 'rt6_check_expired' is invoked on demand.
         self._icmp6_default_routers: list[Icmp6DefaultRouter] = []
+
+        # RFC 4862 §5.5.3 SLAAC prefix table — per-prefix
+        # preferred / valid lifetime state harvested from RA
+        # Prefix-Information options. Same lazy-ageing pattern as
+        # the default-router list above. Phase 2: per-address
+        # state machine (PREFERRED → DEPRECATED → REMOVED) lands
+        # in §12b; this dataclass tracks lifetimes only.
+        self._icmp6_slaac_prefixes: list[Icmp6SlaacPrefix] = []
 
     @override
     def _subsystem_loop(self) -> None:

@@ -47,6 +47,7 @@ Companion documents:
 | **§8 Multi-probe DAD with RetransTimer** | `_perform_ip6_nd_dad` loops `icmp6.dad_transmits` times (default 1) spaced by `icmp6.retrans_timer_ms` (default 1000ms); a conflict event released mid-loop short-circuits further probing per RFC 4862 §5.4.5. Setting `icmp6.dad_transmits=0` disables DAD entirely | RFC 4862 §5.1, §5.4.5; RFC 4861 §10 RetransTimer |
 | **§9 partial — `icmp6.dad_transmits` + `icmp6.retrans_timer_ms` sysctls** | First two timing knobs in the `icmp6.*` namespace beyond `accept_redirects` and `gratuitous_na_count`; further RFC 4861 §10 knobs (`reachable_time_ms`, `max_rtr_solicitations`, `accept_ra_*`) land with their consumers per "no API surface without consumer" rule | RFC 4861 §10 |
 | **§11 default-router list with Router Lifetime** | `Icmp6DefaultRouter(address, lifetime, expires_at)` dataclass + per-RA `_update_icmp6_default_router` mutator + lazy-aged `get_icmp6_default_routers()` accessor; `icmp6.accept_ra_defrtr` sysctl gates the path; new RX counters `update_router` / `remove_router` / `defrtr__drop`. Prf field deferred to §14 | RFC 4861 §6.3.4 |
+| **§12a SLAAC per-prefix lifetime tracking** | `Icmp6SlaacPrefix(prefix, preferred_until, valid_until)` dataclass + per-PI `_update_icmp6_slaac_prefix` mutator + lazy-aged `get_icmp6_slaac_prefixes()` accessor; `icmp6.accept_ra_pinfo` sysctl gates the path; new RX counters `pi__update_prefix` / `pi__remove_prefix` / `pi__pinfo_disabled__drop`. Per-address state machine (PREFERRED → DEPRECATED) deferred to §12b | RFC 4862 §5.5.3 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -427,32 +428,72 @@ Linux: `net/ipv6/ndisc.c::ndisc_router_discovery`,
 
 ## §12 — Tier 3: PI lifetime tracking & address deprecation (RFC 4862 §5.5.3) ⚠
 
-PyTCP harvests prefix from PI option but does NOT track
-preferred-lifetime / valid-lifetime. The address derived
-from a PI lives forever today; Linux deprecates the address
-when the preferred lifetime expires and removes it when the
-valid lifetime expires.
+### §12a (shipped) — Per-prefix lifetime tracking ✓
 
-### Implementation sketch
+`Icmp6SlaacPrefix(prefix, preferred_until, valid_until)` frozen
+dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`; the
+host's table lives on `PacketHandler._icmp6_slaac_prefixes` (init in
+`PacketHandlerL2.__init__`). RA RX
+(`__phrx_icmp6__nd_router_advertisement`) iterates the message's PI
+options and, for each one that passes the `(e)(1)/(e)(2)/(e)(3)`
+admit gates, calls
+`_update_icmp6_slaac_prefix(prefix=..., valid_lifetime=..., preferred_lifetime=...)`.
+Non-zero `valid_lifetime` installs / refreshes the entry (deduping
+on `prefix`); zero `valid_lifetime` removes a matching entry — the
+`(e)(6)(a)` "advertised lifetime overwrites address valid lifetime"
+rule collapses to removal at value 0. Public lazy-aged accessor
+`get_icmp6_slaac_prefixes()` filters out entries whose `valid_until`
+deadline has passed.
 
-1. Per-address state: preferred-deadline + valid-deadline
-   (monotonic).
-2. Background subsystem transitions the address through
-   PREFERRED → DEPRECATED → REMOVED.
-3. Source-address selection (RFC 6724) deprioritises
-   DEPRECATED addresses.
-4. Sysctl `icmp6.temp_pref_lifetime_ms` /
-   `..._valid_lifetime_ms` clamps for safety.
+Three new RX counters: `pi__update_prefix`, `pi__remove_prefix`,
+`pi__pinfo_disabled__drop` (gated by `icmp6.accept_ra_pinfo` sysctl).
+
+The PI option's `flag_l` (on-link) is **not yet acted on** — boot-
+time SLAAC continues to read `_icmp6_ra__prefixes` (the legacy
+"admitted" list) for address derivation. The new state table is
+foundation-only; consumers wire up in §12b.
+
+### §12b (deferred) — Per-address state machine
+
+PREFERRED → DEPRECATED → REMOVED transitions, source-address-selection
+(RFC 6724) integration, the 2-hour rule from §5.5.3 (e)(6)(b)/(c),
+sysctl clamps `icmp6.temp_pref_lifetime_ms` / `..._valid_lifetime_ms`.
+Composes with §17 (RFC 8981 temporary addresses).
+
+### Sysctl
+
+`icmp6.accept_ra_pinfo` registered with default 1 (Linux host
+default; 0 disables PI consumption entirely — for managed-config
+deployments where addresses come from DHCPv6).
+
+### Tests
+
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_prefix_tracking.py`:
+- `nonzero_lifetimes_install_entry` — entry shape + monotonic deadlines.
+- `update_prefix_packet_stats` — RX counter pinned.
+- `second_pi_updates_lifetimes_in_place` — refresh idempotent on (prefix).
+- `separate_prefixes_separate_entries` — multi-PI RA handling.
+- `valid_lifetime_zero_removes_entry` — invalidation path.
+- `valid_lifetime_zero_remove_packet_stats` — `remove_prefix` counter.
+- `expired_filtered` — lazy-ageing accessor honest.
+- `accept_ra_pinfo_zero_drops` — sysctl kill-switch.
+- `processed_when_router_lifetime_zero` — confirms PI consumption is
+  independent from §11 default-router learning (RFC 4861 §6.3.4
+  "Router Lifetime applies only to the router's usefulness as a
+  default router; not to other information").
 
 ### Effort
 
-Medium-large — ~200 lines + integration tests. Composes
-with §17 (RFC 8981 temporary addresses) which adds parallel
-deprecation timers.
+§12a — Small to medium — ~140 lines + integration tests.
+§12b — Medium-large — ~200 lines + integration tests. Composes with
+§17 (RFC 8981 temporary addresses) which adds parallel deprecation
+timers.
 
 ### RFC reference
 
-RFC 4862 §5.5.3, §5.5.4.
+RFC 4862 §5.5.3 (PI processing), §5.5.4 (address-deprecation lifecycle).
+Linux: `net/ipv6/addrconf.c::addrconf_prefix_rcv`,
+`net.ipv6.conf.<iface>.accept_ra_pinfo`.
 
 ---
 

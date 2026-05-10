@@ -120,6 +120,14 @@ class PacketHandlerIcmp6Rx(ABC):
             router_lifetime: int,
         ) -> None: ...
 
+        def _update_icmp6_slaac_prefix(
+            self,
+            *,
+            prefix: Ip6Network,
+            valid_lifetime: int,
+            preferred_lifetime: int,
+        ) -> None: ...
+
         # pylint: disable=missing-function-docstring
 
         @property
@@ -743,6 +751,7 @@ class PacketHandlerIcmp6Rx(ABC):
         )
 
         admitted: list[tuple[Ip6Network, Ip6Address]] = []
+        accept_pinfo = bool(nd__constants.ICMP6__ACCEPT_RA_PINFO)
         for option in packet_rx.icmp6.message.option_pi:
             reason: str | None = None
             if not option.flag_a:
@@ -761,6 +770,20 @@ class PacketHandlerIcmp6Rx(ABC):
                 )
                 continue
             admitted.append((option.prefix, packet_rx.ip6.src))
+
+            # RFC 4862 §5.5.3 (e)(4)-(e)(6) SLAAC prefix-table
+            # maintenance — gated by Linux's accept_ra_pinfo
+            # sysctl. Boot-time SLAAC still pulls from
+            # '_icmp6_ra__prefixes' below; the new table tracks
+            # lifetimes for §12b state-machine work.
+            if accept_pinfo:
+                self._update_icmp6_slaac_prefix(
+                    prefix=option.prefix,
+                    valid_lifetime=option.valid_lifetime,
+                    preferred_lifetime=option.preferred_lifetime,
+                )
+            else:
+                self._packet_stats_rx.icmp6__nd_router_advertisement__pi__pinfo_disabled__drop += 1
 
         self._icmp6_ra__prefixes = admitted
         self._icmp6_ra__event.release()

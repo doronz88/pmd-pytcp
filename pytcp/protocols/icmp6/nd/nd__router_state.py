@@ -23,16 +23,17 @@
 
 
 """
-This module contains the IPv6 Neighbor Discovery default-router
-list entry — the per-router state PyTCP carries between RA RX
-events. Mirrors the conceptual data structure of RFC 4861 §6.3.4
-('Default Router List').
+This module contains the IPv6 Neighbor Discovery state PyTCP
+maintains across RA RX events: default-router list (§11) and
+SLAAC per-prefix lifetime tracking (§12a). Mirrors the conceptual
+data structures of RFC 4861 §6.3.4 ('Default Router List') and
+RFC 4862 §5.5.3 ('Address Lifetime' state).
 
-Future Tier-3 phases will grow this module with the per-prefix
-SLAAC state (§12), reachable-time / retrans-timer mirror state
-(§13), and the Prf field once §14 lands the RA-header parser
-extension. For §11 the only entry shape needed is
-(address, lifetime, expires_at).
+Future Tier-3 phases will grow this module with the per-address
+state machine (§12b: PREFERRED → DEPRECATED → REMOVED), the
+RA-header mirror state (§13: cur-hop-limit / reachable-time /
+retrans-timer), and the Prf field on Icmp6DefaultRouter once §14
+lands the RA-header parser extension.
 
 pytcp/protocols/icmp6/nd/nd__router_state.py
 
@@ -41,7 +42,7 @@ ver 3.0.4
 
 from dataclasses import dataclass
 
-from net_addr import Ip6Address
+from net_addr import Ip6Address, Ip6Network
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -56,3 +57,19 @@ class Icmp6DefaultRouter:
     address: Ip6Address
     lifetime: int
     expires_at: float
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6SlaacPrefix:
+    """
+    A single SLAAC-eligible prefix learned from an RA's
+    Prefix-Information option per RFC 4862 §5.5.3. Both
+    deadlines are 'time.monotonic()' offsets of the advertised
+    Valid / Preferred Lifetime values; the accessor on the
+    packet handler filters out entries whose 'valid_until' has
+    passed (lazy ageing).
+    """
+
+    prefix: Ip6Network
+    preferred_until: float
+    valid_until: float

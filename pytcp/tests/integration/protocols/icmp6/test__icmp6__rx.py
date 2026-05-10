@@ -726,6 +726,7 @@ class TestIcmp6Rx__RouterAdvertisement(IcmpTestCase):
             icmp6__pre_parse=1,
             icmp6__nd_router_advertisement=1,
             icmp6__nd_router_advertisement__update_router=1,
+            icmp6__nd_router_advertisement__pi__update_prefix=1,
         )
 
     def test__icmp6__rx__router_advertisement__packet_stats_tx(self) -> None:

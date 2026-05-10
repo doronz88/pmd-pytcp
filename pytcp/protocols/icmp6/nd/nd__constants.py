@@ -83,6 +83,16 @@ ICMP6__RETRANS_TIMER_MS = 1000
 #       host default).
 ICMP6__ACCEPT_RA_DEFRTR = 1
 
+# Linux net.ipv6.conf.<iface>.accept_ra_pinfo policy. Controls
+# whether inbound RA Prefix-Information options install / refresh
+# entries in the host's SLAAC prefix table (RFC 4862 §5.5.3).
+#   0 = drop PI consumption entirely (no SLAAC state changes from
+#       inbound RAs — useful for managed-config-only deployments
+#       where addresses come from DHCPv6).
+#   1 = process PI options per RFC 4862 §5.5.3 (Linux host
+#       default).
+ICMP6__ACCEPT_RA_PINFO = 1
+
 
 def _accept_redirects_validator(value: object) -> None:
     """
@@ -134,6 +144,16 @@ def _accept_ra_defrtr_validator(value: object) -> None:
         raise ValueError(f"sysctl 'icmp6.accept_ra_defrtr' must be 0 or 1; got {value!r}")
 
 
+def _accept_ra_pinfo_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans are rejected explicitly
+    because 'isinstance(True, int)' is True in Python.
+    """
+
+    if isinstance(value, bool) or value not in (0, 1):
+        raise ValueError(f"sysctl 'icmp6.accept_ra_pinfo' must be 0 or 1; got {value!r}")
+
+
 register(
     key="icmp6.accept_redirects",
     module_name=__name__,
@@ -175,5 +195,15 @@ register(
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_defrtr' "
         "(0 = drop default-router learning; 1 = process RFC 4861 §6.3.4)."
+    ),
+)
+register(
+    key="icmp6.accept_ra_pinfo",
+    module_name=__name__,
+    attr="ICMP6__ACCEPT_RA_PINFO",
+    default=ICMP6__ACCEPT_RA_PINFO,
+    validator=_accept_ra_pinfo_validator,
+    description=(
+        "Linux 'net.ipv6.conf.<iface>.accept_ra_pinfo' " "(0 = drop PI consumption; 1 = process RFC 4862 §5.5.3)."
     ),
 )
