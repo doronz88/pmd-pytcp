@@ -54,6 +54,21 @@ Companion documents:
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
 | **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
 | **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_host` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
+| **§20.1 async per-address DAD refactor** | Replaced the singleton `_icmp6_nd_dad__event` / `_ip6_unicast_candidate` / `_tlla` / `_nonces` model with per-address dicts; new `_claim_ip6_address_async(ip6_host, regenerate=)` spawns a daemon worker thread per claim. RX dispatches by inbound NS/NA `target_address`. Boot loop `.join()`s under `optimistic_dad=0`, fires-and-forgets under `=1`. Unblocks runtime PI claim and §18b/c | RFC 4861 §7.2.2; RFC 4862 §5.4.3 case (b) |
+| **§20.2 random initial probe delay** | `_perform_ip6_nd_dad` sleeps `random.uniform(0, max_delay_ms/1000.0)` before the first probe. Sysctl `icmp6.max_rtr_solicitation_delay_ms` default 1000 (RFC 4861 §10); 0 disables | RFC 4862 §5.4.2; RFC 4861 §10 |
+| **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6Host]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
+| **§20.4 `accept_dad` modes 0/1/2** | Sysctl `icmp6.accept_dad` tristate. `=0` short-circuits DAD (state→VALID immediately); `=1` standard; `=2` fail-hard (DAD failure flips `_ip6_support = False`) | Linux `accept_dad` parity |
+| **§21 Enhanced DAD with Nonce option** | `Icmp6NdOptionNonce` (type 14) on outbound DAD probes per `icmp6.enhanced_dad`; loop-hairpin RX detection drops echoed probes silently; sysctl default 1 | RFC 7527 §4.1, §4.2 |
+| **§17 RFC 7217 stable opaque IID** | `Ip6Host.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
+| **§18a RFC 8981 random IID generator** | `Ip6Host.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
+| **§18b RFC 8981 SLAAC integration** | Per-prefix `_icmp6_temp_addresses` table + `_update_icmp6_temp_address` mutator + lifetime clamps to TEMP_*_LIFETIME; sysctl `icmp6.use_tempaddr` tristate; per-PI claim spawns DAD worker via §20.1 helper | RFC 8981 §3.3, §3.4, §3.8 |
+| **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_host`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
+| **§18c.2 RFC 8981 regen-before-expiry** | Same sweep mints fresh random IID for each prefix whose newest entry crosses `preferred_until - REGEN_ADVANCE`; multiple temps per prefix coexist during overlap; sysctl `icmp6.regen_advance_s` default 5 (§3.8) | RFC 8981 §3.4, §3.8 |
+| **§19 RFC 4941 deferred (superseded by RFC 8981)** | Marked superseded; §18 ships the modern replacement | RFC 4941 (obsolete) |
+| **§22 RS exponential backoff** | `_send_icmp6_nd_router_solicitations_with_backoff` does RFC 7559 §2 truncated binary backoff with ±10% jitter; sysctls `icmp6.rtr_solicitation_interval_ms` (IRT default 4000), `icmp6.rtr_solicitation_max_rt_ms` (MRT default 3 600 000), `icmp6.max_rtr_solicitations` (default 3, 0=kill switch) | RFC 7559 §2 |
+| **§23 first-hop router selection in multi-prefix networks** | `get_icmp6_default_router_for_source(source)` picks the router whose advertised PI prefix covers the outbound source (multi-WAN dual-ISP scenario); fall back to highest-preference router | RFC 8028 §3 |
+| **§24 host-to-router load sharing** | `get_icmp6_default_router_for_destination(destination)` per-destination deterministic hash across the highest-preference router equivalence class; preserves RFC 4191 preference precedence | RFC 4311 §3 |
+| **§25 RA Flags Extension option** | `Icmp6NdOptionRaFlags` (type 26) wire format with first-byte boolean fields (TBD by future RFCs); parser admits length ≥ 1 (RFC 5175 §4 forward-compat); assembler emits length=1 | RFC 5175 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
@@ -64,16 +79,45 @@ Companion documents:
 
 ### 🔓 Remaining inventory
 
-- **Tier 1** (wire-format completeness): §1–§4 below.
-- **Tier 2** (RFC 4861 / 4862 core finish): §5–§10.
-- **Tier 3** (RA / SLAAC state tracking): §11–§16.
-- **Tier 4** (SLAAC privacy / modern IID): §17–§19.
-- **Tier 5** (DAD enhancements): §20–§21.
-- **Tier 6** (RS hardening + multi-router): §22–§25.
-- **Tier 7** (Phase 2 / deferred): §26.
+ND parity in PyTCP is now **substantially complete**. All
+Tier 1-6 items have shipped:
 
-Total: 25 grain-sized items across 6 in-scope tiers; ~3-4
-sessions per tier at the ARP-work cadence.
+- **Tier 1** (wire-format completeness §1-§4): ✓ closed.
+- **Tier 2** (RFC 4861 / 4862 core finish §5-§10): ✓ closed.
+- **Tier 3** (RA / SLAAC state tracking §11-§16): ✓ closed.
+- **Tier 4** (SLAAC privacy / modern IID §17-§19): ✓ closed
+  (§17 RFC 7217 + §18a/b/c.1/c.2 RFC 8981 chain shipped;
+  §19 marked superseded).
+- **Tier 5** (DAD enhancements §20-§21): ✓ closed
+  (§20 Optimistic + §20.1 async refactor + §20.2-§20.4
+  hardening + §21 Enhanced DAD).
+- **Tier 6** (RS hardening + multi-router §22-§25): ✓ closed.
+- **Tier 7** (Phase 2 / deferred §26): out of scope per
+  CLAUDE.md North Star.
+
+#### Single remaining item: §12c / §18d — RFC 6724 source-address selection
+
+Tracked as its own multi-commit phase at
+`docs/refactor/rfc6724_source_selection.md`. It is the
+only piece of ND-adjacent work still outstanding. Without
+it the §18 RFC 8981 privacy story is observably theatre —
+the temp addresses are minted, claimed, and rotated, but
+TX still picks the stable RFC 7217 address as source.
+
+Phase split for §12c:
+
+| Phase | Scope | RFC clauses |
+|---|---|---|
+| §12c.1 | Rules 1, 2, 3, 8 + adherence record | RFC 6724 §5 rules 1/2/3/8 |
+| §12c.2 | Rule 7 (temp-address preference) | RFC 6724 §5 rule 7 |
+| §12c.3 | Rule 6 (policy table from §10.3) | RFC 6724 §5 rule 6, §10.3 |
+| §12c.4 | IPv4 source-selection symmetry | RFC 6724 §6 |
+
+§12c is a routing/selection concern rather than a
+Neighbor-Discovery concern; it deserves its own
+per-RFC adherence audit at
+`docs/rfc/ip6/rfc6724__default_address_selection/` and
+its own implementation arc.
 
 ---
 
