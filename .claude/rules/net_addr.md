@@ -532,5 +532,10 @@ file.
 - [`unit_testing.md`](unit_testing.md) §3 — the
   `net_addr/tests/unit/` test layout and the value-type
   parameterised-matrix pattern.
+- [`integration_testing.md`](integration_testing.md) —
+  integration tests rarely exercise `net_addr/` directly
+  (value types are stateless), but the test harness still
+  imports `Ip4Address` / `Ip6Address` / `MacAddress`
+  fixtures from `net_addr/`.
 - [`feature_implementation.md`](feature_implementation.md)
   — tests-first workflow.

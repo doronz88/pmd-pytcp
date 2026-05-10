@@ -782,3 +782,13 @@ file.
 - [`typing.md`](typing.md) — annotation discipline,
   generics, `Self`, `@override`. Test files are Python
   source; the typing rule applies.
+- [`source_files.md`](source_files.md) — general PyTCP
+  source-file conventions. Test files share the
+  file-skeleton, copyright-block, and module-docstring
+  conventions.
+- [`net_addr.md`](net_addr.md),
+  [`net_proto.md`](net_proto.md), and
+  [`pytcp.md`](pytcp.md) — what the SUT looks like for each
+  subpackage; read the relevant one when designing
+  integration tests that exercise that subpackage's
+  surface.

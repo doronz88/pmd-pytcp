@@ -1150,7 +1150,7 @@ class ArpHeader(ProtoStruct):
 mypy infers correct types for the generated `__init__` /
 `__repr__` from the field annotations.
 
-## 23. Anti-patterns roundup
+## 23. Forbidden patterns roundup
 
 A single index of the typing anti-patterns this rule
 forbids. If you find any in source on touch, fix in the
@@ -1198,6 +1198,9 @@ same commit:
   pre-commit checklist gates `make lint` (mypy strict).
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming).
+- [`net_addr.md`](net_addr.md) — value-type ABC chain and
+  PEP 695 generics on `IpNetwork[A, M]` / `IpHost[A, N, O]`;
+  `typing.Self` for self-returning factory methods.
 - [`net_proto.md`](net_proto.md) —
   the dataclass shape (`frozen=True, kw_only=True,
   slots=True`), parser / assembler / error-class patterns

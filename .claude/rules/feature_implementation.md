@@ -353,6 +353,10 @@ pinned before.
   [`source_files.md`](source_files.md) — file skeleton,
   copyright block, module docstring, imports, naming,
   formatting, inline comments, source docstrings.
+- Value-type authoring (under `net_addr/`):
+  [`net_addr.md`](net_addr.md) — ABC hierarchy,
+  slot-based value types, multi-form `__init__`,
+  equality / hashing, `click` CLI helpers.
 - Protocol authoring (under `net_proto/protocols/`):
   [`net_proto.md`](net_proto.md) —
   the per-protocol six-file layout, dataclass shape,

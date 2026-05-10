@@ -1,12 +1,14 @@
-# PyTCP — Stack Runtime Rule
+# PyTCP — `pytcp/` Authoring Rule
 
 This rule codifies how the `pytcp/` package's runtime
 services are authored: the `Subsystem` base class, packet
 handlers, the BSD-socket facade, the sysctl registry, and
 stack-wide configuration. It complements
-[`source_files.md`](source_files.md) (general file mechanics)
-and [`net_proto.md`](net_proto.md)
-(per-protocol packet authoring under `net_proto/`).
+[`source_files.md`](source_files.md) (general file mechanics
+applied to every subpackage) and the two sibling subpackage
+rules — [`net_addr.md`](net_addr.md) for the value-type
+library `net_addr/` and [`net_proto.md`](net_proto.md) for
+the per-protocol packet authoring under `net_proto/`.
 
 The Project North Star's Phase 3 (kernel/userspace boundary —
 see `CLAUDE.md`) makes the architectural seams in this file
@@ -280,13 +282,21 @@ anti-patterns live in [`source_files.md`](source_files.md)
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, module
   docstring, imports, naming, formatting).
+- [`net_addr.md`](net_addr.md) — value-type library that
+  `pytcp/` consumes for addresses, networks, hosts, and
+  masks.
 - [`net_proto.md`](net_proto.md) —
-  per-protocol six-file pattern under `net_proto/`.
+  per-protocol six-file pattern under `net_proto/`. The
+  parsers and assemblers documented there are dispatched by
+  the packet-handler mixins documented here.
 - [`python_features.md`](python_features.md) — Python
   3.10–3.14 features and forbidden pre-3.10 fallbacks.
 - [`typing.md`](typing.md) — annotation discipline,
   generics, `Self` / `@override`, the protected-hook
   pattern, `cast` and `# type: ignore` policy.
+- [`unit_testing.md`](unit_testing.md) — unit-test
+  authoring for `pytcp/lib/` helpers and other isolated
+  pytcp/ source files.
 - [`integration_testing.md`](integration_testing.md) — the
   test harness hierarchy that mocks the runtime services
   described here.

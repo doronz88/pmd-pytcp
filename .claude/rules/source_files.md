@@ -387,6 +387,10 @@ typing anti-patterns live in
 
 ## 11. Cross-references
 
+- [`net_addr.md`](net_addr.md) — value-type library
+  conventions (ABC hierarchy, slot-based value types,
+  multi-form `__init__`, equality / hashing, `click` CLI
+  helpers).
 - [`net_proto.md`](net_proto.md) —
   per-protocol six-file pattern, dataclass shape, validation
   helpers, error templates, buffer/struct conventions.

@@ -1240,7 +1240,7 @@ class _NeighborCacheFixture[A: Ip4Address | Ip6Address, P = object](TestCase):
 The pre-PEP-695 forms (`TypeVar`, `Generic`) are forbidden
 exactly as in production.
 
-## 11. Anti-patterns to avoid
+## 11. Anti-patterns
 
 - Mixing multiple unrelated assertions in one `test__*` method.
 - Omitting `msg=` on assertions.
@@ -1372,8 +1372,9 @@ novel patterns introduced in a new file.
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions. Test files share the file-skeleton,
   copyright-block, and module-docstring conventions.
-- [`net_proto.md`](net_proto.md) and
-  [`pytcp.md`](pytcp.md) — what the SUT is
-  shaped like for `net_proto/` and `pytcp/` respectively;
-  read these when writing tests for the corresponding
+- [`net_addr.md`](net_addr.md),
+  [`net_proto.md`](net_proto.md), and
+  [`pytcp.md`](pytcp.md) — what the SUT is shaped like for
+  `net_addr/`, `net_proto/`, and `pytcp/` respectively; read
+  the relevant one when writing tests for the corresponding
   source files.
