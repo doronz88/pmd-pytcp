@@ -183,6 +183,7 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_neighbor_solicitation__target_stack__respond: int = 0
     icmp6__nd_neighbor_solicitation__update_nd_cache: int = 0
     icmp6__nd_neighbor_solicitation__dad: int = 0
+    icmp6__nd_neighbor_solicitation__dad_conflict: int = 0
     icmp6__nd_neighbor_advertisement: int = 0
     icmp6__nd_neighbor_advertisement__run_dad: int = 0
     icmp6__nd_neighbor_advertisement__update_nd_cache: int = 0

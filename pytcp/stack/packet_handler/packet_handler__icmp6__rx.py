@@ -755,6 +755,31 @@ class PacketHandlerIcmp6Rx(ABC):
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborSolicitation)
 
         self._packet_stats_rx.icmp6__nd_neighbor_solicitation += 1
+
+        # RFC 4862 §5.4.3 case (b) — simultaneous-probe DAD conflict:
+        # if a peer's NS targets the address we are currently probing
+        # (regardless of the peer's IP source — even a probe-form
+        # NS with src=:: counts), the address is in use by another
+        # node also performing DAD. Abort our DAD claim by releasing
+        # the wait semaphore with 'tlla = None' so the DAD wait-loop
+        # picks the conflict signal up. Runs before the
+        # 'target not in ip6_unicast' early-return because tentative
+        # candidates are NOT yet in 'ip6_unicast' until DAD passes.
+        if (
+            self._icmp6_nd_dad__ip6_unicast_candidate is not None
+            and packet_rx.icmp6.message.target_address == self._icmp6_nd_dad__ip6_unicast_candidate
+        ):
+            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - <CRIT>Simultaneous-probe DAD conflict: "
+                f"peer {packet_rx.ip6.src} probing our tentative address "
+                f"{self._icmp6_nd_dad__ip6_unicast_candidate}; aborting our DAD</>",
+            )
+            self._icmp6_nd_dad__tlla = None
+            self._icmp6_nd_dad__event.release()
+            return
+
         # Check if request is for one of stack's IPv6 unicast addresses.
         if packet_rx.icmp6.message.target_address not in self.ip6_unicast:
             __debug__ and log(

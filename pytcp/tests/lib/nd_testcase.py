@@ -43,8 +43,10 @@ from net_addr import Ip6Address, MacAddress
 from net_proto import (
     EthernetAssembler,
     Icmp6Assembler,
+    Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRedirect,
     Icmp6NdOptions,
+    Icmp6NdOptionSlla,
     Icmp6NdOptionTlla,
     Ip6Assembler,
 )
@@ -92,6 +94,50 @@ class NdTestCase(IcmpTestCase):
         message = Icmp6NdMessageRedirect(
             target_address=target,
             destination_address=destination,
+            options=Icmp6NdOptions(*options_list),
+        )
+
+        return bytes(
+            EthernetAssembler(
+                ethernet__src=eth_src,
+                ethernet__dst=eth_dst,
+                ethernet__payload=Ip6Assembler(
+                    ip6__src=ip6_src,
+                    ip6__dst=ip6_dst,
+                    ip6__hop=255,
+                    ip6__payload=Icmp6Assembler(icmp6__message=message),
+                ),
+            )
+        )
+
+    def _make_nd_ns_frame(
+        self,
+        *,
+        eth_src: MacAddress,
+        eth_dst: MacAddress,
+        ip6_src: Ip6Address,
+        ip6_dst: Ip6Address,
+        target: Ip6Address,
+        slla: MacAddress | None = None,
+    ) -> bytes:
+        """
+        Build an Ethernet/IPv6/ICMPv6 Neighbor Solicitation frame
+        for RX injection. Defaults the IPv6 hop limit to 255 — the
+        value RFC 4861 §7.1.1 mandates.
+
+        When 'slla' is supplied, the message carries a Source
+        Link-Layer Address option (§4.6.1). For the DAD form
+        (RFC 4862 §5.4.2) callers pass 'ip6_src=Ip6Address("::")'
+        and 'slla=None' — RFC 4861 §7.2.2 forbids the SLLA option
+        on a DAD probe.
+        """
+
+        options_list: list[Icmp6NdOptionSlla] = []
+        if slla is not None:
+            options_list.append(Icmp6NdOptionSlla(slla=slla))
+
+        message = Icmp6NdMessageNeighborSolicitation(
+            target_address=target,
             options=Icmp6NdOptions(*options_list),
         )
 
