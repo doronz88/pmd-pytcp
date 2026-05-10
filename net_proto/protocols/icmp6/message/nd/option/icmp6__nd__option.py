@@ -48,6 +48,7 @@ class Icmp6NdOptionType(ProtoOptionType):
     PI = 3
     REDIRECTED_HEADER = 4
     MTU = 5
+    ROUTE_INFO = 24
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

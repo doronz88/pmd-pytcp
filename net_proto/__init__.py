@@ -292,6 +292,10 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__redirected_h
     ICMP6__ND__OPTION__REDIRECTED_HEADER__LEN,
     Icmp6NdOptionRedirectedHeader,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__route_info import (
+    Icmp6NdOptionRouteInfo,
+    Icmp6NdRoutePreference,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__slla import (
     ICMP6__ND__OPTION__SLLA__LEN,
     Icmp6NdOptionSlla,
@@ -625,11 +629,13 @@ __all__ = [
     "Icmp6NdOptionMtu",
     "Icmp6NdOptionPi",
     "Icmp6NdOptionRedirectedHeader",
+    "Icmp6NdOptionRouteInfo",
     "Icmp6NdOptionSlla",
     "Icmp6NdOptionTlla",
     "Icmp6NdOptionType",
     "Icmp6NdOptionUnknown",
     "Icmp6NdOptions",
+    "Icmp6NdRoutePreference",
     "Icmp6NdRouterAdvertisementCode",
     "Icmp6NdMessageRouterAdvertisement",
     "Icmp6NdRouterSolicitationCode",

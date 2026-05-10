@@ -38,6 +38,8 @@ Companion documents:
 | `NdCache` adapter — `pytcp/protocols/icmp6/nd/nd__cache.py` | kw-only public surface; protected-hook delegation; multicast-vs-unicast NS dispatch | (PyTCP) |
 | **§1 wire format — Redirect message + Redirected Header option** | full parser/assembler under `net_proto/`, parser dispatch wired | RFC 4861 §4.5, §4.6.3 |
 | **§1 RX handler — accept_redirects sysctl + §8.1/§8.3 host-side gates** | `__phrx_icmp6__nd_redirect` enforces accept_redirects sysctl, target acceptability, TLLA cache override; first-hop-router check deferred to §11 | RFC 4861 §8 |
+| **§2 wire format — MTU option (RA-side)** | `Icmp6NdOptionMtu`, parser dispatch wired; runtime consumer absorbed into Tier 3 §13 | RFC 4861 §4.6.4 |
+| **§4 wire format — Route Information option** | `Icmp6NdOptionRouteInfo` + `Icmp6NdRoutePreference` enum; variable 8/16/24-byte length per prefix; parser dispatch wired; runtime consumer absorbed into Tier 3 §11 | RFC 4191 §2.3 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
 | EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
