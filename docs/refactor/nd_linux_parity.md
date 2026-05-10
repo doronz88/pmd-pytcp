@@ -847,16 +847,24 @@ RFC 8981 §3.
 
 ---
 
-## §19 — Tier 4: RFC 4941 (legacy privacy extensions)
+## §19 — Tier 4: RFC 4941 (legacy privacy extensions) ✓
 
-Predecessor of §18. Mark the existing
-`docs/rfc/icmp6/rfc4941__privacy_extensions/` adherence
-record as **superseded by §18 / RFC 8981**. No
-implementation work — RFC 4941 is obsolete.
+**Shipped.** The
+`docs/rfc/icmp6/rfc4941__privacy_extensions/adherence.md`
+record now carries a `Status: SUPERSEDED by RFC 8981`
+header that points readers at
+`docs/rfc/icmp6/rfc8981__temp_addresses/adherence.md` for
+the canonical specification. The implementation-requirements
+list was dropped from the RFC 4941 record (it lives in the
+RFC 8981 record now); cross-references were updated to make
+the supersession explicit.
+
+No code work — RFC 4941 is obsolete and any privacy-extensions
+implementation must follow RFC 8981 (§18).
 
 ### Effort
 
-Doc-only edit.
+Doc-only edit. Shipped.
 
 ---
 

@@ -4,51 +4,38 @@
 |-------------|---------------------------------------------------|
 | RFC number  | 4941                                              |
 | Title       | Privacy Extensions for Stateless Address Autoconfiguration in IPv6 |
-| Category    | Standards Track (Obsoletes RFC 3041)              |
+| Category    | Standards Track (Obsoletes RFC 3041; OBSOLETED by RFC 8981) |
 | Date        | September 2007                                    |
 | Source text | [`rfc4941.txt`](rfc4941.txt)                      |
 
-This adherence record is a **stub**. The audit will be
-filled in when temporary-address generation is wired into
-the SLAAC path.
+## Status: SUPERSEDED by RFC 8981
 
-## Status: deferred (SHOULD per RFC 8504 §6.4)
+RFC 4941 was obsoleted by **RFC 8981** in February 2021.
+PyTCP tracks the modern spec at
+[`docs/rfc/icmp6/rfc8981__temp_addresses/adherence.md`](../rfc8981__temp_addresses/adherence.md);
+that is where temporary-address-related implementation work
+will land (currently deferred per nd_linux_parity §18).
 
-PyTCP's SLAAC code derives the Interface Identifier from
-the MAC address using EUI-64 (`Ip6Host.from_eui64`);
-because the IID stays constant across visited networks,
-third-party devices can correlate the host's activity
-across prefix changes. RFC 4941 §3 mitigates this by
-generating an additional **temporary address** with a
-randomised IID per interface, and §3.5 specifies a
-periodic regeneration cycle.
+This record is retained for historical reference. The
+two specs share the same overall mechanism (random per-prefix
+IID + parallel temporary address + regeneration cycle); RFC
+8981 tightens defaults (e.g. `TEMP_PREFERRED_LIFETIME`,
+DESYNC_FACTOR computation), drops some MAY clauses, and
+brings the wording in line with RFC 8504 §6.4 RECOMMENDED
+status (RFC 4941 was SHOULD).
 
-Implementation requires:
-
-- Random IID generation that avoids RFC 5453 reserved
-  IIDs.
-- Per-prefix temporary-address state (creation time,
-  preferred lifetime, valid lifetime, regeneration timer).
-- A toggle (per RFC 8504 §6.4: "MUST provide a way for the
-  end user to explicitly enable or disable").
-- Source-address selection awareness (temporary addresses
-  preferred for new connections initiated by the host;
-  paired with RFC 6724).
-
-PyTCP's typical operating profile is a server-style host
-with stable addresses — the privacy benefit is limited.
-Marked SHOULD by RFC 8504 §6.4 with explicit acknowledgment
-that some scenarios (data centre, dedicated server) gain
-no benefit.
+**Do not implement RFC 4941 directly.** Any privacy-extensions
+work must follow RFC 8981.
 
 ## Cross-references
 
+- `docs/rfc/icmp6/rfc8981__temp_addresses/adherence.md` —
+  the canonical successor specification.
 - `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md` §6.4
-  — parent classification (SHOULD with opt-out)
+  — parent classification (RECOMMENDED in modern wording).
 - `docs/rfc/icmp6/rfc4862__ipv6_slaac/adherence.md` —
-  parent SLAAC record
+  parent SLAAC record.
 - `docs/rfc/icmp6/rfc7217__stable_iid/adherence.md` —
-  alternative approach (stable, opaque, prefix-dependent
-  IIDs)
+  the orthogonal "stable but opaque IID" approach.
 - `docs/rfc/ip6/rfc6724__default_address_selection/adherence.md`
-  — temporary-address preference handling
+  — temporary-address preference handling.
