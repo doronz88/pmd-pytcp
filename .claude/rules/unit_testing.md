@@ -404,9 +404,9 @@ both directions.
 
 ### 6a.2 `patch(..., autospec=True, spec_set=True)` for context-managed patches
 
-Use the 3.11+ `TestCase.enterContext()` helper to register the
-patcher and its automatic cleanup in one line — this is the
-canonical modern form:
+Use the 3.11+ `TestCase.enterContext()` helper to register
+the patcher and its automatic cleanup in one line — this is
+the preferred modern form for new tests:
 
 ```python
 @override
@@ -418,10 +418,27 @@ def setUp(self) -> None:
     self._handler = _StubHandler()
 ```
 
-`enterContext` runs the cleanup via `addCleanup` automatically;
-no manual `patcher.start()` / `addCleanup(patcher.stop)` pair
-is needed. The legacy manual form is acceptable only on the
-pre-3.11 boundary (which PyTCP does not have today).
+`enterContext` runs the cleanup via `addCleanup`
+automatically; no manual `patcher.start()` /
+`addCleanup(patcher.stop)` pair is needed.
+
+**Migration state.** The existing PyTCP test corpus still
+uses the legacy manual form:
+
+```python
+@override
+def setUp(self) -> None:
+    self._log_patch = patch("pytcp.socket.udp__socket.log")
+    self._log_patch.start()
+    self.addCleanup(self._log_patch.stop)
+```
+
+Both forms are correct; `enterContext` is shorter and
+harder to get wrong. New tests use `enterContext`. Existing
+tests migrate to `enterContext` on touch (per the
+modernise-on-touch rule in
+[`feature_implementation.md`](feature_implementation.md) §4)
+— do not file dedicated sweeps.
 
 ### 6a.3 Forbidden mock patterns
 
@@ -1120,10 +1137,13 @@ fixtures are easier to reason about.
 `setUpModule`. Use very sparingly — module-level state is
 the most fragile kind.
 
-The pre-3.11 manual form (`patcher = patch(...); patcher.start();
-self.addCleanup(patcher.stop)`) is acceptable as the **fix**
-when refactoring legacy `tearDown`-based patch.stop teardown
-(see §11), but new code in modern files uses `enterContext`.
+The manual form (`patcher = patch(...); patcher.start();
+self.addCleanup(patcher.stop)`) is currently the dominant
+pattern in the existing PyTCP test corpus. Both forms are
+correct; new tests use `enterContext` and existing tests
+migrate on touch per the modernise-on-touch rule in
+[`feature_implementation.md`](feature_implementation.md) §4
+— do not file dedicated sweeps.
 
 ### 10b.3 PEP 604 unions and PEP 585 lowercase generics
 
@@ -1272,8 +1292,9 @@ exactly as in production.
   BEFORE `doCleanups`, so patches stopped in `tearDown` are dead
   by the time test-level `self.addCleanup(socket.close)` callbacks
   fire — the close-time `log` call leaks straight to stdout. The
-  3.11+ canonical pattern is `self.enterContext(patch(...))` in
-  `setUp` (see §6a.2 / §10b.2); the pre-3.11 fallback is:
+  preferred modern form is `self.enterContext(patch(...))` in
+  `setUp` (see §6a.2 / §10b.2); the manual fallback (current
+  dominant form in the test corpus) is:
 
   ```python
   def setUp(self) -> None:
