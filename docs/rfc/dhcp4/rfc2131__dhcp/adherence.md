@@ -22,22 +22,47 @@ narrative, §3.7 narrative, §4.2 administrative narrative,
 §5 Acknowledgments, §6 References, §7 Security
 boilerplate, §8 Author's Address) are omitted.
 
-PyTCP's DHCPv4 implementation is intentionally minimal:
-the client at `pytcp/lib/dhcp4_client.py` (229 lines)
-performs a single linear `DHCPDISCOVER → DHCPOFFER →
-DHCPREQUEST → DHCPACK` exchange to obtain a lease, then
-returns the resulting `Ip4Host` to the caller and exits.
-There is no FSM, no T1/T2 timers, no
-RENEW/REBIND/INIT-REBOOT/DECLINE/RELEASE/INFORM, no
-retransmission backoff, no ARP probe after ACK, and no
-lease management. Most of RFC 2131's normative
-requirements are therefore "not implemented"; the audit
-documents the gap inventory.
+PyTCP's DHCPv4 implementation has grown through Phases 0–4
+into a full RFC 2131 §4.4 client. The class
+`Dhcp4Client` at `pytcp/lib/dhcp4_client.py` (1140 lines)
+subclasses `Subsystem` and runs as a long-lived
+background thread under `stack.start()` / `stack.stop()`.
+The FSM models INIT / SELECTING / REQUESTING / BOUND /
+RENEWING / REBINDING explicitly via a
+`Dhcp4State`-dispatched `_subsystem_loop`; only the
+INIT-REBOOT / REBOOTING branch is still absent (Phase 5).
+The client carries RFC 4361 §6.1 DUID/IAID Client
+Identifier, RFC 1542 §3.2 `secs` advance, RFC 2131 §4.1
+randomised exponential backoff, RFC 2131 §3.1 step 5
+DHCPDECLINE on ARP conflict (via a packet-handler
+callback that runs the RFC 5227 §2.1.1 Probe loop), RFC
+2131 §4.4.1 [1, 10]-second startup desynchronisation
+delay, RFC 2131 §4.4.5 T1 / T2 / lease-expiry
+deadlines, and RFC 2131 §4.4.6 DHCPRELEASE on graceful
+shutdown. A two-step `sync` API (`fetch()` /
+`release(lease)` / `renew(lease)` / `rebind(lease)`)
+exposes the same primitives for tests and operator CLI
+tools.
 
-The wire-format library at
-`net_proto/protocols/dhcp4/` is comprehensive — full
-BOOTP-shape header, 11 option codecs, integrity-validated
-parser — and most paragraphs about message format are met.
+A separate kernel/userspace boundary surface at
+`pytcp/lib/address_api.py` (`Ip4AddressApi`) mediates
+every address mutation; the lifecycle never writes
+`_ip4_host` directly. The Phase 4.5 FSM → API mutation
+table is wired end-to-end (see the table in the Overall
+assessment section).
+
+The wire-format library at `net_proto/protocols/dhcp4/`
+is comprehensive — full BOOTP-shape header, 13+ option
+codecs, integrity-validated parser — and every paragraph
+about message format is met.
+
+Outstanding gaps against RFC 2131 §4.4: INIT-REBOOT /
+REBOOTING for cached-lease fast-boot (Phase 5); multiple-
+OFFER collection window (single-OFFER accept-first
+heuristic); server option 58 (T1) / option 59 (T2)
+overrides (parsed as `Dhcp4OptionUnknown` today, factor-
+based defaults always win); DHCPINFORM (no consumer);
+Maximum DHCP Message Size option 57 (Phase 8).
 
 ---
 
@@ -48,21 +73,26 @@ parser — and most paragraphs about message format are met.
 >  protocol implementations."
 
 **Adherence:** met. The DHCP client is opt-in: it is
-invoked only from
-`pytcp/stack/packet_handler/__init__.py:1853-1856`
-(`_create_stack_ip4_addressing`) when
-`self._ip4_dhcp` is true and no static address is
-configured. Static IPv4 hosts pass through DHCP entirely.
+constructed from `stack.init` only when the L2 packet
+handler's `ip4_dhcp` flag is true and no static address
+is configured. `_create_stack_ip4_addressing` at
+`pytcp/stack/packet_handler/__init__.py:1830-1880`
+handles statically configured candidates; the DHCPv4 path
+is owned by `stack.dhcp4_client` (a `Subsystem` that
+`stack.start()` brings up after the packet handler and
+joins on `start_and_wait_for_bind`). Static IPv4 hosts
+pass through DHCP entirely.
 
 > "A DHCP client must be prepared to receive multiple
 >  responses to a request for configuration parameters."
 
 **Adherence:** not met. The client at
-`pytcp/lib/dhcp4_client.py:155-174` (`_recv_offer`)
-accepts the first DHCPOFFER and proceeds to REQUEST.
-There is no "collect offers for N seconds, pick best"
-loop. Linux dhcpcd waits ~3 s for multiple OFFERs;
-PyTCP races on the first.
+`pytcp/lib/dhcp4_client.py:778-874` (`_discover_request_once`)
+accepts the first valid DHCPOFFER returned by
+`_recv_with_backoff` and proceeds to REQUEST. There is no
+"collect offers for N seconds, pick best" loop. Linux
+dhcpcd waits ~3 s for multiple OFFERs; PyTCP races on the
+first.
 
 ---
 
@@ -169,19 +199,23 @@ is decoded back into a bool
 >  from a server to a client."
 
 **Adherence:** met. The enum at
-`net_proto/protocols/dhcp4/dhcp4__enums.py:38-44`
-defines `Dhcp4Operation.REQUEST = 0x01` and
-`Dhcp4Operation.REPLY = 0x02`. The client builds every
-outbound message with
-`dhcp4__operation=Dhcp4Operation.REQUEST`
-(`dhcp4_client.py:135`, `:189`).
+`net_proto/protocols/dhcp4/dhcp4__enums.py` defines
+`Dhcp4Operation.REQUEST = 0x01` and
+`Dhcp4Operation.REPLY = 0x02`. Every outbound TX —
+`_send_discover` (`dhcp4_client.py:1004`),
+`_send_request` (`:1031`), `_send_decline` (`:1067`),
+`_send_request_renew` (`:570`), and `_send_release`
+(`:609`) — builds the message with
+`dhcp4__operation=Dhcp4Operation.REQUEST`.
 
-The parser at `dhcp4__parser.py:82-86`
-does not validate that inbound frames carry REPLY — a
-malformed REQUEST-with-server-reply could in principle
-parse. The client's `message_type` filter
-(`dhcp4_client.py:167-172`, `:222-227`)
-catches the substantive case.
+The parser at `dhcp4__parser.py:76-86` does not validate
+that inbound frames carry REPLY — a malformed
+REQUEST-with-server-reply could in principle parse. The
+client's `message_type` filter inside
+`_recv_within_window` (`dhcp4_client.py:927-1002`)
+catches the substantive case by dropping any frame whose
+message-type does not match the expected one for the
+current FSM leg.
 
 ---
 
@@ -194,15 +228,14 @@ catches the substantive case.
 
 **Adherence:** met for the broadcast; lease-time hint
 not used. `_send_discover` at
-`dhcp4_client.py:129-153` builds the
-DISCOVER with a Param Request List (option 55)
-requesting SUBNET_MASK and ROUTER, and a Host Name
-option. It does NOT include 'requested IP address'
-(option 50) or 'IP address lease time' (option 51) —
-both are MAY clauses, so this is compliant. The
-DISCOVER is sent via the BSD-socket-style
+`dhcp4_client.py:1004-1029` builds the DISCOVER with a
+Param Request List (option 55) requesting SUBNET_MASK
+and ROUTER, plus a Host Name option. It does NOT include
+'requested IP address' (option 50) or 'IP address lease
+time' (option 51) — both are MAY clauses, so this is
+compliant. The DISCOVER is sent via the BSD-socket-style
 `connect(("255.255.255.255", 67))` at
-`dhcp4_client.py:92`.
+`dhcp4_client.py:752` inside `_do_init_to_bound`.
 
 > "3. The client receives one or more DHCPOFFER messages
 >  ... The client chooses one server from which to
@@ -216,43 +249,50 @@ DISCOVER is sent via the BSD-socket-style
 >  server."
 
 **Adherence:** met (the MUSTs). `_send_request` at
-`dhcp4_client.py:176-208` includes
-`Dhcp4OptionServerId(srv_id)` (option 54, line 201)
-sourced from the DHCPOFFER's `srv_id` property and
-`Dhcp4OptionReqIpAddr(yiaddr)` (option 50, line 202)
-sourced from the DHCPOFFER's `yiaddr` header field. The
-client validates that the OFFER contained a Server ID
-before proceeding (`dhcp4_client.py:98-103`).
+`dhcp4_client.py:1031-1065` includes
+`Dhcp4OptionServerId(srv_id)` (option 54) sourced from
+the DHCPOFFER's `srv_id` property and
+`Dhcp4OptionReqIpAddr(yiaddr)` (option 50) sourced from
+the DHCPOFFER's `yiaddr` header field. The client
+validates that the OFFER contained a Server ID before
+proceeding (`dhcp4_client.py:805-811`).
 
 The "broadcasts" requirement is met by the socket
 configuration: the client binds to `0.0.0.0:68` and
 sends to `255.255.255.255:67`
-(`dhcp4_client.py:91-92`).
+(`dhcp4_client.py:751-752`).
 
 > "... the DHCPREQUEST message MUST use the same value
 >  in the DHCP message header's 'secs' field and be sent
 >  to the same IP broadcast address as the original
 >  DHCPDISCOVER message."
 
-**Adherence:** vacuous on `secs`, met on destination.
-The client does not track elapsed time across messages
-— `secs` defaults to 0 in the assembler. Since
-DISCOVER's `secs` is 0 and REQUEST's `secs` is 0 the
-"same value" requirement is trivially satisfied. The
-destination address is identical (broadcast) because
-the same `connect(("255.255.255.255", 67))` socket is
-reused for both sends.
+**Adherence:** met. As of Phase 1, every outbound TX
+populates `secs` via `_elapsed_secs()` (`dhcp4_client.py:1118-1129`),
+which returns the seconds elapsed since
+`self._fetch_started_at_monotonic` (anchored at the top
+of `_do_init_to_bound`). DISCOVER and the initial REQUEST
+emitted in the same acquisition cycle share the same
+anchor, so within-second resolution they carry equal
+`secs`. After retransmissions the value advances per
+RFC 1542 §3.2, which the RFC permits (§4.4.1 records
+local time "for later use in computing lease
+expiration", not as an invariant frozen across all
+messages of one acquisition). The destination address
+is identical (broadcast) because the same
+`connect(("255.255.255.255", 67))` socket is reused for
+both sends.
 
 > "The client times out and retransmits the
 >  DHCPDISCOVER message if the client receives no
 >  DHCPOFFER messages."
 
-**Adherence:** not met. The client at
-`dhcp4_client.py:94-96` returns `None`
-on `recv_offer` timeout — there is no retransmission.
-The caller (`_create_stack_ip4_addressing` at
-`packet_handler/__init__.py:1853-1856`)
-proceeds without an IPv4 host if `fetch()` returns None.
+**Adherence:** met (Phase 1). The DISCOVER recv wait
+runs under `_recv_with_backoff` (`dhcp4_client.py:876-925`)
+with the caller-supplied `resend` closure re-emitting the
+DISCOVER on each window timeout. Defaults follow RFC 2131
+§4.1 exactly — initial 4 s, doubled to 64 s, 5 attempts,
+±1 s jitter (see §4.1 below for the full breakdown).
 
 > "5. The client receives the DHCPACK message ... The
 >  client SHOULD perform a final check on the
@@ -294,19 +334,17 @@ sysctl to 0 disables the wait for deterministic tests.
 > "If the client receives a DHCPNAK message, the client
 >  restarts the configuration process."
 
-**Adherence:** met (bounded). `_recv_ack` detects
-`Dhcp4MessageType.NAK` and returns the internal
-`_NAK_RESTART` sentinel; `fetch()` re-enters
+**Adherence:** met (bounded). `_recv_within_window`
+detects `Dhcp4MessageType.NAK` (with `allow_nak=True`
+passed by the ACK leg) and returns the internal
+`_NAK_RESTART` sentinel; `_do_init_to_bound` re-enters
 `_discover_request_once` up to `DHCP4__NAK_MAX_RESTARTS`
 times (default 3, total 4 attempts) before returning
 None. The NAK itself is gated on the same xid + CID-echo
-validation as ACK so a stray NAK for an unrelated
-transaction cannot stampede the client into a restart
-loop.
-
-Phase 1 (retransmission backoff) will tighten this to
-match the RFC's 10-second SHOULD-wait before the
-restart DISCOVER (§3.1 step 5 / §4.4.1).
+validation as ACK
+(`dhcp4_client.py:972-980`) so a stray NAK for an
+unrelated transaction cannot stampede the client into a
+restart loop.
 
 > "The client times out and retransmits the DHCPREQUEST
 >  message if the client receives neither a DHCPACK or a
@@ -316,9 +354,12 @@ restart DISCOVER (§3.1 step 5 / §4.4.1).
 >  60 seconds, before restarting the initialization
 >  procedure."
 
-**Adherence:** not met. As with DISCOVER, the REQUEST
-path at `dhcp4_client.py:215-228` does
-not retransmit on timeout.
+**Adherence:** met (Phase 1). The REQUEST recv wait at
+`dhcp4_client.py:815-821` runs under the same
+`_recv_with_backoff` machinery as DISCOVER, with the
+`resend` closure re-emitting `_send_request(...)` on each
+window timeout. The same RFC 2131 §4.1 backoff defaults
+apply.
 
 > "6. The client may choose to relinquish its lease on a
 >  network address by sending a DHCPRELEASE message to
@@ -382,10 +423,9 @@ in Phase 4 once renewal timers exist.
 >  local configuration parameters."
 
 **Adherence:** not implemented. `Dhcp4MessageType.INFORM
-= 0x08` is declared at
-`dhcp4__enums.py:70` but the client
-never emits an INFORM. Statically-configured PyTCP
-hosts get no DHCP-supplied parameters.
+= 0x08` is declared in `dhcp4__enums.py` but the client
+never emits an INFORM. Statically-configured PyTCP hosts
+get no DHCP-supplied parameters.
 
 ---
 
@@ -395,10 +435,10 @@ hosts get no DHCP-supplied parameters.
 >  DHCPDISCOVER message, it MUST include that list in
 >  any subsequent DHCPREQUEST messages."
 
-**Adherence:** met. Both DISCOVER
-(`dhcp4_client.py:142-147`) and REQUEST
-(`dhcp4_client.py:195-200`) include the
-same `Dhcp4OptionParamReqList([SUBNET_MASK, ROUTER])`.
+**Adherence:** met. DISCOVER (`dhcp4_client.py:1018-1023`),
+REQUEST (`:1052-1057`), and the RENEW/REBIND REQUEST
+(`:596-601`) all include the same
+`Dhcp4OptionParamReqList([SUBNET_MASK, ROUTER])`.
 
 > "The client SHOULD include the 'maximum DHCP message
 >  size' option to let the server know how large the
@@ -414,23 +454,31 @@ from the option catalogue
 
 **Adherence:** partial deviation. The client fills the
 'requested IP address' option in the SELECTING-state
-REQUEST (`dhcp4_client.py:202`), which
-is also where Table 4 of §4.3.6 says "MUST". The
-"verifying previously" wording in §3.5 conflates
-SELECTING with INIT-REBOOT; §4.3.6 is the authoritative
-table. PyTCP matches the §4.3.6 SELECTING row.
+REQUEST (`dhcp4_client.py:1059`), which is also where
+Table 4 of §4.3.6 says "MUST". The "verifying previously"
+wording in §3.5 conflates SELECTING with INIT-REBOOT;
+§4.3.6 is the authoritative table. PyTCP matches the
+§4.3.6 SELECTING row. The RENEW/REBIND REQUEST in
+`_send_request_renew` does NOT include the option, which
+also matches Table 4's "MUST NOT" for those rows.
 
 > "The client fills in the 'ciaddr' field only when
 >  correctly configured with an IP address in BOUND,
 >  RENEWING or REBINDING state."
 
-**Adherence:** met. The client never sets `ciaddr` on
-outbound DHCP messages
-(`dhcp4_client.py:134-151`, `:188-205` —
-the assembler default of `Ip4Address()` = 0.0.0.0
-applies). Since PyTCP has no BOUND/RENEWING/REBINDING
-states, the "only when ..." clause is vacuously
-satisfied.
+**Adherence:** met. `ciaddr` is set to 0 in DISCOVER
+(`dhcp4_client.py:1004-1029`), the SELECTING-state
+REQUEST (`:1031-1065`), and DECLINE (`:1067-1099`) by
+omission — the assembler default of `Ip4Address()` =
+0.0.0.0 applies. It is explicitly set to the current IP
+in the RENEW/REBIND REQUEST
+(`_send_request_renew`, `:591` — `dhcp4__ciaddr=ciaddr`)
+and in RELEASE (`_send_release`, `:627` —
+`dhcp4__ciaddr=lease.ip4_host.address`). The RFC's "only
+when correctly configured ... in BOUND, RENEWING or
+REBINDING state" rule is honoured: SELECTING /
+REQUESTING / DECLINE emit ciaddr=0, BOUND-derived
+RENEW / REBIND / RELEASE emit ciaddr=leased IP.
 
 ---
 
@@ -441,11 +489,13 @@ satisfied.
 >  by the options. The last option must always be the
 >  'end' option."
 
-**Adherence:** met. Both DISCOVER and REQUEST end with
-`Dhcp4OptionEnd()` (`dhcp4_client.py:149`,
-`:204`). The header packs the magic
-cookie as the final fixed field
-(`dhcp4__header.py:254`).
+**Adherence:** met. Every TX path ends its option list
+with `Dhcp4OptionEnd()` —
+`_send_discover:1025`, `_send_request:1061`,
+`_send_decline:1095`, `_send_request_renew:603`,
+`_send_release:633`. The header packs the magic cookie
+as the final fixed field
+(`net_proto/protocols/dhcp4/dhcp4__header.py`).
 
 > "DHCP uses UDP as its transport protocol. DHCP
 >  messages from a client to a server are sent to the
@@ -453,26 +503,41 @@ cookie as the final fixed field
 >  server to a client are sent to the 'DHCP client'
 >  port (68)."
 
-**Adherence:** met. Client binds 68 and sends to 67
-(`dhcp4_client.py:91-92`).
+**Adherence:** met. Every TX socket binds to local port
+68 and connects to remote port 67 — INIT
+(`dhcp4_client.py:751-752`), RENEW/REBIND
+(`:433-435`), RELEASE (`:655-656`).
 
 > "DHCP clients MUST use the IP address provided in the
 >  'server identifier' option for any unicast requests
 >  to the DHCP server."
 
-**Adherence:** vacuous. The client never unicasts —
-all REQUEST messages are sent via the same broadcast
-socket (`dhcp4_client.py:92`). The
-RENEW/REBIND unicast paths are not implemented.
+**Adherence:** met (Phase 4 commit C). The
+RENEWING-state path opens a fresh socket and connects to
+`(str(lease.server_id), 67)` (`dhcp4_client.py:434`),
+where `lease.server_id` comes from the ACK's
+`srv_id` option captured at lease-acquisition time. The
+RELEASE path likewise unicasts to `lease.server_id`
+(`:656`). REBINDING continues to broadcast per Table 4.
 
 > "DHCP messages broadcast by a client prior to that
 >  client obtaining its IP address must have the source
 >  address field in the IP header set to 0."
 
-**Adherence:** met. The client binds to
-`("0.0.0.0", 68)`
-(`dhcp4_client.py:91`); outbound UDP
-datagrams have source IP 0.0.0.0.
+**Adherence:** met. Every DHCPv4 client socket binds to
+`("0.0.0.0", 68)`; the UDP layer's `_get_ip_addresses`
+(`pytcp/socket/udp__socket.py:148-195`) deliberately
+skips `pick_local_ip_address` for the DHCP-client
+(sport=68/dport=67) connect path so the local address
+stays unspecified for the whole FSM lifecycle. Outbound
+broadcast DISCOVER / REQUEST / DECLINE / REBIND all
+therefore carry IP source 0.0.0.0; RENEW unicast and
+RELEASE unicast also keep source 0.0.0.0 (the RFC's
+"prior to obtaining" clause is about broadcast; once
+unicast is in use the source can be the leased IP per
+RFC 2131 §4.4.5, but PyTCP's current implementation
+keeps it 0.0.0.0 — the leasing server identifies the
+client by `chaddr` and ciaddr, which suffices).
 
 > "DHCP clients are responsible for all message
 >  retransmission. The client MUST adopt a
@@ -539,14 +604,19 @@ discarded (return None) rather than being honoured.
 >  'flags' field to 1 in any DHCPDISCOVER or DHCPREQUEST
 >  messages that client sends."
 
-**Adherence:** met. Both DISCOVER and REQUEST set
-`dhcp4__flag_b=True`
-(`dhcp4_client.py:137`, `:191`). PyTCP's
-UDP path can in fact receive unicast before the address
-is bound (the socket is bound on
-`("0.0.0.0", 68)` which matches any destination), so
-the SHOULD-clear branch would also be valid; PyTCP
-takes the conservative SHOULD-set path.
+**Adherence:** met. DISCOVER (`dhcp4_client.py:1013`),
+SELECTING REQUEST (`:1047`), DECLINE (`:1088`), and the
+REBINDING REQUEST (`:590`, `broadcast=True`) all set
+`dhcp4__flag_b=True`. The RENEWING REQUEST
+(`:590`, `broadcast=False`) and RELEASE (`:626`,
+`dhcp4__flag_b=False`) clear it — the leasing server is
+expected to unicast back to the client's known IP at
+those points. PyTCP's UDP path can in fact receive
+unicast before the address is bound (the socket is bound
+to `("0.0.0.0", 68)` which matches any destination), so
+the SHOULD-clear branch would also be valid for the
+pre-lease phase; PyTCP takes the conservative SHOULD-set
+path there.
 
 ---
 
@@ -560,15 +630,19 @@ text in §4.3 has no audit surface.
 
 ## §4.3.6 Client messages — Table 4 cross-reference
 
-| State        | Mode      | server-id | requested-ip | ciaddr     | PyTCP                                     |
-|--------------|-----------|-----------|--------------|------------|-------------------------------------------|
-| INIT-REBOOT  | broadcast | MUST NOT  | MUST         | zero       | not implemented (no cached lease)         |
-| SELECTING    | broadcast | MUST      | MUST         | zero       | met (`dhcp4_client.py:188-205`)           |
-| RENEWING     | unicast   | MUST NOT  | MUST NOT     | IP address | not implemented (no BOUND/RENEWING state) |
-| REBINDING    | broadcast | MUST NOT  | MUST NOT     | IP address | not implemented (no REBINDING state)      |
+| State       | Mode      | server-id | requested-ip | ciaddr     | PyTCP                                |
+|-------------|-----------|-----------|--------------|------------|--------------------------------------|
+| INIT-REBOOT | broadcast | MUST NOT  | MUST         | zero       | not implemented (Phase 5)            |
+| SELECTING   | broadcast | MUST      | MUST         | zero       | met (`dhcp4_client.py:1031-1065`)    |
+| RENEWING    | unicast   | MUST NOT  | MUST NOT     | IP address | met (Phase 4 commit C — `:570-607`)  |
+| REBINDING   | broadcast | MUST NOT  | MUST NOT     | IP address | met (Phase 4 commit C — `:570-607`)  |
 
-Only the SELECTING row corresponds to the path PyTCP
-exercises.
+`_send_request_renew` carries `ciaddr=current IP`, omits
+Server Identifier (option 54), omits Requested IP Address
+(option 50), and toggles `flag_b` per the
+RENEWING / REBINDING distinction. The four shapes line
+up with Table 4 exactly modulo the missing INIT-REBOOT
+row (Phase 5).
 
 ---
 
@@ -578,18 +652,29 @@ exercises.
 >  client. A client can receive the following messages
 >  from a server: DHCPOFFER, DHCPACK, DHCPNAK."
 
-**Adherence:** not implemented. The seven states in
-Figure 5 (INIT, INIT-REBOOT, SELECTING, REQUESTING,
-REBOOTING, BOUND, RENEWING, REBINDING) are not modelled
-in PyTCP. The client is a single linear function
-`fetch()` that emits DISCOVER, waits for OFFER, emits
-REQUEST, waits for ACK, returns. There is no state
-that persists past the function return.
+**Adherence:** partial (Phase 4 commit C). The
+`Dhcp4State` enum at `dhcp4_client.py:86-101` declares
+all eight Figure-5 states. The `_subsystem_loop`
+dispatch at `:231-267` maps them to handlers:
 
-NAK is handled by an explicit restart loop in `fetch()`
-(see §3.1 step 4 above) — bounded by
-`DHCP4__NAK_MAX_RESTARTS` — but the post-ACK BOUND state
-and the renewal subgraph remain Phase-4 work.
+| Figure-5 state | PyTCP handler                                     |
+|----------------|---------------------------------------------------|
+| INIT           | `_do_init_to_bound` (`:722-776`)                  |
+| SELECTING      | implicit inside `_discover_request_once` (`:778`) |
+| REQUESTING     | implicit inside `_discover_request_once` (`:778`) |
+| BOUND          | `_do_bound` (`:335-356`)                          |
+| RENEWING       | `_do_renewing` (`:358-379`)                       |
+| REBINDING      | `_do_rebinding` (`:381-406`)                      |
+| INIT-REBOOT    | not implemented (Phase 5)                         |
+| REBOOTING      | not implemented (Phase 5)                         |
+
+SELECTING and REQUESTING are not first-class FSM states
+in PyTCP because they correspond to a single synchronous
+wire exchange inside `_discover_request_once`. INIT-REBOOT
+/ REBOOTING require cached-lease persistence (Phase 5).
+NAK is handled by an explicit restart loop in
+`_do_init_to_bound` (see §3.1 step 4 above), bounded by
+`DHCP4__NAK_MAX_RESTARTS`.
 
 ---
 
@@ -638,8 +723,8 @@ T1/T2/lease-expiry deadlines.
 >  local hardware broadcast address to the 0xffffffff
 >  IP broadcast address and 'DHCP server' UDP port."
 
-**Adherence:** met
-(`dhcp4_client.py:92`, `:153`).
+**Adherence:** met (`dhcp4_client.py:751-752`,
+`_send_discover:1004-1029`).
 
 > "If the 'xid' of an arriving DHCPOFFER message does
 >  not match the 'xid' of the most recent DHCPDISCOVER
@@ -655,10 +740,11 @@ guard in `_recv_ack` covers the REQUEST → ACK leg.
 >  of time, selects one DHCPOFFER message from the
 >  (possibly many) incoming DHCPOFFER messages."
 
-**Adherence:** not met. PyTCP accepts the first OFFER
-and immediately proceeds to REQUEST
-(`dhcp4_client.py:94-110`). There is no
-collection window or selection policy.
+**Adherence:** not met. `_discover_request_once`
+(`dhcp4_client.py:778-874`) accepts the first OFFER that
+passes xid + CID-echo validation and immediately proceeds
+to REQUEST. There is no collection window or selection
+policy.
 
 > "The client SHOULD perform a check on the suggested
 >  address to ensure that the address is not already in
@@ -681,13 +767,16 @@ pre-dated Phase 2.2 is gone.
 > "The client SHOULD broadcast an ARP reply to announce
 >  the client's new IP address."
 
-**Adherence:** met (indirectly). The same
-`_create_stack_ip4_addressing` path
-(`packet_handler/__init__.py:1893-1903`)
-emits `ANNOUNCE_NUM=2` gratuitous ARP Announcements
-after successful claim. The trigger is RFC 5227 §2.3,
-not the DHCP path directly, but the user-visible
-behaviour matches the SHOULD.
+**Adherence:** met. After `_do_init_to_bound` returns a
+valid lease, the `_on_bound` transition
+(`dhcp4_client.py:269-284`) invokes the
+`arp_dad_announcer` callback wired by the packet handler
+to `_arp_dad_announce_address`
+(`pytcp/stack/packet_handler/__init__.py:1815-1828`),
+which emits the RFC 5227 §2.3
+ANNOUNCE_NUM=2 gratuitous ARP Announcements. The trigger
+is technically RFC 5227, not the DHCP path directly, but
+the user-visible behaviour matches the SHOULD.
 
 ---
 
@@ -724,7 +813,13 @@ implement the unicast-to-known-server optimization.
 > "The client unicasts DHCPRELEASE messages to the
 >  server."
 
-**Adherence:** not implemented (no RELEASE path).
+**Adherence:** met (Phase 4 commit D). The RELEASE path
+in `Dhcp4Client.release` (`dhcp4_client.py:643-663`)
+opens a fresh UDP socket, binds `("0.0.0.0", 68)`, and
+calls `connect((str(lease.server_id), 67))` — unicast to
+the leasing server. `_send_release` (`:609-637`) carries
+message-type 7 + Server Identifier + Client Identifier +
+ciaddr=current IP, with `flag_b=False`.
 
 > "Because the client is declining the use of the IP
 >  address supplied by the server, the client broadcasts
@@ -795,6 +890,31 @@ expired address — RFC 5227 §2.4-final SHOULD; cleaner
 than Linux's silent-rot kernel behaviour) and resets
 the FSM to INIT. The next '_subsystem_loop' iteration
 runs '_do_init_to_bound' to acquire a fresh lease.
+
+> [implementation correctness note] RENEW unicast / REBIND
+> broadcast wire-level reception.
+
+**Adherence:** met (post-Phase-4 fix). Earlier in the
+Phase-4 work the UDP layer's
+`UdpSocket._get_ip_addresses` was latching the owned IP
+into the DHCP-client socket once a lease was in place,
+and `UdpMetadata.socket_ids` only returned a single
+`(0.0.0.0, 68, 255.255.255.255, 67)` ID — so RENEW
+unicast replies (server → leased IP) and REBIND
+broadcast replies (server → 255.255.255.255 to a host
+that owns a different unicast IP) had no listening
+socket to match and were silently dropped at UDP RX. The
+fix at `pytcp/socket/udp__socket.py:148-195` skips
+`pick_local_ip_address` for DHCPv4/v6 client sockets and
+keeps their local at 0.0.0.0 / :: across the whole FSM
+lifecycle; the fix at
+`pytcp/socket/udp__metadata.py:67-93` enumerates both
+(sender-unicast) and (limited-broadcast) shapes so RENEW
+and REBIND replies both find the listener. Locked in by
+`pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`
+(three tests covering INIT/RENEW/REBIND reception via a
+real `UdpSocket` driven through
+`PacketHandlerL2._phrx_ethernet`).
 
 ---
 
@@ -978,92 +1098,104 @@ is expected from the server.
     server-id, no requested-ip.
 - **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — 'dhcp.t1_factor' / 'dhcp.t2_factor' defaults +
-  cross-knob 't1 ≤ t2' finalize validator (Phase 4
-  commit C still to add — see TODO below).
+  cross-knob 't1 ≤ t2' finalize validator.
 
 **Status:** locked in (Phase 4 commit C).
 
-### §4.4 — Other FSM states (INIT-REBOOT)
+### §4.4.5 — RENEW/REBIND wire-level RX (post-Phase-4 fix)
 
-**No test surface — gap not yet closed.** Each state
-needs its own integration scenario:
+- **Integration:**
+  `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py::TestDhcp4ClientSocketRxDelivery`
+  - `test__dhcp4__rx__init_broadcast_reply_delivered`
+    — pre-lease broadcast reply lands at the listening
+    socket via the special-case lookup.
+  - `test__dhcp4__rx__renew_unicast_reply_delivered`
+    — post-lease unicast reply from the leasing server
+    finds the RENEWING socket (regression guard for the
+    socket-id lookup bug fixed post-Phase-4).
+  - `test__dhcp4__rx__rebind_broadcast_reply_delivered`
+    — post-lease broadcast reply finds the REBINDING
+    socket (regression guard for the
+    `pick_local_ip4_address` latching bug fixed
+    post-Phase-4).
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__metadata.py::TestUdpMetadataSocketIdsDhcp::test__udp_metadata__socket_ids_dhcp4`
+  — pins the two-entry shape returned by
+  `UdpMetadata.socket_ids` for the DHCPv4 client.
 
-- INIT-REBOOT: bring up the stack twice with a cached
-  prior lease; assert the second boot sends REQUEST
-  with the prior IP, not DISCOVER.
-- RENEWING: advance the FakeTimer past T1; assert
-  unicast REQUEST to the lease's server-id.
-- REBINDING: advance past T2; assert broadcast
-  REQUEST with `ciaddr` set.
+**Status:** locked in (post-Phase-4 RX-path fix).
 
-### §4.4.5 — Lease expiry
+### §4.4 — INIT-REBOOT (Phase 5)
 
-**No test surface — gap not yet closed.** Test would
-advance the FakeTimer past the lease expiry and
-assert IPv4 host removal + INIT-state restart.
+**No test surface — gap not yet closed.** When Phase 5
+ships, the natural integration test brings up the stack
+twice with a cached prior lease and asserts the second
+boot sends `REQUEST` with the prior IP, not `DISCOVER`.
 
 ### Test coverage summary
 
-| Aspect                                              | Coverage                                                    |
-|-----------------------------------------------------|-------------------------------------------------------------|
-| Wire-format (header, options, magic cookie, sizes)  | locked in (~3 700 lines of unit tests)                      |
-| Linear DISCOVER → REQUEST happy path                | locked in (`test__lib__dhcp4_client.py`)                    |
-| Client Identifier in REQUEST                        | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`) |
-| DHCPNAK handling (bounded restart)                  | locked in (Phase 0 — `TestDhcp4ClientFetchNakRestart`)      |
-| ARP conflict → DHCPDECLINE                          | locked in (Phase 2.2 — `TestDhcp4ClientFetchArpDad`)        |
-| Post-DECLINE backoff sysctl                         | locked in (Phase 2.2 — `test__dhcp4__constants.py`)         |
-| Retransmission backoff (4/8/16/32/64 s + jitter)    | locked in (Phase 1 — `TestDhcp4ClientFetchBackoff*`)        |
-| 'secs' field advances per RFC 1542 §3.2             | locked in (Phase 1 — `TestDhcp4ClientFetchSecsField`)       |
-| DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)           |
-| Initial random delay (RFC 2131 §4.4.1, 1-10 s)      | locked in (Phase 2.1 — `TestDhcp4ClientFetchInitialDelay`)  |
-| Initial-delay sysctls (defaults, validators)        | locked in (Phase 2.1 — `test__dhcp4__constants.py`)         |
-| FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
-| FSM state INIT-REBOOT                               | not tested — gap (Phase 5)                                  |
-| Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
+| Aspect                                              | Coverage                                                           |
+|-----------------------------------------------------|--------------------------------------------------------------------|
+| Wire-format (header, options, magic cookie, sizes)  | locked in (~3 700 lines of unit tests)                             |
+| Linear DISCOVER → REQUEST happy path                | locked in (`test__lib__dhcp4_client.py`)                           |
+| Client Identifier in REQUEST                        | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`)      |
+| DHCPNAK handling (bounded restart)                  | locked in (Phase 0 — `TestDhcp4ClientFetchNakRestart`)             |
+| ARP conflict → DHCPDECLINE                          | locked in (Phase 2.2 — `TestDhcp4ClientFetchArpDad`)               |
+| Post-DECLINE backoff sysctl                         | locked in (Phase 2.2 — `test__dhcp4__constants.py`)                |
+| Retransmission backoff (4/8/16/32/64 s + jitter)    | locked in (Phase 1 — `TestDhcp4ClientFetchBackoff*`)               |
+| 'secs' field advances per RFC 1542 §3.2             | locked in (Phase 1 — `TestDhcp4ClientFetchSecsField`)              |
+| DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)                  |
+| Initial random delay (RFC 2131 §4.4.1, 1-10 s)      | locked in (Phase 2.1 — `TestDhcp4ClientFetchInitialDelay`)         |
+| Initial-delay sysctls (defaults, validators)        | locked in (Phase 2.1 — `test__dhcp4__constants.py`)                |
+| FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
+| FSM state INIT-REBOOT                               | not tested — gap (Phase 5)                                         |
+| Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
 | DHCPRELEASE on shutdown                             | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | Sync release / renew / rebind public surface        | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | Cross-IP RENEW/REBIND → replace_host                | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
-| DHCPINFORM                                          | not tested — gap                                            |
-| xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)     |
-| Lease Time surfaced on Dhcp4Lease                   | locked in (Phase 0 — `TestDhcp4ClientFetchLeaseReturn`)     |
+| RENEW/REBIND wire-level RX socket lookup            | locked in (post-Phase-4 fix — `test__dhcp4__rx_socket_lookup.py`)  |
+| DHCPINFORM                                          | not tested — gap                                                   |
+| xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)            |
+| Lease Time surfaced on Dhcp4Lease                   | locked in (Phase 0 — `TestDhcp4ClientFetchLeaseReturn`)            |
 
 ---
 
 ## Overall assessment
 
-| Aspect                                                  | Status                       |
-|---------------------------------------------------------|------------------------------|
-| Wire format (header fields, magic cookie, flags)        | met                          |
-| BROADCAST flag emission                                 | met (always set)             |
-| DHCP message-type option present                        | met (DISCOVER, REQUEST)      |
-| Client Identifier emission (RFC 2131 legacy form)       | met (DISCOVER + REQUEST)     |
-| Server Identifier echo in REQUEST                       | met                          |
-| Requested IP Address in SELECTING-state REQUEST         | met                          |
-| Param Request List forwarded DISCOVER → REQUEST         | met                          |
-| Magic cookie + `end` option                             | met                          |
-| Single DISCOVER → OFFER → REQUEST → ACK linear path     | met                          |
-| Multiple-OFFER collection + selection                   | not met (first OFFER wins)   |
-| ARP probe on ACK + DHCPDECLINE on conflict              | met (Phase 2.2)              |
-| Post-DECLINE backoff (≥ 10 s before restart)            | met (Phase 2.2)              |
-| Retransmission with exponential backoff                 | met (Phase 1)                |
-| RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                |
-| Initial random delay (1–10 s)                           | met (Phase 2.1)              |
-| FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)       |
-| FSM (INIT-REBOOT)                                       | not implemented (Phase 5)    |
-| T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)       |
-| DHCPRELEASE on shutdown                                 | met (Phase 4 commit D)       |
-| Cross-IP RENEW/REBIND atomic 'replace_host' swap        | met (Phase 4 commit D)       |
+| Aspect                                                  | Status                                           |
+|---------------------------------------------------------|--------------------------------------------------|
+| Wire format (header fields, magic cookie, flags)        | met                                              |
+| BROADCAST flag emission                                 | met (set for DISCOVER/SELECT/DECLINE/REBIND)     |
+| DHCP message-type option present                        | met (every TX)                                   |
+| Client Identifier emission (RFC 4361 DUID/IAID form)    | met (Phase 3 — every TX)                         |
+| Server Identifier echo in REQUEST                       | met                                              |
+| Requested IP Address in SELECTING-state REQUEST         | met                                              |
+| Param Request List forwarded DISCOVER → REQUEST         | met                                              |
+| Magic cookie + `end` option                             | met                                              |
+| Single DISCOVER → OFFER → REQUEST → ACK linear path     | met                                              |
+| Multiple-OFFER collection + selection                   | not met (first OFFER wins)                       |
+| ARP probe on ACK + DHCPDECLINE on conflict              | met (Phase 2.2)                                  |
+| Post-DECLINE backoff (≥ 10 s before restart)            | met (Phase 2.2)                                  |
+| Retransmission with exponential backoff                 | met (Phase 1)                                    |
+| RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                                    |
+| Initial random delay (1–10 s)                           | met (Phase 2.1)                                  |
+| FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)                           |
+| FSM (INIT-REBOOT / REBOOTING)                           | not implemented (Phase 5)                        |
+| T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)                           |
+| Server option 58 (T1) / option 59 (T2) overrides        | not implemented (codec parses; accessor pending) |
+| RENEW unicast wire path                                 | met (Phase 4 commit C + post-fix RX lookup)      |
+| REBIND broadcast wire path                              | met (Phase 4 commit C + post-fix RX lookup)      |
+| DHCPRELEASE on shutdown                                 | met (Phase 4 commit D)                           |
+| Cross-IP RENEW/REBIND atomic 'replace_host' swap        | met (Phase 4 commit D)                           |
 | Active TCP-abort on lease change (deliberate dev.)      | met (Phase 4 commit D — sysctl-gated; default 1) |
-| DHCPDECLINE on detected address conflict                | not implemented              |
-| DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                |
-| DHCPINFORM                                              | not implemented              |
-| xid match validation on inbound messages                | met (Phase 0)                |
-| Lease Time surfaced + ACK-without-Lease-Time rejected   | met (Phase 0)                |
-| INIT-REBOOT (cached prior lease)                        | not implemented              |
-| Unicast-to-known-server optimisation                    | not implemented              |
-| 'Maximum DHCP message size' option (57)                 | not implemented              |
-| 'Option overload' option (52)                           | not implemented              |
-| Lease-time interpretation (T1/T2 scheduling)            | Phase 4 (Dhcp4Lifecycle)     |
+| DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                                    |
+| DHCPINFORM                                              | not implemented                                  |
+| xid match validation on inbound messages                | met (Phase 0)                                    |
+| Lease Time surfaced + ACK-without-Lease-Time rejected   | met (Phase 0)                                    |
+| INIT-REBOOT (cached prior lease)                        | not implemented (Phase 5)                        |
+| Unicast-to-known-server optimisation                    | partial (RENEW unicasts; INFORM/REQUEST do not)  |
+| 'Maximum DHCP message size' option (57)                 | not implemented (Phase 8)                        |
+| 'Option overload' option (52)                           | not implemented (Phase 8)                        |
 
 **Principal compliance status.** With Phase 4 complete
 (commits 0/A/B/C/D), PyTCP's DHCPv4 client is
@@ -1103,14 +1235,30 @@ reset any existing connections using that address").
 Operators can opt into Linux-parity behaviour by
 setting the sysctl to 0.
 
+**Post-Phase-4 RX-path fix.** A coupled pair of bugs in
+the UDP socket layer was silently dropping every RENEW
+unicast and REBIND broadcast reply once a lease was in
+place; the fixes at
+`pytcp/socket/udp__socket.py:148-195` and
+`pytcp/socket/udp__metadata.py:67-93` are pinned by the
+new integration test
+`pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`.
+Verified end-to-end against a live DHCP server — eight
+consecutive RENEWs at the 1800 s T1 boundary all
+received an ACK and logged `Lease renewed: same IP
+retained`.
+
 Remaining items in the per-RFC adherence catalogue:
 
-- **§4.4.2 INIT-REBOOT (cached prior lease)** — Phase 5
-  (cached-lease persistence prerequisite).
+- **§4.4.2 INIT-REBOOT / REBOOTING (cached prior lease)**
+  — Phase 5 (cached-lease persistence prerequisite).
 - **Server option 58 (T1) / option 59 (T2) overrides**
-  — codec parses them as 'Dhcp4OptionUnknown'; a
-  follow-up will add typed accessors and prefer
-  server values over the factor-based defaults.
+  — codec parses them as `Dhcp4OptionUnknown`; a
+  follow-up will add typed accessors and prefer server
+  values over the factor-based defaults.
 - **§3.4 DHCPINFORM** — niche, deferred.
 - **§4.4 Multiple-OFFER collection + selection** —
   accept-first heuristic is OK for Phase 1 host parity.
+- **§3.5 / §4.1 Maximum DHCP Message Size (option 57)**
+  — Phase 8 polish; never blocks lease acquisition with
+  default 576-octet ceiling.
