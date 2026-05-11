@@ -30,104 +30,21 @@ pytcp/tests/unit/lib/test__lib__dhcp4_client.py
 ver 3.0.4
 """
 
-from types import SimpleNamespace
 from typing import override
 from unittest import TestCase
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import call, patch
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
-from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease
+from pytcp.tests.lib.dhcp4_mock_server import (
+    Dhcp4MockServer,
+    autospec_dhcp4_socket,
+)
 
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:01")
 _DEFAULT_CID = b"\x01" + bytes(_DEFAULT_MAC)
-_DEFAULT_XID = 0xDEADBEEF
-_DEFAULT_LEASE_TIME = 3600
-
-
-def _stub_offer(
-    *,
-    xid: int = _DEFAULT_XID,
-    srv_id: Ip4Address | None = Ip4Address("10.0.0.254"),
-    yiaddr: Ip4Address = Ip4Address("10.0.0.100"),
-    subnet_mask: Ip4Mask | None = Ip4Mask("255.255.255.0"),
-    router: list[Ip4Address] | None = None,
-    client_id: bytes | None = None,
-    lease_time: int | None = _DEFAULT_LEASE_TIME,
-    message_type: Dhcp4MessageType = Dhcp4MessageType.OFFER,
-) -> SimpleNamespace:
-    """
-    Build a 'SimpleNamespace' standing in for a parsed DHCP Offer with
-    every attribute the source code reads, defaulted so that happy-path
-    construction matches the canonical fixture lease '10.0.0.100/24'.
-    """
-
-    return SimpleNamespace(
-        message_type=message_type,
-        xid=xid,
-        srv_id=srv_id,
-        yiaddr=yiaddr,
-        subnet_mask=subnet_mask,
-        router=router,
-        client_id=client_id,
-        lease_time=lease_time,
-    )
-
-
-def _stub_ack(
-    *,
-    xid: int = _DEFAULT_XID,
-    srv_id: Ip4Address | None = Ip4Address("10.0.0.254"),
-    yiaddr: Ip4Address = Ip4Address("10.0.0.100"),
-    subnet_mask: Ip4Mask | None = Ip4Mask("255.255.255.0"),
-    router: list[Ip4Address] | None = None,
-    client_id: bytes | None = None,
-    lease_time: int | None = _DEFAULT_LEASE_TIME,
-    message_type: Dhcp4MessageType = Dhcp4MessageType.ACK,
-) -> SimpleNamespace:
-    """
-    Build a 'SimpleNamespace' standing in for a parsed DHCP Ack with
-    every attribute the source code reads, defaulted so that happy-path
-    construction yields a usable lease.
-    """
-
-    return SimpleNamespace(
-        message_type=message_type,
-        xid=xid,
-        srv_id=srv_id,
-        yiaddr=yiaddr,
-        subnet_mask=subnet_mask,
-        router=router,
-        client_id=client_id,
-        lease_time=lease_time,
-    )
-
-
-def _make_parser_factory(*responses: SimpleNamespace | Exception) -> MagicMock:
-    """
-    Build a 'Dhcp4Parser' replacement that returns (or raises) the
-    provided sentinels on successive calls. Each variadic argument is
-    one synthetic parser instance (or a 'TimeoutError' / other
-    exception) consumed in order across the fetch() round-trips.
-    """
-
-    factory = MagicMock(name="Dhcp4Parser")
-    factory.side_effect = list(responses)
-    return factory
-
-
-def _build_mock_socket(*recv_payloads: bytes | TimeoutError) -> MagicMock:
-    """
-    Build a socket-like 'MagicMock' whose 'recv__mv' yields the given
-    byte payloads (or raises 'TimeoutError' when supplied) across
-    successive calls. Any other method ('bind', 'connect', 'send',
-    'close') is recorded for later inspection.
-    """
-
-    sock = MagicMock(name="socket")
-    sock.recv__mv.side_effect = list(recv_payloads)
-    return sock
+_PINNED_XID = 0xDEADBEEF
 
 
 class TestDhcp4ClientInit(TestCase):
@@ -183,7 +100,33 @@ class TestDhcp4ClientInit(TestCase):
             Dhcp4Client(_DEFAULT_MAC)  # type: ignore[misc]
 
 
-class TestDhcp4ClientFetchHappyPath(TestCase):
+class _Dhcp4ClientFixture(TestCase):
+    """
+    Shared fixture base. Subclasses build their own
+    'Dhcp4MockServer', enqueue the replies the test needs, and call
+    'self._fetch()' which patches the socket factory and the log
+    channel for the duration of the call.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Stand up a 'Dhcp4MockServer' plus an autospec-locked socket
+        factory whose return value is wired into the server. Patch
+        'pytcp.lib.dhcp4_client.socket' (the factory call site) and
+        the 'log' channel for the duration of every test in the
+        subclass.
+        """
+
+        self._server = Dhcp4MockServer()
+        self._socket_factory = autospec_dhcp4_socket()
+        self._sock = self._socket_factory.return_value
+        self._server.wire(self._sock)
+        self.enterContext(patch("pytcp.lib.dhcp4_client.socket", self._socket_factory))
+        self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
+
+
+class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' happy-path tests.
     """
@@ -191,24 +134,13 @@ class TestDhcp4ClientFetchHappyPath(TestCase):
     @override
     def setUp(self) -> None:
         """
-        Build a DHCP Offer and ACK pair that produces a valid lease on
-        '10.0.0.100/24' with gateway '10.0.0.1', plus the matching
-        socket and parser stubs shared by every happy-path test. Patch
-        the socket factory, parser class, log channel, and random xid
-        for the duration of each test via 'enterContext'.
+        Build the canonical lease scenario — an OFFER and ACK for
+        '10.0.0.100/24' with gateway '10.0.0.1'.
         """
 
-        self._offer = _stub_offer(router=[Ip4Address("10.0.0.1")])
-        self._ack = _stub_ack(router=[Ip4Address("10.0.0.1")])
-        self._sock = _build_mock_socket(b"offer", b"ack")
-        self._parser = _make_parser_factory(self._offer, self._ack)
-
-        self.enterContext(patch("pytcp.lib.dhcp4_client.socket", return_value=self._sock))
-        self.enterContext(patch("pytcp.lib.dhcp4_client.Dhcp4Parser", self._parser))
-        self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
-        self.enterContext(
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        )
+        super().setUp()
+        self._server.enqueue_offer(router=[Ip4Address("10.0.0.1")])
+        self._server.enqueue_ack(router=[Ip4Address("10.0.0.1")])
 
     def test__dhcp4_client__fetch_returns_lease_with_address_and_mask(self) -> None:
         """
@@ -292,6 +224,16 @@ class TestDhcp4ClientFetchHappyPath(TestCase):
             2,
             msg="Happy-path fetch() must send two packets (Discover + Request).",
         )
+        self.assertEqual(
+            self._server.tx_log[0].message_type,
+            Dhcp4MessageType.DISCOVER,
+            msg="First emitted packet must be a DHCPDISCOVER.",
+        )
+        self.assertEqual(
+            self._server.tx_log[1].message_type,
+            Dhcp4MessageType.REQUEST,
+            msg="Second emitted packet must be a DHCPREQUEST.",
+        )
 
     def test__dhcp4_client__fetch_closes_socket_on_success(self) -> None:
         """
@@ -320,7 +262,7 @@ class TestDhcp4ClientFetchHappyPath(TestCase):
         self._sock.recv__mv.assert_has_calls([call(timeout=7), call(timeout=7)])
 
 
-class TestDhcp4ClientFetchNoRouter(TestCase):
+class TestDhcp4ClientFetchNoRouter(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' 'router option absent' happy-path test.
     """
@@ -334,20 +276,11 @@ class TestDhcp4ClientFetchNoRouter(TestCase):
         Reference: RFC 2132 §3.5 (Router Option — optional, may be absent).
         """
 
-        offer = _stub_offer(router=None)
-        ack = _stub_ack(router=None)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer(router=None)
+        self._server.enqueue_ack(router=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         assert result is not None
         self.assertIsNone(
@@ -356,7 +289,7 @@ class TestDhcp4ClientFetchNoRouter(TestCase):
         )
 
 
-class TestDhcp4ClientFetchOfferTimeout(TestCase):
+class TestDhcp4ClientFetchOfferTimeout(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Offer-timeout failure test.
     """
@@ -369,28 +302,19 @@ class TestDhcp4ClientFetchOfferTimeout(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sock = _build_mock_socket(TimeoutError())
-        parser = MagicMock(name="Dhcp4Parser")
+        self._server.enqueue_timeout()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the Offer receive times out.",
         )
-        sock.close.assert_called_once_with()
-        parser.assert_not_called()
+        self._sock.close.assert_called_once_with()
 
 
-class TestDhcp4ClientFetchOfferWrongMessageType(TestCase):
+class TestDhcp4ClientFetchOfferWrongMessageType(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Offer-with-wrong-type failure test.
     """
@@ -406,33 +330,24 @@ class TestDhcp4ClientFetchOfferWrongMessageType(TestCase):
         Reference: RFC 2131 §3.1 step 2 (server response to DISCOVER is DHCPOFFER).
         """
 
-        bogus = _stub_offer(message_type=Dhcp4MessageType.ACK)
-        sock = _build_mock_socket(b"offer")
-        parser = _make_parser_factory(bogus)
+        self._server.enqueue_offer(message_type=Dhcp4MessageType.ACK)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the first response is not a DHCP Offer.",
         )
-        sock.close.assert_called_once_with()
+        self._sock.close.assert_called_once_with()
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             1,
             msg="Only the Discover must be sent when the Offer message-type check fails.",
         )
 
 
-class TestDhcp4ClientFetchAckTimeout(TestCase):
+class TestDhcp4ClientFetchAckTimeout(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Ack-timeout failure test.
     """
@@ -446,28 +361,20 @@ class TestDhcp4ClientFetchAckTimeout(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        offer = _stub_offer()
-        sock = _build_mock_socket(b"offer", TimeoutError())
-        parser = _make_parser_factory(offer)
+        self._server.enqueue_offer()
+        self._server.enqueue_timeout()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the Ack receive times out.",
         )
-        sock.close.assert_called_once_with()
+        self._sock.close.assert_called_once_with()
 
 
-class TestDhcp4ClientFetchAckWrongMessageType(TestCase):
+class TestDhcp4ClientFetchAckWrongMessageType(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Ack-with-wrong-non-NAK-type failure test.
     """
@@ -482,34 +389,25 @@ class TestDhcp4ClientFetchAckWrongMessageType(TestCase):
         Reference: RFC 2131 §3.1 step 4 (server response to REQUEST is DHCPACK or DHCPNAK).
         """
 
-        offer = _stub_offer()
-        bogus_ack = _stub_ack(message_type=Dhcp4MessageType.OFFER)
-        sock = _build_mock_socket(b"offer", b"bogus")
-        parser = _make_parser_factory(offer, bogus_ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(message_type=Dhcp4MessageType.OFFER)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the second response is neither an ACK nor a NAK.",
         )
-        sock.close.assert_called_once_with()
+        self._sock.close.assert_called_once_with()
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             2,
             msg="Both Discover and Request must be sent before the Ack message-type check fails.",
         )
 
 
-class TestDhcp4ClientFetchOfferSrvIdNone(TestCase):
+class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' rejection of an Offer without Server-ID.
     """
@@ -523,33 +421,24 @@ class TestDhcp4ClientFetchOfferSrvIdNone(TestCase):
         Reference: RFC 2131 §3.1 step 2 (Server identifier required in DHCPOFFER).
         """
 
-        offer = _stub_offer(srv_id=None)
-        sock = _build_mock_socket(b"offer")
-        parser = _make_parser_factory(offer)
+        self._server.enqueue_offer(server_id=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the Offer omits the Server-ID option.",
         )
-        sock.close.assert_called_once_with()
+        self._sock.close.assert_called_once_with()
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             1,
             msg="Only the Discover packet must be sent when the Offer's srv_id is missing.",
         )
 
 
-class TestDhcp4ClientFetchAckMissingSubnetMask(TestCase):
+class TestDhcp4ClientFetchAckMissingSubnetMask(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' rejection of an Ack without Subnet Mask.
     """
@@ -562,29 +451,20 @@ class TestDhcp4ClientFetchAckMissingSubnetMask(TestCase):
         Reference: RFC 2132 §3.3 (Subnet Mask option — option code 1).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack(subnet_mask=None)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(subnet_mask=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = client.fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the Ack omits the Subnet Mask option.",
         )
-        sock.close.assert_called_once_with()
+        self._sock.close.assert_called_once_with()
 
 
-class TestDhcp4ClientFetchXid(TestCase):
+class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' transaction-ID generation tests.
     """
@@ -598,22 +478,14 @@ class TestDhcp4ClientFetchXid(TestCase):
         Reference: RFC 2131 §4.1 (xid is a random 32-bit number).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack()
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch(
-                "pytcp.lib.dhcp4_client.random.randint",
-                return_value=_DEFAULT_XID,
-            ) as mock_randint,
-        ):
-            client.fetch()
+        with patch(
+            "pytcp.lib.dhcp4_client.random.randint",
+            return_value=_PINNED_XID,
+        ) as mock_randint:
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         mock_randint.assert_called_once_with(0, 0xFFFFFFFF)
 
@@ -626,25 +498,16 @@ class TestDhcp4ClientFetchXid(TestCase):
         Reference: RFC 2131 §4.1 (each new exchange uses a fresh xid).
         """
 
-        sock = _build_mock_socket(b"offer-1", b"ack-1", b"offer-2", b"ack-2")
-        parser = _make_parser_factory(
-            _stub_offer(),
-            _stub_ack(),
-            _stub_offer(),
-            _stub_ack(),
-        )
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch(
-                "pytcp.lib.dhcp4_client.random.randint",
-                return_value=_DEFAULT_XID,
-            ) as mock_randint,
-        ):
+        with patch(
+            "pytcp.lib.dhcp4_client.random.randint",
+            return_value=_PINNED_XID,
+        ) as mock_randint:
+            client = Dhcp4Client(mac_address=_DEFAULT_MAC)
             client.fetch()
             client.fetch()
 
@@ -655,7 +518,7 @@ class TestDhcp4ClientFetchXid(TestCase):
         )
 
 
-class TestDhcp4ClientFetchClientIdInRequest(TestCase):
+class TestDhcp4ClientFetchClientIdInRequest(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Client Identifier emission in REQUEST.
     """
@@ -663,31 +526,23 @@ class TestDhcp4ClientFetchClientIdInRequest(TestCase):
     def test__dhcp4_client__send_request_includes_client_id(self) -> None:
         """
         Ensure the REQUEST packet emitted in response to a valid OFFER
-        carries the Client Identifier option ('\\x01' + MAC). Parses
-        the second TX payload back through the real Dhcp4Parser and
-        reads its 'client_id' accessor.
+        carries the Client Identifier option ('\\x01' + MAC).
 
         Reference: RFC 2131 §2 (Client Identifier).
         Reference: RFC 2131 §4.4.1 (client SHOULD include client identifier in every message).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack()
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            client.fetch()
-
-        request_bytes = bytes(sock.send.call_args_list[1].args[0])
-        request = Dhcp4Parser(memoryview(request_bytes))
+        request = self._server.tx_log[1]
+        self.assertEqual(
+            request.message_type,
+            Dhcp4MessageType.REQUEST,
+            msg="Sanity: the second TX must be a DHCPREQUEST.",
+        )
         self.assertEqual(
             request.client_id,
             _DEFAULT_CID,
@@ -695,7 +550,7 @@ class TestDhcp4ClientFetchClientIdInRequest(TestCase):
         )
 
 
-class TestDhcp4ClientFetchXidMismatch(TestCase):
+class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' xid-mismatch silent-drop tests.
     """
@@ -709,26 +564,20 @@ class TestDhcp4ClientFetchXidMismatch(TestCase):
         Reference: RFC 2131 §4.4.1 (client MUST discard messages whose xid does not match).
         """
 
-        offer = _stub_offer(xid=0x11111111)
-        sock = _build_mock_socket(b"offer")
-        parser = _make_parser_factory(offer)
+        self._server.enqueue_offer(xid=0x11111111)
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
+        with patch(
+            "pytcp.lib.dhcp4_client.random.randint",
+            return_value=_PINNED_XID,
         ):
-            result = client.fetch()
+            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the OFFER xid does not match the DISCOVER xid.",
         )
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             1,
             msg="Only DISCOVER must be sent when the OFFER xid is rejected.",
         )
@@ -741,20 +590,14 @@ class TestDhcp4ClientFetchXidMismatch(TestCase):
         Reference: RFC 2131 §4.4.1 (client MUST discard messages whose xid does not match).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack(xid=0x22222222)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(xid=0x22222222)
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
+        with patch(
+            "pytcp.lib.dhcp4_client.random.randint",
+            return_value=_PINNED_XID,
         ):
-            result = client.fetch()
+            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -762,7 +605,7 @@ class TestDhcp4ClientFetchXidMismatch(TestCase):
         )
 
 
-class TestDhcp4ClientFetchCidEcho(TestCase):
+class TestDhcp4ClientFetchCidEcho(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Client Identifier echo-validation tests.
     """
@@ -775,19 +618,11 @@ class TestDhcp4ClientFetchCidEcho(TestCase):
         Reference: RFC 6842 §3 (client MUST compare echoed CID and silently discard mismatching messages).
         """
 
-        offer = _stub_offer(client_id=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")))
-        sock = _build_mock_socket(b"offer")
-        parser = _make_parser_factory(offer)
+        self._server.enqueue_offer(
+            client_id_echo=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")),
+        )
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -802,20 +637,12 @@ class TestDhcp4ClientFetchCidEcho(TestCase):
         Reference: RFC 6842 §3 (client MUST compare echoed CID and silently discard mismatching messages).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack(client_id=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")))
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(
+            client_id_echo=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")),
+        )
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -831,20 +658,10 @@ class TestDhcp4ClientFetchCidEcho(TestCase):
         Reference: RFC 6842 §3 (matching CID echo must not be discarded).
         """
 
-        offer = _stub_offer(client_id=_DEFAULT_CID)
-        ack = _stub_ack(client_id=_DEFAULT_CID)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -853,7 +670,7 @@ class TestDhcp4ClientFetchCidEcho(TestCase):
         )
 
 
-class TestDhcp4ClientFetchNakRestart(TestCase):
+class TestDhcp4ClientFetchNakRestart(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' DHCPNAK bounded-restart tests.
     """
@@ -869,22 +686,12 @@ class TestDhcp4ClientFetchNakRestart(TestCase):
         Reference: RFC 2131 §3.1 step 4 (DHCPNAK → restart from DHCPDISCOVER).
         """
 
-        offer_1 = _stub_offer()
-        nak = _stub_ack(message_type=Dhcp4MessageType.NAK)
-        offer_2 = _stub_offer()
-        ack = _stub_ack()
-        sock = _build_mock_socket(b"offer-1", b"nak", b"offer-2", b"ack")
-        parser = _make_parser_factory(offer_1, nak, offer_2, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_nak()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -892,7 +699,7 @@ class TestDhcp4ClientFetchNakRestart(TestCase):
             msg="fetch() must restart from DISCOVER on NAK and return a lease when the retry succeeds.",
         )
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             4,
             msg="NAK-restart path must send DISCOVER, REQUEST, DISCOVER, REQUEST.",
         )
@@ -907,42 +714,24 @@ class TestDhcp4ClientFetchNakRestart(TestCase):
         Reference: RFC 2131 §3.1 step 4 (NAK → restart; bounded to avoid loops).
         """
 
-        rounds = [
-            _stub_offer(),
-            _stub_ack(message_type=Dhcp4MessageType.NAK),
-            _stub_offer(),
-            _stub_ack(message_type=Dhcp4MessageType.NAK),
-            _stub_offer(),
-            _stub_ack(message_type=Dhcp4MessageType.NAK),
-            _stub_offer(),
-            _stub_ack(message_type=Dhcp4MessageType.NAK),
-        ]
-        recv_payloads: list[bytes | TimeoutError] = [b"payload"] * 8
-        sock = _build_mock_socket(*recv_payloads)
-        parser = _make_parser_factory(*rounds)
+        for _ in range(4):
+            self._server.enqueue_offer()
+            self._server.enqueue_nak()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None after the NAK-restart budget is exhausted.",
         )
         self.assertEqual(
-            sock.send.call_count,
+            self._sock.send.call_count,
             8,
             msg="Four DISCOVER/REQUEST round-trips must be attempted before giving up (initial + 3 restarts).",
         )
 
 
-class TestDhcp4ClientFetchLeaseReturn(TestCase):
+class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' Dhcp4Lease return-shape tests.
     """
@@ -955,20 +744,10 @@ class TestDhcp4ClientFetchLeaseReturn(TestCase):
         Reference: RFC 2132 §9.2 (IP Address Lease Time option — code 51).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack(lease_time=7200)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(lease_time=7200)
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -986,20 +765,10 @@ class TestDhcp4ClientFetchLeaseReturn(TestCase):
         Reference: RFC 2131 §4.3.2 (server identifier carried into REQUEST/RENEW).
         """
 
-        offer = _stub_offer(srv_id=Ip4Address("10.0.0.254"))
-        ack = _stub_ack()
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -1017,21 +786,11 @@ class TestDhcp4ClientFetchLeaseReturn(TestCase):
         Reference: RFC 2131 §4.4.5 (T1/T2 timing relative to lease acquisition).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack()
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-            patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1234.5),
-        ):
-            result = client.fetch()
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1234.5):
+            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -1041,7 +800,7 @@ class TestDhcp4ClientFetchLeaseReturn(TestCase):
         )
 
 
-class TestDhcp4ClientFetchAckMissingLeaseTime(TestCase):
+class TestDhcp4ClientFetchAckMissingLeaseTime(_Dhcp4ClientFixture):
     """
     The 'Dhcp4Client.fetch()' rejection of an Ack without lease time.
     """
@@ -1055,20 +814,10 @@ class TestDhcp4ClientFetchAckMissingLeaseTime(TestCase):
         Reference: RFC 2131 Table 3 (IP address lease time MUST be present in DHCPACK).
         """
 
-        offer = _stub_offer()
-        ack = _stub_ack(lease_time=None)
-        sock = _build_mock_socket(b"offer", b"ack")
-        parser = _make_parser_factory(offer, ack)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(lease_time=None)
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-
-        with (
-            patch("pytcp.lib.dhcp4_client.socket", return_value=sock),
-            patch("pytcp.lib.dhcp4_client.Dhcp4Parser", parser),
-            patch("pytcp.lib.dhcp4_client.log"),
-            patch("pytcp.lib.dhcp4_client.random.randint", return_value=_DEFAULT_XID),
-        ):
-            result = client.fetch()
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
