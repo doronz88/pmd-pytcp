@@ -40,6 +40,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
     Dhcp4Operation,
 )
+from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4OptionType
 from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
@@ -65,12 +66,13 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 from pytcp.lib.logger import log
+from pytcp.protocols.dhcp4 import dhcp4__constants
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
-# RFC 2131 §3.1 step 4 — on DHCPNAK the client returns to INIT and
-# restarts from DHCPDISCOVER. Bound the restart loop so a server that
-# keeps NAK'ing cannot pin the client in an infinite cycle.
-DHCP4__NAK_MAX_RESTARTS: int = 3
+# 'secs' is a 16-bit field in the DHCP header; cap the elapsed-
+# since-acquisition seconds at UINT16_MAX so a long-lived restart
+# loop cannot overflow.
+_DHCP4__SECS_MAX: int = 0xFFFF
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -102,31 +104,38 @@ class Dhcp4Client:
     The DHCPv4 client.
     """
 
-    def __init__(self, *, mac_address: MacAddress, timeout__sec: int = 5) -> None:
+    def __init__(self, *, mac_address: MacAddress) -> None:
         """
         Initialize the DHCPv4 client.
         """
 
         self._mac_address = mac_address
-        self._timeout__sec = timeout__sec
         # Type 0x01 (Ethernet) + MAC bytes, per RFC 2132 §9.14 — used
         # both for emission and for echo validation under RFC 6842 §3.
         self._expected_client_id: bytes = b"\x01" + bytes(self._mac_address)
+        # Set at the top of 'fetch()'; reused by every outbound TX in
+        # this acquisition cycle to populate the DHCP header 'secs'
+        # field per RFC 1542 §3.2.
+        self._fetch_started_at_monotonic: float = 0.0
 
     def fetch(self) -> Dhcp4Lease | None:
         """
         Run the DHCPv4 DISCOVER/REQUEST handshake and return the lease.
 
         On a DHCPNAK to the REQUEST, restart from DISCOVER up to
-        'DHCP4__NAK_MAX_RESTARTS' times before giving up.
+        'dhcp.nak_max_restarts' times before giving up. Every recv
+        wait runs under the RFC 2131 §4.1 retransmission backoff
+        (initial / max / attempts / jitter all sysctl-tunable).
         """
+
+        self._fetch_started_at_monotonic = time.monotonic()
 
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
             client_socket.bind(("0.0.0.0", 68))
             client_socket.connect(("255.255.255.255", 67))
 
-            for _ in range(DHCP4__NAK_MAX_RESTARTS + 1):
+            for _ in range(dhcp4__constants.DHCP4__NAK_MAX_RESTARTS + 1):
                 outcome = self._discover_request_once(client_socket)
                 if not isinstance(outcome, _NakRestart):
                     return outcome
@@ -140,39 +149,56 @@ class Dhcp4Client:
 
     def _discover_request_once(self, client_socket: socket) -> Dhcp4Lease | _NakRestart | None:
         """
-        Run a single DISCOVER/OFFER/REQUEST/ACK round-trip.
+        Run a single DISCOVER/OFFER/REQUEST/ACK round-trip with
+        retransmission backoff on each recv leg.
 
         Returns a 'Dhcp4Lease' on success, '_NAK_RESTART' on DHCPNAK
         (caller restarts from DISCOVER), or None on any hard failure
-        (timeout, mismatched xid/CID, wrong message type, missing
-        mandatory option).
+        (silence across the backoff window, mismatched xid/CID,
+        wrong message type, missing mandatory option).
         """
 
         xid = random.randint(0, 0xFFFFFFFF)
 
         self._send_discover(client_socket, xid=xid)
-        offer = self._recv_offer(client_socket, xid=xid)
+        offer = self._recv_with_backoff(
+            client_socket,
+            expected_type=Dhcp4MessageType.OFFER,
+            xid=xid,
+            resend=lambda: self._send_discover(client_socket, xid=xid),
+        )
         if offer is None:
             return None
+        # 'allow_nak' defaults to False on the OFFER leg, so a NAK
+        # would have been treated as 'wrong message type' and dropped
+        # — narrow to 'Dhcp4Parser' for downstream attribute access.
+        assert isinstance(offer, Dhcp4Parser)
 
-        if offer.srv_id is None:
+        srv_id = offer.srv_id
+        if srv_id is None:
             __debug__ and log(
                 "dhcp4",
                 "<WARN>Didn't receive DHCP Offer message - missing server identifier</>",
             )
             return None
+        yiaddr = offer.yiaddr
 
-        self._send_request(
+        self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr)
+        ack = self._recv_with_backoff(
             client_socket,
+            expected_type=Dhcp4MessageType.ACK,
             xid=xid,
-            srv_id=offer.srv_id,
-            yiaddr=offer.yiaddr,
+            resend=lambda: self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr),
+            allow_nak=True,
         )
-        ack = self._recv_ack(client_socket, xid=xid)
         if isinstance(ack, _NakRestart):
             return _NAK_RESTART
         if ack is None:
             return None
+        # 'allow_nak' was True on the ACK leg, but the NAK case was
+        # handled by the 'isinstance' branch above — narrow to
+        # 'Dhcp4Parser' for downstream attribute access.
+        assert isinstance(ack, Dhcp4Parser)
 
         if ack.subnet_mask is None:
             __debug__ and log(
@@ -195,9 +221,136 @@ class Dhcp4Client:
         return Dhcp4Lease(
             ip4_host=ip4_host,
             lease_time__sec=ack.lease_time,
-            server_id=offer.srv_id,
+            server_id=srv_id,
             acquired_at_monotonic=time.monotonic(),
         )
+
+    def _recv_with_backoff(
+        self,
+        client_socket: socket,
+        *,
+        expected_type: Dhcp4MessageType,
+        xid: int,
+        resend: "Callable[[], None]",  # noqa: F821 — typing alias defined below
+        allow_nak: bool = False,
+    ) -> "Dhcp4Parser | _NakRestart | None":
+        """
+        Wait for an inbound DHCP message of 'expected_type' using the
+        RFC 2131 §4.1 retransmission backoff. On each per-attempt
+        timeout the caller-provided 'resend' callback retransmits the
+        prior TX and the delay doubles (capped at
+        'dhcp.retrans_max_ms'). Returns the parsed message on
+        success, '_NAK_RESTART' if a NAK arrives and 'allow_nak' is
+        True, or None when the attempt budget is exhausted.
+
+        Bogus inbound packets (malformed, mismatched xid, mismatched
+        CID echo, wrong message type) are silently dropped without
+        burning the current attempt's wait window — the loop keeps
+        listening until the monotonic deadline expires.
+        """
+
+        delay_ms = dhcp4__constants.DHCP4__RETRANS_INITIAL_MS
+        max_ms = dhcp4__constants.DHCP4__RETRANS_MAX_MS
+        max_attempts = dhcp4__constants.DHCP4__RETRANS_MAX_ATTEMPTS
+        jitter_ms = dhcp4__constants.DHCP4__RETRANS_JITTER_MS
+
+        for attempt in range(max_attempts):
+            jitter_s = random.uniform(-jitter_ms / 1000.0, jitter_ms / 1000.0)
+            timeout_s = max(0.001, delay_ms / 1000.0 + jitter_s)
+            result = self._recv_within_window(
+                client_socket,
+                expected_type=expected_type,
+                xid=xid,
+                timeout_s=timeout_s,
+                allow_nak=allow_nak,
+            )
+            if result is not None:
+                return result
+            if attempt < max_attempts - 1:
+                __debug__ and log(
+                    "dhcp4",
+                    f"recv window expired ({timeout_s:.2f}s); retransmitting "
+                    f"(attempt {attempt + 2} of {max_attempts})",
+                )
+                resend()
+                delay_ms = min(delay_ms * 2, max_ms)
+        return None
+
+    def _recv_within_window(
+        self,
+        client_socket: socket,
+        *,
+        expected_type: Dhcp4MessageType,
+        xid: int,
+        timeout_s: float,
+        allow_nak: bool,
+    ) -> "Dhcp4Parser | _NakRestart | None":
+        """
+        Wait up to 'timeout_s' seconds for a valid DHCP message,
+        silently dropping bogus packets (malformed, wrong type, bad
+        xid, bad CID echo) without consuming the entire window.
+        Returns the parsed message on success, '_NAK_RESTART' on a
+        valid NAK if 'allow_nak' is True, or None if the deadline
+        elapses with no valid response.
+
+        The first 'recv__mv' call uses 'timeout_s' directly so the
+        caller's intended window value reaches the socket layer
+        verbatim; subsequent iterations (only entered after dropping
+        a bogus packet) compute the remaining budget against a
+        monotonic deadline anchored at the start of the window.
+        """
+
+        deadline = time.monotonic() + timeout_s
+        remaining = timeout_s
+        first_iter = True
+        while True:
+            if not first_iter:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+            first_iter = False
+            try:
+                packet = Dhcp4Parser(client_socket.recv__mv(timeout=remaining))
+            except TimeoutError:
+                return None
+            except Dhcp4IntegrityError:
+                __debug__ and log(
+                    "dhcp4",
+                    "<WARN>Dropping malformed inbound DHCP frame; continuing wait window</>",
+                )
+                continue
+
+            if allow_nak and packet.message_type == Dhcp4MessageType.NAK:
+                if packet.xid != xid or not self._cid_echo_ok(packet):
+                    __debug__ and log(
+                        "dhcp4",
+                        "<WARN>Dropping NAK with mismatched xid or CID echo</>",
+                    )
+                    continue
+                __debug__ and log("dhcp4", "DHCP NAK received - restarting from DISCOVER")
+                return _NAK_RESTART
+
+            if packet.message_type != expected_type:
+                __debug__ and log(
+                    "dhcp4",
+                    f"<WARN>Dropping DHCP frame with unexpected message type "
+                    f"{packet.message_type!r}; expected {expected_type!r}</>",
+                )
+                continue
+            if packet.xid != xid:
+                __debug__ and log(
+                    "dhcp4",
+                    f"<WARN>Dropping DHCP frame with mismatched xid " f"(sent={xid:#010x}, got={packet.xid:#010x})</>",
+                )
+                continue
+            if not self._cid_echo_ok(packet):
+                __debug__ and log(
+                    "dhcp4",
+                    "<WARN>Dropping DHCP frame with mismatched Client Identifier echo</>",
+                )
+                continue
+
+            return packet
 
     def _send_discover(self, client_socket: socket, *, xid: int) -> None:
         """
@@ -207,6 +360,7 @@ class Dhcp4Client:
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
             dhcp4__xid=xid,
+            dhcp4__secs=self._elapsed_secs(),
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -225,42 +379,6 @@ class Dhcp4Client:
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _recv_offer(self, client_socket: socket, *, xid: int) -> Dhcp4Parser | None:
-        """
-        Receive and validate the DHCP OFFER reply.
-        """
-
-        try:
-            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
-            __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
-        except TimeoutError:
-            __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP Offer message - timeout</>")
-            return None
-
-        if dhcp4_packet_rx.message_type != Dhcp4MessageType.OFFER:
-            __debug__ and log(
-                "dhcp4",
-                "<WARN>Didn't receive DHCP Offer message - message type error</>",
-            )
-            return None
-
-        if dhcp4_packet_rx.xid != xid:
-            __debug__ and log(
-                "dhcp4",
-                f"<WARN>Discarding DHCP Offer with mismatched xid - "
-                f"sent={xid:#010x}, got={dhcp4_packet_rx.xid:#010x}</>",
-            )
-            return None
-
-        if not self._cid_echo_ok(dhcp4_packet_rx):
-            __debug__ and log(
-                "dhcp4",
-                "<WARN>Discarding DHCP Offer with mismatched Client Identifier echo</>",
-            )
-            return None
-
-        return dhcp4_packet_rx
-
     def _send_request(
         self,
         client_socket: socket,
@@ -276,6 +394,7 @@ class Dhcp4Client:
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
             dhcp4__xid=xid,
+            dhcp4__secs=self._elapsed_secs(),
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(
@@ -296,64 +415,18 @@ class Dhcp4Client:
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _recv_ack(self, client_socket: socket, *, xid: int) -> Dhcp4Parser | _NakRestart | None:
+    def _elapsed_secs(self) -> int:
         """
-        Receive and validate the DHCP ACK reply.
-
-        A DHCPNAK in response to the REQUEST returns the
-        '_NAK_RESTART' sentinel so the caller can restart from
-        DISCOVER (RFC 2131 §3.1 step 4). The NAK itself is gated on
-        the same xid + CID-echo checks as ACK to keep a stray reply
-        for a different transaction from triggering a restart loop.
+        Compute the DHCP header 'secs' field per RFC 1542 §3.2 —
+        seconds elapsed since the client began the address-
+        acquisition process. Capped at UINT16_MAX so a long-running
+        restart loop cannot overflow the 16-bit field.
         """
 
-        try:
-            dhcp4_packet_rx = Dhcp4Parser(client_socket.recv__mv(timeout=self._timeout__sec))
-            __debug__ and log("dhcp4", f"<lg>RX</> - {dhcp4_packet_rx}")
-        except TimeoutError:
-            __debug__ and log("dhcp4", "<WARN>Didn't receive DHCP ACK message - timeout</>")
-            return None
-
-        if dhcp4_packet_rx.message_type == Dhcp4MessageType.NAK:
-            if dhcp4_packet_rx.xid != xid:
-                __debug__ and log(
-                    "dhcp4",
-                    f"<WARN>Discarding DHCP NAK with mismatched xid - "
-                    f"sent={xid:#010x}, got={dhcp4_packet_rx.xid:#010x}</>",
-                )
-                return None
-            if not self._cid_echo_ok(dhcp4_packet_rx):
-                __debug__ and log(
-                    "dhcp4",
-                    "<WARN>Discarding DHCP NAK with mismatched Client Identifier echo</>",
-                )
-                return None
-            __debug__ and log("dhcp4", "DHCP NAK received - restarting from DISCOVER")
-            return _NAK_RESTART
-
-        if dhcp4_packet_rx.message_type != Dhcp4MessageType.ACK:
-            __debug__ and log(
-                "dhcp4",
-                "<WARN>Didn't receive DHCP ACK message - message type error</>",
-            )
-            return None
-
-        if dhcp4_packet_rx.xid != xid:
-            __debug__ and log(
-                "dhcp4",
-                f"<WARN>Discarding DHCP ACK with mismatched xid - "
-                f"sent={xid:#010x}, got={dhcp4_packet_rx.xid:#010x}</>",
-            )
-            return None
-
-        if not self._cid_echo_ok(dhcp4_packet_rx):
-            __debug__ and log(
-                "dhcp4",
-                "<WARN>Discarding DHCP ACK with mismatched Client Identifier echo</>",
-            )
-            return None
-
-        return dhcp4_packet_rx
+        return min(
+            _DHCP4__SECS_MAX,
+            max(0, int(time.monotonic() - self._fetch_started_at_monotonic)),
+        )
 
     def _cid_echo_ok(self, packet: Dhcp4Parser) -> bool:
         """
@@ -365,3 +438,8 @@ class Dhcp4Client:
 
         echoed = packet.client_id
         return echoed is None or echoed == self._expected_client_id
+
+
+# Late-bound to keep the module top imports tidy — the
+# 'Callable' annotation appears in '_recv_with_backoff'.
+from typing import Callable  # noqa: E402,F401

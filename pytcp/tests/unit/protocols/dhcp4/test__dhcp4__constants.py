@@ -1,0 +1,311 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains tests for the DHCPv4 runtime configuration
+sysctls under 'pytcp/protocols/dhcp4/dhcp4__constants.py'.
+
+pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py
+
+ver 3.0.4
+"""
+
+from typing import override
+from unittest import TestCase
+
+from pytcp.lib import sysctl
+from pytcp.protocols.dhcp4 import dhcp4__constants
+
+
+class TestDhcp4ConstantsDefaults(TestCase):
+    """
+    Defaults for every DHCPv4 sysctl knob registered by
+    'dhcp4__constants.py'.
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every registered knob to its default so a knob mutated
+        by a sibling test does not leak into the next test.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp4_constants__retrans_initial_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.retrans_initial_ms' defaults to 4000 ms — the
+        canonical first-retransmit interval.
+
+        Reference: RFC 2131 §4.1 (4-second initial retransmission delay).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.retrans_initial_ms"),
+            4000,
+            msg="dhcp.retrans_initial_ms must default to 4000 ms per RFC 2131 §4.1.",
+        )
+        self.assertEqual(
+            dhcp4__constants.DHCP4__RETRANS_INITIAL_MS,
+            4000,
+            msg="The DHCP4__RETRANS_INITIAL_MS module attribute must match the sysctl default.",
+        )
+
+    def test__dhcp4_constants__retrans_max_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.retrans_max_ms' defaults to 64000 ms — the
+        ceiling on the doubled retransmission interval.
+
+        Reference: RFC 2131 §4.1 (retransmission delay doubled up to 64 s).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.retrans_max_ms"),
+            64000,
+            msg="dhcp.retrans_max_ms must default to 64000 ms per RFC 2131 §4.1.",
+        )
+
+    def test__dhcp4_constants__retrans_max_attempts_default(self) -> None:
+        """
+        Ensure 'dhcp.retrans_max_attempts' defaults to 5 attempts
+        (5 recv waits with delays 4/8/16/32/64 s ≈ 124 s budget).
+
+        Reference: RFC 2131 §4.1 (give adequate probability of reaching the server).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.retrans_max_attempts"),
+            5,
+            msg="dhcp.retrans_max_attempts must default to 5 per the Phase 1 retransmission budget.",
+        )
+
+    def test__dhcp4_constants__retrans_jitter_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.retrans_jitter_ms' defaults to 1000 ms — the
+        ±1 s randomization window around each retransmit delay.
+
+        Reference: RFC 2131 §4.1 (retransmission delay randomized by ±1 second).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.retrans_jitter_ms"),
+            1000,
+            msg="dhcp.retrans_jitter_ms must default to 1000 ms per RFC 2131 §4.1.",
+        )
+
+    def test__dhcp4_constants__nak_max_restarts_default(self) -> None:
+        """
+        Ensure 'dhcp.nak_max_restarts' defaults to 3 — bounded
+        restart loop budget for 'fetch()' after DHCPNAK.
+
+        Reference: RFC 2131 §3.1 step 4 (NAK → restart from DISCOVER; bounded to prevent loops).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.nak_max_restarts"),
+            3,
+            msg="dhcp.nak_max_restarts must default to 3 (initial + 3 restarts = 4 attempts).",
+        )
+
+
+class TestDhcp4ConstantsValidators(TestCase):
+    """
+    Validator rejection cases for the DHCPv4 sysctl knobs.
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every registered knob to its default after each test.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp4_constants__retrans_initial_ms_rejects_zero(self) -> None:
+        """
+        Ensure 'dhcp.retrans_initial_ms' rejects 0 — a 0-ms retrans
+        interval would loop without bound.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_initial_ms", 0)
+
+    def test__dhcp4_constants__retrans_initial_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.retrans_initial_ms' rejects negative values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_initial_ms", -1)
+
+    def test__dhcp4_constants__retrans_initial_ms_rejects_bool(self) -> None:
+        """
+        Ensure 'dhcp.retrans_initial_ms' rejects booleans even though
+        'isinstance(True, int)' is True in Python.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_initial_ms", True)
+
+    def test__dhcp4_constants__retrans_jitter_ms_accepts_zero(self) -> None:
+        """
+        Ensure 'dhcp.retrans_jitter_ms' accepts 0 so tests can disable
+        jitter for deterministic backoff behaviour.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.retrans_jitter_ms", 0)
+        self.assertEqual(
+            sysctl.get("dhcp.retrans_jitter_ms"),
+            0,
+            msg="dhcp.retrans_jitter_ms must accept 0 to disable jitter.",
+        )
+
+    def test__dhcp4_constants__retrans_jitter_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.retrans_jitter_ms' rejects negative values — the
+        jitter is a magnitude, drawn from [-J, +J].
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_jitter_ms", -1)
+
+    def test__dhcp4_constants__retrans_jitter_ms_rejects_bool(self) -> None:
+        """
+        Ensure 'dhcp.retrans_jitter_ms' rejects booleans.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_jitter_ms", False)
+
+    def test__dhcp4_constants__retrans_max_attempts_rejects_zero(self) -> None:
+        """
+        Ensure 'dhcp.retrans_max_attempts' rejects 0 — at least one
+        recv attempt must be made before giving up.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.retrans_max_attempts", 0)
+
+    def test__dhcp4_constants__nak_max_restarts_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.nak_max_restarts' rejects negative values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.nak_max_restarts", -1)
+
+
+class TestDhcp4ConstantsLiveModuleReadthrough(TestCase):
+    """
+    Setting a sysctl must update the underlying module attribute so
+    code that imports and reads 'dhcp4__constants.XYZ' picks up the
+    operator override per pytcp.md §2.1 (qualified module access).
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every registered knob to its default after each test.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp4_constants__sysctl_set_updates_module_attribute(self) -> None:
+        """
+        Ensure 'sysctl.set("dhcp.retrans_initial_ms", N)' updates
+        'dhcp4__constants.DHCP4__RETRANS_INITIAL_MS' so qualified-
+        module reads see the override.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.retrans_initial_ms", 2000)
+        self.assertEqual(
+            dhcp4__constants.DHCP4__RETRANS_INITIAL_MS,
+            2000,
+            msg="sysctl.set must update the module attribute so qualified reads see the override.",
+        )
+
+
+class TestDhcp4ConstantsFinalizeValidator(TestCase):
+    """
+    Cross-knob finalize validator — 'dhcp.retrans_initial_ms' must be
+    no greater than 'dhcp.retrans_max_ms'.
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every registered knob to its default after each test.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp4_constants__finalize_rejects_initial_greater_than_max(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when the operator
+        configures 'retrans_initial_ms' larger than 'retrans_max_ms';
+        a doubled-and-capped backoff with that pairing would never
+        actually double.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.retrans_initial_ms", 70000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp4_constants__finalize_accepts_equal_initial_and_max(self) -> None:
+        """
+        Ensure 'finalize_validators()' accepts the boundary case
+        'retrans_initial_ms == retrans_max_ms' — operator wants a
+        fixed retransmit interval with no doubling.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.retrans_initial_ms", 4000)
+        sysctl.set("dhcp.retrans_max_ms", 4000)
+        sysctl.finalize_validators()  # must not raise

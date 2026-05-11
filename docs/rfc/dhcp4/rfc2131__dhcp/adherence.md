@@ -468,11 +468,31 @@ datagrams have source IP 0.0.0.0.
 >  be doubled with subsequent retransmissions up to a
 >  maximum of 64 seconds."
 
-**Adherence:** not met. **MUST gap.** The client has no
-retransmission — a single `_timeout__sec = 5` (default,
-`dhcp4_client.py:74`) timeout on each
-recv and the fetch fails. No backoff, no jitter, no
-retries.
+**Adherence:** met (Phase 1). `_recv_with_backoff` in
+`pytcp/lib/dhcp4_client.py` runs the canonical RFC 2131
+§4.1 backoff: initial delay 4 s, doubled on each timeout
+(8 / 16 / 32 / 64 s), capped at 64 s, jittered uniform
+±1 s, up to 5 total recv attempts (~124 s worst-case
+budget). On each window timeout the caller-supplied
+`resend` closure retransmits the prior TX (DISCOVER or
+REQUEST) and the delay advances. Bogus inbound packets
+(malformed, mismatched xid / CID echo, wrong type) are
+silently dropped without burning the current attempt's
+window — `_recv_within_window` keeps listening until
+the monotonic deadline expires.
+
+Every retransmit also carries an advancing `secs` field
+populated by `_elapsed_secs` per RFC 1542 §3.2; see
+§4.4.1 below.
+
+The four delay parameters are operator-tunable via the
+'dhcp.retrans_initial_ms' / `_max_ms` /
+`_max_attempts` / `_jitter_ms` sysctls registered in
+`pytcp/protocols/dhcp4/dhcp4__constants.py`. Setting
+`retrans_jitter_ms` to 0 disables jitter — useful for
+deterministic test pinning. A finalize-validator
+rejects `initial_ms > max_ms` so a misconfigured pair
+cannot silently degrade to a no-doubling backoff.
 
 > "The 'xid' field is used by the client to match
 >  incoming DHCP messages with pending requests. A DHCP
@@ -579,8 +599,14 @@ each `_discover_request_once()` round-trip.
 > "The client records its own local time for later use
 >  in computing the lease expiration."
 
-**Adherence:** not implemented. No lease-expiration
-tracking.
+**Adherence:** met (Phase 0 + Phase 1). 'fetch()' stores
+`self._fetch_started_at_monotonic = time.monotonic()`
+at the top of every acquisition cycle for the `secs`
+field computation (RFC 1542 §3.2; see §4.1 backoff
+above and the `_elapsed_secs` helper), and the returned
+`Dhcp4Lease` carries an `acquired_at_monotonic` field
+the Phase-4 lifecycle thread will use to schedule
+T1/T2/lease-expiry deadlines.
 
 > "The client then broadcasts the DHCPDISCOVER on the
 >  local hardware broadcast address to the 0xffffffff
@@ -790,16 +816,35 @@ is fixed, the natural test is one that:
    conflicted address and that `fetch()` returned
    None or restarted the configuration process.
 
-### §4.1 — Retransmission backoff
+### §4.1 — Retransmission backoff (Phase 1)
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test is one that:
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+  - `TestDhcp4ClientFetchBackoffSilence` —
+    `silent_server_runs_5_attempts` pins 5 recv +
+    5 send (1 initial + 4 retransmits) under server
+    silence; `silent_server_doubles_timeouts` pins
+    the [4, 8, 16, 32, 64]-second doubling sequence
+    with jitter disabled.
+  - `TestDhcp4ClientFetchBackoffEarlyExit::offer_on_third_attempt_returns_lease`
+    — OFFER arriving mid-backoff terminates the loop
+    early.
+  - `TestDhcp4ClientFetchBackoffBogusPacket::bogus_xid_in_window_does_not_burn_attempt`
+    — bogus inbound frame is silently dropped without
+    retransmitting; valid OFFER in the same window is
+    accepted.
+  - `TestDhcp4ClientFetchSecsField` —
+    `first_discover_carries_secs_zero` and
+    `retransmitted_discover_carries_advancing_secs`
+    pin the RFC 1542 §3.2 `secs` field behaviour.
+  - `TestDhcp4ClientFetchBackoffJitter::fetch_jitter_draws_from_pm_jitter_ms`
+    — pins the ±jitter_ms call shape on
+    `random.uniform`.
+- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+  — defaults, validator rejection cases, and the
+  cross-knob `initial_ms ≤ max_ms` finalize validator
+  for every retransmission sysctl.
 
-1. Holds the recv side silent for the full backoff
-   window.
-2. Asserts that DISCOVER is retransmitted at the
-   spec'd intervals (4s, 8s, 16s, 32s, ...) with the
-   ±1s jitter.
+**Status:** locked in (Phase 1).
 
 ### §4.4 — Client FSM (INIT-REBOOT, RENEWING, REBINDING)
 
@@ -829,7 +874,9 @@ assert IPv4 host removal + INIT-state restart.
 | Client Identifier in REQUEST                        | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`) |
 | DHCPNAK handling (bounded restart)                  | locked in (Phase 0 — `TestDhcp4ClientFetchNakRestart`)      |
 | ARP conflict → DHCPDECLINE                          | not tested — gap (Phase 2)                                  |
-| Retransmission backoff                              | not tested — gap (Phase 1)                                  |
+| Retransmission backoff (4/8/16/32/64 s + jitter)    | locked in (Phase 1 — `TestDhcp4ClientFetchBackoff*`)        |
+| 'secs' field advances per RFC 1542 §3.2             | locked in (Phase 1 — `TestDhcp4ClientFetchSecsField`)       |
+| DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)           |
 | FSM states (INIT-REBOOT/RENEWING/REBINDING/BOUND)   | not tested — gap (Phase 4)                                  |
 | Lease expiry / T1 / T2                              | not tested — gap (Phase 4)                                  |
 | DHCPRELEASE on shutdown                             | not tested — gap (Phase 4)                                  |
@@ -854,7 +901,8 @@ assert IPv4 host removal + INIT-state restart.
 | Single DISCOVER → OFFER → REQUEST → ACK linear path     | met                          |
 | Multiple-OFFER collection + selection                   | not met (first OFFER wins)   |
 | ARP probe on ACK + DHCPDECLINE on conflict              | partial (RFC 5227 DAD only)  |
-| Retransmission with exponential backoff                 | not met (single recv)        |
+| Retransmission with exponential backoff                 | met (Phase 1)                |
+| RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                |
 | Initial random delay (1–10 s)                           | not met                      |
 | FSM (INIT-REBOOT / BOUND / RENEWING / REBINDING)        | not implemented              |
 | T1 / T2 / lease-expiry handling                         | not implemented              |
@@ -872,36 +920,29 @@ assert IPv4 host removal + INIT-state restart.
 
 **Principal compliance gap.** The PyTCP DHCP client is
 a boot-time one-shot — it gets a lease then forgets
-about it. Phase 0 (commit covering this audit refresh)
-closed the five quick-win MUSTs: CID in REQUEST, xid
-validation, CID echo (RFC 6842), NAK-triggered restart,
-and Lease-Time surfacing on the returned `Dhcp4Lease`.
+about it. Phase 0 closed the five quick-win MUSTs (CID
+in REQUEST, xid validation, CID echo per RFC 6842,
+NAK-triggered restart, Lease-Time surfacing). Phase 1
+closed the §4.1 retransmission-backoff MUST plus the
+RFC 1542 §3.2 `secs` field advance and registered four
+operator-tunable sysctls
+(`dhcp.retrans_{initial,max,max_attempts,jitter}_ms`).
 The remaining dominant gaps are (in rough priority for
 Phase 1 host parity):
 
-1. **Retransmission backoff (§4.1)** — a single recv
-   timeout means a missed OFFER or ACK fails the boot,
-   even though the next attempt would succeed. A 60-s
-   four-try backoff would lift PyTCP onto the same
-   resilience tier as Linux dhcpcd. Fix sketch: replace
-   `_recv_offer` / `_recv_ack` with a loop that
-   retransmits the prior TX every
-   `4 * 2**n + uniform(-1, 1)` seconds up to `n=4`,
-   `tries=5`. (Phase 1.)
-
-2. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
+1. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
    RENEWING/REBINDING states. Phase 1 host parity with
    Linux dhcpcd requires this for lease longevity past
    the initial grant period. (Phase 4.)
 
-3. **DHCPDECLINE + restart on ARP conflict
+2. **DHCPDECLINE + restart on ARP conflict
    (§3.1 step 5)** — currently the conflict response is
    "drop the address, disable IPv4". Linux dhcpcd
    sends DECLINE and re-DISCOVERs. The hook point is
    inside `_create_stack_ip4_addressing` when the
    probe-conflict registry signals. (Phase 2.)
 
-4. **Initial 1–10s random delay (§4.4.1)** — fleet
+3. **Initial 1–10s random delay (§4.4.1)** — fleet
    boots desynchronisation; PyTCP currently kicks off
    DISCOVER immediately. (Phase 2.)
 

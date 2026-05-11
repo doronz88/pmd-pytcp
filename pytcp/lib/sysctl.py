@@ -280,3 +280,23 @@ def is_positive_int(name: str) -> Callable[[Any], None]:
             raise ValueError(f"sysctl {name!r} must be a positive int; got {value!r}")
 
     return validator
+
+
+def is_non_negative_int(name: str) -> Callable[[Any], None]:
+    """
+    Build a validator that requires a non-negative (≥ 0) integer
+    — accepts 0, rejects negatives, floats, and booleans.
+    Surfaces 'name' in the rejection message.
+    """
+
+    def validator(value: Any) -> None:
+        """
+        Raise 'ValueError' unless 'value' is a non-negative int.
+        """
+
+        # 'isinstance(True, int)' is True in Python so booleans
+        # would otherwise pass — reject them explicitly.
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"sysctl {name!r} must be a non-negative int; got {value!r}")
+
+    return validator

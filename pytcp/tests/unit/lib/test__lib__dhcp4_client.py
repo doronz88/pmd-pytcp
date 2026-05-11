@@ -32,10 +32,11 @@ ver 3.0.4
 
 from typing import override
 from unittest import TestCase
-from unittest.mock import call, patch
+from unittest.mock import patch
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
+from pytcp.lib import sysctl
 from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
@@ -52,10 +53,12 @@ class TestDhcp4ClientInit(TestCase):
     The 'Dhcp4Client' constructor tests.
     """
 
-    def test__dhcp4_client__init_stores_mac_and_default_timeout(self) -> None:
+    def test__dhcp4_client__init_stores_mac_address(self) -> None:
         """
-        Ensure the constructor stores the supplied MAC address and the
-        default 5-second timeout.
+        Ensure the constructor stores the supplied MAC address. The
+        per-recv timeout is no longer a constructor parameter — the
+        Phase 1 backoff loop draws timeouts from the
+        'dhcp.retrans_*' sysctl namespace instead.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -66,26 +69,6 @@ class TestDhcp4ClientInit(TestCase):
             client._mac_address,
             _DEFAULT_MAC,
             msg="Dhcp4Client._mac_address must equal the MAC passed to the constructor.",
-        )
-        self.assertEqual(
-            client._timeout__sec,
-            5,
-            msg="Dhcp4Client._timeout__sec must default to 5 seconds.",
-        )
-
-    def test__dhcp4_client__init_accepts_custom_timeout(self) -> None:
-        """
-        Ensure the constructor honors a caller-supplied timeout.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC, timeout__sec=30)
-
-        self.assertEqual(
-            client._timeout__sec,
-            30,
-            msg="Dhcp4Client._timeout__sec must equal the caller-supplied value.",
         )
 
     def test__dhcp4_client__init_keyword_only_arguments(self) -> None:
@@ -248,18 +231,26 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
 
         self._sock.close.assert_called_once_with()
 
-    def test__dhcp4_client__fetch_uses_configured_timeout_on_recv(self) -> None:
+    def test__dhcp4_client__fetch_first_recv_uses_initial_retrans_window(self) -> None:
         """
-        Ensure the per-call 'timeout' kwarg passed to 'recv__mv' matches
-        the value supplied to the client constructor.
+        Ensure the first 'recv__mv' call uses a 'timeout' kwarg derived
+        from 'dhcp.retrans_initial_ms' (Phase 1 backoff). With jitter
+        disabled and 'retrans_initial_ms' pinned at 4000, the first
+        recv must request a 4.0-second window.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 2131 §4.1 (first retransmit at 4 seconds).
         """
 
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC, timeout__sec=7)
-        client.fetch()
+        with sysctl.override("dhcp.retrans_jitter_ms", 0):
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
-        self._sock.recv__mv.assert_has_calls([call(timeout=7), call(timeout=7)])
+        first_recv = self._sock.recv__mv.call_args_list[0]
+        self.assertAlmostEqual(
+            first_recv.kwargs["timeout"],
+            4.0,
+            places=2,
+            msg="First recv__mv must use the dhcp.retrans_initial_ms-derived 4-second window.",
+        )
 
 
 class TestDhcp4ClientFetchNoRouter(_Dhcp4ClientFixture):
@@ -322,14 +313,16 @@ class TestDhcp4ClientFetchOfferWrongMessageType(_Dhcp4ClientFixture):
     def test__dhcp4_client__fetch_returns_none_on_wrong_offer_message_type(self) -> None:
         """
         Ensure a response to the Discover with a non-OFFER message type
-        aborts the exchange: 'fetch()' returns None and the socket is
-        closed. Uses an ACK message type as the bogus payload to avoid
-        colliding with the dedicated NAK-restart semantics exercised
-        elsewhere.
+        is silently dropped — under the Phase 1 backoff the bogus
+        frame keeps the wait window open, the empty queue then times
+        the window out, and (with the retransmit budget capped at 1
+        for this test) 'fetch()' returns None without retransmitting.
 
         Reference: RFC 2131 §3.1 step 2 (server response to DISCOVER is DHCPOFFER).
+        Reference: RFC 2131 §4.4.1 (mismatching messages silently discarded; client keeps listening).
         """
 
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
         self._server.enqueue_offer(message_type=Dhcp4MessageType.ACK)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
@@ -381,14 +374,17 @@ class TestDhcp4ClientFetchAckWrongMessageType(_Dhcp4ClientFixture):
 
     def test__dhcp4_client__fetch_returns_none_on_wrong_ack_message_type(self) -> None:
         """
-        Ensure a response to the Request with a non-ACK, non-NAK message
-        type aborts the exchange: 'fetch()' returns None and the socket
-        is closed. (DHCPNAK has dedicated restart semantics covered by
-        the NAK-restart test class — this case uses a stray OFFER.)
+        Ensure a response to the Request with a non-ACK, non-NAK
+        message type is silently dropped — Phase 1 keeps the wait
+        window open, the empty queue then times the window out, and
+        (with the retransmit budget capped at 1) 'fetch()' returns
+        None without retransmitting the REQUEST.
 
         Reference: RFC 2131 §3.1 step 4 (server response to REQUEST is DHCPACK or DHCPNAK).
+        Reference: RFC 2131 §4.4.1 (mismatching messages silently discarded; client keeps listening).
         """
 
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
         self._server.enqueue_offer()
         self._server.enqueue_ack(message_type=Dhcp4MessageType.OFFER)
 
@@ -558,12 +554,16 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
     def test__dhcp4_client__fetch_returns_none_on_offer_xid_mismatch(self) -> None:
         """
         Ensure an OFFER whose 'xid' does not match the value the client
-        sent in DISCOVER is silently dropped: 'fetch()' returns None
-        and the REQUEST is not sent.
+        sent in DISCOVER is silently dropped — under Phase 1 the bogus
+        frame keeps the wait window open without retransmitting; with
+        the retransmit budget capped at 1 for this test, 'fetch()'
+        returns None after the empty-queue timeout and the REQUEST is
+        not sent.
 
         Reference: RFC 2131 §4.4.1 (client MUST discard messages whose xid does not match).
         """
 
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
         self._server.enqueue_offer(xid=0x11111111)
 
         with patch(
@@ -823,3 +823,246 @@ class TestDhcp4ClientFetchAckMissingLeaseTime(_Dhcp4ClientFixture):
             result,
             msg="fetch() must return None when the ACK omits the IP Address Lease Time option.",
         )
+
+
+class TestDhcp4ClientFetchBackoffSilence(_Dhcp4ClientFixture):
+    """
+    The Phase 1 retransmission-backoff behavior under server silence.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Disable jitter for the duration of the test so the expected
+        timeout sequence is deterministic, then enqueue 5 'TimeoutError'
+        replies — one per backoff attempt.
+        """
+
+        super().setUp()
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        for _ in range(5):
+            self._server.enqueue_timeout()
+
+    def test__dhcp4_client__fetch_silent_server_runs_5_attempts(self) -> None:
+        """
+        Ensure a fully silent server triggers exactly 5 'recv__mv'
+        attempts and 5 outbound DISCOVERs (1 initial + 4 retransmits),
+        then 'fetch()' returns None.
+
+        Reference: RFC 2131 §4.1 (retransmission backoff with up to 5 attempts).
+        """
+
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertIsNone(
+            result,
+            msg="fetch() must return None when the server is silent across all retransmissions.",
+        )
+        self.assertEqual(
+            self._sock.recv__mv.call_count,
+            5,
+            msg="Phase 1 backoff must make 5 recv attempts before giving up.",
+        )
+        self.assertEqual(
+            self._sock.send.call_count,
+            5,
+            msg="Phase 1 backoff must emit 5 DISCOVERs (1 initial + 4 retransmits).",
+        )
+
+    def test__dhcp4_client__fetch_silent_server_doubles_timeouts(self) -> None:
+        """
+        Ensure the 'timeout' kwarg passed to successive 'recv__mv'
+        calls follows the doubling sequence 4 / 8 / 16 / 32 / 64
+        seconds with jitter disabled.
+
+        Reference: RFC 2131 §4.1 (retransmission delay doubled up to 64 seconds).
+        """
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        timeouts = [call.kwargs["timeout"] for call in self._sock.recv__mv.call_args_list]
+        self.assertEqual(
+            timeouts,
+            [4.0, 8.0, 16.0, 32.0, 64.0],
+            msg="recv__mv timeouts must follow the 4/8/16/32/64 doubling sequence with jitter disabled.",
+        )
+
+
+class TestDhcp4ClientFetchBackoffEarlyExit(_Dhcp4ClientFixture):
+    """
+    Phase 1 backoff terminates early on the first valid OFFER.
+    """
+
+    def test__dhcp4_client__fetch_offer_on_third_attempt_returns_lease(self) -> None:
+        """
+        Ensure an OFFER arriving on the third attempt (after two
+        timeouts) is accepted and 'fetch()' completes the exchange
+        without continuing the doubling sequence.
+
+        Reference: RFC 2131 §4.1 (retransmission loop terminates as soon as a valid reply arrives).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        self._server.enqueue_timeout()
+        self._server.enqueue_timeout()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="fetch() must return the lease as soon as the server replies, mid-backoff.",
+        )
+        # Three OFFER-stage recv attempts (two timed out, third
+        # succeeded) plus one ACK-stage recv = 4 total.
+        self.assertEqual(
+            self._sock.recv__mv.call_count,
+            4,
+            msg="recv__mv must be called once for each OFFER attempt plus once for the ACK.",
+        )
+        # Three DISCOVERs (initial + 2 retransmits) + 1 REQUEST.
+        self.assertEqual(
+            self._sock.send.call_count,
+            4,
+            msg="Send count must be 3 DISCOVERs (initial + 2 retransmits) plus 1 REQUEST.",
+        )
+
+
+class TestDhcp4ClientFetchBackoffBogusPacket(_Dhcp4ClientFixture):
+    """
+    Phase 1 backoff drops a bogus inbound packet without burning the
+    current attempt's wait window.
+    """
+
+    def test__dhcp4_client__fetch_bogus_xid_in_window_does_not_burn_attempt(self) -> None:
+        """
+        Ensure an OFFER with a mismatching xid arriving mid-window is
+        silently dropped and the client keeps waiting in the SAME
+        wait window for a valid OFFER. The valid OFFER lands within
+        the first 4-second window, so only one DISCOVER is emitted
+        (no retransmit).
+
+        Reference: RFC 2131 §4.4.1 (mismatched-xid messages discarded; client keeps listening).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        self._server.enqueue_offer(xid=0x11111111)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        # Pin random.randint so we know the DISCOVER's xid is not
+        # 0x11111111 — the bogus OFFER will fail the xid gate.
+        with patch(
+            "pytcp.lib.dhcp4_client.random.randint",
+            return_value=0xDEADBEEF,
+        ):
+            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="fetch() must accept the second OFFER once the bogus first OFFER is silently dropped.",
+        )
+        # Two recv__mv calls during the OFFER stage (bogus + valid) +
+        # one for the ACK = 3 total. NO retransmits — the bogus
+        # packet did NOT trigger a new DISCOVER.
+        self.assertEqual(
+            self._sock.send.call_count,
+            2,
+            msg="Bogus mid-window OFFER must NOT trigger a retransmit; only 1 DISCOVER + 1 REQUEST expected.",
+        )
+
+
+class TestDhcp4ClientFetchSecsField(_Dhcp4ClientFixture):
+    """
+    Phase 1 'secs' field advances per RFC 1542 §3.2 across the
+    outbound DISCOVER / REQUEST messages within a fetch().
+    """
+
+    def test__dhcp4_client__first_discover_carries_secs_zero(self) -> None:
+        """
+        Ensure the very first DISCOVER carries 'secs' = 0 — the
+        client has just begun the address-acquisition process so no
+        time has elapsed.
+
+        Reference: RFC 1542 §3.2 (secs field: seconds elapsed since the client began the address acquisition process).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertEqual(
+            self._server.tx_log[0].secs,
+            0,
+            msg="First DISCOVER must carry secs=0.",
+        )
+
+    def test__dhcp4_client__retransmitted_discover_carries_advancing_secs(self) -> None:
+        """
+        Ensure a retransmitted DISCOVER's 'secs' field equals the
+        integer number of seconds elapsed since the initial DISCOVER.
+        Patches the '_elapsed_secs' helper to return 0, then 5, so
+        the first DISCOVER carries secs=0 and the retransmitted
+        DISCOVER (after the first window times out) carries secs=5.
+
+        Reference: RFC 1542 §3.2 (secs field advances across retransmissions).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        # First attempt: server times out → client retransmits.
+        # Second attempt: server replies with OFFER, then ACK.
+        self._server.enqueue_timeout()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        # Patch the elapsed-seconds helper directly so the test is
+        # decoupled from 'time.monotonic' call counts inside the
+        # deadline-math loop.
+        with patch.object(
+            Dhcp4Client,
+            "_elapsed_secs",
+            side_effect=[0, 5, 5],
+        ):
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertEqual(
+            self._server.tx_log[0].secs,
+            0,
+            msg="First DISCOVER must carry secs=0.",
+        )
+        self.assertEqual(
+            self._server.tx_log[1].secs,
+            5,
+            msg="Retransmitted DISCOVER must carry secs=5 after 5 s elapsed.",
+        )
+
+
+class TestDhcp4ClientFetchBackoffJitter(_Dhcp4ClientFixture):
+    """
+    Phase 1 jitter draws from a uniform ±retrans_jitter_ms window.
+    """
+
+    def test__dhcp4_client__fetch_jitter_draws_from_pm_jitter_ms(self) -> None:
+        """
+        Ensure 'random.uniform' is called with the symmetric
+        '(-jitter_ms / 1000, +jitter_ms / 1000)' window before each
+        recv attempt.
+
+        Reference: RFC 2131 §4.1 (retransmission delay randomized by ±1 s).
+        """
+
+        self._server.enqueue_timeout()
+
+        with patch(
+            "pytcp.lib.dhcp4_client.random.uniform",
+            return_value=0.0,
+        ) as mock_uniform:
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        # First (and only) jitter draw must use the configured
+        # ±1000 ms bound expressed in seconds.
+        mock_uniform.assert_any_call(-1.0, 1.0)
