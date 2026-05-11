@@ -112,12 +112,22 @@ class Dhcp4Lease:
     A negotiated DHCPv4 lease — the address+mask+gateway bundle plus
     the lease-time / server-identity / acquisition-time metadata the
     lifecycle thread needs to schedule RENEW/REBIND/RELEASE.
+
+    'gateway_mac' is the gateway's link-layer address at the moment
+    the lease was last cached. Populated lazily by
+    'write_cached_lease' from the ARP cache; consumed by Phase 6
+    RFC 4436 DNAv4 to send a unicast ARP probe to the cached
+    gateway and short-circuit the DHCP exchange if it answers.
+    None when the gateway has not yet been resolved (typical on
+    first boot before any IP traffic flowed) or when the cache
+    pre-dates Phase 6.
     """
 
     ip4_host: Ip4Host
     lease_time__sec: int
     server_id: Ip4Address
     acquired_at_monotonic: float
+    gateway_mac: MacAddress | None = None
 
 
 class _NakRestart:
@@ -542,6 +552,13 @@ class Dhcp4Client(Subsystem):
             )
             self._lease = outcome
             self._state = Dhcp4State.BOUND
+            # Phase 6 — refresh the on-disk cache on every
+            # successful same-IP RENEW/REBIND so the next-boot
+            # DNAv4 probe has an up-to-date 'gateway_mac' and
+            # 'acquired_at_wall'. The cache write is best-effort
+            # (silently swallows OSError); skipping it would
+            # leave the cache stale across long uptime spans.
+            write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, outcome)
         else:
             # Cross-IP RENEW/REBIND: atomic 'replace_host' swap
             # via the address API. The 'abort_bound_sessions'
@@ -627,6 +644,24 @@ class Dhcp4Client(Subsystem):
 
         assert self._lease is not None, "INIT-REBOOT entered without a cached lease"
         cached = self._lease
+
+        # Phase 6 — RFC 4436 DNAv4 fast-path. When enabled and
+        # the cache recorded the gateway's link-layer address,
+        # send a unicast ARP probe; if the gateway answers
+        # within 'dhcp.dnav4_timeout_ms', the host is on the
+        # same L2 segment as before and the cached lease is
+        # adopted as-is, skipping the DHCP wire exchange
+        # entirely. On miss / disabled, fall through to the
+        # standard RFC 2131 §4.4.2 INIT-REBOOT REQUEST.
+        if self._dnav4_probe(cached):
+            __debug__ and log(
+                "dhcp4",
+                f"<lg>DNAv4 succeeded</>: cached gateway "
+                f"{cached.ip4_host.gateway} answered; adopting "
+                f"{cached.ip4_host} without DHCP traffic",
+            )
+            self._on_bound(cached)
+            return
 
         xid = random.randint(0, 0xFFFFFFFF)
         self._fetch_started_at_monotonic = time.monotonic()
@@ -756,6 +791,93 @@ class Dhcp4Client(Subsystem):
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
+
+    def _dnav4_probe(self, lease: Dhcp4Lease, /) -> bool:
+        """
+        RFC 4436 DNAv4 unicast ARP probe. Returns True if the
+        cached gateway answers a unicast ARP Request within the
+        configured 'dhcp.dnav4_timeout_ms' window — proving the
+        host is on the same L2 segment and the gateway is the
+        same physical device, so the cached lease can be adopted
+        without further DHCP traffic.
+
+        Returns False unconditionally when:
+          - 'dhcp.dnav4' is 0 (operator override);
+          - the cached lease has no gateway (point-to-point or
+            link-local-only configuration);
+          - the cached lease has no recorded gateway_mac (first
+            boot after a cold cache write; the gateway had not
+            yet been resolved by ordinary traffic);
+          - 'stack.packet_handler' / 'stack.arp_cache' are not
+            wired up (sync-mode 'fetch()' invocations from tests).
+
+        On a True return the caller should adopt 'lease' as-is
+        via '_on_bound(lease)' and skip the DHCP exchange. On a
+        False return the caller falls through to the standard
+        RFC 2131 §4.4.2 INIT-REBOOT REQUEST.
+        """
+
+        if not dhcp4__constants.DHCP4__DNAV4:
+            return False
+        if lease.ip4_host.gateway is None or lease.gateway_mac is None:
+            return False
+
+        # Lazy import — 'pytcp.stack' is only populated after
+        # 'stack.init()'; the sync-mode 'fetch()' path may
+        # run before that and DNAv4 is moot then.
+        from pytcp import stack as _stack  # noqa: PLC0415 — late stack access
+
+        arp_cache = getattr(_stack, "arp_cache", None)
+        packet_handler = getattr(_stack, "packet_handler", None)
+        if arp_cache is None or packet_handler is None:
+            return False
+
+        # Snapshot the gateway entry's 'state_changed_at' so we
+        # can detect a fresh Reply: ARP RX touches the field
+        # whenever a Reply lands on the matching IP.
+        entry = arp_cache._entries.get(lease.ip4_host.gateway)  # pylint: disable=protected-access
+        before_changed_at = entry.state_changed_at if entry is not None else 0.0
+
+        __debug__ and log(
+            "dhcp4",
+            f"DNAv4: unicast ARP probe to " f"{lease.ip4_host.gateway} @ {lease.gateway_mac}",
+        )
+
+        try:
+            packet_handler.send_arp_unicast_request(
+                arp__tpa=lease.ip4_host.gateway,
+                ethernet__dst=lease.gateway_mac,
+            )
+        except Exception as error:  # noqa: BLE001 — defensive against stack-not-ready
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>DNAv4 unicast ARP probe failed: {error}; falling through to INIT-REBOOT</>",
+            )
+            return False
+
+        timeout_s = dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS / 1000.0
+        deadline = time.monotonic() + timeout_s
+        # Poll the entry's 'state_changed_at'; a Reply hits
+        # ARP RX which calls 'add_entry' → bumps state →
+        # advances 'state_changed_at'. Polling at ~10 ms
+        # cadence converges in well under the 1-second budget.
+        while time.monotonic() < deadline:
+            entry = arp_cache._entries.get(lease.ip4_host.gateway)  # pylint: disable=protected-access
+            if (
+                entry is not None
+                and entry.mac_address == lease.gateway_mac
+                and entry.state_changed_at > before_changed_at
+            ):
+                return True
+            time.sleep(0.010)
+
+        __debug__ and log(
+            "dhcp4",
+            f"<WARN>DNAv4: cached gateway {lease.ip4_host.gateway} "
+            f"did not answer within {dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS} ms; "
+            f"falling through to INIT-REBOOT</>",
+        )
+        return False
 
     def _send_request_renew(
         self,

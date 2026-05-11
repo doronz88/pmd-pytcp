@@ -40,7 +40,7 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import patch
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask
+from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Lease
 from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     delete_cached_lease,
@@ -54,6 +54,7 @@ def _make_lease(
     address: str = "192.168.1.145",
     mask: str = "255.255.255.0",
     gateway: str | None = "192.168.1.1",
+    gateway_mac: str | None = None,
     server_id: str = "192.168.1.1",
     lease_time__sec: int = 3600,
     acquired_at_monotonic: float = 100.0,
@@ -71,6 +72,7 @@ def _make_lease(
         lease_time__sec=lease_time__sec,
         server_id=Ip4Address(server_id),
         acquired_at_monotonic=acquired_at_monotonic,
+        gateway_mac=MacAddress(gateway_mac) if gateway_mac is not None else None,
     )
 
 
@@ -160,6 +162,52 @@ class TestDhcp4LeaseCacheRoundTrip(_CacheFixture):
         self.assertIsNone(
             read.ip4_host.gateway,
             msg="Round-trip gateway-less lease must read back with gateway=None.",
+        )
+
+    def test__cache__round_trip_persists_gateway_mac(self) -> None:
+        """
+        Ensure a lease whose 'gateway_mac' is explicitly set
+        round-trips the MAC across the JSON serialisation. The
+        RFC 4436 DNAv4 fast-path depends on this field being
+        present on the next-boot reader.
+
+        Reference: RFC 4436 §4 (DNAv4 unicast-ARP probe target).
+        """
+
+        original = _make_lease(gateway_mac="02:00:00:00:00:01")
+        write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertEqual(
+            read.gateway_mac,
+            MacAddress("02:00:00:00:00:01"),
+            msg="Round-trip gateway_mac must equal the explicit value passed to the writer.",
+        )
+
+    def test__cache__round_trip_with_no_gateway_mac(self) -> None:
+        """
+        Ensure a lease whose 'gateway_mac' is None (e.g. first
+        boot, gateway not yet resolved by ARP) serialises as
+        'gateway_mac: null' and reads back as None. DNAv4 is
+        gated on a non-None 'gateway_mac' so the fast-path
+        simply does not engage in this case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        original = _make_lease(gateway_mac=None)
+        with patch(
+            "pytcp.protocols.dhcp4.dhcp4__lease_cache._resolve_gateway_mac",
+            return_value=None,
+        ):
+            write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertIsNone(
+            read.gateway_mac,
+            msg="Lease with no gateway_mac must read back with gateway_mac=None.",
         )
 
 

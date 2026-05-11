@@ -813,6 +813,17 @@ Param Request List + Client Identifier + End shared
 with every other TX. The FSM driver is `_do_init_reboot`
 in `dhcp4__client.py:608-768`.
 
+Phase 6 adds a DNAv4 (RFC 4436) early-exit on top:
+before the REQUEST flies, `_dnav4_probe` sends a
+unicast ARP Request to the cached `(gateway_ip,
+gateway_mac)` pair and waits up to
+`dhcp.dnav4_timeout_ms` (default 1000 ms) for the
+Reply. A successful probe adopts the cached lease and
+transitions to BOUND without any DHCP traffic; on miss
+the REQUEST proceeds as described above. See
+[`rfc4436__dnav4`](../rfc4436__dnav4/adherence.md) for
+the full DNAv4 adherence record.
+
 > "If the client receives a DHCPACK message ... the
 >  client SHOULD perform a final check on the parameters
 >  ... If the parameters are acceptable, the client

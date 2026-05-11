@@ -33,10 +33,11 @@ The cache file format is a single JSON object with the
 shape:
 
     {
-        "version": 1,
+        "version": 2,
         "address": "192.168.1.145",
         "mask": "255.255.255.0",
         "gateway": "192.168.1.1" | null,
+        "gateway_mac": "aa:bb:cc:dd:ee:ff" | null,
         "server_id": "192.168.1.1",
         "lease_time__sec": 3600,
         "acquired_at_wall": 1701234567.89
@@ -46,6 +47,15 @@ shape:
 was acquired — a wall-clock timestamp so freshness can be
 evaluated across reboots. The reader rejects a cache file
 whose wall-clock-age exceeds 'lease_time__sec'.
+
+'gateway_mac' (Phase 6) is the gateway's last-known
+link-layer address sourced from the live ARP cache at
+write time. The Phase 6 RFC 4436 DNAv4 fast-path uses
+this to send a unicast ARP probe to the cached gateway
+and skip the DHCP exchange entirely if it answers. The
+field is optional; cache writers omit it as null when
+the ARP cache has not yet resolved the gateway (typical
+on first boot before any IP traffic flowed).
 
 Writes go through 'tempfile.mkstemp' + 'os.replace' for
 atomic file replacement — a half-written cache from a
@@ -64,7 +74,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask
+from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress, MacAddressFormatError
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
@@ -73,7 +83,37 @@ if TYPE_CHECKING:
 # Bump on incompatible format changes; reader rejects unknown
 # versions so an older PyTCP binary will not try to consume
 # a cache written by a newer one.
-_DHCP4__LEASE_CACHE__VERSION: int = 1
+_DHCP4__LEASE_CACHE__VERSION: int = 2
+
+
+def _resolve_gateway_mac(lease: "Dhcp4Lease", /) -> MacAddress | None:
+    """
+    Resolve the gateway's link-layer address for caching.
+    Precedence: explicit 'lease.gateway_mac' (test override) →
+    live ARP cache lookup → None. The ARP-cache lookup is best-
+    effort: 'pytcp.stack' is imported lazily because this module
+    can be imported before 'stack.init()' has populated
+    'stack.arp_cache'.
+    """
+
+    if lease.gateway_mac is not None:
+        return lease.gateway_mac
+    if lease.ip4_host.gateway is None:
+        return None
+    try:
+        from pytcp import stack  # noqa: PLC0415 — late import; arp_cache populated at stack.init()
+    except ImportError:
+        return None
+    arp_cache = getattr(stack, "arp_cache", None)
+    if arp_cache is None:
+        return None
+    try:
+        mac = arp_cache.find_entry(ip4_address=lease.ip4_host.gateway)
+    except Exception:  # noqa: BLE001 — defensive; missing entry / stale fixture
+        return None
+    if mac is None or isinstance(mac, MacAddress):
+        return mac
+    return None
 
 
 def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
@@ -87,16 +127,29 @@ def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
     via 'time.time()'; the lease's 'acquired_at_monotonic' is
     not portable across reboots and would be useless to a
     future reader.
+
+    The gateway link-layer address is read from the live ARP
+    cache via 'stack.arp_cache.find_entry' so the next-boot
+    RFC 4436 DNAv4 probe has a unicast target. The lookup is
+    best-effort: on first BOUND the ARP cache may not yet have
+    resolved the gateway, in which case 'gateway_mac' is
+    persisted as null and DNAv4 falls back to standard
+    INIT-REBOOT for that boot. The 'lease.gateway_mac' override
+    takes precedence so callers (e.g. unit tests) can pin the
+    value explicitly.
     """
 
     if not path:
         return
+
+    gateway_mac = _resolve_gateway_mac(lease)
 
     payload: dict[str, Any] = {
         "version": _DHCP4__LEASE_CACHE__VERSION,
         "address": str(lease.ip4_host.address),
         "mask": str(lease.ip4_host.network.mask),
         "gateway": (str(lease.ip4_host.gateway) if lease.ip4_host.gateway is not None else None),
+        "gateway_mac": (str(gateway_mac) if gateway_mac is not None else None),
         "server_id": str(lease.server_id),
         "lease_time__sec": lease.lease_time__sec,
         "acquired_at_wall": time.time(),
@@ -169,10 +222,12 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         mask = Ip4Mask(payload["mask"])
         gateway_str = payload.get("gateway")
         gateway: Ip4Address | None = Ip4Address(gateway_str) if gateway_str is not None else None
+        gateway_mac_str = payload.get("gateway_mac")
+        gateway_mac: MacAddress | None = MacAddress(gateway_mac_str) if gateway_mac_str is not None else None
         server_id = Ip4Address(payload["server_id"])
         lease_time__sec = int(payload["lease_time__sec"])
         acquired_at_wall = float(payload["acquired_at_wall"])
-    except (KeyError, ValueError, TypeError) as error:
+    except (KeyError, ValueError, TypeError, MacAddressFormatError) as error:
         __debug__ and log(
             "dhcp4",
             f"<WARN>Malformed DHCPv4 lease cache at {path!r}: {error}</>",
@@ -209,6 +264,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         lease_time__sec=lease_time__sec,
         server_id=server_id,
         acquired_at_monotonic=acquired_at_monotonic,
+        gateway_mac=gateway_mac,
     )
 
 

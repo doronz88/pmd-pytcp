@@ -2735,3 +2735,252 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         client._reset_to_init(remove_lease_host=True)
 
         mock_delete.assert_called_once_with("/tmp/dhcp4_lease")
+
+
+class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
+    """
+    Phase 6 — RFC 4436 DNAv4 fast-path on INIT-REBOOT. When the
+    cached lease records a 'gateway_mac' and 'dhcp.dnav4' is
+    enabled, the FSM sends a unicast ARP probe to the cached
+    gateway and short-circuits the DHCP exchange entirely if it
+    answers within 'dhcp.dnav4_timeout_ms'.
+    """
+
+    _GATEWAY_IP = Ip4Address("192.168.1.1")
+    _GATEWAY_MAC = MacAddress("aa:bb:cc:dd:ee:ff")
+
+    def _cached_lease_with_mac(self) -> Dhcp4Lease:
+        """
+        Build a Dhcp4Lease whose 'gateway_mac' is populated —
+        the configuration under which DNAv4 can engage.
+        """
+
+        ip4_host = Ip4Host((Ip4Address("192.168.1.145"), Ip4Mask("255.255.255.0")))
+        ip4_host.gateway = self._GATEWAY_IP
+        return Dhcp4Lease(
+            ip4_host=ip4_host,
+            lease_time__sec=3600,
+            server_id=self._GATEWAY_IP,
+            acquired_at_monotonic=0.0,
+            gateway_mac=self._GATEWAY_MAC,
+        )
+
+    def _wire_arp_cache_with_reply(
+        self,
+        *,
+        reply_delay_s: float = 0.0,
+    ) -> MagicMock:
+        """
+        Patch 'stack.arp_cache' so that a gateway entry exists
+        with a pre-probe 'state_changed_at' that ages by
+        'reply_delay_s' after the probe is sent. Returns the
+        mocked packet handler so the test can assert the
+        unicast ARP Request was emitted.
+        """
+
+        from pytcp import stack
+
+        # Stage: pre-probe entry timestamp = 100.0; post-probe
+        # update timestamp = 100.0 + reply_delay_s. The mocked
+        # cache returns the "before" entry on the first lookup
+        # (snapshot inside '_dnav4_probe') and the "after" entry
+        # on subsequent polling.
+        before_entry = MagicMock(name="before")
+        before_entry.mac_address = self._GATEWAY_MAC
+        before_entry.state_changed_at = 100.0
+
+        after_entry = MagicMock(name="after")
+        after_entry.mac_address = self._GATEWAY_MAC
+        after_entry.state_changed_at = 100.0 + max(reply_delay_s, 0.001)
+
+        mock_arp_cache = MagicMock(name="ArpCache")
+        mock_arp_cache._entries = {self._GATEWAY_IP: before_entry}
+
+        def _advance_after_send(*_args: object, **_kwargs: object) -> None:
+            mock_arp_cache._entries[self._GATEWAY_IP] = after_entry
+
+        mock_packet_handler = MagicMock(name="PacketHandlerL2")
+        mock_packet_handler.send_arp_unicast_request.side_effect = _advance_after_send
+
+        self.enterContext(patch.object(stack, "arp_cache", mock_arp_cache, create=True))
+        self.enterContext(patch.object(stack, "packet_handler", mock_packet_handler, create=True))
+
+        return mock_packet_handler
+
+    def test__dhcp4_client__dnav4_disabled_by_default_for_lease_without_mac(self) -> None:
+        """
+        Ensure '_dnav4_probe' returns False when the cached
+        lease has no recorded 'gateway_mac' (the typical
+        first-boot scenario before any IP traffic resolved the
+        gateway). The standard INIT-REBOOT REQUEST path runs
+        instead.
+
+        Reference: RFC 4436 §4 (DNAv4 requires a unicast target MAC).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease_no_mac = self._cached_lease_with_mac()
+        lease_no_mac_stripped = Dhcp4Lease(
+            ip4_host=lease_no_mac.ip4_host,
+            lease_time__sec=lease_no_mac.lease_time__sec,
+            server_id=lease_no_mac.server_id,
+            acquired_at_monotonic=lease_no_mac.acquired_at_monotonic,
+            gateway_mac=None,
+        )
+
+        self.assertFalse(
+            client._dnav4_probe(lease_no_mac_stripped),
+            msg="DNAv4 must not engage when the cached lease has no gateway_mac.",
+        )
+
+    def test__dhcp4_client__dnav4_disabled_by_sysctl_returns_false(self) -> None:
+        """
+        Ensure setting 'dhcp.dnav4' to 0 forces '_dnav4_probe'
+        to return False without sending any ARP traffic. The
+        sysctl is the operator's emergency switch for the
+        fast-path.
+
+        Reference: RFC 4436 §4 (DNAv4 is optional; operator may disable).
+        """
+
+        self.enterContext(sysctl.override("dhcp.dnav4", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        mock_packet_handler = self._wire_arp_cache_with_reply()
+
+        result = client._dnav4_probe(self._cached_lease_with_mac())
+
+        self.assertFalse(
+            result,
+            msg="dhcp.dnav4=0 must force _dnav4_probe to return False.",
+        )
+        mock_packet_handler.send_arp_unicast_request.assert_not_called()
+
+    def test__dhcp4_client__dnav4_returns_true_when_gateway_answers(self) -> None:
+        """
+        Ensure '_dnav4_probe' returns True when the cached
+        gateway answers the unicast ARP Request within the
+        configured window. The ARP cache mock advances
+        'state_changed_at' as soon as 'send_arp_unicast_request'
+        fires — simulating a fast Reply.
+
+        Reference: RFC 4436 §4 (cached gateway reply confirms attachment).
+        """
+
+        self.enterContext(sysctl.override("dhcp.dnav4_timeout_ms", 1000))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        mock_packet_handler = self._wire_arp_cache_with_reply()
+
+        result = client._dnav4_probe(self._cached_lease_with_mac())
+
+        self.assertTrue(
+            result,
+            msg="DNAv4 probe must return True when the gateway answers within the window.",
+        )
+        mock_packet_handler.send_arp_unicast_request.assert_called_once_with(
+            arp__tpa=self._GATEWAY_IP,
+            ethernet__dst=self._GATEWAY_MAC,
+        )
+
+    def test__dhcp4_client__dnav4_returns_false_on_silent_gateway(self) -> None:
+        """
+        Ensure '_dnav4_probe' returns False when no ARP Reply
+        arrives within the configured window. The caller falls
+        through to the standard INIT-REBOOT REQUEST path.
+
+        Reference: RFC 4436 §4 (timeout → standard DHCP fallback).
+        """
+
+        from pytcp import stack
+
+        # Use a short window so the test does not actually wait
+        # 1 second; pin the cache so 'state_changed_at' never
+        # advances (no Reply).
+        self.enterContext(sysctl.override("dhcp.dnav4_timeout_ms", 50))
+        stale_entry = MagicMock(name="stale")
+        stale_entry.mac_address = self._GATEWAY_MAC
+        stale_entry.state_changed_at = 100.0
+        mock_arp_cache = MagicMock(name="ArpCache")
+        mock_arp_cache._entries = {self._GATEWAY_IP: stale_entry}
+        mock_packet_handler = MagicMock(name="PacketHandlerL2")
+        # send_arp_unicast_request is a no-op; the entry never updates.
+        self.enterContext(patch.object(stack, "arp_cache", mock_arp_cache, create=True))
+        self.enterContext(patch.object(stack, "packet_handler", mock_packet_handler, create=True))
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        result = client._dnav4_probe(self._cached_lease_with_mac())
+
+        self.assertFalse(
+            result,
+            msg="Silent gateway must yield a False DNAv4 result.",
+        )
+        mock_packet_handler.send_arp_unicast_request.assert_called_once()
+
+    def test__dhcp4_client__init_reboot_short_circuits_on_dnav4_success(self) -> None:
+        """
+        Ensure that when '_dnav4_probe' returns True the
+        INIT-REBOOT handler adopts the cached lease and
+        transitions to BOUND without sending any DHCP traffic.
+        This is the canonical fast-boot path the RFC 4436
+        engineering is designed for.
+
+        Reference: RFC 4436 §4 (skip DHCP exchange on successful DNAv4).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        cached = self._cached_lease_with_mac()
+        client._lease = cached
+        client._state = Dhcp4State.INIT_REBOOT
+        self.enterContext(
+            patch.object(client, "_dnav4_probe", return_value=True),
+        )
+
+        client._do_init_reboot()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="DNAv4 success on INIT-REBOOT must transition to BOUND.",
+        )
+        # No DHCP TX at all — the wire-format hook in the mock
+        # server's send-capture must remain empty.
+        self.assertEqual(
+            self._server.tx_log,
+            [],
+            msg="DNAv4 short-circuit must emit zero DHCP frames.",
+        )
+
+    def test__dhcp4_client__init_reboot_falls_through_when_dnav4_fails(self) -> None:
+        """
+        Ensure that when '_dnav4_probe' returns False the
+        INIT-REBOOT handler proceeds with the standard
+        INIT-REBOOT REQUEST exchange — preserving the
+        Phase 5 fast-path even when DNAv4 is unavailable.
+
+        Reference: RFC 4436 §4 (graceful fallback on DNAv4 miss).
+        Reference: RFC 2131 §4.4.2 (INIT-REBOOT REQUEST after DNAv4 miss).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        cached = self._cached_lease_with_mac()
+        client._lease = cached
+        client._state = Dhcp4State.INIT_REBOOT
+        self.enterContext(
+            patch.object(client, "_dnav4_probe", return_value=False),
+        )
+        self._server.enqueue_ack(yiaddr=Ip4Address("192.168.1.145"))
+
+        client._do_init_reboot()
+
+        # On DNAv4 miss, the standard REQUEST goes on the wire.
+        self.assertGreaterEqual(
+            len(self._server.tx_log),
+            1,
+            msg="DNAv4 miss must fall through to the standard INIT-REBOOT REQUEST.",
+        )
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="ACK on the standard REQUEST must still transition to BOUND.",
+        )

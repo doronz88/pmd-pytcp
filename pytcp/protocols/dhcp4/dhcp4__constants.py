@@ -138,6 +138,20 @@ DHCP4__LEASE_CACHE_PATH: str = ""
 # adopted as-is and the FSM transitions to BOUND.
 DHCP4__REBOOT_MAX_ATTEMPTS = 4
 
+# Phase 6 — RFC 4436 DNAv4 (Detecting Network Attachment in
+# IPv4). When non-zero and a cached lease records the
+# gateway's MAC, the INIT-REBOOT entry path first sends a
+# unicast ARP Request to the cached gateway and waits up to
+# 'dhcp.dnav4_timeout_ms' for a reply. If the reply arrives,
+# the host is on the same L2 segment as before, the cached
+# lease is adopted as-is, and the DHCP exchange is skipped
+# entirely (RFC 4436 §4). On miss / disabled, the FSM falls
+# through to the standard RFC 2131 §4.4.2 INIT-REBOOT
+# REQUEST. Default 1 = enabled; set 0 to force the standard
+# path for testing.
+DHCP4__DNAV4 = 1
+DHCP4__DNAV4_TIMEOUT_MS = 1000
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -345,6 +359,47 @@ register(
         "RFC 2131 §4.4.2 — recv attempts for the INIT-REBOOT REQUEST "
         "before adopting the cached lease as-is (default 4 ≈ 60 s "
         "via the Phase 1 backoff)."
+    ),
+)
+
+
+def _is_zero_or_one(name: str) -> Callable[[object], None]:
+    """
+    Build a validator that accepts only {0, 1}. Booleans are
+    rejected because 'isinstance(True, int)' is True; the
+    sysctl is an integer-valued operator switch, not a bool.
+    """
+
+    def validator(value: object) -> None:
+        if isinstance(value, bool) or not isinstance(value, int) or value not in (0, 1):
+            raise ValueError(f"sysctl {name!r} must be 0 or 1; got {value!r}")
+
+    return validator
+
+
+register(
+    key="dhcp.dnav4",
+    module_name=__name__,
+    attr="DHCP4__DNAV4",
+    default=DHCP4__DNAV4,
+    validator=_is_zero_or_one("dhcp.dnav4"),
+    description=(
+        "RFC 4436 DNAv4 enable bit (0/1; default 1). When set, "
+        "the INIT-REBOOT path first sends a unicast ARP Request "
+        "to the cached gateway and short-circuits DHCP entirely "
+        "if it answers within 'dhcp.dnav4_timeout_ms'."
+    ),
+)
+register(
+    key="dhcp.dnav4_timeout_ms",
+    module_name=__name__,
+    attr="DHCP4__DNAV4_TIMEOUT_MS",
+    default=DHCP4__DNAV4_TIMEOUT_MS,
+    validator=is_positive_int("dhcp.dnav4_timeout_ms"),
+    description=(
+        "RFC 4436 §4 — DNAv4 unicast-ARP probe timeout in "
+        "milliseconds (default 1000 = the RFC's recommended "
+        "1-second window)."
     ),
 )
 

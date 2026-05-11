@@ -22,21 +22,40 @@ default router. If the unicast-ARP reply arrives, the
 client knows it is back on the same link and can
 re-activate the cached lease without DHCP traffic.
 
-**PyTCP does not implement DNAv4** at any level:
+**PyTCP implements DNAv4** as of Phase 6 (built on the
+Phase 5 cached-lease persistence layer):
 
-- No cached-lease state — every boot starts from INIT
-  with a fresh DHCPDISCOVER (`pytcp/protocols/dhcp4/dhcp4__client.py:87`).
-- No INIT-REBOOT path (see [`rfc2131__dhcp`](../rfc2131__dhcp/adherence.md)
+- Cached-lease state — `pytcp/protocols/dhcp4/dhcp4__lease_cache.py`
+  persists every BOUND lease (including the gateway IP +
+  gateway link-layer address) to a JSON file at
+  `dhcp.lease_cache_path` for the next boot to consume.
+- INIT-REBOOT path — `Dhcp4State.INIT_REBOOT` +
+  `_do_init_reboot` (Phase 5; see
+  [`rfc2131__dhcp`](../rfc2131__dhcp/adherence.md)
   §4.4.2 audit).
-- No unicast ARP for prior-gateway reachability check.
-- No multi-candidate parallel-trial machinery.
+- Unicast-ARP probe to prior gateway —
+  `Dhcp4Client._dnav4_probe` emits a single
+  `send_arp_unicast_request` to the cached
+  `(gateway_ip, gateway_mac)` pair and polls the ARP
+  cache's `state_changed_at` for up to
+  `dhcp.dnav4_timeout_ms` (default 1000 ms = the RFC's
+  recommended 1-second window).
+- Operator switch — `dhcp.dnav4` (default 1; set 0 to
+  force the standard INIT-REBOOT path).
 
-The audit therefore consists almost entirely of
-"not implemented" entries. Sections without normative
-content (§1 Introduction, §1.1 Motivation discussion,
-§1.2 Requirements boilerplate, §1.3 Terminology, §6
-Acknowledgments, §7 References, §8 Security
-Considerations, §9 Author's Addresses) are omitted.
+What PyTCP does NOT implement:
+
+- Multi-candidate parallel-trial machinery (§4.2) —
+  PyTCP caches exactly one prior lease. Multiple cached
+  candidates would need the cache format extended to a
+  list; it remains unimplemented because Phase-1 host
+  scope assumes a single home network per host.
+
+Sections without normative content (§1 Introduction,
+§1.1 Motivation discussion, §1.2 Requirements
+boilerplate, §1.3 Terminology, §6 Acknowledgments, §7
+References, §8 Security Considerations, §9 Author's
+Addresses) are omitted.
 
 ---
 
@@ -48,11 +67,14 @@ Considerations, §9 Author's Addresses) are omitted.
 >  succeeds, the host MAY use the information from a
 >  successful probe to configure its IP layer."
 
-**Adherence:** not implemented. PyTCP has no
-probing-on-attach machinery. The Phase-1 boot path
-calls `_create_stack_ip4_addressing` once and either
-gets a fresh DHCP lease or has a static config — no
-"reattach to known link" fast path.
+**Adherence:** met (Phase 6). On startup the
+`Dhcp4Client` constructor consults
+`dhcp.lease_cache_path`; when a valid cached lease is
+present the FSM starts in `INIT_REBOOT` and runs the
+RFC 4436 probe before any DHCP traffic. On success the
+cached lease is adopted and IPv4 boot completes without
+DHCP. On failure the FSM falls through to the standard
+RFC 2131 §4.4.2 INIT-REBOOT REQUEST.
 
 ---
 
@@ -63,7 +85,14 @@ gets a fresh DHCP lease or has a static config — no
 >  still on the same link where this address is valid
 >  for use."
 
-**Adherence:** N/A (no address re-use).
+**Adherence:** met (Phase 6). The "demonstration" is
+the unicast-ARP probe in `_dnav4_probe`: the cached
+lease is only adopted when the cached gateway answers
+the unicast ARP Request at its cached MAC. A failed
+probe falls through to the standard RFC 2131 §4.4.2
+INIT-REBOOT REQUEST, which gives the server the
+opportunity to reject the cached address with a
+DHCPNAK.
 
 > "If the host has the same link-layer address as
 >  previously, and the link-layer mechanism still
@@ -72,7 +101,9 @@ gets a fresh DHCP lease or has a static config — no
 >  and continue to use the same address."
 
 **Adherence:** N/A. PyTCP has no link-up event consumer
-that would trigger address re-validation.
+that would trigger address re-validation independently
+of a boot; the DNAv4 probe is gated on the
+constructor's cache-read path.
 
 ---
 
@@ -85,9 +116,12 @@ that would trigger address re-validation.
 >  retained configuration and proceed with normal DHCPv4
 >  operation."
 
-**Adherence:** N/A. PyTCP does not retain prior
-configuration; the "discard and proceed with DHCP"
-fallback is the only path PyTCP runs.
+**Adherence:** met (Phase 6). The cache reader at
+`pytcp/protocols/dhcp4/dhcp4__lease_cache.py:read_cached_lease`
+returns `None` when the cache file is missing, malformed,
+unknown-version, or the lease has expired by wall-clock
+time — every "discard and proceed with DHCP" failure
+mode falls back cleanly to INIT.
 
 > "Otherwise, the host begins the DNAv4 reachability
 >  test. ... The host sends a unicast ARP Request
@@ -95,19 +129,32 @@ fallback is the only path PyTCP runs.
 >  previously known link, addressed to the MAC
 >  address(es) of those router(s)."
 
-**Adherence:** not implemented. The unicast-ARP-to-prior-router
-probe is absent.
+**Adherence:** met (Phase 6). `Dhcp4Client._dnav4_probe`
+calls
+`stack.packet_handler.send_arp_unicast_request(arp__tpa=gateway_ip, ethernet__dst=gateway_mac)` —
+a unicast ARP Request to the cached gateway IP at the
+cached gateway MAC.
 
 > "If the host's TCP/IP stack supports it, the host MAY
 >  send unicast ARP Requests to multiple routers in
 >  parallel."
 
-**Adherence:** N/A.
+**Adherence:** N/A (single-router cache). PyTCP stores
+exactly one gateway in `Dhcp4Lease.ip4_host.gateway`,
+so the parallel-probe optimisation has nothing to fan
+out across. The MAY is satisfied trivially; multi-
+router support would require a list-shaped cache that
+Phase-1 host scope does not need.
 
 > "If a unicast ARP Reply is received from the expected
 >  router, then DNAv4 has succeeded. ..."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6). The probe loop polls the
+ARP cache entry's `state_changed_at` for an advance
+attributable to the inbound Reply, and additionally
+verifies the entry's MAC still equals the cached
+`gateway_mac` (a different MAC at the same IP means a
+different physical gateway → fail the probe).
 
 > "If no unicast ARP Reply is received within the
 >  timeout period, then DNAv4 has failed for that
@@ -115,7 +162,12 @@ probe is absent.
 >  configuration (if any), or fall through to DHCPv4 if
 >  there is no other candidate."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6 — fall-through arm). On
+timeout, `_dnav4_probe` returns `False` and
+`_do_init_reboot` runs the standard RFC 2131 §4.4.2
+broadcast REQUEST. PyTCP has only one cached
+configuration, so the "try the next candidate" arm is
+N/A.
 
 ---
 
@@ -124,13 +176,19 @@ probe is absent.
 > "The recommended timeout for the unicast ARP Request
 >  is one second."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6). The sysctl
+`dhcp.dnav4_timeout_ms` defaults to 1000 — the RFC's
+one-second recommendation exactly. Operators can tune
+it down for tight-boot scenarios or up for high-jitter
+links.
 
 > "The host SHOULD send unicast ARP Requests to all
 >  default routers on the previously known link in
 >  parallel."
 
-**Adherence:** N/A.
+**Adherence:** N/A (single cached gateway). See §4
+parallel-probe entry above; PyTCP stores one gateway
+and the SHOULD has no candidate set to fan out over.
 
 ---
 
@@ -140,7 +198,15 @@ probe is absent.
 >  try, it SHOULD try all of them in parallel, sending
 >  one or more unicast ARP Requests for each."
 
-**Adherence:** N/A (no candidate cache).
+**Adherence:** not implemented (single-lease cache).
+PyTCP caches exactly one lease at
+`dhcp.lease_cache_path`. Multi-candidate support would
+require the cache format extended to a list and the
+probe loop fanning out one ARP Request per candidate;
+deferred because Phase-1 host scope assumes a single
+home network per host. Multi-link scenarios (laptop
+moving between office and home) would benefit from
+implementing this; not currently a Phase-1 priority.
 
 ---
 
@@ -149,88 +215,118 @@ probe is absent.
 > "DNAv4 is intended to be a performance optimization
 >  to be used in combination with DHCPv4. ..."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6). DNAv4 is invoked from
+`_do_init_reboot` strictly as an early-exit on the
+Phase 5 INIT-REBOOT path; on miss / disabled the
+standard RFC 2131 §4.4.2 REQUEST exchange runs as
+before.
 
 > "If DNAv4 succeeds, the client MAY use the cached
 >  DHCPv4 configuration without further communication
 >  with the DHCPv4 server, except as required by
 >  ongoing lease maintenance (RFC 2131)."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6 — the MAY is taken). On a
+successful probe, `_do_init_reboot` calls
+`_on_bound(cached_lease)` and returns; the next
+RFC 2131 §4.4.5 T1 timer drives the standard RENEWING
+unicast REQUEST when due.
 
 > "If DNAv4 fails, the client SHOULD proceed with
 >  DHCPv4 INIT-REBOOT or INIT state processing as
 >  appropriate."
 
-**Adherence:** N/A.
+**Adherence:** met (Phase 6 — fall-through to
+INIT-REBOOT). On a False probe result,
+`_do_init_reboot` continues past the early-exit and
+runs the broadcast REQUEST. The Phase 5 outcome
+matrix (ACK → BOUND, NAK → INIT, timeout → adopt
+cached lease per the §4.4.2 MAY) takes over from
+there.
 
 ---
 
 ## Test coverage audit
 
-### DNAv4 reachability test
+### §4 / §5 — DNAv4 probe + INIT-REBOOT integration (Phase 6)
 
-**No test surface — gap not yet closed.** The full fix
-is a feature-implementation project rather than a
-single test. When the gap is fixed, the natural test
-plan:
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientDnav4`
+  - `dnav4_disabled_by_default_for_lease_without_mac` —
+    no recorded `gateway_mac` → probe returns False, no
+    ARP traffic.
+  - `dnav4_disabled_by_sysctl_returns_false` —
+    `dhcp.dnav4=0` short-circuits to False without
+    emitting a Request.
+  - `dnav4_returns_true_when_gateway_answers` —
+    cache mock advances `state_changed_at` post-send →
+    probe returns True; the one and only TX is the
+    unicast ARP Request.
+  - `dnav4_returns_false_on_silent_gateway` —
+    `state_changed_at` never advances within the
+    50 ms test window → probe returns False.
+  - `init_reboot_short_circuits_on_dnav4_success` —
+    FSM transitions to BOUND with zero DHCP TX when
+    `_dnav4_probe` returns True.
+  - `init_reboot_falls_through_when_dnav4_fails` —
+    FSM runs the standard INIT-REBOOT REQUEST when
+    `_dnav4_probe` returns False; ACK → BOUND.
 
-1. Provide a "cached prior lease" sysctl or fixture
-   that pre-populates the packet handler with a
-   previous-IP + previous-gateway-MAC tuple.
-2. On boot, trigger the DNAv4 helper to emit a unicast
-   ARP Request to the cached gateway MAC for the
-   cached gateway IP.
-3. Stub an ARP Reply from the test harness and assert
-   the cached IPv4 lease is reinstated WITHOUT a DHCP
-   exchange.
-4. Negative test: send no ARP Reply (timeout 1 s);
-   assert fallback to full DHCP DISCOVER path.
+### Cache format v2 — gateway_mac round-trip
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
+  - `round_trip_persists_gateway_mac` — explicit
+    `gateway_mac` survives the JSON serialisation.
+  - `round_trip_with_no_gateway_mac` — None / missing
+    gateway_mac serialises as JSON null and reads
+    back as None.
+
+**Status:** locked in (Phase 6).
 
 ### Test coverage summary
 
-| Aspect                                | Coverage                          |
-|---------------------------------------|-----------------------------------|
-| Cached-lease storage                  | not implemented; no test          |
-| Unicast ARP to prior gateway          | not implemented; no test          |
-| Parallel trial of multiple candidates | not implemented; no test          |
-| Fallback to full DHCP on timeout      | not implemented; no test          |
+| Aspect                                | Coverage                                           |
+|---------------------------------------|----------------------------------------------------|
+| Cached-lease storage with gateway_mac | locked in (Phase 6 — `test__dhcp4__lease_cache.py`)|
+| Unicast ARP to prior gateway          | locked in (Phase 6 — `TestDhcp4ClientDnav4`)       |
+| 1-second timeout default              | locked in (sysctl `dhcp.dnav4_timeout_ms`)         |
+| Fallback to INIT-REBOOT on timeout    | locked in (Phase 6 — fall-through test)            |
+| Parallel trial of multiple candidates | not implemented; single-lease cache by design      |
 
 ---
 
 ## Overall assessment
 
-| Aspect                                              | Status               |
-|-----------------------------------------------------|----------------------|
-| §2 Conceptual model (probe-on-attach)               | not implemented      |
-| §3 Operational overview (same-link reuse)           | not implemented      |
-| §4 Unicast ARP to prior router                      | not implemented      |
-| §4.1 1-second timeout                               | not implemented      |
-| §4.1 Parallel probes to multiple routers            | not implemented      |
-| §4.2 Multiple candidate configurations              | not implemented      |
-| §5 Integration with DHCPv4 INIT-REBOOT              | not implemented      |
-| Cached-lease persistence across boot                | not implemented      |
+| Aspect                                              | Status                                       |
+|-----------------------------------------------------|----------------------------------------------|
+| §2 Conceptual model (probe-on-attach)               | met (Phase 6)                                |
+| §3 Operational overview (same-link reuse)           | met (Phase 6)                                |
+| §4 Unicast ARP to prior router                      | met (Phase 6)                                |
+| §4.1 1-second timeout                               | met (Phase 6 — `dhcp.dnav4_timeout_ms=1000`) |
+| §4.1 Parallel probes to multiple routers            | N/A (single cached gateway)                  |
+| §4.2 Multiple candidate configurations              | not implemented (single-lease cache)         |
+| §5 Integration with DHCPv4 INIT-REBOOT              | met (Phase 6 — early-exit on probe success)  |
+| Cached-lease persistence across boot                | met (Phase 5)                                |
 
-**Principal compliance note.** DNAv4 is a pure
-performance optimization layered on top of RFC 2131
-INIT-REBOOT. Since PyTCP does not implement
-INIT-REBOOT, DNAv4 has no scaffolding to attach to.
+**Principal compliance note.** DNAv4 was unblocked
+once Phase 5 added cached-lease persistence and Phase 6
+extended the cache schema with `gateway_mac`. The
+unicast-ARP API has been part of the ARP cache since the
+PROBE-state implementation
+(`stack.packet_handler.send_arp_unicast_request`); Phase
+6 routes one such Request to the cached gateway on
+INIT-REBOOT entry and polls the ARP entry's
+`state_changed_at` for the inbound Reply.
 
-Implementing DNAv4 requires two prerequisites:
+The single remaining gap is §4.2 — multiple-candidate
+parallel probing. PyTCP caches exactly one lease, so the
+fan-out has nothing to fan out across. Multi-link
+scenarios (host that genuinely roams between distinct
+networks) would benefit from extending the cache to a
+list of candidates; not currently a Phase-1 priority.
 
-1. **Cached lease persistence** (see
-   [`rfc2131__dhcp`](../rfc2131__dhcp/adherence.md)
-   §3.2 / §4.4.2 audit). Without a stored prior-IP +
-   prior-gateway-MAC, there is nothing to probe for.
-2. **Unicast ARP API**. PyTCP's ARP cache
-   (`pytcp/protocols/arp/arp__cache.py`) issues
-   broadcast ARP Requests for cache misses; DNAv4
-   needs a unicast variant. Both exist on the wire
-   format (ARP can be unicast); the cache machinery
-   doesn't currently emit unicast Requests.
-
-For Phase 1 host parity, DNAv4 is a quality-of-life
-optimization rather than a correctness requirement.
-A reasonable prioritization is: implement INIT-REBOOT
-first (closes the RFC 2131 §4.4.2 gap), then layer
-DNAv4 on top once cached-lease + unicast-ARP exist.
+Operator dial: `dhcp.dnav4` (default 1) is the kill
+switch — set 0 to force the standard RFC 2131 §4.4.2
+INIT-REBOOT REQUEST in every case (useful for testing
+the slow path or working around a DNAv4-hostile L2).
