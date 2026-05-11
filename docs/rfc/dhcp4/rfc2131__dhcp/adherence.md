@@ -582,12 +582,20 @@ and the renewal subgraph remain Phase-4 work.
 >  time between one and ten seconds to desynchronize the
 >  use of DHCP at startup."
 
-**Adherence:** not met. The client invokes `fetch()`
-synchronously at boot
-(`packet_handler/__init__.py:1853-1856`)
-with no initial random delay. A fleet of PyTCP hosts
-booting simultaneously would all DISCOVER at the same
-instant.
+**Adherence:** met (Phase 2.1). 'fetch()' calls
+'_initial_delay()' before opening the socket; the helper
+draws a delay from
+`random.uniform(min_ms / 1000.0, max_ms / 1000.0)` and
+sleeps for it, with `min_ms` / `max_ms` sourced live
+from the 'dhcp.init_delay_min_ms' (default 1000) and
+'dhcp.init_delay_max_ms' (default 10000) sysctls in
+`pytcp/protocols/dhcp4/dhcp4__constants.py`. Defaults
+match the RFC's [1, 10]-second SHOULD range exactly.
+Setting both bounds to 0 disables the delay — the
+canonical configuration for unit tests, short-lived
+container hosts, and other scenarios where startup
+desynchronisation is unnecessary. A cross-knob finalize
+validator rejects `min_ms > max_ms`.
 
 > "The client generates and records a random transaction
 >  identifier and inserts that identifier into the 'xid'
@@ -816,6 +824,26 @@ is fixed, the natural test is one that:
    conflicted address and that `fetch()` returned
    None or restarted the configuration process.
 
+### §4.4.1 — Initial 1-10 s random delay (Phase 2.1)
+
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchInitialDelay`
+  - `initial_delay_uses_default_bounds` — `random.uniform(1.0, 10.0)`
+    is the canonical draw at the default sysctl values; the
+    drawn value flows to `time.sleep(...)`.
+  - `initial_delay_honours_custom_sysctl_bounds` — operator
+    overrides on `dhcp.init_delay_{min,max}_ms` propagate
+    through to the `random.uniform` bounds (expressed in
+    seconds).
+  - `initial_delay_disabled_when_max_ms_zero` — the
+    fixture-default 0/0 configuration bypasses the sleep
+    entirely.
+- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+  — `dhcp.init_delay_{min,max}_ms` defaults, validators (accept 0,
+  reject negatives), live-module read-through, and the
+  cross-knob `min ≤ max` finalize validator.
+
+**Status:** locked in (Phase 2.1).
+
 ### §4.1 — Retransmission backoff (Phase 1)
 
 - **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
@@ -877,6 +905,8 @@ assert IPv4 host removal + INIT-state restart.
 | Retransmission backoff (4/8/16/32/64 s + jitter)    | locked in (Phase 1 — `TestDhcp4ClientFetchBackoff*`)        |
 | 'secs' field advances per RFC 1542 §3.2             | locked in (Phase 1 — `TestDhcp4ClientFetchSecsField`)       |
 | DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)           |
+| Initial random delay (RFC 2131 §4.4.1, 1-10 s)      | locked in (Phase 2.1 — `TestDhcp4ClientFetchInitialDelay`)  |
+| Initial-delay sysctls (defaults, validators)        | locked in (Phase 2.1 — `test__dhcp4__constants.py`)         |
 | FSM states (INIT-REBOOT/RENEWING/REBINDING/BOUND)   | not tested — gap (Phase 4)                                  |
 | Lease expiry / T1 / T2                              | not tested — gap (Phase 4)                                  |
 | DHCPRELEASE on shutdown                             | not tested — gap (Phase 4)                                  |
@@ -903,7 +933,7 @@ assert IPv4 host removal + INIT-state restart.
 | ARP probe on ACK + DHCPDECLINE on conflict              | partial (RFC 5227 DAD only)  |
 | Retransmission with exponential backoff                 | met (Phase 1)                |
 | RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                |
-| Initial random delay (1–10 s)                           | not met                      |
+| Initial random delay (1–10 s)                           | met (Phase 2.1)              |
 | FSM (INIT-REBOOT / BOUND / RENEWING / REBINDING)        | not implemented              |
 | T1 / T2 / lease-expiry handling                         | not implemented              |
 | DHCPRELEASE on shutdown                                 | not implemented              |
@@ -927,7 +957,10 @@ closed the §4.1 retransmission-backoff MUST plus the
 RFC 1542 §3.2 `secs` field advance and registered four
 operator-tunable sysctls
 (`dhcp.retrans_{initial,max,max_attempts,jitter}_ms`).
-The remaining dominant gaps are (in rough priority for
+Phase 2.1 added the RFC 2131 §4.4.1 startup
+desynchronisation delay (1-10 s default range) with two
+more sysctls (`dhcp.init_delay_{min,max}_ms`). The
+remaining dominant gaps are (in rough priority for
 Phase 1 host parity):
 
 1. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
@@ -941,10 +974,6 @@ Phase 1 host parity):
    sends DECLINE and re-DISCOVERs. The hook point is
    inside `_create_stack_ip4_addressing` when the
    probe-conflict registry signals. (Phase 2.)
-
-3. **Initial 1–10s random delay (§4.4.1)** — fleet
-   boots desynchronisation; PyTCP currently kicks off
-   DISCOVER immediately. (Phase 2.)
 
 The wire-format library is comprehensive and
 well-tested; the remaining gaps are all on the

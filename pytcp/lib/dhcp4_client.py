@@ -122,12 +122,20 @@ class Dhcp4Client:
         """
         Run the DHCPv4 DISCOVER/REQUEST handshake and return the lease.
 
+        Begins with an RFC 2131 §4.4.1 startup desynchronisation
+        delay (random uniform in 'dhcp.init_delay_{min,max}_ms')
+        so a fleet of hosts powered on simultaneously does not all
+        DISCOVER at the same instant. The delay is bypassed entirely
+        when both bounds are 0 — the canonical disable-for-tests
+        configuration.
+
         On a DHCPNAK to the REQUEST, restart from DISCOVER up to
         'dhcp.nak_max_restarts' times before giving up. Every recv
         wait runs under the RFC 2131 §4.1 retransmission backoff
         (initial / max / attempts / jitter all sysctl-tunable).
         """
 
+        self._initial_delay()
         self._fetch_started_at_monotonic = time.monotonic()
 
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
@@ -414,6 +422,23 @@ class Dhcp4Client:
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
+
+    def _initial_delay(self) -> None:
+        """
+        Sleep for an RFC 2131 §4.4.1 startup desynchronisation
+        delay drawn uniformly from
+        '[dhcp.init_delay_min_ms, dhcp.init_delay_max_ms]'.
+        Bypassed when 'init_delay_max_ms' is 0 — the canonical
+        disable-for-tests configuration.
+        """
+
+        max_ms = dhcp4__constants.DHCP4__INIT_DELAY_MAX_MS
+        if max_ms == 0:
+            return
+        min_ms = dhcp4__constants.DHCP4__INIT_DELAY_MIN_MS
+        delay_s = random.uniform(min_ms / 1000.0, max_ms / 1000.0)
+        __debug__ and log("dhcp4", f"Initial desync delay: {delay_s:.2f}s")
+        time.sleep(delay_s)
 
     def _elapsed_secs(self) -> int:
         """

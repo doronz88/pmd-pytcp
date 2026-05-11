@@ -129,6 +129,35 @@ class TestDhcp4ConstantsDefaults(TestCase):
             msg="dhcp.nak_max_restarts must default to 3 (initial + 3 restarts = 4 attempts).",
         )
 
+    def test__dhcp4_constants__init_delay_min_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_min_ms' defaults to 1000 ms — the
+        lower bound of the "between one and ten seconds" startup
+        desynchronisation window.
+
+        Reference: RFC 2131 §4.4.1 (client SHOULD wait a random time between one and ten seconds).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.init_delay_min_ms"),
+            1000,
+            msg="dhcp.init_delay_min_ms must default to 1000 ms per RFC 2131 §4.4.1.",
+        )
+
+    def test__dhcp4_constants__init_delay_max_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_max_ms' defaults to 10000 ms — the
+        upper bound of the startup desynchronisation window.
+
+        Reference: RFC 2131 §4.4.1 (client SHOULD wait a random time between one and ten seconds).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.init_delay_max_ms"),
+            10000,
+            msg="dhcp.init_delay_max_ms must default to 10000 ms per RFC 2131 §4.4.1.",
+        )
+
 
 class TestDhcp4ConstantsValidators(TestCase):
     """
@@ -233,6 +262,60 @@ class TestDhcp4ConstantsValidators(TestCase):
         with self.assertRaises(ValueError):
             sysctl.set("dhcp.nak_max_restarts", -1)
 
+    def test__dhcp4_constants__init_delay_min_ms_accepts_zero(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_min_ms' accepts 0 — both min and max
+        set to 0 must be a valid "disable the desync delay" pairing
+        for deterministic tests.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.init_delay_min_ms", 0)
+        self.assertEqual(
+            sysctl.get("dhcp.init_delay_min_ms"),
+            0,
+            msg="dhcp.init_delay_min_ms must accept 0 to permit a disable-delay configuration.",
+        )
+
+    def test__dhcp4_constants__init_delay_min_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_min_ms' rejects negative values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.init_delay_min_ms", -1)
+
+    def test__dhcp4_constants__init_delay_max_ms_accepts_zero(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_max_ms' accepts 0 — the canonical
+        disable signal for the desynchronisation delay.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Both bounds need to be 0 for finalize to accept; first
+        # collapse the upper, then the lower.
+        sysctl.set("dhcp.init_delay_min_ms", 0)
+        sysctl.set("dhcp.init_delay_max_ms", 0)
+        self.assertEqual(
+            sysctl.get("dhcp.init_delay_max_ms"),
+            0,
+            msg="dhcp.init_delay_max_ms must accept 0 to disable the desync delay.",
+        )
+
+    def test__dhcp4_constants__init_delay_max_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.init_delay_max_ms' rejects negative values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.init_delay_max_ms", -1)
+
 
 class TestDhcp4ConstantsLiveModuleReadthrough(TestCase):
     """
@@ -308,4 +391,33 @@ class TestDhcp4ConstantsFinalizeValidator(TestCase):
 
         sysctl.set("dhcp.retrans_initial_ms", 4000)
         sysctl.set("dhcp.retrans_max_ms", 4000)
+        sysctl.finalize_validators()  # must not raise
+
+    def test__dhcp4_constants__finalize_rejects_init_min_greater_than_max(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'init_delay_min_ms'
+        exceeds 'init_delay_max_ms' — 'random.uniform(min, max)' with
+        min > max is undefined.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.init_delay_min_ms", 5000)
+        sysctl.set("dhcp.init_delay_max_ms", 2000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp4_constants__finalize_accepts_equal_init_min_and_max(self) -> None:
+        """
+        Ensure 'finalize_validators()' accepts the boundary case
+        'init_delay_min_ms == init_delay_max_ms' — operator wants a
+        fixed (zero-jitter) startup delay, including the
+        disable-delay pairing (0, 0).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.init_delay_min_ms", 0)
+        sysctl.set("dhcp.init_delay_max_ms", 0)
         sysctl.finalize_validators()  # must not raise

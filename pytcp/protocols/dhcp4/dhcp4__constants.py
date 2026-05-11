@@ -59,6 +59,17 @@ DHCP4__RETRANS_MAX_ATTEMPTS = 5
 # DISCOVER/REQUEST attempts (initial + 3 restarts).
 DHCP4__NAK_MAX_RESTARTS = 3
 
+# RFC 2131 §4.4.1 startup desynchronisation delay — "the
+# client SHOULD wait a random time between one and ten
+# seconds to desynchronize the use of DHCP at startup". The
+# delay is drawn uniformly from
+# '[init_delay_min_ms, init_delay_max_ms]' (milliseconds);
+# setting both to 0 disables the wait (useful for tests
+# and for short-lived containerised hosts where startup
+# desync is unnecessary).
+DHCP4__INIT_DELAY_MIN_MS = 1000
+DHCP4__INIT_DELAY_MAX_MS = 10000
+
 from pytcp.lib.sysctl import (  # noqa: E402
     get,
     is_non_negative_int,
@@ -109,6 +120,30 @@ register(
     validator=is_non_negative_int("dhcp.nak_max_restarts"),
     description="RFC 2131 §3.1 step 4 — NAK-driven restart budget per fetch() (default 3 = up to 4 attempts).",
 )
+register(
+    key="dhcp.init_delay_min_ms",
+    module_name=__name__,
+    attr="DHCP4__INIT_DELAY_MIN_MS",
+    default=DHCP4__INIT_DELAY_MIN_MS,
+    validator=is_non_negative_int("dhcp.init_delay_min_ms"),
+    description=(
+        "RFC 2131 §4.4.1 — lower bound of the startup "
+        "desynchronisation delay in milliseconds (set 0 with "
+        "max=0 to disable for tests)."
+    ),
+)
+register(
+    key="dhcp.init_delay_max_ms",
+    module_name=__name__,
+    attr="DHCP4__INIT_DELAY_MAX_MS",
+    default=DHCP4__INIT_DELAY_MAX_MS,
+    validator=is_non_negative_int("dhcp.init_delay_max_ms"),
+    description=(
+        "RFC 2131 §4.4.1 — upper bound of the startup "
+        "desynchronisation delay in milliseconds (set 0 with "
+        "min=0 to disable for tests)."
+    ),
+)
 
 
 def _finalize__retrans_initial_le_max() -> None:
@@ -126,4 +161,21 @@ def _finalize__retrans_initial_le_max() -> None:
         )
 
 
+def _finalize__init_delay_min_le_max() -> None:
+    """
+    Cross-knob constraint — 'dhcp.init_delay_min_ms' must be
+    no greater than 'dhcp.init_delay_max_ms'. The
+    'random.uniform(min, max)' draw is undefined when
+    'min > max'.
+    """
+
+    if get("dhcp.init_delay_min_ms") > get("dhcp.init_delay_max_ms"):
+        raise ValueError(
+            f"sysctl 'dhcp.init_delay_min_ms' ({get('dhcp.init_delay_min_ms')}) must be "
+            f"≤ 'dhcp.init_delay_max_ms' ({get('dhcp.init_delay_max_ms')}); the "
+            f"'random.uniform(min, max)' draw is undefined otherwise.",
+        )
+
+
 register_finalize_validator(_finalize__retrans_initial_le_max)
+register_finalize_validator(_finalize__init_delay_min_le_max)

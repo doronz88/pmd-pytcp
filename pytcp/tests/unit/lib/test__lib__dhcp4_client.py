@@ -98,7 +98,10 @@ class _Dhcp4ClientFixture(TestCase):
         factory whose return value is wired into the server. Patch
         'pytcp.lib.dhcp4_client.socket' (the factory call site) and
         the 'log' channel for the duration of every test in the
-        subclass.
+        subclass. Disable the Phase 2.1 startup desynchronisation
+        delay by default so the suite does not actually sleep 1-10 s
+        per 'fetch()'; tests that exercise the delay re-enable it
+        via 'sysctl.override' in their own bodies.
         """
 
         self._server = Dhcp4MockServer()
@@ -107,6 +110,8 @@ class _Dhcp4ClientFixture(TestCase):
         self._server.wire(self._sock)
         self.enterContext(patch("pytcp.lib.dhcp4_client.socket", self._socket_factory))
         self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
+        self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 0))
+        self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 0))
 
 
 class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
@@ -1066,3 +1071,82 @@ class TestDhcp4ClientFetchBackoffJitter(_Dhcp4ClientFixture):
         # First (and only) jitter draw must use the configured
         # ±1000 ms bound expressed in seconds.
         mock_uniform.assert_any_call(-1.0, 1.0)
+
+
+class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
+    """
+    Phase 2.1 — RFC 2131 §4.4.1 "wait a random time between one and
+    ten seconds to desynchronize the use of DHCP at startup".
+    """
+
+    def test__dhcp4_client__fetch_initial_delay_uses_default_bounds(self) -> None:
+        """
+        Ensure the startup desync delay draws from
+        'random.uniform(1.0, 10.0)' when the
+        'dhcp.init_delay_{min,max}_ms' sysctls are at their default
+        values. The fixture base disables the delay by default, so
+        this test restores the defaults locally before exercising
+        'fetch()'.
+
+        Reference: RFC 2131 §4.4.1 (client SHOULD wait a random time between one and ten seconds).
+        """
+
+        self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 1000))
+        self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 10000))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        with (
+            patch("pytcp.lib.dhcp4_client.random.uniform", return_value=4.2) as mock_uniform,
+            patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep,
+        ):
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        mock_uniform.assert_any_call(1.0, 10.0)
+        mock_sleep.assert_any_call(4.2)
+
+    def test__dhcp4_client__fetch_initial_delay_honours_custom_sysctl_bounds(self) -> None:
+        """
+        Ensure operator overrides on 'dhcp.init_delay_min_ms' /
+        'dhcp.init_delay_max_ms' propagate through to the
+        'random.uniform' bounds (expressed in seconds).
+
+        Reference: RFC 2131 §4.4.1 (the 1-10 s range is a SHOULD; tunable to fit deployment).
+        """
+
+        self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 500))
+        self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 2500))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        with (
+            patch("pytcp.lib.dhcp4_client.random.uniform", return_value=1.0) as mock_uniform,
+            patch("pytcp.lib.dhcp4_client.time.sleep"),
+        ):
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        # 500 ms / 1000 = 0.5 s; 2500 ms / 1000 = 2.5 s.
+        mock_uniform.assert_any_call(0.5, 2.5)
+
+    def test__dhcp4_client__fetch_initial_delay_disabled_when_max_ms_zero(self) -> None:
+        """
+        Ensure the startup desync delay is bypassed entirely when
+        'dhcp.init_delay_max_ms' is 0 — the canonical
+        disable-for-tests configuration that the fixture base
+        applies by default. 'time.sleep' must not be invoked from
+        the initial-delay path on the happy-path 'fetch()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Fixture base already sets both bounds to 0; no override
+        # needed here. The Phase 1 backoff path uses 'recv__mv(timeout=)'
+        # rather than 'time.sleep', so 'time.sleep' should not be
+        # called at all during a happy-path fetch.
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        with patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep:
+            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        mock_sleep.assert_not_called()
