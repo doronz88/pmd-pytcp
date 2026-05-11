@@ -158,6 +158,22 @@ class TestDhcp4ConstantsDefaults(TestCase):
             msg="dhcp.init_delay_max_ms must default to 10000 ms per RFC 2131 §4.4.1.",
         )
 
+    def test__dhcp4_constants__decline_backoff_ms_default(self) -> None:
+        """
+        Ensure 'dhcp.decline_backoff_ms' defaults to 10000 ms — the
+        minimum wait after a DHCPDECLINE before restarting from
+        DISCOVER, per the §3.1 step 5 "minimum of ten seconds"
+        SHOULD.
+
+        Reference: RFC 2131 §3.1 step 5 (client SHOULD wait a minimum of ten seconds before restarting).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.decline_backoff_ms"),
+            10000,
+            msg="dhcp.decline_backoff_ms must default to 10000 ms per RFC 2131 §3.1 step 5.",
+        )
+
 
 class TestDhcp4ConstantsValidators(TestCase):
     """
@@ -315,6 +331,31 @@ class TestDhcp4ConstantsValidators(TestCase):
 
         with self.assertRaises(ValueError):
             sysctl.set("dhcp.init_delay_max_ms", -1)
+
+    def test__dhcp4_constants__decline_backoff_ms_accepts_zero(self) -> None:
+        """
+        Ensure 'dhcp.decline_backoff_ms' accepts 0 — disables the
+        wait for deterministic tests.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.decline_backoff_ms", 0)
+        self.assertEqual(
+            sysctl.get("dhcp.decline_backoff_ms"),
+            0,
+            msg="dhcp.decline_backoff_ms must accept 0 to disable the post-DECLINE wait.",
+        )
+
+    def test__dhcp4_constants__decline_backoff_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.decline_backoff_ms' rejects negative values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.decline_backoff_ms", -1)
 
 
 class TestDhcp4ConstantsLiveModuleReadthrough(TestCase):

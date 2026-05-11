@@ -70,6 +70,14 @@ DHCP4__NAK_MAX_RESTARTS = 3
 DHCP4__INIT_DELAY_MIN_MS = 1000
 DHCP4__INIT_DELAY_MAX_MS = 10000
 
+# RFC 2131 §3.1 step 5 post-DHCPDECLINE wait — "The client
+# SHOULD wait a minimum of ten seconds before restarting
+# the configuration process to avoid excessive network
+# traffic in case of looping." 10 000 ms matches the SHOULD
+# floor; setting 0 disables the wait for deterministic
+# tests.
+DHCP4__DECLINE_BACKOFF_MS = 10000
+
 from pytcp.lib.sysctl import (  # noqa: E402
     get,
     is_non_negative_int,
@@ -142,6 +150,18 @@ register(
         "RFC 2131 §4.4.1 — upper bound of the startup "
         "desynchronisation delay in milliseconds (set 0 with "
         "min=0 to disable for tests)."
+    ),
+)
+register(
+    key="dhcp.decline_backoff_ms",
+    module_name=__name__,
+    attr="DHCP4__DECLINE_BACKOFF_MS",
+    default=DHCP4__DECLINE_BACKOFF_MS,
+    validator=is_non_negative_int("dhcp.decline_backoff_ms"),
+    description=(
+        "RFC 2131 §3.1 step 5 — post-DHCPDECLINE wait in "
+        "milliseconds before restarting from DISCOVER "
+        "(SHOULD ≥ 10 s; set 0 to disable for tests)."
     ),
 )
 

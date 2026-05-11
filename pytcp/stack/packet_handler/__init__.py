@@ -1774,33 +1774,22 @@ class PacketHandlerL2(
         # their claim ordering.
         self._ip6_addressing_complete = True
 
-    @override
-    def _create_stack_ip4_addressing(self) -> None:
+    def _arp_dad_probe_address(self, ip4_unicast: Ip4Address, /) -> bool:
         """
-        Create lists of IPv4 unicast, multicast and broadcast addresses stack
-        should listen on.
+        RFC 5227 §2.1.1 ARP Probe loop for a single candidate IPv4
+        address. Installs a registry slot, sleeps the initial
+        PROBE_WAIT random delay, emits PROBE_NUM Probes with
+        PROBE_MIN..PROBE_MAX spacing, then sleeps ANNOUNCE_WAIT
+        before checking the slot's conflict signal. Returns True
+        when the address is safe to claim, False on detected
+        conflict.
+
+        Used by 'Dhcp4Client' (Phase 2.2 — via the
+        'arp_dad_verifier' callback) and by the static-host path
+        in '_create_stack_ip4_addressing'.
         """
 
-        # If there are no statically configured IPv4 addresses try to
-        # acquire one using DHCP.
-        if not self._ip4_host_candidate:
-            if self._ip4_dhcp:
-                if lease := Dhcp4Client(mac_address=self._mac_unicast).fetch():
-                    self._ip4_host_candidate.append(lease.ip4_host)
-
-        # Install a per-candidate registry slot for each address
-        # BEFORE any sleep / probe TX so any RX conflict (during
-        # the initial PROBE_WAIT delay, between probes, during
-        # ANNOUNCE_WAIT, or between Announcements) can signal
-        # the candidate via 'registry.try_signal_conflict'
-        # (RFC 5227 §2.1 inbound ARP carrying our SPA / TPA =
-        # conflict). Slots persist past this method so callers
-        # / tests can inspect 'has_signal(candidate)' to see
-        # which candidates lost DAD; re-running DAD reinstalls
-        # slots fresh.
-        candidates = [ip4_host_candidate.address for ip4_host_candidate in self._ip4_host_candidate]
-        for ip4_unicast in candidates:
-            self._ip4_arp_dad__registry.install(ip4_unicast)
+        self._ip4_arp_dad__registry.install(ip4_unicast)
 
         # RFC 5227 §2.1.1 PROBE_WAIT — initial 0..PROBE_WAIT
         # random delay before the first Probe so a fleet of hosts
@@ -1808,50 +1797,84 @@ class PacketHandlerL2(
         # instant.
         time.sleep(random.uniform(0, ARP__PROBE_WAIT))
 
-        # Perform Duplicate Address Detection — RFC 5227 §2.1.1
-        # broadcasts PROBE_NUM Probes spaced uniformly between
-        # PROBE_MIN and PROBE_MAX seconds.
+        # RFC 5227 §2.1.1 — broadcast PROBE_NUM Probes spaced
+        # uniformly between PROBE_MIN and PROBE_MAX seconds.
         for _ in range(ARP__PROBE_NUM):
-            for ip4_unicast in candidates:
-                if not self._ip4_arp_dad__registry.has_signal(ip4_unicast):
-                    self._send_arp_probe(ip4_unicast=ip4_unicast)
-                    __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
+            if not self._ip4_arp_dad__registry.has_signal(ip4_unicast):
+                self._send_arp_probe(ip4_unicast=ip4_unicast)
+                __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
             time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))
 
-        # RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period.
-        # Wait this long after the last Probe before emitting any
-        # Announcements so a late conflicting ARP arriving here
-        # can still flag the candidate via the RX path and be
-        # observed by the admit-loop below.
+        # RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period —
+        # wait after the last Probe before any Announcement so a
+        # late conflicting ARP can still flag the candidate via
+        # the RX path.
         time.sleep(ARP__ANNOUNCE_WAIT)
 
-        for ip4_unicast in candidates:
-            if self._ip4_arp_dad__registry.has_signal(ip4_unicast):
-                __debug__ and log(
-                    "stack",
-                    f"<WARN>Unable to claim IPv4 address {ip4_unicast}</>",
-                )
+        return not self._ip4_arp_dad__registry.has_signal(ip4_unicast)
 
-        # Create list containing only IPv4 addresses that were
-        # confirmed free to claim.
+    def _arp_dad_announce_address(self, ip4_unicast: Ip4Address, /) -> None:
+        """
+        RFC 5227 §2.3 — broadcast ANNOUNCE_NUM gratuitous ARP
+        Announcements after a successful claim, spaced
+        ANNOUNCE_INTERVAL seconds apart. The host can begin using
+        the IP immediately after the first Announcement; the
+        second is insurance against peers that missed the first.
+        """
+
+        for announce_idx in range(ARP__ANNOUNCE_NUM):
+            if announce_idx > 0:
+                time.sleep(ARP__ANNOUNCE_INTERVAL)
+            self._send_arp_announcement(ip4_unicast=ip4_unicast)
+
+    @override
+    def _create_stack_ip4_addressing(self) -> None:
+        """
+        Create lists of IPv4 unicast, multicast and broadcast addresses stack
+        should listen on.
+        """
+
+        # If there are no statically configured IPv4 addresses try
+        # to acquire one using DHCP. The DHCP client runs its own
+        # RFC 5227 §2.1.1 probe via the 'arp_dad_verifier' callback
+        # so it can emit DHCPDECLINE per RFC 2131 §3.1 step 5 on
+        # conflict; the address it returns is already DAD-verified.
+        dhcp_verified_address: Ip4Address | None = None
+        if not self._ip4_host_candidate:
+            if self._ip4_dhcp:
+                lease = Dhcp4Client(
+                    mac_address=self._mac_unicast,
+                    arp_dad_verifier=self._arp_dad_probe_address,
+                ).fetch()
+                if lease is not None:
+                    self._ip4_host_candidate.append(lease.ip4_host)
+                    dhcp_verified_address = lease.ip4_host.address
+
+        # Probe each remaining candidate sequentially. The DHCP-
+        # leased address (if any) skips re-DAD — re-running the
+        # probe loop here would risk dropping the address without
+        # the DECLINE-and-restart semantics Dhcp4Client provides.
+        # Each candidate stays in '_ip4_host_candidate' until its
+        # probe loop completes so the ARP RX path can match the
+        # address against the candidate list when scoring inbound
+        # conflicts (see 'packet_handler__arp__rx').
         for ip4_host in list(self._ip4_host_candidate):
+            if ip4_host.address == dhcp_verified_address:
+                verified = True
+            else:
+                verified = self._arp_dad_probe_address(ip4_host.address)
             self._ip4_host_candidate.remove(ip4_host)
-            if not self._ip4_arp_dad__registry.has_signal(ip4_host.address):
+            if verified:
                 self._ip4_host.append(ip4_host)
-                # RFC 5227 §2.3: broadcast ANNOUNCE_NUM ARP
-                # Announcements spaced ANNOUNCE_INTERVAL seconds
-                # apart so peers refresh any stale ARP cache
-                # entries left over from the previous holder.
-                # The host can begin using the IP immediately
-                # after the first Announcement; the second is
-                # insurance against peers that missed the first.
-                for announce_idx in range(ARP__ANNOUNCE_NUM):
-                    if announce_idx > 0:
-                        time.sleep(ARP__ANNOUNCE_INTERVAL)
-                    self._send_arp_announcement(ip4_unicast=ip4_host.address)
+                self._arp_dad_announce_address(ip4_host.address)
                 __debug__ and log(
                     "stack",
                     f"Successfully claimed IPv4 address {ip4_host.address}",
+                )
+            else:
+                __debug__ and log(
+                    "stack",
+                    f"<WARN>Unable to claim IPv4 address {ip4_host.address}</>",
                 )
 
         # If don't have any IPv4 address assigned disable IPv4 protocol

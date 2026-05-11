@@ -32,7 +32,7 @@ ver 3.0.4
 
 from typing import override
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
@@ -1150,3 +1150,218 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         mock_sleep.assert_not_called()
+
+
+class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
+    """
+    Phase 2.2 — ARP DAD verification + DHCPDECLINE on conflict.
+    'Dhcp4Client.__init__' accepts an optional 'arp_dad_verifier'
+    callback that 'fetch()' invokes against the leased address
+    after a valid ACK; on False, the client emits DHCPDECLINE and
+    restarts from DISCOVER per RFC 2131 §3.1 step 5.
+    """
+
+    def test__dhcp4_client__fetch_invokes_arp_dad_verifier_with_leased_address(self) -> None:
+        """
+        Ensure 'fetch()' invokes the caller-supplied
+        'arp_dad_verifier' callback exactly once with the
+        server-assigned 'yiaddr' after a valid ACK.
+
+        Reference: RFC 2131 §3.1 step 5 (client SHOULD probe the offered address).
+        Reference: RFC 5227 §2.1 (host MUST probe before claiming).
+        """
+
+        verifier = MagicMock(return_value=True)
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        result = Dhcp4Client(
+            mac_address=_DEFAULT_MAC,
+            arp_dad_verifier=verifier,
+        ).fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="fetch() must return the lease when the verifier reports no conflict.",
+        )
+        verifier.assert_called_once_with(Ip4Address("10.0.0.100"))
+
+    def test__dhcp4_client__fetch_without_verifier_returns_lease_unverified(self) -> None:
+        """
+        Ensure 'fetch()' returns the lease unverified when no
+        'arp_dad_verifier' callback is supplied (backward
+        compatibility with the Phase 0 / 1 / 2.1 invocation form).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="fetch() without a verifier must still return the lease unverified.",
+        )
+
+    def test__dhcp4_client__fetch_verifier_conflict_emits_decline_message(self) -> None:
+        """
+        Ensure a verifier conflict triggers a DHCPDECLINE TX whose
+        message type, Server Identifier, Requested IP Address, and
+        Client Identifier echo all carry the values from the offered
+        lease.
+
+        Reference: RFC 2131 §3.1 step 5 (the client MUST send a DHCPDECLINE message).
+        Reference: RFC 2131 §4.4 Table 5 (DHCPDECLINE MUST carry Server ID + Requested IP).
+        """
+
+        self.enterContext(sysctl.override("dhcp.decline_backoff_ms", 0))
+        self.enterContext(sysctl.override("dhcp.nak_max_restarts", 0))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        verifier = MagicMock(return_value=False)
+
+        Dhcp4Client(
+            mac_address=_DEFAULT_MAC,
+            arp_dad_verifier=verifier,
+        ).fetch()
+
+        # tx_log: [DISCOVER, REQUEST, DECLINE]
+        self.assertEqual(
+            len(self._server.tx_log),
+            3,
+            msg="DECLINE on conflict must produce exactly 3 outbound TXs (DISCOVER, REQUEST, DECLINE).",
+        )
+        decline = self._server.tx_log[2]
+        self.assertEqual(
+            decline.message_type,
+            Dhcp4MessageType.DECLINE,
+            msg="Third TX must carry message type DHCPDECLINE.",
+        )
+        self.assertEqual(
+            decline.srv_id,
+            Ip4Address("10.0.0.254"),
+            msg="DECLINE must echo the OFFER's Server Identifier (option 54).",
+        )
+        self.assertEqual(
+            decline.req_ip_addr,
+            Ip4Address("10.0.0.100"),
+            msg="DECLINE must carry the rejected yiaddr in the Requested IP Address option (50).",
+        )
+        self.assertEqual(
+            decline.ciaddr,
+            Ip4Address(),
+            msg="DECLINE MUST carry ciaddr = 0 (the address has not been claimed).",
+        )
+        self.assertEqual(
+            decline.client_id,
+            _DEFAULT_CID,
+            msg="DECLINE must carry the same Client Identifier as DISCOVER / REQUEST.",
+        )
+
+    def test__dhcp4_client__fetch_verifier_false_then_true_restarts_and_returns_lease(self) -> None:
+        """
+        Ensure a verifier that reports False once and then True on
+        the retry produces a usable lease: 'fetch()' emits the
+        DECLINE, restarts from DISCOVER, and succeeds on the
+        second round.
+
+        Reference: RFC 2131 §3.1 step 5 (DECLINE → restart configuration process).
+        """
+
+        self.enterContext(sysctl.override("dhcp.decline_backoff_ms", 0))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        verifier = MagicMock(side_effect=[False, True])
+
+        result = Dhcp4Client(
+            mac_address=_DEFAULT_MAC,
+            arp_dad_verifier=verifier,
+        ).fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="fetch() must return the lease when the second-round verifier reports no conflict.",
+        )
+        # tx_log: [DISCOVER, REQUEST, DECLINE, DISCOVER, REQUEST]
+        self.assertEqual(
+            len(self._server.tx_log),
+            5,
+            msg="DECLINE-then-restart path must emit 5 TXs (D, R, DECL, D, R).",
+        )
+        self.assertEqual(
+            self._server.tx_log[2].message_type,
+            Dhcp4MessageType.DECLINE,
+            msg="Third TX must be the DECLINE bridging the two rounds.",
+        )
+
+    def test__dhcp4_client__fetch_verifier_always_false_exhausts_restart_budget(self) -> None:
+        """
+        Ensure a verifier that always reports conflict exhausts the
+        shared restart budget ('dhcp.nak_max_restarts' = 3 means
+        initial + 3 restarts = 4 rounds) and 'fetch()' returns None.
+        Four DECLINEs are emitted, one per round.
+
+        Reference: RFC 2131 §3.1 step 5 (DECLINE-and-restart is bounded to prevent infinite loops).
+        """
+
+        self.enterContext(sysctl.override("dhcp.decline_backoff_ms", 0))
+        for _ in range(4):
+            self._server.enqueue_offer()
+            self._server.enqueue_ack()
+
+        verifier = MagicMock(return_value=False)
+
+        result = Dhcp4Client(
+            mac_address=_DEFAULT_MAC,
+            arp_dad_verifier=verifier,
+        ).fetch()
+
+        self.assertIsNone(
+            result,
+            msg="fetch() must return None when the restart budget is exhausted on persistent conflict.",
+        )
+        # 4 rounds × 3 TXs (D, R, DECL) = 12.
+        declines = [tx for tx in self._server.tx_log if tx.message_type == Dhcp4MessageType.DECLINE]
+        self.assertEqual(
+            len(declines),
+            4,
+            msg="Each restart round must emit one DECLINE; budget=3 yields 4 rounds.",
+        )
+
+    def test__dhcp4_client__fetch_decline_path_honours_decline_backoff_sleep(self) -> None:
+        """
+        Ensure 'fetch()' sleeps 'dhcp.decline_backoff_ms / 1000.0'
+        seconds after emitting a DECLINE — the canonical
+        "minimum of ten seconds" wait that prevents traffic
+        floods on persistent conflict.
+
+        Reference: RFC 2131 §3.1 step 5 (client SHOULD wait a minimum of ten seconds before restarting).
+        """
+
+        self.enterContext(sysctl.override("dhcp.decline_backoff_ms", 5000))
+        # Stop after the first DECLINE so only the one sleep we care
+        # about is observed.
+        self.enterContext(sysctl.override("dhcp.nak_max_restarts", 0))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        verifier = MagicMock(return_value=False)
+
+        with patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep:
+            Dhcp4Client(
+                mac_address=_DEFAULT_MAC,
+                arp_dad_verifier=verifier,
+            ).fetch()
+
+        # Initial-delay sleep is disabled by the fixture; only the
+        # decline-backoff sleep should fire.
+        mock_sleep.assert_called_once_with(5.0)

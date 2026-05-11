@@ -261,24 +261,34 @@ proceeds without an IPv4 host if `fetch()` returns None.
 >  MUST send a DHCPDECLINE message to the server and
 >  restarts the configuration process."
 
-**Adherence:** not met. The client at
-`dhcp4_client.py:111-125` accepts the
-ACK and constructs the `Ip4Host` without performing
-DAD-style ARP probing on the offered address. Note
-that `_create_stack_ip4_addressing` does run RFC 5227
-ARP DAD on the assembled IPv4 host address afterwards
-(`packet_handler/__init__.py:1864-1903`),
-so a conflict is detected — but the conflict response
-is "drop the address silently and disable IPv4 support",
-not "send DHCPDECLINE and restart". **MUST gap.**
+**Adherence:** met (Phase 2.2). `Dhcp4Client.__init__`
+accepts an `arp_dad_verifier: Callable[[Ip4Address], bool]`
+callback that 'fetch()' invokes against the offered
+'yiaddr' after a valid ACK. The packet handler wires
+this to `_arp_dad_probe_address` — a new extracted
+helper that runs the RFC 5227 §2.1.1 probe loop for a
+single candidate. On a False return (conflict),
+'fetch()' emits a DHCPDECLINE carrying Server
+Identifier (option 54) + Requested IP Address (option
+50) + Client Identifier echo (RFC 6842) + ciaddr=0,
+sleeps `dhcp.decline_backoff_ms` (default 10000 ms
+per the SHOULD floor), and returns the `_NAK_RESTART`
+sentinel — the outer NAK-restart loop already provides
+the bounded retry budget. On a True return, the lease
+is returned to the caller, which skips the redundant
+re-DAD via the `dhcp_verified_address` shortcut and
+proceeds to RFC 5227 §2.3 Announcements.
 
 > "The client SHOULD wait a minimum of ten seconds
 >  before restarting the configuration process to avoid
 >  excessive network traffic in case of looping."
 
-**Adherence:** not implemented. Since the client does
-not restart the configuration process at all, the
-10-second debounce is moot.
+**Adherence:** met (Phase 2.2). After emitting a
+DHCPDECLINE the client sleeps
+`dhcp.decline_backoff_ms / 1000.0` seconds before
+returning the `_NAK_RESTART` sentinel; the default
+10 000 ms matches the SHOULD floor exactly. Setting the
+sysctl to 0 disables the wait for deterministic tests.
 
 > "If the client receives a DHCPNAK message, the client
 >  restarts the configuration process."
@@ -648,15 +658,17 @@ collection window or selection policy.
 >  the client MUST send a DHCPDECLINE message to the
 >  server."
 
-**Adherence:** partial / MUST gap. RFC 5227 ARP DAD
-runs against the leased address downstream
-(`packet_handler/__init__.py:1864-1903`),
-detecting conflicts via gratuitous ARP and address
-probes. But the conflict response is NOT DHCPDECLINE
-— PyTCP simply drops the candidate from
-`_ip4_host_candidate` and disables IPv4 if no
-candidate survives. **The MUST DECLINE-and-restart
-path is not implemented.**
+**Adherence:** met (Phase 2.2). See §3.1 step 5 above —
+'Dhcp4Client' invokes the caller-supplied
+`arp_dad_verifier` callback (wired to
+`PacketHandlerL2._arp_dad_probe_address`) against the
+offered 'yiaddr' after a valid ACK. The packet
+handler's RFC 5227 §2.1.1 Probe loop runs inside the
+callback; on conflict the client emits DHCPDECLINE,
+sleeps `dhcp.decline_backoff_ms`, and restarts from
+DISCOVER via the bounded `_NAK_RESTART` outer loop. The
+"drop the address, disable IPv4" failure mode that
+pre-dated Phase 2.2 is gone.
 
 > "The client SHOULD broadcast an ARP reply to announce
 >  the client's new IP address."
@@ -710,7 +722,11 @@ implement the unicast-to-known-server optimization.
 >  address supplied by the server, the client broadcasts
 >  DHCPDECLINE messages."
 
-**Adherence:** not implemented (no DECLINE path).
+**Adherence:** met (Phase 2.2). `_send_decline` builds
+the DECLINE via `Dhcp4Assembler` with `flag_b=True`
+(broadcast); the socket layer's
+`connect(("255.255.255.255", 67))` routes the UDP
+datagram to the broadcast IP at port 67.
 
 ---
 
@@ -811,18 +827,36 @@ address indefinitely.
 
 **Status:** locked in (Phase 0).
 
-### §3.1 step 5 — DHCPDECLINE on ARP conflict
+### §3.1 step 5 — DHCPDECLINE on ARP conflict (Phase 2.2)
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test is one that:
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchArpDad`
+  - `invokes_arp_dad_verifier_with_leased_address` — the
+    'arp_dad_verifier' callback is called exactly once
+    with the offered 'yiaddr' after a valid ACK.
+  - `without_verifier_returns_lease_unverified` —
+    backward compatibility: no callback ⇒ no DAD
+    inside the client.
+  - `verifier_conflict_emits_decline_message` — DECLINE
+    TX carries message-type 4, Server Identifier,
+    Requested IP Address, Client Identifier echo, and
+    ciaddr=0.
+  - `verifier_false_then_true_restarts_and_returns_lease`
+    — DECLINE-then-restart succeeds on the retry; 5 TXs
+    total (D, R, DECL, D, R).
+  - `verifier_always_false_exhausts_restart_budget` —
+    bounded by 'dhcp.nak_max_restarts'; 4 rounds × 3 TXs
+    = 12 emissions, fetch returns None.
+  - `decline_path_honours_decline_backoff_sleep` —
+    time.sleep called with decline_backoff_ms/1000.0.
+- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+  — 'dhcp.decline_backoff_ms' default 10000 ms, accepts
+  0, rejects negatives.
+- **Integration:** existing `test__arp__dad.py` suite (13
+  tests) re-validates the underlying RFC 5227 §2.1.1
+  probe loop via the extracted
+  `_arp_dad_probe_address` helper.
 
-1. Drives `fetch()` to ACK with a `yiaddr` that is
-   simulated as already in use (inject a gratuitous
-   ARP via the RX harness during the post-ACK ARP
-   probe).
-2. Asserts that `_send_decline` was called with the
-   conflicted address and that `fetch()` returned
-   None or restarted the configuration process.
+**Status:** locked in (Phase 2.2).
 
 ### §4.4.1 — Initial 1-10 s random delay (Phase 2.1)
 
@@ -901,7 +935,8 @@ assert IPv4 host removal + INIT-state restart.
 | Linear DISCOVER → REQUEST happy path                | locked in (`test__lib__dhcp4_client.py`)                    |
 | Client Identifier in REQUEST                        | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`) |
 | DHCPNAK handling (bounded restart)                  | locked in (Phase 0 — `TestDhcp4ClientFetchNakRestart`)      |
-| ARP conflict → DHCPDECLINE                          | not tested — gap (Phase 2)                                  |
+| ARP conflict → DHCPDECLINE                          | locked in (Phase 2.2 — `TestDhcp4ClientFetchArpDad`)        |
+| Post-DECLINE backoff sysctl                         | locked in (Phase 2.2 — `test__dhcp4__constants.py`)         |
 | Retransmission backoff (4/8/16/32/64 s + jitter)    | locked in (Phase 1 — `TestDhcp4ClientFetchBackoff*`)        |
 | 'secs' field advances per RFC 1542 §3.2             | locked in (Phase 1 — `TestDhcp4ClientFetchSecsField`)       |
 | DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)           |
@@ -930,7 +965,8 @@ assert IPv4 host removal + INIT-state restart.
 | Magic cookie + `end` option                             | met                          |
 | Single DISCOVER → OFFER → REQUEST → ACK linear path     | met                          |
 | Multiple-OFFER collection + selection                   | not met (first OFFER wins)   |
-| ARP probe on ACK + DHCPDECLINE on conflict              | partial (RFC 5227 DAD only)  |
+| ARP probe on ACK + DHCPDECLINE on conflict              | met (Phase 2.2)              |
+| Post-DECLINE backoff (≥ 10 s before restart)            | met (Phase 2.2)              |
 | Retransmission with exponential backoff                 | met (Phase 1)                |
 | RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                |
 | Initial random delay (1–10 s)                           | met (Phase 2.1)              |
@@ -959,22 +995,19 @@ operator-tunable sysctls
 (`dhcp.retrans_{initial,max,max_attempts,jitter}_ms`).
 Phase 2.1 added the RFC 2131 §4.4.1 startup
 desynchronisation delay (1-10 s default range) with two
-more sysctls (`dhcp.init_delay_{min,max}_ms`). The
-remaining dominant gaps are (in rough priority for
-Phase 1 host parity):
+more sysctls (`dhcp.init_delay_{min,max}_ms`). Phase 2.2
+closed §3.1 step 5 DHCPDECLINE-on-ARP-conflict via an
+'arp_dad_verifier' callback wired from the packet
+handler's extracted `_arp_dad_probe_address` helper,
+with the post-DECLINE 10 s SHOULD-wait tunable via
+'dhcp.decline_backoff_ms'. The remaining dominant gap
+is:
 
 1. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
    RENEWING/REBINDING states. Phase 1 host parity with
    Linux dhcpcd requires this for lease longevity past
    the initial grant period. (Phase 4.)
 
-2. **DHCPDECLINE + restart on ARP conflict
-   (§3.1 step 5)** — currently the conflict response is
-   "drop the address, disable IPv4". Linux dhcpcd
-   sends DECLINE and re-DISCOVERs. The hook point is
-   inside `_create_stack_ip4_addressing` when the
-   probe-conflict registry signals. (Phase 2.)
-
 The wire-format library is comprehensive and
-well-tested; the remaining gaps are all on the
+well-tested; the remaining gap is all on the
 client-FSM / client-policy side.

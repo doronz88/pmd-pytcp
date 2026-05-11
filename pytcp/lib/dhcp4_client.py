@@ -33,6 +33,7 @@ ver 3.0.4
 import random
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
@@ -104,12 +105,24 @@ class Dhcp4Client:
     The DHCPv4 client.
     """
 
-    def __init__(self, *, mac_address: MacAddress) -> None:
+    def __init__(
+        self,
+        *,
+        mac_address: MacAddress,
+        arp_dad_verifier: "Callable[[Ip4Address], bool] | None" = None,
+    ) -> None:
         """
         Initialize the DHCPv4 client.
+
+        The optional 'arp_dad_verifier' callback is invoked against
+        the offered 'yiaddr' after a valid ACK; on False, 'fetch()'
+        emits DHCPDECLINE per RFC 2131 §3.1 step 5 and restarts
+        from DISCOVER. The packet handler wires this to its RFC 5227
+        §2.1.1 probe loop; tests pass a 'MagicMock'.
         """
 
         self._mac_address = mac_address
+        self._arp_dad_verifier = arp_dad_verifier
         # Type 0x01 (Ethernet) + MAC bytes, per RFC 2132 §9.14 — used
         # both for emission and for echo validation under RFC 6842 §3.
         self._expected_client_id: bytes = b"\x01" + bytes(self._mac_address)
@@ -225,6 +238,26 @@ class Dhcp4Client:
         ip4_host = Ip4Host((ack.yiaddr, ack.subnet_mask))
         if ack.router:
             ip4_host.gateway = ack.router[0]
+
+        # RFC 2131 §3.1 step 5 — probe the offered address before
+        # claiming it. On conflict, emit DHCPDECLINE, wait at
+        # least 10 s, and restart from DISCOVER via the same
+        # outer-loop sentinel used by the NAK path.
+        if self._arp_dad_verifier is not None and not self._arp_dad_verifier(ip4_host.address):
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>ARP DAD reported conflict on {ip4_host.address}; sending DHCPDECLINE</>",
+            )
+            self._send_decline(
+                client_socket,
+                xid=xid,
+                srv_id=srv_id,
+                yiaddr=ip4_host.address,
+            )
+            backoff_s = dhcp4__constants.DHCP4__DECLINE_BACKOFF_MS / 1000.0
+            if backoff_s > 0:
+                time.sleep(backoff_s)
+            return _NAK_RESTART
 
         return Dhcp4Lease(
             ip4_host=ip4_host,
@@ -423,6 +456,40 @@ class Dhcp4Client:
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
 
+    def _send_decline(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        srv_id: Ip4Address,
+        yiaddr: Ip4Address,
+    ) -> None:
+        """
+        Build and send the DHCPDECLINE packet per RFC 2131 §3.1 step
+        5. The DECLINE carries Server Identifier (option 54) and
+        Requested IP Address (option 50) identifying the rejected
+        offer, plus the Client Identifier (RFC 2131 §2 / RFC 6842
+        §3). 'ciaddr' is 0 because the address has not been
+        claimed.
+        """
+
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=xid,
+            dhcp4__secs=self._elapsed_secs(),
+            dhcp4__flag_b=True,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DECLINE),
+                Dhcp4OptionClientId(self._expected_client_id),
+                Dhcp4OptionServerId(srv_id),
+                Dhcp4OptionReqIpAddr(yiaddr),
+                Dhcp4OptionEnd(),
+            ),
+        )
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
+
     def _initial_delay(self) -> None:
         """
         Sleep for an RFC 2131 §4.4.1 startup desynchronisation
@@ -463,8 +530,3 @@ class Dhcp4Client:
 
         echoed = packet.client_id
         return echoed is None or echoed == self._expected_client_id
-
-
-# Late-bound to keep the module top imports tidy — the
-# 'Callable' annotation appears in '_recv_with_backoff'.
-from typing import Callable  # noqa: E402,F401
