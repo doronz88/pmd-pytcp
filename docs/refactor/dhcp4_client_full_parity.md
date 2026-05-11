@@ -470,24 +470,188 @@ def _stop(self) -> None:
     super()._stop()
 ```
 
-**4.5 Stack integration**
+**4.5 Stack integration via the address API (Phase-3 seam)**
 
-`stack.init()` / `stack.start()` get a
-`stack.dhcp4_lifecycle: Dhcp4Lifecycle | None`
-singleton when `ip4_dhcp=True`. `_create_stack_ip4_addressing`
-becomes `dhcp4_lifecycle.start_and_wait_for_bind(timeout=N)`.
+The `Dhcp4Lifecycle` subsystem must NOT mutate
+`packet_handler._ip4_host` directly — that would be a
+Phase-3 boundary violation (per `CLAUDE.md` Phase-3
+design implications: "Configuration mutations go
+through the API for their plane. Address changes go
+through the address API, not
+`packet_handler._ip6_host.append(...)`").
 
-**Tests** — new integration harness
-`pytcp/tests/lib/dhcp4_testcase.py`:
+Introduce a minimal Phase-1 address-API stub that the
+DHCP client is the first consumer of:
+
+```python
+# pytcp/lib/address_api.py — NEW
+class Ip4AddressApi:
+    """
+    Phase-1 IPv4 address-control surface. Mirrors Linux
+    RTNETLINK RTM_NEWADDR / RTM_DELADDR semantics
+    (`net/ipv4/devinet.c`). The Phase-3 north-star wraps
+    this around a real RTNETLINK-equivalent message
+    bus; the Phase-1 implementation directly mutates
+    PacketHandler state.
+
+    Consumer code (DHCP client, future operator-config
+    surfaces) imports this — never reaches into
+    `packet_handler._ip4_host` directly.
+    """
+
+    def add_host(
+        self,
+        *,
+        ip4_host: Ip4Host,
+        origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+    ) -> None: ...
+
+    def remove_host(
+        self,
+        *,
+        ip4_address: Ip4Address,
+        abort_bound_sessions: bool = True,
+    ) -> None:
+        """
+        Remove the address. Linux silently rots TCP sessions
+        on a removed IP; PyTCP defaults to ACTIVE abort via
+        the existing `_abandon_ipv4_address` hook (RFC 5227
+        §2.4 final SHOULD). Pass `abort_bound_sessions=False`
+        only for diagnostics.
+        """
+
+    def replace_host(
+        self,
+        *,
+        old_address: Ip4Address,
+        new_host: Ip4Host,
+        new_origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+    ) -> None:
+        """
+        Atomic swap. Install `new` BEFORE removing `old` so
+        the brief overlap parallels Linux's RTM_DELADDR →
+        RTM_NEWADDR ordering. Bound sessions on `old` abort
+        once `new` is bound (RFC 5227 §2.4 final SHOULD).
+        """
+
+    def list_ip4_hosts(self) -> tuple[Ip4Host, ...]:
+        """Read-only copy-by-value snapshot — Linux
+        equivalent is `/proc/net/route` + `ip addr show`."""
+```
+
+`stack.init()` / `stack.start()` get two singletons
+when `ip4_dhcp=True`:
+
+- `stack.address: Ip4AddressApi` (operator-config +
+  DHCP client share this)
+- `stack.dhcp4_lifecycle: Dhcp4Lifecycle` (consumes
+  `stack.address.*` methods)
+
+`_create_stack_ip4_addressing` becomes
+`dhcp4_lifecycle.start_and_wait_for_bind(timeout=N)`.
+
+Phase-1 implementation of `Ip4AddressApi` is a thin
+wrapper around `packet_handler._ip4_host.append(...)`
+/ `_abandon_ipv4_address(...)`. Phase-3 swap replaces
+the wrapper internals with RTNETLINK-equivalent
+message bus routing; **consumer code does not change**.
+
+### Phase 4.5 — Async address-change handling (Linux RTNETLINK parity)
+
+When the lifecycle FSM transitions in a way that
+changes the assigned IP — RENEW returning ACK with a
+different `yiaddr`, NAK during RENEW/REBIND forcing
+re-DISCOVER and a new address, or lease expiry forcing
+INIT — the change must propagate to the rest of the
+stack atomically.
+
+**Linux model recap** (`net/ipv4/devinet.c`,
+`dhcpcd`):
+
+- Userspace daemon installs/removes IPs via
+  RTM_NEWADDR / RTM_DELADDR.
+- Kernel silently lets TCP sessions on a removed IP
+  rot — RTO accumulates, applications see ETIMEDOUT.
+- Routes added by the daemon via separate
+  RTM_NEWROUTE are NOT auto-cleaned; daemon tracks
+  and reaps them on lease loss.
+- On RENEW with same IP → daemon does NOT call any
+  RTM_*; pure internal bookkeeping.
+
+**PyTCP behavior** (per the address API defined in 4.5
+above):
+
+| Transition                                  | Address-API call                       | TCP-session impact                  |
+|---------------------------------------------|----------------------------------------|-------------------------------------|
+| `INIT → BOUND` (first lease)                | `add_host(host, DHCP)`                 | none                                |
+| `BOUND → BOUND` (RENEW ACK, same IP)        | none (internal lease bookkeeping)      | none                                |
+| `BOUND → REBINDING → BOUND` (different IP)  | `replace_host(old, new, DHCP)`         | sessions on `old` abort             |
+| `RENEW/REBIND NAK → INIT → BOUND` (different IP) | `replace_host(old, new, DHCP)`    | sessions on `old` abort             |
+| `lease expiry, no new ACK`                  | `remove_host(addr)` + halt IPv4        | sessions on `addr` abort            |
+| `stack.stop()` (graceful)                   | `send_release()` + `remove_host(addr)` | sessions abort with RST before RELEASE |
+
+**Deliberate deviation from Linux: active TCP-session
+abort.**
+
+Linux's kernel doesn't actively reset TCP sessions on
+address removal — they rot silently until application-
+level timeouts fire. PyTCP is a single-process stack
+with the existing `_abandon_ipv4_address` hook
+(`packet_handler__arp__rx.py:131`) that already
+implements RFC 5227 §2.4 final SHOULD ("hosts SHOULD
+actively attempt to reset any existing connections
+using that address"). Reusing it on every
+`remove_host` / `replace_host` is cleaner than
+Linux's behaviour.
+
+This is a deliberate improvement; the RFC 2131
+adherence record should mark it under "deviation
+noted (cleaner than Linux)" rather than as a gap.
+Document the choice with an inline comment at the
+`abort_bound_sessions` parameter in
+`Ip4AddressApi.remove_host`.
+
+**Route-table cleanup deferred to Phase 7.**
+
+Phase 4 only handles the single-gateway case via
+`Ip4Host.gateway`, which is auto-cleared when the
+host is removed. Routes from DHCP option 3 (single
+default gateway) ride along with the host.
+
+Phase 7 (RFC 3442 Classless Static Routes) introduces
+N independent routes per lease — those must be
+explicitly tracked by the lifecycle and reaped via a
+parallel `Ip4RouteApi` on lease loss. Mirrors
+dhcpcd's per-lease route-tracking list.
+
+**Tests for 4.5:**
+
+- Same-IP RENEW ACK → `_ip4_host` unchanged, no
+  abort.
+- Different-IP after NAK → `_ip4_host` swap atomic
+  (assert both never co-exist outside the
+  `replace_host` window).
+- TCP session bound to the old IP after swap → asserted
+  aborted (RST emitted, session removed from
+  `stack.sockets`).
+- Lease expiry → `_ip4_host` empty + IPv4 disabled +
+  abort happened.
+- `stack.stop()` while BOUND → DHCPRELEASE on wire,
+  THEN `remove_host` + abort.
+
+**Tests for §4.4 (extended):** new integration
+harness `pytcp/tests/lib/dhcp4_testcase.py`:
 
 - Boot path: stub server replies → BOUND.
-- T1 fires → RENEWING → unicast REQUEST → BOUND.
+- T1 fires → RENEWING → unicast REQUEST → BOUND
+  (same IP, no `replace_host` call).
 - T2 fires (no RENEWING ACK) → REBINDING.
-- Lease expires (no REBINDING ACK) → INIT + network halt.
-- Stack stop → DHCPRELEASE emitted.
+- Lease expires (no REBINDING ACK) → INIT + halt.
+- Stack stop → DHCPRELEASE + `remove_host`.
 
 **Adherence record refresh:** RFC 2131 §4.4 marked
-met; gap inventory shrinks dramatically.
+met; §4.4.5 lease-expiry behaviour pinned. Add a
+note about the Linux deviation.
 
 ### Phase 5 — INIT-REBOOT + cached lease (1-2 commits; ~6 hours)
 
@@ -679,8 +843,21 @@ invocation per knob, classify as policy.
 
 ### New source files
 
+- `pytcp/lib/address_api.py` (Phase 4) —
+  `Ip4AddressApi` (and `Ip6AddressApi` skeleton for
+  symmetry); the Phase-3 north-star address-control
+  surface. DHCP client is the first consumer; future
+  operator-config code (manual `ip addr add`-like
+  surfaces) layers on top.
+- `pytcp/lib/route_api.py` (Phase 7 prereq) —
+  `Ip4RouteApi` mirroring `RTM_NEWROUTE` /
+  `RTM_DELROUTE`. Phase 4 uses
+  `Ip4AddressApi`-implicit single-gateway only; Phase 7
+  introduces N-route tracking.
 - `pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
-  `Dhcp4Lifecycle(Subsystem)` FSM.
+  `Dhcp4Lifecycle(Subsystem)` FSM. Consumes
+  `stack.address` exclusively; never touches
+  `_ip4_host` directly.
 - `pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
 - `pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
   serialised lease cache.
@@ -702,8 +879,13 @@ invocation per knob, classify as policy.
   block with `dhcp4_lifecycle` integration; harness
   snapshot/restore.
 - `pytcp/stack/__init__.py` (Phase 4) — add
-  `dhcp4_lifecycle` singleton; update `stack.init()`,
-  `stack.start()`, `stack.stop()`.
+  `stack.address: Ip4AddressApi` and
+  `stack.dhcp4_lifecycle: Dhcp4Lifecycle` singletons;
+  update `stack.init()`, `stack.start()`,
+  `stack.stop()` plus the test-harness snapshot
+  contract (`integration_testing.md` §5.4 — any new
+  module-level state requires snapshot/restore in
+  `NetworkTestCase` setUp/tearDown).
 - `net_proto/protocols/dhcp4/options/dhcp4__option.py`
   (Phase 7) — extend `Dhcp4OptionType` enum.
 - `net_proto/protocols/dhcp4/options/dhcp4__options.py`
@@ -770,16 +952,44 @@ relevant phase.
    (Phase 2 north-star territory) would need one
    `Dhcp4Lifecycle` per interface. Plan currently
    ignores this; revisit when multi-interface lands.
-5. **Routing-table API.** Phase 7 (RFC 3442) requires
-   it. The plan does not include a routing-table API
-   design — that is a Phase-2 north-star item with
-   its own refactor doc. Phase 7 is gated on it.
-6. **Boot blocking semantics.** Today
+5. **Address API scope in Phase 4.** Phase 4 builds
+   the minimal `Ip4AddressApi` (add/remove/replace/
+   list) needed by the DHCP client. Should it also
+   include the operator-facing surface
+   (`set_subnet_mask`, `set_origin`, ...) so the
+   Phase-3 cutover is mechanical, or keep it
+   DHCP-only for Phase 4 and broaden later? User
+   decision.
+6. **Routing-table API scope.** Phase 4 uses the
+   single-gateway `Ip4Host.gateway` field (option 3).
+   Phase 7 (RFC 3442) requires N independent routes
+   per lease — necessitates an `Ip4RouteApi` mirroring
+   `RTM_NEWROUTE` / `RTM_DELROUTE`. Should `Ip4RouteApi`
+   be designed in Phase 4 as a stub even though
+   single-gateway is sufficient, or deferred until
+   Phase 7? Recommendation: stub now, populate in
+   Phase 7 (mirrors how `Ip4AddressApi` is being
+   designed).
+7. **Boot blocking semantics.** Today
    `_create_stack_ip4_addressing` is synchronous —
    the boot path waits for DHCP completion. After
    Phase 4 the lifecycle runs asynchronously; should
-   the boot path block until BOUND, time out after
-   N seconds, or proceed without IPv4? User decision.
+   the boot path block until BOUND
+   (`start_and_wait_for_bind(timeout=N)`), time out
+   after N seconds and proceed without IPv4, or
+   return immediately and let other subsystems race
+   the lifecycle? User decision; recommend
+   `wait_for_bind` with `dhcp.boot_wait_ms` sysctl
+   default 30 000 ms — matches Linux dhcpcd's
+   default `oneshot` 30-s timeout.
+8. **TCP-session abort policy on lease change.**
+   The plan defaults `Ip4AddressApi.remove_host`'s
+   `abort_bound_sessions=True` (active abort, cleaner
+   than Linux). Should this be configurable via a
+   sysctl `dhcp.abort_sessions_on_lease_change`
+   (default 1) so operators can choose Linux-parity
+   silent-rot behaviour? Recommendation: yes — the
+   sysctl is cheap insurance.
 
 ---
 
@@ -903,3 +1113,110 @@ deferred Phase-9 RFCs.
 | `.claude/rules/unit_testing.md` + `.claude/rules/integration_testing.md`             | Test conventions + §7.2 audit         |
 | `.claude/skills/sysctl_knob/SKILL.md`                                                | New sysctl workflow                   |
 | `.claude/skills/rfc_adherence_audit/SKILL.md`                                        | Adherence-record refresh workflow     |
+| Linux `net/ipv4/devinet.c`                                                           | RTNETLINK reference for `RTM_NEWADDR` / `RTM_DELADDR` |
+| Linux `dhcpcd` source                                                                | Reference DHCPv4 client implementation |
+
+---
+
+## 12. Linux comparison + Phase-3 alignment
+
+This section is the explicit architectural map
+between PyTCP's design and Linux's DHCP architecture.
+The Phase-3 north-star ("kernel/userspace boundary
+with Linux-mirrored APIs") is binding — design
+decisions made now must not foreclose the Phase-3
+cutover.
+
+### 12.1 Architecture comparison
+
+| Concern                  | Linux                                                                                    | PyTCP Phase 1 (this plan)                                       | PyTCP Phase 3 (north-star)                                  |
+|--------------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------|
+| DHCP code lives in       | Userspace daemon (`dhcpcd`, `dhclient`, `systemd-networkd`)                              | Same Python process as the TCP/IP stack                         | Logically userspace (DHCP becomes a consumer of the kernel-equivalent address API) |
+| Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_host(...)` / `.remove_host(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
+| Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4Host.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
+| TCP-session on removed IP| Kernel silently lets RTO accumulate; no proactive RST                                    | Active abort via `_abandon_ipv4_address` (RFC 5227 §2.4 final SHOULD) | Same — Linux-deviation deliberate                          |
+| Lease persistence        | `/var/lib/dhcp/dhcpcd.lease` (per-interface)                                             | `dhcp.lease_cache_path` sysctl (Phase 5)                        | Same                                                        |
+| DUID storage             | `/var/lib/dhcp/dhcpcd.duid`                                                              | `dhcp.duid` sysctl (Phase 3)                                    | Same                                                        |
+| Renewal threading        | Single-thread event loop (`libevent`)                                                    | Dedicated `Subsystem` thread for `Dhcp4Lifecycle`               | Same                                                        |
+| RX dispatch              | Raw socket on port 68 owned by daemon                                                    | BSD-socket-style `socket(AF_INET4, SOCK_DGRAM)` bound on 68     | Same — already a Phase-3 surface                            |
+
+### 12.2 The "Phase-3-clean" design rule
+
+Every consumer-facing decision in this plan follows
+one rule: **the DHCP client must reach into the stack
+only through APIs that are valid in Phase 3** (the
+seven sanctioned surfaces in `CLAUDE.md`: socket,
+sysctl, link, address, route, neighbor,
+introspection).
+
+Concretely:
+
+- `Dhcp4Lifecycle` imports `stack.address`,
+  `stack.route` (Phase 7), `stack.sockets` (already
+  Phase-3-clean), `sysctl_module`.
+- `Dhcp4Lifecycle` does NOT import
+  `packet_handler._ip4_host`, `_arp_defend__*`,
+  `_abandon_ipv4_address`, or any other
+  packet-handler private state. **If it needs
+  something, that thing becomes part of the
+  address / route / introspection API instead.**
+- Phase-1 implementation of those APIs is a thin
+  wrapper around current packet-handler state;
+  Phase 3 swaps the wrapper internals for the real
+  message bus without changing the DHCP client.
+
+The address API is essentially the smallest
+Phase-3 surface PyTCP can ship today. Building it
+in Phase 4 — driven by the DHCP client as the first
+consumer — is the cheapest way to validate the
+Phase-3 design without committing to a full
+RTNETLINK-equivalent message bus.
+
+### 12.3 Deliberate Linux deviations (documented)
+
+Two places where PyTCP improves on Linux. Both are
+documented in adherence records so future readers
+know these are choices, not gaps:
+
+1. **Active TCP-session abort on address removal.**
+   PyTCP defaults to actively aborting (sending RST,
+   freeing the session, removing from
+   `stack.sockets`) when an IP is removed from the
+   stack. Linux silently lets the session rot until
+   RTO times out. The PyTCP behaviour matches
+   RFC 5227 §2.4 final SHOULD and is cleaner in a
+   single-process stack. Sysctl
+   `dhcp.abort_sessions_on_lease_change=0` is
+   available to opt into Linux-parity rot.
+
+2. **Optional DUID storage in sysctl rather than
+   filesystem.** Linux stores DUID under
+   `/var/lib/dhcp/`; PyTCP defaults to the sysctl
+   registry (in-memory, derived from MAC each boot
+   unless operator overrides via
+   `sysctl_module.override("dhcp.duid", "...")`).
+   The Linux-style filesystem path is reachable by
+   pointing `dhcp.duid_storage_path` at a real file
+   (Phase 3 follow-up); the Phase-1 default
+   ("derive each boot from MAC") matches dhcpcd's
+   `--allowinterfaces` minimal mode.
+
+### 12.4 What this plan deliberately does NOT include
+
+The following are explicitly out of scope for the
+DHCPv4 refactor, even though they touch the same
+machinery:
+
+- **DHCPv6 client.** Different RFC (RFC 8415,
+  formerly 3315), different message format, different
+  state machine. Future `docs/refactor/dhcp6_client_*.md`.
+- **DHCP server / relay agent.** PyTCP is a host
+  stack; server/relay are Phase 2 router territory.
+- **RFC 3118 DHCP Authentication.** Rare in
+  practice; gates FORCERENEW (RFC 3203) which is
+  also Phase 9 deferred.
+- **Multi-interface DHCP.** One `Dhcp4Lifecycle` per
+  stack today; multi-interface requires
+  per-interface lifecycles and the address API
+  growing an `interface=` parameter. Phase 2
+  north-star territory.
