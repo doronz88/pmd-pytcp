@@ -95,10 +95,22 @@ DHCP4__DUID: str = ""
 # return immediately" (the FSM still runs in the background).
 DHCP4__BOOT_WAIT_MS = 30000
 
+# Phase 4 commit C — RFC 2131 §4.4.5 lease-lifecycle timer
+# defaults. T1 is the elapsed-since-acquired fraction at which
+# the client begins RENEWING (unicast REQUEST to the server
+# that issued the lease); T2 is the fraction at which the
+# client escalates to REBINDING (broadcast REQUEST). Server
+# options 58 / 59 (when present in the ACK) override these
+# factor-based defaults — not yet honoured in commit C; planned
+# for a follow-up.
+DHCP4__T1_FACTOR: float = 0.5
+DHCP4__T2_FACTOR: float = 0.875
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
     get,
+    is_float_in_range,
     is_non_negative_int,
     is_positive_int,
     register,
@@ -237,6 +249,30 @@ register(
         "the boot wait entirely)."
     ),
 )
+register(
+    key="dhcp.t1_factor",
+    module_name=__name__,
+    attr="DHCP4__T1_FACTOR",
+    default=DHCP4__T1_FACTOR,
+    validator=is_float_in_range("dhcp.t1_factor", low=0.0, high=1.0),
+    description=(
+        "RFC 2131 §4.4.5 — fraction of the lease duration at which "
+        "the client begins RENEWING (unicast REQUEST). Default 0.5; "
+        "must be ≤ 'dhcp.t2_factor'."
+    ),
+)
+register(
+    key="dhcp.t2_factor",
+    module_name=__name__,
+    attr="DHCP4__T2_FACTOR",
+    default=DHCP4__T2_FACTOR,
+    validator=is_float_in_range("dhcp.t2_factor", low=0.0, high=1.0),
+    description=(
+        "RFC 2131 §4.4.5 — fraction of the lease duration at which "
+        "the client escalates to REBINDING (broadcast REQUEST). "
+        "Default 0.875; must be ≥ 'dhcp.t1_factor'."
+    ),
+)
 
 
 def _finalize__retrans_initial_le_max() -> None:
@@ -270,5 +306,20 @@ def _finalize__init_delay_min_le_max() -> None:
         )
 
 
+def _finalize__t1_le_t2() -> None:
+    """
+    Cross-knob constraint — 'dhcp.t1_factor' must be no greater
+    than 'dhcp.t2_factor'. Otherwise T1 fires AFTER T2, which
+    makes the RENEWING-before-REBINDING ordering meaningless.
+    """
+
+    if get("dhcp.t1_factor") > get("dhcp.t2_factor"):
+        raise ValueError(
+            f"sysctl 'dhcp.t1_factor' ({get('dhcp.t1_factor')}) must be "
+            f"≤ 'dhcp.t2_factor' ({get('dhcp.t2_factor')}); RENEWING must precede REBINDING.",
+        )
+
+
 register_finalize_validator(_finalize__retrans_initial_le_max)
 register_finalize_validator(_finalize__init_delay_min_le_max)
+register_finalize_validator(_finalize__t1_le_t2)

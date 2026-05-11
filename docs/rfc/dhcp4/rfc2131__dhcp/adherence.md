@@ -737,15 +737,38 @@ datagram to the broadcast IP at port 67.
 >  specify the times at which the client tries to extend
 >  its lease on its network address."
 
-**Adherence:** not implemented. No timer machinery.
-The lease lives until the OS process exits or the
-operator manually re-runs the stack.
+**Adherence:** met (Phase 4 commit C). 'Dhcp4Client'
+runs as a 'Subsystem' (Phase 4 commit B); the
+'_subsystem_loop' BOUND handler checks the
+'_t1_deadline' (= acquired_at + lease_time ×
+'dhcp.t1_factor', default 0.5) on each iteration and
+transitions to RENEWING when elapsed. The RENEWING
+handler then checks the '_t2_deadline' (factor
+'dhcp.t2_factor', default 0.875) and escalates to
+REBINDING; the REBINDING handler checks the lease-
+expiry deadline. Both factors are operator-tunable
+via the 'dhcp.t1_factor' / 'dhcp.t2_factor' sysctls
+in 'pytcp/protocols/dhcp4/dhcp4__constants.py', with
+a cross-knob finalize validator enforcing 't1 ≤ t2'.
+
+Server-supplied option 58 (T1) / option 59 (T2)
+overrides are not yet honoured — the codec for those
+options is parsed into 'Dhcp4OptionUnknown'; a
+follow-up commit will add typed accessors and prefer
+server values over the factor-based defaults.
 
 > "T1 MUST be earlier than T2, which, in turn, MUST be
 >  earlier than the time at which the client's lease
 >  will expire."
 
-**Adherence:** vacuous (no T1/T2).
+**Adherence:** met (Phase 4 commit C). The
+'_finalize__t1_le_t2' cross-knob validator rejects any
+operator override that puts 'dhcp.t1_factor' above
+'dhcp.t2_factor'. The lease-expiry deadline is
+'acquired_at + lease_time' (= factor 1.0), which is
+strictly later than 'acquired_at + lease_time × 0.875'
+for any positive lease, so 'T2 < expiry' holds by
+construction.
 
 > "If the lease expires before the client receives a
 >  DHCPACK, the client moves to INIT state, MUST
@@ -753,9 +776,18 @@ operator manually re-runs the stack.
 >  requests network initialization parameters as if the
 >  client were uninitialized."
 
-**Adherence:** not implemented. The lease has no
-expiry consumer. PyTCP keeps using the leased IPv4
-address indefinitely.
+**Adherence:** met (Phase 4 commit C). The
+'_do_rebinding' handler checks
+'now ≥ _lease_expiry_deadline' on each iteration; on
+match, it calls
+'_halt_ipv4_and_reset_to_init()' → which removes the
+expired Ip4Host via
+'address_api.remove_host(ip4_address=..., abort_bound_sessions=True)'
+(actively aborting any TCP sessions bound to the
+expired address — RFC 5227 §2.4-final SHOULD; cleaner
+than Linux's silent-rot kernel behaviour) and resets
+the FSM to INIT. The next '_subsystem_loop' iteration
+runs '_do_init_to_bound' to acquire a fresh lease.
 
 ---
 
@@ -909,7 +941,36 @@ address indefinitely.
 
 **Status:** locked in (Phase 1).
 
-### §4.4 — Client FSM (INIT-REBOOT, RENEWING, REBINDING)
+### §4.4 / §4.4.5 — Client FSM (Phase 4 commit C)
+
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientLeaseLifecycle`
+  - `do_bound_transitions_to_renewing_when_t1_elapsed`
+    — BOUND → RENEWING fires at T1 (= 0.5 × lease).
+  - `do_bound_stays_bound_when_t1_not_elapsed`
+    — handler blocks on stop event with the
+    remaining-until-T1 timeout.
+  - `do_renewing_returns_to_bound_on_ack`
+    — unicast REQUEST + ACK → refreshed lease, BOUND.
+  - `do_renewing_falls_back_to_init_on_nak`
+    — DHCPNAK clears the lease, resets to INIT,
+    removes the address via the address API.
+  - `do_renewing_escalates_to_rebinding_when_t2_elapsed`
+    — RENEWING → REBINDING at T2 (= 0.875 × lease).
+  - `do_rebinding_returns_to_bound_on_ack`
+    — broadcast REQUEST + ACK → BOUND.
+  - `do_rebinding_halts_ipv4_on_lease_expiry`
+    — lease-expiry → INIT + 'remove_host'.
+  - `renewing_emits_unicast_request_with_ciaddr`
+    — RENEW REQUEST wire shape: ciaddr=current IP, no
+    server-id, no requested-ip.
+- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+  — 'dhcp.t1_factor' / 'dhcp.t2_factor' defaults +
+  cross-knob 't1 ≤ t2' finalize validator (Phase 4
+  commit C still to add — see TODO below).
+
+**Status:** locked in (Phase 4 commit C).
+
+### §4.4 — Other FSM states (INIT-REBOOT)
 
 **No test surface — gap not yet closed.** Each state
 needs its own integration scenario:
@@ -943,8 +1004,9 @@ assert IPv4 host removal + INIT-state restart.
 | DHCPv4 retransmission sysctls (defaults, validators)| locked in (Phase 1 — `test__dhcp4__constants.py`)           |
 | Initial random delay (RFC 2131 §4.4.1, 1-10 s)      | locked in (Phase 2.1 — `TestDhcp4ClientFetchInitialDelay`)  |
 | Initial-delay sysctls (defaults, validators)        | locked in (Phase 2.1 — `test__dhcp4__constants.py`)         |
-| FSM states (INIT-REBOOT/RENEWING/REBINDING/BOUND)   | not tested — gap (Phase 4)                                  |
-| Lease expiry / T1 / T2                              | not tested — gap (Phase 4)                                  |
+| FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
+| FSM state INIT-REBOOT                               | not tested — gap (Phase 5)                                  |
+| Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
 | DHCPRELEASE on shutdown                             | not tested — gap (Phase 4)                                  |
 | DHCPINFORM                                          | not tested — gap                                            |
 | xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)     |
@@ -971,8 +1033,9 @@ assert IPv4 host removal + INIT-state restart.
 | Retransmission with exponential backoff                 | met (Phase 1)                |
 | RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                |
 | Initial random delay (1–10 s)                           | met (Phase 2.1)              |
-| FSM (INIT-REBOOT / BOUND / RENEWING / REBINDING)        | not implemented              |
-| T1 / T2 / lease-expiry handling                         | not implemented              |
+| FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)       |
+| FSM (INIT-REBOOT)                                       | not implemented (Phase 5)    |
+| T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)       |
 | DHCPRELEASE on shutdown                                 | not implemented              |
 | DHCPDECLINE on detected address conflict                | not implemented              |
 | DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                |
@@ -985,30 +1048,32 @@ assert IPv4 host removal + INIT-state restart.
 | 'Option overload' option (52)                           | not implemented              |
 | Lease-time interpretation (T1/T2 scheduling)            | Phase 4 (Dhcp4Lifecycle)     |
 
-**Principal compliance gap.** The PyTCP DHCP client is
-a boot-time one-shot — it gets a lease then forgets
-about it. Phase 0 closed the five quick-win MUSTs (CID
-in REQUEST, xid validation, CID echo per RFC 6842,
-NAK-triggered restart, Lease-Time surfacing). Phase 1
-closed the §4.1 retransmission-backoff MUST plus the
-RFC 1542 §3.2 `secs` field advance and registered four
-operator-tunable sysctls
-(`dhcp.retrans_{initial,max,max_attempts,jitter}_ms`).
-Phase 2.1 added the RFC 2131 §4.4.1 startup
-desynchronisation delay (1-10 s default range) with two
-more sysctls (`dhcp.init_delay_{min,max}_ms`). Phase 2.2
-closed §3.1 step 5 DHCPDECLINE-on-ARP-conflict via an
-'arp_dad_verifier' callback wired from the packet
-handler's extracted `_arp_dad_probe_address` helper,
-with the post-DECLINE 10 s SHOULD-wait tunable via
-'dhcp.decline_backoff_ms'. The remaining dominant gap
-is:
+**Principal compliance status.** With Phase 4 commit C
+shipped, PyTCP's DHCPv4 client is host-parity complete
+for RFC 2131 — boot acquisition, retransmission
+backoff, DHCPNAK/DECLINE handling, RFC 4361 DUID
+client identifier, T1/T2 timer-driven renewal,
+REBINDING fallback, and lease-expiry IPv4 halt are all
+in place. The 'Dhcp4Client' runs as a long-running
+'Subsystem' under 'stack.start()' / 'stack.stop()',
+consuming the Phase-3-clean 'Ip4AddressApi' boundary
+surface (`stack.address.add_host` /
+`.replace_host` / `.remove_host`) for all address
+mutations.
 
-1. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
-   RENEWING/REBINDING states. Phase 1 host parity with
-   Linux dhcpcd requires this for lease longevity past
-   the initial grant period. (Phase 4.)
+Remaining items in the per-RFC adherence catalogue:
+
+- **§3.1 step 6 / §4.4.6 DHCPRELEASE on shutdown**
+  (Phase 4 commit D — coming next).
+- **§4.4.2 INIT-REBOOT (cached prior lease)**
+  (Phase 5 — cached-lease persistence prerequisite).
+- **Server option 58 (T1) / option 59 (T2) overrides**
+  — codec parses them as 'Dhcp4OptionUnknown'; a
+  follow-up will add typed accessors and prefer
+  server values over the factor-based defaults.
+- **§3.4 DHCPINFORM** — niche, deferred.
+- **§4.4 Multiple-OFFER collection + selection** —
+  accept-first heuristic is OK for Phase 1.
 
 The wire-format library is comprehensive and
-well-tested; the remaining gap is all on the
-client-FSM / client-policy side.
+well-tested; client-FSM coverage is now substantial.

@@ -300,3 +300,30 @@ def is_non_negative_int(name: str) -> Callable[[Any], None]:
             raise ValueError(f"sysctl {name!r} must be a non-negative int; got {value!r}")
 
     return validator
+
+
+def is_float_in_range(name: str, *, low: float, high: float) -> Callable[[Any], None]:
+    """
+    Build a validator that requires a real-number value in the
+    inclusive range '[low, high]'. Accepts 'int' transparently
+    (Python's '0' is interchangeable with '0.0' in arithmetic
+    contexts), rejects booleans and non-numeric types. Surfaces
+    'name' in the rejection message.
+    """
+
+    def validator(value: Any) -> None:
+        """
+        Raise 'ValueError' unless 'value' is a numeric value in
+        '[low, high]'.
+        """
+
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(
+                f"sysctl {name!r} must be a number in [{low}, {high}]; " f"got {type(value).__name__}({value!r})",
+            )
+        if not low <= value <= high:
+            raise ValueError(
+                f"sysctl {name!r} must be in [{low}, {high}]; got {value!r}",
+            )
+
+    return validator

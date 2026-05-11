@@ -174,6 +174,36 @@ class TestDhcp4ConstantsDefaults(TestCase):
             msg="dhcp.decline_backoff_ms must default to 10000 ms per RFC 2131 §3.1 step 5.",
         )
 
+    def test__dhcp4_constants__t1_factor_default(self) -> None:
+        """
+        Ensure 'dhcp.t1_factor' defaults to 0.5 — the canonical
+        "RENEW at half the lease" fraction.
+
+        Reference: RFC 2131 §4.4.5 (T1 = 0.5 × lease default).
+        """
+
+        self.assertAlmostEqual(
+            sysctl.get("dhcp.t1_factor"),
+            0.5,
+            places=4,
+            msg="dhcp.t1_factor must default to 0.5 per RFC 2131 §4.4.5.",
+        )
+
+    def test__dhcp4_constants__t2_factor_default(self) -> None:
+        """
+        Ensure 'dhcp.t2_factor' defaults to 0.875 — the canonical
+        "REBIND at 7/8 of the lease" fraction.
+
+        Reference: RFC 2131 §4.4.5 (T2 = 0.875 × lease default).
+        """
+
+        self.assertAlmostEqual(
+            sysctl.get("dhcp.t2_factor"),
+            0.875,
+            places=4,
+            msg="dhcp.t2_factor must default to 0.875 per RFC 2131 §4.4.5.",
+        )
+
     def test__dhcp4_constants__duid_default_empty_string(self) -> None:
         """
         Ensure 'dhcp.duid' defaults to an empty string — the
@@ -522,6 +552,55 @@ class TestDhcp4ConstantsFinalizeValidator(TestCase):
 
         sysctl.set("dhcp.init_delay_min_ms", 5000)
         sysctl.set("dhcp.init_delay_max_ms", 2000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp4_constants__t1_factor_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp.t1_factor' rejects negative values — T1
+        cannot occur before lease acquisition.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.t1_factor", -0.1)
+
+    def test__dhcp4_constants__t1_factor_rejects_above_one(self) -> None:
+        """
+        Ensure 'dhcp.t1_factor' rejects values above 1.0 — T1
+        cannot occur after lease expiry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.t1_factor", 1.5)
+
+    def test__dhcp4_constants__t1_factor_rejects_bool(self) -> None:
+        """
+        Ensure 'dhcp.t1_factor' rejects booleans even though
+        'isinstance(True, int)' is True and 'True' satisfies
+        '0.0 <= True <= 1.0' numerically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.t1_factor", True)
+
+    def test__dhcp4_constants__finalize_rejects_t1_factor_above_t2_factor(self) -> None:
+        """
+        Ensure the cross-knob finalize validator rejects an
+        operator configuration where 'dhcp.t1_factor' exceeds
+        'dhcp.t2_factor' — RENEWING must precede REBINDING.
+
+        Reference: RFC 2131 §4.4.5 (T1 MUST be earlier than T2).
+        """
+
+        sysctl.set("dhcp.t1_factor", 0.9)
+        sysctl.set("dhcp.t2_factor", 0.6)
 
         with self.assertRaises(ValueError):
             sysctl.finalize_validators()

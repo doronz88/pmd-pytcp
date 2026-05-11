@@ -254,10 +254,16 @@ class Dhcp4Client(Subsystem):
                     # Phase 4 follow-up: retry policy. For now,
                     # signal stop to avoid a tight retry loop.
                     self._event__stop_subsystem.set()
+            case Dhcp4State.BOUND:
+                self._do_bound()
+            case Dhcp4State.RENEWING:
+                self._do_renewing()
+            case Dhcp4State.REBINDING:
+                self._do_rebinding()
             case _:
-                # BOUND / RENEWING / REBINDING — Commit C/D
-                # implement timer-driven transitions. Idle on
-                # stop event so 'stop()' is responsive.
+                # INIT-REBOOT / SELECTING / REQUESTING / REBOOTING
+                # — not yet exercised in commit C. Idle on stop
+                # event so 'stop()' is responsive.
                 self._event__stop_subsystem.wait(timeout=1.0)
 
     def _on_bound(self, lease: Dhcp4Lease, /) -> None:
@@ -291,6 +297,295 @@ class Dhcp4Client(Subsystem):
 
         self.start()
         return self._event__bound.wait(timeout=timeout_s)
+
+    # ------------------------------------------------------------
+    # RFC 2131 §4.4.5 — lease-lifecycle (T1, T2, expiry)
+    # ------------------------------------------------------------
+
+    def _t1_deadline(self) -> float:
+        """
+        RFC 2131 §4.4.5 — T1 deadline (monotonic seconds): the
+        client moves BOUND → RENEWING at this time. Computed as
+        'acquired_at + lease_time × t1_factor'.
+        """
+
+        assert self._lease is not None
+        return self._lease.acquired_at_monotonic + self._lease.lease_time__sec * dhcp4__constants.DHCP4__T1_FACTOR
+
+    def _t2_deadline(self) -> float:
+        """
+        RFC 2131 §4.4.5 — T2 deadline (monotonic seconds): the
+        client moves RENEWING → REBINDING at this time. Computed
+        as 'acquired_at + lease_time × t2_factor'.
+        """
+
+        assert self._lease is not None
+        return self._lease.acquired_at_monotonic + self._lease.lease_time__sec * dhcp4__constants.DHCP4__T2_FACTOR
+
+    def _lease_expiry_deadline(self) -> float:
+        """
+        RFC 2131 §4.4.5 — lease-expiry deadline (monotonic
+        seconds): the client halts IPv4 if no ACK arrives by
+        this point. Computed as 'acquired_at + lease_time'.
+        """
+
+        assert self._lease is not None
+        return self._lease.acquired_at_monotonic + self._lease.lease_time__sec
+
+    def _do_bound(self) -> None:
+        """
+        BOUND-state handler. Checks T1; if elapsed, transitions
+        to RENEWING. Otherwise blocks on the stop event up to
+        'remaining_until_T1' so 'stop()' is responsive while the
+        thread sleeps through the lease's BOUND interval.
+
+        Reference: RFC 2131 §4.4.5 (T1 = 0.5 × lease default).
+        """
+
+        assert self._lease is not None
+        now = time.monotonic()
+        t1 = self._t1_deadline()
+        if now >= t1:
+            __debug__ and log(
+                "dhcp4",
+                f"Initiating lease renewal (T1 elapsed; lease " f"{now - self._lease.acquired_at_monotonic:.0f} s old)",
+            )
+            self._state = Dhcp4State.RENEWING
+            return
+        # Wait up to (t1 - now) for stop or for T1.
+        self._event__stop_subsystem.wait(timeout=t1 - now)
+
+    def _do_renewing(self) -> None:
+        """
+        RENEWING-state handler. Sends a unicast REQUEST to the
+        leasing server (ciaddr = current IP, no server-id /
+        requested-ip options per RFC 2131 §4.3.2 Table 4) and
+        waits for an ACK. On ACK refreshes the lease and returns
+        to BOUND. On NAK falls back to INIT. On T2 elapsed
+        without an ACK, escalates to REBINDING.
+
+        Reference: RFC 2131 §4.4.5 (RENEW: unicast REQUEST after T1).
+        """
+
+        assert self._lease is not None
+        now = time.monotonic()
+        t2 = self._t2_deadline()
+        if now >= t2:
+            __debug__ and log("dhcp4", "Lease renewal unanswered; broadcasting REBINDING REQUEST")
+            self._state = Dhcp4State.REBINDING
+            return
+
+        outcome = self._do_renew_or_rebind_exchange(broadcast=False, deadline=t2)
+        self._consume_renew_or_rebind_outcome(outcome)
+
+    def _do_rebinding(self) -> None:
+        """
+        REBINDING-state handler. Sends a broadcast REQUEST
+        (ciaddr = current IP, no server-id / requested-ip per
+        RFC 2131 §4.3.2 Table 4) and waits for an ACK from any
+        DHCP server on the segment. On ACK refreshes the lease
+        and returns to BOUND. On NAK falls back to INIT. On
+        lease-expiry without an ACK, halts IPv4 + removes the
+        host and re-enters INIT.
+
+        Reference: RFC 2131 §4.4.5 (REBIND: broadcast REQUEST after T2; lease expires → halt).
+        """
+
+        assert self._lease is not None
+        now = time.monotonic()
+        expiry = self._lease_expiry_deadline()
+        if now >= expiry:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>Lease expired; halting IPv4 (lease was " f"{self._lease.lease_time__sec} s long)</>",
+            )
+            self._halt_ipv4_and_reset_to_init()
+            return
+
+        outcome = self._do_renew_or_rebind_exchange(broadcast=True, deadline=expiry)
+        self._consume_renew_or_rebind_outcome(outcome)
+
+    def _do_renew_or_rebind_exchange(
+        self,
+        *,
+        broadcast: bool,
+        deadline: float,
+    ) -> "Dhcp4Lease | _NakRestart | None":
+        """
+        Open a one-shot socket, send one unicast (RENEW) or
+        broadcast (REBIND) REQUEST, wait for an ACK / NAK / no
+        reply, close the socket. Returns 'Dhcp4Lease' on a
+        validated ACK, '_NAK_RESTART' on NAK (caller falls back
+        to INIT), or None on timeout (caller stays in the
+        current state; the loop re-enters and rechecks the
+        time-budget).
+        """
+
+        assert self._lease is not None
+        lease = self._lease
+        xid = random.randint(0, 0xFFFFFFFF)
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        try:
+            client_socket.bind(("0.0.0.0", 68))
+            target = "255.255.255.255" if broadcast else str(lease.server_id)
+            client_socket.connect((target, 67))
+
+            def _send() -> None:
+                self._send_request_renew(
+                    client_socket,
+                    xid=xid,
+                    ciaddr=lease.ip4_host.address,
+                    broadcast=broadcast,
+                )
+
+            _send()
+            result = self._recv_with_backoff(
+                client_socket,
+                expected_type=Dhcp4MessageType.ACK,
+                xid=xid,
+                resend=_send,
+                allow_nak=True,
+            )
+        finally:
+            client_socket.close()
+
+        if isinstance(result, _NakRestart):
+            return _NAK_RESTART
+        if result is None:
+            return None
+        assert isinstance(result, Dhcp4Parser)
+
+        # Validate the ACK and build a refreshed lease.
+        if result.subnet_mask is None or result.lease_time is None:
+            __debug__ and log(
+                "dhcp4",
+                "<WARN>RENEW/REBIND ACK missing mandatory option; ignoring</>",
+            )
+            return None
+        ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
+        if result.router:
+            ip4_host.gateway = result.router[0]
+        return Dhcp4Lease(
+            ip4_host=ip4_host,
+            lease_time__sec=result.lease_time,
+            server_id=result.srv_id if result.srv_id is not None else lease.server_id,
+            acquired_at_monotonic=time.monotonic(),
+        )
+
+    def _consume_renew_or_rebind_outcome(
+        self,
+        outcome: "Dhcp4Lease | _NakRestart | None",
+        /,
+    ) -> None:
+        """
+        Apply the outcome of a RENEW or REBIND exchange. Refresh
+        the lease + return to BOUND on success; fall back to
+        INIT on NAK; stay in the current state on timeout (the
+        next loop iteration re-checks the time-budget).
+        """
+
+        if isinstance(outcome, _NakRestart):
+            __debug__ and log("dhcp4", "<WARN>DHCPNAK on RENEW/REBIND; restarting from DISCOVER</>")
+            self._reset_to_init(remove_lease_host=True)
+            return
+        if outcome is None:
+            # Timeout — stay in the current state; loop will
+            # re-enter and check T2 / lease-expiry deadlines.
+            return
+        # Successful refresh — log under the renewal channel and
+        # re-enter BOUND (no announce, no re-add via address_api
+        # — same IP, lease just extended).
+        assert isinstance(outcome, Dhcp4Lease)
+        prior = self._lease
+        assert prior is not None
+        if prior.ip4_host.address == outcome.ip4_host.address:
+            __debug__ and log(
+                "dhcp4",
+                f"<lg>Lease renewed</>: same IP retained "
+                f"(lease_time={outcome.lease_time__sec}s, "
+                f"next renewal in "
+                f"~{int(outcome.lease_time__sec * dhcp4__constants.DHCP4__T1_FACTOR)}s)",
+            )
+            self._lease = outcome
+            self._state = Dhcp4State.BOUND
+        else:
+            # Different IP — Phase 4 commit D handles
+            # 'replace_host' atomic swap. For now log and stay
+            # in the current state; commit D wires the swap.
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>RENEW returned different yiaddr "
+                f"({prior.ip4_host.address} → {outcome.ip4_host.address}); "
+                f"deferring atomic swap to Phase 4 commit D</>",
+            )
+            self._lease = outcome
+            self._state = Dhcp4State.BOUND
+
+    def _reset_to_init(self, *, remove_lease_host: bool) -> None:
+        """
+        Return the FSM to INIT after a NAK or lease-loss event.
+        Optionally remove the leased Ip4Host via the address API
+        (NAK case: the lease is invalid, abort sessions and
+        relinquish). Clears '_event__bound' so a subsequent
+        'start_and_wait_for_bind' watcher unblocks fresh on the
+        next BOUND.
+        """
+
+        if remove_lease_host and self._lease is not None and self._address_api is not None:
+            self._address_api.remove_host(
+                ip4_address=self._lease.ip4_host.address,
+            )
+        self._lease = None
+        self._state = Dhcp4State.INIT
+        self._event__bound.clear()
+
+    def _halt_ipv4_and_reset_to_init(self) -> None:
+        """
+        Lease-expiry handler: remove the address and re-enter
+        INIT. The FSM's INIT handler will then try to acquire a
+        fresh lease.
+        """
+
+        self._reset_to_init(remove_lease_host=True)
+
+    def _send_request_renew(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        ciaddr: Ip4Address,
+        broadcast: bool,
+    ) -> None:
+        """
+        Build and send a RENEWING / REBINDING DHCPREQUEST per
+        RFC 2131 §4.3.2 Table 4: 'ciaddr' = current IPv4
+        address, NO 'server identifier' option, NO 'requested
+        IP address' option. 'broadcast=False' for RENEW (unicast
+        UDP to the leasing server), True for REBIND (broadcast).
+        """
+
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=xid,
+            dhcp4__secs=self._elapsed_secs(),
+            dhcp4__flag_b=broadcast,
+            dhcp4__ciaddr=ciaddr,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.REQUEST),
+                Dhcp4OptionClientId(self._expected_client_id),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
+                    ]
+                ),
+                Dhcp4OptionHostName("PyTCP"),
+                Dhcp4OptionEnd(),
+            ),
+        )
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
 
     def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """

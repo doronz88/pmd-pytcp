@@ -1920,3 +1920,257 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             client._thread.is_alive(),
             msg="Subsystem thread must terminate cleanly after stop().",
         )
+
+
+class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
+    """
+    Phase 4 commit C — RFC 2131 §4.4.5 lease lifecycle. BOUND
+    waits until T1, then transitions to RENEWING; RENEWING sends
+    a unicast REQUEST and on ACK refreshes back to BOUND; on T2
+    elapsed without an ACK, escalates to REBINDING; on lease
+    expiry without an ACK, halts IPv4 and re-enters INIT.
+    """
+
+    @staticmethod
+    def _make_lease(*, lease_time__sec: int = 3600, acquired_at: float = 0.0) -> Dhcp4Lease:
+        """
+        Build a synthetic Dhcp4Lease for tests that drive the
+        FSM through the BOUND / RENEWING / REBINDING handlers
+        directly (no INIT-side wire exchange).
+        """
+
+        return Dhcp4Lease(
+            ip4_host=Ip4Host("10.0.0.100/24"),
+            lease_time__sec=lease_time__sec,
+            server_id=Ip4Address("10.0.0.254"),
+            acquired_at_monotonic=acquired_at,
+        )
+
+    def test__dhcp4_client__do_bound_transitions_to_renewing_when_t1_elapsed(self) -> None:
+        """
+        Ensure '_do_bound' transitions the FSM to RENEWING when
+        'time.monotonic()' has reached the T1 deadline
+        (acquired_at + lease_time × t1_factor).
+
+        Reference: RFC 2131 §4.4.5 (BOUND → RENEWING at T1 = 0.5 × lease default).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.BOUND
+
+        # Default T1 factor = 0.5; T1 deadline = 0.0 + 1800. Jump
+        # to t = 1801 (> T1) to trigger the transition.
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1801.0):
+            client._do_bound()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.RENEWING,
+            msg="BOUND → RENEWING must fire when T1 has elapsed.",
+        )
+
+    def test__dhcp4_client__do_bound_stays_bound_when_t1_not_elapsed(self) -> None:
+        """
+        Ensure '_do_bound' stays in BOUND and waits on the stop
+        event when T1 has not yet been reached.
+
+        Reference: RFC 2131 §4.4.5 (no transition until T1 elapses).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.BOUND
+
+        # T1 deadline = 1800. At t = 100, T1 has not elapsed.
+        with (
+            patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=100.0),
+            patch.object(client._event__stop_subsystem, "wait") as mock_wait,
+        ):
+            client._do_bound()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="State must remain BOUND when T1 has not elapsed.",
+        )
+        # Remaining = 1800 - 100 = 1700; verify wait called with that.
+        mock_wait.assert_called_once_with(timeout=1700.0)
+
+    def test__dhcp4_client__do_renewing_returns_to_bound_on_ack(self) -> None:
+        """
+        Ensure '_do_renewing' refreshes the lease and returns to
+        BOUND when the unicast REQUEST receives a valid ACK.
+
+        Reference: RFC 2131 §4.4.5 (RENEW ACK extends the lease in place).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.RENEWING
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
+
+        # Run at t = 1850 — past T1 (1800), before T2 (3150).
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+            client._do_renewing()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="RENEW ACK must transition the FSM back to BOUND.",
+        )
+        assert client._lease is not None
+        self.assertEqual(
+            client._lease.ip4_host.address,
+            Ip4Address("10.0.0.100"),
+            msg="Lease IP must be retained across a successful RENEW.",
+        )
+
+    def test__dhcp4_client__do_renewing_falls_back_to_init_on_nak(self) -> None:
+        """
+        Ensure '_do_renewing' returns the FSM to INIT and clears
+        the lease when the server replies with DHCPNAK.
+
+        Reference: RFC 2131 §4.4.5 (RENEW NAK → re-INIT and re-DISCOVER).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(
+            mac_address=_DEFAULT_MAC,
+            address_api=MagicMock(name="Ip4AddressApi"),
+        )
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.RENEWING
+        self._server.enqueue_nak()
+
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+            client._do_renewing()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="RENEW NAK must return the FSM to INIT.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="Lease must be cleared after a RENEW NAK.",
+        )
+
+    def test__dhcp4_client__do_renewing_escalates_to_rebinding_when_t2_elapsed(self) -> None:
+        """
+        Ensure '_do_renewing' transitions the FSM to REBINDING
+        when 'time.monotonic()' has reached the T2 deadline
+        without a successful RENEW ACK.
+
+        Reference: RFC 2131 §4.4.5 (no RENEW ACK by T2 → REBINDING).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.RENEWING
+
+        # T2 deadline = 0.0 + 3600 × 0.875 = 3150. Jump to t = 3200.
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3200.0):
+            client._do_renewing()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.REBINDING,
+            msg="RENEWING → REBINDING must fire when T2 has elapsed.",
+        )
+
+    def test__dhcp4_client__do_rebinding_returns_to_bound_on_ack(self) -> None:
+        """
+        Ensure '_do_rebinding' refreshes the lease and returns
+        to BOUND when the broadcast REQUEST receives a valid
+        ACK from any DHCP server on the segment.
+
+        Reference: RFC 2131 §4.4.5 (REBIND ACK extends the lease).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.REBINDING
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
+
+        # T2 elapsed; lease still valid (expiry = 3600). t = 3200.
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3200.0):
+            client._do_rebinding()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="REBIND ACK must transition the FSM back to BOUND.",
+        )
+
+    def test__dhcp4_client__do_rebinding_halts_ipv4_on_lease_expiry(self) -> None:
+        """
+        Ensure '_do_rebinding' halts IPv4 (removes the address
+        via the address API) and re-enters INIT when the lease
+        has expired without a successful REBIND ACK.
+
+        Reference: RFC 2131 §4.4.5 (lease expiry → halt IPv4).
+        """
+
+        mock_address_api = MagicMock(name="Ip4AddressApi")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.REBINDING
+
+        # Lease expiry = 3600. Jump to t = 3700.
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3700.0):
+            client._do_rebinding()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="Lease expiry must reset the FSM to INIT.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="Lease must be cleared on expiry.",
+        )
+        mock_address_api.remove_host.assert_called_once_with(
+            ip4_address=Ip4Address("10.0.0.100"),
+        )
+
+    def test__dhcp4_client__renewing_emits_unicast_request_with_ciaddr(self) -> None:
+        """
+        Ensure '_do_renewing' emits a DHCPREQUEST with ciaddr set
+        to the current lease's IP, no Server Identifier option,
+        and no Requested IP Address option — the canonical
+        RENEW message shape.
+
+        Reference: RFC 2131 §4.3.2 Table 4 (RENEW: server-id MUST NOT, requested-ip MUST NOT, ciaddr = current IP).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.RENEWING
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
+
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+            client._do_renewing()
+
+        renew_request = self._server.tx_log[0]
+        self.assertEqual(
+            renew_request.message_type,
+            Dhcp4MessageType.REQUEST,
+            msg="RENEW TX must be a DHCPREQUEST.",
+        )
+        self.assertEqual(
+            renew_request.ciaddr,
+            Ip4Address("10.0.0.100"),
+            msg="RENEW REQUEST must carry 'ciaddr' = the leased IP per RFC 2131 §4.3.2 Table 4.",
+        )
+        self.assertIsNone(
+            renew_request.srv_id,
+            msg="RENEW REQUEST MUST NOT carry the Server Identifier option.",
+        )
+        self.assertIsNone(
+            renew_request.req_ip_addr,
+            msg="RENEW REQUEST MUST NOT carry the Requested IP Address option.",
+        )
