@@ -20,7 +20,7 @@ RFC 4361 modernises the DHCPv4 Client Identifier (option
 DHCPv6 / RFC 3315) instead of the RFC 2131 legacy
 hardware-address form. **PyTCP uses the legacy
 MAC-based form** (`b"\x01" + bytes(mac_address)`) at
-`pytcp/lib/dhcp4_client.py:141` —
+`pytcp/protocols/dhcp4/dhcp4__client.py:141` —
 RFC 4361's MUST clauses are not implemented.
 
 Sections without normative content (§1 Introduction, §2

@@ -24,7 +24,7 @@ boilerplate, §8 Author's Address) are omitted.
 
 PyTCP's DHCPv4 implementation has grown through Phases 0–4
 into a full RFC 2131 §4.4 client. The class
-`Dhcp4Client` at `pytcp/lib/dhcp4_client.py` (1140 lines)
+`Dhcp4Client` at `pytcp/protocols/dhcp4/dhcp4__client.py` (1140 lines)
 subclasses `Subsystem` and runs as a long-lived
 background thread under `stack.start()` / `stack.stop()`.
 The FSM models INIT / SELECTING / REQUESTING / BOUND /
@@ -87,7 +87,7 @@ pass through DHCP entirely.
 >  responses to a request for configuration parameters."
 
 **Adherence:** not met. The client at
-`pytcp/lib/dhcp4_client.py:778-874` (`_discover_request_once`)
+`pytcp/protocols/dhcp4/dhcp4__client.py:778-874` (`_discover_request_once`)
 accepts the first valid DHCPOFFER returned by
 `_recv_with_backoff` and proceeds to REQUEST. There is no
 "collect offers for N seconds, pick best" loop. Linux
@@ -129,7 +129,7 @@ asserts the cookie on every inbound frame
 
 **Adherence:** met by the client. Both DISCOVER and
 REQUEST emit `Dhcp4OptionMessageType(...)` as the first
-option (`pytcp/lib/dhcp4_client.py:140`, `:194`). RX
+option (`pytcp/protocols/dhcp4/dhcp4__client.py:140`, `:194`). RX
 validation does not enforce its presence — a malformed
 inbound without Message Type would parse and surface
 `message_type = None`; the client checks for the
@@ -404,7 +404,7 @@ option at
 `net_proto/protocols/dhcp4/options/dhcp4__option__lease_time.py`
 stores `lease_time: int` as `uint32`. The PyTCP client
 surfaces the value through `Dhcp4Lease.lease_time__sec`
-(`pytcp/lib/dhcp4_client.py` `_discover_request_once`)
+(`pytcp/protocols/dhcp4/dhcp4__client.py` `_discover_request_once`)
 alongside `acquired_at_monotonic = time.monotonic()` so
 the Phase-4 lifecycle thread can schedule T1/T2 against
 absolute monotonic deadlines. The Phase-0 client now
@@ -552,7 +552,7 @@ client by `chaddr` and ciaddr, which suffices).
 >  maximum of 64 seconds."
 
 **Adherence:** met (Phase 1). `_recv_with_backoff` in
-`pytcp/lib/dhcp4_client.py` runs the canonical RFC 2131
+`pytcp/protocols/dhcp4/dhcp4__client.py` runs the canonical RFC 2131
 §4.1 backoff: initial delay 4 s, doubled on each timeout
 (8 / 16 / 32 / 64 s), capped at 64 s, jittered uniform
 ±1 s, up to 5 total recv attempts (~124 s worst-case

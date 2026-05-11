@@ -25,7 +25,7 @@ re-activate the cached lease without DHCP traffic.
 **PyTCP does not implement DNAv4** at any level:
 
 - No cached-lease state — every boot starts from INIT
-  with a fresh DHCPDISCOVER (`pytcp/lib/dhcp4_client.py:87`).
+  with a fresh DHCPDISCOVER (`pytcp/protocols/dhcp4/dhcp4__client.py:87`).
 - No INIT-REBOOT path (see [`rfc2131__dhcp`](../rfc2131__dhcp/adherence.md)
   §4.4.2 audit).
 - No unicast ARP for prior-gateway reachability check.

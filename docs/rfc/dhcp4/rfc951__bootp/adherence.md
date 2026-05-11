@@ -41,7 +41,7 @@ Implementations, §11 Author's Address) are omitted.
 >  packet is never fragmented."
 
 **Adherence:** met. PyTCP sends DHCP messages over
-UDP via the BSD-socket facade (`pytcp/lib/dhcp4_client.py:89-92`).
+UDP via the BSD-socket facade (`pytcp/protocols/dhcp4/dhcp4__client.py:89-92`).
 The minimum-MTU constraint
 `DHCP4__OPTIONS__MAX_LEN = 576 - 20 - 8 - 240 = 308`
 (`net_proto/protocols/dhcp4/options/dhcp4__options.py:85`)
@@ -63,10 +63,10 @@ which is `struct`'s network-byte-order marker.
 >  255.255.255.255."
 
 **Adherence:** met. The client binds the socket to
-`("0.0.0.0", 68)` (`pytcp/lib/dhcp4_client.py:91`)
+`("0.0.0.0", 68)` (`pytcp/protocols/dhcp4/dhcp4__client.py:91`)
 so the source IP is zero, and connects to
 `("255.255.255.255", 67)`
-(`pytcp/lib/dhcp4_client.py:92`).
+(`pytcp/protocols/dhcp4/dhcp4__client.py:92`).
 
 > "The UDP header contains source and destination port
 >  numbers. The BOOTP protocol uses two reserved port
@@ -161,7 +161,7 @@ would unpack 4 bytes as magic cookie and read garbage.
 
 **Adherence:** PyTCP relies on option (b) — broadcast
 reply. The client sets the BROADCAST flag
-(`pytcp/lib/dhcp4_client.py:137`, `:191`)
+(`pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`)
 so the server emits replies to
 255.255.255.255 / link-layer broadcast. PyTCP's UDP RX
 gate accepts unicast and broadcast destinations on the
@@ -212,12 +212,12 @@ Unused fields are zero.
 > "Set 'op' to BOOTREQUEST."
 
 **Adherence:** met
-(`pytcp/lib/dhcp4_client.py:135`, `:189`).
+(`pytcp/protocols/dhcp4/dhcp4__client.py:135`, `:189`).
 
 > "Set 'xid' to a 'random' transaction id, as discussed
 >  above."
 
-**Adherence:** met (`pytcp/lib/dhcp4_client.py:87`).
+**Adherence:** met (`pytcp/protocols/dhcp4/dhcp4__client.py:87`).
 
 > "If the client wishes to restrict booting to a
 >  particular server name, it may place a null-
@@ -239,7 +239,7 @@ on TX (assembler default).
 >  that it does know, namely 'chaddr' and 'htype'."
 
 **Adherence:** met. `chaddr=self._mac_address`
-(`pytcp/lib/dhcp4_client.py:138`, `:192`);
+(`pytcp/protocols/dhcp4/dhcp4__client.py:138`, `:192`);
 htype defaulted to ETHERNET in the dataclass
 (`dhcp4__header.py:145-147`).
 

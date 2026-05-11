@@ -25,7 +25,7 @@
 """
 This module contains tests for the 'Dhcp4Client'.
 
-pytcp/tests/unit/lib/test__lib__dhcp4_client.py
+pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py
 
 ver 3.0.4
 """
@@ -37,9 +37,9 @@ from unittest.mock import MagicMock, patch
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.lib import sysctl
-from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.subsystem import Subsystem
+from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
     autospec_dhcp4_socket,
@@ -108,7 +108,7 @@ class _Dhcp4ClientFixture(TestCase):
         """
         Stand up a 'Dhcp4MockServer' plus an autospec-locked socket
         factory whose return value is wired into the server. Patch
-        'pytcp.lib.dhcp4_client.socket' (the factory call site) and
+        'pytcp.protocols.dhcp4.dhcp4__client.socket' (the factory call site) and
         the 'log' channel for the duration of every test in the
         subclass. Disable the Phase 2.1 startup desynchronisation
         delay by default so the suite does not actually sleep 1-10 s
@@ -120,8 +120,8 @@ class _Dhcp4ClientFixture(TestCase):
         self._socket_factory = autospec_dhcp4_socket()
         self._sock = self._socket_factory.return_value
         self._server.wire(self._sock)
-        self.enterContext(patch("pytcp.lib.dhcp4_client.socket", self._socket_factory))
-        self._mock_log = self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp4.dhcp4__client.socket", self._socket_factory))
+        self._mock_log = self.enterContext(patch("pytcp.protocols.dhcp4.dhcp4__client.log"))
         # Silence the Subsystem base-class init log line (Dhcp4Client
         # inherits from Subsystem as of Phase 4 commit 0; the base
         # 'log("stack", "Initializing ...")' call would otherwise
@@ -500,7 +500,7 @@ class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ) as mock_randint:
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
@@ -522,7 +522,7 @@ class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ) as mock_randint:
             client = Dhcp4Client(mac_address=_DEFAULT_MAC)
@@ -589,7 +589,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
         self._server.enqueue_offer(xid=0x11111111)
 
         with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ):
             result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
@@ -616,7 +616,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
         self._server.enqueue_ack(xid=0x22222222)
 
         with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ):
             result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
@@ -811,7 +811,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1234.5):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1234.5):
             result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
@@ -977,7 +977,7 @@ class TestDhcp4ClientFetchBackoffBogusPacket(_Dhcp4ClientFixture):
         # Pin random.randint so we know the DISCOVER's xid is not
         # 0x11111111 — the bogus OFFER will fail the xid gate.
         with patch(
-            "pytcp.lib.dhcp4_client.random.randint",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=0xDEADBEEF,
         ):
             result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
@@ -1080,7 +1080,7 @@ class TestDhcp4ClientFetchBackoffJitter(_Dhcp4ClientFixture):
         self._server.enqueue_timeout()
 
         with patch(
-            "pytcp.lib.dhcp4_client.random.uniform",
+            "pytcp.protocols.dhcp4.dhcp4__client.random.uniform",
             return_value=0.0,
         ) as mock_uniform:
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
@@ -1114,8 +1114,8 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         with (
-            patch("pytcp.lib.dhcp4_client.random.uniform", return_value=4.2) as mock_uniform,
-            patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep,
+            patch("pytcp.protocols.dhcp4.dhcp4__client.random.uniform", return_value=4.2) as mock_uniform,
+            patch("pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep,
         ):
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
@@ -1137,8 +1137,8 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         with (
-            patch("pytcp.lib.dhcp4_client.random.uniform", return_value=1.0) as mock_uniform,
-            patch("pytcp.lib.dhcp4_client.time.sleep"),
+            patch("pytcp.protocols.dhcp4.dhcp4__client.random.uniform", return_value=1.0) as mock_uniform,
+            patch("pytcp.protocols.dhcp4.dhcp4__client.time.sleep"),
         ):
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
@@ -1163,7 +1163,7 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        with patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep:
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep:
             Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         mock_sleep.assert_not_called()
@@ -1373,7 +1373,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
 
         verifier = MagicMock(return_value=False)
 
-        with patch("pytcp.lib.dhcp4_client.time.sleep") as mock_sleep:
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep:
             Dhcp4Client(
                 mac_address=_DEFAULT_MAC,
                 arp_dad_verifier=verifier,
@@ -1961,7 +1961,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # Default T1 factor = 0.5; T1 deadline = 0.0 + 1800. Jump
         # to t = 1801 (> T1) to trigger the transition.
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1801.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1801.0):
             client._do_bound()
 
         self.assertIs(
@@ -1984,7 +1984,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # T1 deadline = 1800. At t = 100, T1 has not elapsed.
         with (
-            patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=100.0),
+            patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=100.0),
             patch.object(client._event__stop_subsystem, "wait") as mock_wait,
         ):
             client._do_bound()
@@ -2012,7 +2012,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
 
         # Run at t = 1850 — past T1 (1800), before T2 (3150).
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
             client._do_renewing()
 
         self.assertIs(
@@ -2044,7 +2044,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._state = Dhcp4State.RENEWING
         self._server.enqueue_nak()
 
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
             client._do_renewing()
 
         self.assertIs(
@@ -2071,7 +2071,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._state = Dhcp4State.RENEWING
 
         # T2 deadline = 0.0 + 3600 × 0.875 = 3150. Jump to t = 3200.
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3200.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3200.0):
             client._do_renewing()
 
         self.assertIs(
@@ -2096,7 +2096,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
 
         # T2 elapsed; lease still valid (expiry = 3600). t = 3200.
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3200.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3200.0):
             client._do_rebinding()
 
         self.assertIs(
@@ -2120,7 +2120,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._state = Dhcp4State.REBINDING
 
         # Lease expiry = 3600. Jump to t = 3700.
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=3700.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3700.0):
             client._do_rebinding()
 
         self.assertIs(
@@ -2153,7 +2153,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._state = Dhcp4State.RENEWING
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
 
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
             client._do_renewing()
 
         renew_request = self._server.tx_log[0]
@@ -2405,7 +2405,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         client._lease = self._make_lease()  # holds 10.0.0.100
         client._state = Dhcp4State.RENEWING
 
-        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
             client._do_renewing()
 
         mock_address_api.replace_host.assert_called_once()

@@ -78,7 +78,7 @@ parses into `Dhcp4OptionUnknown`.
 
 **Adherence:** not met. PyTCP's PRL contains only
 SUBNET_MASK and ROUTER
-(`pytcp/lib/dhcp4_client.py:142-147`,
+(`pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
 `:195-200`).
 
 > "In all variants of this option, the URI MUST be that

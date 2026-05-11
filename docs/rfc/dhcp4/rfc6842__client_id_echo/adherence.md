@@ -27,7 +27,7 @@ PyTCP's compliance status:
 - **Server-side requirement (MUST echo):** N/A — PyTCP
   is a DHCP client only.
 - **Client-side requirement (MUST validate echo):**
-  met (Phase 0). `pytcp/lib/dhcp4_client.py`'s
+  met (Phase 0). `pytcp/protocols/dhcp4/dhcp4__client.py`'s
   `_cid_echo_ok(...)` compares the inbound
   `client_id` against the client's locally cached
   `self._expected_client_id` and returns False on
@@ -66,7 +66,7 @@ Addresses) are omitted.
 >  the client MUST silently discard the message."
 
 **Adherence:** met. `_recv_offer` and `_recv_ack` in
-`pytcp/lib/dhcp4_client.py` both invoke
+`pytcp/protocols/dhcp4/dhcp4__client.py` both invoke
 `self._cid_echo_ok(packet)` after the message-type +
 xid checks. The helper extracts `packet.client_id`
 (surfaced by the new `Dhcp4Options.client_id`

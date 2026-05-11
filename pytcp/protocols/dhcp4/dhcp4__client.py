@@ -23,9 +23,9 @@
 
 
 """
-This module contains a simple DHCPv4 client used internally by the stack.
+This module contains the DHCPv4 client (RFC 2131 §4.4 FSM).
 
-pytcp/lib/dhcp4_client.py
+pytcp/protocols/dhcp4/dhcp4__client.py
 
 ver 3.0.4
 """

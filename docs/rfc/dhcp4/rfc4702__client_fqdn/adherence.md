@@ -26,7 +26,7 @@ and the client never emits or consumes the option.
 PyTCP does emit a Host Name option (code 12,
 `net_proto/protocols/dhcp4/options/dhcp4__option__host_name.py`)
 with the literal value "PyTCP" at
-`pytcp/lib/dhcp4_client.py:148`, `:203` —
+`pytcp/protocols/dhcp4/dhcp4__client.py:148`, `:203` —
 but option 12 carries an unqualified host name, not
 the FQDN-format option 81 with Flags/RCODE control.
 
@@ -189,7 +189,7 @@ sketch:
    to update both" — set Flags to `E=1, S=1, N=0, O=0`
    so the server handles A and PTR.
 4. Emit the option in DISCOVER and REQUEST
-   (`pytcp/lib/dhcp4_client.py:139-150`,
+   (`pytcp/protocols/dhcp4/dhcp4__client.py:139-150`,
    `:193-205`). The FQDN value would need a sysctl
    (`dhcp.fqdn`, default "pytcp" or operator-set).
 

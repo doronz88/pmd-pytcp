@@ -106,7 +106,7 @@ make this clear.)
 
 **Adherence:** met. The client emits `flag_b=True` in
 both DISCOVER and REQUEST
-(`pytcp/lib/dhcp4_client.py:137`, `:191`).
+(`pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`).
 PyTCP's UDP RX path can in principle receive unicast
 on the bound socket before the IPv4 address is fully
 configured (the socket is bound on `0.0.0.0:68`), so a
@@ -179,7 +179,7 @@ field.
 `Dhcp4Assembler` default field value at
 `net_proto/protocols/dhcp4/dhcp4__assembler.py` and the
 fact that `_send_discover` / `_send_request` at
-`pytcp/lib/dhcp4_client.py:134-151`, `:188-205`
+`pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`
 never set `dhcp4__ciaddr=...` (the default applies).
 
 > "The BOOTP server is free to assign a different IP
@@ -188,7 +188,7 @@ never set `dhcp4__ciaddr=...` (the default applies).
 >  IP address specified in 'yiaddr'."
 
 **Adherence:** met. The client always uses
-`ack.yiaddr` (`pytcp/lib/dhcp4_client.py:121`)
+`ack.yiaddr` (`pytcp/protocols/dhcp4/dhcp4__client.py:121`)
 as the assigned IPv4 address.
 
 ---
@@ -200,7 +200,7 @@ as the assigned IPv4 address.
 
 **Adherence:** met. The client never sets
 `dhcp4__giaddr=...` on outbound assemblers
-(`pytcp/lib/dhcp4_client.py:134-151`, `:188-205`);
+(`pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`);
 the assembler default of `Ip4Address()` = 0.0.0.0
 applies.
 
@@ -212,7 +212,7 @@ applies.
 
 **Adherence:** met. The client reads only `yiaddr`,
 `subnet_mask`, and `router[0]` from the ACK
-(`pytcp/lib/dhcp4_client.py:111-125`).
+(`pytcp/protocols/dhcp4/dhcp4__client.py:111-125`).
 The `giaddr` field is exposed via the parser's
 `Dhcp4HeaderProperties` but the client never reads it.
 

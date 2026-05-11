@@ -6,7 +6,7 @@
 | Plan author     | Audit pass (2026-05-11)                              |
 | Source audit    | `docs/rfc/dhcp4/rfcXXXX__*/adherence.md` (11 records)|
 | Target branch   | `PyTCP_3_0__pre_release`                             |
-| Touch points    | `pytcp/lib/dhcp4_client.py`, `net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
+| Touch points    | `pytcp/protocols/dhcp4/dhcp4__client.py`, `net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
 
 This document is the implementation plan for taking
 PyTCP's minimal one-shot DHCPv4 client to full Linux
@@ -23,7 +23,7 @@ analysis across 11 RFCs).
 
 ## 1. Goal
 
-Bring `pytcp/lib/dhcp4_client.py` (229 lines, linear
+Bring `pytcp/protocols/dhcp4/dhcp4__client.py` (229 lines, linear
 DISCOVER → OFFER → REQUEST → ACK) into compliance with
 the dominant client-relevant DHCPv4 RFCs (2131, 2132,
 4361, 3442, 4436, 6842) and partial compliance with the
@@ -124,13 +124,13 @@ run without the next.
 ### Phase 0 — Quick wins (1 commit; ~1 hour)
 
 Five tiny fixes, each gated by a single-file change in
-`pytcp/lib/dhcp4_client.py` plus minimal additions to
+`pytcp/protocols/dhcp4/dhcp4__client.py` plus minimal additions to
 the options accessor.
 
 **0.1 Client Identifier in REQUEST** (RFC 2131 §2 MUST)
 
 ```python
-# pytcp/lib/dhcp4_client.py — _send_request, ~line 195
+# pytcp/protocols/dhcp4/dhcp4__client.py — _send_request, ~line 195
 Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address)),
 ```
 
@@ -872,7 +872,7 @@ invocation per knob, classify as policy.
 
 ### Touched source files
 
-- `pytcp/lib/dhcp4_client.py` (Phases 0, 1, 2, 3,
+- `pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
   8) — every phase.
 - `pytcp/stack/packet_handler/__init__.py` (Phase 4,
   5) — replace `_create_stack_ip4_addressing` DHCP

@@ -91,7 +91,7 @@ PAD special case).
 **Adherence:** met. Same shape as Pad; the parser stops
 walking on END. Emitted as the last option of every
 DISCOVER and REQUEST
-(`pytcp/lib/dhcp4_client.py:149`, `:204`).
+(`pytcp/protocols/dhcp4/dhcp4__client.py:149`, `:204`).
 
 ---
 
@@ -104,7 +104,7 @@ DISCOVER and REQUEST
 **Adherence:** met. `Dhcp4OptionSubnetMask` at
 `options/dhcp4__option__subnet_mask.py` parses 4-byte
 mask. The client at
-`pytcp/lib/dhcp4_client.py:114-119`
+`pytcp/protocols/dhcp4/dhcp4__client.py:114-119`
 extracts `ack.subnet_mask` and requires it to be
 non-None to proceed (returns None otherwise — a
 DHCP ACK without subnet mask cannot be consumed).
@@ -132,7 +132,7 @@ accessors. Behaviour is correct regardless of order.
 **Adherence:** met. `Dhcp4OptionRouter` at
 `options/dhcp4__option__router.py` parses N×4-byte
 list. The client at
-`pytcp/lib/dhcp4_client.py:122-123`
+`pytcp/protocols/dhcp4/dhcp4__client.py:122-123`
 uses only the first router (`ack.router[0]`) as the
 default gateway — the SHOULD preference order is
 honoured implicitly.
@@ -148,7 +148,7 @@ honoured implicitly.
 **Adherence:** met. `Dhcp4OptionHostName` at
 `options/dhcp4__option__host_name.py`. The client emits
 `Dhcp4OptionHostName("PyTCP")` in both DISCOVER and
-REQUEST (`pytcp/lib/dhcp4_client.py:148`,
+REQUEST (`pytcp/protocols/dhcp4/dhcp4__client.py:148`,
 `:203`).
 
 ---
@@ -162,7 +162,7 @@ REQUEST (`pytcp/lib/dhcp4_client.py:148`,
 
 **Adherence:** met (in REQUEST only). The client emits
 `Dhcp4OptionReqIpAddr(yiaddr)` in REQUEST
-(`pytcp/lib/dhcp4_client.py:202`),
+(`pytcp/protocols/dhcp4/dhcp4__client.py:202`),
 sourced from the OFFER's `yiaddr`. PyTCP does NOT use
 this option in DISCOVER — RFC 2131 §3.5 marks it MAY
 for DISCOVER, so omission is compliant. The
@@ -185,7 +185,7 @@ for DISCOVER, so omission is compliant. The
 uint32 lease time. The client does NOT emit a
 lease-time hint (the option is absent from DISCOVER and
 REQUEST), and it does NOT consume the lease-time from
-ACK — `pytcp/lib/dhcp4_client.py:111-125`
+ACK — `pytcp/protocols/dhcp4/dhcp4__client.py:111-125`
 reads only `yiaddr`, `subnet_mask`, and `router[0]`.
 The lease is therefore effectively infinite from the
 client's perspective.
@@ -224,9 +224,9 @@ declares all 8 codepoints (DISCOVER=1 through
 INFORM=8). The `Dhcp4OptionMessageType` codec at
 `options/dhcp4__option__message_type.py` carries the
 single byte. The client emits DISCOVER and REQUEST
-(`pytcp/lib/dhcp4_client.py:140`, `:194`)
+(`pytcp/protocols/dhcp4/dhcp4__client.py:140`, `:194`)
 and accepts OFFER and ACK on RX
-(`pytcp/lib/dhcp4_client.py:167-172`,
+(`pytcp/protocols/dhcp4/dhcp4__client.py:167-172`,
 `:222-227`).
 
 DECLINE, NAK, RELEASE, INFORM message types are not
@@ -247,9 +247,9 @@ treats non-OFFER and non-ACK as errors).
 
 **Adherence:** met (for REQUEST emit). The client
 includes `Dhcp4OptionServerId(srv_id)` in REQUEST
-(`pytcp/lib/dhcp4_client.py:201`) sourced
+(`pytcp/protocols/dhcp4/dhcp4__client.py:201`) sourced
 from the OFFER's `srv_id` field
-(`pytcp/lib/dhcp4_client.py:108`). The
+(`pytcp/protocols/dhcp4/dhcp4__client.py:108`). The
 "destination address for unicast" clause is vacuous —
 PyTCP never unicasts (no RENEWING state).
 
@@ -265,7 +265,7 @@ PyTCP never unicasts (no RENEWING state).
 **Adherence:** met. The client emits
 `Dhcp4OptionParamReqList([SUBNET_MASK, ROUTER])` in
 both DISCOVER and REQUEST
-(`pytcp/lib/dhcp4_client.py:142-147`,
+(`pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
 `:195-200`). Only those two parameters are requested
 because they are the only two the client consumes; a
 richer client (with DNS / NTP / domain-name support)
@@ -284,7 +284,7 @@ would extend the list.
 
 **Adherence:** partial. The client emits the option in
 DISCOVER only
-(`pytcp/lib/dhcp4_client.py:141`) using
+(`pytcp/protocols/dhcp4/dhcp4__client.py:141`) using
 the RFC 2131 legacy form
 `b"\x01" + bytes(self._mac_address)` — type byte 0x01
 (hardware type Ethernet) followed by the 6-byte MAC.
@@ -294,7 +294,7 @@ PyTCP uses the older form. See
 for the dedicated audit.
 
 The option is OMITTED from REQUEST
-(`pytcp/lib/dhcp4_client.py:188-205`),
+(`pytcp/protocols/dhcp4/dhcp4__client.py:188-205`),
 which violates RFC 2131 §2 ("If the client uses a
 'client identifier' in one message, it MUST use that
 same identifier in all subsequent messages"). The
@@ -526,7 +526,7 @@ client-side rather than wire-format:
 
 1. **Client Identifier not echoed in REQUEST**
    (RFC 2131 §2 MUST). Single-line fix at
-   `pytcp/lib/dhcp4_client.py:193-205`:
+   `pytcp/protocols/dhcp4/dhcp4__client.py:193-205`:
    add `Dhcp4OptionClientId(b"\x01" +
    bytes(self._mac_address))` to the REQUEST options.
 

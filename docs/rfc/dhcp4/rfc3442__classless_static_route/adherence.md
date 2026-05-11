@@ -23,7 +23,7 @@ nor code 33 appears in the `Dhcp4OptionType` enum at
 `net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`.
 The client requests only `SUBNET_MASK` and `ROUTER`
 (option 3) in its Parameter Request List
-(`pytcp/lib/dhcp4_client.py:142-147`,
+(`pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
 `:195-200`).
 
 Sections without normative content (Introduction,
@@ -92,7 +92,7 @@ ROUTER (option 3); option 121 is not requested.
 
 **Adherence:** not met (but vacuous in current code).
 PyTCP's `_recv_ack` reads `ack.router[0]` unconditionally
-(`pytcp/lib/dhcp4_client.py:122-123`). If
+(`pytcp/protocols/dhcp4/dhcp4__client.py:122-123`). If
 a server returns both option 3 (Router) and option 121
 (Classless Static Routes), PyTCP would consume the
 Router option as the default gateway — this is exactly

@@ -104,7 +104,7 @@ with message-type 9 would parse the option (via
 unknown-value extension at
 `net_proto/lib/proto_enum.py`) into an "unknown"
 enum member, but the client filter at
-`pytcp/lib/dhcp4_client.py:167-172`, `:222-227`
+`pytcp/protocols/dhcp4/dhcp4__client.py:167-172`, `:222-227`
 treats unknown message types as errors and returns
 None.
 

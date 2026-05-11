@@ -310,7 +310,7 @@ path.
 ### §6.5 RFC 3315 DHCPv6 — deferred
 
 **Adherence:** deferred. PyTCP implements DHCPv4 client
-(`pytcp/lib/dhcp4_client.py`); a DHCPv6 client is a future
+(`pytcp/protocols/dhcp4/dhcp4__client.py`); a DHCPv6 client is a future
 Phase-1 item, paired with RFC 7844 anonymity profile
 support. The RFC marks DHCPv6 as SHOULD.
 
