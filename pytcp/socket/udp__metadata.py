@@ -67,7 +67,23 @@ class UdpMetadata:
 
         match self.ip__ver, self.udp__local_port, self.udp__remote_port:
             case IpVersion.IP4, 68, 67:
+                # DHCPv4 client sockets keep their local at 0.0.0.0
+                # for the whole RFC 2131 §4.4 lifecycle (see
+                # 'UdpSocket._get_ip_addresses'). The 'connect()'
+                # target varies by FSM phase:
+                #   - INIT / REBINDING: 255.255.255.255 (broadcast).
+                #   - RENEWING: server unicast (the leasing server).
+                # Both phases have to be findable by RX, so we
+                # enumerate one ID per connect-target shape.
                 return [
+                    SocketId(
+                        address_family=AddressFamily.INET4,
+                        socket_type=SocketType.DGRAM,
+                        local_address=Ip4Address(),
+                        local_port=68,
+                        remote_address=self.ip__remote_address,
+                        remote_port=67,
+                    ),  # RENEWING: unicast reply from the leasing server.
                     SocketId(
                         address_family=AddressFamily.INET4,
                         socket_type=SocketType.DGRAM,
@@ -75,7 +91,7 @@ class UdpMetadata:
                         local_port=68,
                         remote_address=Ip4Address("255.255.255.255"),
                         remote_port=67,
-                    ),  # ID for the DHCPv4 client operation.
+                    ),  # INIT / REBINDING: broadcast reply.
                 ]
             case IpVersion.IP6, 546, 547:
                 return [

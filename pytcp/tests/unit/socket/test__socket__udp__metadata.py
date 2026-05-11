@@ -50,6 +50,8 @@ class TestUdpMetadataFields(TestCase):
         Ensure 'UdpMetadata' stores every constructor argument verbatim
         and defaults 'udp__data' / 'tracker' to their documented empty
         values when omitted.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = UdpMetadata(
@@ -84,6 +86,8 @@ class TestUdpMetadataFields(TestCase):
         """
         Ensure 'UdpMetadata' is immutable so the parser -> socket
         envelope cannot be mutated mid-dispatch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = UdpMetadata(
@@ -108,6 +112,8 @@ class TestUdpMetadataSocketIdsGeneric(TestCase):
         IDs matching, in order, an exact (local, remote) socket, a
         semi-wild socket with unspecified remote, and a fully wild
         socket with unspecified local and remote.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = UdpMetadata(
@@ -154,6 +160,8 @@ class TestUdpMetadataSocketIdsGeneric(TestCase):
         Ensure a non-DHCPv6 IPv6 datagram produces the same three
         candidate shape as the IPv4 generic path, with IPv6
         unspecified addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = UdpMetadata(
@@ -204,10 +212,14 @@ class TestUdpMetadataSocketIdsDhcp(TestCase):
     def test__udp_metadata__socket_ids_dhcp4(self) -> None:
         """
         Ensure an IPv4 datagram with local port 68 and remote port 67
-        resolves to the single canonical DHCPv4 client socket ID —
-        anonymous local '0.0.0.0', broadcast remote '255.255.255.255'.
-        RFC 2131 specifies both ends run on the all-ones broadcast
-        address before the lease is granted.
+        resolves to the two canonical DHCPv4 client socket IDs — one
+        keyed on the sender's unicast address (the RENEWING-state
+        reply path) and one on the limited broadcast
+        '255.255.255.255' (the INIT and REBINDING reply paths). The
+        DHCPv4 client socket always binds to the anonymous local
+        '0.0.0.0' so both entries share that local address.
+
+        Reference: RFC 2131 §4.4.5 (RENEW unicast / REBIND broadcast).
         """
 
         md = UdpMetadata(
@@ -223,6 +235,14 @@ class TestUdpMetadataSocketIdsDhcp(TestCase):
                 socket_type=SocketType.DGRAM,
                 local_address=Ip4Address(),
                 local_port=68,
+                remote_address=Ip4Address("10.0.0.2"),
+                remote_port=67,
+            ),
+            SocketId(
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.DGRAM,
+                local_address=Ip4Address(),
+                local_port=68,
                 remote_address=Ip4Address("255.255.255.255"),
                 remote_port=67,
             ),
@@ -230,7 +250,11 @@ class TestUdpMetadataSocketIdsDhcp(TestCase):
         self.assertEqual(
             md.socket_ids,
             expected,
-            msg="UdpMetadata.socket_ids must emit the canonical DHCPv4 client ID for port 68->67 envelopes.",
+            msg=(
+                "UdpMetadata.socket_ids must emit two DHCPv4 client IDs "
+                "(sender-unicast for RENEW, '255.255.255.255' for INIT/REBIND) "
+                "for port 68->67 envelopes."
+            ),
         )
 
     def test__udp_metadata__socket_ids_dhcp6(self) -> None:
@@ -239,6 +263,8 @@ class TestUdpMetadataSocketIdsDhcp(TestCase):
         resolves to the two canonical DHCPv6 client socket IDs — one
         for each multicast group (ff02::1:2 and ff02::1:3) that
         DHCPv6 servers listen on.
+
+        Reference: RFC 8415 §7.1 (DHCPv6 multicast destinations).
         """
 
         md = UdpMetadata(
@@ -277,6 +303,8 @@ class TestUdpMetadataSocketIdsDhcp(TestCase):
         Ensure a DHCP-port pair on the wrong IP version (e.g. 68->67
         over IPv6) falls through to the generic three-candidate shape
         rather than the DHCPv4 short-circuit.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = UdpMetadata(

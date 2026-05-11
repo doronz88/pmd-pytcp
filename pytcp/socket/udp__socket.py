@@ -170,17 +170,27 @@ class UdpSocket(socket):
         local_ip_address = self._local_ip_address
 
         if local_ip_address.is_unspecified:
-            local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
+            # DHCPv4 / DHCPv6 client sockets keep their local address
+            # unspecified for the whole FSM lifetime so the RX-side
+            # 'UdpMetadata.socket_ids' special-case can find them via a
+            # single '(0.0.0.0, 68, ...)' / '(::, 546, ...)' bucket
+            # regardless of whether the client is in INIT / RENEWING /
+            # REBINDING. Calling 'pick_local_ip_address' here would
+            # latch the owned IP into the stored 'socket_id' once a
+            # lease is in place, moving the socket out of that bucket
+            # and silently dropping every RENEW / REBIND reply.
+            is_dhcp4_client = (
+                self._address_family == AddressFamily.INET4 and self._local_port == 68 and remote_address[1] == 67
+            )
+            is_dhcp6_client = (
+                self._address_family == AddressFamily.INET6 and self._local_port == 546 and remote_address[1] == 547
+            )
 
-            if local_ip_address.is_unspecified and not (
-                (
-                    self._address_family == AddressFamily.INET4 and self._local_port == 68 and remote_address[1] == 67
-                )  # The DHCPv4 client operation.
-                or (
-                    self._address_family == AddressFamily.INET6 and self._local_port == 546 and remote_address[1] == 547
-                )  # The DHCPv6 client operation.
-            ):
-                raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]")
+            if not (is_dhcp4_client or is_dhcp6_client):
+                local_ip_address = pick_local_ip_address(remote_ip_address=remote_ip_address)
+
+                if local_ip_address.is_unspecified:
+                    raise gaierror("[Errno -2] Name or service not known - [Malformed remote IP address]")
 
         return (local_ip_address, remote_ip_address)  # type: ignore[return-value]
 
