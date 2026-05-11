@@ -158,6 +158,10 @@ class Dhcp4Client:
 
         self._initial_delay()
         self._fetch_started_at_monotonic = time.monotonic()
+        __debug__ and log(
+            "dhcp4",
+            f"Starting DHCPv4 acquisition (mac={self._mac_address})",
+        )
 
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
@@ -167,10 +171,22 @@ class Dhcp4Client:
             for _ in range(dhcp4__constants.DHCP4__NAK_MAX_RESTARTS + 1):
                 outcome = self._discover_request_once(client_socket)
                 if not isinstance(outcome, _NakRestart):
+                    if isinstance(outcome, Dhcp4Lease):
+                        __debug__ and log(
+                            "dhcp4",
+                            f"<lg>Lease acquired</>: {outcome.ip4_host} "
+                            f"(lease_time={outcome.lease_time__sec}s, "
+                            f"server={outcome.server_id})",
+                        )
+                    else:
+                        __debug__ and log(
+                            "dhcp4",
+                            "<WARN>DHCPv4 acquisition failed (see earlier " "warnings for cause)</>",
+                        )
                     return outcome
             __debug__ and log(
                 "dhcp4",
-                "<WARN>DHCP NAK restart budget exhausted - giving up</>",
+                "<WARN>DHCPv4 acquisition failed: NAK restart budget " "exhausted</>",
             )
             return None
         finally:
@@ -368,6 +384,7 @@ class Dhcp4Client:
                     "<WARN>Dropping malformed inbound DHCP frame; continuing wait window</>",
                 )
                 continue
+            __debug__ and log("dhcp4", f"<lg>RX</> - {packet}")
 
             if allow_nak and packet.message_type == Dhcp4MessageType.NAK:
                 if packet.xid != xid or not self._cid_echo_ok(packet):

@@ -110,7 +110,7 @@ class _Dhcp4ClientFixture(TestCase):
         self._sock = self._socket_factory.return_value
         self._server.wire(self._sock)
         self.enterContext(patch("pytcp.lib.dhcp4_client.socket", self._socket_factory))
-        self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
+        self._mock_log = self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
         self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 0))
         self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 0))
 
@@ -1480,4 +1480,99 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
         self.assertIsNone(
             result,
             msg="OFFER echoing the legacy CID form must fail the RFC 6842 echo check and be discarded.",
+        )
+
+
+class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
+    """
+    Observability — fetch() must log both sides of the wire plus
+    lifecycle events (acquisition start, lease acquired, failure).
+    """
+
+    @staticmethod
+    def _log_messages(mock_log_call_args_list: list) -> list[str]:
+        """
+        Return every 'log("dhcp4", message)' message text from the
+        captured call_args_list, filtering out non-dhcp4 channel
+        calls.
+        """
+
+        return [
+            args[1]
+            for args, _ in ((call.args, call.kwargs) for call in mock_log_call_args_list)
+            if len(args) >= 2 and args[0] == "dhcp4"
+        ]
+
+    def test__dhcp4_client__fetch_logs_rx_line_for_offer_and_ack(self) -> None:
+        """
+        Ensure 'fetch()' emits a '<lg>RX</>' log line for the OFFER
+        and the ACK so operators see the inbound side of the
+        exchange (not just the TX side). Regression pin for the
+        Phase 1 refactor that initially dropped this line.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        rx_messages = [msg for msg in self._log_messages(self._mock_log.call_args_list) if "<lg>RX</>" in msg]
+        self.assertGreaterEqual(
+            len(rx_messages),
+            2,
+            msg=(
+                "fetch() must emit at least two '<lg>RX</>' log lines "
+                "(OFFER + ACK) so the inbound side of the exchange is "
+                "visible in the log."
+            ),
+        )
+
+    def test__dhcp4_client__fetch_logs_acquisition_start_and_lease_acquired(self) -> None:
+        """
+        Ensure 'fetch()' emits a "Starting DHCPv4 acquisition" log
+        line at the top and a "Lease acquired" log line on
+        successful return so the lifecycle is operator-visible
+        without requiring a parser-level TX/RX dump.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        messages = self._log_messages(self._mock_log.call_args_list)
+        self.assertTrue(
+            any("Starting DHCPv4 acquisition" in msg for msg in messages),
+            msg="fetch() must log a 'Starting DHCPv4 acquisition' lifecycle line.",
+        )
+        self.assertTrue(
+            any("Lease acquired" in msg for msg in messages),
+            msg="fetch() must log a 'Lease acquired' lifecycle line on success.",
+        )
+
+    def test__dhcp4_client__fetch_logs_acquisition_failure_on_none_return(self) -> None:
+        """
+        Ensure 'fetch()' emits a "DHCPv4 acquisition failed" log
+        line when the exchange fails so operators see a single
+        summary line rather than only the per-step warnings.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
+        # Server silence — fetch returns None after the single
+        # window times out.
+        self._server.enqueue_timeout()
+
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        self.assertIsNone(result)
+
+        messages = self._log_messages(self._mock_log.call_args_list)
+        self.assertTrue(
+            any("DHCPv4 acquisition failed" in msg for msg in messages),
+            msg="fetch() must log a 'DHCPv4 acquisition failed' summary line on failure.",
         )
