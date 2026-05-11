@@ -86,6 +86,15 @@ DHCP4__DECLINE_BACKOFF_MS = 10000
 # DHCPv4 message. Consumed by 'pytcp.lib.dhcp_uid.get_duid'.
 DHCP4__DUID: str = ""
 
+# Phase 4 commit B — boot-blocking wait. 'stack.start()' calls
+# 'Dhcp4Client.start_and_wait_for_bind(timeout=boot_wait_ms/1000)'
+# to block until the FSM reaches BOUND or the timeout elapses.
+# Default 30 000 ms matches Linux 'dhcpcd -t30' one-shot default.
+# On timeout, the lifecycle keeps trying in the background; boot
+# proceeds without IPv4 in the interim. Set 0 for "do not wait;
+# return immediately" (the FSM still runs in the background).
+DHCP4__BOOT_WAIT_MS = 30000
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -213,6 +222,19 @@ register(
         "colon-separated) used as the DUID portion of the "
         "Client Identifier; empty = auto-derive DUID-LL from "
         "the host MAC."
+    ),
+)
+register(
+    key="dhcp.boot_wait_ms",
+    module_name=__name__,
+    attr="DHCP4__BOOT_WAIT_MS",
+    default=DHCP4__BOOT_WAIT_MS,
+    validator=is_non_negative_int("dhcp.boot_wait_ms"),
+    description=(
+        "Boot-time wait (milliseconds) for the DHCPv4 lifecycle "
+        "to reach BOUND before proceeding without IPv4 "
+        "(default 30 000 = Linux 'dhcpcd -t30'; set 0 to skip "
+        "the boot wait entirely)."
     ),
 )
 

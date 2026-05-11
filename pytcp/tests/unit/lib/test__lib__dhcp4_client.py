@@ -1740,3 +1740,183 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             client._lease,
             msg="No lease must be recorded on INIT-handler failure.",
         )
+
+
+class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
+    """
+    Phase 4 commit B — daemon-mode BOUND wiring. On the INIT →
+    BOUND transition the lifecycle calls 'address_api.add_host',
+    invokes 'arp_dad_announcer', and signals
+    'start_and_wait_for_bind' watchers via '_event__bound'.
+    """
+
+    def test__dhcp4_client__bound_transition_invokes_address_api_add_host(self) -> None:
+        """
+        Ensure the daemon-mode INIT → BOUND transition calls
+        'address_api.add_host' with the leased Ip4Host — the
+        kernel/userspace boundary surface installs the address
+        on the stack.
+
+        Reference: RFC 2131 §4.4 (BOUND-state entry — address available for use).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        mock_address_api = MagicMock(name="Ip4AddressApi")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
+
+        client._subsystem_loop()
+
+        assert client._lease is not None
+        mock_address_api.add_host.assert_called_once_with(
+            ip4_host=client._lease.ip4_host,
+        )
+
+    def test__dhcp4_client__bound_transition_invokes_arp_dad_announcer(self) -> None:
+        """
+        Ensure the daemon-mode INIT → BOUND transition invokes
+        the 'arp_dad_announcer' callback with the leased address
+        — the gratuitous ARP Announcement loop refreshing peer
+        ARP caches.
+
+        Reference: RFC 5227 §2.3 (host MUST broadcast ANNOUNCE_NUM Announcements after a successful claim).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        announcer = MagicMock(name="arp_dad_announcer")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, arp_dad_announcer=announcer)
+
+        client._subsystem_loop()
+
+        assert client._lease is not None
+        announcer.assert_called_once_with(client._lease.ip4_host.address)
+
+    def test__dhcp4_client__bound_transition_sets_event_bound(self) -> None:
+        """
+        Ensure the daemon-mode INIT → BOUND transition sets
+        '_event__bound' so 'start_and_wait_for_bind' watchers
+        unblock immediately on a successful acquisition.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        self.assertFalse(
+            client._event__bound.is_set(),
+            msg="Pre-condition: '_event__bound' must be clear on fresh construction.",
+        )
+        client._subsystem_loop()
+
+        self.assertTrue(
+            client._event__bound.is_set(),
+            msg="INIT → BOUND transition must set '_event__bound'.",
+        )
+
+    def test__dhcp4_client__bound_transition_skips_callbacks_when_none(self) -> None:
+        """
+        Ensure the daemon-mode INIT → BOUND transition silently
+        skips the address-API and announcer calls when neither
+        callback is supplied. This is the test-default — most
+        existing tests pass no callbacks and still expect a
+        successful BOUND transition.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        client._subsystem_loop()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="State must reach BOUND even when callbacks are absent.",
+        )
+
+    def test__dhcp4_client__start_and_wait_for_bind_returns_true_on_success(self) -> None:
+        """
+        Ensure 'start_and_wait_for_bind' returns True when the
+        FSM reaches BOUND within the timeout. Spawns the
+        Subsystem thread, then waits on '_event__bound'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        try:
+            bound = client.start_and_wait_for_bind(timeout_s=2.0)
+        finally:
+            client.stop()
+
+        self.assertTrue(
+            bound,
+            msg="start_and_wait_for_bind must return True when the FSM reaches BOUND in time.",
+        )
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="Sanity: client state must be BOUND after the daemon thread completes the cycle.",
+        )
+
+    def test__dhcp4_client__start_and_wait_for_bind_returns_false_on_timeout(self) -> None:
+        """
+        Ensure 'start_and_wait_for_bind' returns False when the
+        FSM does not reach BOUND within the timeout — the
+        lifecycle keeps running in the background and the caller
+        must call 'stop()' to halt it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Server stays silent and the retransmit budget is set to
+        # 1 so the FSM gives up quickly. Even then, the failure
+        # path signals stop_event but never sets _event__bound,
+        # so the wait must time out.
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
+        self._server.enqueue_timeout()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        try:
+            bound = client.start_and_wait_for_bind(timeout_s=0.2)
+        finally:
+            client.stop()
+
+        self.assertFalse(
+            bound,
+            msg="start_and_wait_for_bind must return False on FSM-acquisition failure.",
+        )
+
+    def test__dhcp4_client__stop_joins_subsystem_thread_cleanly(self) -> None:
+        """
+        Ensure 'stop()' joins the Subsystem thread cleanly after
+        a successful BOUND — the BOUND idle handler must respect
+        the stop event.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.start_and_wait_for_bind(timeout_s=2.0)
+
+        client.stop()
+
+        self.assertTrue(
+            client._event__stop_subsystem.is_set(),
+            msg="stop() must signal the subsystem stop event.",
+        )
+        assert client._thread is not None
+        self.assertFalse(
+            client._thread.is_alive(),
+            msg="Subsystem thread must terminate cleanly after stop().",
+        )

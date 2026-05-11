@@ -31,12 +31,16 @@ ver 3.0.4
 """
 
 import random
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, override
+from typing import TYPE_CHECKING, Callable, override
 
 from net_addr import Ip4Address, Ip4Host, MacAddress
+
+if TYPE_CHECKING:
+    from pytcp.lib.address_api import Ip4AddressApi
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
@@ -153,6 +157,8 @@ class Dhcp4Client(Subsystem):
         *,
         mac_address: MacAddress,
         arp_dad_verifier: "Callable[[Ip4Address], bool] | None" = None,
+        arp_dad_announcer: "Callable[[Ip4Address], None] | None" = None,
+        address_api: "Ip4AddressApi | None" = None,
     ) -> None:
         """
         Initialize the DHCPv4 client.
@@ -161,13 +167,27 @@ class Dhcp4Client(Subsystem):
         the offered 'yiaddr' after a valid ACK; on False, the
         INIT-state handler emits DHCPDECLINE per RFC 2131 §3.1
         step 5 and restarts from DISCOVER. The packet handler
-        wires this to its RFC 5227 §2.1.1 probe loop; tests pass
-        a 'MagicMock'.
+        wires this to its RFC 5227 §2.1.1 probe loop.
+
+        The optional 'arp_dad_announcer' callback is invoked on
+        BOUND transition (daemon mode only) to emit the RFC 5227
+        §2.3 ANNOUNCE_NUM gratuitous ARP Announcements that
+        refresh peer ARP caches. The packet handler wires this to
+        '_arp_dad_announce_address'.
+
+        The optional 'address_api' is the kernel/userspace
+        boundary surface (Phase-3 north-star); on BOUND transition
+        (daemon mode only) the lifecycle calls
+        'address_api.add_host(...)' to install the leased
+        Ip4Host on the stack's address list. Sync 'fetch()' does
+        not touch the API — the caller owns the returned lease.
         """
 
         super().__init__(info=str(mac_address))
         self._mac_address = mac_address
         self._arp_dad_verifier = arp_dad_verifier
+        self._arp_dad_announcer = arp_dad_announcer
+        self._address_api = address_api
         # Set at the top of '_do_init_to_bound'; reused by every
         # outbound TX in this acquisition cycle to populate the
         # DHCP header 'secs' field per RFC 1542 §3.2.
@@ -179,6 +199,10 @@ class Dhcp4Client(Subsystem):
         # BOUND transition; sync 'fetch()' returns it directly
         # without writing to this attribute.
         self._lease: Dhcp4Lease | None = None
+        # Signalled by the daemon-mode INIT handler on BOUND
+        # transition. 'start_and_wait_for_bind' blocks on this
+        # event up to the boot-wait timeout.
+        self._event__bound: threading.Event = threading.Event()
 
     @property
     def _expected_client_id(self) -> bytes:
@@ -210,19 +234,22 @@ class Dhcp4Client(Subsystem):
         iteration per call. The 'Subsystem' base class loop wraps
         this in 'while not stop_event'.
 
-        Commit-0 scope: INIT runs '_do_init_to_bound' and
-        transitions to BOUND or terminates on failure. The
-        BOUND/RENEWING/REBINDING handlers are stubs that idle
-        on the stop event for 1 s per iteration; Phase 4
-        commits C/D wire the timer logic and wire exchanges.
+        Commit-B scope: INIT runs '_do_init_to_bound', installs
+        the lease on the stack via 'address_api.add_host', emits
+        the RFC 5227 §2.3 announcements via the
+        'arp_dad_announcer' callback, signals
+        'self._event__bound', and transitions to BOUND. The
+        BOUND/RENEWING/REBINDING handlers idle on the stop
+        event; Phase 4 commits C/D wire the timer-driven
+        transitions and the RENEW/REBIND/RELEASE wire
+        exchanges.
         """
 
         match self._state:
             case Dhcp4State.INIT:
                 lease = self._do_init_to_bound()
                 if lease is not None:
-                    self._lease = lease
-                    self._state = Dhcp4State.BOUND
+                    self._on_bound(lease)
                 else:
                     # Phase 4 follow-up: retry policy. For now,
                     # signal stop to avoid a tight retry loop.
@@ -232,6 +259,38 @@ class Dhcp4Client(Subsystem):
                 # implement timer-driven transitions. Idle on
                 # stop event so 'stop()' is responsive.
                 self._event__stop_subsystem.wait(timeout=1.0)
+
+    def _on_bound(self, lease: Dhcp4Lease, /) -> None:
+        """
+        Transition to BOUND: install the lease's Ip4Host via the
+        address API, emit RFC 5227 §2.3 gratuitous ARP
+        Announcements via the announcer callback, and signal
+        'start_and_wait_for_bind' watchers via the
+        'self._event__bound' event.
+        """
+
+        self._lease = lease
+        if self._address_api is not None:
+            self._address_api.add_host(ip4_host=lease.ip4_host)
+        if self._arp_dad_announcer is not None:
+            self._arp_dad_announcer(lease.ip4_host.address)
+        self._state = Dhcp4State.BOUND
+        self._event__bound.set()
+
+    def start_and_wait_for_bind(self, *, timeout_s: float) -> bool:
+        """
+        Spawn the Subsystem thread and block up to 'timeout_s'
+        seconds for the FSM to reach BOUND. Returns True if BOUND
+        was reached, False on timeout (the FSM keeps running in
+        the background regardless).
+
+        Mirrors Linux 'dhcpcd -t<n>' one-shot boot-blocking
+        semantics. 'stack.start()' calls this with
+        'dhcp.boot_wait_ms / 1000' as the timeout.
+        """
+
+        self.start()
+        return self._event__bound.wait(timeout=timeout_s)
 
     def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """

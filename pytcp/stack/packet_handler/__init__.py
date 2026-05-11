@@ -52,7 +52,6 @@ from net_addr import (
 from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType, Icmp6NdRoutePreference
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
-from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
@@ -1832,37 +1831,22 @@ class PacketHandlerL2(
         """
         Create lists of IPv4 unicast, multicast and broadcast addresses stack
         should listen on.
+
+        Handles statically configured candidates only. As of Phase 4
+        commit B, the DHCPv4 path is owned by 'stack.dhcp4_client'
+        (a 'Subsystem' that 'stack.start()' brings up after the
+        packet handler) — the lifecycle calls
+        'stack.address.add_host(...)' on its BOUND transition; this
+        method is not the integration point for that.
         """
 
-        # If there are no statically configured IPv4 addresses try
-        # to acquire one using DHCP. The DHCP client runs its own
-        # RFC 5227 §2.1.1 probe via the 'arp_dad_verifier' callback
-        # so it can emit DHCPDECLINE per RFC 2131 §3.1 step 5 on
-        # conflict; the address it returns is already DAD-verified.
-        dhcp_verified_address: Ip4Address | None = None
-        if not self._ip4_host_candidate:
-            if self._ip4_dhcp:
-                lease = Dhcp4Client(
-                    mac_address=self._mac_unicast,
-                    arp_dad_verifier=self._arp_dad_probe_address,
-                ).fetch()
-                if lease is not None:
-                    self._ip4_host_candidate.append(lease.ip4_host)
-                    dhcp_verified_address = lease.ip4_host.address
-
-        # Probe each remaining candidate sequentially. The DHCP-
-        # leased address (if any) skips re-DAD — re-running the
-        # probe loop here would risk dropping the address without
-        # the DECLINE-and-restart semantics Dhcp4Client provides.
-        # Each candidate stays in '_ip4_host_candidate' until its
-        # probe loop completes so the ARP RX path can match the
-        # address against the candidate list when scoring inbound
-        # conflicts (see 'packet_handler__arp__rx').
+        # Probe each candidate sequentially. Each candidate stays in
+        # '_ip4_host_candidate' until its probe loop completes so the
+        # ARP RX path can match the address against the candidate
+        # list when scoring inbound conflicts (see
+        # 'packet_handler__arp__rx').
         for ip4_host in list(self._ip4_host_candidate):
-            if ip4_host.address == dhcp_verified_address:
-                verified = True
-            else:
-                verified = self._arp_dad_probe_address(ip4_host.address)
+            verified = self._arp_dad_probe_address(ip4_host.address)
             self._ip4_host_candidate.remove(ip4_host)
             if verified:
                 # Phase 4 commit A — install via the Address API
@@ -1882,12 +1866,16 @@ class PacketHandlerL2(
                     f"<WARN>Unable to claim IPv4 address {ip4_host.address}</>",
                 )
 
-        # If don't have any IPv4 address assigned disable IPv4 protocol
-        # operations.
-        if not self._ip4_host:
+        # If we have no statically configured IPv4 host AND DHCP is
+        # not running, disable IPv4 outright. When DHCP IS running,
+        # 'stack.start()' blocks on
+        # 'dhcp4_client.start_and_wait_for_bind(...)' AFTER this
+        # method returns, so '_ip4_host' may still populate via the
+        # Address API before any IPv4 application traffic flows.
+        if not self._ip4_host and not self._ip4_dhcp:
             __debug__ and log(
                 "stack",
-                "<WARN>Unable to assign any IPv4 address, disabling IPv4 " "protocol</>",
+                "<WARN>No statically configured IPv4 address and DHCP " "disabled; disabling IPv4 protocol</>",
             )
             self._ip4_support = False
 

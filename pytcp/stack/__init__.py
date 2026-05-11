@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.address_api import Ip4AddressApi
+from pytcp.lib.dhcp4_client import Dhcp4Client
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
@@ -203,6 +204,11 @@ packet_handler: PacketHandlerL2 | PacketHandlerL3
 # / 'RTM_DELADDR' semantics. Set in 'init()' / 'mock__init()' after
 # 'packet_handler' is constructed.
 address: Ip4AddressApi
+# Phase 4 commit B — DHCPv4 client subsystem. Constructed by
+# 'init()' iff 'ip4_dhcp=True' on an L2 interface; spawned as a
+# background thread by 'start()'; joined by 'stop()'. None on L3
+# (TUN, no MAC) or when DHCP is disabled.
+dhcp4_client: Dhcp4Client | None = None
 
 # Stack shared data.
 stack_initialized: bool = False
@@ -293,12 +299,13 @@ def mock__init(
     mock__nd_cache: NdCache | None = None,
     mock__packet_handler: PacketHandlerL2 | None = None,
     mock__address: Ip4AddressApi | None = None,
+    mock__dhcp4_client: Dhcp4Client | None = None,
 ) -> None:
     """
     Initialize stack components for unit testing.
     """
 
-    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address
+    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address, dhcp4_client
 
     if mock__timer is not None:
         timer = mock__timer
@@ -326,6 +333,11 @@ def mock__init(
         address = mock__address
     elif mock__packet_handler is not None:
         address = Ip4AddressApi(packet_handler=mock__packet_handler)
+
+    # Phase 4 commit B — DHCPv4 lifecycle. Default to None unless
+    # the harness explicitly opts in; existing tests (NetworkTestCase
+    # et al.) don't exercise the lifecycle and don't need a fake.
+    dhcp4_client = mock__dhcp4_client
 
 
 def init(
@@ -427,6 +439,23 @@ def init(
     global address
     address = Ip4AddressApi(packet_handler=packet_handler)
 
+    # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
+    # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
+    # cannot do DHCP). Wired with the packet handler's RFC 5227 §2.1.1
+    # probe loop and §2.3 announce loop as callbacks so the lifecycle
+    # never reaches into 'packet_handler' internals directly.
+    global dhcp4_client
+    if ip4_dhcp and layer is InterfaceLayer.L2:
+        assert isinstance(packet_handler, PacketHandlerL2)
+        dhcp4_client = Dhcp4Client(
+            mac_address=packet_handler._mac_unicast,
+            arp_dad_verifier=packet_handler._arp_dad_probe_address,
+            arp_dad_announcer=packet_handler._arp_dad_announce_address,
+            address_api=address,
+        )
+    else:
+        dhcp4_client = None
+
     interface_mtu = mtu
     stack_initialized = True
 
@@ -446,6 +475,26 @@ def start() -> None:
     rx_ring.start()
     packet_handler.start()
 
+    # Phase 4 commit B — DHCPv4 lifecycle. Start AFTER the packet
+    # handler so the TX/RX/socket plumbing is live; block up to
+    # 'dhcp.boot_wait_ms' for the FSM to reach BOUND. On timeout
+    # the lifecycle keeps trying in the background; boot proceeds
+    # without IPv4 for now.
+    if dhcp4_client is not None:
+        from pytcp.protocols.dhcp4 import dhcp4__constants
+
+        boot_wait_s = dhcp4__constants.DHCP4__BOOT_WAIT_MS / 1000.0
+        bound = dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
+        if bound:
+            __debug__ and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
+        else:
+            __debug__ and log(
+                "stack",
+                f"<WARN>DHCPv4 lifecycle did not reach BOUND within "
+                f"{boot_wait_s:.1f}s; proceeding without IPv4 (lifecycle "
+                f"continues in background)</>",
+            )
+
 
 def stop() -> None:
     """
@@ -455,6 +504,9 @@ def stop() -> None:
     assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
     # Teardown order:
+    #   0. dhcp4_client    — stop the DHCPv4 lifecycle FIRST so any
+    #                        in-flight RENEW/REBIND/RELEASE work
+    #                        completes against still-live sockets.
     #   1. packet_handler  — stop application-side TX producers.
     #   2. timer           — stop periodic callbacks (TCP RTO,
     #                        persist, keep-alive, delayed-ACK) so
@@ -462,6 +514,8 @@ def stop() -> None:
     #   3. rx_ring         — stop kernel reads.
     #   4. tx_ring         — drain anything still queued + stop.
     #   5. arp_cache / nd_cache — stop cache-refresh threads.
+    if dhcp4_client is not None:
+        dhcp4_client.stop()
     packet_handler.stop()
     timer.stop()
     rx_ring.stop()
