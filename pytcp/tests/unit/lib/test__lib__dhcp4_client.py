@@ -37,8 +37,9 @@ from unittest.mock import MagicMock, patch
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.lib import sysctl
-from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease
+from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.lib.dhcp_uid import build_client_id
+from pytcp.lib.subsystem import Subsystem
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
     autospec_dhcp4_socket,
@@ -53,6 +54,16 @@ class TestDhcp4ClientInit(TestCase):
     """
     The 'Dhcp4Client' constructor tests.
     """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the Subsystem base-class init log line so the
+        constructor tests do not leak '<stack> Initializing
+        DHCP4 Client' to stdout under the default LOG__CHANNEL.
+        """
+
+        self.enterContext(patch("pytcp.lib.subsystem.log"))
 
     def test__dhcp4_client__init_stores_mac_address(self) -> None:
         """
@@ -111,6 +122,11 @@ class _Dhcp4ClientFixture(TestCase):
         self._server.wire(self._sock)
         self.enterContext(patch("pytcp.lib.dhcp4_client.socket", self._socket_factory))
         self._mock_log = self.enterContext(patch("pytcp.lib.dhcp4_client.log"))
+        # Silence the Subsystem base-class init log line (Dhcp4Client
+        # inherits from Subsystem as of Phase 4 commit 0; the base
+        # 'log("stack", "Initializing ...")' call would otherwise
+        # leak to stdout under the default 'LOG__CHANNEL' set).
+        self.enterContext(patch("pytcp.lib.subsystem.log"))
         self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 0))
         self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 0))
 
@@ -1575,4 +1591,152 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
         self.assertTrue(
             any("DHCPv4 acquisition failed" in msg for msg in messages),
             msg="fetch() must log a 'DHCPv4 acquisition failed' summary line on failure.",
+        )
+
+
+class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
+    """
+    Phase 4 commit 0 — 'Dhcp4Client' is now a 'Subsystem' subclass
+    with an explicit RFC 2131 §4.4 FSM ('Dhcp4State'). The sync
+    'fetch()' path runs '_do_init_to_bound' inline; the daemon
+    path drives '_subsystem_loop' under the Subsystem-base
+    thread. This test class pins the scaffolding shape — the
+    full INIT/RENEW/REBIND/RELEASE wiring lands in Phase 4
+    commits B/C/D.
+    """
+
+    def test__dhcp4_client__is_subsystem_subclass(self) -> None:
+        """
+        Ensure 'Dhcp4Client' inherits from 'Subsystem' so it can
+        be installed as a long-running thread under the stack
+        lifecycle ('stack.start()' / 'stack.stop()').
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertTrue(
+            issubclass(Dhcp4Client, Subsystem),
+            msg="Dhcp4Client must inherit from Subsystem for daemon-mode operation.",
+        )
+
+    def test__dhcp4_client__initial_state_is_init(self) -> None:
+        """
+        Ensure a freshly-constructed 'Dhcp4Client' starts in the
+        'INIT' FSM state — the entry state in the client
+        state-transition diagram.
+
+        Reference: RFC 2131 §4.4 (Figure 5 client state-transition diagram — INIT is the entry state).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="A freshly-constructed Dhcp4Client must start in the INIT state.",
+        )
+
+    def test__dhcp4_client__initial_lease_is_none(self) -> None:
+        """
+        Ensure a freshly-constructed 'Dhcp4Client' has no lease —
+        the lease attribute is populated only when the daemon
+        FSM reaches BOUND.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        self.assertIsNone(
+            client._lease,
+            msg="Dhcp4Client._lease must be None until the FSM reaches BOUND.",
+        )
+
+    def test__dhcp4_client__sync_fetch_does_not_mutate_state_or_lease(self) -> None:
+        """
+        Ensure sync 'fetch()' does NOT update the client's
+        internal FSM state or '_lease' attribute. Sync mode is
+        deliberately stateless from the FSM POV — the caller
+        receives the lease as the return value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        result = client.fetch()
+
+        self.assertIsInstance(
+            result,
+            Dhcp4Lease,
+            msg="Sanity: fetch() must still return the lease in commit 0.",
+        )
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="Sync fetch() must NOT mutate the FSM state — it remains INIT.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="Sync fetch() must NOT populate _lease — the caller owns the returned lease.",
+        )
+
+    def test__dhcp4_client__subsystem_loop_init_transitions_to_bound_on_success(self) -> None:
+        """
+        Ensure one '_subsystem_loop' iteration starting in INIT
+        runs the wire exchange and transitions to BOUND, storing
+        the lease on '_lease', when the exchange succeeds.
+
+        Reference: RFC 2131 §4.4 (INIT → SELECTING → REQUESTING → BOUND on successful ACK).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        client._subsystem_loop()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="Daemon-mode INIT handler must transition to BOUND on successful lease acquisition.",
+        )
+        self.assertIsInstance(
+            client._lease,
+            Dhcp4Lease,
+            msg="Daemon-mode INIT handler must store the acquired lease on _lease.",
+        )
+
+    def test__dhcp4_client__subsystem_loop_init_signals_stop_on_failure(self) -> None:
+        """
+        Ensure one '_subsystem_loop' iteration starting in INIT
+        signals the subsystem stop event when the wire exchange
+        fails — Phase 4 commit B will replace this with a retry
+        policy, but commit 0 must not spin in a tight
+        failure-then-fail-again loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
+        # Server is silent on the first attempt → fetch returns None.
+        self._server.enqueue_timeout()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        client._subsystem_loop()
+
+        self.assertTrue(
+            client._event__stop_subsystem.is_set(),
+            msg="Commit-0 INIT-failure path must signal the subsystem stop event.",
+        )
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="State must remain INIT (no BOUND transition) on failure.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="No lease must be recorded on INIT-handler failure.",
         )

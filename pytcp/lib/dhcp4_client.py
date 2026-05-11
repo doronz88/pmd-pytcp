@@ -33,7 +33,8 @@ ver 3.0.4
 import random
 import time
 from dataclasses import dataclass
-from typing import Callable
+from enum import Enum
+from typing import Callable, override
 
 from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
@@ -68,6 +69,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.logger import log
+from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.dhcp4 import dhcp4__constants
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
@@ -75,6 +77,24 @@ from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 # since-acquisition seconds at UINT16_MAX so a long-lived restart
 # loop cannot overflow.
 _DHCP4__SECS_MAX: int = 0xFFFF
+
+
+class Dhcp4State(Enum):
+    """
+    RFC 2131 §4.4 DHCPv4 client FSM states. Driven by
+    'Dhcp4Client._subsystem_loop' when the client runs as a
+    daemon ('start()' / 'stop()'); irrelevant in sync mode
+    where 'fetch()' runs INIT → BOUND inline and returns.
+    """
+
+    INIT = "INIT"
+    INIT_REBOOT = "INIT-REBOOT"
+    SELECTING = "SELECTING"
+    REQUESTING = "REQUESTING"
+    REBOOTING = "REBOOTING"
+    BOUND = "BOUND"
+    RENEWING = "RENEWING"
+    REBINDING = "REBINDING"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -101,10 +121,32 @@ class _NakRestart:
 _NAK_RESTART: _NakRestart = _NakRestart()
 
 
-class Dhcp4Client:
+class Dhcp4Client(Subsystem):
     """
-    The DHCPv4 client.
+    DHCPv4 client — RFC 2131 §4.4 FSM body.
+
+    Two invocation modes:
+
+      - Sync: 'Dhcp4Client(...).fetch()' runs one INIT → BOUND
+        cycle inline in the caller's thread, returns the lease,
+        tears down. The 'Subsystem' machinery is not engaged —
+        no thread spawned, no '_state' mutation. Used by tests
+        and operator CLI tools.
+      - Daemon: 'Dhcp4Client(...).start()' spawns the Subsystem
+        thread which drives '_subsystem_loop' through the full
+        FSM (INIT → SELECTING → REQUESTING → BOUND → RENEWING
+        → REBINDING → ...). Used by 'stack.start()' in
+        production.
+
+    The two modes share '_do_init_to_bound' — the INIT-side wire
+    exchange.
+
+    The FSM-driven RENEW/REBIND/expiry/RELEASE handlers and the
+    'address_api' integration are stubs in this commit; Phase 4
+    follow-ups wire them in.
     """
+
+    _subsystem_name = "DHCP4 Client"
 
     def __init__(
         self,
@@ -116,18 +158,27 @@ class Dhcp4Client:
         Initialize the DHCPv4 client.
 
         The optional 'arp_dad_verifier' callback is invoked against
-        the offered 'yiaddr' after a valid ACK; on False, 'fetch()'
-        emits DHCPDECLINE per RFC 2131 §3.1 step 5 and restarts
-        from DISCOVER. The packet handler wires this to its RFC 5227
-        §2.1.1 probe loop; tests pass a 'MagicMock'.
+        the offered 'yiaddr' after a valid ACK; on False, the
+        INIT-state handler emits DHCPDECLINE per RFC 2131 §3.1
+        step 5 and restarts from DISCOVER. The packet handler
+        wires this to its RFC 5227 §2.1.1 probe loop; tests pass
+        a 'MagicMock'.
         """
 
+        super().__init__(info=str(mac_address))
         self._mac_address = mac_address
         self._arp_dad_verifier = arp_dad_verifier
-        # Set at the top of 'fetch()'; reused by every outbound TX in
-        # this acquisition cycle to populate the DHCP header 'secs'
-        # field per RFC 1542 §3.2.
+        # Set at the top of '_do_init_to_bound'; reused by every
+        # outbound TX in this acquisition cycle to populate the
+        # DHCP header 'secs' field per RFC 1542 §3.2.
         self._fetch_started_at_monotonic: float = 0.0
+        # FSM state — driven by '_subsystem_loop' in daemon mode;
+        # untouched by sync 'fetch()'.
+        self._state: Dhcp4State = Dhcp4State.INIT
+        # Current lease — set by daemon-mode INIT handler on
+        # BOUND transition; sync 'fetch()' returns it directly
+        # without writing to this attribute.
+        self._lease: Dhcp4Lease | None = None
 
     @property
     def _expected_client_id(self) -> bytes:
@@ -141,19 +192,65 @@ class Dhcp4Client:
 
     def fetch(self) -> Dhcp4Lease | None:
         """
-        Run the DHCPv4 DISCOVER/REQUEST handshake and return the lease.
+        Synchronous DHCPv4 acquisition — runs one INIT → BOUND
+        cycle inline and returns the resulting lease (or None on
+        failure). Does not spawn the Subsystem thread; does not
+        mutate the FSM state; does not call into the address API.
+
+        Equivalent to Linux's 'dhcpcd -1' / 'dhclient -1' one-shot
+        flag. Production code uses 'start()' / 'stop()' instead.
+        """
+
+        return self._do_init_to_bound()
+
+    @override
+    def _subsystem_loop(self) -> None:
+        """
+        Daemon-mode FSM driver. Dispatches on '_state'; one
+        iteration per call. The 'Subsystem' base class loop wraps
+        this in 'while not stop_event'.
+
+        Commit-0 scope: INIT runs '_do_init_to_bound' and
+        transitions to BOUND or terminates on failure. The
+        BOUND/RENEWING/REBINDING handlers are stubs that idle
+        on the stop event for 1 s per iteration; Phase 4
+        commits C/D wire the timer logic and wire exchanges.
+        """
+
+        match self._state:
+            case Dhcp4State.INIT:
+                lease = self._do_init_to_bound()
+                if lease is not None:
+                    self._lease = lease
+                    self._state = Dhcp4State.BOUND
+                else:
+                    # Phase 4 follow-up: retry policy. For now,
+                    # signal stop to avoid a tight retry loop.
+                    self._event__stop_subsystem.set()
+            case _:
+                # BOUND / RENEWING / REBINDING — Commit C/D
+                # implement timer-driven transitions. Idle on
+                # stop event so 'stop()' is responsive.
+                self._event__stop_subsystem.wait(timeout=1.0)
+
+    def _do_init_to_bound(self) -> Dhcp4Lease | None:
+        """
+        Run one INIT → SELECTING → REQUESTING → BOUND cycle.
+        Shared by sync 'fetch()' and daemon-mode
+        '_subsystem_loop' INIT handler.
 
         Begins with an RFC 2131 §4.4.1 startup desynchronisation
         delay (random uniform in 'dhcp.init_delay_{min,max}_ms')
-        so a fleet of hosts powered on simultaneously does not all
-        DISCOVER at the same instant. The delay is bypassed entirely
-        when both bounds are 0 — the canonical disable-for-tests
-        configuration.
+        so a fleet of hosts powered on simultaneously does not
+        all DISCOVER at the same instant. The delay is bypassed
+        entirely when both bounds are 0 — the canonical
+        disable-for-tests configuration.
 
         On a DHCPNAK to the REQUEST, restart from DISCOVER up to
-        'dhcp.nak_max_restarts' times before giving up. Every recv
-        wait runs under the RFC 2131 §4.1 retransmission backoff
-        (initial / max / attempts / jitter all sysctl-tunable).
+        'dhcp.nak_max_restarts' times before giving up. Every
+        recv wait runs under the RFC 2131 §4.1 retransmission
+        backoff (initial / max / attempts / jitter all
+        sysctl-tunable).
         """
 
         self._initial_delay()
