@@ -116,6 +116,28 @@ DHCP4__T2_FACTOR: float = 0.875
 # timeouts fire.
 DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE = 1
 
+# Phase 5 — RFC 2131 §3.2 / §4.4.2 cached-lease persistence.
+# When set to a non-empty filesystem path, 'Dhcp4Client'
+# serialises every BOUND lease to this file (JSON, atomic
+# rename) and consults it on startup; if the cached lease is
+# still within its 'lease_time' the client begins in
+# INIT-REBOOT and broadcasts a single REQUEST that asks the
+# server to re-confirm the prior IP. Empty string = "in-memory
+# only; never persist". The canonical Linux default would be
+# '/var/lib/pytcp/dhcp4_lease', but PyTCP defaults to empty
+# so out-of-the-box behaviour does not silently touch disk.
+DHCP4__LEASE_CACHE_PATH: str = ""
+
+# Phase 5 — RFC 2131 §4.4.2 "If the client receives neither a
+# DHCPACK nor a DHCPNAK message after 60 seconds / 4 tries,
+# the client MAY choose to use the previously allocated
+# network address and configuration parameters for the
+# remainder of the unexpired lease." PyTCP reuses the Phase 1
+# retransmission backoff for the recv loop and bounds it to
+# this many attempts; on exhaustion the cached lease is
+# adopted as-is and the FSM transitions to BOUND.
+DHCP4__REBOOT_MAX_ATTEMPTS = 4
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -281,6 +303,48 @@ register(
         "RFC 2131 §4.4.5 — fraction of the lease duration at which "
         "the client escalates to REBINDING (broadcast REQUEST). "
         "Default 0.875; must be ≥ 'dhcp.t1_factor'."
+    ),
+)
+
+
+def _is_string(name: str) -> Callable[[object], None]:
+    """
+    Build a validator that accepts any string (including empty).
+    Reserved for sysctls whose value is a filesystem path or
+    other opaque text consumed by their reader; no further
+    structural check is appropriate here because the consumer
+    surfaces a clearer error on first use.
+    """
+
+    def validator(value: object) -> None:
+        if not isinstance(value, str):
+            raise ValueError(f"sysctl {name!r} must be a string; got {type(value).__name__}")
+
+    return validator
+
+
+register(
+    key="dhcp.lease_cache_path",
+    module_name=__name__,
+    attr="DHCP4__LEASE_CACHE_PATH",
+    default=DHCP4__LEASE_CACHE_PATH,
+    validator=_is_string("dhcp.lease_cache_path"),
+    description=(
+        "RFC 2131 §3.2 / §4.4.2 — filesystem path for the cached "
+        "DHCPv4 lease (JSON, atomic rename). Empty = in-memory only; "
+        "never persist."
+    ),
+)
+register(
+    key="dhcp.reboot_max_attempts",
+    module_name=__name__,
+    attr="DHCP4__REBOOT_MAX_ATTEMPTS",
+    default=DHCP4__REBOOT_MAX_ATTEMPTS,
+    validator=is_positive_int("dhcp.reboot_max_attempts"),
+    description=(
+        "RFC 2131 §4.4.2 — recv attempts for the INIT-REBOOT REQUEST "
+        "before adopting the cached lease as-is (default 4 ≈ 60 s "
+        "via the Phase 1 backoff)."
     ),
 )
 

@@ -56,13 +56,14 @@ is comprehensive — full BOOTP-shape header, 13+ option
 codecs, integrity-validated parser — and every paragraph
 about message format is met.
 
-Outstanding gaps against RFC 2131 §4.4: INIT-REBOOT /
-REBOOTING for cached-lease fast-boot (Phase 5); multiple-
-OFFER collection window (single-OFFER accept-first
-heuristic); server option 58 (T1) / option 59 (T2)
-overrides (parsed as `Dhcp4OptionUnknown` today, factor-
-based defaults always win); DHCPINFORM (no consumer);
-Maximum DHCP Message Size option 57 (Phase 8).
+Outstanding gaps against RFC 2131 §4.4: multiple-OFFER
+collection window (single-OFFER accept-first heuristic);
+server option 58 (T1) / option 59 (T2) overrides (parsed
+as `Dhcp4OptionUnknown` today, factor-based defaults
+always win); DHCPINFORM (no consumer); Maximum DHCP
+Message Size option 57 (Phase 8). The Phase 5 cached-
+lease / INIT-REBOOT fast-path is now shipped — see
+§3.2, §4.4.2, and the closing summary.
 
 ---
 
@@ -386,10 +387,23 @@ equivalent).
 >  choose to omit some of the steps described in the
 >  previous section."
 
-**Adherence:** not implemented. PyTCP has no
-persistent storage for prior leases — every fetch
-starts from INIT (DISCOVER → REQUEST → ACK). The
-INIT-REBOOT shortcut is absent.
+**Adherence:** met (Phase 5). When the
+`dhcp.lease_cache_path` sysctl is set to a non-empty
+filesystem path, `Dhcp4Client._on_bound` serialises
+the active lease to JSON (atomic write via
+`tempfile.mkstemp` + `os.replace`) at
+`pytcp/protocols/dhcp4/dhcp4__lease_cache.py:88-122`.
+The constructor at
+`pytcp/protocols/dhcp4/dhcp4__client.py:160-243` reads
+the cache; if a still-valid lease is present (wall-
+clock age < lease_time), the FSM starts in INIT-REBOOT
+instead of INIT — skipping DISCOVER/OFFER and going
+straight to a server-confirming REQUEST. The cache is
+purged on every NAK / lease-expiry path so a
+subsequently-invalidated lease does not feed a
+broken-boot loop. Default `dhcp.lease_cache_path = ""`
+means out-of-the-box PyTCP does not touch disk; the
+operator opts in.
 
 ---
 
@@ -632,7 +646,7 @@ text in §4.3 has no audit surface.
 
 | State       | Mode      | server-id | requested-ip | ciaddr     | PyTCP                                |
 |-------------|-----------|-----------|--------------|------------|--------------------------------------|
-| INIT-REBOOT | broadcast | MUST NOT  | MUST         | zero       | not implemented (Phase 5)            |
+| INIT-REBOOT | broadcast | MUST NOT  | MUST         | zero       | met (Phase 5 — `:608-768`)           |
 | SELECTING   | broadcast | MUST      | MUST         | zero       | met (`dhcp4_client.py:1031-1065`)    |
 | RENEWING    | unicast   | MUST NOT  | MUST NOT     | IP address | met (Phase 4 commit C — `:570-607`)  |
 | REBINDING   | broadcast | MUST NOT  | MUST NOT     | IP address | met (Phase 4 commit C — `:570-607`)  |
@@ -657,24 +671,24 @@ row (Phase 5).
 all eight Figure-5 states. The `_subsystem_loop`
 dispatch at `:231-267` maps them to handlers:
 
-| Figure-5 state | PyTCP handler                                     |
-|----------------|---------------------------------------------------|
-| INIT           | `_do_init_to_bound` (`:722-776`)                  |
-| SELECTING      | implicit inside `_discover_request_once` (`:778`) |
-| REQUESTING     | implicit inside `_discover_request_once` (`:778`) |
-| BOUND          | `_do_bound` (`:335-356`)                          |
-| RENEWING       | `_do_renewing` (`:358-379`)                       |
-| REBINDING      | `_do_rebinding` (`:381-406`)                      |
-| INIT-REBOOT    | not implemented (Phase 5)                         |
-| REBOOTING      | not implemented (Phase 5)                         |
+| Figure-5 state | PyTCP handler                                              |
+|----------------|------------------------------------------------------------|
+| INIT           | `_do_init_to_bound`                                        |
+| SELECTING      | implicit inside `_discover_request_once`                   |
+| REQUESTING     | implicit inside `_discover_request_once`                   |
+| BOUND          | `_do_bound`                                                |
+| RENEWING       | `_do_renewing`                                             |
+| REBINDING      | `_do_rebinding`                                            |
+| INIT-REBOOT    | `_do_init_reboot` (Phase 5)                                |
+| REBOOTING      | implicit inside `_do_init_reboot` (synchronous wire leg)   |
 
-SELECTING and REQUESTING are not first-class FSM states
-in PyTCP because they correspond to a single synchronous
-wire exchange inside `_discover_request_once`. INIT-REBOOT
-/ REBOOTING require cached-lease persistence (Phase 5).
-NAK is handled by an explicit restart loop in
-`_do_init_to_bound` (see §3.1 step 4 above), bounded by
-`DHCP4__NAK_MAX_RESTARTS`.
+SELECTING / REQUESTING / REBOOTING are not first-class
+FSM states in PyTCP because each corresponds to a single
+synchronous wire exchange inside its parent handler
+(`_discover_request_once` for SELECTING/REQUESTING;
+`_do_init_reboot` for REBOOTING). NAK is handled by an
+explicit restart loop in `_do_init_to_bound` (see §3.1
+step 4 above), bounded by `DHCP4__NAK_MAX_RESTARTS`.
 
 ---
 
@@ -789,8 +803,59 @@ the user-visible behaviour matches the SHOULD.
 >  include a 'server identifier' in the DHCPREQUEST
 >  message."
 
-**Adherence:** not implemented. PyTCP does not cache
-prior leases, so INIT-REBOOT is never entered.
+**Adherence:** met (Phase 5). `_send_request_init_reboot`
+builds the REQUEST with `ciaddr=0` (assembler default),
+`dhcp4__flag_b=True` (BROADCAST set so the server can
+reply before the client has bound the cached IP),
+`Dhcp4OptionReqIpAddr(cached IP)` (option 50; the MUST),
+NO `Dhcp4OptionServerId(...)` (the MUST NOT), and the
+Param Request List + Client Identifier + End shared
+with every other TX. The FSM driver is `_do_init_reboot`
+in `dhcp4__client.py:608-768`.
+
+> "If the client receives a DHCPACK message ... the
+>  client SHOULD perform a final check on the parameters
+>  ... If the parameters are acceptable, the client
+>  transitions to BOUND state ..."
+
+**Adherence:** met (Phase 5). On ACK, `_do_init_reboot`
+constructs a refreshed `Dhcp4Lease` from the ACK's
+`yiaddr` / `subnet_mask` / `router` / `srv_id` /
+`lease_time` and calls `_on_bound(refreshed)` which
+installs the address via the address API, writes the
+cache, and signals `_event__bound`.
+
+> "If the client receives a DHCPNAK message, it cannot
+>  reuse its remembered network address. It must
+>  instead request a new address by restarting the
+>  configuration process ..."
+
+**Adherence:** met (Phase 5). On NAK,
+`_do_init_reboot` calls
+`_reset_to_init(remove_lease_host=True)` which (a)
+removes the cached address via the address API (where
+the lifecycle owns one), (b) deletes the on-disk cache
+file via `delete_cached_lease(...)` so the next boot
+will not retry INIT-REBOOT on the invalidated address,
+and (c) sets `_state = Dhcp4State.INIT`. The next
+`_subsystem_loop` iteration runs `_do_init_to_bound`.
+
+> "If the client receives neither a DHCPACK nor a
+>  DHCPNAK message after employing the retransmission
+>  algorithm, the client MAY choose to use the
+>  previously allocated network address and
+>  configuration parameters for the remainder of the
+>  unexpired lease."
+
+**Adherence:** met (Phase 5 — MAY taken). On a silent
+server, `_do_init_reboot` calls `_on_bound(cached)` —
+adopting the cached lease as-is. The cache reader
+anchors `acquired_at_monotonic` against the wall-clock
+age, so T1 / T2 / lease-expiry deadlines line up with
+the original acquisition time. Operators who deliberately
+set `dhcp.lease_cache_path` have opted into fast-boot
+semantics; the silent-server case is the path where the
+cache pays off.
 
 ---
 
@@ -1125,12 +1190,44 @@ is expected from the server.
 
 **Status:** locked in (post-Phase-4 RX-path fix).
 
-### §4.4 — INIT-REBOOT (Phase 5)
+### §3.2 / §4.4.2 — INIT-REBOOT + cached lease (Phase 5)
 
-**No test surface — gap not yet closed.** When Phase 5
-ships, the natural integration test brings up the stack
-twice with a cached prior lease and asserts the second
-boot sends `REQUEST` with the prior IP, not `DISCOVER`.
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
+  - `TestDhcp4LeaseCacheRoundTrip` — write-then-read
+    round-trips the address / mask / gateway / server-
+    id / lease-time fields; gateway=None survives the
+    JSON null serialisation.
+  - `TestDhcp4LeaseCacheReadFailures` — defensive read
+    returns None on missing file, empty path, malformed
+    JSON, unknown version, expired lease, missing fields,
+    non-object root.
+  - `TestDhcp4LeaseCacheWriteSemantics` — empty path is
+    a no-op; second write replaces prior content.
+  - `TestDhcp4LeaseCacheDelete` — delete removes existing
+    file; missing-file and empty-path are silent no-ops.
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientInitReboot`
+  - `init_starts_in_init_when_no_cache` — empty cache
+    path → INIT, no preloaded lease.
+  - `init_starts_in_init_reboot_when_cache_present`
+    — valid cached lease → INIT-REBOOT, lease preloaded.
+  - `do_init_reboot_emits_request_with_cached_ip` — TX
+    wire shape: REQUEST, ciaddr=0, req_ip=cached,
+    no server-id, BROADCAST set.
+  - `do_init_reboot_transitions_to_bound_on_ack` — ACK
+    refreshes lease, FSM → BOUND.
+  - `do_init_reboot_falls_back_to_init_on_nak` — NAK
+    invalidates cache (delete called), FSM → INIT.
+  - `do_init_reboot_adopts_cached_on_timeout` — silent
+    server → BOUND with the cached lease (RFC 2131
+    §4.4.2 last-paragraph MAY).
+  - `on_bound_writes_cache_when_path_set` — every BOUND
+    transition writes the cache.
+  - `reset_to_init_with_remove_lease_host_deletes_cache`
+    — NAK / expiry paths invalidate the cache.
+
+**Status:** locked in (Phase 5).
 
 ### Test coverage summary
 
@@ -1148,7 +1245,8 @@ boot sends `REQUEST` with the prior IP, not `DISCOVER`.
 | Initial random delay (RFC 2131 §4.4.1, 1-10 s)      | locked in (Phase 2.1 — `TestDhcp4ClientFetchInitialDelay`)         |
 | Initial-delay sysctls (defaults, validators)        | locked in (Phase 2.1 — `test__dhcp4__constants.py`)                |
 | FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
-| FSM state INIT-REBOOT                               | not tested — gap (Phase 5)                                         |
+| FSM state INIT-REBOOT (cached-lease fast-path)      | locked in (Phase 5 — `TestDhcp4ClientInitReboot`)                  |
+| Lease cache (round-trip + defensive reads)          | locked in (Phase 5 — `test__dhcp4__lease_cache.py`, 14 tests)      |
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
 | DHCPRELEASE on shutdown                             | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | Sync release / renew / rebind public surface        | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
@@ -1180,7 +1278,7 @@ boot sends `REQUEST` with the prior IP, not `DISCOVER`.
 | RFC 1542 §3.2 secs field advances across retransmissions| met (Phase 1)                                    |
 | Initial random delay (1–10 s)                           | met (Phase 2.1)                                  |
 | FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)                           |
-| FSM (INIT-REBOOT / REBOOTING)                           | not implemented (Phase 5)                        |
+| FSM (INIT-REBOOT / REBOOTING) + cached-lease fast-path  | met (Phase 5)                                    |
 | T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)                           |
 | Server option 58 (T1) / option 59 (T2) overrides        | not implemented (codec parses; accessor pending) |
 | RENEW unicast wire path                                 | met (Phase 4 commit C + post-fix RX lookup)      |
@@ -1192,7 +1290,7 @@ boot sends `REQUEST` with the prior IP, not `DISCOVER`.
 | DHCPINFORM                                              | not implemented                                  |
 | xid match validation on inbound messages                | met (Phase 0)                                    |
 | Lease Time surfaced + ACK-without-Lease-Time rejected   | met (Phase 0)                                    |
-| INIT-REBOOT (cached prior lease)                        | not implemented (Phase 5)                        |
+| INIT-REBOOT (cached prior lease)                        | met (Phase 5)                                    |
 | Unicast-to-known-server optimisation                    | partial (RENEW unicasts; INFORM/REQUEST do not)  |
 | 'Maximum DHCP message size' option (57)                 | not implemented (Phase 8)                        |
 | 'Option overload' option (52)                           | not implemented (Phase 8)                        |
@@ -1248,10 +1346,24 @@ consecutive RENEWs at the 1800 s T1 boundary all
 received an ACK and logged `Lease renewed: same IP
 retained`.
 
+**Phase 5 — cached-lease INIT-REBOOT fast-path (shipped).**
+`Dhcp4Client.__init__` consults
+`dhcp.lease_cache_path`; if a valid lease is on disk
+(wall-clock age < lease_time) the FSM starts in
+INIT-REBOOT. `_do_init_reboot` broadcasts a single
+REQUEST asking the server to re-confirm the cached IP
+(ciaddr=0, requested-ip=cached, no server-id), then
+transitions to BOUND on ACK / falls back to INIT on
+NAK / adopts the cached lease on silent-server timeout
+per the §4.4.2 last-paragraph MAY. The cache is written
+on every BOUND transition (atomic JSON via
+`tempfile.mkstemp` + `os.replace`) and invalidated on
+every NAK / lease-expiry path. Default
+`dhcp.lease_cache_path = ""` means out-of-the-box PyTCP
+does not touch disk; operators opt in.
+
 Remaining items in the per-RFC adherence catalogue:
 
-- **§4.4.2 INIT-REBOOT / REBOOTING (cached prior lease)**
-  — Phase 5 (cached-lease persistence prerequisite).
 - **Server option 58 (T1) / option 59 (T2) overrides**
   — codec parses them as `Dhcp4OptionUnknown`; a
   follow-up will add typed accessors and prefer server

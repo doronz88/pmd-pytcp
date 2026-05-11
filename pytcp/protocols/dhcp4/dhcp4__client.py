@@ -75,6 +75,11 @@ from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.dhcp4 import dhcp4__constants
+from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
+    delete_cached_lease,
+    read_cached_lease,
+    write_cached_lease,
+)
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
 # 'secs' is a 16-bit field in the DHCP header; cap the elapsed-
@@ -192,17 +197,36 @@ class Dhcp4Client(Subsystem):
         # outbound TX in this acquisition cycle to populate the
         # DHCP header 'secs' field per RFC 1542 §3.2.
         self._fetch_started_at_monotonic: float = 0.0
-        # FSM state — driven by '_subsystem_loop' in daemon mode;
-        # untouched by sync 'fetch()'.
-        self._state: Dhcp4State = Dhcp4State.INIT
-        # Current lease — set by daemon-mode INIT handler on
-        # BOUND transition; sync 'fetch()' returns it directly
-        # without writing to this attribute.
+        # Current lease — set on BOUND transition; sync 'fetch()'
+        # returns it directly without writing to this attribute.
         self._lease: Dhcp4Lease | None = None
         # Signalled by the daemon-mode INIT handler on BOUND
         # transition. 'start_and_wait_for_bind' blocks on this
         # event up to the boot-wait timeout.
         self._event__bound: threading.Event = threading.Event()
+
+        # Phase 5 — RFC 2131 §4.4.2 INIT-REBOOT cached-lease
+        # fast-path. If a cached lease is on disk and still
+        # within its 'lease_time', start the FSM in INIT-REBOOT
+        # so the first wire emission is a unicast-on-server-id-
+        # less REQUEST asking for the cached IP, not a fresh
+        # DISCOVER. The cache is consulted only when the path
+        # sysctl is non-empty.
+        cached = read_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH)
+        if cached is not None:
+            __debug__ and log(
+                "dhcp4",
+                f"<lg>Found cached lease</>: {cached.ip4_host} "
+                f"(server={cached.server_id}, "
+                f"lease_time={cached.lease_time__sec}s); "
+                f"starting in INIT-REBOOT",
+            )
+            self._lease = cached
+            self._state: Dhcp4State = Dhcp4State.INIT_REBOOT
+        else:
+            # FSM state — driven by '_subsystem_loop' in daemon
+            # mode; untouched by sync 'fetch()'.
+            self._state = Dhcp4State.INIT
 
     @property
     def _expected_client_id(self) -> bytes:
@@ -254,6 +278,8 @@ class Dhcp4Client(Subsystem):
                     # Phase 4 follow-up: retry policy. For now,
                     # signal stop to avoid a tight retry loop.
                     self._event__stop_subsystem.set()
+            case Dhcp4State.INIT_REBOOT:
+                self._do_init_reboot()
             case Dhcp4State.BOUND:
                 self._do_bound()
             case Dhcp4State.RENEWING:
@@ -261,18 +287,21 @@ class Dhcp4Client(Subsystem):
             case Dhcp4State.REBINDING:
                 self._do_rebinding()
             case _:
-                # INIT-REBOOT / SELECTING / REQUESTING / REBOOTING
-                # — not yet exercised in commit C. Idle on stop
-                # event so 'stop()' is responsive.
+                # SELECTING / REQUESTING / REBOOTING — collapsed
+                # into the synchronous wire exchanges inside
+                # '_do_init_to_bound' / '_do_init_reboot' so the
+                # FSM never observes them as separate states.
+                # Idle on stop event so 'stop()' is responsive.
                 self._event__stop_subsystem.wait(timeout=1.0)
 
     def _on_bound(self, lease: Dhcp4Lease, /) -> None:
         """
         Transition to BOUND: install the lease's Ip4Host via the
         address API, emit RFC 5227 §2.3 gratuitous ARP
-        Announcements via the announcer callback, and signal
-        'start_and_wait_for_bind' watchers via the
-        'self._event__bound' event.
+        Announcements via the announcer callback, persist the
+        lease to disk for the next boot's INIT-REBOOT fast-path
+        (Phase 5), and signal 'start_and_wait_for_bind' watchers
+        via the 'self._event__bound' event.
         """
 
         self._lease = lease
@@ -280,6 +309,7 @@ class Dhcp4Client(Subsystem):
             self._address_api.add_host(ip4_host=lease.ip4_host)
         if self._arp_dad_announcer is not None:
             self._arp_dad_announcer(lease.ip4_host.address)
+        write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
         self._state = Dhcp4State.BOUND
         self._event__bound.set()
 
@@ -554,6 +584,14 @@ class Dhcp4Client(Subsystem):
                     dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                 ),
             )
+        # Phase 5 — purge the on-disk lease cache so the next
+        # boot does not try INIT-REBOOT on an invalidated
+        # lease. Always invalidate on the NAK / expiry paths,
+        # regardless of whether the address was removed (a
+        # server NAK invalidates the prior IP irrespective of
+        # whether sync-mode fetch() owned the address).
+        if remove_lease_host:
+            delete_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH)
         self._lease = None
         self._state = Dhcp4State.INIT
         self._event__bound.clear()
@@ -566,6 +604,158 @@ class Dhcp4Client(Subsystem):
         """
 
         self._reset_to_init(remove_lease_host=True)
+
+    # ------------------------------------------------------------
+    # RFC 2131 §4.4.2 INIT-REBOOT (Phase 5)
+    # ------------------------------------------------------------
+
+    def _do_init_reboot(self) -> None:
+        """
+        INIT-REBOOT-state handler. Opens a one-shot UDP socket,
+        broadcasts a REQUEST asking the leasing server to
+        re-confirm the cached IP per RFC 2131 §4.3.2 Table 4
+        (ciaddr=0, requested-ip=cached, NO server-id), waits for
+        the ACK / NAK / timeout. On ACK transitions to BOUND with
+        the server-confirmed lease. On NAK invalidates the cache
+        and falls back to INIT (§4.4.2 second-to-last paragraph).
+        On timeout (60 s / 4 tries default), MAY adopt the cached
+        lease as-is per the §4.4.2 last paragraph; PyTCP takes
+        the MAY since the operator's deliberate '_lease_cache_path'
+        setting signals they want fast boot even when the server
+        is unreachable.
+        """
+
+        assert self._lease is not None, "INIT-REBOOT entered without a cached lease"
+        cached = self._lease
+
+        xid = random.randint(0, 0xFFFFFFFF)
+        self._fetch_started_at_monotonic = time.monotonic()
+        __debug__ and log(
+            "dhcp4",
+            f"INIT-REBOOT: requesting cached {cached.ip4_host.address}",
+        )
+
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        try:
+            client_socket.bind(("0.0.0.0", 68))
+            client_socket.connect(("255.255.255.255", 67))
+
+            def _send() -> None:
+                self._send_request_init_reboot(
+                    client_socket,
+                    xid=xid,
+                    requested_ip=cached.ip4_host.address,
+                )
+
+            _send()
+            # Phase 5: clamp the recv attempts to
+            # 'dhcp.reboot_max_attempts' (default 4) so the
+            # INIT-REBOOT window stays close to the RFC's 60-
+            # second budget regardless of how the operator has
+            # tuned the standard retransmission budget.
+            attempts_prior = dhcp4__constants.DHCP4__RETRANS_MAX_ATTEMPTS
+            from pytcp.lib import sysctl as sysctl_module
+
+            with sysctl_module.override(
+                "dhcp.retrans_max_attempts",
+                min(attempts_prior, dhcp4__constants.DHCP4__REBOOT_MAX_ATTEMPTS),
+            ):
+                result = self._recv_with_backoff(
+                    client_socket,
+                    expected_type=Dhcp4MessageType.ACK,
+                    xid=xid,
+                    resend=_send,
+                    allow_nak=True,
+                )
+        finally:
+            client_socket.close()
+
+        if isinstance(result, _NakRestart):
+            __debug__ and log(
+                "dhcp4",
+                "<WARN>INIT-REBOOT NAK; falling back to DISCOVER</>",
+            )
+            self._reset_to_init(remove_lease_host=True)
+            return
+
+        if result is None:
+            # RFC 2131 §4.4.2 last paragraph MAY — adopt the
+            # cached lease as-is. The lease's
+            # 'acquired_at_monotonic' was anchored against the
+            # cache's wall-clock age, so the T1/T2/expiry
+            # deadlines still line up with the original
+            # acquisition time.
+            __debug__ and log(
+                "dhcp4",
+                f"<lg>INIT-REBOOT silent server; adopting cached lease "
+                f"{cached.ip4_host} as-is (RFC 2131 §4.4.2 MAY)</>",
+            )
+            self._on_bound(cached)
+            return
+
+        assert isinstance(result, Dhcp4Parser)
+        if result.subnet_mask is None or result.lease_time is None:
+            __debug__ and log(
+                "dhcp4",
+                "<WARN>INIT-REBOOT ACK missing mandatory option; " "falling back to DISCOVER</>",
+            )
+            self._reset_to_init(remove_lease_host=True)
+            return
+
+        ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
+        if result.router:
+            ip4_host.gateway = result.router[0]
+        refreshed = Dhcp4Lease(
+            ip4_host=ip4_host,
+            lease_time__sec=result.lease_time,
+            server_id=(result.srv_id if result.srv_id is not None else cached.server_id),
+            acquired_at_monotonic=time.monotonic(),
+        )
+        __debug__ and log(
+            "dhcp4",
+            f"<lg>INIT-REBOOT confirmed</>: {refreshed.ip4_host} "
+            f"(lease_time={refreshed.lease_time__sec}s, "
+            f"server={refreshed.server_id})",
+        )
+        self._on_bound(refreshed)
+
+    def _send_request_init_reboot(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        requested_ip: Ip4Address,
+    ) -> None:
+        """
+        Build and send the INIT-REBOOT DHCPREQUEST per RFC 2131
+        §4.3.2 Table 4 — ciaddr=0, requested-ip=cached IP, NO
+        server-id, broadcast flag set so the server can reply
+        even though the client has not yet bound the cached
+        address on its IPv4 stack.
+        """
+
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=xid,
+            dhcp4__secs=self._elapsed_secs(),
+            dhcp4__flag_b=True,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.REQUEST),
+                Dhcp4OptionClientId(self._expected_client_id),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
+                    ]
+                ),
+                Dhcp4OptionReqIpAddr(requested_ip),
+                Dhcp4OptionHostName("PyTCP"),
+                Dhcp4OptionEnd(),
+            ),
+        )
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
 
     def _send_request_renew(
         self,

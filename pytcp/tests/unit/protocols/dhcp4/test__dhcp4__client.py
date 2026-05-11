@@ -2449,3 +2449,289 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             ip4_address=Ip4Address("10.0.0.100"),
             abort_bound_sessions=False,
         )
+
+
+class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
+    """
+    Phase 5 — RFC 2131 §4.4.2 INIT-REBOOT cached-lease fast-path.
+    The constructor consults 'dhcp.lease_cache_path'; if a valid
+    lease is on disk the FSM starts in INIT-REBOOT and broadcasts
+    a REQUEST asking the server to re-confirm the cached IP.
+    """
+
+    @staticmethod
+    def _cached_lease(
+        *,
+        address: str = "192.168.1.145",
+        lease_time__sec: int = 3600,
+    ) -> Dhcp4Lease:
+        """
+        Build a synthetic Dhcp4Lease for the INIT-REBOOT tests.
+        Defaults match a typical residential DHCP scenario.
+        """
+
+        ip4_host = Ip4Host((Ip4Address(address), Ip4Mask("255.255.255.0")))
+        ip4_host.gateway = Ip4Address("192.168.1.1")
+        return Dhcp4Lease(
+            ip4_host=ip4_host,
+            lease_time__sec=lease_time__sec,
+            server_id=Ip4Address("192.168.1.1"),
+            acquired_at_monotonic=0.0,
+        )
+
+    def test__dhcp4_client__init_starts_in_init_when_no_cache(self) -> None:
+        """
+        Ensure the constructor starts the FSM in INIT when the
+        cache path is empty (the sysctl default) or the file is
+        missing.
+
+        Reference: RFC 2131 §4.4 (INIT is the default start state).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="Empty cache path must start the FSM in INIT.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="No cache means no preloaded lease.",
+        )
+
+    def test__dhcp4_client__init_starts_in_init_reboot_when_cache_present(self) -> None:
+        """
+        Ensure the constructor reads the cached lease and starts
+        the FSM in INIT-REBOOT when 'dhcp.lease_cache_path' is
+        non-empty AND the cache file contains a still-valid lease.
+
+        Reference: RFC 2131 §4.4.2 (cached lease enters INIT-REBOOT).
+        """
+
+        cached = self._cached_lease()
+        mock_read = MagicMock(return_value=cached)
+        self.enterContext(
+            patch(
+                "pytcp.protocols.dhcp4.dhcp4__client.read_cached_lease",
+                mock_read,
+            )
+        )
+        self.enterContext(sysctl.override("dhcp.lease_cache_path", "/tmp/dhcp4_lease"))
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        mock_read.assert_called_once_with("/tmp/dhcp4_lease")
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT_REBOOT,
+            msg="Valid cached lease must start the FSM in INIT-REBOOT.",
+        )
+        self.assertIs(
+            client._lease,
+            cached,
+            msg="The cached lease must be preloaded on the client.",
+        )
+
+    def test__dhcp4_client__do_init_reboot_emits_request_with_cached_ip(self) -> None:
+        """
+        Ensure '_do_init_reboot' emits a DHCPREQUEST whose
+        'requested-ip' option carries the cached IP, ciaddr is 0,
+        the BROADCAST flag is set, and no 'server identifier'
+        option is included — the Table 4 INIT-REBOOT row.
+
+        Reference: RFC 2131 §4.3.2 Table 4 (INIT-REBOOT row).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._cached_lease()
+        client._state = Dhcp4State.INIT_REBOOT
+        self._server.enqueue_ack(yiaddr=Ip4Address("192.168.1.145"))
+
+        client._do_init_reboot()
+
+        # The first server-captured TX is the INIT-REBOOT REQUEST.
+        self.assertGreaterEqual(
+            len(self._server.tx_log),
+            1,
+            msg="At least one DHCPREQUEST must reach the server.",
+        )
+        reboot_req = self._server.tx_log[0]
+        self.assertIs(
+            reboot_req.message_type,
+            Dhcp4MessageType.REQUEST,
+            msg="INIT-REBOOT TX must carry message-type=REQUEST.",
+        )
+        self.assertEqual(
+            reboot_req.ciaddr,
+            Ip4Address("0.0.0.0"),
+            msg="INIT-REBOOT ciaddr must be 0 (RFC 2131 §4.3.2 Table 4).",
+        )
+        self.assertEqual(
+            reboot_req.req_ip_addr,
+            Ip4Address("192.168.1.145"),
+            msg="INIT-REBOOT requested-ip option must echo the cached IP.",
+        )
+        self.assertIsNone(
+            reboot_req.srv_id,
+            msg="INIT-REBOOT must NOT include the server-identifier option.",
+        )
+        self.assertTrue(
+            reboot_req.flag_b,
+            msg="INIT-REBOOT BROADCAST flag must be set (host has not yet bound the cached IP).",
+        )
+
+    def test__dhcp4_client__do_init_reboot_transitions_to_bound_on_ack(self) -> None:
+        """
+        Ensure a valid ACK to the INIT-REBOOT REQUEST refreshes
+        the lease and transitions the FSM to BOUND.
+
+        Reference: RFC 2131 §4.4.2 (ACK confirms the remembered address).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._cached_lease()
+        client._state = Dhcp4State.INIT_REBOOT
+        self._server.enqueue_ack(
+            yiaddr=Ip4Address("192.168.1.145"),
+            lease_time=7200,  # Server may extend the lease.
+        )
+
+        client._do_init_reboot()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="ACK on INIT-REBOOT must transition the FSM to BOUND.",
+        )
+        assert client._lease is not None
+        self.assertEqual(
+            client._lease.lease_time__sec,
+            7200,
+            msg="BOUND lease must carry the server-supplied (refreshed) lease_time.",
+        )
+
+    def test__dhcp4_client__do_init_reboot_falls_back_to_init_on_nak(self) -> None:
+        """
+        Ensure a DHCPNAK on the INIT-REBOOT REQUEST invalidates
+        the cached lease and falls back to INIT. The cache file
+        is deleted so the next boot does not retry INIT-REBOOT
+        on the invalidated address.
+
+        Reference: RFC 2131 §4.4.2 (NAK requires full DISCOVER restart).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        mock_delete = MagicMock()
+        self.enterContext(
+            patch(
+                "pytcp.protocols.dhcp4.dhcp4__client.delete_cached_lease",
+                mock_delete,
+            )
+        )
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._cached_lease()
+        client._state = Dhcp4State.INIT_REBOOT
+        self._server.enqueue_nak()
+
+        client._do_init_reboot()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="NAK on INIT-REBOOT must fall back to INIT.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="NAK must clear the cached lease.",
+        )
+        mock_delete.assert_called()
+
+    def test__dhcp4_client__do_init_reboot_adopts_cached_on_timeout(self) -> None:
+        """
+        Ensure that when no ACK or NAK arrives within the bounded
+        recv window, '_do_init_reboot' adopts the cached lease as
+        the BOUND lease — the "use the previously allocated network
+        address and configuration parameters" MAY. Operators who
+        set 'dhcp.lease_cache_path' have opted into fast-boot
+        semantics; the silent-server case is the path where the
+        cache pays off.
+
+        Reference: RFC 2131 §4.4.2 (MAY use prior lease on 60 s / 4 tries timeout).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        # Speed up the test — 1 ms windows × 1 attempt instead of
+        # the production 4 s × 4.
+        self.enterContext(sysctl.override("dhcp.retrans_initial_ms", 1))
+        self.enterContext(sysctl.override("dhcp.retrans_max_ms", 1))
+        self.enterContext(sysctl.override("dhcp.reboot_max_attempts", 1))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        cached = self._cached_lease()
+        client._lease = cached
+        client._state = Dhcp4State.INIT_REBOOT
+        # Server queue empty → server silent → timeout.
+
+        client._do_init_reboot()
+
+        self.assertIs(
+            client._state,
+            Dhcp4State.BOUND,
+            msg="Silent server on INIT-REBOOT must adopt the cached lease (RFC 2131 §4.4.2 MAY).",
+        )
+        self.assertIs(
+            client._lease,
+            cached,
+            msg="The adopted lease must be the cached one (no server override).",
+        )
+
+    def test__dhcp4_client__on_bound_writes_cache_when_path_set(self) -> None:
+        """
+        Ensure '_on_bound' calls 'write_cached_lease' with the
+        configured cache path on every BOUND transition so the
+        next boot's INIT-REBOOT fast-path has a fresh cache to
+        consume.
+
+        Reference: RFC 2131 §3.2 (remembering the prior lease).
+        """
+
+        mock_write = MagicMock()
+        self.enterContext(
+            patch(
+                "pytcp.protocols.dhcp4.dhcp4__client.write_cached_lease",
+                mock_write,
+            )
+        )
+        self.enterContext(sysctl.override("dhcp.lease_cache_path", "/tmp/dhcp4_lease"))
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        new_lease = self._cached_lease()
+        client._on_bound(new_lease)
+
+        mock_write.assert_called_once_with("/tmp/dhcp4_lease", new_lease)
+
+    def test__dhcp4_client__reset_to_init_with_remove_lease_host_deletes_cache(self) -> None:
+        """
+        Ensure '_reset_to_init(remove_lease_host=True)' invalidates
+        the on-disk cache so a subsequent boot does not try to
+        re-acquire an invalidated lease via INIT-REBOOT.
+
+        Reference: RFC 2131 §4.4.2 (NAK invalidates the remembered address).
+        """
+
+        mock_delete = MagicMock()
+        self.enterContext(
+            patch(
+                "pytcp.protocols.dhcp4.dhcp4__client.delete_cached_lease",
+                mock_delete,
+            )
+        )
+        self.enterContext(sysctl.override("dhcp.lease_cache_path", "/tmp/dhcp4_lease"))
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = self._cached_lease()
+        client._reset_to_init(remove_lease_host=True)
+
+        mock_delete.assert_called_once_with("/tmp/dhcp4_lease")
