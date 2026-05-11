@@ -1227,7 +1227,7 @@ class PacketHandlerL2(
     _mac_unicast: MacAddress
     _mac_multicast: list[MacAddress]
     _mac_broadcast: MacAddress
-    _arp_probe__unicast_conflict: set[Ip4Address]
+    _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
     _arp_defend__last_emitted: dict[Ip4Address, float]
     _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
@@ -1278,8 +1278,14 @@ class PacketHandlerL2(
         self._mac_multicast = []
         self._mac_broadcast = MacAddress(0xFFFFFFFFFFFF)
 
-        # Used for the ARP DAD process.
-        self._arp_probe__unicast_conflict: set[Ip4Address] = set()
+        # Used for the ARP DAD process (RFC 5227 §2.1). Per-
+        # candidate state lives in 'DadSlotRegistry[Ip4Address]'
+        # so the RX ARP handler can signal a conflict via the
+        # atomic 'try_signal_conflict' API instead of mutating
+        # a shared set under no lock. The registry's lock makes
+        # boot-path 'has_signal' polling atomic against an RX
+        # 'try_signal_conflict' call.
+        self._ip4_arp_dad__registry: DadSlotRegistry[Ip4Address] = DadSlotRegistry()
 
         # RFC 5227 §2.4(c) DEFEND_INTERVAL rate-limit state: per-IP
         # 'time.monotonic()' timestamp of the last defensive
@@ -1782,6 +1788,20 @@ class PacketHandlerL2(
                 if ip4_host := Dhcp4Client(mac_address=self._mac_unicast).fetch():
                     self._ip4_host_candidate.append(ip4_host)
 
+        # Install a per-candidate registry slot for each address
+        # BEFORE any sleep / probe TX so any RX conflict (during
+        # the initial PROBE_WAIT delay, between probes, during
+        # ANNOUNCE_WAIT, or between Announcements) can signal
+        # the candidate via 'registry.try_signal_conflict'
+        # (RFC 5227 §2.1 inbound ARP carrying our SPA / TPA =
+        # conflict). Slots persist past this method so callers
+        # / tests can inspect 'has_signal(candidate)' to see
+        # which candidates lost DAD; re-running DAD reinstalls
+        # slots fresh.
+        candidates = [ip4_host_candidate.address for ip4_host_candidate in self._ip4_host_candidate]
+        for ip4_unicast in candidates:
+            self._ip4_arp_dad__registry.install(ip4_unicast)
+
         # RFC 5227 §2.1.1 PROBE_WAIT — initial 0..PROBE_WAIT
         # random delay before the first Probe so a fleet of hosts
         # powered on simultaneously do not all probe at the same
@@ -1792,8 +1812,8 @@ class PacketHandlerL2(
         # broadcasts PROBE_NUM Probes spaced uniformly between
         # PROBE_MIN and PROBE_MAX seconds.
         for _ in range(ARP__PROBE_NUM):
-            for ip4_unicast in [ip4_host_candidate.address for ip4_host_candidate in self._ip4_host_candidate]:
-                if ip4_unicast not in self._arp_probe__unicast_conflict:
+            for ip4_unicast in candidates:
+                if not self._ip4_arp_dad__registry.has_signal(ip4_unicast):
                     self._send_arp_probe(ip4_unicast=ip4_unicast)
                     __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
             time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))
@@ -1805,17 +1825,18 @@ class PacketHandlerL2(
         # observed by the admit-loop below.
         time.sleep(ARP__ANNOUNCE_WAIT)
 
-        for ip4_unicast in self._arp_probe__unicast_conflict:
-            __debug__ and log(
-                "stack",
-                f"<WARN>Unable to claim IPv4 address {ip4_unicast}</>",
-            )
+        for ip4_unicast in candidates:
+            if self._ip4_arp_dad__registry.has_signal(ip4_unicast):
+                __debug__ and log(
+                    "stack",
+                    f"<WARN>Unable to claim IPv4 address {ip4_unicast}</>",
+                )
 
         # Create list containing only IPv4 addresses that were
         # confirmed free to claim.
         for ip4_host in list(self._ip4_host_candidate):
             self._ip4_host_candidate.remove(ip4_host)
-            if ip4_host.address not in self._arp_probe__unicast_conflict:
+            if not self._ip4_arp_dad__registry.has_signal(ip4_host.address):
                 self._ip4_host.append(ip4_host)
                 # RFC 5227 §2.3: broadcast ANNOUNCE_NUM ARP
                 # Announcements spaced ANNOUNCE_INTERVAL seconds

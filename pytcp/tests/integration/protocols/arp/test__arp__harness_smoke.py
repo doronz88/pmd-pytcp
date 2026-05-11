@@ -207,10 +207,9 @@ class TestArpHarnessSmoke(ArpTestCase):
         """
         Ensure '_drive_dad' with no 'on_sleep' callback runs the
         three-iteration probe loop synchronously and emits the
-        canonical 3 probes + 2 announcements = 5 wire frames the
-        DAD flow produces (per RFC 5227 §2.3 ANNOUNCE_NUM = 2).
-        Pins the harness's 'time.sleep' patch against the
-        production loop.
+        canonical 3 probes + 2 announcements = 5 wire frames
+        the DAD flow produces. Pins the harness's 'time.sleep'
+        patch against the production loop.
 
         Reference: RFC 5227 §2.1 (MUST probe before use).
         Reference: RFC 5227 §2.3 (MUST announce ANNOUNCE_NUM = 2).
@@ -287,13 +286,12 @@ class TestArpHarnessSmoke(ArpTestCase):
             1,
             msg="'on_sleep' callback must have been able to call '_drive_arp' exactly once.",
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
             msg=(
-                "Injected RX conflict must have populated the per-instance "
-                "'_arp_probe__unicast_conflict' set — proving the callback's "
-                "'_drive_arp' actually drove the production RX path."
+                "Injected RX conflict must have flagged the candidate in the "
+                "DAD slot registry — proving the callback's '_drive_arp' "
+                "actually drove the production RX path."
             ),
         )
 

@@ -38,6 +38,7 @@ from net_addr import Ip4Address, Ip4Host, MacAddress
 from net_proto import ArpAssembler, ArpOperation
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
+from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.stack.packet_handler.packet_handler__arp__rx import (
     PacketHandlerArpRx,
@@ -141,7 +142,11 @@ class _StubHandler(PacketHandlerArpRx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_host = [STACK__IP4_HOST]
         self._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
-        self._arp_probe__unicast_conflict: set[Ip4Address] = set()
+        self._ip4_arp_dad__registry: DadSlotRegistry[Ip4Address] = DadSlotRegistry()
+        # Install slots for every candidate so the RX path's
+        # 'try_signal_conflict' has somewhere to write — mirrors
+        # what '_create_stack_ip4_addressing' does at boot.
+        self._ip4_arp_dad__registry.install(STACK__IP4_HOST__CANDIDATE.address)
         self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
         self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
 
@@ -365,10 +370,9 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
             1,
             msg="Probe-conflict gratuitous request must be counted.",
         )
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
-            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
+            msg="Probe-conflict IP must be flagged in the DAD slot registry.",
         )
         self._arp_cache.add_entry.assert_not_called()
 
@@ -611,10 +615,9 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
             1,
             msg="Probe-conflict reply must be counted in arp__op_reply__probe_conflict.",
         )
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
-            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
+            msg="Probe-conflict IP must be flagged in the DAD slot registry.",
         )
 
     def test__stack__packet_handler__arp__rx__reply_direct_updates_cache(self) -> None:
@@ -705,27 +708,24 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
             1,
             msg="Gratuitous-reply probe conflict must be counted.",
         )
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
-            msg="Probe-conflict IP must be registered in '_arp_probe__unicast_conflict'.",
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
+            msg="Probe-conflict IP must be flagged in the DAD slot registry.",
         )
         self._arp_cache.add_entry.assert_not_called()
 
 
 class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
     """
-    The 'PacketHandlerArpRx' probe-conflict per-instance-set tests.
+    The 'PacketHandlerArpRx' probe-conflict registry-write tests.
 
     Pin the requirement that probe conflicts the RX handler detects
-    are recorded on the same per-instance
-    'PacketHandler._arp_probe__unicast_conflict' set that the DAD
-    claim flow at '_create_stack_ip4_addressing'
-    (pytcp/stack/packet_handler/__init__.py) reads to decide
-    whether to admit a candidate to '_ip4_host'. The legacy
-    module-level 'stack.arp_probe_unicast_conflict' set is not
-    consulted by the DAD flow; a probe conflict written there
-    silently fails to abort the claim.
+    are signalled via the per-instance
+    'PacketHandler._ip4_arp_dad__registry' that the DAD claim flow
+    at '_create_stack_ip4_addressing'
+    (pytcp/stack/packet_handler/__init__.py) reads via
+    'has_signal()' to decide whether to admit a candidate to
+    '_ip4_host'.
     """
 
     def test__stack__packet_handler__arp__rx__gratuitous_request_probe_conflict_writes_to_per_instance_set(
@@ -733,9 +733,8 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
     ) -> None:
         """
         Ensure a gratuitous ARP Request whose SPA matches a
-        candidate address registers on the per-instance
-        '_arp_probe__unicast_conflict' set the DAD claim flow
-        actually reads.
+        candidate address signals the per-instance DAD slot
+        registry that the DAD claim flow actually reads.
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -751,22 +750,21 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
 
         self._handler._phrx_arp(packet_rx)
 
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
             msg=(
-                "Gratuitous-Request probe conflict must register on the per-instance "
-                "'_arp_probe__unicast_conflict' set; the DAD flow at "
-                "'_create_stack_ip4_addressing' reads this set, not the legacy "
-                "module-level 'stack.arp_probe_unicast_conflict'."
+                "Gratuitous-Request probe conflict must flag the candidate "
+                "in the DAD slot registry; the DAD flow at "
+                "'_create_stack_ip4_addressing' reads 'has_signal()' on the "
+                "registry."
             ),
         )
 
     def test__stack__packet_handler__arp__rx__direct_reply_probe_conflict_writes_to_per_instance_set(self) -> None:
         """
         Ensure a direct unicast ARP Reply whose SPA matches a
-        candidate (TPA unspecified, L2 dst == our MAC) registers
-        on the per-instance '_arp_probe__unicast_conflict' set.
+        candidate (TPA unspecified, L2 dst == our MAC) signals
+        the per-instance DAD slot registry.
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -782,21 +780,20 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
 
         self._handler._phrx_arp(packet_rx)
 
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
             msg=(
-                "Direct unicast ARP Reply probe conflict must register on the "
-                "per-instance '_arp_probe__unicast_conflict' set; the DAD flow "
-                "reads this set, not the legacy module-level global."
+                "Direct unicast ARP Reply probe conflict must flag the "
+                "candidate in the DAD slot registry; the DAD flow reads "
+                "'has_signal()' on the registry."
             ),
         )
 
     def test__stack__packet_handler__arp__rx__gratuitous_reply_probe_conflict_writes_to_per_instance_set(self) -> None:
         """
         Ensure a gratuitous ARP Reply (broadcast L2, SPA == TPA
-        matching a candidate) registers on the per-instance
-        '_arp_probe__unicast_conflict' set.
+        matching a candidate) signals the per-instance DAD slot
+        registry.
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -812,13 +809,12 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
 
         self._handler._phrx_arp(packet_rx)
 
-        self.assertIn(
-            STACK__IP4_ADDRESS__CANDIDATE,
-            self._handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._handler._ip4_arp_dad__registry.has_signal(STACK__IP4_ADDRESS__CANDIDATE),
             msg=(
-                "Gratuitous-Reply probe conflict must register on the "
-                "per-instance '_arp_probe__unicast_conflict' set; the DAD "
-                "flow reads this set, not the legacy module-level global."
+                "Gratuitous-Reply probe conflict must flag the candidate "
+                "in the DAD slot registry; the DAD flow reads "
+                "'has_signal()' on the registry."
             ),
         )
 

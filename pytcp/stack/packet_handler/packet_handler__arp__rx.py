@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
 from pytcp import stack
+from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.logger import log
 from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.arp.arp__constants import ARP__DEFEND_INTERVAL
@@ -56,7 +57,7 @@ class PacketHandlerArpRx(ABC):
         _ip4_host: list[Ip4Host]
         _packet_stats_rx: PacketStatsRx
         _ip4_host_candidate: list[Ip4Host]
-        _arp_probe__unicast_conflict: set[Ip4Address]
+        _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
         _arp_defend__last_emitted: dict[Ip4Address, float]
         _arp_defend__last_conflict_at: dict[Ip4Address, float]
 
@@ -280,7 +281,11 @@ class PacketHandlerArpRx(ABC):
                 f"detected for candidate {packet_rx.arp.tpa} from peer "
                 f"{packet_rx.arp.sha}</>",
             )
-            self._arp_probe__unicast_conflict.add(packet_rx.arp.tpa)
+            self._ip4_arp_dad__registry.try_signal_conflict(
+                packet_rx.arp.tpa,
+                peer_info=None,
+                inbound_nonce=None,
+            )
             return
 
         # Note receiving gratuitous ARP request.
@@ -300,7 +305,11 @@ class PacketHandlerArpRx(ABC):
             # If we’re probing this address, mark conflict too.
             if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
                 self._packet_stats_rx.arp__op_request__probe_conflict__gratuitous += 1
-                self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
+                self._ip4_arp_dad__registry.try_signal_conflict(
+                    packet_rx.arp.spa,
+                    peer_info=None,
+                    inbound_nonce=None,
+                )
                 # Recommended during DAD: Don't learn ARP here.
                 return
 
@@ -424,7 +433,11 @@ class PacketHandlerArpRx(ABC):
                 f"conflict for IP {packet_rx.arp.spa} with host at "
                 f"{packet_rx.arp.sha}</>",
             )
-            self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
+            self._ip4_arp_dad__registry.try_signal_conflict(
+                packet_rx.arp.spa,
+                peer_info=None,
+                inbound_nonce=None,
+            )
             # Recommended during DAD: Don't learn ARP here.
             return
 
@@ -452,7 +465,11 @@ class PacketHandlerArpRx(ABC):
 
             if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
                 self._packet_stats_rx.arp__op_reply__probe_conflict__gratuitous += 1
-                self._arp_probe__unicast_conflict.add(packet_rx.arp.spa)
+                self._ip4_arp_dad__registry.try_signal_conflict(
+                    packet_rx.arp.spa,
+                    peer_info=None,
+                    inbound_nonce=None,
+                )
                 # Recommended during DAD: Don't learn ARP here.
                 return
 

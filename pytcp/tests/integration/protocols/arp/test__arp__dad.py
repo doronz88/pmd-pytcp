@@ -92,9 +92,8 @@ class TestArpDad(ArpTestCase):
             [],
             msg="'_ip4_host_candidate' must be drained once each candidate has been resolved.",
         )
-        self.assertNotIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
+        self.assertFalse(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
             msg="Candidate IP must not be flagged as conflicted on a successful claim.",
         )
         self.assertEqual(
@@ -112,9 +111,9 @@ class TestArpDad(ArpTestCase):
         Ensure a broadcast gratuitous ARP Request whose SPA
         matches our candidate IP and arrives during the probe
         window flags the candidate as conflicted and prevents
-        admission to '_ip4_host'. Pins the RFC 5227 §2.1.1
-        MUST end-to-end — the regression that commit cffd4841
-        closed (RX-vs-DAD set disconnect).
+        admission to '_ip4_host' — end-to-end pin of the
+        probe-conflict MUST that commit cffd4841 closed
+        (RX-vs-DAD set disconnect).
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -144,13 +143,9 @@ class TestArpDad(ArpTestCase):
                 "conflicting gratuitous ARP Request is received during the probe window."
             ),
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
-            msg=(
-                "Conflicting candidate IP must be registered in the per-instance "
-                "'_arp_probe__unicast_conflict' set so DAD aborts the claim."
-            ),
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
+            msg=("Conflicting candidate IP must be flagged in the DAD slot " "registry so DAD aborts the claim."),
         )
 
     def test__arp__dad__direct_reply_to_probe_conflict_aborts_claim(self) -> None:
@@ -188,12 +183,9 @@ class TestArpDad(ArpTestCase):
                 "unicast ARP Reply targeting our probe arrives during the probe window."
             ),
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
-            msg=(
-                "Conflicting candidate IP must be registered in the per-instance " "'_arp_probe__unicast_conflict' set."
-            ),
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
+            msg="Conflicting candidate IP must be flagged in the DAD slot registry.",
         )
 
     def test__arp__dad__gratuitous_reply_conflict_aborts_claim(self) -> None:
@@ -201,8 +193,8 @@ class TestArpDad(ArpTestCase):
         Ensure a broadcast gratuitous ARP Reply (SPA == TPA ==
         candidate) arriving during the probe window flags the
         candidate as conflicted and prevents admission. Covers
-        the third RFC 5227 §2.1.1 probe-conflict shape (the
-        first two are gratuitous Request and direct Reply).
+        the third probe-conflict wire shape (the first two
+        are gratuitous Request and direct Reply).
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -232,21 +224,18 @@ class TestArpDad(ArpTestCase):
                 "gratuitous ARP Reply for the candidate arrives during the probe window."
             ),
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
-            msg=(
-                "Conflicting candidate IP must be registered in the per-instance " "'_arp_probe__unicast_conflict' set."
-            ),
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
+            msg="Conflicting candidate IP must be flagged in the DAD slot registry.",
         )
 
     def test__arp__dad__conflict_skips_remaining_probes(self) -> None:
         """
         Ensure that once a conflict is detected during the probe
         window, subsequent probe iterations skip the candidate
-        (since 'ip4_unicast not in self._arp_probe__unicast_conflict'
-        is now False). Pins that the probe loop honours the
-        conflict-set as an early-exit gate, not just at claim
+        (the probe loop tests 'has_signal()' before each probe
+        TX). Pins that the probe loop honours the conflict
+        signal as an early-exit gate, not just at claim
         time.
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
@@ -438,8 +427,7 @@ class TestArpDad(ArpTestCase):
     def test__arp__dad__inter_probe_spacing_within_range(self) -> None:
         """
         Ensure the three inter-probe sleeps (sleep indices 1..3)
-        each fall in [ARP__PROBE_MIN, ARP__PROBE_MAX] seconds
-        — RFC 5227 §2.1.1 spec for probe spacing.
+        each fall in [ARP__PROBE_MIN, ARP__PROBE_MAX] seconds.
 
         Reference: RFC 5227 §2.1.1 (PROBE_MIN..PROBE_MAX inter-probe spacing).
         """
@@ -546,13 +534,10 @@ class TestArpDad(ArpTestCase):
                 "probe window."
             ),
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
             msg=(
-                "Simultaneous-probe candidate IP must be registered in the "
-                "per-instance '_arp_probe__unicast_conflict' set so DAD "
-                "aborts the claim."
+                "Simultaneous-probe candidate IP must be flagged in the " "DAD slot registry so DAD aborts the claim."
             ),
         )
 
@@ -593,12 +578,10 @@ class TestArpDad(ArpTestCase):
                 "conflicting ARP arrives during the ANNOUNCE_WAIT window."
             ),
         )
-        self.assertIn(
-            candidate_address,
-            self._packet_handler._arp_probe__unicast_conflict,
+        self.assertTrue(
+            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
             msg=(
-                "Late-conflict candidate IP must be registered in the "
-                "per-instance '_arp_probe__unicast_conflict' set so the "
-                "post-window admit-loop skips it."
+                "Late-conflict candidate IP must be flagged in the DAD slot "
+                "registry so the post-window admit-loop skips it."
             ),
         )
