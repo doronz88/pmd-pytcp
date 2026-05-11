@@ -91,6 +91,18 @@ class Dhcp4Options(ProtoOptions):
     """
 
     @property
+    def client_id(self) -> bytes | None:
+        """
+        Get the value of the DHCP Client Identifier option if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionClientId):
+                return option.client_id
+
+        return None
+
+    @property
     def host_name(self) -> str | None:
         """
         Get the value of the DHCP Host Name option if present.
@@ -99,6 +111,18 @@ class Dhcp4Options(ProtoOptions):
         for option in self._options:
             if isinstance(option, Dhcp4OptionHostName):
                 return option.host_name
+
+        return None
+
+    @property
+    def lease_time(self) -> int | None:
+        """
+        Get the value of the DHCP IP Address Lease Time option if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionLeaseTime):
+                return option.lease_time
 
         return None
 
@@ -260,12 +284,28 @@ class Dhcp4OptionsProperties(ABC):
     _options: Dhcp4Options
 
     @property
+    def client_id(self) -> bytes | None:
+        """
+        Get the value of the DHCP Client Identifier option if present.
+        """
+
+        return self._options.client_id
+
+    @property
     def host_name(self) -> str | None:
         """
         Get the value of the DHCP Host Name option if present.
         """
 
         return self._options.host_name
+
+    @property
+    def lease_time(self) -> int | None:
+        """
+        Get the value of the DHCP IP Address Lease Time option if present.
+        """
+
+        return self._options.lease_time
 
     @property
     def message_type(self) -> Dhcp4MessageType | None:

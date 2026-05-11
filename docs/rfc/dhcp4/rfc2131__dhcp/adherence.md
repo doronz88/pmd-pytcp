@@ -112,17 +112,17 @@ expected type at
 >  identifier' in one message, it MUST use that same
 >  identifier in all subsequent messages."
 
-**Adherence:** partial. The client emits
-`Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address))`
-in DISCOVER (`dhcp4_client.py:141`) but
-**omits the option from REQUEST**
-(`dhcp4_client.py:188-206`). The MAC-based
-form (type=1 + 6-byte hardware address) is the RFC 2131
+**Adherence:** met (legacy form). The client emits
+`Dhcp4OptionClientId(self._expected_client_id)` —
+`b"\x01" + bytes(self._mac_address)` — in BOTH DISCOVER
+(`pytcp/lib/dhcp4_client.py` `_send_discover`) and
+REQUEST (`_send_request`). The MAC-based form
+(type=1 + 6-byte hardware address) is the RFC 2131
 legacy form (RFC 4361 requires DUID-based form for new
 clients; see `rfc4361__node_specific_client_id`). The
-REQUEST omission violates the MUST: if the client
-included CID in DISCOVER it MUST include it in all
-subsequent messages. **Gap.**
+CID is shared via `self._expected_client_id`, which is
+also the value validated against the server's echo per
+RFC 6842 §3 (see `rfc6842__client_id_echo`).
 
 > "The 'options' field is now variable length. A DHCP
 >  client must be prepared to receive DHCP messages with
@@ -283,11 +283,19 @@ not restart the configuration process at all, the
 > "If the client receives a DHCPNAK message, the client
 >  restarts the configuration process."
 
-**Adherence:** not met. The client filters inbound
-messages to require `Dhcp4MessageType.ACK`
-(`dhcp4_client.py:222-227`); a NAK is
-silently dropped as "wrong message type" and the client
-times out instead of restarting.
+**Adherence:** met (bounded). `_recv_ack` detects
+`Dhcp4MessageType.NAK` and returns the internal
+`_NAK_RESTART` sentinel; `fetch()` re-enters
+`_discover_request_once` up to `DHCP4__NAK_MAX_RESTARTS`
+times (default 3, total 4 attempts) before returning
+None. The NAK itself is gated on the same xid + CID-echo
+validation as ACK so a stray NAK for an unrelated
+transaction cannot stampede the client into a restart
+loop.
+
+Phase 1 (retransmission backoff) will tighten this to
+match the RFC's 10-second SHOULD-wait before the
+restart DISCOVER (§3.1 step 5 / §4.4.1).
 
 > "The client times out and retransmits the DHCPREQUEST
 >  message if the client receives neither a DHCPACK or a
@@ -336,10 +344,15 @@ INIT-REBOOT shortcut is absent.
 option at
 `net_proto/protocols/dhcp4/options/dhcp4__option__lease_time.py`
 stores `lease_time: int` as `uint32`. The PyTCP client
-ignores the lease-time value entirely
-(`dhcp4_client.py:111-125` reads only
-`yiaddr`, `subnet_mask`, and `router[0]` from the ACK),
-so the infinity sentinel has no observable effect.
+surfaces the value through `Dhcp4Lease.lease_time__sec`
+(`pytcp/lib/dhcp4_client.py` `_discover_request_once`)
+alongside `acquired_at_monotonic = time.monotonic()` so
+the Phase-4 lifecycle thread can schedule T1/T2 against
+absolute monotonic deadlines. The Phase-0 client now
+strictly rejects an ACK that omits Lease Time (MUST per
+RFC 2131 Table 3), but does not yet interpret the
+0xFFFFFFFF infinity sentinel — that becomes meaningful
+in Phase 4 once renewal timers exist.
 
 ---
 
@@ -468,22 +481,19 @@ retries.
 >  one used by another client."
 
 **Adherence:** met. The client generates `xid` once per
-`fetch()` via `random.randint(0, 0xFFFFFFFF)`
-(`dhcp4_client.py:87`). The full 32-bit
-range is used. Both the REQUEST and any retransmits
-would carry the same xid; xid uniqueness across PyTCP
+`_discover_request_once()` via
+`random.randint(0, 0xFFFFFFFF)`. The full 32-bit range
+is used; each NAK-driven restart draws a fresh xid so a
+stale OFFER from a previous attempt cannot match the
+restarted DISCOVER. xid uniqueness across PyTCP
 processes is sourced from CPython's default `random`
 seed.
 
-The client does NOT validate inbound `xid` against the
-outbound — `_recv_offer` and `_recv_ack` accept any
-xid from the connected socket
-(`dhcp4_client.py:155-174`, `:210-229`).
-On a busy network where multiple DHCP exchanges race,
-the client could in principle consume another host's
-OFFER. The TX/RX pairing relies on the BSD-socket UDP
-flow filter (one client, one port-68 socket per
-process).
+The client validates inbound xid against the outbound:
+`_recv_offer` and `_recv_ack` both drop any frame whose
+xid does not match the value the client emitted. A stray
+DHCP reply for an unrelated transaction is silently
+discarded (return None) rather than being honoured.
 
 > "A client that cannot receive unicast IP datagrams
 >  until its protocol software has been configured with
@@ -538,10 +548,10 @@ in PyTCP. The client is a single linear function
 REQUEST, waits for ACK, returns. There is no state
 that persists past the function return.
 
-NAK handling (`dhcp4_client.py:222-227`)
-falls into the generic "wrong message type → return
-None" path; there is no explicit NAK case that triggers
-restart.
+NAK is handled by an explicit restart loop in `fetch()`
+(see §3.1 step 4 above) — bounded by
+`DHCP4__NAK_MAX_RESTARTS` — but the post-ACK BOUND state
+and the renewal subgraph remain Phase-4 work.
 
 ---
 
@@ -563,7 +573,8 @@ instant.
 >  identifier and inserts that identifier into the 'xid'
 >  field."
 
-**Adherence:** met (`dhcp4_client.py:87`).
+**Adherence:** met. A fresh xid is drawn at the top of
+each `_discover_request_once()` round-trip.
 
 > "The client records its own local time for later use
 >  in computing the lease expiration."
@@ -583,13 +594,10 @@ tracking.
 >  message, the DHCPOFFER message must be silently
 >  discarded."
 
-**Adherence:** not met. The client does not verify
-`offer.xid == self._xid`
-(`dhcp4_client.py:155-174`). Concurrent
-DHCP exchanges on the same host's port 68 could
-cross-pollute. In practice, only one DHCP client runs
-at a time, so this is benign — but it is a literal
-MUST violation.
+**Adherence:** met. `_recv_offer` validates
+`offer.xid == xid` against the locally generated xid and
+returns None (silent discard) on mismatch. The matching
+guard in `_recv_ack` covers the REQUEST → ACK leg.
 
 > "The client collects DHCPOFFER messages over a period
 >  of time, selects one DHCPOFFER message from the
@@ -735,14 +743,39 @@ address indefinitely.
 ### §3.1 DISCOVER → REQUEST flow
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__dhcp4_client.py` (681 lines)
+  `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   Exercises `fetch()` end-to-end with a mocked socket:
   the client emits a DISCOVER with the right options,
   receives a stubbed OFFER, emits a REQUEST with the
-  right `server-id` and `requested-ip`, receives a
-  stubbed ACK, and returns the constructed `Ip4Host`.
+  right `server-id`, `requested-ip`, and `client-id`,
+  receives a stubbed ACK, and returns a `Dhcp4Lease`.
 
 **Status:** locked in (happy-path lease).
+
+### §2 / §4.4.1 / §3.1 step 4 — Phase 0 Client Identifier + xid + NAK
+
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+  - `TestDhcp4ClientFetchClientIdInRequest` —
+    round-trips the emitted REQUEST through the real
+    Dhcp4Parser and asserts `request.client_id` equals
+    `b"\x01" + bytes(mac)`. Pins the §2 CID-in-REQUEST
+    MUST.
+  - `TestDhcp4ClientFetchXidMismatch` — OFFER and ACK
+    each carry an xid different from the locally
+    generated value; the client must drop both
+    (§4.4.1 silent-discard MUST).
+  - `TestDhcp4ClientFetchNakRestart` — a NAK in
+    response to REQUEST triggers a fresh DISCOVER on
+    the next iteration of the bounded restart loop
+    (§3.1 step 4); four NAK rounds exhaust the
+    budget and `fetch()` returns None.
+  - `TestDhcp4ClientFetchLeaseReturn` and
+    `TestDhcp4ClientFetchAckMissingLeaseTime` — pin
+    that Lease Time is surfaced via
+    `Dhcp4Lease.lease_time__sec` and that an ACK
+    without Lease Time is rejected.
+
+**Status:** locked in (Phase 0).
 
 ### §3.1 step 5 — DHCPDECLINE on ARP conflict
 
@@ -793,15 +826,16 @@ assert IPv4 host removal + INIT-state restart.
 |-----------------------------------------------------|-------------------------------------------------------------|
 | Wire-format (header, options, magic cookie, sizes)  | locked in (~3 700 lines of unit tests)                      |
 | Linear DISCOVER → REQUEST happy path                | locked in (`test__lib__dhcp4_client.py`)                    |
-| Client Identifier in REQUEST                        | not tested — would catch the MUST violation                 |
-| DHCPNAK handling                                    | not tested — gap                                            |
-| ARP conflict → DHCPDECLINE                          | not tested — gap                                            |
-| Retransmission backoff                              | not tested — gap                                            |
-| FSM states (INIT-REBOOT/RENEWING/REBINDING/BOUND)   | not tested — gap                                            |
-| Lease expiry / T1 / T2                              | not tested — gap                                            |
-| DHCPRELEASE on shutdown                             | not tested — gap                                            |
+| Client Identifier in REQUEST                        | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`) |
+| DHCPNAK handling (bounded restart)                  | locked in (Phase 0 — `TestDhcp4ClientFetchNakRestart`)      |
+| ARP conflict → DHCPDECLINE                          | not tested — gap (Phase 2)                                  |
+| Retransmission backoff                              | not tested — gap (Phase 1)                                  |
+| FSM states (INIT-REBOOT/RENEWING/REBINDING/BOUND)   | not tested — gap (Phase 4)                                  |
+| Lease expiry / T1 / T2                              | not tested — gap (Phase 4)                                  |
+| DHCPRELEASE on shutdown                             | not tested — gap (Phase 4)                                  |
 | DHCPINFORM                                          | not tested — gap                                            |
-| xid validation on inbound                           | not tested — gap                                            |
+| xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)     |
+| Lease Time surfaced on Dhcp4Lease                   | locked in (Phase 0 — `TestDhcp4ClientFetchLeaseReturn`)     |
 
 ---
 
@@ -812,7 +846,7 @@ assert IPv4 host removal + INIT-state restart.
 | Wire format (header fields, magic cookie, flags)        | met                          |
 | BROADCAST flag emission                                 | met (always set)             |
 | DHCP message-type option present                        | met (DISCOVER, REQUEST)      |
-| Client Identifier emission (RFC 2131 legacy form)       | partial (missing on REQUEST) |
+| Client Identifier emission (RFC 2131 legacy form)       | met (DISCOVER + REQUEST)     |
 | Server Identifier echo in REQUEST                       | met                          |
 | Requested IP Address in SELECTING-state REQUEST         | met                          |
 | Param Request List forwarded DISCOVER → REQUEST         | met                          |
@@ -826,18 +860,23 @@ assert IPv4 host removal + INIT-state restart.
 | T1 / T2 / lease-expiry handling                         | not implemented              |
 | DHCPRELEASE on shutdown                                 | not implemented              |
 | DHCPDECLINE on detected address conflict                | not implemented              |
-| DHCPNAK handling (restart on NAK)                       | not implemented              |
+| DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                |
 | DHCPINFORM                                              | not implemented              |
-| xid match validation on inbound messages                | not implemented              |
+| xid match validation on inbound messages                | met (Phase 0)                |
+| Lease Time surfaced + ACK-without-Lease-Time rejected   | met (Phase 0)                |
 | INIT-REBOOT (cached prior lease)                        | not implemented              |
 | Unicast-to-known-server optimisation                    | not implemented              |
 | 'Maximum DHCP message size' option (57)                 | not implemented              |
 | 'Option overload' option (52)                           | not implemented              |
-| Lease-time interpretation                               | parsed but unused            |
+| Lease-time interpretation (T1/T2 scheduling)            | Phase 4 (Dhcp4Lifecycle)     |
 
 **Principal compliance gap.** The PyTCP DHCP client is
 a boot-time one-shot — it gets a lease then forgets
-about it. The dominant gaps are (in rough priority for
+about it. Phase 0 (commit covering this audit refresh)
+closed the five quick-win MUSTs: CID in REQUEST, xid
+validation, CID echo (RFC 6842), NAK-triggered restart,
+and Lease-Time surfacing on the returned `Dhcp4Lease`.
+The remaining dominant gaps are (in rough priority for
 Phase 1 host parity):
 
 1. **Retransmission backoff (§4.1)** — a single recv
@@ -848,30 +887,24 @@ Phase 1 host parity):
    `_recv_offer` / `_recv_ack` with a loop that
    retransmits the prior TX every
    `4 * 2**n + uniform(-1, 1)` seconds up to `n=4`,
-   `tries=5`.
+   `tries=5`. (Phase 1.)
 
 2. **Lease lifecycle (§4.4.5)** — T1/T2 timers + the
    RENEWING/REBINDING states. Phase 1 host parity with
    Linux dhcpcd requires this for lease longevity past
-   the initial grant period.
+   the initial grant period. (Phase 4.)
 
 3. **DHCPDECLINE + restart on ARP conflict
    (§3.1 step 5)** — currently the conflict response is
    "drop the address, disable IPv4". Linux dhcpcd
    sends DECLINE and re-DISCOVERs. The hook point is
    inside `_create_stack_ip4_addressing` when the
-   probe-conflict registry signals.
+   probe-conflict registry signals. (Phase 2.)
 
-4. **DHCPNAK handling (§3.1)** — silently dropping a
-   NAK delays the boot retry. The hook is
-   `_recv_ack`: on NAK, fall through to a `fetch()`
-   restart.
-
-5. **Client Identifier in REQUEST
-   (§2 wire-format MUST)** — single-line fix: add
-   `Dhcp4OptionClientId(b"\x01" + bytes(...))` to the
-   `_send_request` option list mirror DISCOVER.
+4. **Initial 1–10s random delay (§4.4.1)** — fleet
+   boots desynchronisation; PyTCP currently kicks off
+   DISCOVER immediately. (Phase 2.)
 
 The wire-format library is comprehensive and
-well-tested; the gaps are all on the client-FSM /
-client-policy side.
+well-tested; the remaining gaps are all on the
+client-FSM / client-policy side.

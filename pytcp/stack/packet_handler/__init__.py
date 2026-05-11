@@ -1785,8 +1785,8 @@ class PacketHandlerL2(
         # acquire one using DHCP.
         if not self._ip4_host_candidate:
             if self._ip4_dhcp:
-                if ip4_host := Dhcp4Client(mac_address=self._mac_unicast).fetch():
-                    self._ip4_host_candidate.append(ip4_host)
+                if lease := Dhcp4Client(mac_address=self._mac_unicast).fetch():
+                    self._ip4_host_candidate.append(lease.ip4_host)
 
         # Install a per-candidate registry slot for each address
         # BEFORE any sleep / probe TX so any RX conflict (during

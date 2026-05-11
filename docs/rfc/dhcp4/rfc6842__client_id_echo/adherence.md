@@ -27,12 +27,15 @@ PyTCP's compliance status:
 - **Server-side requirement (MUST echo):** N/A — PyTCP
   is a DHCP client only.
 - **Client-side requirement (MUST validate echo):**
-  not implemented. PyTCP's client reads only
-  `message_type`, `xid` (implicitly via socket flow),
-  `yiaddr`, `subnet_mask`, and `router` from the ACK
-  (`pytcp/lib/dhcp4_client.py:111-125`).
-  It never compares the inbound `client_id` against
-  the value it sent.
+  met (Phase 0). `pytcp/lib/dhcp4_client.py`'s
+  `_cid_echo_ok(...)` compares the inbound
+  `client_id` against the client's locally cached
+  `self._expected_client_id` and returns False on
+  mismatch; `_recv_offer` and `_recv_ack` both gate
+  on the result and silently discard mismatching
+  replies (return None). Absent CID echo is
+  acceptable per RFC 6842's "if the client identifier
+  option is present" framing.
 
 Sections without normative content (§1 Introduction,
 §2 Conventions, §4 Security Considerations, §5
@@ -62,21 +65,24 @@ Addresses) are omitted.
 >  to send. If the two client identifiers do not match,
 >  the client MUST silently discard the message."
 
-**Adherence:** not met. **MUST gap.** The PyTCP client
-at `pytcp/lib/dhcp4_client.py:155-174`
-(`_recv_offer`) and `:210-229` (`_recv_ack`) does not
-extract `client_id` from the inbound message and does
-not compare it. A server that (correctly) echoes the
-Client Identifier per RFC 6842 would have the option
-silently ignored. A misdirected reply with someone
-else's Client Identifier would be accepted by PyTCP
-(provided `message_type` and the socket-level UDP
-filter agree).
+**Adherence:** met. `_recv_offer` and `_recv_ack` in
+`pytcp/lib/dhcp4_client.py` both invoke
+`self._cid_echo_ok(packet)` after the message-type +
+xid checks. The helper extracts `packet.client_id`
+(surfaced by the new `Dhcp4Options.client_id`
+accessor) and returns False on mismatch with the
+client's emitted CID; the calling method then logs a
+`<WARN>` line and returns None. A misdirected reply
+echoing someone else's Client Identifier is silently
+discarded per the MUST. The same gate also fires on the
+NAK path, so a stray NAK for an unrelated transaction
+cannot kick the client into a restart loop.
 
-Note: the `Dhcp4OptionClientId` codec at
+The `Dhcp4OptionClientId` codec at
 `net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`
-is bidirectional — the inbound option WOULD parse
-correctly if read. The gap is in the consumer.
+parses the inbound option; the
+`Dhcp4Options.client_id` accessor (added in this Phase 0
+commit) surfaces it on the parsed message.
 
 ---
 
@@ -84,26 +90,26 @@ correctly if read. The gap is in the consumer.
 
 ### §3 — Client-side echo validation
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test plan:
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+  - `TestDhcp4ClientFetchCidEcho::test__dhcp4_client__fetch_returns_none_on_offer_cid_mismatch`
+    — OFFER echoes a CID built from a different MAC;
+    `fetch()` returns None.
+  - `TestDhcp4ClientFetchCidEcho::test__dhcp4_client__fetch_returns_none_on_ack_cid_mismatch`
+    — same shape on the ACK leg.
+  - `TestDhcp4ClientFetchCidEcho::test__dhcp4_client__fetch_accepts_matching_cid_echo`
+    — happy-path regression guard: matching echo →
+    lease returned.
 
-1. Construct an ACK frame whose Client Identifier
-   option contains a different value than the one the
-   client sent in REQUEST.
-2. Drive the frame into `_recv_ack`.
-3. Assert the client returns None (silently discards)
-   without applying the lease.
-
-A second test should cover the happy path: matching
-Client Identifier echo → lease applied.
+**Status:** locked in (Phase 0).
 
 ### Test coverage summary
 
 | Aspect                                  | Coverage                          |
 |-----------------------------------------|-----------------------------------|
 | Server-side echo (MUST)                 | n/a (PyTCP is client only)        |
-| Client-side echo validation (MUST)      | not implemented; no test          |
-| Mismatching-echo silent discard         | not implemented; no test          |
+| Client-side echo validation (MUST)      | locked in (Phase 0)               |
+| Mismatching-echo silent discard         | locked in (Phase 0)               |
+| Matching-echo happy-path regression     | locked in (Phase 0)               |
 
 ---
 
@@ -112,44 +118,16 @@ Client Identifier echo → lease applied.
 | Aspect                                                   | Status                              |
 |----------------------------------------------------------|-------------------------------------|
 | §3 Server MUST echo Client Identifier                    | n/a (PyTCP is client only)          |
-| §3 Client MUST compare echoed CID to configured CID      | not met                             |
-| §3 Client MUST silently discard mismatching messages     | not met                             |
+| §3 Client MUST compare echoed CID to configured CID      | met (Phase 0)                       |
+| §3 Client MUST silently discard mismatching messages     | met (Phase 0)                       |
 | `Dhcp4OptionClientId` codec on RX                        | available (in `Dhcp4Options`)       |
+| `Dhcp4Options.client_id` accessor                        | met (added Phase 0)                 |
 
-**Principal compliance note.** This is a defence-in-depth
-MUST: in practice, the UDP socket flow filter and the
-`xid` field already prevent cross-client confusion in
-nearly all real deployments. The MUST exists to
-handle pathological cases (multiple clients sharing
-`chaddr` on one host, or `chaddr=0` clients on a
-relay).
-
-Fix is mechanical (~5 lines):
-
-```python
-# In _recv_offer and _recv_ack, after the message_type check:
-if (echoed := offer.client_id) is not None:
-    expected = b"\x01" + bytes(self._mac_address)
-    if echoed != expected:
-        __debug__ and log("dhcp4", "<WARN>CID echo mismatch; discarding")
-        return None
-```
-
-Requires that the `Dhcp4Options` container expose a
-`client_id` accessor — currently
-`net_proto/protocols/dhcp4/options/dhcp4__options.py`
-does not have one (Subnet Mask, Router, Server ID,
-Param Req List, Req IP, Lease Time, Host Name, and
-Message Type are exposed; Client Identifier is parsed
-but not surfaced as a property). Add the accessor
-alongside the others.
-
-Worth bundling with the RFC 4361 DUID work (which
-fundamentally rewrites the CID emission path) — both
-audits identify the same area, and the right test
-asserts both:
-
-1. The emitted CID matches the configured DUID/IAID
-   (RFC 4361).
-2. The CID echoed in the reply matches the emitted
-   one (RFC 6842).
+**Principal compliance note.** This MUST is now wired
+end-to-end. It still depends on the legacy
+RFC 2131 CID emission form (type 0x01 + MAC). When the
+RFC 4361 DUID/IAID emission lands in Phase 3, the
+echo-validator stays unchanged — it just compares
+whatever `self._expected_client_id` holds to whatever
+the server echoed — so the RFC 6842 lock-in carries
+forward without modification.
