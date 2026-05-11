@@ -40,6 +40,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Host, Ip6Host, MacAddress
+from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
@@ -196,6 +197,12 @@ tx_ring: TxRing
 arp_cache: ArpCache
 nd_cache: NdCache
 packet_handler: PacketHandlerL2 | PacketHandlerL3
+# Phase 4 commit A — IPv4 address-control API, the kernel/userspace
+# boundary surface consumed by the DHCPv4 client and (eventually)
+# operator-config CLI tools. Mirrors Linux RTNETLINK 'RTM_NEWADDR'
+# / 'RTM_DELADDR' semantics. Set in 'init()' / 'mock__init()' after
+# 'packet_handler' is constructed.
+address: Ip4AddressApi
 
 # Stack shared data.
 stack_initialized: bool = False
@@ -285,12 +292,13 @@ def mock__init(
     mock__arp_cache: ArpCache | None = None,
     mock__nd_cache: NdCache | None = None,
     mock__packet_handler: PacketHandlerL2 | None = None,
+    mock__address: Ip4AddressApi | None = None,
 ) -> None:
     """
     Initialize stack components for unit testing.
     """
 
-    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler
+    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address
 
     if mock__timer is not None:
         timer = mock__timer
@@ -309,6 +317,15 @@ def mock__init(
 
     if mock__packet_handler is not None:
         packet_handler = mock__packet_handler
+
+    # Phase 4 commit A — the Address API. If the test harness
+    # passes a packet_handler, also build a default Address API
+    # over it (tests that need to mock the API itself can pass
+    # 'mock__address' explicitly).
+    if mock__address is not None:
+        address = mock__address
+    elif mock__packet_handler is not None:
+        address = Ip4AddressApi(packet_handler=mock__packet_handler)
 
 
 def init(
@@ -403,6 +420,12 @@ def init(
                 packet_stats_rx=_packet_stats_rx,
                 packet_stats_tx=_packet_stats_tx,
             )
+
+    # Phase 4 commit A — IPv4 address-control API. Bound to the
+    # newly-constructed 'packet_handler' so DHCP / operator-config
+    # consumers never need to import the packet handler directly.
+    global address
+    address = Ip4AddressApi(packet_handler=packet_handler)
 
     interface_mtu = mtu
     stack_initialized = True

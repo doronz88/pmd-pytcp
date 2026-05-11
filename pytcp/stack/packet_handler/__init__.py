@@ -1865,7 +1865,12 @@ class PacketHandlerL2(
                 verified = self._arp_dad_probe_address(ip4_host.address)
             self._ip4_host_candidate.remove(ip4_host)
             if verified:
-                self._ip4_host.append(ip4_host)
+                # Phase 4 commit A — install via the Address API
+                # (kernel/userspace boundary surface) rather than
+                # mutating '_ip4_host' directly. The API wraps the
+                # same append today; Phase-3 swap replaces the
+                # internals with an RTNETLINK-equivalent IPC.
+                stack.address.add_host(ip4_host=ip4_host)
                 self._arp_dad_announce_address(ip4_host.address)
                 __debug__ and log(
                     "stack",
