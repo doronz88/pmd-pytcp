@@ -174,6 +174,21 @@ class TestDhcp4ConstantsDefaults(TestCase):
             msg="dhcp.decline_backoff_ms must default to 10000 ms per RFC 2131 §3.1 step 5.",
         )
 
+    def test__dhcp4_constants__duid_default_empty_string(self) -> None:
+        """
+        Ensure 'dhcp.duid' defaults to an empty string — the
+        "auto-derive DUID-LL from MAC" signal consumed by
+        'pytcp.lib.dhcp_uid.get_duid'.
+
+        Reference: RFC 4361 §6.1 (client MAY use an externally-configured DUID; default is derived).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.duid"),
+            "",
+            msg="dhcp.duid must default to the empty string (auto-derive from MAC).",
+        )
+
 
 class TestDhcp4ConstantsValidators(TestCase):
     """
@@ -356,6 +371,68 @@ class TestDhcp4ConstantsValidators(TestCase):
 
         with self.assertRaises(ValueError):
             sysctl.set("dhcp.decline_backoff_ms", -1)
+
+    def test__dhcp4_constants__duid_accepts_compact_hex(self) -> None:
+        """
+        Ensure 'dhcp.duid' accepts the canonical compact-hex
+        representation operators paste into config files
+        ("000300010200000000fe" form).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.duid", "0003000102000000000a")
+        self.assertEqual(
+            sysctl.get("dhcp.duid"),
+            "0003000102000000000a",
+            msg="dhcp.duid must accept compact-hex strings verbatim.",
+        )
+
+    def test__dhcp4_constants__duid_accepts_colon_separated_hex(self) -> None:
+        """
+        Ensure 'dhcp.duid' accepts the operator-friendly colon-
+        separated hex representation ("00:03:00:01:..." form).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.duid", "00:03:00:01:02:00:00:00:00:0a")
+        self.assertEqual(
+            sysctl.get("dhcp.duid"),
+            "00:03:00:01:02:00:00:00:00:0a",
+            msg="dhcp.duid must accept colon-separated hex strings verbatim.",
+        )
+
+    def test__dhcp4_constants__duid_rejects_non_hex(self) -> None:
+        """
+        Ensure 'dhcp.duid' rejects strings that are not valid hex.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.duid", "not-a-hex-string")
+
+    def test__dhcp4_constants__duid_rejects_odd_length_hex(self) -> None:
+        """
+        Ensure 'dhcp.duid' rejects odd-length hex strings — every
+        hex byte requires two characters.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.duid", "000300010a0")
+
+    def test__dhcp4_constants__duid_rejects_non_string(self) -> None:
+        """
+        Ensure 'dhcp.duid' rejects non-string types.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp.duid", 0x1234)
 
 
 class TestDhcp4ConstantsLiveModuleReadthrough(TestCase):

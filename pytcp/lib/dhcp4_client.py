@@ -66,6 +66,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
     Dhcp4OptionServerId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
+from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.logger import log
 from pytcp.protocols.dhcp4 import dhcp4__constants
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
@@ -123,13 +124,20 @@ class Dhcp4Client:
 
         self._mac_address = mac_address
         self._arp_dad_verifier = arp_dad_verifier
-        # Type 0x01 (Ethernet) + MAC bytes, per RFC 2132 §9.14 — used
-        # both for emission and for echo validation under RFC 6842 §3.
-        self._expected_client_id: bytes = b"\x01" + bytes(self._mac_address)
         # Set at the top of 'fetch()'; reused by every outbound TX in
         # this acquisition cycle to populate the DHCP header 'secs'
         # field per RFC 1542 §3.2.
         self._fetch_started_at_monotonic: float = 0.0
+
+    @property
+    def _expected_client_id(self) -> bytes:
+        """
+        RFC 4361 §6.1 Client Identifier — type=0xff + IAID + DUID.
+        Recomputed on every access so an operator override of
+        'dhcp.duid' between emissions takes effect immediately.
+        """
+
+        return build_client_id(self._mac_address)
 
     def fetch(self) -> Dhcp4Lease | None:
         """

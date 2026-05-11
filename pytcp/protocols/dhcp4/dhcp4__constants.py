@@ -78,6 +78,16 @@ DHCP4__INIT_DELAY_MAX_MS = 10000
 # tests.
 DHCP4__DECLINE_BACKOFF_MS = 10000
 
+# RFC 4361 §6.1 operator-overridable DUID. Empty string =
+# "auto-derive DUID-LL from the host MAC". Non-empty value
+# = hex bytes (compact "0003000102..." or colon-separated
+# "00:03:00:01:02:..."), used verbatim as the DUID
+# embedded into the Client Identifier emitted in every
+# DHCPv4 message. Consumed by 'pytcp.lib.dhcp_uid.get_duid'.
+DHCP4__DUID: str = ""
+
+from typing import Callable  # noqa: E402
+
 from pytcp.lib.sysctl import (  # noqa: E402
     get,
     is_non_negative_int,
@@ -162,6 +172,47 @@ register(
         "RFC 2131 §3.1 step 5 — post-DHCPDECLINE wait in "
         "milliseconds before restarting from DISCOVER "
         "(SHOULD ≥ 10 s; set 0 to disable for tests)."
+    ),
+)
+
+
+def _is_duid_hex_or_empty(name: str) -> Callable[[object], None]:
+    """
+    Build a validator that accepts the empty string ('auto-derive
+    from MAC' signal) or a hex string with optional colon
+    separators ("0003000102..." / "00:03:00:01:02:..."). Rejects
+    non-string types, odd-length hex, and non-hex characters.
+    """
+
+    def validator(value: object) -> None:
+        if not isinstance(value, str):
+            raise ValueError(f"sysctl {name!r} must be a string; got {type(value).__name__}")
+        if value == "":
+            return
+        normalised = value.replace(":", "")
+        if len(normalised) % 2 != 0:
+            raise ValueError(f"sysctl {name!r} hex value must have an even number of digits; " f"got {value!r}")
+        try:
+            bytes.fromhex(normalised)
+        except ValueError as error:
+            raise ValueError(
+                f"sysctl {name!r} must be valid hex (optionally colon-separated); " f"got {value!r}"
+            ) from error
+
+    return validator
+
+
+register(
+    key="dhcp.duid",
+    module_name=__name__,
+    attr="DHCP4__DUID",
+    default=DHCP4__DUID,
+    validator=_is_duid_hex_or_empty("dhcp.duid"),
+    description=(
+        "RFC 4361 §6.1 DUID override — hex bytes (compact or "
+        "colon-separated) used as the DUID portion of the "
+        "Client Identifier; empty = auto-derive DUID-LL from "
+        "the host MAC."
     ),
 )
 

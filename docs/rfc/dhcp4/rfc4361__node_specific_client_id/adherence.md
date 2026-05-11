@@ -43,14 +43,14 @@ References, §12 Author's Addresses) are omitted.
 >  RFC 2131, except as allowed in section 9.2 of
 >  RFC 3315."
 
-**Adherence:** not met. PyTCP emits
-`Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address))`
-at `pytcp/lib/dhcp4_client.py:141` —
-type byte 0x01 (Ethernet hardware type) followed by the
-6-byte MAC address. This is the RFC 2131 legacy form
-that RFC 4361 §6.1 explicitly forbids ("MUST NOT use
-client identifiers based solely on layer two
-addresses").
+**Adherence:** met (Phase 3). PyTCP emits the RFC 4361
+type-0xff Client Identifier (type byte 0xff + 4-byte
+IAID + DUID-LL) via 'pytcp/lib/dhcp_uid.build_client_id',
+called from 'Dhcp4Client._expected_client_id'
+(now a property that re-resolves on every emission so
+operator overrides of 'dhcp.duid' take effect
+immediately). The legacy `b"\x01" + bytes(mac)` form is
+gone.
 
 > "DHCPv4 clients MUST send a 'client identifier' option
 >  containing an Identity Association Unique Identifier,
@@ -58,18 +58,23 @@ addresses").
 >  Unique Identifier, as defined in section 9 of
 >  RFC 3315."
 
-**Adherence:** not met. No DUID / IAID generation
-machinery exists in PyTCP. The required wire format
-(`Code 61 | Len n | Type 0xFF | IAID 4-byte | DUID
-n-byte`) is not emitted.
+**Adherence:** met (Phase 3). 'pytcp/lib/dhcp_uid.py'
+provides 'build_duid_ll' (RFC 3315 §9.4 — 2-byte
+type=3 + 2-byte hardware-type=1 + 6-byte MAC =
+10 bytes for Ethernet), 'get_iaid' (RFC 3315 §10 —
+4-byte big-endian IAID), and 'build_client_id'
+(RFC 4361 §6.1 — type=0xff + IAID + DUID). The
+resulting 15-byte Client Identifier is emitted in
+every DHCPv4 message ('Code 61 | Len 15 | 0xff +
+IAID + DUID-LL').
 
 > "To send an RFC 3315-style binding identifier in a
 >  DHCPv4 'client identifier' option, the type of the
 >  'client identifier' option is set to 255."
 
-**Adherence:** not met. PyTCP uses type byte 0x01
-(Ethernet hardware), not 0xFF (RFC 3315 binding
-identifier).
+**Adherence:** met (Phase 3). 'build_client_id'
+prepends the canonical type byte 0xff before the IAID
+and DUID portions of the wire form.
 
 > "Any DHCPv4 client that conforms to this specification
 >  SHOULD provide a means by which an operator can learn
@@ -77,8 +82,13 @@ identifier).
 >  also provide a means by which the operator can
 >  configure the DUID."
 
-**Adherence:** not implemented. No DUID infrastructure
-exists; nothing to expose or configure.
+**Adherence:** met (Phase 3). The 'dhcp.duid' sysctl
+exposes the active DUID to operators (compact-hex or
+colon-separated form), readable via
+`pytcp.stack.sysctl["dhcp.duid"]` and configurable at
+boot via `stack.init(sysctls={"dhcp.duid": "00:03:..."})`.
+The empty default signals "auto-derive DUID-LL from MAC";
+a non-empty override takes precedence on every emission.
 
 > "DHCPv4 clients that support more than one network
 >  interface SHOULD use the same DUID on every
@@ -92,8 +102,15 @@ exists; nothing to expose or configure.
 >  subsequent DHCPv4 messages, even after an operating
 >  system reboot."
 
-**Adherence:** not met. PyTCP has no DUID generation
-and no stable storage for DHCP state.
+**Adherence:** partial (Phase 3). The DUID is stable
+across the process's lifetime — auto-derived from the
+host MAC (which is itself stable), or operator-fixed
+via the 'dhcp.duid' sysctl. Cross-process-restart
+persistence is not yet implemented; the sysctl
+registry is in-memory only, so a reboot re-runs the
+auto-derive path. Stable-storage backing is tracked
+for Phase 5 (cached-lease persistence) and will
+naturally absorb DUID persistence.
 
 ---
 
@@ -114,16 +131,12 @@ and no stable storage for DHCP state.
 >  The client MUST use the same 'client identifier'
 >  option for all messages.'"
 
-**Adherence:** partial — first half met, second half
-violated. PyTCP DOES provide a client-identifier option
-in DISCOVER
-(`pytcp/lib/dhcp4_client.py:141`), so it
-is not relying on `chaddr` alone (first half met). But
-the option is OMITTED from REQUEST
-(`pytcp/lib/dhcp4_client.py:188-205`),
-which violates the second half ("The client MUST use
-the same 'client identifier' option for all messages").
-This is the same MUST gap noted in RFC 2131 §2 audit.
+**Adherence:** met (Phase 0 + Phase 3). PyTCP emits the
+Client Identifier option in every DHCPv4 message
+(DISCOVER, REQUEST, DECLINE — Phase 2.2) via the same
+'_expected_client_id' property. Phase 0 added the
+option to REQUEST; Phase 3 upgraded the wire form to
+the RFC 4361 §6.1 0xff+IAID+DUID layout.
 
 > "In section 4.4.1 of RFC 2131, the text 'The client
 >  MAY include a different unique identifier' is
@@ -152,46 +165,47 @@ back to `chaddr`.
 >  field, followed by the DUID for the client as
 >  defined in RFC 3315, section 9.'"
 
-**Adherence:** not met. The PyTCP Client Identifier
-wire format is the RFC 2131 legacy form, not the
-RFC 4361 DUID/IAID form.
+**Adherence:** met (Phase 3). The Client Identifier
+wire form is now type byte 0xff + 4-byte IAID +
+n-byte DUID per the §6.1 replacement text. The legacy
+RFC 2131 §9.14 form is no longer emitted.
 
 ---
 
 ## Test coverage audit
 
-### §6.1 / §6.4 / §6.5 — DUID-based Client Identifier
+### §6.1 / §6.4 / §6.5 — DUID-based Client Identifier (Phase 3)
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test plan:
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp_uid.py`
+  — DUID-LL wire format (10 bytes = 2-byte type-3 +
+  2-byte hardware-type-1 + 6-byte MAC), IAID encoding
+  (4-byte big-endian), RFC 4361 Client Identifier
+  layout (1+4+10 = 15 bytes), MAC-derived fallback,
+  sysctl-override precedence (compact + colon-separated
+  hex), stability across successive calls.
+- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchRfc4361Cid`
+  — every DISCOVER and REQUEST carries the RFC 4361
+  form; operator override of 'dhcp.duid' propagates
+  through to the emitted CID; two consecutive fetches
+  emit byte-identical CIDs; a server echoing the legacy
+  type-0x01 form fails RFC 6842 echo validation.
+- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+  — 'dhcp.duid' default empty, accepts compact +
+  colon-separated hex, rejects non-hex / odd-length /
+  non-string.
 
-1. Generate a stable DUID at first boot
-   (RFC 3315 §9 — DUID-LL or DUID-LLT) and persist it
-   under some sysctl or stable-storage location.
-2. Assert the emitted DISCOVER/REQUEST Client
-   Identifier option carries:
-   - Code 61
-   - Length matching `1 + 4 + len(DUID)`
-   - Type byte 0xFF
-   - 4-byte IAID (e.g. derived from interface index)
-   - The persisted DUID bytes
-3. Assert the same DUID is emitted across stack
-   restarts (persistence check).
-
-Additionally, fix the missing-CID-in-REQUEST gap
-(RFC 2131 §2 MUST): add `Dhcp4OptionClientId(...)` to
-the REQUEST option list at
-`pytcp/lib/dhcp4_client.py:193-205`.
+**Status:** locked in (Phase 3).
 
 ### Test coverage summary
 
-| Aspect                                       | Coverage                       |
-|----------------------------------------------|--------------------------------|
-| RFC 2131 legacy Client Identifier emission   | locked in (test__lib__dhcp4_client.py) |
-| RFC 4361 DUID-based Client Identifier        | not implemented; no test       |
-| Client Identifier in REQUEST (RFC 2131 §2)   | gap; no test                   |
-| DUID persistence across reboot               | not implemented; no test       |
-| Same DUID across interfaces                  | n/a (single-interface)         |
+| Aspect                                       | Coverage                                                       |
+|----------------------------------------------|----------------------------------------------------------------|
+| RFC 4361 DUID-based Client Identifier        | locked in (Phase 3 — `TestDhcp4ClientFetchRfc4361Cid`)         |
+| DUID-LL wire format + IAID encoding          | locked in (Phase 3 — `test__lib__dhcp_uid.py`)                 |
+| Operator-overridable DUID via sysctl         | locked in (Phase 3 — 'dhcp.duid' tests)                        |
+| Client Identifier in REQUEST (RFC 2131 §2)   | locked in (Phase 0 — `TestDhcp4ClientFetchClientIdInRequest`)  |
+| DUID persistence across OS reboot            | not implemented; Phase 5 (cached-lease persistence) territory  |
+| Same DUID across interfaces                  | n/a (single-interface)                                         |
 
 ---
 
@@ -199,41 +213,28 @@ the REQUEST option list at
 
 | Aspect                                                | Status                                                |
 |-------------------------------------------------------|-------------------------------------------------------|
-| §6.1 Stable DUID-based Client Identifier on TX        | not met (uses RFC 2131 legacy MAC-based form)         |
-| §6.1 IAID + DUID wire format (type 255)               | not met (uses type 0x01)                              |
-| §6.1 Operator inspection / configuration of DUID      | not implemented                                       |
+| §6.1 Stable DUID-based Client Identifier on TX        | met (Phase 3)                                         |
+| §6.1 IAID + DUID wire format (type 255)               | met (Phase 3)                                         |
+| §6.1 Operator inspection / configuration of DUID      | met (Phase 3 — 'dhcp.duid' sysctl)                    |
 | §6.1 Same DUID across interfaces                      | n/a (single-interface)                                |
-| §6.1 DUID retained across OS reboot (stable storage)  | not implemented                                       |
+| §6.1 DUID retained across OS reboot (stable storage)  | partial (process-stable; cross-reboot is Phase 5)     |
 | §6.4 Client MUST NOT rely on chaddr for identification| met (CID always emitted in DISCOVER)                  |
-| §6.4 Client MUST use same CID in all messages         | not met (CID missing in REQUEST)                      |
-| §6.5 RFC 2132 §9.14 wire format change                | not met (legacy format)                               |
+| §6.4 Client MUST use same CID in all messages         | met (Phase 0 + Phase 3 — CID in every DHCPv4 message) |
+| §6.5 RFC 2132 §9.14 wire format change                | met (Phase 3)                                         |
 | §6.3 Server behaviour                                 | n/a (client only)                                     |
 
-**Principal compliance gap.** PyTCP's DHCP client is a
-PRE-RFC 4361 client. Every MUST in §6.1 is unmet
-because the entire DUID/IAID infrastructure is absent.
+**Principal compliance note.** The PyTCP DHCP client is
+now RFC 4361 compliant for everything except cross-OS-
+reboot DUID persistence. The operator can pin the DUID
+via the 'dhcp.duid' sysctl at boot time, which provides
+the equivalent of `/var/lib/dhcp/duid` if the operator
+chooses to persist the value externally. Native
+file-backed persistence is folded into Phase 5
+(cached-lease persistence).
 
-**Fix sketch (Phase 1 plan):**
-
-1. Add a `DhcpUniqueIdentifier` helper class under
-   `pytcp/lib/` that builds a DUID-LL
-   (RFC 3315 §9.2 — DUID Based on Link-layer Address)
-   from the interface MAC.
-2. Add a stable-storage hook (probably a sysctl
-   `dhcp.duid` that defaults to "derived from MAC"
-   but can be operator-overridden, mirroring Linux
-   `/var/lib/dhcp/duid`).
-3. Rewrite `Dhcp4OptionClientId` constructor at the
-   call site
-   (`pytcp/lib/dhcp4_client.py:141`,
-   `:193-205`) to emit type 0xFF + 4-byte IAID + DUID
-   bytes.
-4. Ensure REQUEST emits the same CID (fixes the
-   RFC 2131 §2 MUST gap simultaneously).
-
-This is a single-file change in the client plus the
-new helper; the wire-format codec
-(`Dhcp4OptionClientId` at
+The fix delivered in Phase 3 was a single-file change in
+the client plus the new 'pytcp/lib/dhcp_uid.py' helper;
+the wire-format codec (`Dhcp4OptionClientId` at
 `net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`)
-already accepts arbitrary bytes, so no codec change is
+already accepted arbitrary bytes, so no codec change was
 required.

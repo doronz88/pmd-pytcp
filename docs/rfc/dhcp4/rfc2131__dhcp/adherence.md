@@ -112,16 +112,17 @@ expected type at
 >  identifier' in one message, it MUST use that same
 >  identifier in all subsequent messages."
 
-**Adherence:** met (legacy form). The client emits
-`Dhcp4OptionClientId(self._expected_client_id)` —
-`b"\x01" + bytes(self._mac_address)` — in BOTH DISCOVER
-(`pytcp/lib/dhcp4_client.py` `_send_discover`) and
-REQUEST (`_send_request`). The MAC-based form
-(type=1 + 6-byte hardware address) is the RFC 2131
-legacy form (RFC 4361 requires DUID-based form for new
-clients; see `rfc4361__node_specific_client_id`). The
-CID is shared via `self._expected_client_id`, which is
-also the value validated against the server's echo per
+**Adherence:** met (Phase 0 + Phase 3). The client
+emits `Dhcp4OptionClientId(self._expected_client_id)`
+in DISCOVER, REQUEST, and DECLINE. As of Phase 3 the
+CID wire form is the RFC 4361 §6.1 layout —
+type=0xff + 4-byte IAID + DUID — built via
+'pytcp/lib/dhcp_uid.build_client_id'. The MAC-derived
+DUID-LL is the default; operator override via the
+'dhcp.duid' sysctl takes precedence on every
+emission. See `rfc4361__node_specific_client_id` for
+the full RFC 4361 adherence record. The CID is also
+the value validated against the server's echo per
 RFC 6842 §3 (see `rfc6842__client_id_echo`).
 
 > "The 'options' field is now variable length. A DHCP

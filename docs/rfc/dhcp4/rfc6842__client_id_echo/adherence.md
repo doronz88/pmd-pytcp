@@ -123,11 +123,14 @@ commit) surfaces it on the parsed message.
 | `Dhcp4OptionClientId` codec on RX                        | available (in `Dhcp4Options`)       |
 | `Dhcp4Options.client_id` accessor                        | met (added Phase 0)                 |
 
-**Principal compliance note.** This MUST is now wired
-end-to-end. It still depends on the legacy
-RFC 2131 CID emission form (type 0x01 + MAC). When the
-RFC 4361 DUID/IAID emission lands in Phase 3, the
-echo-validator stays unchanged — it just compares
-whatever `self._expected_client_id` holds to whatever
-the server echoed — so the RFC 6842 lock-in carries
-forward without modification.
+**Principal compliance note.** This MUST is wired
+end-to-end. Phase 3 upgraded the underlying CID form
+from the RFC 2131 type-0x01 + MAC layout to the
+RFC 4361 §6.1 type-0xff + IAID + DUID layout (see
+`rfc4361__node_specific_client_id`); the
+echo-validator was unaffected — it compares whatever
+`self._expected_client_id` resolves to against whatever
+the server echoed. A `TestDhcp4ClientFetchRfc4361Cid`
+regression test pins that a server echoing the legacy
+form (type 0x01 + MAC) against a Phase-3 client emitting
+the RFC 4361 form is silently discarded.

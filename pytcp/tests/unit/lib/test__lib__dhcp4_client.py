@@ -38,13 +38,14 @@ from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.lib import sysctl
 from pytcp.lib.dhcp4_client import Dhcp4Client, Dhcp4Lease
+from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
     autospec_dhcp4_socket,
 )
 
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:01")
-_DEFAULT_CID = b"\x01" + bytes(_DEFAULT_MAC)
+_DEFAULT_CID = build_client_id(_DEFAULT_MAC)
 _PINNED_XID = 0xDEADBEEF
 
 
@@ -1365,3 +1366,118 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         # Initial-delay sleep is disabled by the fixture; only the
         # decline-backoff sleep should fire.
         mock_sleep.assert_called_once_with(5.0)
+
+
+class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
+    """
+    Phase 3 — Client Identifier emission and echo validation use
+    the RFC 4361 form (type 0xff + IAID + DUID-LL) rather than the
+    legacy RFC 2131 type-0x01 + MAC form.
+    """
+
+    def test__dhcp4_client__fetch_emits_rfc4361_client_id_in_discover_and_request(self) -> None:
+        """
+        Ensure both the DISCOVER and the REQUEST emitted by
+        'fetch()' carry the RFC 4361 13-byte Client Identifier
+        (type 0xff + 4-byte IAID + 8-byte DUID-LL) rather than
+        the legacy RFC 2131 7-byte type-0x01 + MAC form.
+
+        Reference: RFC 4361 §6.1 (new clients SHOULD use the type-0xff + IAID + DUID Client Identifier form).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        discover_cid = self._server.tx_log[0].client_id
+        request_cid = self._server.tx_log[1].client_id
+
+        self.assertEqual(
+            discover_cid,
+            build_client_id(_DEFAULT_MAC),
+            msg="DISCOVER's Client Identifier must equal the RFC 4361 13-byte form.",
+        )
+        self.assertEqual(
+            request_cid,
+            discover_cid,
+            msg="REQUEST's Client Identifier must equal DISCOVER's (stable across the exchange).",
+        )
+
+    def test__dhcp4_client__fetch_honours_dhcp_duid_sysctl_override(self) -> None:
+        """
+        Ensure setting 'dhcp.duid' to an operator-supplied hex
+        string overrides the MAC-derived DUID portion of the
+        emitted Client Identifier.
+
+        Reference: RFC 4361 §6.1 (client MAY use an externally configured DUID).
+        """
+
+        override_duid_hex = "00:03:00:01:de:ad:be:ef:ca:fe"
+        override_duid_bytes = bytes.fromhex(override_duid_hex.replace(":", ""))
+        self.enterContext(sysctl.override("dhcp.duid", override_duid_hex))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        discover_cid = self._server.tx_log[0].client_id
+        assert discover_cid is not None
+        self.assertEqual(
+            discover_cid[0:1],
+            b"\xff",
+            msg="RFC 4361 type prefix MUST be 0xff regardless of DUID override.",
+        )
+        self.assertEqual(
+            discover_cid[5:],
+            override_duid_bytes,
+            msg="DUID portion of the Client Identifier must match the 'dhcp.duid' sysctl override.",
+        )
+
+    def test__dhcp4_client__fetch_emits_same_cid_across_two_fetches(self) -> None:
+        """
+        Ensure two consecutive 'fetch()' calls with the same MAC
+        emit byte-for-byte identical Client Identifiers — DUID
+        stability is required across the client's lifetime.
+
+        Reference: RFC 4361 §6.1 (the DUID is stable across the client's life).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+        client.fetch()
+
+        first_cid = self._server.tx_log[0].client_id
+        third_cid = self._server.tx_log[2].client_id  # 2nd fetch's DISCOVER
+
+        self.assertEqual(
+            first_cid,
+            third_cid,
+            msg="Two fetches with the same MAC must emit identical Client Identifiers.",
+        )
+
+    def test__dhcp4_client__fetch_rejects_server_echo_of_legacy_cid_form(self) -> None:
+        """
+        Ensure a server that mistakenly echoes the legacy
+        RFC 2131 type-0x01 + MAC form (instead of the emitted
+        type-0xff form) is silently discarded — the bytes do not
+        match the emitted Client Identifier.
+
+        Reference: RFC 6842 §3 (client MUST silently discard messages whose CID echo mismatches the sent value).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
+        legacy_cid = b"\x01" + bytes(_DEFAULT_MAC)
+        self._server.enqueue_offer(client_id_echo=legacy_cid)
+
+        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        self.assertIsNone(
+            result,
+            msg="OFFER echoing the legacy CID form must fail the RFC 6842 echo check and be discarded.",
+        )
