@@ -375,7 +375,7 @@ class Dhcp4Client(Subsystem):
             self._state = Dhcp4State.REBINDING
             return
 
-        outcome = self._do_renew_or_rebind_exchange(broadcast=False, deadline=t2)
+        outcome = self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=False)
         self._consume_renew_or_rebind_outcome(outcome)
 
     def _do_rebinding(self) -> None:
@@ -402,14 +402,14 @@ class Dhcp4Client(Subsystem):
             self._halt_ipv4_and_reset_to_init()
             return
 
-        outcome = self._do_renew_or_rebind_exchange(broadcast=True, deadline=expiry)
+        outcome = self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=True)
         self._consume_renew_or_rebind_outcome(outcome)
 
     def _do_renew_or_rebind_exchange(
         self,
         *,
+        lease: Dhcp4Lease,
         broadcast: bool,
-        deadline: float,
     ) -> "Dhcp4Lease | _NakRestart | None":
         """
         Open a one-shot socket, send one unicast (RENEW) or
@@ -419,10 +419,14 @@ class Dhcp4Client(Subsystem):
         to INIT), or None on timeout (caller stays in the
         current state; the loop re-enters and rechecks the
         time-budget).
+
+        The 'lease' parameter is the lease being refreshed —
+        passed explicitly so both daemon-mode FSM handlers (which
+        read from 'self._lease') and sync-mode 'renew()' /
+        'rebind()' (which take the lease as an argument) share
+        the same wire-exchange method.
         """
 
-        assert self._lease is not None
-        lease = self._lease
         xid = random.randint(0, 0xFFFFFFFF)
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
@@ -509,15 +513,27 @@ class Dhcp4Client(Subsystem):
             self._lease = outcome
             self._state = Dhcp4State.BOUND
         else:
-            # Different IP — Phase 4 commit D handles
-            # 'replace_host' atomic swap. For now log and stay
-            # in the current state; commit D wires the swap.
+            # Cross-IP RENEW/REBIND: atomic 'replace_host' swap
+            # via the address API. The 'abort_bound_sessions'
+            # flag is sysctl-gated so operators can opt into
+            # Linux-parity silent-rot behaviour
+            # ('dhcp.abort_sessions_on_lease_change=0').
             __debug__ and log(
                 "dhcp4",
-                f"<WARN>RENEW returned different yiaddr "
-                f"({prior.ip4_host.address} → {outcome.ip4_host.address}); "
-                f"deferring atomic swap to Phase 4 commit D</>",
+                f"<lg>Lease swapped</>: {prior.ip4_host.address} → "
+                f"{outcome.ip4_host.address} "
+                f"(lease_time={outcome.lease_time__sec}s)",
             )
+            if self._address_api is not None:
+                self._address_api.replace_host(
+                    old_address=prior.ip4_host.address,
+                    new_host=outcome.ip4_host,
+                    abort_bound_sessions=bool(
+                        dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
+                    ),
+                )
+            if self._arp_dad_announcer is not None:
+                self._arp_dad_announcer(outcome.ip4_host.address)
             self._lease = outcome
             self._state = Dhcp4State.BOUND
 
@@ -525,15 +541,18 @@ class Dhcp4Client(Subsystem):
         """
         Return the FSM to INIT after a NAK or lease-loss event.
         Optionally remove the leased Ip4Host via the address API
-        (NAK case: the lease is invalid, abort sessions and
-        relinquish). Clears '_event__bound' so a subsequent
-        'start_and_wait_for_bind' watcher unblocks fresh on the
-        next BOUND.
+        (NAK case: the lease is invalid, abort sessions per the
+        'dhcp.abort_sessions_on_lease_change' sysctl). Clears
+        '_event__bound' so a subsequent 'start_and_wait_for_bind'
+        watcher unblocks fresh on the next BOUND.
         """
 
         if remove_lease_host and self._lease is not None and self._address_api is not None:
             self._address_api.remove_host(
                 ip4_address=self._lease.ip4_host.address,
+                abort_bound_sessions=bool(
+                    dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
+                ),
             )
         self._lease = None
         self._state = Dhcp4State.INIT
@@ -586,6 +605,119 @@ class Dhcp4Client(Subsystem):
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
+
+    def _send_release(
+        self,
+        client_socket: socket,
+        *,
+        lease: Dhcp4Lease,
+        xid: int,
+    ) -> None:
+        """
+        Build and send a DHCPRELEASE packet per RFC 2131 §4.4.6.
+        ciaddr = current IPv4 address; carries Server Identifier
+        (option 54) and Client Identifier; no reply expected
+        from the server (RELEASE is fire-and-forget).
+        """
+
+        dhcp4_packet_tx = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=xid,
+            dhcp4__flag_b=False,
+            dhcp4__ciaddr=lease.ip4_host.address,
+            dhcp4__chaddr=self._mac_address,
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.RELEASE),
+                Dhcp4OptionClientId(self._expected_client_id),
+                Dhcp4OptionServerId(lease.server_id),
+                Dhcp4OptionEnd(),
+            ),
+        )
+        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        client_socket.send(bytes(dhcp4_packet_tx))
+
+    # ------------------------------------------------------------
+    # Phase 4 commit D — public sync 'release' / 'renew' / 'rebind'
+    # ------------------------------------------------------------
+
+    def release(self, lease: Dhcp4Lease, /) -> None:
+        """
+        Synchronous one-shot DHCPRELEASE — emits a single
+        RELEASE message to the server that issued 'lease' and
+        tears down the socket. No reply is expected
+        (RFC 2131 §4.4.6). The FSM state is not mutated; this
+        is a fire-and-forget convenience for operator CLI tools
+        and tests (Linux 'dhclient -r' / 'dhcpcd -k' equivalent).
+        """
+
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        try:
+            client_socket.bind(("0.0.0.0", 68))
+            client_socket.connect((str(lease.server_id), 67))
+            self._send_release(
+                client_socket,
+                lease=lease,
+                xid=random.randint(0, 0xFFFFFFFF),
+            )
+        finally:
+            client_socket.close()
+
+    def renew(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
+        """
+        Synchronous one-shot DHCPRENEW — unicast REQUEST to the
+        leasing server, wait for ACK, return the refreshed
+        'Dhcp4Lease'. Returns None on NAK, timeout, or other
+        failure. The FSM state is not mutated. Linux 'dhcpcd -n'
+        equivalent.
+        """
+
+        outcome = self._do_renew_or_rebind_exchange(lease=lease, broadcast=False)
+        return outcome if isinstance(outcome, Dhcp4Lease) else None
+
+    def rebind(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
+        """
+        Synchronous one-shot DHCPREBIND — broadcast REQUEST,
+        wait for ACK from any DHCP server, return the refreshed
+        'Dhcp4Lease'. Returns None on NAK, timeout, or other
+        failure. The FSM state is not mutated.
+        """
+
+        outcome = self._do_renew_or_rebind_exchange(lease=lease, broadcast=True)
+        return outcome if isinstance(outcome, Dhcp4Lease) else None
+
+    # ------------------------------------------------------------
+    # Subsystem hook — emit DHCPRELEASE on graceful shutdown
+    # ------------------------------------------------------------
+
+    @override
+    def _stop(self) -> None:
+        """
+        Subsystem post-stop hook. Runs after the FSM thread has
+        joined. If the FSM was BOUND at stop time, emit a
+        DHCPRELEASE for the held lease (RFC 2131 §4.4.6 SHOULD)
+        and remove the address via the address API (the
+        'dhcp.abort_sessions_on_lease_change' sysctl gates the
+        active TCP-session abort).
+        """
+
+        if self._state == Dhcp4State.BOUND and self._lease is not None:
+            try:
+                self.release(self._lease)
+            except OSError as error:
+                # Don't let a socket error in the
+                # release-on-shutdown path block the rest of
+                # the stack-stop sequence. Log and continue.
+                __debug__ and log(
+                    "dhcp4",
+                    f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
+                )
+            if self._address_api is not None:
+                self._address_api.remove_host(
+                    ip4_address=self._lease.ip4_host.address,
+                    abort_bound_sessions=bool(
+                        dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
+                    ),
+                )
 
     def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """

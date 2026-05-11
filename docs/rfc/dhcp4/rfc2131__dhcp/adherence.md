@@ -324,10 +324,17 @@ not retransmit on timeout.
 >  network address by sending a DHCPRELEASE message to
 >  the server."
 
-**Adherence:** not implemented. The client has no
-DHCPRELEASE path. PyTCP's lifecycle (`stack.stop()` →
-process exit) is not wired to release the lease back
-to the server.
+**Adherence:** met (Phase 4 commit D). The
+'Dhcp4Client._stop()' Subsystem post-stop hook emits a
+unicast DHCPRELEASE for the held lease before joining
+the thread, then removes the address via
+'address_api.remove_host(..., abort_bound_sessions=...)'.
+'stack.stop()' calls 'dhcp4_client.stop()' first in the
+teardown order so the RELEASE flies on still-live
+sockets before the TX ring shuts down. The new public
+sync 'release(lease)' method provides the same primitive
+for operator CLI tools (Linux 'dhclient -r' / 'dhcpcd -k'
+equivalent).
 
 ---
 
@@ -793,7 +800,13 @@ runs '_do_init_to_bound' to acquire a fresh lease.
 
 ## §4.4.6 DHCPRELEASE
 
-**Adherence:** not implemented. See §3.1 step 6 above.
+**Adherence:** met (Phase 4 commit D). See §3.1 step 6
+above for the shutdown integration. The wire-form
+builder '_send_release' carries the canonical RELEASE
+shape per the RFC: message-type 7, 'ciaddr' = current
+IPv4 address, Server Identifier (option 54) echoing
+'lease.server_id', and the Client Identifier — no reply
+is expected from the server.
 
 ---
 
@@ -1007,7 +1020,9 @@ assert IPv4 host removal + INIT-state restart.
 | FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
 | FSM state INIT-REBOOT                               | not tested — gap (Phase 5)                                  |
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)       |
-| DHCPRELEASE on shutdown                             | not tested — gap (Phase 4)                                  |
+| DHCPRELEASE on shutdown                             | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
+| Sync release / renew / rebind public surface        | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
+| Cross-IP RENEW/REBIND → replace_host                | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | DHCPINFORM                                          | not tested — gap                                            |
 | xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)     |
 | Lease Time surfaced on Dhcp4Lease                   | locked in (Phase 0 — `TestDhcp4ClientFetchLeaseReturn`)     |
@@ -1036,7 +1051,9 @@ assert IPv4 host removal + INIT-state restart.
 | FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)       |
 | FSM (INIT-REBOOT)                                       | not implemented (Phase 5)    |
 | T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)       |
-| DHCPRELEASE on shutdown                                 | not implemented              |
+| DHCPRELEASE on shutdown                                 | met (Phase 4 commit D)       |
+| Cross-IP RENEW/REBIND atomic 'replace_host' swap        | met (Phase 4 commit D)       |
+| Active TCP-abort on lease change (deliberate dev.)      | met (Phase 4 commit D — sysctl-gated; default 1) |
 | DHCPDECLINE on detected address conflict                | not implemented              |
 | DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                |
 | DHCPINFORM                                              | not implemented              |
@@ -1048,32 +1065,52 @@ assert IPv4 host removal + INIT-state restart.
 | 'Option overload' option (52)                           | not implemented              |
 | Lease-time interpretation (T1/T2 scheduling)            | Phase 4 (Dhcp4Lifecycle)     |
 
-**Principal compliance status.** With Phase 4 commit C
-shipped, PyTCP's DHCPv4 client is host-parity complete
-for RFC 2131 — boot acquisition, retransmission
-backoff, DHCPNAK/DECLINE handling, RFC 4361 DUID
-client identifier, T1/T2 timer-driven renewal,
-REBINDING fallback, and lease-expiry IPv4 halt are all
-in place. The 'Dhcp4Client' runs as a long-running
-'Subsystem' under 'stack.start()' / 'stack.stop()',
-consuming the Phase-3-clean 'Ip4AddressApi' boundary
-surface (`stack.address.add_host` /
-`.replace_host` / `.remove_host`) for all address
-mutations.
+**Principal compliance status.** With Phase 4 complete
+(commits 0/A/B/C/D), PyTCP's DHCPv4 client is
+host-parity-complete for RFC 2131. Boot acquisition,
+RFC 2131 §4.1 retransmission backoff, RFC 2131 §3.1
+step 4 DHCPNAK restart, RFC 2131 §3.1 step 5 DHCPDECLINE
+on ARP conflict, RFC 4361 DUID client identifier,
+RFC 6842 §3 echo validation, RFC 1542 §3.2 secs field
+advance, RFC 2131 §4.4.5 T1/T2 timer-driven RENEWING
+and REBINDING, lease-expiry IPv4 halt, and RFC 2131
+§4.4.6 DHCPRELEASE on graceful shutdown are all in
+place.
+
+The 'Dhcp4Client' runs as a long-running 'Subsystem'
+under 'stack.start()' / 'stack.stop()', consuming the
+Phase-3-clean 'Ip4AddressApi' boundary surface
+(`stack.address.add_host` / `.replace_host` /
+`.remove_host`) for all address mutations. The Phase 4.5
+FSM → API mutation table is wired end-to-end:
+
+| Transition                                  | Address-API call                                  |
+|---------------------------------------------|---------------------------------------------------|
+| `INIT → BOUND` (first lease)                | `add_host(ip4_host=...)`                          |
+| `BOUND → RENEWING → BOUND` (same IP)        | none — internal lease bookkeeping only            |
+| `BOUND → RENEWING → BOUND` (different IP)   | `replace_host(old, new, abort_bound_sessions=...)`|
+| `RENEW / REBIND NAK → INIT`                 | `remove_host(addr, abort_bound_sessions=...)`     |
+| lease expiry without ACK                    | `remove_host(addr, abort_bound_sessions=...)`     |
+| `stack.stop()` (graceful)                   | `send_release()` + `remove_host(...)`             |
+
+**Deliberate deviation from Linux.** The
+'dhcp.abort_sessions_on_lease_change' sysctl (default 1)
+gates active TCP-session abort on every address change.
+The default is a deliberate deviation from Linux's
+silent-rot kernel behaviour — PyTCP follows RFC 5227
+§2.4-final's SHOULD ("hosts SHOULD actively attempt to
+reset any existing connections using that address").
+Operators can opt into Linux-parity behaviour by
+setting the sysctl to 0.
 
 Remaining items in the per-RFC adherence catalogue:
 
-- **§3.1 step 6 / §4.4.6 DHCPRELEASE on shutdown**
-  (Phase 4 commit D — coming next).
-- **§4.4.2 INIT-REBOOT (cached prior lease)**
-  (Phase 5 — cached-lease persistence prerequisite).
+- **§4.4.2 INIT-REBOOT (cached prior lease)** — Phase 5
+  (cached-lease persistence prerequisite).
 - **Server option 58 (T1) / option 59 (T2) overrides**
   — codec parses them as 'Dhcp4OptionUnknown'; a
   follow-up will add typed accessors and prefer
   server values over the factor-based defaults.
 - **§3.4 DHCPINFORM** — niche, deferred.
 - **§4.4 Multiple-OFFER collection + selection** —
-  accept-first heuristic is OK for Phase 1.
-
-The wire-format library is comprehensive and
-well-tested; client-FSM coverage is now substantial.
+  accept-first heuristic is OK for Phase 1 host parity.

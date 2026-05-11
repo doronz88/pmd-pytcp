@@ -189,6 +189,53 @@ class TestDhcp4ConstantsDefaults(TestCase):
             msg="dhcp.t1_factor must default to 0.5 per RFC 2131 §4.4.5.",
         )
 
+    def test__dhcp4_constants__abort_sessions_on_lease_change_default(self) -> None:
+        """
+        Ensure 'dhcp.abort_sessions_on_lease_change' defaults to
+        1 — the deliberate deviation from Linux's silent-rot
+        behaviour.
+
+        Reference: RFC 5227 §2.4 final paragraph (hosts SHOULD actively reset connections on relinquished addresses).
+        """
+
+        self.assertEqual(
+            sysctl.get("dhcp.abort_sessions_on_lease_change"),
+            1,
+            msg="dhcp.abort_sessions_on_lease_change must default to 1 per the RFC 5227 §2.4-final SHOULD.",
+        )
+
+    def test__dhcp4_constants__abort_sessions_on_lease_change_accepts_zero(self) -> None:
+        """
+        Ensure 'dhcp.abort_sessions_on_lease_change' accepts 0
+        — operators can opt into Linux-parity silent-rot
+        behaviour.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("dhcp.abort_sessions_on_lease_change", 0)
+        self.assertEqual(
+            sysctl.get("dhcp.abort_sessions_on_lease_change"),
+            0,
+            msg="dhcp.abort_sessions_on_lease_change must accept 0 to disable active abort.",
+        )
+
+    def test__dhcp4_constants__abort_sessions_on_lease_change_rejects_other_values(self) -> None:
+        """
+        Ensure 'dhcp.abort_sessions_on_lease_change' rejects
+        every value outside {0, 1} — booleans, negatives,
+        floats, multi-valued ints.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for bad_value in (2, -1, True, False, 1.0):
+            with self.assertRaises(
+                ValueError,
+                msg=f"dhcp.abort_sessions_on_lease_change must reject {bad_value!r}",
+            ):
+                sysctl.set("dhcp.abort_sessions_on_lease_change", bad_value)
+
     def test__dhcp4_constants__t2_factor_default(self) -> None:
         """
         Ensure 'dhcp.t2_factor' defaults to 0.875 — the canonical

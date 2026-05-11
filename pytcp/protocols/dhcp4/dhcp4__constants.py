@@ -106,6 +106,16 @@ DHCP4__BOOT_WAIT_MS = 30000
 DHCP4__T1_FACTOR: float = 0.5
 DHCP4__T2_FACTOR: float = 0.875
 
+# Phase 4 commit D — TCP-session abort policy on
+# Ip4AddressApi-mediated address change (cross-IP RENEW/REBIND,
+# lease expiry, DHCPRELEASE-on-shutdown). Default 1 = active
+# abort per RFC 5227 §2.4-final SHOULD (deliberate deviation
+# from Linux's silent-rot kernel behaviour). Set 0 for
+# Linux-parity behaviour where the kernel silently lets TCP
+# sessions on a removed address rot until application-level
+# timeouts fire.
+DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE = 1
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -271,6 +281,35 @@ register(
         "RFC 2131 §4.4.5 — fraction of the lease duration at which "
         "the client escalates to REBINDING (broadcast REQUEST). "
         "Default 0.875; must be ≥ 'dhcp.t1_factor'."
+    ),
+)
+
+
+def _abort_sessions_validator(value: object) -> None:
+    """
+    Reject values outside {0, 1}. Booleans rejected because
+    'isinstance(True, int)' is True and the sysctl is an
+    integer-valued operator switch, not a bool. The explicit
+    'isinstance(value, int)' check also rejects '1.0' (float)
+    so the operator surface is strict-int.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value not in (0, 1):
+        raise ValueError(
+            f"sysctl 'dhcp.abort_sessions_on_lease_change' must be 0 or 1; got {value!r}",
+        )
+
+
+register(
+    key="dhcp.abort_sessions_on_lease_change",
+    module_name=__name__,
+    attr="DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE",
+    default=DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
+    validator=_abort_sessions_validator,
+    description=(
+        "TCP-session abort policy on DHCP-driven address change "
+        "(0/1; default 1 = active abort per RFC 5227 §2.4-final "
+        "SHOULD; 0 = Linux-parity silent-rot)."
     ),
 )
 

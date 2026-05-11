@@ -2134,6 +2134,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         )
         mock_address_api.remove_host.assert_called_once_with(
             ip4_address=Ip4Address("10.0.0.100"),
+            abort_bound_sessions=True,
         )
 
     def test__dhcp4_client__renewing_emits_unicast_request_with_ciaddr(self) -> None:
@@ -2173,4 +2174,278 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self.assertIsNone(
             renew_request.req_ip_addr,
             msg="RENEW REQUEST MUST NOT carry the Requested IP Address option.",
+        )
+
+
+class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
+    """
+    Phase 4 commit D — DHCPRELEASE, sync release/renew/rebind,
+    Subsystem '_stop' shutdown hook, and the cross-IP RENEW/REBIND
+    'replace_host' path. Phase 4.5 FSM → address-API mutation
+    table.
+    """
+
+    @staticmethod
+    def _make_lease(*, ip: str = "10.0.0.100/24", server_id: str = "10.0.0.254") -> Dhcp4Lease:
+        """
+        Build a synthetic Dhcp4Lease for tests that drive the
+        FSM through release / cross-IP paths directly.
+        """
+
+        return Dhcp4Lease(
+            ip4_host=Ip4Host(ip),
+            lease_time__sec=3600,
+            server_id=Ip4Address(server_id),
+            acquired_at_monotonic=0.0,
+        )
+
+    def test__dhcp4_client__sync_release_emits_dhcprelease_with_correct_options(self) -> None:
+        """
+        Ensure 'release(lease)' emits a single DHCPRELEASE
+        message carrying message-type 7, ciaddr = lease IP,
+        Server Identifier echoing 'lease.server_id', and the
+        Client Identifier — no reply expected.
+
+        Reference: RFC 2131 §4.4.6 (DHCPRELEASE: unicast to server-id, ciaddr = current IP).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = self._make_lease()
+
+        client.release(lease)
+
+        self.assertEqual(
+            len(self._server.tx_log),
+            1,
+            msg="release(lease) must emit exactly one DHCPRELEASE message.",
+        )
+        release = self._server.tx_log[0]
+        self.assertEqual(
+            release.message_type,
+            Dhcp4MessageType.RELEASE,
+            msg="release(lease) TX must carry message-type 7 (DHCPRELEASE).",
+        )
+        self.assertEqual(
+            release.ciaddr,
+            Ip4Address("10.0.0.100"),
+            msg="RELEASE 'ciaddr' must equal the current leased IPv4 address.",
+        )
+        self.assertEqual(
+            release.srv_id,
+            Ip4Address("10.0.0.254"),
+            msg="RELEASE must carry Server Identifier = lease.server_id.",
+        )
+        self.assertEqual(
+            release.client_id,
+            _DEFAULT_CID,
+            msg="RELEASE must carry the same Client Identifier as DISCOVER / REQUEST.",
+        )
+
+    def test__dhcp4_client__sync_renew_returns_refreshed_lease_on_ack(self) -> None:
+        """
+        Ensure 'renew(lease)' performs a single unicast RENEW
+        exchange and returns the refreshed 'Dhcp4Lease' on a
+        valid ACK. Sync mode does not mutate '_lease'.
+
+        Reference: RFC 2131 §4.4.5 (RENEW: unicast REQUEST + ACK refreshes the lease).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"), lease_time=7200)
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = self._make_lease()
+        new_lease = client.renew(lease)
+
+        assert new_lease is not None
+        self.assertEqual(
+            new_lease.lease_time__sec,
+            7200,
+            msg="renew(lease) must return a refreshed lease carrying the server's new lease time.",
+        )
+        self.assertIsNone(
+            client._lease,
+            msg="Sync renew() must NOT mutate the client's internal '_lease' attribute.",
+        )
+
+    def test__dhcp4_client__sync_renew_returns_none_on_nak(self) -> None:
+        """
+        Ensure 'renew(lease)' returns None when the server
+        replies with DHCPNAK — the caller is expected to fall
+        back to a full DISCOVER cycle.
+
+        Reference: RFC 2131 §4.4.5 (RENEW NAK → caller restarts).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        self._server.enqueue_nak()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        result = client.renew(self._make_lease())
+
+        self.assertIsNone(
+            result,
+            msg="renew(lease) must return None on DHCPNAK.",
+        )
+
+    def test__dhcp4_client__sync_rebind_emits_broadcast_request(self) -> None:
+        """
+        Ensure 'rebind(lease)' emits a broadcast REQUEST (flag_b
+        set) with ciaddr = current IP and returns the refreshed
+        lease on ACK.
+
+        Reference: RFC 2131 §4.4.5 (REBIND: broadcast REQUEST after T2).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.rebind(self._make_lease())
+
+        rebind_request = self._server.tx_log[0]
+        self.assertEqual(
+            rebind_request.message_type,
+            Dhcp4MessageType.REQUEST,
+            msg="REBIND TX must be a DHCPREQUEST.",
+        )
+        self.assertTrue(
+            rebind_request.flag_b,
+            msg="REBIND REQUEST must set the BROADCAST flag.",
+        )
+        self.assertIsNone(
+            rebind_request.srv_id,
+            msg="REBIND REQUEST MUST NOT carry the Server Identifier option.",
+        )
+
+    def test__dhcp4_client__stop_emits_release_when_bound(self) -> None:
+        """
+        Ensure 'stop()' on a BOUND client emits a DHCPRELEASE
+        for the held lease before joining the Subsystem thread.
+
+        Reference: RFC 2131 §4.4.6 (client SHOULD send DHCPRELEASE to relinquish a lease).
+        """
+
+        # Drive the FSM to BOUND first via a successful INIT exchange.
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.start_and_wait_for_bind(timeout_s=2.0)
+
+        client.stop()
+
+        # tx_log: DISCOVER, REQUEST, RELEASE.
+        release_messages = [tx for tx in self._server.tx_log if tx.message_type == Dhcp4MessageType.RELEASE]
+        self.assertEqual(
+            len(release_messages),
+            1,
+            msg="stop() while BOUND must emit exactly one DHCPRELEASE.",
+        )
+
+    def test__dhcp4_client__stop_skips_release_when_not_bound(self) -> None:
+        """
+        Ensure 'stop()' on a never-bound (INIT) client does NOT
+        emit a DHCPRELEASE — there is no lease to relinquish.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
+        self._server.enqueue_timeout()  # INIT fails immediately
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.start_and_wait_for_bind(timeout_s=0.5)
+
+        client.stop()
+
+        release_messages = [tx for tx in self._server.tx_log if tx.message_type == Dhcp4MessageType.RELEASE]
+        self.assertEqual(
+            len(release_messages),
+            0,
+            msg="stop() on an INIT-state client must NOT emit a DHCPRELEASE.",
+        )
+
+    def test__dhcp4_client__stop_removes_host_via_address_api_when_bound(self) -> None:
+        """
+        Ensure 'stop()' on a BOUND client removes the leased
+        address via 'address_api.remove_host' with the
+        'abort_bound_sessions' flag derived from
+        'dhcp.abort_sessions_on_lease_change' (default 1).
+
+        Reference: RFC 5227 §2.4 final paragraph (hosts SHOULD actively reset connections on relinquished addresses).
+        """
+
+        mock_address_api = MagicMock(name="Ip4AddressApi")
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
+        client.start_and_wait_for_bind(timeout_s=2.0)
+
+        client.stop()
+
+        mock_address_api.remove_host.assert_called_with(
+            ip4_address=Ip4Address("10.0.0.100"),
+            abort_bound_sessions=True,
+        )
+
+    def test__dhcp4_client__cross_ip_renew_calls_replace_host(self) -> None:
+        """
+        Ensure a RENEW ACK that returns a DIFFERENT yiaddr
+        triggers an 'address_api.replace_host' swap (the
+        Phase 4.5 FSM → API mutation table — "Different-IP
+        swap" row), not a silent in-place lease update.
+
+        Reference: RFC 5227 §2.4 (cross-IP address change must propagate to the stack).
+        """
+
+        self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
+        mock_address_api = MagicMock(name="Ip4AddressApi")
+        self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.101"))  # different from leased 10.0.0.100
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
+        client._lease = self._make_lease()  # holds 10.0.0.100
+        client._state = Dhcp4State.RENEWING
+
+        with patch("pytcp.lib.dhcp4_client.time.monotonic", return_value=1850.0):
+            client._do_renewing()
+
+        mock_address_api.replace_host.assert_called_once()
+        kwargs = mock_address_api.replace_host.call_args.kwargs
+        self.assertEqual(
+            kwargs["old_address"],
+            Ip4Address("10.0.0.100"),
+            msg="replace_host must be called with the prior leased address.",
+        )
+        self.assertEqual(
+            kwargs["new_host"].address,
+            Ip4Address("10.0.0.101"),
+            msg="replace_host must be called with the new lease's Ip4Host.",
+        )
+        self.assertTrue(
+            kwargs["abort_bound_sessions"],
+            msg="Default sysctl 'dhcp.abort_sessions_on_lease_change' = 1 must surface as abort_bound_sessions=True.",
+        )
+
+    def test__dhcp4_client__abort_sessions_sysctl_zero_disables_abort(self) -> None:
+        """
+        Ensure the 'dhcp.abort_sessions_on_lease_change' sysctl
+        gates the 'abort_bound_sessions' kwarg — operator
+        overrides to 0 propagate through to address-API calls
+        as 'abort_bound_sessions=False' (Linux-parity silent-
+        rot semantic).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.abort_sessions_on_lease_change", 0))
+        mock_address_api = MagicMock(name="Ip4AddressApi")
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
+        client.start_and_wait_for_bind(timeout_s=2.0)
+
+        client.stop()
+
+        mock_address_api.remove_host.assert_called_with(
+            ip4_address=Ip4Address("10.0.0.100"),
+            abort_bound_sessions=False,
         )
