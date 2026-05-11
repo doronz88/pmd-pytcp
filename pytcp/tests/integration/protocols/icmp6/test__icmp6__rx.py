@@ -37,7 +37,6 @@ pytcp/tests/integration/protocols/icmp6/test__icmp6__rx.py
 ver 3.0.4
 """
 
-import threading
 from typing import Any
 
 from net_addr import Ip6Address, MacAddress
@@ -1070,9 +1069,7 @@ class TestIcmp6Rx__NaDadMatch(IcmpTestCase):
         """
 
         super().setUp()
-        self._packet_handler._icmp6_nd_dad__events[self._CANDIDATE__IP6] = threading.Event()
-        self._packet_handler._icmp6_nd_dad__nonces[self._CANDIDATE__IP6] = set()
-        self._packet_handler._icmp6_nd_dad__tllas[self._CANDIDATE__IP6] = None
+        self._packet_handler._icmp6_nd_dad__registry.install(self._CANDIDATE__IP6)
 
     def test__icmp6__rx__na_dad_match__no_tx(self) -> None:
         """
@@ -1110,7 +1107,7 @@ class TestIcmp6Rx__NaDadMatch(IcmpTestCase):
     def test__icmp6__rx__na_dad_match__captures_tlla(self) -> None:
         """
         Ensure the handler captures the peer TLLA from the NA into
-        the per-address slot of '_icmp6_nd_dad__tllas'.
+        the per-address slot's peer-info field.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1118,15 +1115,15 @@ class TestIcmp6Rx__NaDadMatch(IcmpTestCase):
         self._drive_rx(frame=_FRAME_RX__NA_DAD_MATCH)
 
         self.assertEqual(
-            self._packet_handler._icmp6_nd_dad__tllas[self._CANDIDATE__IP6],
+            self._packet_handler._icmp6_nd_dad__registry.peer_info(self._CANDIDATE__IP6),
             MacAddress("02:00:00:00:00:91"),
-            msg="Handler must capture the peer TLLA into the per-address tlla slot.",
+            msg="Handler must capture the peer TLLA into the per-address slot.",
         )
 
     def test__icmp6__rx__na_dad_match__releases_event(self) -> None:
         """
-        Ensure the handler sets the per-address Event in
-        '_icmp6_nd_dad__events' so the DAD waiter wakes up.
+        Ensure the handler sets the per-address Event in the
+        DAD slot registry so the DAD waiter wakes up.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1134,6 +1131,6 @@ class TestIcmp6Rx__NaDadMatch(IcmpTestCase):
         self._drive_rx(frame=_FRAME_RX__NA_DAD_MATCH)
 
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__events[self._CANDIDATE__IP6].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(self._CANDIDATE__IP6),
             msg="Handler must set the per-address DAD Event for matching NAs.",
         )

@@ -53,10 +53,10 @@ from net_proto import (
     PacketValidationError,
 )
 from pytcp import stack
+from pytcp.lib.dad_slot_registry import DadSignalResult
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp6.nd import nd__constants
-from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6NdDadSignalResult
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.raw__metadata import RawMetadata
@@ -78,21 +78,15 @@ class PacketHandlerIcmp6Rx(ABC):
 
         from net_addr import Ip6Network, MacAddress
         from net_proto import Icmp6Message, Icmp6NdRoutePreference, Tracker
+        from pytcp.lib.dad_slot_registry import DadSlotRegistry
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 
         _packet_stats_rx: PacketStatsRx
         _mac_unicast: MacAddress
+        _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
-
-        def _icmp6_nd_dad__try_signal_conflict(
-            self,
-            *,
-            target_address: Ip6Address,
-            tlla: MacAddress | None,
-            inbound_nonce: bytes | None,
-        ) -> Icmp6NdDadSignalResult: ...
 
         # pylint: disable=unused-argument
 
@@ -870,16 +864,16 @@ class PacketHandlerIcmp6Rx(ABC):
         # may already be there as OPTIMISTIC under §20.
         #
         # The slot check + nonce-test + tlla-write + event.set()
-        # is atomic under '_icmp6_nd_dad__lock' so the worker
-        # thread cannot tear down the slot between the check
-        # and the signal — see '_icmp6_nd_dad__try_signal_conflict'.
+        # is atomic under the registry's internal lock so the
+        # worker thread cannot tear down the slot between the
+        # check and the signal.
         target_address = packet_rx.icmp6.message.target_address
-        dad_signal = self._icmp6_nd_dad__try_signal_conflict(
-            target_address=target_address,
-            tlla=None,
+        dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
+            target_address,
+            peer_info=None,
             inbound_nonce=packet_rx.icmp6.message.option_nonce,
         )
-        if dad_signal is Icmp6NdDadSignalResult.LOOP_HAIRPIN:
+        if dad_signal is DadSignalResult.LOOP_HAIRPIN:
             # RFC 7527 §4.2 Enhanced DAD: a Nonce option matching
             # one we emitted for this candidate means this NS is
             # a loop-hairpin echo of our own probe (a switch
@@ -892,7 +886,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 f"{target_address}; dropped</>",
             )
             return
-        if dad_signal is Icmp6NdDadSignalResult.SIGNALED:
+        if dad_signal is DadSignalResult.SIGNALED:
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
             __debug__ and log(
                 "icmp6",
@@ -973,18 +967,18 @@ class PacketHandlerIcmp6Rx(ABC):
 
         # Run ND Duplicate Address Detection check. The
         # slot check + tlla-write + event.set() is atomic
-        # under '_icmp6_nd_dad__lock' so the worker thread
-        # cannot tear down the slot between the check and the
-        # signal — see '_icmp6_nd_dad__try_signal_conflict'.
-        # NA messages carry no Nonce option (RFC 4861 §4.4),
-        # so 'inbound_nonce=None' skips the hairpin check.
+        # under the registry's internal lock so the worker
+        # thread cannot tear down the slot between the check
+        # and the signal. NA messages carry no Nonce option
+        # (RFC 4861 §4.4), so 'inbound_nonce=None' skips the
+        # hairpin check.
         target_address = packet_rx.icmp6.message.target_address
-        dad_signal = self._icmp6_nd_dad__try_signal_conflict(
-            target_address=target_address,
-            tlla=packet_rx.icmp6.message.option_tlla,
+        dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
+            target_address,
+            peer_info=packet_rx.icmp6.message.option_tlla,
             inbound_nonce=None,
         )
-        if dad_signal is Icmp6NdDadSignalResult.SIGNALED:
+        if dad_signal is DadSignalResult.SIGNALED:
             self._packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad += 1
             return
 

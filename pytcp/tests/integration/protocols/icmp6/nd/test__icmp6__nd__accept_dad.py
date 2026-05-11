@@ -185,9 +185,11 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
 
         # Trigger DAD failure mid-loop.
         def _trigger_conflict() -> None:
-            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE_HOST.address)
-            if event is not None:
-                event.set()
+            self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
+                _CANDIDATE_HOST.address,
+                peer_info=None,
+                inbound_nonce=None,
+            )
 
         self.assertTrue(
             self._packet_handler._ip6_support,
@@ -220,9 +222,11 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         """
 
         def _trigger_conflict() -> None:
-            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE_HOST.address)
-            if event is not None:
-                event.set()
+            self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
+                _CANDIDATE_HOST.address,
+                peer_info=None,
+                inbound_nonce=None,
+            )
 
         with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
             with sysctl_module.override("icmp6.retrans_timer_ms", 200):

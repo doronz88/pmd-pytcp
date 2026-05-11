@@ -38,8 +38,6 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__simultaneous_probe.p
 ver 3.0.4
 """
 
-import threading
-
 from net_addr import Ip6Address, MacAddress
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
@@ -75,9 +73,7 @@ class TestIcmp6Rx__NdSimultaneousProbe(NdTestCase):
         """
 
         super().setUp()
-        self._packet_handler._icmp6_nd_dad__events[_CANDIDATE] = threading.Event()
-        self._packet_handler._icmp6_nd_dad__nonces[_CANDIDATE] = set()
-        self._packet_handler._icmp6_nd_dad__tllas[_CANDIDATE] = None
+        self._packet_handler._icmp6_nd_dad__registry.install(_CANDIDATE)
         if _SOLICITED_NODE_MAC not in self._packet_handler._mac_multicast:
             self._packet_handler._mac_multicast.append(_SOLICITED_NODE_MAC)
         if _SOLICITED_NODE_MCAST not in self._packet_handler._ip6_multicast:
@@ -139,9 +135,9 @@ class TestIcmp6Rx__NdSimultaneousProbe(NdTestCase):
     def test__icmp6__rx__simultaneous_probe__releases_dad_event(self) -> None:
         """
         Ensure the DAD-claim path can pick up the conflict — the
-        per-address Event in '_icmp6_nd_dad__events' is set and
-        '_icmp6_nd_dad__tllas' captures None to signal "peer was
-        probing, not advertising a final address."
+        per-address slot Event is set and the captured peer
+        MAC remains None to signal "peer was probing, not
+        advertising a final address."
 
         Reference: RFC 4862 §5.4.3 case (b) (NS during DAD = duplicate).
         """
@@ -158,14 +154,14 @@ class TestIcmp6Rx__NdSimultaneousProbe(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE),
             msg="The DAD-conflict path must set the per-address Event.",
         )
         self.assertIsNone(
-            self._packet_handler._icmp6_nd_dad__tllas[_CANDIDATE],
+            self._packet_handler._icmp6_nd_dad__registry.peer_info(_CANDIDATE),
             msg=(
-                "The DAD-conflict path must leave the per-address tlla "
-                "slot as None — the peer was probing, not advertising."
+                "The DAD-conflict path must leave the captured peer info "
+                "as None — the peer was probing, not advertising."
             ),
         )
 
@@ -202,7 +198,7 @@ class TestIcmp6Rx__NdSimultaneousProbe(NdTestCase):
         # the IPv6-frame multicast filter drops it. Our own DAD
         # state is NOT touched.
         self.assertFalse(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE),
             msg=(
                 "An NS arriving at a multicast group we do NOT belong to "
                 "must NOT signal the DAD event — that would be an off-link "

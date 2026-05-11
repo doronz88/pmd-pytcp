@@ -138,22 +138,6 @@ class Icmp6DadState(Enum):
     VALID = "VALID"
 
 
-class Icmp6NdDadSignalResult(Enum):
-    """
-    Outcome of an atomic '_icmp6_nd_dad__try_signal_conflict'
-    call. The RX NS / NA handlers branch on this to decide
-    whether to fall through to normal target-not-in-DAD
-    processing (NOT_DAD), drop a loop-hairpin echo of our own
-    probe silently (LOOP_HAIRPIN — RFC 7527 §4.2), or charge
-    a peer-conflict counter after the slot Event has been
-    signalled (SIGNALED — RFC 4862 §5.4.3 case (b)).
-    """
-
-    NOT_DAD = "NOT_DAD"
-    LOOP_HAIRPIN = "LOOP_HAIRPIN"
-    SIGNALED = "SIGNALED"
-
-
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Icmp6TempAddress:
     """

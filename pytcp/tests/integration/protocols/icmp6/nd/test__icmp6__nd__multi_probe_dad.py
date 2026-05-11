@@ -191,9 +191,11 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
         # background set to land before the first probe's wait
         # would otherwise time out.
         def _trigger_conflict() -> None:
-            event = self._packet_handler._icmp6_nd_dad__events.get(_CANDIDATE)
-            if event is not None:
-                event.set()
+            self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
+                _CANDIDATE,
+                peer_info=None,
+                inbound_nonce=None,
+            )
 
         with sysctl_module.override("icmp6.dad_transmits", 3):
             with sysctl_module.override("icmp6.retrans_timer_ms", 200):

@@ -30,9 +30,9 @@
 Integration tests for the async per-address DAD model —
 nd_linux_parity §20.1.
 
-The DAD plumbing now keys on per-address dicts
-('_icmp6_nd_dad__events' / '_nonces' / '_tllas') so multiple
-addresses can DAD concurrently. The RX path looks up the slot
+The DAD plumbing keys on a per-address slot registry
+('_icmp6_nd_dad__registry') so multiple addresses can DAD
+concurrently. The RX path looks up the slot
 by inbound NS / NA 'target_address' and signals the right
 Event. '_claim_ip6_address_async' spawns one daemon worker
 thread per claim.
@@ -154,9 +154,7 @@ class TestIcmp6Nd__AsyncDad__PerTargetRxDispatch(NdTestCase):
 
         super().setUp()
         for addr in (_CANDIDATE_A, _CANDIDATE_B):
-            self._packet_handler._icmp6_nd_dad__events[addr] = threading.Event()
-            self._packet_handler._icmp6_nd_dad__nonces[addr] = set()
-            self._packet_handler._icmp6_nd_dad__tllas[addr] = None
+            self._packet_handler._icmp6_nd_dad__registry.install(addr)
             _join_candidate_multicast(self, address=addr)
 
     def test__icmp6__nd__async_dad__ns_for_a_does_not_signal_b(self) -> None:
@@ -179,11 +177,11 @@ class TestIcmp6Nd__AsyncDad__PerTargetRxDispatch(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE_A].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE_A),
             msg="A's per-address Event must be set by an NS targeting A.",
         )
         self.assertFalse(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE_B].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE_B),
             msg="B's per-address Event must NOT be signalled by an NS targeting A.",
         )
 
@@ -200,7 +198,7 @@ class TestIcmp6Nd__AsyncDad__PerTargetRxDispatch(NdTestCase):
         shared_nonce = b"\x01\x02\x03\x04\x05\x06"
         # Register the nonce with A (we sent it for A's probe);
         # B has its own empty nonce set.
-        self._packet_handler._icmp6_nd_dad__nonces[_CANDIDATE_A].add(shared_nonce)
+        self._packet_handler._icmp6_nd_dad__registry.register_nonce(_CANDIDATE_A, shared_nonce)
 
         # NS for A with the shared nonce → loop-hairpin drop.
         frame_a = self._make_nd_ns_frame(
@@ -228,11 +226,11 @@ class TestIcmp6Nd__AsyncDad__PerTargetRxDispatch(NdTestCase):
         self._drive_rx(frame=frame_b)
 
         self.assertFalse(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE_A].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE_A),
             msg="A's nonce-match must drop the NS — Event must remain unset.",
         )
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__events[_CANDIDATE_B].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(_CANDIDATE_B),
             msg="The same nonce on B is a peer conflict (B never emitted it).",
         )
 

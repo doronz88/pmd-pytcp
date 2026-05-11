@@ -42,7 +42,6 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py
 ver 3.0.4
 """
 
-import threading
 from typing import Any, cast
 
 from net_addr import Ip6Address, MacAddress
@@ -94,9 +93,8 @@ class TestIcmp6Nd__EnhancedDad__LoopHairpinDropped(NdTestCase):
         """
 
         our_nonce = b"\xab\xcd\xef\x12\x34\x56"
-        self._packet_handler._icmp6_nd_dad__events[CANDIDATE] = threading.Event()
-        self._packet_handler._icmp6_nd_dad__nonces[CANDIDATE] = {our_nonce}
-        self._packet_handler._icmp6_nd_dad__tllas[CANDIDATE] = None
+        self._packet_handler._icmp6_nd_dad__registry.install(CANDIDATE)
+        self._packet_handler._icmp6_nd_dad__registry.register_nonce(CANDIDATE, our_nonce)
         _join_candidate_multicast(self._packet_handler)
 
         frame = self._make_nd_ns_frame(
@@ -111,7 +109,7 @@ class TestIcmp6Nd__EnhancedDad__LoopHairpinDropped(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertFalse(
-            self._packet_handler._icmp6_nd_dad__events[CANDIDATE].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(CANDIDATE),
             msg="Loop-hairpin echo must NOT signal the per-address DAD Event.",
         )
         self.assertEqual(
@@ -149,9 +147,8 @@ class TestIcmp6Nd__EnhancedDad__NonMatchingNonceTreatedAsConflict(NdTestCase):
         Reference: RFC 7527 §4.2 (no match → DAD failure).
         """
 
-        self._packet_handler._icmp6_nd_dad__events[CANDIDATE] = threading.Event()
-        self._packet_handler._icmp6_nd_dad__nonces[CANDIDATE] = {b"\xab\xcd\xef\x12\x34\x56"}
-        self._packet_handler._icmp6_nd_dad__tllas[CANDIDATE] = None
+        self._packet_handler._icmp6_nd_dad__registry.install(CANDIDATE)
+        self._packet_handler._icmp6_nd_dad__registry.register_nonce(CANDIDATE, b"\xab\xcd\xef\x12\x34\x56")
         _join_candidate_multicast(self._packet_handler)
 
         peer_nonce = b"\xff\xff\xff\xff\xff\xff"
@@ -167,7 +164,7 @@ class TestIcmp6Nd__EnhancedDad__NonMatchingNonceTreatedAsConflict(NdTestCase):
         self._drive_rx(frame=frame)
 
         self.assertTrue(
-            self._packet_handler._icmp6_nd_dad__events[CANDIDATE].is_set(),
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(CANDIDATE),
             msg="Non-matching nonce must set the per-address DAD Event (genuine conflict).",
         )
         self.assertEqual(
@@ -186,7 +183,7 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
     """
     With 'icmp6.enhanced_dad' enabled, every NS(DAD) probe
     emitted by the host carries a Nonce option, and the nonce
-    is tracked in '_icmp6_nd_dad__nonces'.
+    is registered with the per-address DAD slot.
     """
 
     def tearDown(self) -> None:
@@ -286,11 +283,7 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
             dad_message.option_nonce,
             msg=("enhanced_dad=0 must suppress the Nonce option on probes. " f"Got: {dad_message.option_nonce!r}"),
         )
-        self.assertNotIn(
-            CANDIDATE,
-            self._packet_handler._icmp6_nd_dad__nonces,
-            msg=(
-                "enhanced_dad=0 must leave the nonce-tracking set empty. "
-                f"Got: {self._packet_handler._icmp6_nd_dad__nonces!r}"
-            ),
+        self.assertFalse(
+            self._packet_handler._icmp6_nd_dad__registry.has_signal(CANDIDATE),
+            msg="DAD must have torn down the per-address slot on completion.",
         )
