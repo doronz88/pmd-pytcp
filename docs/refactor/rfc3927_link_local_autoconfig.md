@@ -358,28 +358,34 @@ copies the list under a lock.
 
 **0.5.5 Migrate DHCP client**
 
-`pytcp/protocols/dhcp4/dhcp4__client.py` currently calls:
+DHCPv4's reach-through wasn't in the client itself — the client
+holds `arp_dad_verifier` / `arp_dad_announcer` callbacks; the
+reach-through lived at the WIRING point in
+`pytcp/stack/__init__.py`, which bound the callbacks directly
+to `packet_handler._arp_dad_probe_address` /
+`_arp_dad_announce_address`. Phase 0.5 changes the wiring to
+route through the API:
 
 ```python
-verified = stack.packet_handler._arp_dad_probe_address(addr)
-if verified:
-    stack.address.add_host(ip4_host=...)
-    stack.packet_handler._arp_dad_announce_address(addr)
+# pytcp/stack/__init__.py
+dhcp4_client = Dhcp4Client(
+    mac_address=packet_handler._mac_unicast,
+    arp_dad_verifier=lambda addr: address.probe(address=addr).success,
+    arp_dad_announcer=lambda addr: address.announce(address=addr),
+    address_api=address,
+)
 ```
 
-Becomes:
+DHCP client code is untouched — it's already abstracted via the
+callback interface. The Phase-3 line is drawn correctly: DHCP
+no longer reaches into packet_handler internals (even
+indirectly through the wiring), and the callbacks resolve via
+the sanctioned `Ip4AddressApi` surface.
 
-```python
-result = stack.address.claim_with_acd(ip4_host=...)
-if not result.success:
-    # Conflict during probe -> DHCPDECLINE per RFC 2131 §3.1
-    self._send_decline(conflict=result)
-    return
-# claim_with_acd already installed + announced
-```
-
-Two call sites (Phase-4 DHCP and the Phase-2 ACD-on-OFFER
-path in the existing DHCP code) update in lockstep.
+A future cleanup may collapse the verifier/announcer callbacks
+into a single `address_api`-direct reference, but that's a
+DHCP-internal refactor and out of scope for Phase 0.5's
+reach-through closure.
 
 **0.5.6 Migrate static-host claim path**
 

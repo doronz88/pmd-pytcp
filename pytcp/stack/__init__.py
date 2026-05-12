@@ -442,16 +442,23 @@ def init(
 
     # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
     # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
-    # cannot do DHCP). Wired with the packet handler's RFC 5227 §2.1.1
-    # probe loop and §2.3 announce loop as callbacks so the lifecycle
-    # never reaches into 'packet_handler' internals directly.
+    # cannot do DHCP). Wired with the address API's RFC 5227 §2.1.1
+    # probe and §2.3 announce surfaces as callbacks; the lifecycle
+    # never reaches into 'packet_handler' internals directly — the
+    # API is the Phase-3-clean kernel/userspace boundary surface.
     global dhcp4_client
     if ip4_dhcp and layer is InterfaceLayer.L2:
         assert isinstance(packet_handler, PacketHandlerL2)
+        # Adapters that match the callback shape DHCP expects while
+        # routing through the sanctioned address-API methods. The
+        # 'address' singleton is bound to 'packet_handler' above so
+        # the call chain ends up at the same RFC 5227 helpers, but
+        # via the public API surface rather than a reach-through.
+        _address_api = address
         dhcp4_client = Dhcp4Client(
             mac_address=packet_handler._mac_unicast,
-            arp_dad_verifier=packet_handler._arp_dad_probe_address,
-            arp_dad_announcer=packet_handler._arp_dad_announce_address,
+            arp_dad_verifier=lambda addr: _address_api.probe(address=addr).success,
+            arp_dad_announcer=lambda addr: _address_api.announce(address=addr),
             address_api=address,
         )
     else:

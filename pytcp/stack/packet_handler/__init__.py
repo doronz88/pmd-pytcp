@@ -1840,22 +1840,19 @@ class PacketHandlerL2(
         method is not the integration point for that.
         """
 
-        # Probe each candidate sequentially. Each candidate stays in
-        # '_ip4_host_candidate' until its probe loop completes so the
-        # ARP RX path can match the address against the candidate
-        # list when scoring inbound conflicts (see
-        # 'packet_handler__arp__rx').
+        # Probe each candidate sequentially via the Address API's
+        # 'claim_with_acd' composite primitive (probe + announce
+        # + install in one synchronous call). Each candidate stays
+        # in '_ip4_host_candidate' until its probe loop completes
+        # so the ARP RX path can match the address against the
+        # candidate list when scoring inbound conflicts (see
+        # 'packet_handler__arp__rx'). The API hides the underlying
+        # RFC 5227 §2.1.1 probe / §2.3 announce helpers so this
+        # path doesn't reach into '_arp_dad_*' directly.
         for ip4_host in list(self._ip4_host_candidate):
-            verified = self._arp_dad_probe_address(ip4_host.address)
+            result = stack.address.claim_with_acd(ip4_host=ip4_host)
             self._ip4_host_candidate.remove(ip4_host)
-            if verified:
-                # Phase 4 commit A — install via the Address API
-                # (kernel/userspace boundary surface) rather than
-                # mutating '_ip4_host' directly. The API wraps the
-                # same append today; Phase-3 swap replaces the
-                # internals with an RTNETLINK-equivalent IPC.
-                stack.address.add_host(ip4_host=ip4_host)
-                self._arp_dad_announce_address(ip4_host.address)
+            if result.success:
                 __debug__ and log(
                     "stack",
                     f"Successfully claimed IPv4 address {ip4_host.address}",

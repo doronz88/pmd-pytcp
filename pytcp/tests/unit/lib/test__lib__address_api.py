@@ -35,8 +35,12 @@ from typing import TYPE_CHECKING, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host
-from pytcp.lib.address_api import Ip4AddressApi
+from net_addr import Ip4Address, Ip4Host, MacAddress
+from pytcp.lib.address_api import (
+    ConflictEvent,
+    Ip4AddressApi,
+    ProbeResult,
+)
 
 if TYPE_CHECKING:
     from pytcp.stack.packet_handler import PacketHandlerL2
@@ -45,13 +49,44 @@ if TYPE_CHECKING:
 class _FakePacketHandler:
     """
     Minimal packet-handler stand-in for 'Ip4AddressApi' tests —
-    exposes only the '_ip4_host' attribute the API mutates.
+    exposes only the '_ip4_host' attribute the API mutates plus
+    the RFC 5227 ACD-helper methods the API delegates to.
     Using a hand-rolled class avoids the autospec ceremony for
     a 50-attribute production class.
     """
 
     def __init__(self) -> None:
         self._ip4_host: list[Ip4Host] = []
+        # The new ACD API methods on 'Ip4AddressApi' delegate to
+        # these helpers. Tests configure 'probe_result' and
+        # 'announce_calls' to drive / observe behaviour.
+        self.probe_result: bool = True
+        self.probe_peer_mac: MacAddress | None = None
+        self.probe_calls: list[Ip4Address] = []
+        self.announce_calls: list[Ip4Address] = []
+        self.gratuitous_arp_calls: list[Ip4Address] = []
+        self._ip4_arp_dad__registry = _FakeRegistry()
+
+    def _arp_dad_probe_address(self, ip4_unicast: Ip4Address, /) -> bool:
+        self.probe_calls.append(ip4_unicast)
+        self._ip4_arp_dad__registry.peer_info_table[ip4_unicast] = self.probe_peer_mac
+        return self.probe_result
+
+    def _arp_dad_announce_address(self, ip4_unicast: Ip4Address, /) -> None:
+        self.announce_calls.append(ip4_unicast)
+
+    def _send_gratuitous_arp(self, *, ip4_unicast: Ip4Address) -> None:
+        self.gratuitous_arp_calls.append(ip4_unicast)
+
+
+class _FakeRegistry:
+    """Records 'peer_info' lookups; tests preload mac results."""
+
+    def __init__(self) -> None:
+        self.peer_info_table: dict[Ip4Address, MacAddress | None] = {}
+
+    def peer_info(self, candidate: Ip4Address, /) -> MacAddress | None:
+        return self.peer_info_table.get(candidate)
 
 
 class TestIp4AddressApiAddHost(TestCase):
@@ -412,3 +447,417 @@ class TestIp4AddressApiAbortBoundSessions(TestCase):
         # socket has no '_tcp_session.tcp_fsm' attribute, so a
         # naive call would AttributeError. The implementation
         # must gate on the None check.
+
+
+class TestIp4AddressApiProbe(TestCase):
+    """
+    'Ip4AddressApi.probe' runs an RFC 5227 §2.1.1 ARP Probe
+    against the supplied address and returns a 'ProbeResult'
+    capturing success and (on conflict) the peer MAC.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API will delegate to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__probe_clean_returns_success(self) -> None:
+        """
+        Ensure 'probe' returns 'ProbeResult.success=True' with
+        no conflict-source info when the underlying probe
+        helper reports a clean probe.
+
+        Reference: RFC 5227 §2.1.1 (clean probe means no conflict observed).
+        """
+
+        target = Ip4Address("10.0.1.42")
+        self._packet_handler.probe_result = True
+
+        result = self._api.probe(address=target)
+
+        self.assertEqual(
+            result,
+            ProbeResult(success=True, address=target),
+            msg="Clean probe must return ProbeResult(success=True, address=target).",
+        )
+        self.assertEqual(
+            self._packet_handler.probe_calls,
+            [target],
+            msg="probe must call _arp_dad_probe_address once with the target.",
+        )
+
+    def test__ip4_address_api__probe_conflict_returns_peer_info(self) -> None:
+        """
+        Ensure 'probe' returns 'ProbeResult.success=False' with
+        the peer MAC captured by the registry when the probe
+        helper reports a conflict.
+
+        Reference: RFC 5227 §2.1.1 (conflict observed during probe).
+        """
+
+        target = Ip4Address("10.0.1.42")
+        peer_mac = MacAddress("02:00:00:00:00:99")
+        self._packet_handler.probe_result = False
+        self._packet_handler.probe_peer_mac = peer_mac
+
+        result = self._api.probe(address=target)
+
+        self.assertEqual(
+            result.success,
+            False,
+            msg="Conflict probe must return success=False.",
+        )
+        self.assertEqual(
+            result.conflict_sender_mac,
+            peer_mac,
+            msg="Conflict probe must surface the conflicting peer MAC.",
+        )
+
+
+class TestIp4AddressApiAnnounce(TestCase):
+    """
+    'Ip4AddressApi.announce' delegates to the underlying RFC
+    5227 §2.3 ANNOUNCE_NUM gratuitous-ARP burst helper.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API delegates to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__announce_delegates_to_helper(self) -> None:
+        """
+        Ensure 'announce' calls the underlying
+        '_arp_dad_announce_address' helper with the supplied
+        address.
+
+        Reference: RFC 5227 §2.3 (ANNOUNCE_NUM gratuitous ARP Announcements).
+        """
+
+        target = Ip4Address("10.0.1.42")
+
+        self._api.announce(address=target)
+
+        self.assertEqual(
+            self._packet_handler.announce_calls,
+            [target],
+            msg="announce must invoke _arp_dad_announce_address with the target.",
+        )
+
+
+class TestIp4AddressApiClaimWithAcd(TestCase):
+    """
+    'Ip4AddressApi.claim_with_acd' is the composite probe +
+    announce + install primitive — the single-call surface used
+    by the static-host claim path and (in the future) by the
+    RFC 3927 link-local autoconfig client.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API delegates to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__claim_clean_installs_and_announces(self) -> None:
+        """
+        Ensure a clean probe leads to: announce burst fires,
+        host is installed via 'add_host', and the return value
+        reports success.
+
+        Reference: RFC 5227 §2.1.1 + §2.3 (probe-then-announce on success).
+        """
+
+        host = Ip4Host("169.254.42.42/16")
+        self._packet_handler.probe_result = True
+
+        result = self._api.claim_with_acd(ip4_host=host)
+
+        self.assertTrue(
+            result.success,
+            msg="Clean claim must return success=True.",
+        )
+        self.assertEqual(
+            result.address,
+            host.address,
+            msg="Claim result must carry the claimed address.",
+        )
+        self.assertEqual(
+            self._packet_handler.probe_calls,
+            [host.address],
+            msg="claim_with_acd must probe the address.",
+        )
+        self.assertEqual(
+            self._packet_handler.announce_calls,
+            [host.address],
+            msg="Clean claim must announce the address.",
+        )
+        self.assertIn(
+            host,
+            self._packet_handler._ip4_host,
+            msg="Clean claim must install the host via add_host.",
+        )
+
+    def test__ip4_address_api__claim_conflict_does_not_install(self) -> None:
+        """
+        Ensure a conflict during probe results in
+        success=False, no announce fires, and the host is NOT
+        installed — the address remains contested.
+
+        Reference: RFC 5227 §2.1.1 (conflict during probe must prevent claim).
+        """
+
+        host = Ip4Host("169.254.42.42/16")
+        peer_mac = MacAddress("02:00:00:00:00:99")
+        self._packet_handler.probe_result = False
+        self._packet_handler.probe_peer_mac = peer_mac
+
+        result = self._api.claim_with_acd(ip4_host=host)
+
+        self.assertFalse(
+            result.success,
+            msg="Conflicting claim must return success=False.",
+        )
+        self.assertEqual(
+            result.conflict_sender_mac,
+            peer_mac,
+            msg="Conflicting claim must surface the peer MAC.",
+        )
+        self.assertEqual(
+            self._packet_handler.announce_calls,
+            [],
+            msg="Conflicting claim must NOT announce.",
+        )
+        self.assertNotIn(
+            host,
+            self._packet_handler._ip4_host,
+            msg="Conflicting claim must NOT install the host.",
+        )
+
+
+class TestIp4AddressApiSendGratuitousArp(TestCase):
+    """
+    'Ip4AddressApi.send_gratuitous_arp' fires a single RFC 5227
+    §2.4(b)-style defensive gratuitous ARP — the public-API
+    form of the existing '_send_gratuitous_arp' helper.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API delegates to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__send_gratuitous_arp_delegates(self) -> None:
+        """
+        Ensure 'send_gratuitous_arp' calls the underlying
+        '_send_gratuitous_arp' helper with the supplied
+        address.
+
+        Reference: RFC 5227 §2.4(b) (single defensive gratuitous ARP).
+        """
+
+        target = Ip4Address("169.254.42.42")
+
+        self._api.send_gratuitous_arp(address=target)
+
+        self.assertEqual(
+            self._packet_handler.gratuitous_arp_calls,
+            [target],
+            msg="send_gratuitous_arp must invoke _send_gratuitous_arp with the target.",
+        )
+
+
+class TestIp4AddressApiSubscribeConflicts(TestCase):
+    """
+    'Ip4AddressApi.subscribe_conflicts' registers a callback
+    fired by the ARP RX path on post-claim conflicts; the
+    matching '_fire_conflict_event' internal entry-point
+    fans events out to registered subscribers.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API delegates to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__subscribe_fires_callback_on_matching_address(self) -> None:
+        """
+        Ensure a subscription's callback fires when
+        '_fire_conflict_event' is invoked for the subscribed
+        address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        target = Ip4Address("169.254.42.42")
+        events: list[ConflictEvent] = []
+
+        self._api.subscribe_conflicts(
+            address=target,
+            on_conflict=events.append,
+        )
+
+        event = ConflictEvent(
+            address=target,
+            sender_mac=MacAddress("02:00:00:00:00:99"),
+            timestamp=12.5,
+        )
+        self._api._fire_conflict_event(event=event)
+
+        self.assertEqual(
+            events,
+            [event],
+            msg="Subscriber's callback must fire on a matching conflict event.",
+        )
+
+    def test__ip4_address_api__subscribe_callback_skipped_on_non_matching(self) -> None:
+        """
+        Ensure a subscription's callback does NOT fire when
+        '_fire_conflict_event' is invoked for a different
+        address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        subscribed = Ip4Address("169.254.42.42")
+        other = Ip4Address("169.254.99.99")
+        events: list[ConflictEvent] = []
+
+        self._api.subscribe_conflicts(
+            address=subscribed,
+            on_conflict=events.append,
+        )
+
+        event = ConflictEvent(
+            address=other,
+            sender_mac=MacAddress("02:00:00:00:00:99"),
+            timestamp=12.5,
+        )
+        self._api._fire_conflict_event(event=event)
+
+        self.assertEqual(
+            events,
+            [],
+            msg="Non-matching conflict event must NOT fire the callback.",
+        )
+
+    def test__ip4_address_api__unsubscribe_stops_callback(self) -> None:
+        """
+        Ensure 'unsubscribe_conflicts' removes the callback so
+        further events for the same address do not fire it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        target = Ip4Address("169.254.42.42")
+        events: list[ConflictEvent] = []
+
+        handle = self._api.subscribe_conflicts(
+            address=target,
+            on_conflict=events.append,
+        )
+        self._api.unsubscribe_conflicts(handle=handle)
+
+        event = ConflictEvent(
+            address=target,
+            sender_mac=MacAddress("02:00:00:00:00:99"),
+            timestamp=12.5,
+        )
+        self._api._fire_conflict_event(event=event)
+
+        self.assertEqual(
+            events,
+            [],
+            msg="After unsubscribe the callback must not fire.",
+        )
+
+    def test__ip4_address_api__multiple_subscribers_all_fire(self) -> None:
+        """
+        Ensure multiple subscriptions for the same address all
+        receive the event when one is fired.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        target = Ip4Address("169.254.42.42")
+        events_a: list[ConflictEvent] = []
+        events_b: list[ConflictEvent] = []
+
+        self._api.subscribe_conflicts(address=target, on_conflict=events_a.append)
+        self._api.subscribe_conflicts(address=target, on_conflict=events_b.append)
+
+        event = ConflictEvent(
+            address=target,
+            sender_mac=MacAddress("02:00:00:00:00:99"),
+            timestamp=12.5,
+        )
+        self._api._fire_conflict_event(event=event)
+
+        self.assertEqual(events_a, [event], msg="Subscriber A must receive the event.")
+        self.assertEqual(events_b, [event], msg="Subscriber B must receive the event.")
+
+
+class TestIp4AddressApiAbortBoundTcpSessionsPublic(TestCase):
+    """
+    'Ip4AddressApi.abort_bound_tcp_sessions' is the public-API
+    wrapper around the existing private '_abort_bound_tcp_sessions'
+    static method.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line and stand up a fake
+        packet handler the API delegates to.
+        """
+
+        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__ip4_address_api__abort_bound_tcp_sessions_public_delegates(self) -> None:
+        """
+        Ensure the public 'abort_bound_tcp_sessions' method
+        delegates to the same logic the static helper exposes —
+        the public form is for consumers that prefer the API
+        surface over the static helper.
+
+        Reference: RFC 5227 §2.4 (active reset of sessions on address abandon).
+        """
+
+        target = Ip4Address("169.254.42.42")
+
+        # Patch the static helper to verify delegation.
+        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions") as helper:
+            self._api.abort_bound_tcp_sessions(address=target)
+
+        helper.assert_called_once_with(target)

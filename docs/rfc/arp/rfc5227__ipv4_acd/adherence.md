@@ -17,6 +17,30 @@ and inspecting the codebase under
 `pytcp/stack/packet_handler/packet_handler__arp__{rx,tx}.py`
 and `pytcp/stack/packet_handler/__init__.py` directly.
 
+The ACD machinery is exposed to consumers (DHCPv4 client, the
+static-host claim path, future RFC 3927 link-local autoconfig)
+via the sanctioned `Ip4AddressApi` surface in
+`pytcp/lib/address_api.py`:
+
+- `probe(*, address)` — runs the §2.1.1 probe sequence and
+  returns success / conflict + peer info.
+- `announce(*, address)` — emits the §2.3 ANNOUNCE_NUM burst.
+- `claim_with_acd(*, ip4_host)` — composite probe + announce +
+  install for simple consumers.
+- `send_gratuitous_arp(*, address)` — single defensive ARP
+  for §2.4(b).
+- `subscribe_conflicts(*, address, on_conflict)` /
+  `unsubscribe_conflicts(*, handle)` — post-claim ARP-conflict
+  notification surface; the underlying `_fire_conflict_event`
+  is dispatched from the ARP RX path.
+
+Consumers MUST NOT reach into the `_arp_dad_*` /
+`_send_gratuitous_arp` helpers on `PacketHandler` directly —
+those are private implementation detail of the API as of the
+RFC 3927 Phase 0.5 commit. The file:line references below
+describe the underlying helpers, which still exist and still
+implement the wire protocol; the public surface is the API.
+
 Adherence levels use the canonical descriptive language:
 **met**, **not met**, **partial**, **not implemented**,
 **vacuous**.
