@@ -11,15 +11,19 @@ set + Phase-1 gap closures + IPv6 bonus" story on
 
 ## Session-shipped commits (newest first)
 
-| Hash | Title |
-|------|-------|
-| `77ee76bc` | IPv6 TX: RFC 4007 §6 / RFC 4291 §2.5.6 link-local scope gate |
+| Hash       | Title                                                                            |
+|------------|----------------------------------------------------------------------------------|
+| `ea4dc155` | IPv4 TX: gate outbound broadcast emission via 'ip4.allow_broadcast' sysctl (item C) |
+| `f2cae9a6` | IPv4 RX: add RFC 3168 §5.3 wire-level reassembly tests (item B)                  |
+| `9388a651` | IPv4 TX: register 'ip4.default_ttl' as runtime-tunable sysctl (item A)           |
+| `d21b404e` | docs: add IPv4 audit punch list                                                  |
+| `77ee76bc` | IPv6 TX: RFC 4007 §6 / RFC 4291 §2.5.6 link-local scope gate                     |
 | `858308b0` | IPv4 fragmentation: RFC 791 §3.1 option-copy-flag + RFC 815 §6 reassembly preservation |
-| `95a62524` | IPv4 TX: RFC 1112 §6.1 multicast TTL=1 + RFC 6864 §4.1 atomic ID=0 test |
-| `c6628b2e` | RFC 3168 adherence: refresh §5.3 status to met |
-| `e2dc5971` | IPv4/IPv6 reassembly: RFC 3168 §5.3 ECN aggregation |
-| `ef855d30` | IPv4/IPv6 TX: extract iter_fragment_chunks helper |
-| `435bbfd1` | IPv4 RFC adherence: add 16 audit records |
+| `95a62524` | IPv4 TX: RFC 1112 §6.1 multicast TTL=1 + RFC 6864 §4.1 atomic ID=0 test          |
+| `c6628b2e` | RFC 3168 adherence: refresh §5.3 status to met                                   |
+| `e2dc5971` | IPv4/IPv6 reassembly: RFC 3168 §5.3 ECN aggregation                              |
+| `ef855d30` | IPv4/IPv6 TX: extract iter_fragment_chunks helper                                |
+| `435bbfd1` | IPv4 RFC adherence: add 16 audit records                                         |
 
 ## What shipped — by audit topic
 
@@ -50,13 +54,13 @@ set + Phase-1 gap closures + IPv6 bonus" story on
 
 ## What's left — by tier
 
-### Phase-1 sharpenings — small, doable next
+### Phase-1 sharpenings
 
-| # | Item | RFC | Effort | Notes |
-|---|------|-----|--------|-------|
-| A | `ip4.default_ttl` sysctl | 1122 §3.2.1.7 | ~30 min | Use the `sysctl_knob` skill. "MUST be configurable" met informally via module constant; sysctl makes it operator-visible. |
-| B | RFC 3168 §5.3 wire-level integration test | 3168 §5.3 | ~1 hour | Honest gap from `e2dc5971`. Unit coverage is comprehensive; the wire-level RX integration test (mixed-ECN fragments → reassembled with correct ECN bits, ECN_MIXED__DROP path) was deferred. Per CLAUDE.md feature_implementation §2.1 "wire-format change → integration tests mandatory". |
-| C | `ip4.allow_broadcast` policy gate | 919/922 | ~1 hour | No public broadcast API today; gate aligns with Linux `net.ipv4.conf.*.bc_forwarding`. |
+All three items A + B + C from the original session-close
+punch list have shipped (commits `9388a651`, `f2cae9a6`,
+`ea4dc155` on `PyTCP_3_0__pre_release`). No outstanding
+Phase-1 sharpenings remain from the 2026-05-11 session
+inventory.
 
 ### Phase-1 features — bigger, dedicated tracks
 
@@ -123,18 +127,23 @@ path and shipped in commit `77ee76bc`.
 
 ## Recommended next-track sequencing
 
-1. **Small win first:** items A + B + C as a single
-   focused commit. ~2-3 hours total. Closes the last
-   honest Phase-1 gaps from this session.
+The Phase-1 small-win track (items A + B + C) is closed.
+Remaining tracks, in rough order of impact:
 
-2. **Big substantive feature:** item D (RFC 3927) as a
-   dedicated phased track. Mirror the DHCPv4 sequencing —
-   plan doc first, then commits phased like the DHCP work.
-   2-4 days.
+1. **Big substantive feature:** item D (RFC 3927 IPv4
+   link-local autoconfig) as a dedicated phased track.
+   Mirror the DHCPv4 sequencing — plan doc first
+   (`docs/refactor/rfc3927_link_local_autoconfig.md`), then
+   phased commits. 2-4 days. Closes the deferred IPv4
+   link-local TX scope gate alongside.
 
-3. **Or: audit-set parity:** item F (sweep IPv6 audits for
+2. **Audit-set parity:** item F (sweep IPv6 audits for
    symmetric gaps). Likely surfaces 3-5 Phase-1 items
-   worth shipping symmetrically.
+   worth shipping symmetrically. 1-2 days.
+
+3. **Multicast group membership API + IGMP:** item E.
+   Multi-day; needs a public socket-level API surface
+   coordinated with the socket parity track.
 
 ## Cross-references
 
