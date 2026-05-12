@@ -586,6 +586,22 @@ storage is used. Seeding from the MAC achieves this. The
 the §9 `MAX_CONFLICTS = 10` cap below the §9 `RATE_LIMIT_INTERVAL`
 ceiling triggers the rate-limit phase.
 
+**Phase 1 commit note:** the in-flight Phase 1 commit
+trims the §1.5 cached-candidate persistence and §1.6 stack
+integration to the minimum: the
+`pytcp/protocols/ip4_link_local/` package ships with
+`ip4_link_local__rng.py` (the MAC-seeded RNG) +
+`ip4_link_local__constants.py` (file scaffolding only —
+sysctls land in subsequent phases) +
+`ip4_link_local__client.py` (the `Ip4LinkLocal` Subsystem
+with INIT-state candidate selection). The stack-side
+`stack.link_local: Ip4LinkLocal | None = None` slot is
+declared with `mock__init` initialisation, the
+test-harness snapshot/restore set is extended in lockstep
+per `pytcp.md` §6.1, but no caller instantiates the
+subsystem yet — Phase 4 wires the DHCP-fallback trigger
+that actually starts it.
+
 **1.5 Cached candidate (§2.1 MAY)**
 
 RFC 3927 §2.1 last paragraph: hosts SHOULD prefer the

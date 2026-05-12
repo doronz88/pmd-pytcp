@@ -137,6 +137,7 @@ _STACK__PATCHED_ATTRS: tuple[str, ...] = (
     "INTERFACE__TAP__MTU",
     "INTERFACE__TUN__MTU",
     "UDP__ECHO_NATIVE",
+    "link_local",
 )
 
 

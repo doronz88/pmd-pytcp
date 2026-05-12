@@ -56,6 +56,7 @@ from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, Ip6Address
+    from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal
     from pytcp.socket import socket
 
 
@@ -209,6 +210,11 @@ address: Ip4AddressApi
 # background thread by 'start()'; joined by 'stop()'. None on L3
 # (TUN, no MAC) or when DHCP is disabled.
 dhcp4_client: Dhcp4Client | None = None
+# RFC 3927 §2 IPv4 Link-Local autoconfig client subsystem. Phase
+# 1 lands the slot only — the subsystem is not yet instantiated
+# by 'init()'. The DHCP-fallback wiring lands in Phase 4 of the
+# RFC 3927 track (docs/refactor/rfc3927_link_local_autoconfig.md).
+link_local: "Ip4LinkLocal | None" = None
 
 # Stack shared data.
 stack_initialized: bool = False
@@ -305,7 +311,7 @@ def mock__init(
     Initialize stack components for unit testing.
     """
 
-    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address, dhcp4_client
+    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address, dhcp4_client, link_local
 
     if mock__timer is not None:
         timer = mock__timer
@@ -338,6 +344,12 @@ def mock__init(
     # the harness explicitly opts in; existing tests (NetworkTestCase
     # et al.) don't exercise the lifecycle and don't need a fake.
     dhcp4_client = mock__dhcp4_client
+
+    # RFC 3927 Phase 1 — link-local autoconfig client slot. Default
+    # None for unit tests; the link-local subsystem is exercised
+    # through its own unit tests, not through the integration
+    # harness in Phase 1.
+    link_local = None
 
 
 def init(
