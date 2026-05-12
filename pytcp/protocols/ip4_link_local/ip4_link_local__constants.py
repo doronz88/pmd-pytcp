@@ -24,22 +24,53 @@
 
 """
 This module contains the RFC 3927 IPv4 Link-Local autoconfig
-runtime configuration constants — RFC 3927 §9 timing /
-retry / rate-limit knobs registered as 'pytcp.lib.sysctl'
-sysctls so the operator can tune them at boot or runtime.
+runtime configuration constants — RFC 3927 §9 retry-loop
+timing knobs registered as 'pytcp.lib.sysctl' sysctls so the
+operator can tune them at boot or runtime.
 
-Phase 1 lands the file with no sysctl registrations yet —
-Phase 2 (retry loop) adds 'max_conflicts' and
-'rate_limit_interval_s'; Phase 4 (DHCP coordination) adds
-'dhcp_fallback_timeout_ms'.
+Phase 4 (DHCP coordination) will add
+'ip4_link_local.dhcp_fallback_timeout_ms'; Phase 6 (optional
+persistence) will add 'ip4_link_local.cache_path'.
 
 pytcp/protocols/ip4_link_local/ip4_link_local__constants.py
 
 ver 3.0.4
 """
 
-# Phase 2 will add the sysctl registrations:
-#   - ip4_link_local.max_conflicts (default 10, RFC §9)
-#   - ip4_link_local.rate_limit_interval_s (default 60, RFC §9)
-# Phase 4 will add:
-#   - ip4_link_local.dhcp_fallback_timeout_ms (default 0, opt-in)
+# RFC 3927 §9 MAX_CONFLICTS — the number of consecutive probe
+# conflicts the autoconfig client will tolerate before
+# entering the RATE_LIMIT_INTERVAL cool-down. The default of
+# 10 matches the RFC; operators of constrained embedded
+# targets may tighten / loosen this via the sysctl.
+IP4_LINK_LOCAL__MAX_CONFLICTS: int = 10
+
+# RFC 3927 §9 RATE_LIMIT_INTERVAL — the cool-down (in seconds)
+# the autoconfig client sleeps after MAX_CONFLICTS conflicts
+# before resetting the counter and retrying. The default of
+# 60 seconds matches the RFC.
+IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL: int = 60
+
+
+# Sysctl registration. Both knobs are policy (Linux exposes
+# the equivalent under '/proc/sys/net' in autoipd-style
+# userspace daemons), tunable at boot via
+# 'stack.init(sysctls={"ip4_link_local.X": N})' or at runtime
+# via 'pytcp.stack.sysctl["ip4_link_local.X"] = N'.
+from pytcp.lib.sysctl import is_positive_int, register  # noqa: E402
+
+register(
+    key="ip4_link_local.max_conflicts",
+    module_name=__name__,
+    attr="IP4_LINK_LOCAL__MAX_CONFLICTS",
+    default=IP4_LINK_LOCAL__MAX_CONFLICTS,
+    validator=is_positive_int("ip4_link_local.max_conflicts"),
+    description="RFC 3927 §9 MAX_CONFLICTS — consecutive probe conflicts before rate-limit cool-down.",
+)
+register(
+    key="ip4_link_local.rate_limit_interval_s",
+    module_name=__name__,
+    attr="IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL",
+    default=IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL,
+    validator=is_positive_int("ip4_link_local.rate_limit_interval_s"),
+    description="RFC 3927 §9 RATE_LIMIT_INTERVAL — cool-down between conflict bursts (seconds).",
+)

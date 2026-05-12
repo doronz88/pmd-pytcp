@@ -31,12 +31,12 @@ post-claim ARP conflicts, and coexists with the DHCPv4 client
 per RFC 3927 §2.11 (read-only state-poll; never modifies DHCP
 behaviour).
 
-Phase 1 (this commit): subsystem skeleton + INIT-state
-candidate selection.
-Phase 2 (next): _do_claiming via the ACD API + retry / rate-
-limit loop.
-Phase 3: _on_bound_conflict (§2.5 defend/abandon decision)
-via the subscribe_conflicts callback.
+Phases 1-2 (shipped): subsystem skeleton + INIT-state
+candidate selection + _do_claiming via the ACD API with the
+retry / rate-limit loop pinned by RFC 3927 §9
+(MAX_CONFLICTS = 10, RATE_LIMIT_INTERVAL = 60s).
+Phase 3 (next): _on_bound_conflict (§2.5 defend/abandon
+decision) via the subscribe_conflicts callback.
 Phase 4: DHCPv4-fallback trigger.
 
 pytcp/protocols/ip4_link_local/ip4_link_local__client.py
@@ -44,12 +44,15 @@ pytcp/protocols/ip4_link_local/ip4_link_local__client.py
 ver 3.0.4
 """
 
+import time
 from enum import Enum
 from typing import override
 
 from net_addr import Ip4Host, MacAddress
+from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import Subsystem
+from pytcp.protocols.ip4_link_local import ip4_link_local__constants as ip4ll_const
 from pytcp.protocols.ip4_link_local.ip4_link_local__rng import candidate_from_mac
 
 
@@ -83,17 +86,21 @@ class Ip4LinkLocal(Subsystem):
 
     _subsystem_name = "IPv4 Link-Local Autoconfig"
 
-    def __init__(self, *, mac_address: MacAddress) -> None:
+    def __init__(self, *, mac_address: MacAddress, address_api: Ip4AddressApi) -> None:
         """
         Initialize the link-local autoconfig client. Binds to
         'mac_address' so the candidate-selection RNG seeds
         deterministically per host (RFC 3927 §2.1 SHOULD: same
         host picks the same address across reboots without
-        persistent storage).
+        persistent storage). 'address_api' is the sanctioned
+        Phase-3-clean surface the subsystem uses to claim
+        candidates ('claim_with_acd') and (in Phase 3) to
+        subscribe for post-claim conflict events.
         """
 
         super().__init__(info=str(mac_address))
         self._mac_address: MacAddress = mac_address
+        self._address_api: Ip4AddressApi = address_api
         self._state: Ip4LinkLocalState = Ip4LinkLocalState.INIT
         self._candidate: Ip4Host | None = None
         self._conflict_count: int = 0
@@ -108,8 +115,7 @@ class Ip4LinkLocal(Subsystem):
             case Ip4LinkLocalState.INIT:
                 self._do_init()
             case Ip4LinkLocalState.CLAIMING:
-                # Phase 2 wires this.
-                pass
+                self._do_claiming()
             case Ip4LinkLocalState.BOUND:
                 # Phase 3 idle-with-subscription state.
                 pass
@@ -138,3 +144,55 @@ class Ip4LinkLocal(Subsystem):
             f"<lg>Link-Local</>: candidate {self._candidate.address} " f"(attempt={self._conflict_count})",
         )
         self._state = Ip4LinkLocalState.CLAIMING
+
+    def _do_claiming(self) -> None:
+        """
+        Delegate the RFC 3927 §2.2 probe + §2.4 announce to
+        'Ip4AddressApi.claim_with_acd'. On clean probe the
+        host is installed and the FSM transitions to BOUND.
+        On conflict the FSM bumps the conflict counter and
+        returns to INIT for a fresh candidate; after
+        MAX_CONFLICTS consecutive conflicts the subsystem
+        sleeps RATE_LIMIT_INTERVAL seconds before resetting
+        the counter and trying again (RFC 3927 §9).
+        """
+
+        assert self._candidate is not None, "_do_claiming requires a candidate from _do_init"
+
+        result = self._address_api.claim_with_acd(ip4_host=self._candidate)
+        if result.success:
+            self._conflict_count = 0
+            self._state = Ip4LinkLocalState.BOUND
+            __debug__ and log(
+                "stack",
+                f"<lg>Link-Local</>: claimed {self._candidate.address}",
+            )
+            return
+
+        self._on_claim_conflict()
+
+    def _on_claim_conflict(self) -> None:
+        """
+        Probe-conflict retry handler. Bumps the conflict
+        counter, clears the candidate so the next INIT tick
+        picks a fresh one, and (after MAX_CONFLICTS conflicts)
+        sleeps RATE_LIMIT_INTERVAL seconds before resetting
+        the counter for a fresh attempt round (RFC 3927 §9).
+        """
+
+        assert self._candidate is not None
+        __debug__ and log(
+            "stack",
+            f"<lg>Link-Local</>: conflict on {self._candidate.address}; " f"retry (count={self._conflict_count + 1})",
+        )
+        self._candidate = None
+        self._conflict_count += 1
+        if self._conflict_count >= ip4ll_const.IP4_LINK_LOCAL__MAX_CONFLICTS:
+            __debug__ and log(
+                "stack",
+                f"<lg>Link-Local</>: MAX_CONFLICTS reached; sleeping "
+                f"{ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL}s",
+            )
+            time.sleep(ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL)
+            self._conflict_count = 0
+        self._state = Ip4LinkLocalState.INIT

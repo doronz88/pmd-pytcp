@@ -388,6 +388,9 @@ def init(
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.icmp6.nd import nd__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.ip4 import ip4__constants  # noqa: F401  pylint: disable=unused-import
+    from pytcp.protocols.ip4_link_local import (  # noqa: F401  pylint: disable=unused-import
+        ip4_link_local__constants,
+    )
 
     if sysctls is not None:
         for key, value in sysctls.items():
