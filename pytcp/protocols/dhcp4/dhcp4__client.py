@@ -1122,6 +1122,15 @@ class Dhcp4Client(Subsystem):
         # — narrow to 'Dhcp4Parser' for downstream attribute access.
         assert isinstance(offer, Dhcp4Parser)
 
+        # RFC 2131 §4.4.1 multi-OFFER collection window — after the
+        # first valid OFFER, listen briefly for additional OFFERs
+        # so the operator's log captures the full auction. The first
+        # OFFER remains the selection (dhcpcd / ISC dhclient-alike).
+        # Setting 'dhcp.offer_collection_ms' to 0 disables the
+        # window — the RFC's "e.g. the first DHCPOFFER message"
+        # path is strictly compliant in that mode.
+        self._collect_additional_offers(client_socket, xid=xid, first_offer=offer)
+
         srv_id = offer.srv_id
         if srv_id is None:
             __debug__ and log(
@@ -1320,6 +1329,61 @@ class Dhcp4Client(Subsystem):
                 continue
 
             return packet
+
+    def _collect_additional_offers(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        first_offer: Dhcp4Parser,
+    ) -> None:
+        """
+        RFC 2131 §4.4.1 multi-OFFER collection window. After the
+        first valid DHCPOFFER, keep listening for additional
+        OFFERs for 'dhcp.offer_collection_ms' milliseconds, then
+        return without changing the selection. The first OFFER
+        stays selected — the dhcpcd / ISC dhclient policy —
+        while the window gives the operator log visibility into
+        the full auction (which DHCP servers responded and how
+        fast).
+
+        Mismatched xid / CID / wrong-type frames are silently
+        dropped by '_recv_within_window' as in the rest of the
+        FSM; bogus packets do not extend or shorten the window.
+        Setting the sysctl to 0 short-circuits to a no-op — the
+        RFC 2131 §4.4.1 "e.g. the first DHCPOFFER message" path.
+        """
+
+        window_ms = dhcp4__constants.DHCP4__OFFER_COLLECTION_MS
+        if window_ms <= 0:
+            return
+
+        __debug__ and log(
+            "dhcp4",
+            f"<lg>OFFER from {first_offer.srv_id}</> selected; " f"collecting additional OFFERs for {window_ms} ms",
+        )
+
+        deadline = time.monotonic() + window_ms / 1000.0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            result = self._recv_within_window(
+                client_socket,
+                expected_type=Dhcp4MessageType.OFFER,
+                xid=xid,
+                timeout_s=remaining,
+                allow_nak=False,
+            )
+            if result is None:
+                # Window expired before another OFFER arrived.
+                return
+            assert isinstance(result, Dhcp4Parser)
+            __debug__ and log(
+                "dhcp4",
+                f"<lg>OFFER from {result.srv_id}</> received "
+                f"during collection window; ignored (first OFFER retained)",
+            )
 
     def _send_discover(self, client_socket: socket, *, xid: int) -> None:
         """

@@ -167,6 +167,21 @@ DHCP4__MAX_MSG_SIZE = 1500
 # matching Linux 'dhclient' / 'dhcpcd' out-of-the-box.
 DHCP4__REQUESTED_LEASE_TIME__SEC = 86400
 
+# Phase 8.x — RFC 2131 §4.4.1 multi-OFFER collection window.
+# After the first valid DHCPOFFER, the client keeps listening
+# for additional OFFERs for this many milliseconds before
+# selecting one and proceeding to REQUEST. The selection
+# policy is "first received within the window" — the same
+# selection a 0-ms window would make, but with all competing
+# OFFERs logged for operator visibility. This matches dhcpcd's
+# 'OFFER_TIMEOUT' and ISC dhclient's behaviour around the
+# 'INITIAL_INTERVAL' window. Default 3000 ms is a middle
+# ground between dhcpcd's typical ~5 s and a tight-boot 0.
+# Setting 0 disables the collection window — the RFC 2131
+# §4.4.1 "e.g. the first DHCPOFFER message" example is
+# strictly RFC-compliant in that mode.
+DHCP4__OFFER_COLLECTION_MS = 3000
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -461,6 +476,22 @@ register(
         "RFC 2131 §3.5 — desired lease-time hint emitted in "
         "DISCOVER (default 86400 = 1 day; set 0 to omit the "
         "hint entirely)."
+    ),
+)
+register(
+    key="dhcp.offer_collection_ms",
+    module_name=__name__,
+    attr="DHCP4__OFFER_COLLECTION_MS",
+    default=DHCP4__OFFER_COLLECTION_MS,
+    validator=is_non_negative_int("dhcp.offer_collection_ms"),
+    description=(
+        "RFC 2131 §4.4.1 multi-OFFER collection window in "
+        "milliseconds (default 3000 = dhcpcd-alike). After "
+        "the first valid OFFER, wait this long for "
+        "additional OFFERs before selecting the first one "
+        "and proceeding to REQUEST. Set 0 to disable "
+        "(strictly RFC-compliant 'first DHCPOFFER message' "
+        "behaviour)."
     ),
 )
 

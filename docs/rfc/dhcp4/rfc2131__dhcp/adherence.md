@@ -87,13 +87,16 @@ pass through DHCP entirely.
 > "A DHCP client must be prepared to receive multiple
 >  responses to a request for configuration parameters."
 
-**Adherence:** not met. The client at
-`pytcp/protocols/dhcp4/dhcp4__client.py:778-874` (`_discover_request_once`)
-accepts the first valid DHCPOFFER returned by
-`_recv_with_backoff` and proceeds to REQUEST. There is no
-"collect offers for N seconds, pick best" loop. Linux
-dhcpcd waits ~3 s for multiple OFFERs; PyTCP races on the
-first.
+**Adherence:** met (Phase 8.x — Linux-alike). After the
+first valid OFFER, `_discover_request_once` invokes
+`_collect_additional_offers` which polls for additional
+OFFERs for `dhcp.offer_collection_ms` (default 3000 ms,
+matching dhcpcd's `OFFER_TIMEOUT` ballpark). The
+selection policy is "first received within the window" —
+the same lease that a 0-ms window would pick, but with
+every competing OFFER logged for operator visibility.
+Setting `dhcp.offer_collection_ms = 0` reverts to the
+strict-RFC "e.g. the first DHCPOFFER message" path.
 
 ---
 
@@ -759,11 +762,18 @@ guard in `_recv_ack` covers the REQUEST → ACK leg.
 >  of time, selects one DHCPOFFER message from the
 >  (possibly many) incoming DHCPOFFER messages."
 
-**Adherence:** not met. `_discover_request_once`
-(`dhcp4_client.py:778-874`) accepts the first OFFER that
-passes xid + CID-echo validation and immediately proceeds
-to REQUEST. There is no collection window or selection
-policy.
+**Adherence:** met (Phase 8.x — Linux-alike). After the
+first valid OFFER, `_discover_request_once` calls
+`_collect_additional_offers`, which polls for additional
+OFFERs for `dhcp.offer_collection_ms` milliseconds
+(default 3000 = dhcpcd-alike). The selection policy is
+"first received within the window," matching the RFC's
+"e.g. the first DHCPOFFER message" example; the window
+exists to provide operator-visible logging of competing
+offers and as a hook for future preference-based
+selection. Setting the sysctl to 0 disables the window
+(strictly RFC-compliant accept-first behaviour, useful
+for tight-boot and test scenarios).
 
 > "The client SHOULD perform a check on the suggested
 >  address to ensure that the address is not already in
@@ -1245,6 +1255,22 @@ is expected from the server.
 
 **Status:** locked in (Phase 5).
 
+### §1.4 / §4.4.1 — Multi-OFFER collection window (Phase 8.x)
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientMultiOfferCollection`
+  - `collection_window_disabled_picks_first_offer` —
+    `dhcp.offer_collection_ms = 0` → DISCOVER + REQUEST
+    only (strict-RFC behaviour preserved).
+  - `collection_window_logs_additional_offers` — a
+    second OFFER queued during the window is consumed;
+    the first OFFER's `server_id` remains the selection.
+  - `collection_window_silence_terminates_loop` — the
+    loop exits promptly via the `TimeoutError` path
+    when no additional OFFERs arrive.
+
+**Status:** locked in (Phase 8.x — Linux-alike).
+
 ### §2 / §3.5 / §9.10 — Polish options (Phase 8)
 
 - **Unit:**
@@ -1292,6 +1318,7 @@ is expected from the server.
 | FSM state INIT-REBOOT (cached-lease fast-path)      | locked in (Phase 5 — `TestDhcp4ClientInitReboot`)                  |
 | Lease cache (round-trip + defensive reads)          | locked in (Phase 5 — `test__dhcp4__lease_cache.py`, 14 tests)      |
 | Max DHCP Message Size option (57)                   | locked in (Phase 8.1 — `test__dhcp4__option__max_msg_size.py`)     |
+| Multi-OFFER collection window (Linux-alike)         | locked in (Phase 8.x — `TestDhcp4ClientMultiOfferCollection`)      |
 | Option Overload (52) parser-side merge              | locked in (Phase 8.4 — `test__dhcp4__parser__option_overload.py`)  |
 | Lease-time hint in DISCOVER (option 51)             | locked in (Phase 8.2 — `TestDhcp4ClientPhase8Polish`)              |
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
@@ -1318,7 +1345,7 @@ is expected from the server.
 | Param Request List forwarded DISCOVER → REQUEST         | met                                              |
 | Magic cookie + `end` option                             | met                                              |
 | Single DISCOVER → OFFER → REQUEST → ACK linear path     | met                                              |
-| Multiple-OFFER collection + selection                   | not met (first OFFER wins)                       |
+| Multiple-OFFER collection + selection                   | met (Phase 8.x — Linux-alike; default 3000 ms)   |
 | ARP probe on ACK + DHCPDECLINE on conflict              | met (Phase 2.2)                                  |
 | Post-DECLINE backoff (≥ 10 s before restart)            | met (Phase 2.2)                                  |
 | Retransmission with exponential backoff                 | met (Phase 1)                                    |
@@ -1417,8 +1444,6 @@ Remaining items in the per-RFC adherence catalogue:
   follow-up will add typed accessors and prefer server
   values over the factor-based defaults.
 - **§3.4 DHCPINFORM** — niche, deferred.
-- **§4.4 Multiple-OFFER collection + selection** —
-  accept-first heuristic is OK for Phase 1 host parity.
 - **RFC 3396 long-option concatenation** — parser-side
   feature with no current consumer. Existing PyTCP
   codecs produce payloads short enough that splitting

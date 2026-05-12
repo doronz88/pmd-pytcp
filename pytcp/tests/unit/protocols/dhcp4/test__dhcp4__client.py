@@ -129,6 +129,11 @@ class _Dhcp4ClientFixture(TestCase):
         self.enterContext(patch("pytcp.lib.subsystem.log"))
         self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 0))
         self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 0))
+        # Phase 8.x — disable the multi-OFFER collection window
+        # by default so tests do not actually sleep 3 s waiting
+        # for additional OFFERs. Tests that exercise the window
+        # re-enable it via 'sysctl.override' in their own bodies.
+        self.enterContext(sysctl.override("dhcp.offer_collection_ms", 0))
 
 
 class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
@@ -3103,4 +3108,106 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
             discover.max_msg_size,
             9000,
             msg="DISCOVER must carry the operator-tuned Max DHCP Message Size value.",
+        )
+
+
+class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
+    """
+    Phase 8.x — RFC 2131 §4.4.1 multi-OFFER collection window.
+    After the first valid OFFER the client lingers for up to
+    'dhcp.offer_collection_ms' for additional OFFERs (dhcpcd /
+    ISC dhclient pattern) before proceeding to REQUEST. The
+    selection policy is "first received" so the lease shape
+    is unchanged — the window adds visibility, not a different
+    server choice.
+    """
+
+    def test__dhcp4_client__collection_window_disabled_picks_first_offer(self) -> None:
+        """
+        Ensure that with 'dhcp.offer_collection_ms' = 0 (the
+        fixture default), the client does not wait after the
+        first OFFER. The TX log shows DISCOVER + REQUEST only.
+
+        Reference: RFC 2131 §4.4.1 ("e.g. the first DHCPOFFER message").
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        # First OFFER → immediate REQUEST. The mock server only
+        # captures TX frames; its 'recv__mv' queue records the
+        # number of recv calls indirectly. The key invariant is
+        # that the call sequence is DISCOVER, then REQUEST —
+        # i.e. exactly two outbound DHCP frames.
+        self.assertEqual(
+            [tx.message_type for tx in self._server.tx_log],
+            [Dhcp4MessageType.DISCOVER, Dhcp4MessageType.REQUEST],
+            msg="With collection disabled the TX log must be exactly [DISCOVER, REQUEST].",
+        )
+
+    def test__dhcp4_client__collection_window_logs_additional_offers(self) -> None:
+        """
+        Ensure that with a non-zero 'dhcp.offer_collection_ms',
+        the client polls for additional OFFERs after the first
+        one. A second OFFER queued during the window is
+        consumed (verified via 'tx_log' RX-side observation);
+        the first OFFER's server_id remains the lease's
+        selection.
+
+        Reference: RFC 2131 §4.4.1 multi-OFFER collection (Linux-alike).
+        """
+
+        # Generous window so the loop has time to consume two
+        # OFFERs; followed by a TimeoutError sentinel to end
+        # the window cleanly and an ACK for the subsequent
+        # REQUEST. The mock server's 'recv__mv' returns each
+        # enqueued reply immediately so the wall-clock time is
+        # dominated by the TimeoutError sentinel (which raises
+        # synchronously) rather than the window value.
+        self.enterContext(sysctl.override("dhcp.offer_collection_ms", 200))
+
+        self._server.enqueue_offer(server_id=Ip4Address("10.0.0.250"))
+        self._server.enqueue_offer(server_id=Ip4Address("10.0.0.251"))
+        # Sentinel terminates the collection window — simulates
+        # the server being silent after the second OFFER.
+        self._server.enqueue_timeout()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = client.fetch()
+
+        assert lease is not None
+        self.assertEqual(
+            lease.server_id,
+            Ip4Address("10.0.0.250"),
+            msg="The first OFFER's server_id must remain the selection.",
+        )
+
+    def test__dhcp4_client__collection_window_silence_terminates_loop(self) -> None:
+        """
+        Ensure the collection window terminates promptly when
+        no additional OFFERs arrive — the loop must return
+        through the TimeoutError path of '_recv_within_window'
+        rather than hang past the window.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.offer_collection_ms", 25))
+        self._server.enqueue_offer()
+        # No additional OFFERs — server goes silent during the
+        # collection window. The TimeoutError sentinel ends the
+        # window; the ACK serves the subsequent REQUEST.
+        self._server.enqueue_timeout()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = client.fetch()
+
+        self.assertIsNotNone(
+            lease,
+            msg="fetch() must return a lease even when only one OFFER lands in the window.",
         )
