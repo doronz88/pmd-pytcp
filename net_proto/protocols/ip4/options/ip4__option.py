@@ -58,3 +58,15 @@ class Ip4Option(ProtoOption):
     """
     The IPv4 option support class.
     """
+
+    @property
+    def copy_flag(self) -> bool:
+        """
+        Get the RFC 791 §3.1 'copy on fragmentation' flag — bit 7
+        (high bit) of the option-type byte. Options with copy_flag
+        set MUST be propagated onto every fragment when a datagram
+        is fragmented; options with copy_flag clear appear only on
+        the first fragment.
+        """
+
+        return bool(int(self.type) >> 7 & 1)

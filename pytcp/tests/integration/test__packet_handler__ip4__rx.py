@@ -36,10 +36,24 @@ ver 3.0.4
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import MacAddress
+from net_addr import Ip4Address, MacAddress
+from net_proto import (
+    EthernetAssembler,
+    Ip4FragAssembler,
+    Ip4OptionNop,
+    Ip4OptionRouterAlert,
+    Ip4OptionRr,
+    Ip4Options,
+    Ip4Parser,
+    IpProto,
+)
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    STACK__IP4_HOST,
+    NetworkTestCase,
+)
 
 
 @parameterized_class(
@@ -1159,4 +1173,184 @@ class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
                 "bump; the host-requirements gate suppresses the would-be "
                 "Protocol Unreachable response per RFC 1122 §3.2.2."
             ),
+        )
+
+
+class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
+    """
+    The RFC 815 §6 / RFC 791 §3.1 option-preservation-on-
+    reassembly tests.
+
+    On reassembly the IPv4 RX handler MUST preserve the first
+    fragment's options bytes (which carry the canonical option
+    set for the reassembled datagram per RFC 815 §6). Before
+    the fix the handler stripped all options by forcing IHL=5;
+    after the fix the original IHL + options are carried
+    through to the upper layer.
+    """
+
+    def _build_fragment(
+        self,
+        *,
+        offset: int,
+        flag_mf: bool,
+        payload_chunk: bytes,
+        options: Ip4Options,
+        frag_id: int,
+    ) -> bytes:
+        """
+        Build a wire-format Ethernet+IPv4-frag frame as a single
+        bytes object. Uses Ip4FragAssembler so we don't have to
+        hand-roll checksums.
+        """
+
+        ip4_frag = Ip4FragAssembler(
+            ip4_frag__src=HOST_A__IP4_ADDRESS,
+            ip4_frag__dst=STACK__IP4_HOST.address,
+            ip4_frag__id=frag_id,
+            ip4_frag__offset=offset,
+            ip4_frag__flag_mf=flag_mf,
+            ip4_frag__proto=IpProto.from_int(99),
+            ip4_frag__options=options,
+            ip4_frag__payload=payload_chunk,
+        )
+        eth = EthernetAssembler(
+            ethernet__src=MacAddress("02:00:00:00:00:91"),
+            ethernet__dst=MacAddress("02:00:00:00:00:07"),
+            ethernet__payload=ip4_frag,
+        )
+        return bytes(eth)
+
+    def test__rx__reassembly_preserves_first_fragment_options(self) -> None:
+        """
+        Ensure two received IPv4 fragments where the first
+        carries [Router Alert + RR + NOP] and the second
+        carries the copy-flag=1 subset reassemble into a single
+        datagram whose IPv4 header preserves the FULL first-
+        fragment option set — the first fragment is canonical
+        for the reassembled datagram's options.
+
+        Reference: RFC 815 §6 (first fragment options canonical).
+        Reference: RFC 791 §3.1 (options copy-flag drives the
+        per-fragment subset; first fragment carries full set).
+        """
+
+        # Router Alert (copy=1, 4 bytes) + RR (copy=0, 7 bytes) +
+        # NOP padding = 12 bytes on first fragment. Avoid
+        # LSRR/SSRR which trigger PyTCP's source-route drop gate
+        # (IP4__ACCEPT_SOURCE_ROUTE=False) so the test exercises
+        # option-preservation directly without policy gating.
+        first_options = Ip4Options(
+            Ip4OptionRouterAlert(),
+            Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")]),
+            Ip4OptionNop(),
+        )
+        # Subsequent fragment options: copy_flag=1 (Router Alert,
+        # already 4 bytes — no padding needed). Mirror what the
+        # TX fragmenter would actually emit.
+        non_first_options = Ip4Options(Ip4OptionRouterAlert())
+
+        frame_first = self._build_fragment(
+            offset=0,
+            flag_mf=True,
+            payload_chunk=b"A" * 16,
+            options=first_options,
+            frag_id=0x1234,
+        )
+        frame_second = self._build_fragment(
+            offset=16,
+            flag_mf=False,
+            payload_chunk=b"B" * 16,
+            options=non_first_options,
+            frag_id=0x1234,
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_first))
+        self._packet_handler._phrx_ethernet(PacketRx(frame_second))
+
+        # Unknown proto 99 → ICMPv4 Protocol Unreachable
+        # response. The response's IPv4 payload is an ICMP
+        # message whose 'data' field carries the reassembled
+        # IPv4 packet bytes — including the preserved options.
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Unknown-proto reassembled datagram must elicit one ICMP Protocol Unreachable response.",
+        )
+
+        # Extract the inner IPv4 packet from the ICMPv4 message
+        # data field of the response. Layout of the response:
+        #   Ethernet (14) | IPv4 (20) | ICMP msg (8 + quoted)
+        # The quoted bytes start at offset 14+20+8 = 42.
+        response = self._frames_tx[0]
+        quoted_ip4_bytes = response[14 + 20 + 8 :]
+
+        # Parse the quoted IPv4 bytes — this is the reassembled
+        # datagram that triggered the Protocol Unreachable.
+        reassembled = Ip4Parser(PacketRx(quoted_ip4_bytes))
+
+        # The reassembled packet must carry the full first-
+        # fragment options (Router Alert + RR + NOP).
+        self.assertEqual(
+            [int(o.type) for o in reassembled.options],
+            [148, 7, 1],
+            msg="Reassembled datagram must preserve the first fragment's full options.",
+        )
+        # IHL must reflect the preserved header length (20 base
+        # + 12 options = 32 bytes → IHL=8).
+        self.assertEqual(
+            reassembled.hlen,
+            32,
+            msg="Reassembled IHL must reflect the preserved options length.",
+        )
+        # Total Length must include both header and payload.
+        self.assertEqual(
+            reassembled.plen,
+            32 + 32,
+            msg="Reassembled Total Length must equal header bytes (incl. options) + payload bytes.",
+        )
+
+    def test__rx__reassembly_with_no_options_uses_minimum_ihl(self) -> None:
+        """
+        Ensure a no-options two-fragment reassembly produces a
+        reassembled datagram with IHL=5 (no options) — regression
+        net for the no-options case that the on-touch fix must
+        not break.
+
+        Reference: PyTCP test infrastructure (regression net
+        for the RFC 815 §6 fix).
+        """
+
+        empty = Ip4Options()
+        frame_first = self._build_fragment(
+            offset=0,
+            flag_mf=True,
+            payload_chunk=b"A" * 16,
+            options=empty,
+            frag_id=0x5678,
+        )
+        frame_second = self._build_fragment(
+            offset=16,
+            flag_mf=False,
+            payload_chunk=b"B" * 16,
+            options=empty,
+            frag_id=0x5678,
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_first))
+        self._packet_handler._phrx_ethernet(PacketRx(frame_second))
+
+        response = self._frames_tx[0]
+        quoted_ip4_bytes = response[14 + 20 + 8 :]
+        reassembled = Ip4Parser(PacketRx(quoted_ip4_bytes))
+
+        self.assertEqual(
+            reassembled.hlen,
+            20,
+            msg="No-options reassembly must produce IHL=5 (20-byte header).",
+        )
+        self.assertEqual(
+            list(reassembled.options),
+            [],
+            msg="No-options reassembly must produce an empty option set.",
         )

@@ -65,6 +65,8 @@ class Ip4Options(ProtoOptions):
     The IPv4 packet options.
     """
 
+    _options: list[Ip4Option]  # type: ignore[assignment]
+
     @staticmethod
     def validate_integrity(
         *,
@@ -95,6 +97,17 @@ class Ip4Options(ProtoOptions):
                 raise Ip4IntegrityError(
                     f"The IPv4 option length must not extend past the header length. Got: {offset=}, {hlen=}",
                 )
+
+    def with_copy_flag(self, copy_flag: bool, /) -> "Ip4Options":
+        """
+        Return a new 'Ip4Options' containing only the options whose
+        RFC 791 §3.1 copy-on-fragmentation flag matches the supplied
+        value, in source order. Used by the TX fragmenter to compute
+        the subset that must appear on every fragment beyond the
+        first.
+        """
+
+        return Ip4Options(*(option for option in self._options if option.copy_flag is copy_flag))
 
     @override
     @classmethod

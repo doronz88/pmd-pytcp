@@ -35,11 +35,18 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip4Address
 from net_proto import (
     Ip4IntegrityError,
+    Ip4OptionCipso,
     Ip4OptionEol,
+    Ip4OptionLsrr,
     Ip4OptionNop,
+    Ip4OptionRouterAlert,
+    Ip4OptionRr,
     Ip4Options,
+    Ip4OptionSsrr,
+    Ip4OptionTimestamp,
     Ip4OptionType,
     Ip4OptionUnknown,
 )
@@ -425,4 +432,260 @@ class TestIp4OptionsValidateIntegrity(TestCase):
             "[INTEGRITY ERROR][IPv4] The IPv4 option length must not extend past the header length. "
             "Got: offset=25, hlen=24",
             msg="Unexpected integrity-error message for option overrun.",
+        )
+
+
+class TestIp4OptionCopyFlag(TestCase):
+    """
+    The 'Ip4Option.copy_flag' property tests — RFC 791 §3.1
+    "copy flag" (high bit of the option-type byte) drives the
+    per-option preservation rule on fragmentation.
+    """
+
+    def test__copy_flag__eol__false(self) -> None:
+        """
+        Ensure End-of-Option-List (type 0) reports
+        copy_flag=False — type byte high bit is 0.
+
+        Reference: RFC 791 §3.1 (option-type copy flag = bit 0
+        of the option-type byte; type 0 = 0b00000000).
+        """
+
+        self.assertFalse(
+            Ip4OptionEol().copy_flag,
+            msg="EOL (type 0) must have copy_flag=False.",
+        )
+
+    def test__copy_flag__nop__false(self) -> None:
+        """
+        Ensure No-Operation (type 1) reports copy_flag=False.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 1 = 0b00000001).
+        """
+
+        self.assertFalse(
+            Ip4OptionNop().copy_flag,
+            msg="NOP (type 1) must have copy_flag=False.",
+        )
+
+    def test__copy_flag__rr__false(self) -> None:
+        """
+        Ensure Record Route (type 7) reports copy_flag=False —
+        the RR data only belongs in the first fragment, not
+        replicated across the chain.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 7 = 0b00000111).
+        """
+
+        option = Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertFalse(
+            option.copy_flag,
+            msg="RR (type 7) must have copy_flag=False.",
+        )
+
+    def test__copy_flag__timestamp__false(self) -> None:
+        """
+        Ensure Timestamp (type 68) reports copy_flag=False.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 68 = 0b01000100).
+        """
+
+        from net_proto.protocols.ip4.options.ip4__option__timestamp import Ip4TimestampEntry
+
+        option = Ip4OptionTimestamp(
+            pointer=5,
+            overflow=0,
+            flag=0,
+            entries=[Ip4TimestampEntry(timestamp=0)],
+        )
+        self.assertFalse(
+            option.copy_flag,
+            msg="Timestamp (type 68) must have copy_flag=False.",
+        )
+
+    def test__copy_flag__lsrr__true(self) -> None:
+        """
+        Ensure Loose Source and Record Route (type 131)
+        reports copy_flag=True — source-route information must
+        appear on every fragment for the routing decision to
+        work.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 131 = 0b10000011).
+        """
+
+        option = Ip4OptionLsrr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertTrue(
+            option.copy_flag,
+            msg="LSRR (type 131) must have copy_flag=True.",
+        )
+
+    def test__copy_flag__ssrr__true(self) -> None:
+        """
+        Ensure Strict Source and Record Route (type 137)
+        reports copy_flag=True.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 137 = 0b10001001).
+        """
+
+        option = Ip4OptionSsrr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertTrue(
+            option.copy_flag,
+            msg="SSRR (type 137) must have copy_flag=True.",
+        )
+
+    def test__copy_flag__router_alert__true(self) -> None:
+        """
+        Ensure Router Alert (type 148) reports copy_flag=True —
+        every fragment of a router-alert datagram must trigger
+        the every-hop slow-path examination, so the option must
+        propagate.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 148 = 0b10010100).
+        Reference: RFC 2113 (Router Alert defined with copy_flag=1).
+        """
+
+        self.assertTrue(
+            Ip4OptionRouterAlert().copy_flag,
+            msg="Router Alert (type 148) must have copy_flag=True.",
+        )
+
+    def test__copy_flag__cipso__true(self) -> None:
+        """
+        Ensure CIPSO (type 134) reports copy_flag=True — the
+        security label must appear on every fragment for a
+        labelling-aware receiver to enforce policy.
+
+        Reference: RFC 791 §3.1 (option-type copy flag; type 134 = 0b10000110).
+        """
+
+        option = Ip4OptionCipso(doi=1, tags=[])
+        self.assertTrue(
+            option.copy_flag,
+            msg="CIPSO (type 134) must have copy_flag=True.",
+        )
+
+    def test__copy_flag__unknown_high_bit_set__true(self) -> None:
+        """
+        Ensure an unknown option type with the high bit set
+        reports copy_flag=True — the rule applies to ALL
+        options including ones PyTCP does not natively type,
+        consistent with the on-the-wire encoding.
+
+        Reference: RFC 791 §3.1 (copy flag applies to every option type).
+        """
+
+        # Unknown type 0x80 = 128 with high bit set.
+        option = Ip4OptionUnknown(type=Ip4OptionType.from_int(0x80), data=b"")
+        self.assertTrue(
+            option.copy_flag,
+            msg="Unknown option with high-bit-set type must have copy_flag=True.",
+        )
+
+    def test__copy_flag__unknown_high_bit_clear__false(self) -> None:
+        """
+        Ensure an unknown option type with the high bit clear
+        reports copy_flag=False.
+
+        Reference: RFC 791 §3.1 (copy flag applies to every option type).
+        """
+
+        # Unknown type 0x40 = 64 with high bit clear.
+        option = Ip4OptionUnknown(type=Ip4OptionType.from_int(0x40), data=b"")
+        self.assertFalse(
+            option.copy_flag,
+            msg="Unknown option with high-bit-clear type must have copy_flag=False.",
+        )
+
+
+class TestIp4OptionsWithCopyFlag(TestCase):
+    """
+    The 'Ip4Options.with_copy_flag' filter tests — used by the
+    TX fragmenter to compute the copy-flag-1 subset that needs
+    to appear on every fragment per RFC 791 §3.1.
+    """
+
+    def _build_mixed_options(self) -> Ip4Options:
+        """Construct an Ip4Options instance with mixed copy-flag values."""
+
+        return Ip4Options(
+            Ip4OptionLsrr(pointer=4, route=[Ip4Address("0.0.0.0")]),  # copy=True
+            Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")]),  # copy=False
+            Ip4OptionRouterAlert(),  # copy=True
+            Ip4OptionNop(),  # copy=False
+        )
+
+    def test__with_copy_flag__true__returns_copy_true_options(self) -> None:
+        """
+        Ensure 'with_copy_flag(True)' returns an Ip4Options
+        containing only the options whose copy_flag is True —
+        the subset that the TX fragmenter must place on every
+        fragment beyond the first.
+
+        Reference: RFC 791 §3.1 (copy flag = 1 → propagate on every fragment).
+        """
+
+        filtered = self._build_mixed_options().with_copy_flag(True)
+
+        self.assertEqual(
+            [type(o).__name__ for o in filtered],
+            ["Ip4OptionLsrr", "Ip4OptionRouterAlert"],
+            msg="with_copy_flag(True) must return only copy=True options in source order.",
+        )
+
+    def test__with_copy_flag__false__returns_copy_false_options(self) -> None:
+        """
+        Ensure 'with_copy_flag(False)' returns the
+        complementary subset — the options that only belong
+        on the first fragment.
+
+        Reference: RFC 791 §3.1 (copy flag = 0 → first fragment only).
+        """
+
+        filtered = self._build_mixed_options().with_copy_flag(False)
+
+        self.assertEqual(
+            [type(o).__name__ for o in filtered],
+            ["Ip4OptionRr", "Ip4OptionNop"],
+            msg="with_copy_flag(False) must return only copy=False options in source order.",
+        )
+
+    def test__with_copy_flag__empty_input__empty_output(self) -> None:
+        """
+        Ensure an empty 'Ip4Options' filtered by either flag
+        value returns an empty 'Ip4Options' — boundary case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        empty = Ip4Options()
+        self.assertEqual(
+            len(empty.with_copy_flag(True)),
+            0,
+            msg="with_copy_flag(True) on empty must return empty.",
+        )
+        self.assertEqual(
+            len(empty.with_copy_flag(False)),
+            0,
+            msg="with_copy_flag(False) on empty must return empty.",
+        )
+
+    def test__with_copy_flag__returns_new_instance(self) -> None:
+        """
+        Ensure 'with_copy_flag' returns a new 'Ip4Options'
+        rather than mutating the source — the filter must be
+        non-destructive so the TX fragmenter can keep the
+        full original options for the first fragment.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        source = self._build_mixed_options()
+        source_repr_before = repr(source)
+
+        _ = source.with_copy_flag(True)
+
+        self.assertEqual(
+            repr(source),
+            source_repr_before,
+            msg="with_copy_flag must not mutate the source Ip4Options.",
         )

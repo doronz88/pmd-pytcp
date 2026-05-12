@@ -38,6 +38,7 @@ from net_proto import (
     IP4__DEFAULT_TTL,
     Ip4Assembler,
     Ip4FragAssembler,
+    Ip4OptionNop,
     Ip4Options,
     Ip4Payload,
     IpProto,
@@ -193,16 +194,32 @@ class PacketHandlerIp4Tx(ABC):
         if isinstance(ip4_packet_tx.payload, (TcpAssembler, UdpAssembler)):
             ip4_packet_tx.payload.pshdr_sum = ip4_packet_tx.pshdr_sum
 
+        # RFC 791 §3.1 option-copy-flag: build the per-fragment
+        # options sets. First fragment carries the full original
+        # options; subsequent fragments carry only the copy_flag=1
+        # subset (LSRR / SSRR / Router Alert / CIPSO etc.). NOPs
+        # are appended to align the subset to 4 bytes per the
+        # IHL wire encoding.
+        first_fragment_options = ip4_packet_tx.options
+        copy_options_filtered = ip4_packet_tx.options.with_copy_flag(True)
+        copy_options_padding = (-len(copy_options_filtered)) & 0b11
+        non_first_fragment_options = Ip4Options(
+            *copy_options_filtered,
+            *(Ip4OptionNop() for _ in range(copy_options_padding)),
+        )
+
         self._ip4_id += 1
         outbound_tx_status: set[TxStatus] = set()
         for offset, chunk, is_last in iter_fragment_chunks(
             bytes(ip4_packet_tx.payload),
             max_chunk_bytes=self._interface_mtu - ip4_packet_tx.hlen,
         ):
+            fragment_options = first_fragment_options if offset == 0 else non_first_fragment_options
             ip4_frag_tx = Ip4FragAssembler(
                 ip4_frag__src=ip4__src,
                 ip4_frag__dst=ip4__dst,
                 ip4_frag__ttl=ip4__ttl,
+                ip4_frag__options=fragment_options,
                 ip4_frag__payload=chunk,
                 ip4_frag__offset=offset,
                 ip4_frag__flag_mf=not is_last,

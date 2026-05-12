@@ -163,37 +163,33 @@ recomputed.
 > fragment of a datagram, other options, such as 'record route',
 > are put in the first fragment only."
 
-**Adherence:** met (with simplification). PyTCP's reassembly
-**drops all options** on completion — the rewritten header has
-`IHL=5` (no options), Total Length adjusted accordingly. The
-joined payload buffer is positioned immediately after the
-20-byte header:
+**Adherence:** met. PyTCP's reassembly **preserves the first
+fragment's options** verbatim on completion. The RX handler
+captures the full IHL-bounded first-fragment header bytes
+into `IpFragData.header`; on completion the bytes are reused
+as the reassembled header (with Total Length recomputed to
+`len(header) + len(payload)` and Header Checksum
+recomputed):
 
 ```python
-header[0] = 0x45  # ver=4, IHL=5 → 20-byte header, no options
+header = bytearray(header_bytes)        # full first-fragment header incl. options
+# header[0] left as-is — preserves the original IHL
+struct.pack_into("!H", header, 2, len(header) + len(payload))
+header[6] = header[7] = header[10] = header[11] = 0
+struct.pack_into("!H", header, 10, inet_cksum(memoryview(header)))
 ```
 
-This is a Phase-1 simplification consistent with the
-host-stack posture:
+The first fragment is canonical per RFC 815 §6: copy_flag=1
+options appear identically on every fragment (so the first
+fragment's copy is the canonical bytes), and copy_flag=0
+options appear only on the first fragment by construction.
+Either way, the first fragment's options are the right
+bytes for the reassembled datagram.
 
-- A host generally has no use for the options that arrive on a
-  fragmented datagram (LSRR/SSRR processing is gated off per
-  `IP4__ACCEPT_SOURCE_ROUTE`; Record Route only matters on
-  forward).
-- The "first fragment carries the option set" subtlety (§6) is
-  side-stepped because PyTCP never delivers the option set
-  upstream after reassembly.
-- The reassembled packet's checksum is recomputed against the
-  options-stripped header, so the upper layer sees a valid
-  datagram regardless of what the original fragments carried.
-
-**Phase 2:** when forwarding lands, the reassembled datagram
-needs to be re-emitted with the original options preserved
-(copy-flag subset only for the fragments other than the
-first). The natural fix point is `packet_handler__ip4__rx.py:337`
-— extract the first fragment's options before stripping IHL,
-and either preserve them on the reassembled buffer or
-re-encode them on the forward path.
+The TX-side symmetric handling — emitting the right options
+on each outbound fragment — is audited under
+`docs/rfc/ip4/rfc791__ip4/adherence.md` §3.1 (option
+copy-flag on fragmentation).
 
 ## §7 The Complete Algorithm — flow keying
 
@@ -285,13 +281,19 @@ cross-references back here.
 
 **Status:** locked in.
 
-### §6 Options dropped on reassembly
+### §6 Options preserved on reassembly
 
-- **Integration:** the reassembly cases above implicitly verify
-  that the rewritten header has `IHL=5` (20 bytes). Add a
-  dedicated case if a future change starts preserving options.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  Two-fragment reassembly with first fragment carrying
+  [Router Alert + RR + NOP] and second carrying only the
+  copy_flag=1 subset → reassembled packet preserves the
+  first fragment's full option set, IHL reflects the
+  preserved length, Total Length includes both header bytes
+  (with options) and payload bytes. Includes a no-options
+  regression case.
 
-**Status:** locked in indirectly.
+**Status:** locked in.
 
 ### §7 Flow keying by (src, dst, proto, id)
 
@@ -346,13 +348,12 @@ cross-references back here.
 | Aspect                                                | Coverage |
 |-------------------------------------------------------|----------|
 | Reassembly happy path (in/out-of-order arrival)       | locked in |
-| Options stripped on completion (Phase 1)              | locked in indirectly |
+| Options preserved on completion (RFC 815 §6)          | locked in |
 | Flow keying by (src, dst, proto, id)                  | locked in |
 | Lazy-sweep timer reaper                               | locked in |
 | Overlap rejection (RFC 5722)                          | locked in |
 | Atomic-fragment fast-path (RFC 791 / RFC 6864)        | locked in |
 | Discarded-flow drop-through                           | locked in |
-| Option preservation across reassembly (Phase 2)       | n/a (current Phase 1 strips) |
 
 ---
 
@@ -363,15 +364,14 @@ cross-references back here.
 | §2 / §3 Reassembly correctness (any algorithm)        | met (sorted-offset dict, not hole-descriptor list) |
 | §4 In-buffer hole-descriptor storage trick            | n/a (Python objects suffice) |
 | §5 In-band list-head pointer placement                | n/a (Python attribute) |
-| §6 Options handling on reassembly                     | met (Phase 1: stripped; Phase 2: preserve) |
+| §6 Options handling on reassembly                     | met (first-fragment options preserved) |
 | §7 Flow keying by (src, dst, proto, id)               | met    |
 | §7 Timer-based reaper                                 | met (lazy sweep) |
 | RFC 5722 overlap rejection (hardening)                | met    |
 | RFC 791 / RFC 6864 atomic-fragment fast-path          | met    |
 
-The reassembly is functionally complete for Phase 1. The only
-Phase-2 evolution the audit identifies is option preservation
-on reassembly (§6): a forwarder needs the original first-
-fragment options on the reassembled datagram so the forward
-path can re-encode them. The fix point is documented in §6
-above.
+The reassembly is functionally complete. Phase-2 forwarder
+work (e.g. re-encoding the reassembled datagram with options
+back onto the forward path) inherits the preserved options
+for free since the reassembled IPv4 packet now carries the
+original first-fragment header bytes verbatim.

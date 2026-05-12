@@ -36,7 +36,6 @@ from abc import ABC
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
-    IP4__HEADER__LEN,
     Icmp4DestinationUnreachableCode,
     Icmp4Message,
     Icmp4MessageDestinationUnreachable,
@@ -321,7 +320,11 @@ class PacketHandlerIp4Rx(ABC):
             offset=packet_rx.ip4.offset,
             payload=packet_rx.ip4.payload_bytes,
             flag_mf=packet_rx.ip4.flag_mf,
-            header=packet_rx.ip4.header_bytes,
+            # Pass the full IHL-bounded header (base + options)
+            # so RFC 815 §6 option preservation works on
+            # reassembly. 'header_bytes' returns only the base
+            # 20 bytes; 'packet_bytes[:hlen]' captures options.
+            header=packet_rx.ip4.packet_bytes[: packet_rx.ip4.hlen],
             ecn=packet_rx.ip4.ecn,
         )
         if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
@@ -340,15 +343,18 @@ class PacketHandlerIp4Rx(ABC):
         header_bytes = result.header
         payload = result.payload
 
-        # Reassembled IPv4 header rewrite: drop options (IHL=5),
-        # rewrite Total Length, clear Flags / Fragment Offset,
-        # patch the TOS byte to carry the RFC 3168 §5.3
-        # aggregated ECN (DSCP preserved from first fragment),
-        # recompute Header Checksum.
+        # Reassembled IPv4 header rewrite: preserve the first
+        # fragment's IHL + options per RFC 815 §6 (the first
+        # fragment carries the canonical options for the
+        # reassembled datagram); rewrite Total Length to
+        # 'len(header) + len(payload)' so the options bytes are
+        # accounted for; clear Flags / Fragment Offset; patch
+        # the TOS byte to carry the RFC 3168 §5.3 aggregated
+        # ECN (DSCP preserved from first fragment); recompute
+        # Header Checksum.
         header = bytearray(header_bytes)
-        header[0] = 0x45
         header[1] = (header[1] & 0xFC) | (result.ecn & 0x03)
-        struct.pack_into("!H", header, 2, IP4__HEADER__LEN + len(payload))
+        struct.pack_into("!H", header, 2, len(header) + len(payload))
         header[6] = header[7] = header[10] = header[11] = 0
         struct.pack_into("!H", header, 10, inet_cksum(memoryview(header)))
         packet_rx = PacketRx(bytes(header) + payload)

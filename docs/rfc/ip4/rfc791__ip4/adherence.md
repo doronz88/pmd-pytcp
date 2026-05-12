@@ -265,12 +265,16 @@ defined kind:
 | any  | var       | -     | `ip4__option__unknown.py`       | shipped (preserves wire for unrecognized kinds) |
 
 The "copied flag" semantics on the option-type byte are
-honoured on **fragmentation**: when the TX path splits an
-oversized packet (`packet_handler__ip4__tx.py:178-220`), the
-current implementation simply does not include options on
-fragments — see RFC 815 audit's discussion. This is a
-Phase-1 simplification; **Phase 2** the option set should
-copy options whose copy-bit is 1 onto every fragment.
+**honoured** on fragmentation: when the TX path splits an
+oversized packet (`packet_handler__ip4__tx.py:195-218`), the
+first fragment carries the full original options and every
+subsequent fragment carries only the copy_flag=1 subset
+(`options.with_copy_flag(True)` padded to a 4-byte boundary
+with NOPs). The `Ip4Option.copy_flag` property in
+`net_proto/protocols/ip4/options/ip4__option.py` extracts
+bit 7 of the option-type byte. RX reassembly preserves the
+first fragment's full options per RFC 815 §6 — see the
+RFC 815 audit's §6 entry.
 
 > "The options may appear or not in datagrams. They must be
 > implemented by all IP modules (host and gateways)."
@@ -500,8 +504,25 @@ octet field in PyTCP wire codecs is network-order.
 
 **Status:** locked in.
 
-### Phase 2 gaps (forwarding TTL decrement, ICMP Time Exceeded, option-copy on
-fragment, full source-route processing)
+### §3.1 Options — copy-flag on fragmentation
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/ip4/test__ip4__options.py::TestIp4OptionCopyFlag`
+  (10 cases — every defined option type plus unknown high-
+  bit-set / clear), `TestIp4OptionsWithCopyFlag` (4 cases —
+  copy_flag=True / False filter, empty input, non-mutating).
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation`
+  (3 cases — mixed copy-flag fragmentation, copy_flag=0
+  only, no-options regression).
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  (2 cases — options preserved on reassembly, no-options
+  regression).
+
+**Status:** locked in.
+
+### Phase 2 gaps (forwarding TTL decrement, ICMP Time Exceeded, full source-route processing)
 
 **No test surface — Phase 2.** When the forwarder lands, the
 natural tests are:
@@ -511,8 +532,6 @@ natural tests are:
    reaches 0 on decrement.
 2. A frame with LSRR `pointer < length` → rewrite dst, update
    route data, decrement TTL, forward.
-3. A frame > MTU on forward path → fragment, with options
-   whose copy-bit is 1 echoed onto each fragment.
 
 ### Test coverage summary
 
@@ -529,7 +548,7 @@ natural tests are:
 | RFC 6724-style source-address selection (IPv4 subset) | locked in |
 | Source-route gate (`IP4__ACCEPT_SOURCE_ROUTE`)        | locked in |
 | Forwarding TTL decrement / Time Exceeded              | n/a (Phase 2) |
-| Option copy-bit on fragmentation                      | n/a (Phase 1 simplification; Phase 2 will land) |
+| Option copy-bit on fragmentation                      | locked in (shipped) |
 
 ---
 
@@ -544,23 +563,15 @@ natural tests are:
 | §3.1 Source / Destination Address (host filtering)    | met (with RFC 1122 hardening) |
 | §3.1 Options framework + parsing                      | met    |
 | §3.1 Options — LSRR / SSRR processing                 | gated off (Linux-parallel) — wire codec met |
-| §3.1 Options — copy-bit on fragmentation              | not met (Phase 2) |
+| §3.1 Options — copy-bit on fragmentation              | met (shipped) |
 | §3.1 Options — Stream ID                              | not implemented (deprecated by RFC 6814) |
 | §3.2 Fragmentation on send                            | met    |
 | §3.2 Reassembly on receive                            | met (audited under RFC 815) |
 | §3.1 / forwarding TTL decrement + Time Exceeded       | not implemented (Phase 2) |
 | Appendix B — network byte order                       | met    |
 
-The principal Phase-1 gap is the option-copy-bit-on-
-fragmentation behaviour: the TX fragmenter currently drops all
-options when splitting an oversized packet, contradicting
-§3.1's "copied flag" intent for options whose bit is 1
-(e.g. LSRR, SSRR, CIPSO, Router Alert). Practically harmless
-on a host stack (we never originate LSRR/SSRR and we drop
-Router Alert / CIPSO semantics anyway), but a Phase-2
-forwarder will need it. Fix sketch: in
-`packet_handler__ip4__tx.py:196-205`, when building each
-`Ip4FragAssembler` pass through the subset of
-`ip4_packet_tx.options` whose `copy_flag` bit is set; the
-first fragment carries the full options, every subsequent
-fragment carries the copy-flag subset.
+All §3.1 host-side normative requirements are met. The
+remaining items are Phase-2 forwarder work tracked under
+RFC 1812: forward-path TTL decrement, ICMP Time Exceeded
+emission, and full source-route (LSRR/SSRR) pointer
+advancement.

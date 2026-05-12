@@ -38,10 +38,17 @@ from typing import Any
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import Ip4Address
 from net_proto import (
     Icmp4Assembler,
     Icmp4MessageEchoRequest,
+    Ip4OptionLsrr,
+    Ip4OptionNop,
+    Ip4OptionRr,
+    Ip4Options,
+    Ip4Parser,
     IpProto,
+    PacketRx,
 )
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
@@ -1300,6 +1307,169 @@ class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
             64,
             msg="Unicast outbound datagrams must keep the IP4__DEFAULT_TTL=64 default.",
         )
+
+
+class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase):
+    """
+    The RFC 791 §3.1 option-copy-flag fragmentation tests.
+
+    Each IPv4 option carries a 'copy on fragmentation' flag in
+    bit 7 of the option-type byte. When the TX path fragments
+    an oversized datagram, options with copy_flag=True
+    propagate onto every fragment; options with
+    copy_flag=False appear only on the first fragment.
+    """
+
+    def _make_lsrr_rr_options(self) -> Ip4Options:
+        """
+        Build an Ip4Options containing one LSRR (copy=True) + one
+        RR (copy=False), padded to 4 bytes via two NOP options.
+        Total length: 7 + 7 + 1 + 1 = 16 bytes.
+        """
+
+        return Ip4Options(
+            Ip4OptionLsrr(pointer=4, route=[Ip4Address("10.0.0.1")]),
+            Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")]),
+            Ip4OptionNop(),
+            Ip4OptionNop(),
+        )
+
+    def test__phtx_ip4__fragmentation_preserves_copy_flag_options(self) -> None:
+        """
+        Ensure a fragmented datagram with mixed copy-flag
+        options ships the **full** option set on the first
+        fragment and the **copy_flag=True subset** (padded to
+        4 bytes) on every subsequent fragment.
+
+        Reference: RFC 791 §3.1 (option-type copy flag = bit 0
+        of the option-type byte; copy=1 propagates to every
+        fragment, copy=0 stays on first only).
+        """
+
+        # Force 2 fragments: payload_mtu = (1500 - (20+16)) & ~7
+        # = 1464; payload 1500 bytes splits into 1464 + 36.
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__options=self._make_lsrr_rr_options(),
+            ip4__payload=RawAssembler(
+                raw__payload=b"X" * 1500,
+                ip_proto=IpProto.from_int(99),
+            ),
+        )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            2,
+            msg="Oversized payload with options must produce exactly 2 fragments.",
+        )
+
+        # Parse each fragment's IPv4 header. Ethernet header is
+        # 14 bytes; skip it to feed the IPv4 portion to Ip4Parser.
+        first_frame = self._frames_tx[0][14:]
+        second_frame = self._frames_tx[1][14:]
+
+        first_parser = Ip4Parser(PacketRx(first_frame))
+        second_parser = Ip4Parser(PacketRx(second_frame))
+
+        # First fragment: full option set (LSRR + RR + 2 NOPs).
+        # Use option-type tuples to compare the option sequence
+        # without depending on per-option __eq__ semantics for
+        # NOPs.
+        self.assertEqual(
+            [int(o.type) for o in first_parser.options],
+            [131, 7, 1, 1],  # LSRR, RR, NOP, NOP
+            msg="First fragment must carry the full original option set.",
+        )
+
+        # Second fragment: only copy_flag=True options (LSRR)
+        # plus NOP padding for 4-byte alignment.
+        self.assertEqual(
+            [int(o.type) for o in second_parser.options],
+            [131, 1],  # LSRR + 1 NOP padding (7+1=8 bytes)
+            msg="Subsequent fragment must carry only copy_flag=1 options + NOP padding.",
+        )
+
+        # Both fragments must have the same source / dst / id /
+        # proto — basic fragmentation sanity.
+        self.assertEqual(
+            first_parser.id,
+            second_parser.id,
+            msg="Both fragments must share the same Identification value.",
+        )
+        self.assertTrue(
+            first_parser.flag_mf,
+            msg="Non-final fragment must have MF=1.",
+        )
+        self.assertFalse(
+            second_parser.flag_mf,
+            msg="Final fragment must have MF=0.",
+        )
+
+    def test__phtx_ip4__fragmentation_with_only_copy_false_options(self) -> None:
+        """
+        Ensure a fragmented datagram with only copy_flag=False
+        options ships those options on the first fragment and
+        an empty options set on subsequent fragments.
+
+        Reference: RFC 791 §3.1 (copy_flag=0 → first fragment only).
+        """
+
+        # Only RR (copy=False) + NOP padding = 8 bytes.
+        options = Ip4Options(
+            Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")]),
+            Ip4OptionNop(),
+        )
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__options=options,
+            ip4__payload=RawAssembler(
+                raw__payload=b"X" * 1500,
+                ip_proto=IpProto.from_int(99),
+            ),
+        )
+
+        first_parser = Ip4Parser(PacketRx(self._frames_tx[0][14:]))
+        second_parser = Ip4Parser(PacketRx(self._frames_tx[1][14:]))
+
+        self.assertEqual(
+            [int(o.type) for o in first_parser.options],
+            [7, 1],  # RR + NOP
+            msg="First fragment must carry the copy_flag=False option set.",
+        )
+        self.assertEqual(
+            list(second_parser.options),
+            [],
+            msg="Subsequent fragments must carry no options when all originals are copy_flag=False.",
+        )
+
+    def test__phtx_ip4__fragmentation_with_no_options_unchanged(self) -> None:
+        """
+        Ensure a fragmented datagram with no options ships no
+        options on either fragment — regression net for the
+        common case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(
+                raw__payload=b"X" * 1500,
+                ip_proto=IpProto.from_int(99),
+            ),
+        )
+
+        for index, frame in enumerate(self._frames_tx):
+            parser = Ip4Parser(PacketRx(frame[14:]))
+            self.assertEqual(
+                list(parser.options),
+                [],
+                msg=f"Fragment #{index} of a no-options datagram must carry no options.",
+            )
 
 
 class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
