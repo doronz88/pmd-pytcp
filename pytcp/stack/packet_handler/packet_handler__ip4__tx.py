@@ -172,6 +172,24 @@ class PacketHandlerIp4Tx(ABC):
                 )
                 return TxStatus.DROPPED__IP4__DST_BROADCAST_DISALLOWED
 
+        # RFC 3927 §2.6: link-local addressing is local-only.
+        # A host MUST NOT send a packet with an IPv4 Link-Local
+        # source to a non-link-local destination, nor a packet
+        # with a link-local destination from a non-link-local
+        # source. Both halves of the rule are symmetric: any
+        # scope mix between src and dst is rejected. The DHCP-
+        # client path (src=0.0.0.0, dst=255.255.255.255) is
+        # naturally exempt — neither address is link-local so
+        # 'is_link_local != is_link_local' is False.
+        if ip4__src.is_link_local != ip4__dst.is_link_local:
+            self._packet_stats_tx.ip4__link_local_scope_mismatch__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{ip4__payload.tracker} - <WARN>Link-local scope mismatch: "
+                f"src={ip4__src} dst={ip4__dst}; dropping (RFC 3927 §2.6)</>",
+            )
+            return TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH
+
         # Assemble IPv4 packet.
         ip4_packet_tx = Ip4Assembler(
             ip4__src=ip4__src,

@@ -46,9 +46,9 @@ would be the DHCP-failure fallback per RFC 3927 §1.9.
 | §2.2    | Claim via ARP Probe                                    | not implemented |
 | §2.4    | Announce via gratuitous ARP                            | not implemented |
 | §2.5    | Conflict detection / defense                           | not implemented |
-| §2.6    | Source / destination address usage rules               | partial — predicate-aware, no autoconfig |
+| §2.6    | Source / destination address usage rules               | met (`_phtx_ip4` scope-mismatch gate) |
 | §2.7    | Link-local packets are not forwarded                   | n/a (no forwarding) |
-| §2.8    | Link-local packets are local-only                      | met (no PyTCP code attempts to route 169.254/16) |
+| §2.8    | Link-local packets are local-only                      | met (subsumed by §2.6) |
 | §2.11   | DHCPv4 client interaction                              | n/a (no link-local autoconfig) |
 
 ---
@@ -123,17 +123,18 @@ defend-or-reconfigure decision tree (§2.5(a)/(b)) is absent.
 > address to any destination that is not itself an IPv4 Link-
 > Local destination."
 
-**Adherence:** not enforced — gap. PyTCP's `Ip4Address.is_link_local`
-predicate is available, but no TX-side gate checks
-`src.is_link_local != dst.is_link_local` and rejects. If a
-caller ever supplied a 169.254 source with a non-169.254
-destination, the TX path would happily attempt to send it.
-
-Practical impact today is zero: PyTCP doesn't auto-acquire a
-link-local source, and the address API is not exposed to
-public consumers in a way that would allow this misuse.
-**`# Phase 2:`** when link-local autoconfig lands, add a TX
-gate that rejects mismatched scope sends.
+**Adherence:** met.
+`packet_handler__ip4__tx.py::_phtx_ip4` rejects any datagram
+where `ip4__src.is_link_local != ip4__dst.is_link_local` with
+`TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH` and the
+`ip4__link_local_scope_mismatch__drop` counter bump. The gate
+sits between destination validation and assembly so it fires
+after `__validate_src_ip4_address` has confirmed the source
+is owned. Both halves of the rule are symmetric (the
+`!=` check catches both link-local→global and global→
+link-local mixes). The DHCP-client path
+(src=0.0.0.0, dst=255.255.255.255) is naturally exempt
+because neither address is link-local.
 
 ## §2.7 Link-Local Packets Are Not Forwarded
 
@@ -150,18 +151,27 @@ forwarder will need this rule; the predicate is ready.
 > "A host MUST NOT send a packet with an IPv4 Link-Local
 > destination address to any router for forwarding."
 
-**Adherence:** met (vacuously). PyTCP's local-vs-remote
-decision is per-`Ip4Host.network` containment check. A
-169.254 destination would only match a configured
-`Ip4Host("169.254.0.0/16")` — which we never assign. With no
-matching host, off-link sends would route to the default
-gateway, which violates §2.8. The fix would be a TX-side
-short-circuit that treats `dst.is_link_local` as
-"link-local destination, send directly via ARP without
-consulting the default gateway".
+**Adherence:** met (subsumed by §2.6). The §2.6 scope-
+mismatch gate at the IPv4 layer rejects every send where
+src and dst differ in link-local scope. The only paths that
+reach `_phtx_ethernet` with a link-local destination are:
 
-**Practical impact today: zero** — no PyTCP code path
-constructs a 169.254 destination. Marked as a Phase-2 sharpening.
+1. **Link-local-to-link-local sends** — both src and dst are
+   in 169.254/16. When a link-local source is owned the
+   host has an `Ip4Host("169.254.x.y/16")` configured, so
+   the link-local destination IS in the host's network and
+   the Ethernet-layer gateway path is naturally skipped
+   (the `ip4_dst not in ip4_host.network` branch fails).
+2. **Caller-supplied broadcast** — not a §2.8 scenario.
+
+So §2.8 cannot fire independently of §2.6 in PyTCP's
+host-stack model — the gate at the IPv4 layer is necessary
+and sufficient. An explicit Ethernet-layer short-circuit
+would be dead code and is intentionally omitted. The
+adherence is observable via the §2.6 test class
+(`TestPacketHandlerIp4TxRfc3927ScopeGate`) which proves
+every non-link-local-to-link-local path is rejected before
+reaching the gateway-selection logic.
 
 ## §2.11 DHCPv4 Client Interaction
 
@@ -197,6 +207,19 @@ without any link-local fallback.
 
 **Status:** locked in.
 
+### §2.6 TX-side scope-mismatch gate
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  Five cases: link-local src + global dst → drop with new
+  TxStatus + counter bump; symmetric global src + link-
+  local dst → same drop; link-local src + link-local dst →
+  passes the gate; global src + global dst → unaffected;
+  DHCP-client path (src=0.0.0.0 + dst=255.255.255.255) →
+  unaffected.
+
+**Status:** locked in.
+
 ### Phase-2 gaps (autoconfig state machine, source/dst gating)
 
 **No test surface — Phase 2.** When link-local autoconfig
@@ -217,7 +240,8 @@ lands:
 | Link-local predicate (169.254/16 recognition)         | locked in |
 | Link-local scope in source selection                  | locked in |
 | §2.1-§2.5 Link-local autoconfig state machine         | n/a (not implemented) |
-| §2.6 TX-side scope-mismatch gate                      | n/a (gap; no caller path that would trigger today) |
+| §2.6 TX-side scope-mismatch gate                      | locked in |
+| §2.8 Link-local-not-to-router                         | locked in (subsumed by §2.6) |
 
 ---
 
@@ -230,8 +254,8 @@ lands:
 | §2.2 ARP Probe                                       | not implemented (ARP-probe machinery exists for ACD/DHCP) |
 | §2.4 ARP Announce                                    | not implemented for link-local |
 | §2.5 Conflict detection / defense                   | not implemented |
-| §2.6 TX-side scope-mismatch gate                    | gap (no consumer today) |
-| §2.7 / §2.8 No forwarding / local-only              | n/a (host) / met vacuously |
+| §2.6 TX-side scope-mismatch gate                    | met (Phase 0 of RFC 3927 track) |
+| §2.7 / §2.8 No forwarding / local-only              | n/a (host) / met (subsumed by §2.6) |
 | §2.11 DHCP client interaction                       | n/a (no autoconfig) |
 
 PyTCP recognises 169.254/16 at the address layer but does not

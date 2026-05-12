@@ -134,15 +134,19 @@ and the eventual link-local client consume the new API. This
 draws a clean Phase-3 line that today is fuzzy (see §12.2 for
 the architectural argument).
 
-### Phase 0 — §2.6 + §2.8 TX-side gates (1 commit; ~2 hours)
+### Phase 0 — §2.6 TX-side scope-mismatch gate (1 commit; ~1.5 hours)
 
-Standalone closure of the two RFC 3927 TX-side rules the
-adherence record flags as gaps. These land before the
-autoconfig subsystem so the gates are in place when the new
-consumer arrives. Both rules have zero practical impact today
-(no caller generates a 169.254 source / destination) which is
-why they shipped as gaps in the IPv4 audit pass — closing
-them is a low-risk prep step.
+Standalone closure of the RFC 3927 §2.6 source/destination
+scope-mismatch rule the adherence record flagged as a gap.
+Lands before the autoconfig subsystem so the gate is in
+place when link-local autoconfig populates `_ip4_host` with
+a 169.254/16 entry. Zero practical impact today (no caller
+generates a 169.254 source), which is why it shipped as a
+gap in the IPv4 audit pass — closing it is a low-risk prep
+step.
+
+§2.8 (link-local-not-to-router) is examined alongside §2.6
+and found to be **subsumed** — see §0.2 below.
 
 **0.1 §2.6 source/destination scope-mismatch gate**
 
@@ -165,21 +169,29 @@ short-circuits before this check, mirroring the existing
 broadcast-gate carve-out from the `ip4.allow_broadcast`
 commit.
 
-**0.2 §2.8 link-local destination → bypass default gateway**
+**0.2 §2.8 subsumed by §2.6 — no separate gate**
 
-In `_phtx_ethernet` (or wherever the gateway lookup lives
-today), when `ip4_dst.is_link_local`, force the ARP lookup
-against the destination directly instead of consulting the
-default gateway. This mirrors the existing on-link
-classification logic — link-local destinations are by
-definition on-link.
+Closer reading shows §2.8 cannot fire independently of §2.6
+in PyTCP's host-stack model:
 
-The cleanest implementation: extend the existing on-link
-check (`dst in any local subnet`) to also match
-`dst.is_link_local`. If the host has no link-local address
-configured, the ARP lookup will fail with the existing
-`DROPPED__ETHERNET__DST_ARP_CACHE_MISS` — which is correct
-per RFC 3927 (no link-local source = nothing to do).
+- If src is global and dst is link-local, §2.6 drops at the
+  IPv4 layer.
+- If src is unspecified (DHCP path) and dst is link-local,
+  there's no such caller in PyTCP today and any future one
+  would be the DHCP-fallback case which uses
+  `dst=255.255.255.255`, not 169.254.
+- If both src and dst are link-local (after autoconfig
+  ships), the host has an `Ip4Host("169.254.x.y/16")`
+  configured. The Ethernet TX path's gateway branch
+  triggers only when `ip4_dst not in ip4_host.network`;
+  with the 169.254/16 host installed, any 169.254 dst IS
+  in the network, so the gateway path is naturally
+  skipped.
+
+An explicit §2.8 short-circuit in `_phtx_ethernet` would be
+dead code. The adherence record's §2.8 status flips from
+"met vacuously" to "met (subsumed by §2.6)" with the
+rationale documented inline.
 
 **Wire-up:**
 
@@ -191,19 +203,19 @@ per RFC 3927 (no link-local source = nothing to do).
 
 **Tests-first:**
 
-- Unit: extend `TestPacketHandlerIp4Tx*` integration with a
-  `TestPacketHandlerIp4TxRfc3927ScopeGate` class covering:
+- Integration: `TestPacketHandlerIp4TxRfc3927ScopeGate`
+  covering:
   - link-local source + global destination → dropped
   - global source + link-local destination → dropped
   - link-local source + link-local destination → allowed
+    (passes the gate; downstream Ethernet TX handles the
+    on-link resolution)
+  - global source + global destination → unaffected
   - DHCP path (src=0.0.0.0) unaffected by gate
-- Integration: `Test*Rfc3927DstLinkLocalBypassGateway`
-  verifies that a 169.254/16 destination triggers an ARP
-  lookup against the destination directly even when a default
-  gateway is configured.
 
-**Adherence refresh:** flip §2.6 from "gap" to "met" and §2.8
-from "met vacuously" to "met explicitly".
+**Adherence refresh:** flip §2.6 from "gap" to "met"; flip
+§2.8 from "met vacuously" to "met (subsumed by §2.6)" with
+the rationale documented inline.
 
 ### Phase 0.5 — Extract the sanctioned ACD API (1 commit; ~1 day)
 
@@ -1142,14 +1154,14 @@ violation-cleanup-on-touch obligation.
 
 | Phase | Description                                                | Effort   | Cumulative |
 |-------|------------------------------------------------------------|----------|------------|
-| 0     | §2.6 + §2.8 TX-side gates                                  | ~2 h     | ~2 h       |
-| 0.5   | Extract ACD API + migrate DHCP / static-host call sites    | ~8 h     | ~10 h      |
-| 1     | Subsystem skeleton + address selection                     | ~4 h     | ~14 h      |
-| 2     | `_do_claiming` via the ACD API                             | ~3 h     | ~17 h      |
-| 3     | Conflict detection / defense                               | ~3 h     | ~20 h      |
-| 4     | DHCPv4 client coordination                                 | ~3 h     | ~23 h      |
-| 5     | Adherence refresh + audit-doc updates                      | ~2 h     | ~25 h      |
-| 6     | Cached-candidate persistence (optional)                    | ~3 h     | ~28 h      |
+| 0     | §2.6 TX scope-mismatch gate (§2.8 subsumed)                | ~1.5 h   | ~1.5 h     |
+| 0.5   | Extract ACD API + migrate DHCP / static-host call sites    | ~8 h     | ~9.5 h     |
+| 1     | Subsystem skeleton + address selection                     | ~4 h     | ~13.5 h    |
+| 2     | `_do_claiming` via the ACD API                             | ~3 h     | ~16.5 h    |
+| 3     | Conflict detection / defense                               | ~3 h     | ~19.5 h    |
+| 4     | DHCPv4 client coordination                                 | ~3 h     | ~22.5 h    |
+| 5     | Adherence refresh + audit-doc updates                      | ~2 h     | ~24.5 h    |
+| 6     | Cached-candidate persistence (optional)                    | ~3 h     | ~27.5 h    |
 
 **Total: ~3 calendar days** for phases 0–5; +half a day for
 phase 6 if it ships separately. The +1 day over the v1 plan

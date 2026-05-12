@@ -34,7 +34,7 @@ pytcp/tests/integration/test__packet_handler__ip4__tx.py
 ver 3.0.4
 """
 
-from typing import Any
+from typing import Any, override
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -1767,4 +1767,189 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
             tx_status,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             msg="Unicast outbound must succeed regardless of broadcast gate.",
+        )
+
+
+class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
+    """
+    The RFC 3927 §2.6 source/destination link-local scope-
+    mismatch gate tests.
+
+    A host MUST NOT send packets that mix a link-local source
+    with a non-link-local destination or a link-local
+    destination with a non-link-local source. The two halves of
+    the rule are symmetric — link-local addressing is local-
+    only, so any scope mix is rejected at TX time.
+    """
+
+    _link_local_host_address = Ip4Address("169.254.42.42")
+    _link_local_dst_address = Ip4Address("169.254.99.99")
+
+    @override
+    def setUp(self) -> None:
+        """
+        Add a 169.254/16 link-local host alongside the standard
+        global host so the source-address-validation step
+        accepts 169.254.42.42 as an owned source. Future link-
+        local autoconfig will populate this list the same way.
+        Extend the harness' ARP-cache mock to admit the
+        link-local destination address as a cache miss so the
+        downstream Ethernet TX path can resolve it without
+        tripping the mock's 'Unexpected find_entry call'
+        assertion.
+        """
+
+        super().setUp()
+        from net_addr import Ip4Host
+        from pytcp import stack
+
+        self._packet_handler._ip4_host.append(Ip4Host("169.254.42.42/16"))
+
+        # 'stack.arp_cache' is autospec'd from 'ArpCache' so
+        # mypy sees the real method type — but at runtime each
+        # method is a Mock with the usual 'side_effect'
+        # attribute. The narrow ignores below are local to this
+        # test fixture's mock wiring.
+        find_entry_mock = stack.arp_cache.find_entry
+        original_side_effect = find_entry_mock.side_effect  # type: ignore[attr-defined]
+
+        def _lookup_with_link_local(*, ip4_address: Ip4Address) -> Any:
+            """Return None for the link-local dst; delegate otherwise."""
+            if ip4_address == self._link_local_dst_address:
+                return None
+            return original_side_effect(ip4_address=ip4_address)
+
+        find_entry_mock.side_effect = _lookup_with_link_local  # type: ignore[attr-defined]
+        self.addCleanup(
+            lambda: setattr(find_entry_mock, "side_effect", original_side_effect),
+        )
+
+    def test__phtx_ip4__link_local_src__global_dst__dropped(self) -> None:
+        """
+        Ensure an outbound datagram with a link-local source
+        and a non-link-local destination is dropped with the
+        new TxStatus and the
+        'ip4__link_local_scope_mismatch__drop' counter bumps.
+
+        Reference: RFC 3927 §2.6 (link-local source MUST NOT be used with non-link-local destination).
+        """
+
+        prior = self._packet_handler._packet_stats_tx.ip4__link_local_scope_mismatch__drop
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=self._link_local_host_address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH,
+            msg="Link-local src + global dst must drop with the scope-mismatch TxStatus.",
+        )
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="Scope-mismatch drop must not emit any frame.",
+        )
+        self.assertEqual(
+            self._packet_handler._packet_stats_tx.ip4__link_local_scope_mismatch__drop,
+            prior + 1,
+            msg="ip4__link_local_scope_mismatch__drop counter must bump on the drop.",
+        )
+
+    def test__phtx_ip4__global_src__link_local_dst__dropped(self) -> None:
+        """
+        Ensure the symmetric direction is also dropped — a
+        non-link-local source MUST NOT be used to address a
+        link-local destination.
+
+        Reference: RFC 3927 §2.6 (link-local destination MUST NOT be addressed from non-link-local source).
+        """
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=self._link_local_dst_address,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH,
+            msg="Global src + link-local dst must drop with the scope-mismatch TxStatus.",
+        )
+
+    def test__phtx_ip4__link_local_src__link_local_dst__allowed(self) -> None:
+        """
+        Ensure two link-local addresses (matching scope on
+        both sides) are not gated — matching link-local
+        scope is the only legitimate link-local addressing
+        per the rule.
+
+        Reference: RFC 3927 §2.6 (matching link-local scope is the only legitimate link-local addressing).
+        """
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=self._link_local_host_address,
+            ip4__dst=self._link_local_dst_address,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        # The downstream Ethernet TX path will then attempt to
+        # ARP-resolve the link-local destination. With the
+        # fixture's empty ARP cache for 169.254.99.99 the
+        # outcome is DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
+        # NOT a scope-mismatch — the IPv4-layer gate let it
+        # through.
+        self.assertNotEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH,
+            msg="Link-local src + link-local dst must not trip the §2.6 scope gate.",
+        )
+
+    def test__phtx_ip4__global_src__global_dst__unaffected(self) -> None:
+        """
+        Ensure the common global-to-global path is unaffected
+        — the gate fires only when one of src/dst is link-
+        local. Regression net so a future tightening doesn't
+        silently start gating normal unicast traffic.
+
+        Reference: PyTCP test infrastructure (regression net
+        for the §2.6 gate carve-out).
+        """
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="Global src + global dst must succeed unaffected by the §2.6 gate.",
+        )
+
+    def test__phtx_ip4__dhcp_path_unaffected_by_gate(self) -> None:
+        """
+        Ensure the DHCP-client outbound path (src=0.0.0.0,
+        UDP sport=68/dport=67, dst=255.255.255.255) does not
+        trip the scope-mismatch gate — neither address is
+        link-local, so the rule does not apply.
+
+        Reference: RFC 2131 §3.1 (DHCPDISCOVER carries src=0.0.0.0, dst=255.255.255.255).
+        """
+
+        from net_proto import UdpAssembler
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=Ip4Address(),
+            ip4__dst=IP4__BROADCAST__LIMITED,
+            ip4__payload=UdpAssembler(udp__sport=68, udp__dport=67, udp__payload=b"\x00" * 8),
+        )
+
+        self.assertNotEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH,
+            msg="DHCP outbound path must not trip the §2.6 scope gate.",
         )

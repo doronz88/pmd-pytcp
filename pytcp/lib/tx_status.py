@@ -91,3 +91,5 @@ class TxStatus(NameEnum):
     DROPPED__ICMP6__UNKNOWN = auto()
 
     DROPPED__IP4__DST_BROADCAST_DISALLOWED = auto()
+
+    DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH = auto()
