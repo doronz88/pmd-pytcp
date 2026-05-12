@@ -34,7 +34,13 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
-from pytcp.protocols.ip.ip_frag import IpFragFlowId
+from pytcp.protocols.ip.ip_frag import (
+    ECN__CE,
+    ECN__ECT_0,
+    ECN__ECT_1,
+    ECN__NOT_ECT,
+    IpFragFlowId,
+)
 from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
 
 _HOST_A__IP4 = Ip4Address("10.0.0.1")
@@ -603,4 +609,285 @@ class TestIpFragTableOverlap(TestCase):
             result.payload,
             b"\xaa" * 8 + b"\xbb" * 8 + b"\xcc" * 8,
             msg="Joined payload must be the concatenation in offset order.",
+        )
+
+
+class TestIpFragTableEcnAggregation(TestCase):
+    """
+    The 'IpFragTable' RFC 3168 §5.3 ECN-aggregation tests.
+
+    Each test exercises the per-flow ECN bookkeeping across
+    multiple 'add_fragment' calls and asserts on the aggregated
+    ECN value carried on the 'IpFragAddResult' returned at
+    completion (or the ECN_MIXED__DROP outcome for inconsistent
+    ECN sets).
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a fresh table + canonical flow-id per test so ECN
+        state cannot leak between cases.
+        """
+
+        self._table = IpFragTable(timeout=5.0)
+        self._flow_id = IpFragFlowId(
+            src=_HOST_A__IP4,
+            dst=_HOST_B__IP4,
+            id=42,
+            proto=IpProto.UDP,
+        )
+        self._header = b"\x45" + b"\x00" * 19
+
+    def test__ip_frag_table__atomic_fragment_passes_ecn_through(self) -> None:
+        """
+        Ensure the atomic-fragment fast-path returns the input ECN
+        on the IpFragAddResult — there is no aggregation when
+        only one fragment exists.
+
+        Reference: RFC 3168 §5 (ECN field on IPv4 header).
+        Reference: RFC 6864 §4.1 (atomic-fragment fast-path).
+        """
+
+        for ecn in (ECN__NOT_ECT, ECN__ECT_0, ECN__ECT_1, ECN__CE):
+            with self.subTest(ecn=ecn):
+                result = self._table.add_fragment(
+                    flow_id=self._flow_id,
+                    offset=0,
+                    payload=b"\xaa" * 8,
+                    flag_mf=False,
+                    header=self._header,
+                    ecn=ecn,
+                )
+                self.assertEqual(
+                    result.ecn,
+                    ecn,
+                    msg=f"Atomic fragment with ecn={ecn} must pass that value through.",
+                )
+
+    def test__ip_frag_table__same_ecn_across_fragments_preserved(self) -> None:
+        """
+        Ensure two contiguous fragments carrying identical ECN
+        codepoints reassemble with that codepoint preserved.
+
+        Reference: RFC 3168 §5.3 (reassembly MUST NOT change ECN
+        when all fragments carry the same codepoint).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=self._header,
+            ecn=ECN__ECT_0,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=False,
+            header=self._header,
+            ecn=ECN__ECT_0,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="Same-ECN flow must complete normally.",
+        )
+        self.assertEqual(
+            result.ecn,
+            ECN__ECT_0,
+            msg="All-ECT(0) flow must reassemble with ECT(0) preserved.",
+        )
+
+    def test__ip_frag_table__ce_in_one_fragment_propagates(self) -> None:
+        """
+        Ensure a single CE-bearing fragment in an otherwise
+        ECT(0) flow propagates the CE codepoint onto the
+        reassembled packet.
+
+        Reference: RFC 3168 §5.3 (set CE on reassembled packet
+        when any fragment carries CE and no fragment carries
+        Not-ECT).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=self._header,
+            ecn=ECN__ECT_0,
+        )
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=True,
+            header=self._header,
+            ecn=ECN__CE,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=16,
+            payload=b"\xcc" * 8,
+            flag_mf=False,
+            header=self._header,
+            ecn=ECN__ECT_0,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="ECT(0)+CE+ECT(0) flow must complete normally.",
+        )
+        self.assertEqual(
+            result.ecn,
+            ECN__CE,
+            msg="Any-CE-without-Not-ECT flow must reassemble with CE.",
+        )
+
+    def test__ip_frag_table__ect_0_with_ect_1_yields_ect_0(self) -> None:
+        """
+        Ensure a flow mixing ECT(0) and ECT(1) (no CE, no Not-ECT)
+        reassembles to ECT(0) per the Linux-canonical pick.
+
+        Reference: RFC 3168 §5.3 (ECN unchanged when no Not-ECT;
+        Linux net/ipv4/ip_fragment.c ip_frag_ecn_table[]).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=self._header,
+            ecn=ECN__ECT_0,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=False,
+            header=self._header,
+            ecn=ECN__ECT_1,
+        )
+
+        self.assertEqual(
+            result.ecn,
+            ECN__ECT_0,
+            msg="ECT(0)+ECT(1) mix must reassemble to ECT(0).",
+        )
+
+    def test__ip_frag_table__ce_mixed_with_not_ect_drops(self) -> None:
+        """
+        Ensure a flow mixing CE and Not-ECT yields the
+        ECN_MIXED__DROP outcome — the §5.3 "MUST NOT set CE if
+        any fragment is Not-ECT" rule, applied as the
+        Linux-canonical drop action.
+
+        Reference: RFC 3168 §5.3 (CE MUST NOT be set on
+        reassembled packet if any fragment carries Not-ECT;
+        alternative MUST action is to drop the packet).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=self._header,
+            ecn=ECN__NOT_ECT,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=False,
+            header=self._header,
+            ecn=ECN__CE,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.ECN_MIXED__DROP,
+            msg="Not-ECT mixed with CE must yield ECN_MIXED__DROP.",
+        )
+        self.assertNotIn(
+            self._flow_id,
+            self._table.flows,
+            msg="An ECN-violation flow must be removed from the store.",
+        )
+
+    def test__ip_frag_table__ect_mixed_with_not_ect_drops(self) -> None:
+        """
+        Ensure a flow mixing any ECT codepoint with Not-ECT yields
+        the ECN_MIXED__DROP outcome — inconsistent ECN-capability
+        across fragments of the same datagram is a malicious or
+        broken sender condition.
+
+        Reference: RFC 3168 §5.3 (ECT mixed with Not-ECT is
+        inconsistent; Linux drops).
+        """
+
+        for foreign_ecn in (ECN__ECT_0, ECN__ECT_1):
+            with self.subTest(foreign_ecn=foreign_ecn):
+                table = IpFragTable(timeout=5.0)
+                table.add_fragment(
+                    flow_id=self._flow_id,
+                    offset=0,
+                    payload=b"\xaa" * 8,
+                    flag_mf=True,
+                    header=self._header,
+                    ecn=ECN__NOT_ECT,
+                )
+                result = table.add_fragment(
+                    flow_id=self._flow_id,
+                    offset=8,
+                    payload=b"\xbb" * 8,
+                    flag_mf=False,
+                    header=self._header,
+                    ecn=foreign_ecn,
+                )
+                self.assertIs(
+                    result.outcome,
+                    IpFragAddOutcome.ECN_MIXED__DROP,
+                    msg=f"Not-ECT mixed with {foreign_ecn=} must yield ECN_MIXED__DROP.",
+                )
+
+    def test__ip_frag_table__default_ecn_is_zero(self) -> None:
+        """
+        Ensure 'add_fragment' default for the 'ecn' kwarg is
+        Not-ECT (0), so existing call sites that do not pass
+        'ecn=' behave identically to the pre-aggregation
+        codebase (all-zero fragments reassemble to zero).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=self._header,
+        )
+        result = self._table.add_fragment(
+            flow_id=self._flow_id,
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=False,
+            header=self._header,
+        )
+
+        self.assertIs(
+            result.outcome,
+            IpFragAddOutcome.COMPLETE,
+            msg="Default-ecn flow must complete normally.",
+        )
+        self.assertEqual(
+            result.ecn,
+            ECN__NOT_ECT,
+            msg="Omitting ecn= must default to Not-ECT on the aggregated result.",
         )

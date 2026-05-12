@@ -31,7 +31,7 @@ ver 3.0.4
 """
 
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 from net_addr import Ip4Address, Ip6Address
@@ -43,6 +43,13 @@ from net_proto.lib.buffer import Buffer
 # multiple of 8 bytes.
 _FRAG_OFFSET_ALIGNMENT__BYTES = 8
 _FRAG_OFFSET_ALIGNMENT__MASK = ~(_FRAG_OFFSET_ALIGNMENT__BYTES - 1) & 0xFFFF
+
+# RFC 3168 §5 ECN codepoints (2-bit field; identical layout in
+# the IPv4 TOS byte and the IPv6 Traffic Class byte).
+ECN__NOT_ECT: int = 0b00
+ECN__ECT_1: int = 0b01
+ECN__ECT_0: int = 0b10
+ECN__CE: int = 0b11
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -71,6 +78,10 @@ class IpFragData:
     header: bytes
     last: bool = field(repr=False, init=False, default=False)
     payload: dict[int, bytes]
+    # Per-offset ECN codepoint observed on each fragment. Keyed by
+    # the same offset as 'payload'. Aggregated at reassembly time
+    # per RFC 3168 §5.3.
+    ecn: dict[int, int] = field(default_factory=dict)
     discarded: bool = field(repr=False, init=False, default=False)
 
     def received_last_frag(self) -> None:
@@ -97,6 +108,44 @@ class IpFragData:
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "discarded", True)
         self.payload.clear()
+
+
+def aggregate_ecn(ecns: Iterable[int], /) -> int | None:
+    """
+    Aggregate ECN codepoints across the fragments of a reassembled
+    IP datagram per RFC 3168 §5.3.
+
+    Returns the aggregated codepoint (0-3) on success, or 'None'
+    when the set of inputs violates §5.3's "MUST NOT set CE if
+    any fragment is Not-ECT" rule — the caller must then drop
+    the reassembled packet.
+
+    Aggregation table (matches Linux 'net/ipv4/ip_fragment.c'
+    'ip_frag_ecn_table[]'):
+
+      All same                  -> that codepoint
+      CE + ECT(0)               -> CE
+      CE + ECT(1)               -> CE
+      CE + ECT(0) + ECT(1)      -> CE
+      ECT(0) + ECT(1)           -> ECT(0)
+      Any set containing Not-ECT alongside any other codepoint -> None (drop)
+
+    A one-element input (atomic-datagram fast-path) returns that
+    element unchanged.
+    """
+
+    seen = set(ecns)
+    if len(seen) == 1:
+        return next(iter(seen))
+    # Any mix containing Not-ECT alongside any other codepoint is
+    # an inconsistent reassembly and MUST be dropped per §5.3.
+    if ECN__NOT_ECT in seen:
+        return None
+    # No Not-ECT in the set; CE wins if present, otherwise ECT(0)
+    # is the Linux-canonical choice for an ECT(0)+ECT(1) mix.
+    if ECN__CE in seen:
+        return ECN__CE
+    return ECN__ECT_0
 
 
 def iter_fragment_chunks(payload: Buffer, /, *, max_chunk_bytes: int) -> Iterator[tuple[int, bytes, bool]]:

@@ -107,9 +107,18 @@ class PacketHandlerIp6FragRx(ABC):
             payload=packet_rx.ip6_frag.payload_bytes,
             flag_mf=packet_rx.ip6_frag.flag_mf,
             header=packet_rx.ip6.header_bytes,
+            ecn=packet_rx.ip6.ecn,
         )
         if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
             self._packet_stats_rx.ip6_frag__overlap__drop += 1
+            return None
+        if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
+            self._packet_stats_rx.ip6_frag__ecn_mixed__drop += 1
+            __debug__ and log(
+                "ip6",
+                f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv6 datagram: "
+                f"fragments carry inconsistent ECN bits (RFC 3168 §5.3)</>",
+            )
             return None
         if result.outcome is not IpFragAddOutcome.COMPLETE:
             return None
@@ -118,8 +127,12 @@ class PacketHandlerIp6FragRx(ABC):
 
         # Reassembled IPv6 header rewrite: rewrite Payload Length
         # (bytes 4-5), set Next Header (byte 6) to the upper-layer
-        # protocol carried after the Fragment header.
+        # protocol carried after the Fragment header, and patch
+        # the ECN bits inside the Traffic Class field (byte 1 bits
+        # 5-4, where the high two bits of TC[3:0] carry ECN) per
+        # RFC 3168 §5.3.
         header = bytearray(header_bytes)
+        header[1] = (header[1] & 0xCF) | ((result.ecn & 0x03) << 4)
         struct.pack_into("!H", header, 4, len(payload))
         header[6] = int(packet_rx.ip6_frag.next)
         packet_rx = PacketRx(bytes(header) + payload)

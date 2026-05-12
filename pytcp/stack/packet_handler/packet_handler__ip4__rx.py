@@ -322,9 +322,18 @@ class PacketHandlerIp4Rx(ABC):
             payload=packet_rx.ip4.payload_bytes,
             flag_mf=packet_rx.ip4.flag_mf,
             header=packet_rx.ip4.header_bytes,
+            ecn=packet_rx.ip4.ecn,
         )
         if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
             self._packet_stats_rx.ip4__frag__overlap__drop += 1
+            return None
+        if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
+            self._packet_stats_rx.ip4__frag__ecn_mixed__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv4 datagram: "
+                f"fragments carry inconsistent ECN bits (RFC 3168 §5.3)</>",
+            )
             return None
         if result.outcome is not IpFragAddOutcome.COMPLETE:
             return None
@@ -333,9 +342,12 @@ class PacketHandlerIp4Rx(ABC):
 
         # Reassembled IPv4 header rewrite: drop options (IHL=5),
         # rewrite Total Length, clear Flags / Fragment Offset,
+        # patch the TOS byte to carry the RFC 3168 §5.3
+        # aggregated ECN (DSCP preserved from first fragment),
         # recompute Header Checksum.
         header = bytearray(header_bytes)
         header[0] = 0x45
+        header[1] = (header[1] & 0xFC) | (result.ecn & 0x03)
         struct.pack_into("!H", header, 2, IP4__HEADER__LEN + len(payload))
         header[6] = header[7] = header[10] = header[11] = 0
         struct.pack_into("!H", header, 10, inet_cksum(memoryview(header)))

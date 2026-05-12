@@ -36,7 +36,16 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
-from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId, iter_fragment_chunks
+from pytcp.protocols.ip.ip_frag import (
+    ECN__CE,
+    ECN__ECT_0,
+    ECN__ECT_1,
+    ECN__NOT_ECT,
+    IpFragData,
+    IpFragFlowId,
+    aggregate_ecn,
+    iter_fragment_chunks,
+)
 
 
 class TestIpFragFlowIdIp4(TestCase):
@@ -512,18 +521,22 @@ class TestIpFragDataFields(TestCase):
     def test__ip_frag_data__field_names(self) -> None:
         """
         Ensure the dataclass exposes exactly (timestamp, header,
-        last, payload, discarded) in that order. The 'discarded'
-        field marks a flow unrecoverable while it still occupies
-        the table until the expiry sweep reaps it.
+        last, payload, ecn, discarded) in that order. The 'ecn'
+        field tracks per-offset codepoints for RFC 3168 §5.3
+        aggregation at reassembly time. The 'discarded' field
+        marks a flow unrecoverable while it still occupies the
+        table until the expiry sweep reaps it.
 
         Reference: RFC 5722 §3 (silent-discard requires per-flow
         discarded bit).
+        Reference: RFC 3168 §5.3 (per-fragment ECN tracking for
+        aggregation at reassembly).
         """
 
         self.assertEqual(
             tuple(f.name for f in fields(IpFragData)),
-            ("timestamp", "header", "last", "payload", "discarded"),
-            msg="IpFragData must declare exactly (timestamp, header, last, payload, discarded) in order.",
+            ("timestamp", "header", "last", "payload", "ecn", "discarded"),
+            msg=("IpFragData must declare exactly " "(timestamp, header, last, payload, ecn, discarded) in order."),
         )
 
     def test__ip_frag_data__timestamp_is_init_false(self) -> None:
@@ -908,3 +921,211 @@ class TestIterFragmentChunks(TestCase):
                 0,
                 msg=f"Offset #{index} ({offset}) must be a multiple of 8.",
             )
+
+
+class TestAggregateEcn(TestCase):
+    """
+    The 'aggregate_ecn' helper tests — RFC 3168 §5.3 ECN
+    aggregation across fragments of a reassembled datagram.
+    """
+
+    def test__aggregate_ecn__all_not_ect_preserves_not_ect(self) -> None:
+        """
+        Ensure a flow of fragments all carrying Not-ECT (00)
+        reassembles to Not-ECT — the no-ECN-capable case.
+
+        Reference: RFC 3168 §5.3 (reassembly MUST NOT change ECN
+        when all fragments carry the same codepoint).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__NOT_ECT, ECN__NOT_ECT, ECN__NOT_ECT]),
+            ECN__NOT_ECT,
+            msg="All-Not-ECT fragments must reassemble to Not-ECT.",
+        )
+
+    def test__aggregate_ecn__all_ect_0_preserves_ect_0(self) -> None:
+        """
+        Ensure a flow of fragments all carrying ECT(0) (10)
+        reassembles to ECT(0).
+
+        Reference: RFC 3168 §5.3 (reassembly MUST NOT change ECN
+        when all fragments carry the same codepoint).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_0, ECN__ECT_0]),
+            ECN__ECT_0,
+            msg="All-ECT(0) fragments must reassemble to ECT(0).",
+        )
+
+    def test__aggregate_ecn__all_ect_1_preserves_ect_1(self) -> None:
+        """
+        Ensure a flow of fragments all carrying ECT(1) (01)
+        reassembles to ECT(1).
+
+        Reference: RFC 3168 §5.3 (reassembly MUST NOT change ECN
+        when all fragments carry the same codepoint).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_1, ECN__ECT_1, ECN__ECT_1]),
+            ECN__ECT_1,
+            msg="All-ECT(1) fragments must reassemble to ECT(1).",
+        )
+
+    def test__aggregate_ecn__all_ce_preserves_ce(self) -> None:
+        """
+        Ensure a flow of fragments all carrying CE (11) reassembles
+        to CE — every fragment already signals congestion.
+
+        Reference: RFC 3168 §5.3 (reassembly MUST NOT change ECN
+        when all fragments carry the same codepoint).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__CE, ECN__CE]),
+            ECN__CE,
+            msg="All-CE fragments must reassemble to CE.",
+        )
+
+    def test__aggregate_ecn__ce_with_ect_0_yields_ce(self) -> None:
+        """
+        Ensure a CE-bearing fragment combined with ECT(0) fragments
+        propagates the CE codepoint onto the reassembled packet.
+
+        Reference: RFC 3168 §5.3 (set CE on reassembled packet when
+        any fragment carries CE and no fragment carries Not-ECT).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_0, ECN__CE, ECN__ECT_0]),
+            ECN__CE,
+            msg="CE + ECT(0) must reassemble to CE.",
+        )
+
+    def test__aggregate_ecn__ce_with_ect_1_yields_ce(self) -> None:
+        """
+        Ensure a CE-bearing fragment combined with ECT(1) fragments
+        propagates the CE codepoint.
+
+        Reference: RFC 3168 §5.3 (set CE on reassembled packet when
+        any fragment carries CE and no fragment carries Not-ECT).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_1, ECN__CE]),
+            ECN__CE,
+            msg="CE + ECT(1) must reassemble to CE.",
+        )
+
+    def test__aggregate_ecn__ce_with_both_ect_yields_ce(self) -> None:
+        """
+        Ensure a CE-bearing fragment combined with both ECT(0) and
+        ECT(1) fragments still propagates the CE codepoint.
+
+        Reference: RFC 3168 §5.3 (set CE on reassembled packet when
+        any fragment carries CE and no fragment carries Not-ECT).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_0, ECN__ECT_1, ECN__CE]),
+            ECN__CE,
+            msg="CE + ECT(0) + ECT(1) must reassemble to CE.",
+        )
+
+    def test__aggregate_ecn__ect_0_with_ect_1_yields_ect_0(self) -> None:
+        """
+        Ensure mixed ECT(0) and ECT(1) fragments (with no CE and no
+        Not-ECT) reassemble to ECT(0) — the Linux-canonical pick
+        for an ambiguous ECT-only mix.
+
+        Reference: RFC 3168 §5.3 (ECN unchanged when no Not-ECT;
+        Linux net/ipv4/ip_fragment.c ip_frag_ecn_table[]).
+        """
+
+        self.assertEqual(
+            aggregate_ecn([ECN__ECT_0, ECN__ECT_1]),
+            ECN__ECT_0,
+            msg="ECT(0) + ECT(1) must reassemble to ECT(0).",
+        )
+
+    def test__aggregate_ecn__ce_with_not_ect_returns_none(self) -> None:
+        """
+        Ensure a CE-bearing fragment mixed with a Not-ECT fragment
+        signals 'drop' (returns None) — the reassembled packet
+        MUST NOT carry CE when any fragment is Not-ECT.
+
+        Reference: RFC 3168 §5.3 (CE MUST NOT be set on reassembled
+        packet if any fragment carries Not-ECT; the alternative
+        action is to drop).
+        """
+
+        self.assertIsNone(
+            aggregate_ecn([ECN__NOT_ECT, ECN__CE]),
+            msg="CE mixed with Not-ECT must signal drop (None).",
+        )
+
+    def test__aggregate_ecn__ect_0_with_not_ect_returns_none(self) -> None:
+        """
+        Ensure an ECT(0) fragment mixed with a Not-ECT fragment
+        signals drop — inconsistent ECN-capability across the
+        fragments of a single datagram is a malicious or broken
+        sender condition.
+
+        Reference: RFC 3168 §5.3 (ECT mixed with Not-ECT is
+        inconsistent; Linux drops).
+        """
+
+        self.assertIsNone(
+            aggregate_ecn([ECN__NOT_ECT, ECN__ECT_0]),
+            msg="ECT(0) mixed with Not-ECT must signal drop (None).",
+        )
+
+    def test__aggregate_ecn__ect_1_with_not_ect_returns_none(self) -> None:
+        """
+        Ensure an ECT(1) fragment mixed with a Not-ECT fragment
+        signals drop.
+
+        Reference: RFC 3168 §5.3 (ECT mixed with Not-ECT is
+        inconsistent; Linux drops).
+        """
+
+        self.assertIsNone(
+            aggregate_ecn([ECN__NOT_ECT, ECN__ECT_1]),
+            msg="ECT(1) mixed with Not-ECT must signal drop (None).",
+        )
+
+    def test__aggregate_ecn__all_three_mixed_with_not_ect_returns_none(self) -> None:
+        """
+        Ensure any mix containing Not-ECT alongside ECT-capable
+        codepoints signals drop — the rule is "any Not-ECT in the
+        set, with any non-Not-ECT, fails".
+
+        Reference: RFC 3168 §5.3 (Linux net/ipv4/ip_fragment.c
+        ip_frag_ecn_table[] drops every state mixing Not-ECT with
+        anything else).
+        """
+
+        self.assertIsNone(
+            aggregate_ecn([ECN__NOT_ECT, ECN__ECT_0, ECN__ECT_1, ECN__CE]),
+            msg="Any mix containing Not-ECT must signal drop (None).",
+        )
+
+    def test__aggregate_ecn__single_fragment_passes_through(self) -> None:
+        """
+        Ensure a one-element list (atomic-datagram fast-path)
+        returns that element regardless of value — no aggregation
+        possible.
+
+        Reference: PyTCP test infrastructure (atomic-fragment
+        fast-path; no RFC clause for single-fragment input).
+        """
+
+        for ecn in (ECN__NOT_ECT, ECN__ECT_0, ECN__ECT_1, ECN__CE):
+            with self.subTest(ecn=ecn):
+                self.assertEqual(
+                    aggregate_ecn([ecn]),
+                    ecn,
+                    msg=f"Single-fragment input {ecn} must pass through unchanged.",
+                )

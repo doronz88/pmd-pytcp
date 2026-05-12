@@ -36,7 +36,7 @@ from enum import Enum
 from time import time
 
 from net_proto.lib.buffer import Buffer
-from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId
+from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId, aggregate_ecn
 
 
 class IpFragAddOutcome(Enum):
@@ -48,6 +48,7 @@ class IpFragAddOutcome(Enum):
     COMPLETE = "complete"
     OVERLAP = "overlap"
     DISCARDED = "discarded"
+    ECN_MIXED__DROP = "ecn_mixed_drop"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -58,11 +59,16 @@ class IpFragAddResult:
     'header' / 'payload' carry the joined datagram bytes when
     'outcome is IpFragAddOutcome.COMPLETE'. Otherwise both are
     empty 'bytes()' sentinels and callers must not consume them.
+
+    'ecn' carries the RFC 3168 §5.3 aggregated ECN codepoint of
+    the reassembled datagram when 'outcome is COMPLETE'. On any
+    other outcome it is 0 and callers MUST NOT consume it.
     """
 
     outcome: IpFragAddOutcome
     header: bytes = b""
     payload: bytes = b""
+    ecn: int = 0
 
 
 class IpFragTable:
@@ -106,30 +112,46 @@ class IpFragTable:
         payload: Buffer,
         flag_mf: bool,
         header: Buffer,
+        ecn: int = 0,
     ) -> IpFragAddResult:
         """
         Admit one fragment into the flow store.
 
         Returns an 'IpFragAddResult' tagged by 'IpFragAddOutcome':
 
-          - PENDING:   the fragment is stored and more are
-                       expected (or the offset chain is not yet
-                       contiguous).
-          - COMPLETE:  the fragment that just arrived completes
-                       the datagram; 'header' / 'payload' carry
-                       the joined bytes.
-          - OVERLAP:   the fragment overlaps a previously-stored
-                       fragment in the same flow; the flow is
-                       marked discarded and its payload cleared
-                       (RFC 5722 §3 silent-discard).
-          - DISCARDED: the fragment arrived for a flow that was
-                       previously marked discarded; it is
-                       silently dropped without admission.
+          - PENDING:          the fragment is stored and more are
+                              expected (or the offset chain is not
+                              yet contiguous).
+          - COMPLETE:         the fragment that just arrived
+                              completes the datagram; 'header' /
+                              'payload' / 'ecn' carry the joined
+                              bytes and the aggregated ECN value.
+          - OVERLAP:          the fragment overlaps a previously-
+                              stored fragment in the same flow; the
+                              flow is marked discarded and its
+                              payload cleared (RFC 5722 §3 silent-
+                              discard).
+          - DISCARDED:        the fragment arrived for a flow that
+                              was previously marked discarded; it
+                              is silently dropped without
+                              admission.
+          - ECN_MIXED__DROP:  the reassembled datagram's ECN bits
+                              cannot be reconciled per RFC 3168
+                              §5.3 (Not-ECT mixed with any other
+                              codepoint); the flow is removed and
+                              callers MUST drop the packet.
 
         Atomic fragments (offset=0, M=0) bypass the flow store
         entirely and yield COMPLETE on the spot, in isolation
         from any other fragment with the same 'flow_id' (RFC
-        8200 §4.5 / RFC 6946 §4).
+        8200 §4.5 / RFC 6946 §4). The 'ecn' input is returned
+        verbatim on the atomic-fragment path.
+
+        The 'ecn' kwarg carries the ECN codepoint observed on
+        this fragment's outer IP header. The table aggregates
+        per-fragment values via 'aggregate_ecn' (RFC 3168 §5.3)
+        and returns the aggregated codepoint on the COMPLETE
+        result.
 
         The expiry sweep ('time() - timestamp >= timeout' purges
         the flow) runs at the head of every admission, matching
@@ -146,6 +168,7 @@ class IpFragTable:
                 outcome=IpFragAddOutcome.COMPLETE,
                 header=bytes(header),
                 payload=bytes(payload),
+                ecn=ecn,
             )
 
         # Lazy expiry sweep.
@@ -173,10 +196,12 @@ class IpFragTable:
         # Insert / update per-offset entry.
         if flow_id in self._flows:
             self._flows[flow_id].payload[offset] = payload
+            self._flows[flow_id].ecn[offset] = ecn
         else:
             self._flows[flow_id] = IpFragData(
                 header=header,
                 payload={offset: payload},
+                ecn={offset: ecn},
             )
         if not flag_mf:
             self._flows[flow_id].received_last_frag()
@@ -191,6 +216,16 @@ class IpFragTable:
                 return IpFragAddResult(outcome=IpFragAddOutcome.PENDING)
             payload_len = entry_offset + len(self._flows[flow_id].payload[entry_offset])
 
+        # RFC 3168 §5.3 ECN aggregation across the per-fragment
+        # ECN values observed at admission time. A 'None' return
+        # signals "MUST drop" per §5.3's Not-ECT-mixed-with-other
+        # rule; the flow is removed from the store before
+        # returning so a retransmit can start fresh.
+        aggregated_ecn = aggregate_ecn(self._flows[flow_id].ecn.values())
+        if aggregated_ecn is None:
+            del self._flows[flow_id]
+            return IpFragAddResult(outcome=IpFragAddOutcome.ECN_MIXED__DROP)
+
         # Build the joined payload buffer in offset order.
         joined = bytearray(payload_len)
         for entry_offset in sorted(self._flows[flow_id].payload):
@@ -204,4 +239,5 @@ class IpFragTable:
             outcome=IpFragAddOutcome.COMPLETE,
             header=header_bytes,
             payload=bytes(joined),
+            ecn=aggregated_ecn,
         )
