@@ -28,13 +28,11 @@ AQM background, §10-§22) is omitted.
 
 ## Top-line adherence
 
-PyTCP **partial**: the wire codec for the 2-bit ECN field is
-met; the §5.3 reassembly-preserves-CE rule is **not** met
-today — reassembly currently inherits the first fragment's
-ECN byte verbatim, which is conservative-enough in practice
-(modern ECN-capable senders set DF=1) but is not strictly
-RFC-compliant when ECN-capable fragments arrive. Documented
-below as a Phase-1 sharpening.
+PyTCP **meets** the IP-layer §5 normative requirements: the
+2-bit ECN field is correctly carried on every TX/RX path, and
+reassembly aggregates ECN across fragments per §5.3 (CE
+propagates when no fragment is Not-ECT; mixed Not-ECT+other
+yields a drop, matching Linux behaviour).
 
 | Section | Topic                                                | Status |
 |---------|------------------------------------------------------|--------|
@@ -42,7 +40,7 @@ below as a Phase-1 sharpening.
 | §5      | CE codepoint MUST trigger congestion-control reaction | met (TCP side; see TCP audits) |
 | §5.1    | Single CE = persistent congestion semantics          | met (transport-layer concern) |
 | §5.2    | Dropped/corrupted ECN packets                        | n/a (host-layer only sees received packets) |
-| §5.3    | Reassembly preserves CE across fragments             | **partial** — first-fragment ECN inherited, not OR'd |
+| §5.3    | Reassembly preserves CE across fragments             | met (shipped) |
 | §6.1    | TCP-specific ECN mechanics                           | covered by TCP audits |
 | §7      | Non-compliance by end nodes (sender/receiver lying)  | met (we honour CE on RX, we don't suppress on TX) |
 | §8      | Non-compliance in network (CE erasure)               | n/a (router-side concern) |
@@ -103,59 +101,32 @@ the AccECN / classic-ECN state machine. Cross-references:
 >   codepoint.
 > * The packet is dropped, instead of being reassembled."
 
-**Adherence:** **partial — Phase 1 gap.** PyTCP's reassembly
-rewrite at `packet_handler__ip4__rx.py:337-341` does:
+**Adherence:** **met (shipped).** The shared reassembly
+machinery in `pytcp/protocols/ip/ip_frag.py` +
+`ip_frag_table.py` retains per-fragment ECN in
+`IpFragData.ecn: dict[int, int]` and aggregates at completion
+via `aggregate_ecn()`. The aggregation table follows Linux
+`net/ipv4/ip_fragment.c::ip_frag_ecn_table[]`:
+
+- All fragments same codepoint → that codepoint preserved.
+- CE + ECT(0) / ECT(1) / both → CE (CE propagation).
+- ECT(0) + ECT(1) → ECT(0).
+- Any mix containing Not-ECT alongside any other codepoint →
+  `IpFragAddOutcome.ECN_MIXED__DROP` (the §5.3 second branch);
+  the IPv4 RX handler bumps `ip4__frag__ecn_mixed__drop` and
+  drops the packet.
+
+The IPv4 RX handler at `packet_handler__ip4__rx.py:339-349`
+patches byte 1 of the reassembled header with the aggregated
+ECN (DSCP preserved from first fragment):
 
 ```python
-header = bytearray(header_bytes)  # first fragment's header
-header[0] = 0x45                  # ver=4, IHL=5 (options dropped)
-struct.pack_into("!H", header, 2, IP4__HEADER__LEN + len(payload))
-header[6] = header[7] = header[10] = header[11] = 0  # Flags+Offset, cksum
-struct.pack_into("!H", header, 10, inet_cksum(memoryview(header)))
+header[1] = (header[1] & 0xFC) | (result.ecn & 0x03)
 ```
 
-The TOS byte (offset 1 of the IPv4 header) is **inherited from
-the first fragment** without aggregating ECN across fragments.
-This means:
-
-- If the first fragment carries CE and all subsequent fragments
-  carry ECT(0) / ECT(1) / CE → reassembled packet shows CE
-  (correct).
-- If the first fragment carries ECT(0) and a later fragment
-  carries CE → reassembled packet shows ECT(0) and the CE
-  indication is **lost** (RFC 3168 §5.3 violation).
-- If the first fragment carries CE and a later fragment
-  carries Not-ECT → reassembled packet shows CE. RFC 3168 says
-  this MUST NOT happen ("MUST NOT occur if any of the other
-  fragments ... carries the Not-ECT codepoint") — the
-  alternative is to **drop** the reassembled packet, which we
-  do not.
-
-Practical impact today is low: modern ECN-capable transports
-(TCP since Linux 2.4, recent macOS / Windows) set DF=1 on
-ECN-capable segments to avoid in-network fragmentation
-(RFC 3168 §5.3 notes this is the reason DF avoidance is
-recommended on ECN-capable senders). PyTCP itself currently
-emits ECT only on TCP segments with DF=1 inferred from PMTUD.
-But the RFC requires correctness regardless.
-
-**Phase-1 fix sketch:** in `packet_handler__ip4__rx.py:337`
-walk every stored fragment's TOS byte, compute the aggregated
-ECN per RFC 3168 §5.3 (CE if any fragment is CE *and* no
-fragment is Not-ECT; drop if mixed CE + Not-ECT; otherwise
-preserve), then patch byte 1 of the reassembled header
-accordingly. The fragment-store retention of the per-fragment
-header is already in place (`IpFragData.payload` keys fragments
-by offset; the full source headers are not retained today —
-only the first fragment's). A small refactor is needed to
-also retain the per-fragment TOS byte; one byte per fragment
-is cheap.
-
-Marked here so the upgrade is greppable:
-
-```python
-# Phase 1: aggregate ECN per RFC 3168 §5.3 across fragments.
-```
+The same aggregation applies to IPv6 reassembly via
+`packet_handler__ip6_frag__rx.py` (where ECN lives in byte 1
+bits 5-4 of the Traffic Class field).
 
 ## §6.1 TCP — ECN negotiation, ECE / CWR, sender/receiver mechanics
 
@@ -227,17 +198,20 @@ full-functionality decapsulation) become relevant.
 
 ### §5.3 Reassembly preserves CE
 
-**No test surface — Phase-1 gap.** When the fix lands, the
-natural tests are:
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py::TestAggregateEcn`
+  13 cases covering every Linux-table state — all-same
+  preservation, CE propagation with each ECT variant,
+  ECT(0)+ECT(1) → ECT(0), every Not-ECT mixed-with-other drop
+  path, single-fragment passthrough.
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py::TestIpFragTableEcnAggregation`
+  7 cases end-to-end through `IpFragTable.add_fragment`:
+  atomic-fragment pass-through, same-ECN preserved, CE
+  propagation, ECT(0)+ECT(1)→ECT(0), CE+Not-ECT drop,
+  ECT+Not-ECT drop, default ecn=0 backwards-compat.
 
-1. Three-fragment reassembly: first carries ECT(0), middle
-   carries CE, last carries ECT(0) → reassembled packet
-   carries CE.
-2. Mixed-Not-ECT/CE fragments → reassembled packet is dropped
-   (or alternative behaviour per the §5.3 second branch).
-3. All fragments same ECN → reassembled packet carries that
-   ECN (regression test for the current behaviour, which is
-   correct in this sub-case).
+**Status:** locked in.
 
 ### §9 IP-in-IP tunnel ECN handling
 
@@ -250,7 +224,7 @@ natural tests are:
 | §5 ECN wire codec round-trip                          | locked in |
 | §5 ECN bit propagation to TCP                         | locked in via TCP audits |
 | §5 Default Not-ECT on send                            | locked in |
-| §5.3 Reassembly CE preservation                       | n/a (gap not closed; add test with fix) |
+| §5.3 Reassembly CE preservation + Not-ECT-mixed drop  | locked in (unit) |
 | §6.1 TCP-specific ECN mechanics                       | covered by TCP audits |
 | §9 IP-in-IP tunnel handling                           | n/a (not implemented) |
 
@@ -263,14 +237,12 @@ natural tests are:
 | §5 ECN wire format                                  | met    |
 | §5 ECN bit propagation to transport                 | met    |
 | §5 Default Not-ECT on send                          | met    |
-| §5.3 Reassembly preserves CE                        | **partial — Phase 1 gap** |
+| §5.3 Reassembly preserves CE                        | met (shipped) |
 | §6.1 TCP-side ECN (negotiation, ECE/CWR, reactions) | met (audited in TCP records) |
 | §7 End-node non-compliance protections              | met    |
 | §8 Network non-compliance                           | n/a (router) |
 | §9 IP-in-IP tunnel handling                         | n/a (not implemented) |
 
-The principal Phase-1 gap is **§5.3 reassembly CE
-preservation**. The fix is small (retain per-fragment TOS
-byte; aggregate at reassembly time) and the test surface is
-straightforward to add. Marked in the audit as the only
-non-trivial RFC 3168 outstanding item.
+All §5 normative requirements are met. Remaining items are
+Phase-2 / out-of-scope (§9 IP-in-IP tunnel decapsulation has
+no consumer today; CE-erasure detection §8 is router-side).
