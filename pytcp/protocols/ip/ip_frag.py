@@ -31,10 +31,18 @@ ver 3.0.4
 """
 
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
+from net_proto.lib.buffer import Buffer
+
+# RFC 791 §3.1 / RFC 8200 §4.5: Fragment Offset is measured in
+# 8-octet units, so every non-final fragment payload MUST be a
+# multiple of 8 bytes.
+_FRAG_OFFSET_ALIGNMENT__BYTES = 8
+_FRAG_OFFSET_ALIGNMENT__MASK = ~(_FRAG_OFFSET_ALIGNMENT__BYTES - 1) & 0xFFFF
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -89,3 +97,38 @@ class IpFragData:
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "discarded", True)
         self.payload.clear()
+
+
+def iter_fragment_chunks(payload: Buffer, /, *, max_chunk_bytes: int) -> Iterator[tuple[int, bytes, bool]]:
+    """
+    Slice an IP payload into fragment chunks for IPv4 RFC 791 §3.2
+    or IPv6 RFC 8200 §4.5 emission.
+
+    Yields '(offset, chunk, is_last)' tuples where 'offset' is the
+    byte position of the chunk in the original payload, 'chunk' is
+    the fragment payload bytes, and 'is_last' is True only for the
+    final chunk (the caller drives MF=0 from this flag).
+
+    'max_chunk_bytes' is rounded down to the nearest 8-byte
+    boundary internally so every non-final chunk is 8-byte aligned
+    per the Fragment-Offset wire encoding. Values below 8 raise
+    ValueError because the alignment rule rules out any smaller
+    legal chunk.
+    """
+
+    if max_chunk_bytes < _FRAG_OFFSET_ALIGNMENT__BYTES:
+        raise ValueError(
+            f"max_chunk_bytes must be at least {_FRAG_OFFSET_ALIGNMENT__BYTES} "
+            f"(8-byte Fragment-Offset alignment per RFC 791 §3.1 / "
+            f"RFC 8200 §4.5). Got: {max_chunk_bytes}",
+        )
+
+    aligned_chunk_bytes = max_chunk_bytes & _FRAG_OFFSET_ALIGNMENT__MASK
+    payload_bytes = bytes(payload)
+    total = len(payload_bytes)
+    offset = 0
+    while offset < total:
+        chunk = payload_bytes[offset : offset + aligned_chunk_bytes]
+        is_last = offset + len(chunk) >= total
+        yield offset, chunk, is_last
+        offset += aligned_chunk_bytes

@@ -45,6 +45,7 @@ from net_proto import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 
 def _generate_ip6_frag_id() -> int:
@@ -106,23 +107,20 @@ class PacketHandlerIp6FragTx(ABC):
         if isinstance(ip6_packet_tx.payload, (TcpAssembler, UdpAssembler, Icmp6Assembler)):
             ip6_packet_tx.payload.pshdr_sum = ip6_packet_tx.pshdr_sum
 
-        payload = bytearray(bytes(ip6_packet_tx.payload))
-
-        payload_mtu = (self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN) & 0b1111111111111000
-        data_frags = [payload[_ : payload_mtu + _] for _ in range(0, len(payload), payload_mtu)]
-        offset = 0
         self._ip6_id = _generate_ip6_frag_id()
         ip6_tx_status: set[TxStatus] = set()
-        for data_frag in data_frags:
+        for offset, chunk, is_last in iter_fragment_chunks(
+            bytes(ip6_packet_tx.payload),
+            max_chunk_bytes=self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN,
+        ):
             ip6_frag_tx = Ip6FragAssembler(
                 ip6_frag__next=ip6_packet_tx.next,
                 ip6_frag__offset=offset,
-                ip6_frag__flag_mf=data_frag is not data_frags[-1],
+                ip6_frag__flag_mf=not is_last,
                 ip6_frag__id=self._ip6_id,
-                ip6_frag__payload=data_frag,
+                ip6_frag__payload=chunk,
             )
             __debug__ and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")
-            offset += len(data_frag)
             self._packet_stats_tx.ip6_frag__send += 1
             ip6_tx_status.add(
                 self._phtx_ip6(

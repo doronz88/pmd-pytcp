@@ -36,7 +36,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
-from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId
+from pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId, iter_fragment_chunks
 
 
 class TestIpFragFlowIdIp4(TestCase):
@@ -564,3 +564,347 @@ class TestIpFragDataFields(TestCase):
             hasattr(frag, "__dict__"),
             msg="IpFragData must be slotted; instances must not carry a __dict__.",
         )
+
+
+class TestIterFragmentChunks(TestCase):
+    """
+    The 'iter_fragment_chunks' helper tests — shared IPv4/IPv6
+    fragmentation payload slicer.
+    """
+
+    def test__iter_fragment_chunks__single_chunk_fits_budget(self) -> None:
+        """
+        Ensure a payload that fits in 'max_chunk_bytes' yields exactly
+        one '(offset=0, chunk=payload, is_last=True)' tuple.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"X" * 100
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=200))
+
+        self.assertEqual(
+            chunks,
+            [(0, payload, True)],
+            msg="A payload smaller than the budget must yield a single is_last chunk at offset 0.",
+        )
+
+    def test__iter_fragment_chunks__two_chunks(self) -> None:
+        """
+        Ensure a payload twice the (aligned) budget yields two chunks
+        with offsets 0 and 'aligned_budget', is_last=False then True.
+
+        Reference: RFC 791 §3.1 (Fragment Offset, MF flag).
+        """
+
+        payload = b"A" * 16 + b"B" * 16
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=16))
+
+        self.assertEqual(
+            chunks,
+            [(0, b"A" * 16, False), (16, b"B" * 16, True)],
+            msg="A 2-chunk slice must carry MF=False on chunk #0 and MF=True on chunk #1.",
+        )
+
+    def test__iter_fragment_chunks__three_chunks_with_short_tail(self) -> None:
+        """
+        Ensure a payload that does not divide evenly by the chunk size
+        yields a short final chunk marked is_last=True.
+
+        Reference: RFC 791 §3.1 (Fragment Offset, MF flag).
+        """
+
+        payload = b"A" * 16 + b"B" * 16 + b"C" * 5
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=16))
+
+        self.assertEqual(
+            chunks,
+            [
+                (0, b"A" * 16, False),
+                (16, b"B" * 16, False),
+                (32, b"C" * 5, True),
+            ],
+            msg="The final short chunk must carry is_last=True and the correct offset.",
+        )
+
+    def test__iter_fragment_chunks__exact_multiple_of_budget(self) -> None:
+        """
+        Ensure a payload that is an exact multiple of the chunk size
+        yields chunks of equal length with is_last=True on only the
+        last one.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"X" * 24
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=8))
+
+        self.assertEqual(
+            chunks,
+            [
+                (0, b"X" * 8, False),
+                (8, b"X" * 8, False),
+                (16, b"X" * 8, True),
+            ],
+            msg="Exact-multiple slicing must not produce a stray zero-length last chunk.",
+        )
+
+    def test__iter_fragment_chunks__non_aligned_budget_rounded_down(self) -> None:
+        """
+        Ensure a 'max_chunk_bytes' that is not 8-byte aligned is
+        rounded down to the nearest 8-byte boundary so every chunk
+        except the last carries an 8-byte-aligned payload length.
+
+        Reference: RFC 791 §3.1 (Fragment Offset measured in 8-octet units).
+        Reference: RFC 8200 §4.5 (Fragment header Fragment Offset in 8-octet units).
+        """
+
+        payload = b"X" * 40
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=17))
+
+        self.assertEqual(
+            chunks,
+            [
+                (0, b"X" * 16, False),
+                (16, b"X" * 16, False),
+                (32, b"X" * 8, True),
+            ],
+            msg="A budget of 17 must round down to 16; offsets must remain 8-byte aligned.",
+        )
+
+    def test__iter_fragment_chunks__minimum_legal_budget_8(self) -> None:
+        """
+        Ensure a 'max_chunk_bytes=8' (smallest legal aligned chunk)
+        slices the payload into 8-byte chunks.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"X" * 16
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=8))
+
+        self.assertEqual(
+            chunks,
+            [(0, b"X" * 8, False), (8, b"X" * 8, True)],
+            msg="Minimum-legal budget of 8 must produce 8-byte chunks aligned at offsets 0, 8.",
+        )
+
+    def test__iter_fragment_chunks__empty_payload_yields_nothing(self) -> None:
+        """
+        Ensure an empty payload yields zero chunks rather than a
+        spurious '(0, b"", True)' entry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        chunks = list(iter_fragment_chunks(b"", max_chunk_bytes=16))
+
+        self.assertEqual(
+            chunks,
+            [],
+            msg="Empty payload must produce no chunks; callers gate on this before invoking.",
+        )
+
+    def test__iter_fragment_chunks__rejects_budget_below_8(self) -> None:
+        """
+        Ensure a 'max_chunk_bytes' less than 8 raises ValueError —
+        the Fragment-Offset wire encoding requires at least an
+        8-octet chunk on every non-final fragment.
+
+        Reference: RFC 791 §3.1 (8-octet alignment minimum).
+        Reference: RFC 8200 §4.5 (8-octet alignment minimum).
+        """
+
+        with self.assertRaises(ValueError) as ctx:
+            list(iter_fragment_chunks(b"X" * 16, max_chunk_bytes=7))
+
+        self.assertIn(
+            "max_chunk_bytes",
+            str(ctx.exception),
+            msg="The ValueError message must name the offending kwarg.",
+        )
+
+    def test__iter_fragment_chunks__accepts_bytes_bytearray_memoryview(self) -> None:
+        """
+        Ensure the helper accepts every Buffer alias variant
+        ('bytes', 'bytearray', 'memoryview') and returns identical
+        chunk byte content for each.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for variant in (b"X" * 24, bytearray(b"X" * 24), memoryview(b"X" * 24)):
+            with self.subTest(variant=type(variant).__name__):
+                chunks = list(iter_fragment_chunks(variant, max_chunk_bytes=8))
+                self.assertEqual(
+                    [(off, bytes(chunk), is_last) for off, chunk, is_last in chunks],
+                    [
+                        (0, b"X" * 8, False),
+                        (8, b"X" * 8, False),
+                        (16, b"X" * 8, True),
+                    ],
+                    msg=f"Variant {type(variant).__name__} must produce identical chunk content.",
+                )
+
+    def test__iter_fragment_chunks__concatenation_round_trip(self) -> None:
+        """
+        Ensure the concatenation of every yielded chunk reconstitutes
+        the original payload byte-for-byte across a representative
+        matrix of payload sizes and chunk budgets — the strongest
+        general invariant that catches slicing-math regressions a
+        per-case tuple match would miss.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for payload_len, budget in [
+            (0, 8),
+            (1, 8),
+            (7, 8),
+            (8, 8),
+            (15, 8),
+            (16, 16),
+            (1480, 1480),
+            (1481, 1480),
+            (2959, 1480),
+            (2960, 1480),
+            (65535, 1480),
+            (65535, 1500),
+        ]:
+            with self.subTest(payload_len=payload_len, budget=budget):
+                payload = bytes(range(256)) * (payload_len // 256) + bytes(range(payload_len % 256))
+                self.assertEqual(
+                    len(payload),
+                    payload_len,
+                    msg="Test fixture must produce the requested payload length.",
+                )
+
+                joined = b"".join(chunk for _, chunk, _ in iter_fragment_chunks(payload, max_chunk_bytes=budget))
+
+                self.assertEqual(
+                    joined,
+                    payload,
+                    msg=(
+                        f"Concatenation of chunks must reconstitute the original payload "
+                        f"for {payload_len=}, {budget=}."
+                    ),
+                )
+
+    def test__iter_fragment_chunks__ethernet_mtu_scale(self) -> None:
+        """
+        Ensure a realistic Ethernet-MTU shaped slice (payload near
+        the 65535-byte IPv4 total-length ceiling, budget=1480 bytes
+        of usable per-fragment payload) produces the expected
+        fragment count, monotonically increasing offsets, and final
+        is_last on the tail.
+
+        Reference: RFC 791 §3.1 (13-bit Fragment Offset in 8-octet units).
+        Reference: RFC 8200 §4.5 (Fragment header Fragment Offset width).
+        """
+
+        payload = b"X" * 65000  # large but well within 13-bit offset range
+        budget = 1480  # Ethernet MTU 1500 - IPv4 base header 20
+
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=budget))
+
+        # Expected count: ceil(65000 / 1480) = 44 chunks.
+        self.assertEqual(
+            len(chunks),
+            44,
+            msg=f"65000-byte payload at budget=1480 must produce 44 chunks, got {len(chunks)}.",
+        )
+
+        # Per-chunk invariants: every offset is a multiple of 8 and
+        # strictly greater than the previous; only the last chunk
+        # carries is_last=True; sum of chunk lengths equals payload
+        # length.
+        previous_offset = -1
+        total_chunk_bytes = 0
+        for index, (offset, chunk, is_last) in enumerate(chunks):
+            self.assertEqual(
+                offset % 8,
+                0,
+                msg=f"Chunk #{index} offset {offset} must be 8-byte aligned.",
+            )
+            self.assertGreater(
+                offset,
+                previous_offset,
+                msg=f"Chunk #{index} offset {offset} must exceed previous {previous_offset}.",
+            )
+            self.assertEqual(
+                is_last,
+                index == len(chunks) - 1,
+                msg=f"Chunk #{index} is_last must be True only on the final chunk.",
+            )
+            previous_offset = offset
+            total_chunk_bytes += len(chunk)
+
+        self.assertEqual(
+            total_chunk_bytes,
+            len(payload),
+            msg="Sum of chunk lengths must equal the original payload length.",
+        )
+
+        # Highest offset must remain inside the 13-bit Fragment-
+        # Offset wire field (max value 0x1FFF in 8-byte units =
+        # 65528 bytes).
+        self.assertLess(
+            chunks[-1][0],
+            65528,
+            msg=f"Final offset {chunks[-1][0]} must fit in the 13-bit Fragment-Offset field.",
+        )
+
+    def test__iter_fragment_chunks__payload_exactly_equals_budget(self) -> None:
+        """
+        Ensure a payload of length exactly equal to the (aligned)
+        budget yields a single chunk with is_last=True — never two
+        chunks where the second one is empty.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        payload = b"Y" * 16
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=16))
+
+        self.assertEqual(
+            chunks,
+            [(0, payload, True)],
+            msg=(
+                "Exact-fit payload must yield a single is_last chunk; a spurious "
+                "(16, b'', True) tail would indicate an off-by-one in the while-loop "
+                "termination."
+            ),
+        )
+
+    def test__iter_fragment_chunks__offset_monotonicity_invariant(self) -> None:
+        """
+        Ensure every yielded offset is strictly greater than the
+        previous one and is 8-byte aligned, across a 5-chunk slice.
+        Guards against any future refactor that breaks the offset
+        increment or alignment maintenance.
+
+        Reference: RFC 791 §3.1 (Fragment Offset 8-octet alignment).
+        Reference: RFC 8200 §4.5 (Fragment Offset 8-octet alignment).
+        """
+
+        payload = b"Z" * (16 * 5)
+        chunks = list(iter_fragment_chunks(payload, max_chunk_bytes=16))
+
+        offsets = [offset for offset, _, _ in chunks]
+
+        self.assertEqual(
+            offsets,
+            sorted(offsets),
+            msg="Offsets must be monotonically non-decreasing.",
+        )
+        self.assertEqual(
+            len(offsets),
+            len(set(offsets)),
+            msg="Offsets must be strictly increasing (no duplicates).",
+        )
+        for index, offset in enumerate(offsets):
+            self.assertEqual(
+                offset % 8,
+                0,
+                msg=f"Offset #{index} ({offset}) must be a multiple of 8.",
+            )

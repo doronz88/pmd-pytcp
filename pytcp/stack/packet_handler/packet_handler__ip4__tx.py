@@ -54,6 +54,7 @@ from pytcp.lib.ip4_source_selection import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 
 class PacketHandlerIp4Tx(ABC):
@@ -185,26 +186,23 @@ class PacketHandlerIp4Tx(ABC):
         if isinstance(ip4_packet_tx.payload, (TcpAssembler, UdpAssembler)):
             ip4_packet_tx.payload.pshdr_sum = ip4_packet_tx.pshdr_sum
 
-        payload = bytearray(bytes(ip4_packet_tx.payload))
-
-        payload_mtu = (self._interface_mtu - ip4_packet_tx.hlen) & 0b1111111111111000
-        payload_frags = [payload[_ : payload_mtu + _] for _ in range(0, len(payload), payload_mtu)]
-        offset = 0
         self._ip4_id += 1
         outbound_tx_status: set[TxStatus] = set()
-        for payload_frag in payload_frags:
+        for offset, chunk, is_last in iter_fragment_chunks(
+            bytes(ip4_packet_tx.payload),
+            max_chunk_bytes=self._interface_mtu - ip4_packet_tx.hlen,
+        ):
             ip4_frag_tx = Ip4FragAssembler(
                 ip4_frag__src=ip4__src,
                 ip4_frag__dst=ip4__dst,
                 ip4_frag__ttl=ip4__ttl,
-                ip4_frag__payload=payload_frag,
+                ip4_frag__payload=chunk,
                 ip4_frag__offset=offset,
-                ip4_frag__flag_mf=payload_frag is not payload_frags[-1],
+                ip4_frag__flag_mf=not is_last,
                 ip4_frag__id=self._ip4_id,
                 ip4_frag__proto=ip4_packet_tx.proto,
             )
             __debug__ and log("ip4", f"{ip4_frag_tx.tracker} - {ip4_frag_tx}")
-            offset += len(payload_frag)
             self._packet_stats_tx.ip4__mtu_exceed__frag__send += 1
 
             match self._interface_layer:
