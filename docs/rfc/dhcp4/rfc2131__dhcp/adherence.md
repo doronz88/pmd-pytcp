@@ -945,10 +945,16 @@ in 'pytcp/protocols/dhcp4/dhcp4__constants.py', with
 a cross-knob finalize validator enforcing 't1 ≤ t2'.
 
 Server-supplied option 58 (T1) / option 59 (T2)
-overrides are not yet honoured — the codec for those
-options is parsed into 'Dhcp4OptionUnknown'; a
-follow-up commit will add typed accessors and prefer
-server values over the factor-based defaults.
+overrides are honoured as of the Phase 8.x server-T1/T2
+commit. Typed codecs at
+'net_proto/protocols/dhcp4/options/dhcp4__option__renewal_time.py'
+and `..__rebinding_time.py' parse the wire-format
+values; '_extract_t1_t2_overrides' validates them
+against the RFC 2131 §4.4.5 'T1 < T2 < lease_time'
+invariant and stamps the surviving values onto the
+'Dhcp4Lease'. The deadline computation prefers them
+over the factor-based defaults. Cache format v3
+persists both across reboots.
 
 > "T1 MUST be earlier than T2, which, in turn, MUST be
 >  earlier than the time at which the client's lease
@@ -1255,6 +1261,30 @@ is expected from the server.
 
 **Status:** locked in (Phase 5).
 
+### §4.4.5 / RFC 2132 §9.7 / §9.8 — Server T1/T2 overrides (Phase 8.x)
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__renewal_time.py`
+  (13 tests) — Renewal Time (option 58) codec
+  round-trip + integrity checks.
+- **Unit:**
+  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__rebinding_time.py`
+  (13 tests) — Rebinding Time (option 59) codec
+  round-trip + integrity checks.
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientServerT1T2Overrides`
+  (6 tests) — ACK options populate
+  `Dhcp4Lease.t1_override` / `t2_override`; deadlines
+  honour the lease overrides; missing options fall back
+  to factor defaults; invalid T1 ≥ lease_time is
+  dropped; invalid T1 ≥ T2 drops both.
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py::TestDhcp4LeaseCacheT1T2Overrides`
+  (2 tests) — cache v3 round-trips both overrides;
+  null values round-trip cleanly.
+
+**Status:** locked in (Phase 8.x — server T1/T2 overrides).
+
 ### §1.4 / §4.4.1 — Multi-OFFER collection window (Phase 8.x)
 
 - **Unit:**
@@ -1319,6 +1349,7 @@ is expected from the server.
 | Lease cache (round-trip + defensive reads)          | locked in (Phase 5 — `test__dhcp4__lease_cache.py`, 14 tests)      |
 | Max DHCP Message Size option (57)                   | locked in (Phase 8.1 — `test__dhcp4__option__max_msg_size.py`)     |
 | Multi-OFFER collection window (Linux-alike)         | locked in (Phase 8.x — `TestDhcp4ClientMultiOfferCollection`)      |
+| Server T1/T2 overrides (options 58 / 59)            | locked in (Phase 8.x — codec + FSM + cache v3 tests)               |
 | Option Overload (52) parser-side merge              | locked in (Phase 8.4 — `test__dhcp4__parser__option_overload.py`)  |
 | Lease-time hint in DISCOVER (option 51)             | locked in (Phase 8.2 — `TestDhcp4ClientPhase8Polish`)              |
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
@@ -1354,7 +1385,7 @@ is expected from the server.
 | FSM (BOUND / RENEWING / REBINDING)                      | met (Phase 4 commit C)                           |
 | FSM (INIT-REBOOT / REBOOTING) + cached-lease fast-path  | met (Phase 5)                                    |
 | T1 / T2 / lease-expiry handling                         | met (Phase 4 commit C)                           |
-| Server option 58 (T1) / option 59 (T2) overrides        | not implemented (codec parses; accessor pending) |
+| Server option 58 (T1) / option 59 (T2) overrides        | met (Phase 8.x — typed codecs + lease + cache v3) |
 | RENEW unicast wire path                                 | met (Phase 4 commit C + post-fix RX lookup)      |
 | REBIND broadcast wire path                              | met (Phase 4 commit C + post-fix RX lookup)      |
 | DHCPRELEASE on shutdown                                 | met (Phase 4 commit D)                           |
@@ -1439,10 +1470,6 @@ does not touch disk; operators opt in.
 
 Remaining items in the per-RFC adherence catalogue:
 
-- **Server option 58 (T1) / option 59 (T2) overrides**
-  — codec parses them as `Dhcp4OptionUnknown`; a
-  follow-up will add typed accessors and prefer server
-  values over the factor-based defaults.
 - **§3.4 DHCPINFORM** — niche, deferred.
 - **RFC 3396 long-option concatenation** — parser-side
   feature with no current consumer. Existing PyTCP

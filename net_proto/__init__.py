@@ -114,6 +114,12 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__param_req_list import (
     Dhcp4OptionParamReqList,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__rebinding_time import (
+    Dhcp4OptionRebindingTime,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__renewal_time import (
+    Dhcp4OptionRenewalTime,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
@@ -536,6 +542,8 @@ __all__ = [
     "Dhcp4OptionOverload",
     "Dhcp4OptionPad",
     "Dhcp4OptionParamReqList",
+    "Dhcp4OptionRebindingTime",
+    "Dhcp4OptionRenewalTime",
     "Dhcp4OptionReqIpAddr",
     "Dhcp4OptionRouter",
     "Dhcp4OptionServerId",

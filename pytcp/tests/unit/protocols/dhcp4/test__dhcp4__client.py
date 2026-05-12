@@ -3211,3 +3211,218 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
             lease,
             msg="fetch() must return a lease even when only one OFFER lands in the window.",
         )
+
+
+class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
+    """
+    Phase 8.x — RFC 2131 §4.4.5 server-supplied T1 / T2
+    overrides via RFC 2132 §9.7 / §9.8 options 58 / 59. When
+    the ACK carries these options PyTCP MUST honour them as
+    the T1 / T2 deadlines, overriding the factor-based defaults.
+    """
+
+    def test__dhcp4_client__ack_overrides_populate_lease_fields(self) -> None:
+        """
+        Ensure that when the ACK carries options 58 (Renewal)
+        and 59 (Rebinding), the resulting 'Dhcp4Lease' carries
+        the values verbatim on its 't1_override' / 't2_override'
+        fields.
+
+        Reference: RFC 2132 §9.7 (Renewal Time Value option 58).
+        Reference: RFC 2132 §9.8 (Rebinding Time Value option 59).
+        """
+
+        self._server.enqueue_offer()
+        # ACK carries explicit T1=1200 (20 min) and T2=2100
+        # (35 min) on a 3600 s lease — typical ISP-supplied
+        # tighter renewal cadence.
+        from net_proto.protocols.dhcp4.options.dhcp4__option__rebinding_time import Dhcp4OptionRebindingTime
+        from net_proto.protocols.dhcp4.options.dhcp4__option__renewal_time import Dhcp4OptionRenewalTime
+
+        ack_extras = [Dhcp4OptionRenewalTime(1200), Dhcp4OptionRebindingTime(2100)]
+        original_build = self._server._build_offer_or_ack
+
+        def _patched(**kwargs):  # type: ignore[no-untyped-def]
+            data = original_build(**kwargs)
+            # Splice the T1/T2 options into the ACK just before
+            # the END marker. The frame layout is
+            # [header...][options..., END]; END is the last byte
+            # before any trailing pad.
+            from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4OptionType
+
+            end_byte = bytes([int(Dhcp4OptionType.END)])
+            idx = data.rfind(end_byte)
+            return data[:idx] + b"".join(bytes(opt) for opt in ack_extras) + data[idx:]
+
+        self._server._build_offer_or_ack = _patched  # type: ignore[method-assign]
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = client.fetch()
+
+        assert lease is not None
+        self.assertEqual(
+            lease.t1_override,
+            1200,
+            msg="Server-supplied T1 must be captured verbatim on the lease.",
+        )
+        self.assertEqual(
+            lease.t2_override,
+            2100,
+            msg="Server-supplied T2 must be captured verbatim on the lease.",
+        )
+
+    def test__dhcp4_client__lease_without_overrides_uses_factor_defaults(self) -> None:
+        """
+        Ensure that an ACK without options 58 / 59 yields a
+        lease whose 't1_override' / 't2_override' are None,
+        and the deadline computation falls back to the
+        factor-based defaults (T1 = 0.5 × lease, T2 = 0.875 ×
+        lease).
+
+        Reference: RFC 2131 §4.4.5 (factor-based fallback).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack(lease_time=3600)
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        lease = client.fetch()
+
+        assert lease is not None
+        self.assertIsNone(
+            lease.t1_override,
+            msg="Lease without server T1 override must read back as None.",
+        )
+        self.assertIsNone(
+            lease.t2_override,
+            msg="Lease without server T2 override must read back as None.",
+        )
+        # Set the lease as bound on the client and verify the
+        # deadline formula uses the factor default.
+        client._lease = lease
+        # acquired_at_monotonic is set by fetch() to time.monotonic().
+        # Override it for predictable arithmetic.
+        client._lease = Dhcp4Lease(
+            ip4_host=lease.ip4_host,
+            lease_time__sec=3600,
+            server_id=lease.server_id,
+            acquired_at_monotonic=100.0,
+        )
+        # T1 = 100 + 3600 * 0.5 = 1900; T2 = 100 + 3600 * 0.875 = 3250.
+        self.assertEqual(
+            client._t1_deadline(),
+            1900.0,
+            msg="T1 deadline must be acquired_at + lease_time × t1_factor when no override.",
+        )
+        self.assertEqual(
+            client._t2_deadline(),
+            3250.0,
+            msg="T2 deadline must be acquired_at + lease_time × t2_factor when no override.",
+        )
+
+    def test__dhcp4_client__t1_deadline_honours_lease_override(self) -> None:
+        """
+        Ensure '_t1_deadline' honours a server-supplied
+        't1_override' on the lease, overriding the factor-based
+        default.
+
+        Reference: RFC 2131 §4.4.5 (server T1 overrides default).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        # Build a lease with override T1=1200 on a 3600 s lease.
+        client._lease = Dhcp4Lease(
+            ip4_host=Ip4Host("192.168.1.145/24"),
+            lease_time__sec=3600,
+            server_id=Ip4Address("192.168.1.1"),
+            acquired_at_monotonic=100.0,
+            t1_override=1200,
+        )
+
+        self.assertEqual(
+            client._t1_deadline(),
+            100.0 + 1200,
+            msg="T1 deadline must honour the server-supplied override.",
+        )
+
+    def test__dhcp4_client__t2_deadline_honours_lease_override(self) -> None:
+        """
+        Ensure '_t2_deadline' honours a server-supplied
+        't2_override' on the lease, overriding the factor-based
+        default.
+
+        Reference: RFC 2131 §4.4.5 (server T2 overrides default).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client._lease = Dhcp4Lease(
+            ip4_host=Ip4Host("192.168.1.145/24"),
+            lease_time__sec=3600,
+            server_id=Ip4Address("192.168.1.1"),
+            acquired_at_monotonic=100.0,
+            t2_override=2100,
+        )
+
+        self.assertEqual(
+            client._t2_deadline(),
+            100.0 + 2100,
+            msg="T2 deadline must honour the server-supplied override.",
+        )
+
+    def test__dhcp4_client__invalid_t1_ge_lease_time_is_dropped(self) -> None:
+        """
+        Ensure that a server-supplied T1 ≥ lease_time is
+        rejected by '_extract_t1_t2_overrides' and the lease
+        falls back to the factor-based default for T1. PyTCP
+        deliberately ignores the offending value rather than
+        rejecting the lease entirely (Linux dhcpcd parity).
+
+        Reference: RFC 2131 §4.4.5 (T1 < lease_time invariant).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+
+        # Build a mock parser-like object that exposes the
+        # 'renewal_time' / 'rebinding_time' properties used by
+        # the helper.
+        ack = MagicMock(name="ack")
+        ack.renewal_time = 5000  # exceeds lease_time
+        ack.rebinding_time = 2100
+
+        t1, t2 = client._extract_t1_t2_overrides(ack, lease_time__sec=3600)
+
+        self.assertIsNone(
+            t1,
+            msg="T1 ≥ lease_time must be dropped (None returned).",
+        )
+        self.assertEqual(
+            t2,
+            2100,
+            msg="Valid T2 must be preserved when only T1 is invalid.",
+        )
+
+    def test__dhcp4_client__invalid_t1_ge_t2_drops_both(self) -> None:
+        """
+        Ensure that a server-supplied T1 ≥ T2 pair is
+        rejected — without a sensible ordering, neither timer
+        is honoured.
+
+        Reference: RFC 2131 §4.4.5 (T1 < T2 invariant).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        ack = MagicMock(name="ack")
+        ack.renewal_time = 2500
+        ack.rebinding_time = 2000  # T1 >= T2
+
+        t1, t2 = client._extract_t1_t2_overrides(ack, lease_time__sec=3600)
+
+        self.assertIsNone(
+            t1,
+            msg="T1 ≥ T2 must drop T1.",
+        )
+        self.assertIsNone(
+            t2,
+            msg="T1 ≥ T2 must drop T2 too (the ordering is the invariant).",
+        )

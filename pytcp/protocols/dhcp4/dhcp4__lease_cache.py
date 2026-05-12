@@ -33,14 +33,16 @@ The cache file format is a single JSON object with the
 shape:
 
     {
-        "version": 2,
+        "version": 3,
         "address": "192.168.1.145",
         "mask": "255.255.255.0",
         "gateway": "192.168.1.1" | null,
         "gateway_mac": "aa:bb:cc:dd:ee:ff" | null,
         "server_id": "192.168.1.1",
         "lease_time__sec": 3600,
-        "acquired_at_wall": 1701234567.89
+        "acquired_at_wall": 1701234567.89,
+        "t1_override": 1800 | null,
+        "t2_override": 3150 | null
     }
 
 'acquired_at_wall' is 'time.time()' at the moment the lease
@@ -56,6 +58,16 @@ and skip the DHCP exchange entirely if it answers. The
 field is optional; cache writers omit it as null when
 the ARP cache has not yet resolved the gateway (typical
 on first boot before any IP traffic flowed).
+
+'t1_override' / 't2_override' carry the server-supplied
+RFC 2132 §9.7 Renewal Time (option 58) and RFC 2132 §9.8
+Rebinding Time (option 59) values from the ACK that
+issued the lease. When present, the Dhcp4Client's
+T1 / T2 deadline computation honours them in preference
+to the factor-based defaults. Both fields are nullable —
+servers that omit options 58 / 59 store null here, and
+the silent-server INIT-REBOOT fast-path then falls back
+to the factor defaults.
 
 Writes go through 'tempfile.mkstemp' + 'os.replace' for
 atomic file replacement — a half-written cache from a
@@ -83,7 +95,7 @@ if TYPE_CHECKING:
 # Bump on incompatible format changes; reader rejects unknown
 # versions so an older PyTCP binary will not try to consume
 # a cache written by a newer one.
-_DHCP4__LEASE_CACHE__VERSION: int = 2
+_DHCP4__LEASE_CACHE__VERSION: int = 3
 
 
 def _resolve_gateway_mac(lease: "Dhcp4Lease", /) -> MacAddress | None:
@@ -153,6 +165,8 @@ def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
         "server_id": str(lease.server_id),
         "lease_time__sec": lease.lease_time__sec,
         "acquired_at_wall": time.time(),
+        "t1_override": lease.t1_override,
+        "t2_override": lease.t2_override,
     }
 
     try:
@@ -227,6 +241,14 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         server_id = Ip4Address(payload["server_id"])
         lease_time__sec = int(payload["lease_time__sec"])
         acquired_at_wall = float(payload["acquired_at_wall"])
+        # v3 fields — RFC 2132 §9.7 / §9.8 T1 / T2 server overrides.
+        # Absent in v2 caches (always reads None there); always
+        # present in v3 caches but may be JSON null when the
+        # original ACK omitted the option.
+        t1_raw = payload.get("t1_override")
+        t2_raw = payload.get("t2_override")
+        t1_override: int | None = int(t1_raw) if t1_raw is not None else None
+        t2_override: int | None = int(t2_raw) if t2_raw is not None else None
     except (KeyError, ValueError, TypeError, MacAddressFormatError) as error:
         __debug__ and log(
             "dhcp4",
@@ -265,6 +287,8 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         server_id=server_id,
         acquired_at_monotonic=acquired_at_monotonic,
         gateway_mac=gateway_mac,
+        t1_override=t1_override,
+        t2_override=t2_override,
     )
 
 

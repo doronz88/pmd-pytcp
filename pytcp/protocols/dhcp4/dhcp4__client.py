@@ -127,6 +127,15 @@ class Dhcp4Lease:
     None when the gateway has not yet been resolved (typical on
     first boot before any IP traffic flowed) or when the cache
     pre-dates Phase 6.
+
+    't1_override' / 't2_override' carry the server-supplied
+    Renewal (option 58, RFC 2132 §9.7) and Rebinding (option 59,
+    RFC 2132 §9.8) values from the ACK. RFC 2131 §4.4.5 mandates
+    "If the DHCP server returns a 'renewal time value' option in
+    a DHCPACK, the client MUST use this value as T1" — so when
+    set, '_t1_deadline' / '_t2_deadline' prefer these over the
+    factor-based defaults. None when the server omitted the
+    option or when the cached lease pre-dates this field.
     """
 
     ip4_host: Ip4Host
@@ -134,6 +143,8 @@ class Dhcp4Lease:
     server_id: Ip4Address
     acquired_at_monotonic: float
     gateway_mac: MacAddress | None = None
+    t1_override: int | None = None
+    t2_override: int | None = None
 
 
 class _NakRestart:
@@ -351,22 +362,84 @@ class Dhcp4Client(Subsystem):
     def _t1_deadline(self) -> float:
         """
         RFC 2131 §4.4.5 — T1 deadline (monotonic seconds): the
-        client moves BOUND → RENEWING at this time. Computed as
-        'acquired_at + lease_time × t1_factor'.
+        client moves BOUND → RENEWING at this time. Prefers the
+        server-supplied Renewal Time override (option 58,
+        RFC 2132 §9.7) when present on the lease; falls back to
+        the factor-based default 'acquired_at + lease_time ×
+        dhcp.t1_factor'.
         """
 
         assert self._lease is not None
+        if self._lease.t1_override is not None:
+            return self._lease.acquired_at_monotonic + self._lease.t1_override
         return self._lease.acquired_at_monotonic + self._lease.lease_time__sec * dhcp4__constants.DHCP4__T1_FACTOR
 
     def _t2_deadline(self) -> float:
         """
         RFC 2131 §4.4.5 — T2 deadline (monotonic seconds): the
-        client moves RENEWING → REBINDING at this time. Computed
-        as 'acquired_at + lease_time × t2_factor'.
+        client moves RENEWING → REBINDING at this time. Prefers
+        the server-supplied Rebinding Time override (option 59,
+        RFC 2132 §9.8) when present on the lease; falls back to
+        the factor-based default 'acquired_at + lease_time ×
+        dhcp.t2_factor'.
         """
 
         assert self._lease is not None
+        if self._lease.t2_override is not None:
+            return self._lease.acquired_at_monotonic + self._lease.t2_override
         return self._lease.acquired_at_monotonic + self._lease.lease_time__sec * dhcp4__constants.DHCP4__T2_FACTOR
+
+    def _extract_t1_t2_overrides(
+        self,
+        ack: Dhcp4Parser,
+        lease_time__sec: int,
+    ) -> tuple[int | None, int | None]:
+        """
+        Read RFC 2132 §9.7 / §9.8 Renewal (T1) and Rebinding (T2)
+        Time options from a freshly-received ACK. Returns the
+        '(t1_override, t2_override)' pair to stamp on the
+        resulting 'Dhcp4Lease'.
+
+        RFC 2131 §4.4.5 mandates 't1 < t2 < lease_time'. When the
+        server supplies values that violate that ordering, PyTCP
+        deliberately deviates from a strict RFC reject: log a
+        warning and treat the offending value as absent, so the
+        factor-based default takes over for that timer. A
+        misconfigured server should not punish the client with a
+        rejected lease — Linux dhcpcd takes the same lenient
+        line.
+        """
+
+        t1 = ack.renewal_time
+        t2 = ack.rebinding_time
+
+        # Ordering invariants. The lease_time bound is the hard
+        # ceiling; the t1 < t2 bound enforces the FSM's RENEW →
+        # REBIND ordering.
+        if t1 is not None and t1 >= lease_time__sec:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>Server-supplied T1={t1} ≥ lease_time={lease_time__sec}; "
+                f"ignoring (falling back to factor-based default)</>",
+            )
+            t1 = None
+        if t2 is not None and t2 >= lease_time__sec:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>Server-supplied T2={t2} ≥ lease_time={lease_time__sec}; "
+                f"ignoring (falling back to factor-based default)</>",
+            )
+            t2 = None
+        if t1 is not None and t2 is not None and t1 >= t2:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>Server-supplied T1={t1} ≥ T2={t2}; "
+                f"ignoring both (falling back to factor-based defaults)</>",
+            )
+            t1 = None
+            t2 = None
+
+        return t1, t2
 
     def _lease_expiry_deadline(self) -> float:
         """
@@ -515,11 +588,14 @@ class Dhcp4Client(Subsystem):
         ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
         if result.router:
             ip4_host.gateway = result.router[0]
+        t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
         return Dhcp4Lease(
             ip4_host=ip4_host,
             lease_time__sec=result.lease_time,
             server_id=result.srv_id if result.srv_id is not None else lease.server_id,
             acquired_at_monotonic=time.monotonic(),
+            t1_override=t1_override,
+            t2_override=t2_override,
         )
 
     def _consume_renew_or_rebind_outcome(
@@ -746,11 +822,14 @@ class Dhcp4Client(Subsystem):
         ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
         if result.router:
             ip4_host.gateway = result.router[0]
+        t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
         refreshed = Dhcp4Lease(
             ip4_host=ip4_host,
             lease_time__sec=result.lease_time,
             server_id=(result.srv_id if result.srv_id is not None else cached.server_id),
             acquired_at_monotonic=time.monotonic(),
+            t1_override=t1_override,
+            t2_override=t2_override,
         )
         __debug__ and log(
             "dhcp4",
@@ -1195,11 +1274,14 @@ class Dhcp4Client(Subsystem):
                 time.sleep(backoff_s)
             return _NAK_RESTART
 
+        t1_override, t2_override = self._extract_t1_t2_overrides(ack, ack.lease_time)
         return Dhcp4Lease(
             ip4_host=ip4_host,
             lease_time__sec=ack.lease_time,
             server_id=srv_id,
             acquired_at_monotonic=time.monotonic(),
+            t1_override=t1_override,
+            t2_override=t2_override,
         )
 
     def _recv_with_backoff(

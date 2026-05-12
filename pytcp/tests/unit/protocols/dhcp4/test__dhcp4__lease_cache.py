@@ -58,6 +58,8 @@ def _make_lease(
     server_id: str = "192.168.1.1",
     lease_time__sec: int = 3600,
     acquired_at_monotonic: float = 100.0,
+    t1_override: int | None = None,
+    t2_override: int | None = None,
 ) -> Dhcp4Lease:
     """
     Build a canonical Dhcp4Lease for the cache round-trip tests.
@@ -73,6 +75,8 @@ def _make_lease(
         server_id=Ip4Address(server_id),
         acquired_at_monotonic=acquired_at_monotonic,
         gateway_mac=MacAddress(gateway_mac) if gateway_mac is not None else None,
+        t1_override=t1_override,
+        t2_override=t2_override,
     )
 
 
@@ -443,3 +447,63 @@ class TestDhcp4LeaseCacheDelete(_CacheFixture):
         """
 
         delete_cached_lease("")  # must not raise.
+
+
+class TestDhcp4LeaseCacheT1T2Overrides(_CacheFixture):
+    """
+    Phase #2.E — cache format v3 round-trips the server-supplied
+    Renewal (option 58) and Rebinding (option 59) Time values
+    so the next-boot lifecycle can honour them without
+    re-asking the server.
+    """
+
+    def test__cache__round_trip_persists_t1_and_t2_overrides(self) -> None:
+        """
+        Ensure a lease whose 't1_override' / 't2_override' are
+        set round-trips both values across the JSON
+        serialisation. The next-boot INIT-REBOOT / DNAv4 path
+        depends on these being present on the reader's lease.
+
+        Reference: RFC 2132 §9.7 / §9.8 (T1 / T2 carried in ACK options).
+        """
+
+        original = _make_lease(t1_override=1200, t2_override=2100)
+        write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertEqual(
+            read.t1_override,
+            1200,
+            msg="Round-trip t1_override must equal the explicit value.",
+        )
+        self.assertEqual(
+            read.t2_override,
+            2100,
+            msg="Round-trip t2_override must equal the explicit value.",
+        )
+
+    def test__cache__round_trip_with_no_overrides(self) -> None:
+        """
+        Ensure a lease whose 't1_override' / 't2_override' are
+        None (server omitted options 58 / 59) serialises as JSON
+        null and reads back as None on both fields. The
+        DHCPv4 client then falls back to the factor-based T1 / T2
+        defaults.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        original = _make_lease(t1_override=None, t2_override=None)
+        write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertIsNone(
+            read.t1_override,
+            msg="Lease without T1 override must read back as None.",
+        )
+        self.assertIsNone(
+            read.t2_override,
+            msg="Lease without T2 override must read back as None.",
+        )

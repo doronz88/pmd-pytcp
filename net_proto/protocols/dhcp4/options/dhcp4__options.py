@@ -70,6 +70,12 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__param_req_list import (
     Dhcp4OptionParamReqList,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__rebinding_time import (
+    Dhcp4OptionRebindingTime,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__renewal_time import (
+    Dhcp4OptionRenewalTime,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
     Dhcp4OptionReqIpAddr,
 )
@@ -180,6 +186,34 @@ class Dhcp4Options(ProtoOptions):
         for option in self._options:
             if isinstance(option, Dhcp4OptionParamReqList):
                 return option.param_req_list
+
+        return None
+
+    @property
+    def rebinding_time(self) -> int | None:
+        """
+        Get the value of the DHCP Rebinding (T2) Time Value option if present
+        (RFC 2132 §9.8). When non-None this overrides the factor-based T2
+        default in the DHCPv4 client lifecycle.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionRebindingTime):
+                return option.rebinding_time
+
+        return None
+
+    @property
+    def renewal_time(self) -> int | None:
+        """
+        Get the value of the DHCP Renewal (T1) Time Value option if present
+        (RFC 2132 §9.7). When non-None this overrides the factor-based T1
+        default in the DHCPv4 client lifecycle.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionRenewalTime):
+                return option.renewal_time
 
         return None
 
@@ -297,6 +331,10 @@ class Dhcp4Options(ProtoOptions):
                     options.append(Dhcp4OptionOverload.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.PARAM_REQ_LIST:
                     options.append(Dhcp4OptionParamReqList.from_buffer(buffer[offset:]))
+                case Dhcp4OptionType.REBINDING_TIME:
+                    options.append(Dhcp4OptionRebindingTime.from_buffer(buffer[offset:]))
+                case Dhcp4OptionType.RENEWAL_TIME:
+                    options.append(Dhcp4OptionRenewalTime.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.REQ_IP_ADDR:
                     options.append(Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.ROUTER:
@@ -375,6 +413,22 @@ class Dhcp4OptionsProperties(ABC):
         """
 
         return self._options.param_req_list
+
+    @property
+    def rebinding_time(self) -> int | None:
+        """
+        Get the DHCP Rebinding (T2) Time Value option (RFC 2132 §9.8).
+        """
+
+        return self._options.rebinding_time
+
+    @property
+    def renewal_time(self) -> int | None:
+        """
+        Get the DHCP Renewal (T1) Time Value option (RFC 2132 §9.7).
+        """
+
+        return self._options.renewal_time
 
     @property
     def req_ip_addr(self) -> Ip4Address | None:

@@ -54,6 +54,8 @@ class Dhcp4OptionType(ProtoOptionType):
     SERVER_ID = 54
     PARAM_REQ_LIST = 55
     MAX_MSG_SIZE = 57
+    RENEWAL_TIME = 58
+    REBINDING_TIME = 59
     CLIENT_ID = 61
     END = 255
 
