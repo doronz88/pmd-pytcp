@@ -31,13 +31,13 @@ post-claim ARP conflicts, and coexists with the DHCPv4 client
 per RFC 3927 §2.11 (read-only state-poll; never modifies DHCP
 behaviour).
 
-Phases 1-2 (shipped): subsystem skeleton + INIT-state
+Phases 1-3 (shipped): subsystem skeleton + INIT-state
 candidate selection + _do_claiming via the ACD API with the
 retry / rate-limit loop pinned by RFC 3927 §9
-(MAX_CONFLICTS = 10, RATE_LIMIT_INTERVAL = 60s).
-Phase 3 (next): _on_bound_conflict (§2.5 defend/abandon
-decision) via the subscribe_conflicts callback.
-Phase 4: DHCPv4-fallback trigger.
+(MAX_CONFLICTS = 10, RATE_LIMIT_INTERVAL = 60s) +
+_on_bound_conflict (§2.5 defend / abandon decision tree)
+wired via the address-API subscribe_conflicts callback.
+Phase 4 (next): DHCPv4-fallback trigger.
 
 pytcp/protocols/ip4_link_local/ip4_link_local__client.py
 
@@ -49,9 +49,10 @@ from enum import Enum
 from typing import override
 
 from net_addr import Ip4Host, MacAddress
-from pytcp.lib.address_api import Ip4AddressApi
+from pytcp.lib.address_api import ConflictEvent, Ip4AddressApi, SubscriptionHandle
 from pytcp.lib.logger import log
 from pytcp.lib.subsystem import Subsystem
+from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.ip4_link_local import ip4_link_local__constants as ip4ll_const
 from pytcp.protocols.ip4_link_local.ip4_link_local__rng import candidate_from_mac
 
@@ -104,6 +105,14 @@ class Ip4LinkLocal(Subsystem):
         self._state: Ip4LinkLocalState = Ip4LinkLocalState.INIT
         self._candidate: Ip4Host | None = None
         self._conflict_count: int = 0
+        # RFC 3927 §2.5(b) DEFEND_INTERVAL bookkeeping. Holds the
+        # monotonic timestamps of recent defensive ARPs; the §2.5
+        # decision reads the most recent entry to decide
+        # defend (first conflict in window) vs abandon (second).
+        self._defend_history: list[float] = []
+        # Subscription handle returned by 'subscribe_conflicts'
+        # when the address is installed; passed back on abandon.
+        self._subscription: SubscriptionHandle | None = None
 
     @override
     def _subsystem_loop(self) -> None:
@@ -162,6 +171,11 @@ class Ip4LinkLocal(Subsystem):
         result = self._address_api.claim_with_acd(ip4_host=self._candidate)
         if result.success:
             self._conflict_count = 0
+            self._defend_history = []
+            self._subscription = self._address_api.subscribe_conflicts(
+                address=self._candidate.address,
+                on_conflict=self._on_bound_conflict,
+            )
             self._state = Ip4LinkLocalState.BOUND
             __debug__ and log(
                 "stack",
@@ -195,4 +209,60 @@ class Ip4LinkLocal(Subsystem):
             )
             time.sleep(ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL)
             self._conflict_count = 0
+        self._state = Ip4LinkLocalState.INIT
+
+    def _on_bound_conflict(self, event: ConflictEvent) -> None:
+        """
+        Subscription callback fired by 'Ip4AddressApi' on any
+        post-claim ARP conflict matching our BOUND address.
+        Implements the RFC 3927 §2.5 decision tree.
+
+          - §2.5(b) — if no defensive ARP fired within the
+            last 'ARP__DEFEND_INTERVAL' seconds, defend with
+            a single gratuitous ARP and stay BOUND.
+
+          - §2.5(a) — if a defensive ARP DID fire within the
+            window, abandon the address: abort bound TCP
+            sessions (§2.5 paragraph 7 SHOULD), remove the
+            host via the API, unsubscribe, clear the
+            candidate, bump the conflict counter, and
+            transition to INIT for a fresh reconfigure.
+
+        Runs on the ARP RX thread (the API's fan-out
+        dispatcher); state mutations here race the main
+        subsystem-loop thread, but the BOUND state's loop is
+        a no-op so the race is benign.
+        """
+
+        assert self._candidate is not None, "_on_bound_conflict requires a bound candidate"
+        now = time.monotonic()
+        defend_window = arp__constants.ARP__DEFEND_INTERVAL
+        recent = [t for t in self._defend_history if now - t < defend_window]
+
+        if not recent:
+            # §2.5(b): defend.
+            self._defend_history.append(now)
+            self._address_api.send_gratuitous_arp(address=event.address)
+            __debug__ and log(
+                "stack",
+                f"<lg>Link-Local</>: defended {event.address} " f"against {event.sender_mac} (RFC 3927 §2.5(b))",
+            )
+            return
+
+        # §2.5(a): abandon. The RFC SHOULDs are honoured:
+        # active TCP sessions on the abandoned address get
+        # ABORT; the address is removed via the public API.
+        __debug__ and log(
+            "stack",
+            f"<lg>Link-Local</>: abandoning {event.address} "
+            f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
+        )
+        self._address_api.abort_bound_tcp_sessions(address=event.address)
+        self._address_api.remove_host(ip4_address=event.address)
+        if self._subscription is not None:
+            self._address_api.unsubscribe_conflicts(handle=self._subscription)
+            self._subscription = None
+        self._candidate = None
+        self._defend_history.clear()
+        self._conflict_count += 1
         self._state = Ip4LinkLocalState.INIT
