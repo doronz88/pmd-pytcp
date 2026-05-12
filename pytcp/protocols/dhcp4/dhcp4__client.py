@@ -58,6 +58,12 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__end import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__host_name import (
     Dhcp4OptionHostName,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__lease_time import (
+    Dhcp4OptionLeaseTime,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__max_msg_size import (
+    Dhcp4OptionMaxMsgSize,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4OptionMessageType,
 )
@@ -784,6 +790,7 @@ class Dhcp4Client(Subsystem):
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
+                Dhcp4OptionMaxMsgSize(dhcp4__constants.DHCP4__MAX_MSG_SIZE),
                 Dhcp4OptionReqIpAddr(requested_ip),
                 Dhcp4OptionHostName("PyTCP"),
                 Dhcp4OptionEnd(),
@@ -911,6 +918,7 @@ class Dhcp4Client(Subsystem):
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
+                Dhcp4OptionMaxMsgSize(dhcp4__constants.DHCP4__MAX_MSG_SIZE),
                 Dhcp4OptionHostName("PyTCP"),
                 Dhcp4OptionEnd(),
             ),
@@ -1318,24 +1326,34 @@ class Dhcp4Client(Subsystem):
         Build and send the DHCP DISCOVER packet.
         """
 
+        # Phase 8.2 — emit a Lease Time hint when the operator
+        # configured one (default 86400 = 1 day; set 0 to omit).
+        lease_time_hint = dhcp4__constants.DHCP4__REQUESTED_LEASE_TIME__SEC
+        opts: list = [
+            Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+            Dhcp4OptionClientId(self._expected_client_id),
+            Dhcp4OptionParamReqList(
+                [
+                    Dhcp4OptionType.SUBNET_MASK,
+                    Dhcp4OptionType.ROUTER,
+                ]
+            ),
+            # Phase 8.1 — Maximum DHCP Message Size advertised
+            # so the server may use the full interface MTU.
+            Dhcp4OptionMaxMsgSize(dhcp4__constants.DHCP4__MAX_MSG_SIZE),
+            Dhcp4OptionHostName("PyTCP"),
+        ]
+        if lease_time_hint > 0:
+            opts.append(Dhcp4OptionLeaseTime(lease_time_hint))
+        opts.append(Dhcp4OptionEnd())
+
         dhcp4_packet_tx = Dhcp4Assembler(
             dhcp4__operation=Dhcp4Operation.REQUEST,
             dhcp4__xid=xid,
             dhcp4__secs=self._elapsed_secs(),
             dhcp4__flag_b=True,
             dhcp4__chaddr=self._mac_address,
-            dhcp4__options=Dhcp4Options(
-                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
-                Dhcp4OptionClientId(self._expected_client_id),
-                Dhcp4OptionParamReqList(
-                    [
-                        Dhcp4OptionType.SUBNET_MASK,
-                        Dhcp4OptionType.ROUTER,
-                    ]
-                ),
-                Dhcp4OptionHostName("PyTCP"),
-                Dhcp4OptionEnd(),
-            ),
+            dhcp4__options=Dhcp4Options(*opts),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         client_socket.send(bytes(dhcp4_packet_tx))
@@ -1367,6 +1385,7 @@ class Dhcp4Client(Subsystem):
                         Dhcp4OptionType.ROUTER,
                     ]
                 ),
+                Dhcp4OptionMaxMsgSize(dhcp4__constants.DHCP4__MAX_MSG_SIZE),
                 Dhcp4OptionServerId(srv_id),
                 Dhcp4OptionReqIpAddr(yiaddr),
                 Dhcp4OptionHostName("PyTCP"),

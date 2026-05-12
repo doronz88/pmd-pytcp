@@ -2984,3 +2984,123 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             Dhcp4State.BOUND,
             msg="ACK on the standard REQUEST must still transition to BOUND.",
         )
+
+
+class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
+    """
+    Phase 8 — polish-option emissions: Max DHCP Message Size
+    (RFC 2132 §9.10, option 57) and Lease Time hint
+    (RFC 2131 §3.5, option 51 in DISCOVER).
+    """
+
+    def test__dhcp4_client__discover_emits_max_msg_size(self) -> None:
+        """
+        Ensure 'fetch()' emits a Maximum DHCP Message Size option
+        in the DISCOVER it sends, defaulting to the
+        'dhcp.max_msg_size' sysctl value (1500 = standard
+        Ethernet MTU).
+
+        Reference: RFC 2132 §9.10 (Maximum DHCP Message Size).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        discover = self._server.tx_log[0]
+        self.assertEqual(
+            discover.max_msg_size,
+            1500,
+            msg="DISCOVER must carry Max DHCP Message Size = 1500 by default.",
+        )
+
+    def test__dhcp4_client__request_emits_max_msg_size(self) -> None:
+        """
+        Ensure the SELECTING-state REQUEST also carries the
+        Maximum DHCP Message Size option so the server may emit
+        an ACK larger than the 576-byte baseline.
+
+        Reference: RFC 2132 §9.10 (option valid in any message).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        request = self._server.tx_log[1]
+        self.assertEqual(
+            request.max_msg_size,
+            1500,
+            msg="SELECTING REQUEST must carry Max DHCP Message Size = 1500 by default.",
+        )
+
+    def test__dhcp4_client__discover_emits_lease_time_hint(self) -> None:
+        """
+        Ensure DISCOVER carries the Lease Time hint at the default
+        sysctl value of 86400 seconds (1 day) — the operator's
+        preferred lease length.
+
+        Reference: RFC 2131 §3.5 (DISCOVER MAY carry desired lease-time).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        discover = self._server.tx_log[0]
+        self.assertEqual(
+            discover.lease_time,
+            86400,
+            msg="DISCOVER must carry the default 86400 s Lease Time hint.",
+        )
+
+    def test__dhcp4_client__discover_omits_lease_time_hint_when_sysctl_zero(self) -> None:
+        """
+        Ensure that setting 'dhcp.requested_lease_time__sec' to 0
+        omits the hint entirely (a server that prefers picking
+        its own lease length is not biased by the client's
+        suggestion).
+
+        Reference: RFC 2131 §3.5 (option is OPTIONAL).
+        """
+
+        self.enterContext(sysctl.override("dhcp.requested_lease_time__sec", 0))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        discover = self._server.tx_log[0]
+        self.assertIsNone(
+            discover.lease_time,
+            msg="dhcp.requested_lease_time__sec=0 must omit the Lease Time option from DISCOVER.",
+        )
+
+    def test__dhcp4_client__max_msg_size_sysctl_override_propagates(self) -> None:
+        """
+        Ensure that an operator override of 'dhcp.max_msg_size'
+        propagates to the option value emitted on the wire.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.enterContext(sysctl.override("dhcp.max_msg_size", 9000))
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client.fetch()
+
+        discover = self._server.tx_log[0]
+        self.assertEqual(
+            discover.max_msg_size,
+            9000,
+            msg="DISCOVER must carry the operator-tuned Max DHCP Message Size value.",
+        )

@@ -152,6 +152,21 @@ DHCP4__REBOOT_MAX_ATTEMPTS = 4
 DHCP4__DNAV4 = 1
 DHCP4__DNAV4_TIMEOUT_MS = 1000
 
+# Phase 8.1 — RFC 2132 §9.10 Maximum DHCP Message Size
+# option. The client advertises this value in DISCOVER /
+# REQUEST so the server may emit replies larger than the
+# RFC 2131 §2 baseline 576-byte minimum. Default 1500 ≈ the
+# standard Ethernet interface MTU; minimum 576 per RFC.
+DHCP4__MAX_MSG_SIZE = 1500
+
+# Phase 8.2 — RFC 2131 §3.5 / §4.4.1 lease-time hint. When
+# non-zero, the client emits a Lease Time option in DISCOVER
+# suggesting how long it would like the lease to be. The
+# server is free to honour or ignore the hint; the actual
+# lease length on the ACK wins. Default 86400 = 1 day,
+# matching Linux 'dhclient' / 'dhcpcd' out-of-the-box.
+DHCP4__REQUESTED_LEASE_TIME__SEC = 86400
+
 from typing import Callable  # noqa: E402
 
 from pytcp.lib.sysctl import (  # noqa: E402
@@ -400,6 +415,52 @@ register(
         "RFC 4436 §4 — DNAv4 unicast-ARP probe timeout in "
         "milliseconds (default 1000 = the RFC's recommended "
         "1-second window)."
+    ),
+)
+
+
+def _is_max_msg_size(name: str) -> Callable[[object], None]:
+    """
+    Build a validator that accepts a uint16 ≥ 576 per RFC 2132
+    §9.10 (the RFC 2131 §2 baseline minimum every client MUST
+    accept). Rejects non-integers and out-of-range values
+    explicitly so a misconfiguration cannot silently emit a
+    smaller advertised size than the spec floor.
+    """
+
+    def validator(value: object) -> None:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"sysctl {name!r} must be an int; got {type(value).__name__}")
+        if not (576 <= value <= 0xFFFF):
+            raise ValueError(
+                f"sysctl {name!r} must be in [576, 65535] per RFC 2132 §9.10; got {value!r}",
+            )
+
+    return validator
+
+
+register(
+    key="dhcp.max_msg_size",
+    module_name=__name__,
+    attr="DHCP4__MAX_MSG_SIZE",
+    default=DHCP4__MAX_MSG_SIZE,
+    validator=_is_max_msg_size("dhcp.max_msg_size"),
+    description=(
+        "RFC 2132 §9.10 Maximum DHCP Message Size advertised "
+        "in DISCOVER / REQUEST (default 1500 ≈ Ethernet MTU; "
+        "minimum 576 per RFC)."
+    ),
+)
+register(
+    key="dhcp.requested_lease_time__sec",
+    module_name=__name__,
+    attr="DHCP4__REQUESTED_LEASE_TIME__SEC",
+    default=DHCP4__REQUESTED_LEASE_TIME__SEC,
+    validator=is_non_negative_int("dhcp.requested_lease_time__sec"),
+    description=(
+        "RFC 2131 §3.5 — desired lease-time hint emitted in "
+        "DISCOVER (default 86400 = 1 day; set 0 to omit the "
+        "hint entirely)."
     ),
 )
 

@@ -173,10 +173,14 @@ satisfied trivially.
 >  messages through the 'maximum DHCP message size'
 >  option."
 
-**Adherence:** not implemented. PyTCP does not emit or
-parse the Maximum DHCP Message Size option (52). The
-client never requests larger messages and the server's
-default 576-octet ceiling applies.
+**Adherence:** met (Phase 8.1). PyTCP emits a Maximum
+DHCP Message Size option (57) in every outbound DHCP
+message — DISCOVER, SELECTING REQUEST, RENEW REQUEST,
+REBIND REQUEST, and the INIT-REBOOT REQUEST. The value
+is sourced from the `dhcp.max_msg_size` sysctl
+(default 1500 = standard Ethernet MTU; floor 576 per
+RFC 2132 §9.10). The wire codec is at
+`net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
 
 > "The leftmost bit is defined as the BROADCAST (B)
 >  flag. ... The remaining bits of the flags field are
@@ -458,9 +462,10 @@ REQUEST (`:1052-1057`), and the RENEW/REBIND REQUEST
 >  size' option to let the server know how large the
 >  server may make its DHCP messages."
 
-**Adherence:** not implemented. Option 57 is absent
-from the option catalogue
-(`dhcp4__option.py:43-54`).
+**Adherence:** met (Phase 8.1). See §2 above for the
+Maximum DHCP Message Size emission entry — included in
+every outbound DHCP message. Codec:
+`net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
 
 > "The 'requested IP address' option is to be filled in
 >  only in a DHCPREQUEST message when the client is
@@ -1240,6 +1245,34 @@ is expected from the server.
 
 **Status:** locked in (Phase 5).
 
+### §2 / §3.5 / §9.10 — Polish options (Phase 8)
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__max_msg_size.py`
+  (16 tests) — Max DHCP Message Size codec round-trip,
+  under-min / over-max integrity checks, wrong-type
+  buffer rejection.
+- **Unit:**
+  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
+  (20 tests) — Option Overload codec round-trip for all
+  three legal values (1/2/3), `includes_file` /
+  `includes_sname` decoders, integrity checks (bad
+  length, bad value, wrong type).
+- **Unit:**
+  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__option_overload.py`
+  (4 tests) — parser-side merge of options from BOOTP
+  'sname' / 'file' fields for overload=1/2/3, plus the
+  negative case that those fields stay inert without
+  option 52.
+- **Unit:**
+  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientPhase8Polish`
+  (5 tests) — DISCOVER + SELECTING REQUEST carry
+  Max-Msg-Size = 1500; DISCOVER carries Lease-Time
+  hint = 86400 by default; sysctl override propagates;
+  setting Lease-Time hint to 0 omits the option.
+
+**Status:** locked in (Phase 8.1 / 8.2 / 8.4).
+
 ### Test coverage summary
 
 | Aspect                                              | Coverage                                                           |
@@ -1258,6 +1291,9 @@ is expected from the server.
 | FSM states (RENEWING/REBINDING/BOUND)               | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
 | FSM state INIT-REBOOT (cached-lease fast-path)      | locked in (Phase 5 — `TestDhcp4ClientInitReboot`)                  |
 | Lease cache (round-trip + defensive reads)          | locked in (Phase 5 — `test__dhcp4__lease_cache.py`, 14 tests)      |
+| Max DHCP Message Size option (57)                   | locked in (Phase 8.1 — `test__dhcp4__option__max_msg_size.py`)     |
+| Option Overload (52) parser-side merge              | locked in (Phase 8.4 — `test__dhcp4__parser__option_overload.py`)  |
+| Lease-time hint in DISCOVER (option 51)             | locked in (Phase 8.2 — `TestDhcp4ClientPhase8Polish`)              |
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
 | DHCPRELEASE on shutdown                             | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | Sync release / renew / rebind public surface        | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
@@ -1303,8 +1339,9 @@ is expected from the server.
 | Lease Time surfaced + ACK-without-Lease-Time rejected   | met (Phase 0)                                    |
 | INIT-REBOOT (cached prior lease)                        | met (Phase 5)                                    |
 | Unicast-to-known-server optimisation                    | partial (RENEW unicasts; INFORM/REQUEST do not)  |
-| 'Maximum DHCP message size' option (57)                 | not implemented (Phase 8)                        |
-| 'Option overload' option (52)                           | not implemented (Phase 8)                        |
+| 'Maximum DHCP message size' option (57)                 | met (Phase 8.1; default 1500)                    |
+| 'Option overload' option (52)                           | met (Phase 8.4 parser-side merge)                |
+| Lease-time hint in DISCOVER (option 51)                 | met (Phase 8.2; default 86400 s)                 |
 
 **Principal compliance status.** With Phase 4 complete
 (commits 0/A/B/C/D), PyTCP's DHCPv4 client is
@@ -1382,6 +1419,9 @@ Remaining items in the per-RFC adherence catalogue:
 - **§3.4 DHCPINFORM** — niche, deferred.
 - **§4.4 Multiple-OFFER collection + selection** —
   accept-first heuristic is OK for Phase 1 host parity.
-- **§3.5 / §4.1 Maximum DHCP Message Size (option 57)**
-  — Phase 8 polish; never blocks lease acquisition with
-  default 576-octet ceiling.
+- **RFC 3396 long-option concatenation** — parser-side
+  feature with no current consumer. Existing PyTCP
+  codecs produce payloads short enough that splitting
+  never happens on the wire. Land alongside Phase 7
+  (RFC 3442 Classless Static Routes) which is the
+  first real consumer.

@@ -54,8 +54,14 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__host_name import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__lease_time import (
     Dhcp4OptionLeaseTime,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__max_msg_size import (
+    Dhcp4OptionMaxMsgSize,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4OptionMessageType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__overload import (
+    Dhcp4OptionOverload,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
     DHCP4__OPTION__PAD__LEN,
@@ -123,6 +129,33 @@ class Dhcp4Options(ProtoOptions):
         for option in self._options:
             if isinstance(option, Dhcp4OptionLeaseTime):
                 return option.lease_time
+
+        return None
+
+    @property
+    def max_msg_size(self) -> int | None:
+        """
+        Get the value of the DHCP Maximum DHCP Message Size option if present.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionMaxMsgSize):
+                return option.max_msg_size
+
+        return None
+
+    @property
+    def option_overload(self) -> Dhcp4OptionOverload | None:
+        """
+        Get the DHCP Option Overload option (RFC 2132 §9.3) if present.
+        Returns the whole option object so the parser can consult its
+        'includes_file' / 'includes_sname' helpers when overlaying the
+        BOOTP 'file' / 'sname' fields.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionOverload):
+                return option
 
         return None
 
@@ -256,8 +289,12 @@ class Dhcp4Options(ProtoOptions):
                     options.append(Dhcp4OptionHostName.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.LEASE_TIME:
                     options.append(Dhcp4OptionLeaseTime.from_buffer(buffer[offset:]))
+                case Dhcp4OptionType.MAX_MSG_SIZE:
+                    options.append(Dhcp4OptionMaxMsgSize.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.MESSAGE_TYPE:
                     options.append(Dhcp4OptionMessageType.from_buffer(buffer[offset:]))
+                case Dhcp4OptionType.OPTION_OVERLOAD:
+                    options.append(Dhcp4OptionOverload.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.PARAM_REQ_LIST:
                     options.append(Dhcp4OptionParamReqList.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.REQ_IP_ADDR:
@@ -306,6 +343,22 @@ class Dhcp4OptionsProperties(ABC):
         """
 
         return self._options.lease_time
+
+    @property
+    def max_msg_size(self) -> int | None:
+        """
+        Get the value of the DHCP Maximum DHCP Message Size option if present.
+        """
+
+        return self._options.max_msg_size
+
+    @property
+    def option_overload(self) -> Dhcp4OptionOverload | None:
+        """
+        Get the DHCP Option Overload option (RFC 2132 §9.3) if present.
+        """
+
+        return self._options.option_overload
 
     @property
     def message_type(self) -> Dhcp4MessageType | None:

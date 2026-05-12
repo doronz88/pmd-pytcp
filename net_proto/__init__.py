@@ -97,9 +97,15 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__host_name import (
 from net_proto.protocols.dhcp4.options.dhcp4__option__lease_time import (
     Dhcp4OptionLeaseTime,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__max_msg_size import (
+    Dhcp4OptionMaxMsgSize,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4MessageType,
     Dhcp4OptionMessageType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__overload import (
+    Dhcp4OptionOverload,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
     DHCP4__OPTION__PAD__LEN,
@@ -525,7 +531,9 @@ __all__ = [
     "Dhcp4OptionEnd",
     "Dhcp4OptionHostName",
     "Dhcp4OptionLeaseTime",
+    "Dhcp4OptionMaxMsgSize",
     "Dhcp4OptionMessageType",
+    "Dhcp4OptionOverload",
     "Dhcp4OptionPad",
     "Dhcp4OptionParamReqList",
     "Dhcp4OptionReqIpAddr",

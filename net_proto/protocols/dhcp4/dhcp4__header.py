@@ -304,8 +304,13 @@ class Dhcp4Header(ProtoStruct):
             siaddr=Ip4Address(siaddr),
             giaddr=Ip4Address(giaddr),
             chaddr=MacAddress(chaddr[:6]),
-            sname=sname.rstrip(b"\x00").decode("ascii"),
-            file=file.rstrip(b"\x00").decode("ascii"),
+            # Use 'errors="replace"' so an inbound packet whose sname /
+            # file carry non-ASCII bytes (e.g. an RFC 2132 §9.3 Option
+            # Overload payload) still parses; the parser layer
+            # re-extracts the raw bytes from the frame when overload is
+            # signalled.
+            sname=sname.rstrip(b"\x00").decode("ascii", errors="replace"),
+            file=file.rstrip(b"\x00").decode("ascii", errors="replace"),
         )
 
 

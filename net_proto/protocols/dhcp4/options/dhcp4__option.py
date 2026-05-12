@@ -49,9 +49,11 @@ class Dhcp4OptionType(ProtoOptionType):
     HOST_NAME = 12
     REQ_IP_ADDR = 50
     LEASE_TIME = 51
+    OPTION_OVERLOAD = 52
     MESSAGE_TYPE = 53
     SERVER_ID = 54
     PARAM_REQ_LIST = 55
+    MAX_MSG_SIZE = 57
     CLIENT_ID = 61
     END = 255
 
