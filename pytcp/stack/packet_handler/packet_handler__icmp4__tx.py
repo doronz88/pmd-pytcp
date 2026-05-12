@@ -52,7 +52,7 @@ class PacketHandlerIcmp4Tx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_proto import IP4__DEFAULT_TTL, Ip4Payload, RawAssembler
+        from net_proto import Ip4Payload, RawAssembler
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx
@@ -64,7 +64,7 @@ class PacketHandlerIcmp4Tx(ABC):
             *,
             ip4__dst: Ip4Address,
             ip4__src: Ip4Address,
-            ip4__ttl: int = IP4__DEFAULT_TTL,
+            ip4__ttl: int | None = None,
             ip4__ecn: int = 0,
             ip4__flag_df: bool = False,
             ip4__options: Ip4Options = Ip4Options(),

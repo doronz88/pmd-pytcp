@@ -1207,3 +1207,135 @@ class TestPacketHandlerIp4TxSendIp4Packet(NetworkTestCase):
             ),
             msg="send_ip4_packet stats must match a direct _phtx_ip4 RAW-payload call.",
         )
+
+
+# IPv4 header lives at Ethernet offset 14. Within the IPv4 header,
+# byte 4-5 is Identification and byte 8 is Time-to-Live.
+_IP4__OFFSET_IN_ETH_FRAME = 14
+_IP4__ID_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 4
+_IP4__TTL_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 8
+
+
+class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
+    """
+    The RFC 1112 §6.1 multicast outbound TTL default tests.
+
+    Outbound IPv4 datagrams with a multicast destination MUST
+    default to TTL=1 so multicast traffic does not leak past the
+    local link unless the caller explicitly raises the TTL.
+    """
+
+    def test__phtx_ip4__multicast_dst_no_caller_ttl__defaults_to_1(self) -> None:
+        """
+        Ensure outbound IPv4 datagrams with a multicast
+        destination ship with TTL=1 when the caller does not
+        specify 'ip4__ttl' — multicast traffic is local-link by
+        default and only escapes when the operator explicitly
+        opts in.
+
+        Reference: RFC 1112 §6.1 (default to 1 for all multicast
+        IP datagrams so explicit choice is required to multicast
+        beyond a single network).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=IP4__MULTICAST__ALL_NODES,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Multicast outbound must emit exactly one frame.",
+        )
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            1,
+            msg="Multicast outbound datagrams must default to TTL=1.",
+        )
+
+    def test__phtx_ip4__multicast_dst_caller_overrides_ttl__preserved(self) -> None:
+        """
+        Ensure a caller-supplied 'ip4__ttl' overrides the
+        multicast-default of 1 — the operator can choose to
+        multicast beyond the local link by raising the TTL.
+
+        Reference: RFC 1112 §6.1 (explicit choice required to
+        multicast beyond a single network).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=IP4__MULTICAST__ALL_NODES,
+            ip4__ttl=64,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            64,
+            msg="Caller-supplied multicast TTL must be preserved verbatim.",
+        )
+
+    def test__phtx_ip4__unicast_dst_no_caller_ttl__defaults_to_64(self) -> None:
+        """
+        Ensure outbound IPv4 datagrams with a unicast destination
+        retain the legacy IP4__DEFAULT_TTL=64 default — regression
+        net for the multicast carve-out so the unicast common
+        path keeps working.
+
+        Reference: PyTCP test infrastructure (no RFC clause; this
+        is the regression net for the §6.1 carve-out).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            64,
+            msg="Unicast outbound datagrams must keep the IP4__DEFAULT_TTL=64 default.",
+        )
+
+
+class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
+    """
+    The RFC 6864 §4.1 atomic-datagram Identification tests.
+
+    Atomic datagrams (DF=1 || (MF=0 && offset=0) by RFC 6864
+    definition) MAY set the Identification field to any value;
+    PyTCP follows the Linux-canonical choice of 0.
+    """
+
+    def test__phtx_ip4__atomic_datagram__ip4_id_is_zero(self) -> None:
+        """
+        Ensure outbound IPv4 datagrams that are not fragmented
+        carry Identification = 0 — the spec permits any value,
+        and PyTCP follows the Linux-canonical choice of 0 (Linux
+        'net/ipv4/ip_output.c::ip_select_ident' returns 0 for
+        atomic datagrams).
+
+        Reference: RFC 6864 §4.1 (atomic datagram ID may be any
+        value; Linux uses 0).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Atomic outbound must emit exactly one frame.",
+        )
+        self.assertEqual(
+            int.from_bytes(self._frames_tx[0][_IP4__ID_OFFSET : _IP4__ID_OFFSET + 2]),
+            0,
+            msg="Atomic outbound IPv4 datagrams must carry Identification = 0.",
+        )

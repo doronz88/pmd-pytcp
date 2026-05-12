@@ -144,15 +144,15 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
                 #   Total Length    : 20 bytes
                 #   Identification  : 0x0000
                 #   Flags / Offset  : 0x0000
-                #   TTL             : 64
+                #   TTL             : 1 (RFC 1112 §6.1 multicast default)
                 #   Protocol        : 255 (Reserved)
-                #   Header Checksum : 0x8ee3
+                #   Header Checksum : 0xcde3
                 #   Source IP       : 10.0.1.7
                 #   Destination IP  : 224.0.0.1
                 #
                 # Summary: IPv4 header-only multicast packet mapped to the all-nodes MAC address.
                 b"\x01\x00\x5e\x00\x00\x01\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
-                b"\x00\x14\x00\x00\x00\x00\x40\xff\x8e\xe3\x0a\x00\x01\x07\xe0\x00"
+                b"\x00\x14\x00\x00\x00\x00\x01\xff\xcd\xe3\x0a\x00\x01\x07\xe0\x00"
                 b"\x00\x01",
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,

@@ -47,7 +47,6 @@ class PacketHandlerUdpTx(ABC):
     if TYPE_CHECKING:
         from net_addr import IpAddress
         from net_proto import (
-            IP4__DEFAULT_TTL,
             IP6__DEFAULT_HOP_LIMIT,
             Icmp4Assembler,
             Icmp6Assembler,
@@ -76,7 +75,7 @@ class PacketHandlerUdpTx(ABC):
             *,
             ip4__dst: Ip4Address,
             ip4__src: Ip4Address,
-            ip4__ttl: int = IP4__DEFAULT_TTL,
+            ip4__ttl: int | None = None,
             ip4__flag_df: bool = False,
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...

@@ -98,7 +98,7 @@ class PacketHandlerIp4Tx(ABC):
         *,
         ip4__dst: Ip4Address,
         ip4__src: Ip4Address,
-        ip4__ttl: int = IP4__DEFAULT_TTL,
+        ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
         ip4__flag_df: bool = False,
         ip4__options: Ip4Options = Ip4Options(),
@@ -109,6 +109,13 @@ class PacketHandlerIp4Tx(ABC):
         """
 
         self._packet_stats_tx.ip4__pre_assemble += 1
+
+        if ip4__ttl is None:
+            # RFC 1112 §6.1: outbound multicast datagrams default
+            # to TTL=1 so multicast does not escape the local link
+            # unless the caller explicitly opts in. Unicast keeps
+            # the legacy IP4__DEFAULT_TTL default.
+            ip4__ttl = 1 if ip4__dst.is_multicast else IP4__DEFAULT_TTL
 
         assert 0 < ip4__ttl < 256
 

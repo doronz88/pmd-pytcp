@@ -38,7 +38,7 @@ directly. Non-normative content (§1 Status, §2 Introduction,
 | §3      | Conformance Level 0/1/2                                  | Level 1+ (send + receive, no IGMP) |
 | §4      | Class D host-group addresses (224.0.0.0 - 239.255.255.255) | met |
 | §4      | 224.0.0.1 = all hosts (permanent)                        | met (preconfigured) |
-| §6      | Sending multicast datagrams                              | met (with caveats — see §6 below) |
+| §6      | Sending multicast datagrams                              | met    |
 | §7      | Receiving multicast datagrams                            | met (for joined groups) |
 | §7      | IGMP group management                                    | not implemented (Phase 2) |
 | §6.4    | Ethernet mapping (high-23-bits)                          | met    |
@@ -73,17 +73,21 @@ the stack's `_ip4_multicast` list at boot
 > specify a time-to-live, it should default to 1 for all
 > multicast IP datagrams."
 
-**Adherence:** partial — TTL default. The TX entry point
-`_phtx_ip4` accepts an arbitrary `ip4__ttl: int = IP4__DEFAULT_TTL`
-(default 64). Multicast does **not** get a different default
-TTL; the multicast-specific "default to 1" recommendation is
-not honoured. Callers that want multicast-scope TTL=1 must
-pass it explicitly.
+**Adherence:** met (shipped). The TX entry point
+`_phtx_ip4` accepts `ip4__ttl: int | None = None` and resolves
+the default at the top via:
 
-**`# Phase 2:`** the natural fix is a dst-classification
-branch in `_phtx_ip4` that overrides the TTL default when
-`ip4__dst.is_multicast and not caller_provided_ttl`. Mark in
-`packet_handler__ip4__tx.py` near line 100.
+```python
+if ip4__ttl is None:
+    ip4__ttl = 1 if ip4__dst.is_multicast else IP4__DEFAULT_TTL
+```
+
+(`packet_handler__ip4__tx.py:103-108`). Callers that omit
+`ip4__ttl` get TTL=1 on multicast destinations and the legacy
+`IP4__DEFAULT_TTL = 64` on unicast destinations. Callers that
+pass an explicit TTL value have it preserved verbatim, so the
+"explicit choice required to multicast beyond a single
+network" half of the §6.1 contract is also honoured.
 
 > "For hosts that may be attached to more than one network,
 > the service interface should provide a way for the upper-
@@ -186,6 +190,21 @@ these gates.
 
 **Status:** locked in.
 
+### §6.1 Multicast outbound TTL default = 1
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
+  Three cases: multicast dst + no caller TTL → TTL=1;
+  multicast dst + caller-supplied TTL → caller value
+  preserved; unicast dst + no caller TTL → TTL=64
+  regression net.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ethernet__tx.py`
+  `Ethernet/IPv4 - dst multicast address` case pins the
+  full TX frame including TTL=1 in the IPv4 header byte 8.
+
+**Status:** locked in.
+
 ### Phase-2 gaps
 
 **No test surface — Phase 2 (IGMP, runtime JOIN/LEAVE):**
@@ -208,7 +227,7 @@ harness.
 | §6.4 Ethernet MAC mapping                           | locked in |
 | §7 RX admission of joined groups                    | locked in |
 | §7 IGMP group management                            | n/a (Phase 2) |
-| §6.1 Multicast-default TTL=1                        | gap (currently uses IP4__DEFAULT_TTL=64) |
+| §6.1 Multicast-default TTL=1                        | locked in |
 
 ---
 
@@ -219,13 +238,12 @@ harness.
 | §3 Conformance level                                | Level 1+ (send + receive, no IGMP) |
 | §4 Class D multicast addressing                     | met    |
 | §4 All-hosts (224.0.0.1) preconfigured             | met    |
-| §6.1 Multicast-default TTL=1                       | gap (Phase 1 fix candidate) |
+| §6.1 Multicast-default TTL=1                       | met (shipped) |
 | §6.2 / §6.4 IP-to-Ethernet MAC mapping             | met    |
 | §7 RX admission for joined groups                  | met    |
 | §7 IGMP group management                            | not implemented (Phase 2) |
 
-The principal Phase-1 sharpening identified is the
-multicast-default TTL=1 §6.1 recommendation. The Phase-2 work
+The Phase-1 §6.1 sharpening shipped. Remaining Phase-2 work
 (IGMP + runtime group JOIN/LEAVE + socket-level multicast
 membership API) is on the project north-star but not
 scheduled.

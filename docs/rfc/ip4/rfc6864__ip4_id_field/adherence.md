@@ -181,32 +181,18 @@ new ID (not the original).
 ### §4.1 Atomic datagram ID=0 on send
 
 - **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc6864AtomicId::test__phtx_ip4__atomic_datagram__ip4_id_is_zero`
+  Dedicated assertion: drive `_phtx_ip4` with a unicast
+  destination and a one-byte RAW payload; parse byte offsets
+  18-19 of the captured Ethernet frame (= IPv4 header bytes
+  4-5 = Identification field) and assert ID == 0.
+- **Integration:**
   `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
-  Every non-fragmented happy-path case asserts on the TX
-  frame's `id` field being 0 (or asserts a specific
-  parametric value supplied by the test). The bare-default
-  TX path (no caller-supplied `ip4__id`) shows up in any
-  test that doesn't override.
+  Every non-fragmented happy-path case in the parametric
+  matrix also pins the `id` field of the expected outbound
+  frame to 0.
 
-**Status:** locked in indirectly. A dedicated test pinning
-"atomic datagram → ID=0 specifically" would be a one-line
-assertion; **gap not closed; add test with fix** if
-auditing pins this. Sketch:
-
-```python
-def test__ip4__tx__atomic_datagram__id_is_zero(self) -> None:
-    """
-    Ensure outbound IPv4 datagrams that are not fragmented
-    ship with Identification = 0 per RFC 6864 §4.1.
-
-    Reference: RFC 6864 §4.1 (atomic datagram ID may be any
-    value; PyTCP uses 0).
-    """
-    self._send_short_ip4_packet(...)
-    tx = self._frames_tx[0]
-    parsed = Ip4Parser(PacketRx(tx[ETH_HEADER_LEN:]))
-    self.assertEqual(parsed.id, 0, msg="atomic datagram ID must be 0")
-```
+**Status:** locked in.
 
 ### §4.1 ID readers consult only the reassembly path
 
@@ -259,7 +245,7 @@ counter is added, the natural test is one that:
 | Aspect                                                       | Coverage |
 |--------------------------------------------------------------|----------|
 | §4.1 ID consulted only by reassembly                         | locked in indirectly (grep + code structure) |
-| §4.1 Atomic datagrams ship with ID=0                         | locked in indirectly (gap: add dedicated assertion) |
+| §4.1 Atomic datagrams ship with ID=0                         | locked in |
 | §4.2 Non-atomic ID bumped on every emission                  | locked in |
 | §4.3 DF=1 over MTU dropped (not fragmented)                  | locked in |
 | §4.3 Non-atomic per-tuple ID uniqueness                      | n/a (Phase 1 shared counter; sufficient at host rates) |
@@ -280,8 +266,7 @@ counter is added, the natural test is one that:
 | §4.3 Transit devices MUST NOT clear DF              | n/a (Phase 2)  |
 
 All §4 normative requirements are satisfied for a Phase-1
-host stack. The principal Phase-2 sharpening is the per-tuple
-ID partitioning at the forwarder, marked in the code with the
-`# Phase 2:` comment proposed in §4.3. A small follow-up that
-adds a dedicated unit test pinning "atomic datagram → ID=0"
-would close the only test-coverage indirection.
+host stack with full test coverage. The principal Phase-2
+sharpening is the per-tuple ID partitioning at the forwarder,
+marked in the code with the `# Phase 2:` comment proposed in
+§4.3.
