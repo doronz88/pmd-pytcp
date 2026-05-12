@@ -304,6 +304,24 @@ class PacketHandlerIp6Tx(ABC):
             )
             return TxStatus.DROPPED__IP6__SRC_UNSPECIFIED
 
+        # RFC 4007 §6 / RFC 4291 §2.5.6: a node may not send a
+        # packet with a source address of smaller scope than the
+        # destination. Catches caller-supplied explicit srcs
+        # that would otherwise emit a structurally broken packet
+        # (e.g. fe80:: source with 2001:db8:: destination — the
+        # peer cannot route a reply back to the link-local).
+        # Linux gates equivalent at the route layer with
+        # ENETUNREACH; we gate here since PyTCP has no route
+        # layer to fall through to.
+        if ip6_address_scope(ip6__src) < ip6_address_scope(ip6__dst):
+            self._packet_stats_tx.ip6__src_scope_mismatch__drop += 1
+            __debug__ and log(
+                "ip6",
+                f"{tracker} - <WARN>Source {ip6__src} has smaller scope than "
+                f"destination {ip6__dst}; RFC 4007 §6 violation, dropping</>",
+            )
+            return TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH
+
         # If nothing above applies return the src address intact.
         return ip6__src
 
@@ -394,7 +412,22 @@ class PacketHandlerIp6Tx(ABC):
             return (rule2, rule3, rule6, rule7, rule8)
 
         candidates.sort(key=sort_key, reverse=True)
-        return candidates[0]
+        winner = candidates[0]
+
+        # RFC 4007 §6 / RFC 4291 §2.5.6: a node may not send a
+        # packet with a source address of smaller scope than the
+        # destination. The RFC 6724 §5 rule 2 fallback ("widest
+        # available below dst scope") would otherwise produce a
+        # link-local source for a global destination — a
+        # structurally broken packet that no peer can route a
+        # response back through. Linux gates this at the route
+        # layer with ENETUNREACH; PyTCP gates here since there
+        # is no route layer to fall through to. The caller drops
+        # the TX with DROPPED__IP6__SRC_UNSPECIFIED.
+        if ip6_address_scope(winner) < dst_scope:
+            return None
+
+        return winner
 
     def __validate_dst_ip6_address(
         self,

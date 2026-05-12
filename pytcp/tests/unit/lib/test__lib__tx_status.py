@@ -71,6 +71,7 @@ _EXPECTED_MEMBERS: tuple[str, ...] = (
     "DROPPED__IP6__SRC_LIMITED_BROADCAST",
     "DROPPED__IP6__SRC_NETWORK_BROADCAST",
     "DROPPED__IP6__SRC_UNSPECIFIED",
+    "DROPPED__IP6__SRC_SCOPE_MISMATCH",
     "DROPPED__IP6__DST_UNSPECIFIED",
     "DROPPED__IP6__UNKNOWN",
     "DROPPED__IP6__EXT_FRAG_UNKNOWN",
@@ -167,7 +168,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__ICMP6__UNKNOWN,
             "_results": {
                 "name": "DROPPED__ICMP6__UNKNOWN",
-                "value": 35,
+                "value": 36,
                 "__str__": "DROPPED__ICMP6__UNKNOWN",
             },
         },
@@ -185,7 +186,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__IP6__EXT_FRAG_UNKNOWN,
             "_results": {
                 "name": "DROPPED__IP6__EXT_FRAG_UNKNOWN",
-                "value": 31,
+                "value": 32,
                 "__str__": "DROPPED__IP6__EXT_FRAG_UNKNOWN",
             },
         },

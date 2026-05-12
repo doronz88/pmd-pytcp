@@ -53,7 +53,7 @@ Per-RFC mechanism inventory:
 | §2.2       | CommonPrefixLen helper                                     | met                                | `common_prefix_len` (`pytcp/lib/ip6_source_selection.py`)                                        |
 | §3.1       | Scope comparisons                                          | met                                | `ip6_address_scope` returns RFC 4007 / 4291 codepoints                                           |
 | §5 rule 1  | Prefer same address                                        | met                                | `_select_ip6_source` short-circuits when the destination is owned                                |
-| §5 rule 2  | Prefer appropriate scope                                   | met                                | sort key encodes `(scope >= dst_scope, -scope)` so the smallest scope ≥ dst wins                 |
+| §5 rule 2  | Prefer appropriate scope                                   | met                                | sort key encodes `(scope >= dst_scope, -scope)`; the selector additionally returns `None` when the winner's scope < dst (RFC 4007 §6 hardening) |
 | §5 rule 3  | Avoid deprecated addresses                                 | met                                | sort key consults `Icmp6SlaacAddress.state(now) is DEPRECATED`                                   |
 | §5 rule 4  | Prefer home addresses                                      | not applicable (out of scope)      | mobility extensions excluded from PyTCP scope (CLAUDE.md project north star)                     |
 | §5 rule 5  | Prefer outgoing interface                                  | not applicable (single interface)  | single-interface host stack; multi-interface support is a future Phase 2 concern                 |
@@ -81,7 +81,11 @@ Per-RFC mechanism inventory:
 - `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py`
   - `TestRfc6724Rule1SameAddress` — rule 1 short-circuit
   - `TestRfc6724Rule2Scope` — global / link-local scope
-    matching, fallback when only smaller scope available
+    matching; selector returns `None` when only smaller-scope
+    candidates exist (RFC 4007 §6 hardening); link-local
+    source admitted for link-local unicast and link-local
+    multicast (ff02::) destinations; rejected for global
+    multicast (ff0e::)
   - `TestRfc6724Rule3Deprecated` — PREFERRED ranks above
     DEPRECATED; non-SLAAC addresses default to PREFERRED
   - `TestRfc6724Rule8LongestMatch` — longest common prefix,

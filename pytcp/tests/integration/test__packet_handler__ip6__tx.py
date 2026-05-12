@@ -547,3 +547,152 @@ class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
             ),
             msg="send_ip6_packet stats must match a direct _phtx_ip6 RAW-payload call.",
         )
+
+
+class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
+    """
+    The RFC 4007 §6 / RFC 4291 §2.5.6 link-local-scope-gate
+    tests for explicit caller-supplied source addresses.
+
+    A caller passing an owned link-local source with a
+    non-link-local destination would otherwise emit a packet
+    that violates the scope rule (no peer can route a reply
+    back to fe80::ours). The TX path rejects such combinations
+    with DROPPED__IP6__SRC_SCOPE_MISMATCH.
+    """
+
+    _LINK_LOCAL_SRC = Ip6Address("fe80::7")
+
+    def setUp(self) -> None:
+        """
+        Add a link-local host to '_ip6_host' / '_ip6_unicast' so
+        the caller-supplied fe80::7 source passes the ownership
+        check and reaches the scope gate.
+        """
+
+        super().setUp()
+        from net_addr import Ip6Host
+
+        link_local_host = Ip6Host("fe80::7/64")
+        self._packet_handler._ip6_host.append(link_local_host)
+
+    def test__phtx_ip6__link_local_src_global_dst__drops_scope_mismatch(self) -> None:
+        """
+        Ensure an explicit link-local source paired with a
+        global-scope destination is rejected with
+        DROPPED__IP6__SRC_SCOPE_MISMATCH — the resulting packet
+        cannot be routed back to the link-local source so the
+        kernel-equivalent action is to fail the send.
+
+        Reference: RFC 4007 §6 (source scope must be >= destination scope).
+        Reference: RFC 4291 §2.5.6 (link-local addresses MUST NOT
+        leak off-link).
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=self._LINK_LOCAL_SRC,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH,
+            msg="Link-local src + global dst must drop with SRC_SCOPE_MISMATCH.",
+        )
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="No frame must be emitted on a scope-mismatch drop.",
+        )
+
+    def test__phtx_ip6__link_local_src_link_local_dst__sends(self) -> None:
+        """
+        Ensure an explicit link-local source paired with a
+        link-local destination passes through unchanged — the
+        canonical ND-traffic case where both endpoints share
+        link-local scope.
+
+        Reference: RFC 4007 §6 (same-scope traffic permitted).
+        """
+
+        # Use the fixture link-local gateway (in the ND cache
+        # mock) so the test exercises the scope gate without
+        # tripping a downstream ND cache miss.
+        from pytcp.tests.lib.network_testcase import STACK__IP6_GATEWAY
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=self._LINK_LOCAL_SRC,
+            ip6__dst=STACK__IP6_GATEWAY,
+        )
+
+        self.assertNotEqual(
+            tx_status,
+            TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH,
+            msg="Link-local src + link-local dst must NOT drop on scope mismatch.",
+        )
+
+    def test__phtx_ip6__link_local_src_link_local_multicast_dst__sends(self) -> None:
+        """
+        Ensure an explicit link-local source paired with a
+        link-local-scope multicast destination (ff02::/16)
+        passes through — the canonical ND case (all-nodes
+        ff02::1, solicited-node ff02::1:ff00::/104, all-routers
+        ff02::2).
+
+        Reference: RFC 4007 §6 (same-scope multicast permitted).
+        Reference: RFC 4291 §2.7 (multicast scop nibble; ff02::
+        is scope = link-local).
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=self._LINK_LOCAL_SRC,
+            ip6__dst=Ip6Address("ff02::1"),
+        )
+
+        self.assertNotEqual(
+            tx_status,
+            TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH,
+            msg="Link-local src + link-local multicast dst must NOT drop on scope mismatch.",
+        )
+
+    def test__phtx_ip6__link_local_src_global_multicast_dst__drops(self) -> None:
+        """
+        Ensure an explicit link-local source paired with a
+        global-scope multicast destination (ff0e::/16) is
+        rejected — global multicast must use a global source.
+
+        Reference: RFC 4007 §6 (source scope must be >= multicast scope).
+        Reference: RFC 4291 §2.7 (multicast scop nibble; ff0e::
+        is scope = global).
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=self._LINK_LOCAL_SRC,
+            ip6__dst=Ip6Address("ff0e::1"),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH,
+            msg="Link-local src + global multicast dst must drop with SRC_SCOPE_MISMATCH.",
+        )
+
+    def test__phtx_ip6__global_src_global_dst__sends(self) -> None:
+        """
+        Ensure a global-scope source paired with a global-scope
+        destination passes through unchanged — regression net
+        for the common case.
+
+        Reference: PyTCP test infrastructure (regression net).
+        """
+
+        tx_status = self._packet_handler._phtx_ip6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+        )
+
+        self.assertNotEqual(
+            tx_status,
+            TxStatus.DROPPED__IP6__SRC_SCOPE_MISMATCH,
+            msg="Global src + global dst must NOT drop on scope mismatch.",
+        )

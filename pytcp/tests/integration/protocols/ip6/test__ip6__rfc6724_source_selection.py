@@ -155,14 +155,23 @@ class TestRfc6724Rule2Scope(NetworkTestCase):
             msg="Rule 2 must prefer link-local source for link-local destination.",
         )
 
-    def test__ip6__rfc6724_rule2__only_smaller_scope_available(self) -> None:
+    def test__ip6__rfc6724_rule2__only_smaller_scope_available__returns_none(self) -> None:
         """
-        Ensure a global destination is given a link-local source
-        when no global candidate exists — the selector falls
-        back to the largest available scope rather than
-        returning None.
+        Ensure the selector returns None when no candidate has
+        scope wide enough to cover the destination — emitting
+        a link-local source for a global destination would
+        produce a structurally broken packet (no peer can
+        route a reply back). The caller drops with
+        DROPPED__IP6__SRC_UNSPECIFIED, which is the correct
+        outcome ("no usable source for this destination")
+        rather than emitting an off-link-leaking packet.
 
         Reference: RFC 6724 §5 rule 2 (Prefer appropriate scope).
+        Reference: RFC 4007 §6 (a node may not send a packet
+        with a source address of smaller scope than the
+        destination).
+        Reference: RFC 4291 §2.5.6 (link-local addresses MUST
+        NOT leak off-link).
         """
 
         self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
@@ -171,13 +180,64 @@ class TestRfc6724Rule2Scope(NetworkTestCase):
             ip6__dst=_DST_OUTSIDE_ALL,
         )
 
+        self.assertIsNone(
+            result,
+            msg=(
+                "Selector must return None when every candidate's scope is below "
+                "the destination's — a link-local source for a global destination "
+                "would violate RFC 4007 §6."
+            ),
+        )
+
+    def test__ip6__rfc6724_rule2__only_link_local_owned__link_local_mcast_dst__returns_link_local(self) -> None:
+        """
+        Ensure a link-local source is selected for a link-local
+        multicast destination (ff02::/16) even when no global
+        source exists — link-local scope on both sides is the
+        canonical ND case (all-nodes ff02::1, solicited-node
+        ff02::1:ff00::/104, all-routers ff02::2). The scope-
+        mismatch gate must not break this.
+
+        Reference: RFC 6724 §5 rule 2 (Prefer appropriate scope).
+        Reference: RFC 4291 §2.7 (multicast scope encoding;
+        ff02:: has scop=2 = link-local).
+        """
+
+        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
+
+        result = self._packet_handler._select_ip6_source(
+            ip6__dst=Ip6Address("ff02::1"),
+        )
+
         self.assertEqual(
             result,
             _HOST_LINK_LOCAL.address,
-            msg=(
-                "Rule 2 fallback must return the only available source even when "
-                "its scope is below the destination's."
-            ),
+            msg="Link-local src must be selected for ff02:: link-local multicast dst.",
+        )
+
+    def test__ip6__rfc6724_rule2__only_link_local_owned__global_mcast_dst__returns_none(self) -> None:
+        """
+        Ensure the selector returns None when only link-local
+        sources exist and the destination is a global-scope
+        multicast (ff0e::/16) — same scope rule as for unicast
+        destinations, just expressed via the multicast scop
+        nibble.
+
+        Reference: RFC 4291 §2.7 (multicast scope encoding;
+        ff0e:: has scop=E = global).
+        Reference: RFC 4007 §6 (source scope must be >= dest
+        scope).
+        """
+
+        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
+
+        result = self._packet_handler._select_ip6_source(
+            ip6__dst=Ip6Address("ff0e::1"),
+        )
+
+        self.assertIsNone(
+            result,
+            msg="Link-local src must NOT be selected for ff0e:: global multicast dst.",
         )
 
 
