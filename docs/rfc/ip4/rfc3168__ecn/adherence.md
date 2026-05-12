@@ -210,6 +210,16 @@ full-functionality decapsulation) become relevant.
   atomic-fragment pass-through, same-ECN preserved, CE
   propagation, ECT(0)+ECT(1)→ECT(0), CE+Not-ECT drop,
   ECT+Not-ECT drop, default ecn=0 backwards-compat.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly`
+  5 wire-level cases driving two-fragment flows into
+  `_phrx_ethernet` and inspecting the reassembled datagram on
+  the wire: same-ECN propagates the codepoint, CE+ECT(0)
+  aggregates to CE in the response's TOS byte, ECT(0)+ECT(1)
+  collapses to ECT(0); Not-ECT+ECT and Not-ECT+CE flows are
+  silently dropped (no ICMP response emitted) and the
+  `ip4__frag__ecn_mixed__drop` RX counter bumps once per
+  dropped reassembly.
 
 **Status:** locked in.
 
@@ -224,7 +234,7 @@ full-functionality decapsulation) become relevant.
 | §5 ECN wire codec round-trip                          | locked in |
 | §5 ECN bit propagation to TCP                         | locked in via TCP audits |
 | §5 Default Not-ECT on send                            | locked in |
-| §5.3 Reassembly CE preservation + Not-ECT-mixed drop  | locked in (unit) |
+| §5.3 Reassembly CE preservation + Not-ECT-mixed drop  | locked in (unit + wire-level integration) |
 | §6.1 TCP-specific ECN mechanics                       | covered by TCP audits |
 | §9 IP-in-IP tunnel handling                           | n/a (not implemented) |
 

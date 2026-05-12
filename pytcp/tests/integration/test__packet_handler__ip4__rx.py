@@ -1027,6 +1027,8 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
         """
         Ensure the Packet Handler processes the received IPv4
         frames as expected for each parametrized case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for frame_rx in self._frames_rx:
@@ -1076,6 +1078,8 @@ class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
         Ensure an inbound IPv4 packet addressed to an arbitrary unicast
         IP (not ours) is accepted when no unicast address is configured,
         and that none of the dst-classification stats fire.
+
+        Reference: RFC 2131 §3.1 (DHCP client accepts unicast offer pre-bind).
         """
 
         # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91
@@ -1140,6 +1144,8 @@ class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
         multicast) bumps both 'ethernet__dst_multicast' (classifier
         side) and 'ip4__dst_multicast', then drops on unsupported
         proto=99 with 'ip4__no_proto_support__drop'.
+
+        Reference: RFC 1112 §6.1 (all-hosts 224.0.0.1 membership).
         """
 
         # Ethernet II: dst=01:00:5e:00:00:01 (multicast for 224.0.0.1), src=02:00:00:00:00:91
@@ -1353,4 +1359,220 @@ class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
             list(reassembled.options),
             [],
             msg="No-options reassembly must produce an empty option set.",
+        )
+
+
+class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
+    """
+    The RFC 3168 §5.3 ECN-aggregation-on-reassembly tests.
+
+    On reassembly the IPv4 RX handler MUST aggregate the per-
+    fragment ECN codepoints into a single value in the
+    reassembled datagram's TOS-byte low-2 bits. The aggregation
+    follows Linux 'ip_frag_ecn_table[]' semantics: any-same
+    yields that codepoint, CE+ECT yields CE, ECT(0)+ECT(1)
+    yields ECT(0), and any mix of Not-ECT with any other
+    codepoint MUST drop the reassembled datagram.
+    """
+
+    def _build_fragment(
+        self,
+        *,
+        offset: int,
+        flag_mf: bool,
+        payload_chunk: bytes,
+        ecn: int,
+        frag_id: int,
+    ) -> bytes:
+        """
+        Build a wire-format Ethernet+IPv4-frag frame carrying the
+        named ECN codepoint in the IPv4 TOS-byte's low-2 bits.
+        """
+
+        ip4_frag = Ip4FragAssembler(
+            ip4_frag__src=HOST_A__IP4_ADDRESS,
+            ip4_frag__dst=STACK__IP4_HOST.address,
+            ip4_frag__id=frag_id,
+            ip4_frag__offset=offset,
+            ip4_frag__flag_mf=flag_mf,
+            ip4_frag__proto=IpProto.from_int(99),
+            ip4_frag__ecn=ecn,
+            ip4_frag__payload=payload_chunk,
+        )
+        eth = EthernetAssembler(
+            ethernet__src=MacAddress("02:00:00:00:00:91"),
+            ethernet__dst=MacAddress("02:00:00:00:00:07"),
+            ethernet__payload=ip4_frag,
+        )
+        return bytes(eth)
+
+    def _drive_two_fragment_flow(
+        self,
+        *,
+        first_ecn: int,
+        second_ecn: int,
+        frag_id: int,
+    ) -> None:
+        """
+        Drive a two-fragment flow into the RX path: first
+        fragment carries 'first_ecn' at offset 0 with MF=1;
+        second fragment carries 'second_ecn' at offset 16 with
+        MF=0 (last). Both halves use the canonical proto-99
+        unknown-proto trigger so a successful reassembly elicits
+        a single ICMPv4 Protocol Unreachable response carrying
+        the reassembled datagram in its quoted bytes.
+        """
+
+        frame_first = self._build_fragment(
+            offset=0,
+            flag_mf=True,
+            payload_chunk=b"A" * 16,
+            ecn=first_ecn,
+            frag_id=frag_id,
+        )
+        frame_second = self._build_fragment(
+            offset=16,
+            flag_mf=False,
+            payload_chunk=b"B" * 16,
+            ecn=second_ecn,
+            frag_id=frag_id,
+        )
+        self._packet_handler._phrx_ethernet(PacketRx(frame_first))
+        self._packet_handler._phrx_ethernet(PacketRx(frame_second))
+
+    def test__rx__reassembly_same_ecn_propagates_codepoint(self) -> None:
+        """
+        Ensure two fragments that both carry ECT(0) reassemble
+        into a datagram whose ECN field is ECT(0) — the all-
+        same-codepoint fast path through the aggregation table.
+
+        Reference: RFC 3168 §5.3 (all-same-codepoint preserves the codepoint).
+        """
+
+        self._drive_two_fragment_flow(first_ecn=2, second_ecn=2, frag_id=0xAA01)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Consistent-ECN reassembly must elicit one ICMP Protocol Unreachable response.",
+        )
+
+        response = self._frames_tx[0]
+        quoted_ip4_bytes = response[14 + 20 + 8 :]
+        reassembled = Ip4Parser(PacketRx(quoted_ip4_bytes))
+
+        self.assertEqual(
+            reassembled.ecn,
+            2,
+            msg="ECT(0)+ECT(0) reassembly must propagate ECT(0) on the wire.",
+        )
+
+    def test__rx__reassembly_ce_plus_ect_aggregates_to_ce(self) -> None:
+        """
+        Ensure two fragments — one CE, one ECT(0) — reassemble
+        into a datagram whose ECN field is CE; the §5.3
+        aggregation marks the reassembled datagram as
+        congestion-experienced because at least one fragment
+        carried CE.
+
+        Reference: RFC 3168 §5.3 (CE+ECT(0) -> CE).
+        """
+
+        self._drive_two_fragment_flow(first_ecn=2, second_ecn=3, frag_id=0xAA02)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="CE+ECT(0) reassembly must elicit one ICMP Protocol Unreachable response.",
+        )
+
+        response = self._frames_tx[0]
+        quoted_ip4_bytes = response[14 + 20 + 8 :]
+        reassembled = Ip4Parser(PacketRx(quoted_ip4_bytes))
+
+        self.assertEqual(
+            reassembled.ecn,
+            3,
+            msg="CE+ECT(0) reassembly must propagate CE on the wire.",
+        )
+
+    def test__rx__reassembly_ect0_plus_ect1_aggregates_to_ect0(self) -> None:
+        """
+        Ensure two fragments — one ECT(0), one ECT(1) —
+        reassemble into a datagram whose ECN field is ECT(0);
+        the §5.3 aggregation collapses a no-CE mixed-ECT set to
+        ECT(0) (the Linux-canonical choice).
+
+        Reference: RFC 3168 §5.3 (ECT(0)+ECT(1) -> ECT(0)).
+        """
+
+        self._drive_two_fragment_flow(first_ecn=2, second_ecn=1, frag_id=0xAA03)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="ECT(0)+ECT(1) reassembly must elicit one ICMP Protocol Unreachable response.",
+        )
+
+        response = self._frames_tx[0]
+        quoted_ip4_bytes = response[14 + 20 + 8 :]
+        reassembled = Ip4Parser(PacketRx(quoted_ip4_bytes))
+
+        self.assertEqual(
+            reassembled.ecn,
+            2,
+            msg="ECT(0)+ECT(1) reassembly must propagate ECT(0) on the wire.",
+        )
+
+    def test__rx__reassembly_not_ect_plus_ect_drops(self) -> None:
+        """
+        Ensure two fragments — one Not-ECT, one ECT(0) — fail
+        reassembly and the inconsistent datagram is silently
+        dropped; the 'ip4__frag__ecn_mixed__drop' RX counter
+        bumps and no ICMP response is emitted because the upper
+        layer never receives the corrupted reassembly.
+
+        Reference: RFC 3168 §5.3 (Not-ECT+ECT mix MUST drop the reassembled datagram).
+        """
+
+        prior_drop_count = self._packet_handler._packet_stats_rx.ip4__frag__ecn_mixed__drop
+
+        self._drive_two_fragment_flow(first_ecn=0, second_ecn=2, frag_id=0xAA04)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            0,
+            msg="Not-ECT+ECT reassembly must NOT emit any response — the datagram is dropped.",
+        )
+        self.assertEqual(
+            self._packet_handler._packet_stats_rx.ip4__frag__ecn_mixed__drop,
+            prior_drop_count + 1,
+            msg="ip4__frag__ecn_mixed__drop counter must bump on the dropped reassembly.",
+        )
+
+    def test__rx__reassembly_not_ect_plus_ce_drops(self) -> None:
+        """
+        Ensure two fragments — one Not-ECT, one CE — fail
+        reassembly. A Not-ECT-marked sender did not opt in to
+        ECN, so a downstream router marking a different
+        fragment of the same datagram with CE indicates the
+        reassembly is inconsistent: the receiver cannot deliver
+        a CE signal to a transport that never negotiated ECN.
+
+        Reference: RFC 3168 §5.3 (Not-ECT+CE mix MUST drop the reassembled datagram).
+        """
+
+        prior_drop_count = self._packet_handler._packet_stats_rx.ip4__frag__ecn_mixed__drop
+
+        self._drive_two_fragment_flow(first_ecn=0, second_ecn=3, frag_id=0xAA05)
+
+        self.assertEqual(
+            len(self._frames_tx),
+            0,
+            msg="Not-ECT+CE reassembly must NOT emit any response — the datagram is dropped.",
+        )
+        self.assertEqual(
+            self._packet_handler._packet_stats_rx.ip4__frag__ecn_mixed__drop,
+            prior_drop_count + 1,
+            msg="ip4__frag__ecn_mixed__drop counter must bump on the dropped reassembly.",
         )
