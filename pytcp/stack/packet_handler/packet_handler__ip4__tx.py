@@ -35,7 +35,6 @@ from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
-    IP4__DEFAULT_TTL,
     Ip4Assembler,
     Ip4FragAssembler,
     Ip4OptionNop,
@@ -55,6 +54,7 @@ from pytcp.lib.ip4_source_selection import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.ip4 import ip4__constants as ip4_const
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 
@@ -114,9 +114,12 @@ class PacketHandlerIp4Tx(ABC):
         if ip4__ttl is None:
             # RFC 1112 §6.1: outbound multicast datagrams default
             # to TTL=1 so multicast does not escape the local link
-            # unless the caller explicitly opts in. Unicast keeps
-            # the legacy IP4__DEFAULT_TTL default.
-            ip4__ttl = 1 if ip4__dst.is_multicast else IP4__DEFAULT_TTL
+            # unless the caller explicitly opts in. Unicast reads
+            # the live 'ip4.default_ttl' sysctl via qualified
+            # module access so an operator override resolves on
+            # every emission (RFC 1122 §3.2.1.7 "MUST be
+            # configurable").
+            ip4__ttl = 1 if ip4__dst.is_multicast else ip4_const.IP4__DEFAULT_TTL
 
         assert 0 < ip4__ttl < 256
 

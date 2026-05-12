@@ -963,6 +963,8 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
         """
         Ensure the Packet Handler IPv4 TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         if self._clear_ip4_host:
@@ -1022,6 +1024,8 @@ class TestPacketHandlerIp4TxErrors(NetworkTestCase):
         """
         Ensure '_phtx_ip4' raises the expected exception for invalid
         kwargs.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(type(self._expected__error)) as error:
@@ -1139,6 +1143,8 @@ class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
         Ensure '_phtx_ip4' returns 'DROPPED__IP4__NO_PROTOCOL_SUPPORT'
         and bumps 'ip4__no_proto_support__drop' without emitting any
         frame when IPv4 support is disabled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tx_status = self._packet_handler._phtx_ip4(
@@ -1181,6 +1187,8 @@ class TestPacketHandlerIp4TxSendIp4Packet(NetworkTestCase):
         a 'RawAssembler' payload using the supplied 'ip4__proto' and
         the renamed addressing kwargs, producing a successful frame
         and matching stats.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tx_status = self._packet_handler.send_ip4_packet(
@@ -1508,4 +1516,96 @@ class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
             int.from_bytes(self._frames_tx[0][_IP4__ID_OFFSET : _IP4__ID_OFFSET + 2]),
             0,
             msg="Atomic outbound IPv4 datagrams must carry Identification = 0.",
+        )
+
+
+class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
+    """
+    The RFC 1122 §3.2.1.7 'ip4.default_ttl' sysctl override tests.
+
+    The host default TTL is configurable through the
+    'ip4.default_ttl' sysctl. Outbound unicast datagrams with no
+    caller-supplied TTL pick up the live sysctl value at TX time
+    so an operator override is observable on the wire without
+    restarting the stack.
+    """
+
+    def test__phtx_ip4__unicast_dst_sysctl_override__honoured_on_wire(self) -> None:
+        """
+        Ensure that overriding 'ip4.default_ttl' at runtime
+        changes the TTL of subsequent outbound unicast
+        datagrams that did not specify a caller TTL — the
+        qualified-module read in the TX path must re-resolve
+        the live sysctl value on every emission rather than
+        capturing it at import time.
+
+        Reference: RFC 1122 §3.2.1.7 (MUST be configurable).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("ip4.default_ttl", 32):
+            self._packet_handler._phtx_ip4(
+                ip4__src=STACK__IP4_HOST.address,
+                ip4__dst=HOST_A__IP4_ADDRESS,
+                ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+            )
+
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Unicast outbound must emit exactly one frame.",
+        )
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            32,
+            msg="Unicast outbound TTL must reflect the live ip4.default_ttl sysctl value.",
+        )
+
+    def test__phtx_ip4__unicast_dst_sysctl_default__matches_baseline(self) -> None:
+        """
+        Ensure the live sysctl value at boot equals 64 — the
+        baseline configurable default — so a stack started with
+        no overrides keeps the historical TTL=64 unicast
+        behaviour.
+
+        Reference: RFC 1122 §3.2.1.7 (TTL default and configurability).
+        """
+
+        self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            64,
+            msg="Default unicast TTL must equal 64 with no sysctl override.",
+        )
+
+    def test__phtx_ip4__multicast_dst_unaffected_by_sysctl(self) -> None:
+        """
+        Ensure that an operator override of 'ip4.default_ttl'
+        does NOT affect multicast destinations — the multicast
+        TTL default is pinned at 1 regardless of the host
+        unicast default, so the multicast carve-out survives
+        any unicast-default tuning.
+
+        Reference: RFC 1112 §6.1 (multicast TTL default = 1, independent of unicast default).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("ip4.default_ttl", 200):
+            self._packet_handler._phtx_ip4(
+                ip4__src=STACK__IP4_HOST.address,
+                ip4__dst=IP4__MULTICAST__ALL_NODES,
+                ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+            )
+
+        self.assertEqual(
+            self._frames_tx[0][_IP4__TTL_OFFSET],
+            1,
+            msg="Multicast outbound TTL must remain 1 regardless of ip4.default_ttl sysctl.",
         )

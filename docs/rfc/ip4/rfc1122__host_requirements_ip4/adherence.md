@@ -221,14 +221,20 @@ TTL=1 is "fine" at the destination.
 > set the TTL field of every datagram that is sent. When a
 > fixed TTL value is used, it MUST be configurable."
 
-**Adherence:** met. `_phtx_ip4` exposes `ip4__ttl: int =
-IP4__DEFAULT_TTL` as a kwarg (`packet_handler__ip4__tx.py:100`);
-TCP / UDP / RAW socket layers can override. The default itself
-is module-scope, so configurability is achievable by
-overriding `IP4__DEFAULT_TTL` (a future sysctl
-`ip4.default_ttl` would close the §3.2.1.7 "MUST be
-configurable" gap formally; not yet sysctl-backed — Phase 1
-simplification).
+**Adherence:** met. `_phtx_ip4` exposes `ip4__ttl: int | None =
+None` (`packet_handler__ip4__tx.py:102`); on `None` the
+handler resolves the default through qualified-module access
+to `ip4_const.IP4__DEFAULT_TTL`
+(`packet_handler__ip4__tx.py:122`) so every emission picks up
+the live `ip4.default_ttl` sysctl value. The knob is
+registered at `pytcp/protocols/ip4/ip4__constants.py` with a
+validator that rejects TTL=0 (the same value §3.2.1.7
+forbids on the wire) and values outside the uint8 wire field.
+Operators tune it via `stack.init(sysctls={"ip4.default_ttl":
+N})` at boot or `pytcp.stack.sysctl["ip4.default_ttl"] = N`
+at runtime. The TCP / UDP / RAW socket layers still pass
+explicit `ip4__ttl` when they have a per-packet reason; the
+sysctl is the host default the transport layers fall back to.
 
 ## §3.2.1.8 Options
 
@@ -509,13 +515,26 @@ transient network condition.
 
 **Status:** locked in (cross-reference DSCP and ECN audits).
 
-### §3.2.1.7 TTL=0 rejection + default
+### §3.2.1.7 TTL=0 rejection + default + configurability
 
 - **Unit:**
   `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
+  pins the RX-side ban.
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4Constants`
+  pins `IP4__DEFAULT_TTL = 64`; `TestIp4DefaultTtlSysctl` pins
+  the `ip4.default_ttl` registration, the validator's
+  range-and-type rejections (TTL=0, overflow > 255, non-int),
+  and that `sysctl.set` updates the backing module attribute.
 - **Integration:**
   `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with `pointer=8`.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl`
+  Drives the sysctl override and verifies the wire TTL of an
+  outbound unicast datagram reflects the live value; verifies
+  multicast destinations stay at TTL=1 regardless of the
+  unicast-default override (RFC 1112 §6.1 carve-out).
 
 **Status:** locked in.
 
@@ -586,7 +605,7 @@ cache is `n/a (gap not closed; add test with fix)`.
 | §3.2.1.3 Destination filtering (RX)                   | locked in |
 | §3.2.1.3 Source-address validation + replacement (TX) | locked in |
 | §3.2.1.6 TOS / DSCP / ECN propagation                 | locked in (via separate DSCP / ECN audits) |
-| §3.2.1.7 TTL=0 reject + default + configurable        | locked in (configurable: module constant, not sysctl yet) |
+| §3.2.1.7 TTL=0 reject + default + configurable        | locked in (sysctl `ip4.default_ttl`) |
 | §3.2.1.8 Options pass-through + LSRR/SSRR gate        | locked in |
 | §3.3.1 Single-gateway routing                         | locked in (Phase 1 simplification) |
 | §3.3.1.5 ICMP Redirect → route update                 | n/a (Phase 2) |
@@ -618,14 +637,9 @@ cache is `n/a (gap not closed; add test with fix)`.
 
 The principal Phase-1 gaps are:
 
-1. **`IP4__DEFAULT_TTL` not yet a sysctl** — RFC 1122 §3.2.1.7
-   "MUST be configurable" is met informally (module constant)
-   but a `ip4.default_ttl` sysctl entry would make the
-   configurability operator-visible. Use the `sysctl_knob`
-   skill when the consumer materialises.
-2. **ICMP Redirect → no route-cache update** — covered by the
+1. **ICMP Redirect → no route-cache update** — covered by the
    ICMP audit; the gap is symmetric on both sides.
-3. **Broadcast TX gate** — no `ip4.allow_broadcast` policy
+2. **Broadcast TX gate** — no `ip4.allow_broadcast` policy
    knob; mitigated by the absence of a public broadcast API.
 
 Phase-2 gaps (multihoming, route cache, source-route forwarding)
