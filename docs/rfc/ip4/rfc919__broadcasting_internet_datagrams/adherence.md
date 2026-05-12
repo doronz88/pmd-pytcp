@@ -88,8 +88,17 @@ to `255.255.255.255` when it appears in `_ip4_broadcast`.
 
 On send, `255.255.255.255` is the canonical DHCPv4
 broadcast address; the TX path admits it as a destination
-(`packet_handler__ip4__tx.py:251-265`) and the DHCPv4 client
-uses it for the DISCOVER / REQUEST messages.
+under the `ip4.allow_broadcast` policy sysctl (default 0)
+or unconditionally on the DHCP-client RFC 2131 §3.1 path
+(`src=0.0.0.0`, UDP sport=68/dport=67), which always
+bypasses the gate. Operators that need to originate
+broadcast traffic from other consumers flip the sysctl
+explicitly; without the override, an outbound broadcast
+emission is dropped with
+`TxStatus.DROPPED__IP4__DST_BROADCAST_DISALLOWED` and the
+`ip4__dst_broadcast_disallowed__drop` counter bumps. The
+gate mirrors the Linux per-socket `SO_BROADCAST` default-
+off discipline at the IPv4 layer.
 
 ## §7 Limited-broadcast as source-address ban
 
@@ -147,6 +156,24 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 
 **Status:** locked in.
 
+### TX broadcast-destination policy gate (`ip4.allow_broadcast`)
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4AllowBroadcastSysctl`
+  Pins the default value (0), the registration, the
+  validator's {0, 1} acceptance, and the rejection of
+  out-of-range / non-int / bool values.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast`
+  Drives the gate: default-deny drops both
+  255.255.255.255 and the subnet-directed broadcast with
+  the new TxStatus and counter bump; override-on permits
+  the same; the DHCP-client (src=0.0.0.0, sport=68/
+  dport=67) path bypasses; unicast destinations
+  unaffected.
+
+**Status:** locked in.
+
 ### Phase-2 gateway broadcast rules
 
 **No test surface — n/a (Phase 2).**
@@ -158,6 +185,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 | §5 RX admission of broadcast destinations           | locked in |
 | §7 Limited-broadcast source rejection (RX)          | locked in |
 | §7 Broadcast source replacement (TX)                | locked in |
+| TX broadcast policy gate (`ip4.allow_broadcast`)    | locked in (unit + integration) |
 | §6 Gateway broadcast forwarding                     | n/a (Phase 2) |
 
 ---

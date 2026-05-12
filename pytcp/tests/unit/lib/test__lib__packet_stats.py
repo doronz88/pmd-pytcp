@@ -49,6 +49,8 @@ class TestPacketStatsBase(TestCase):
         """
         Ensure 'PacketStats' itself is decorated with '@dataclass', so
         subclasses inherit the proper dataclass bookkeeping.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -61,6 +63,8 @@ class TestPacketStatsBase(TestCase):
         Ensure 'PacketStats' declares no fields itself; it is a pure
         marker class. Regressions that move fields up into the base
         would silently conflate RX and TX stat namespaces.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -73,6 +77,8 @@ class TestPacketStatsBase(TestCase):
         """
         Ensure 'PacketStats' uses '__slots__' so no ad-hoc attribute can
         leak onto instances outside the declared field set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStats()
@@ -102,7 +108,7 @@ class TestPacketStatsBase(TestCase):
                 "is_subclass_of_packet_stats": True,
                 "is_dataclass": True,
                 "is_slotted": True,
-                "field_count": 103,
+                "field_count": 104,
             },
         },
     ]
@@ -121,6 +127,8 @@ class TestPacketStatsSubclasses(TestCase):
         Ensure the stats dataclass derives from the 'PacketStats' marker
         so callers can branch on the base type (e.g. isinstance checks
         in the packet handler's stats dispatch).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -133,6 +141,8 @@ class TestPacketStatsSubclasses(TestCase):
         """
         Ensure the stats class is itself a dataclass so 'fields()',
         default construction, and '__eq__' work as expected.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -145,6 +155,8 @@ class TestPacketStatsSubclasses(TestCase):
         """
         Ensure the stats class uses '__slots__' so counters cannot be
         accidentally created via a typo like 'stats.ip4_typo = 1'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = self._cls()
@@ -159,6 +171,8 @@ class TestPacketStatsSubclasses(TestCase):
         """
         Ensure every declared counter defaults to integer zero — the
         contract every caller of 'PacketStats*()' relies on.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = self._cls()
@@ -176,6 +190,8 @@ class TestPacketStatsSubclasses(TestCase):
         """
         Ensure every counter carries the 'int' type annotation — the
         declared type that 'dataclass' propagates into the default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for f in fields(self._cls):
@@ -190,6 +206,8 @@ class TestPacketStatsSubclasses(TestCase):
         """
         Ensure no two fields share a name — dataclasses would silently
         shadow earlier definitions and drop a counter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         names = [f.name for f in fields(self._cls)]
@@ -205,6 +223,8 @@ class TestPacketStatsSubclasses(TestCase):
         Ensure the declared counter count matches the expected total so
         an accidental removal is caught even if the roster list is not
         updated in lockstep elsewhere.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -227,6 +247,8 @@ class TestPacketStatsRxFields(TestCase):
         Ensure every RX protocol family declared in the source exposes
         at least one counter. Guards against accidental removal of a
         whole protocol's RX stats block.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         names = [f.name for f in fields(PacketStatsRx)]
@@ -261,6 +283,8 @@ class TestPacketStatsTxFields(TestCase):
         Ensure every TX protocol family declared in the source exposes
         at least one counter. Guards against accidental removal of a
         whole protocol's TX stats block.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         names = [f.name for f in fields(PacketStatsTx)]
@@ -288,6 +312,8 @@ class TestPacketStatsTxFields(TestCase):
         Ensure TX stats cover every TCP flag counter — the per-flag
         breakdown is referenced by the TX packet handler when building
         its flag-annotated log lines.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         names = {f.name for f in fields(PacketStatsTx)}
@@ -319,6 +345,8 @@ class TestPacketStatsMutation(TestCase):
         Ensure RX counters are mutable in place so the packet handler
         can increment them from hot paths without rebuilding the whole
         dataclass.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsRx()
@@ -333,6 +361,8 @@ class TestPacketStatsMutation(TestCase):
     def test__packet_stats_tx__counters_are_mutable(self) -> None:
         """
         Ensure TX counters are mutable in place (mirror of the RX case).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsTx()
@@ -348,6 +378,8 @@ class TestPacketStatsMutation(TestCase):
         """
         Ensure kwargs passed to the constructor override the per-field
         default of zero.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsRx(ip4__dst_unicast=42, tcp__socket_match_active__forward_to_socket=7)
@@ -369,6 +401,8 @@ class TestPacketStatsMutation(TestCase):
         it 'frozen=True' the hot-path increments used by the packet
         handler would start raising 'FrozenInstanceError'. This test
         pins the mutable contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsRx()
@@ -383,6 +417,8 @@ class TestPacketStatsMutation(TestCase):
         Ensure 'PacketStatsRx.__slots__' rejects typos — assigning to a
         field name that does not exist must raise 'AttributeError' so a
         misspelled counter never silently vanishes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsRx()
@@ -393,6 +429,8 @@ class TestPacketStatsMutation(TestCase):
     def test__packet_stats_tx__slots_reject_unknown_attribute(self) -> None:
         """
         Ensure 'PacketStatsTx.__slots__' rejects typos the same way.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = PacketStatsTx()
@@ -410,6 +448,8 @@ class TestPacketStatsEquality(TestCase):
         """
         Ensure two freshly default-constructed 'PacketStatsRx' instances
         compare equal (generated '__eq__' over every field).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -421,6 +461,8 @@ class TestPacketStatsEquality(TestCase):
     def test__packet_stats_rx__differing_fields_compare_unequal(self) -> None:
         """
         Ensure any differing counter makes the two instances unequal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -434,6 +476,8 @@ class TestPacketStatsEquality(TestCase):
         Ensure RX and TX stats compare unequal — the generated '__eq__'
         short-circuits on type mismatch so a cache that mixes them will
         never silently alias one for the other.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -463,6 +507,8 @@ class TestPacketStatsExtensibility(TestCase):
         """
         Ensure a user-defined 'PacketStats' subclass inherits the base
         contract: dataclass generation, slotted instances, zero default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stats = _CustomStats()

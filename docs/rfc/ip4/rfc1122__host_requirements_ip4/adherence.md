@@ -639,8 +639,6 @@ The principal Phase-1 gaps are:
 
 1. **ICMP Redirect → no route-cache update** — covered by the
    ICMP audit; the gap is symmetric on both sides.
-2. **Broadcast TX gate** — no `ip4.allow_broadcast` policy
-   knob; mitigated by the absence of a public broadcast API.
 
 Phase-2 gaps (multihoming, route cache, source-route forwarding)
 are tracked by the project north-star.

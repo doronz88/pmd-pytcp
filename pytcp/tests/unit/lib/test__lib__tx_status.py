@@ -79,6 +79,7 @@ _EXPECTED_MEMBERS: tuple[str, ...] = (
     "DROPPED__TCP__UNKNOWN",
     "DROPPED__ICMP4__UNKNOWN",
     "DROPPED__ICMP6__UNKNOWN",
+    "DROPPED__IP4__DST_BROADCAST_DISALLOWED",
 )
 
 
@@ -91,6 +92,8 @@ class TestTxStatusClass(TestCase):
         """
         Ensure 'TxStatus' derives from 'IntEnum' so its members retain
         integer semantics for logging and comparison.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -103,6 +106,8 @@ class TestTxStatusClass(TestCase):
         Ensure the full declared member set matches '_EXPECTED_MEMBERS' in
         order. Locks the enum against accidental additions, removals, or
         reorderings (which would silently shift every auto() value).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -118,6 +123,8 @@ class TestTxStatusClass(TestCase):
         Ensure every 'auto()'-generated value forms the dense 1..N sequence
         expected from 'IntEnum + auto()'. Regressions that insert a custom
         integer value would break tests that rely on the dense mapping.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         expected_values = list(range(1, len(_EXPECTED_MEMBERS) + 1))
@@ -132,6 +139,8 @@ class TestTxStatusClass(TestCase):
         """
         Ensure no two members share the same integer value. 'IntEnum'
         would otherwise alias them and silently hide one branch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         values = [int(member) for member in TxStatus]
@@ -204,6 +213,8 @@ class TestTxStatusMember(TestCase):
     def test__tx_status__name(self) -> None:
         """
         Ensure the member's 'name' matches the declaration label.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -216,6 +227,8 @@ class TestTxStatusMember(TestCase):
         """
         Ensure the member's integer value matches the position it holds
         in the 1..N auto() sequence.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -228,6 +241,8 @@ class TestTxStatusMember(TestCase):
         """
         Ensure 'TxStatus.__str__()' returns only the member name, not the
         stdlib 'ClassName.MEMBER' form.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -248,6 +263,8 @@ class TestTxStatusStrAcrossAllMembers(TestCase):
         member. This single sweep covers the custom '__str__()' body once
         per member and guards against any member that might silently
         inherit the stdlib default in a future Python release.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for member in TxStatus:
@@ -262,6 +279,8 @@ class TestTxStatusStrAcrossAllMembers(TestCase):
         """
         Ensure no member's 'str()' contains a '.' separator, which would
         indicate the stdlib 'ClassName.MEMBER' form had leaked through.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for member in TxStatus:

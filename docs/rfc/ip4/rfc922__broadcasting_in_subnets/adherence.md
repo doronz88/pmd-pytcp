@@ -116,6 +116,18 @@ the all-subnets enumeration / forwarding logic is router work.
 
 **Status:** locked in.
 
+### TX-side subnet broadcast destination gate (`ip4.allow_broadcast`)
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast::test__phtx_ip4__network_broadcast_dst_default_deny__dropped`
+  Drives an outbound datagram to the subnet-directed
+  broadcast `10.0.1.255` and verifies the gate drops with
+  `DROPPED__IP4__DST_BROADCAST_DISALLOWED`. The companion
+  unit tests in `TestIp4AllowBroadcastSysctl` lock the
+  validator's {0, 1} acceptance.
+
+**Status:** locked in.
+
 ### All-subnets broadcast (not implemented)
 
 **No test surface — not implemented.** Phase-2 router work.
@@ -126,6 +138,7 @@ the all-subnets enumeration / forwarding logic is router work.
 |-----------------------------------------------------|----------|
 | §6 Subnet-directed broadcast recognition (RX)       | locked in |
 | §6 Subnet broadcast source replacement (TX)         | locked in |
+| §6 Subnet broadcast destination gate (TX)           | locked in (sysctl `ip4.allow_broadcast`) |
 | §6 All-subnets broadcast                            | n/a (not implemented) |
 | §7 Gateway forwarding                               | n/a (Phase 2) |
 

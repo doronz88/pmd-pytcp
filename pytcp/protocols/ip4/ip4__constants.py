@@ -44,6 +44,18 @@ ver 3.0.4
 # RFC 1112 §6.1 and do NOT consult this knob.
 IP4__DEFAULT_TTL = 64
 
+# RFC 919 §1 / RFC 922 §3 outbound broadcast emission policy.
+# Default 0: outbound datagrams to 255.255.255.255 or a
+# subnet-directed broadcast address are dropped at TX time
+# unless the caller is the RFC 2131 §3.1 DHCP-client path
+# (src=0.0.0.0, UDP sport=68/dport=67), which always bypasses
+# the gate because a client cannot complete a lease without
+# broadcasting DHCPDISCOVER. The Linux equivalent for socket-
+# originated broadcast is per-socket 'SO_BROADCAST' (default
+# 0); the sysctl gives an operator a single dial that gates
+# every broadcast-capable consumer at the IPv4 layer.
+IP4__ALLOW_BROADCAST = 0
+
 
 def _is_ip4_default_ttl(value: object) -> None:
     """
@@ -63,10 +75,24 @@ def _is_ip4_default_ttl(value: object) -> None:
         )
 
 
-# Sysctl registration. 'IP4__DEFAULT_TTL' is a policy knob the
-# operator may tune via 'stack.init(sysctls={"ip4.default_ttl":
-# N})' at boot or 'pytcp.stack.sysctl["ip4.default_ttl"] = N'
-# at runtime.
+def _is_ip4_allow_broadcast(value: object) -> None:
+    """
+    Reject values outside the boolean set {0, 1}. Booleans are
+    rejected explicitly — 'isinstance(True, int)' is True in
+    Python — so the gate state is unambiguous int-valued, not
+    Python-truthy. The two values match the Linux
+    'net.ipv4.conf.<iface>.bc_forwarding' shape.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int) or value not in (0, 1):
+        raise ValueError(
+            f"sysctl 'ip4.allow_broadcast' must be 0 or 1; got {value!r}",
+        )
+
+
+# Sysctl registration. The IPv4 policy knobs are tuned by the
+# operator via 'stack.init(sysctls={"ip4.X": N})' at boot or
+# 'pytcp.stack.sysctl["ip4.X"] = N' at runtime.
 from pytcp.lib.sysctl import register  # noqa: E402
 
 register(
@@ -76,4 +102,12 @@ register(
     default=IP4__DEFAULT_TTL,
     validator=_is_ip4_default_ttl,
     description="RFC 1122 §3.2.1.7 — host-default TTL for outbound IPv4 unicast datagrams (1..255).",
+)
+register(
+    key="ip4.allow_broadcast",
+    module_name=__name__,
+    attr="IP4__ALLOW_BROADCAST",
+    default=IP4__ALLOW_BROADCAST,
+    validator=_is_ip4_allow_broadcast,
+    description="RFC 919/922 — gate outbound broadcast emission (0=deny, 1=allow); DHCP-client path bypasses.",
 )

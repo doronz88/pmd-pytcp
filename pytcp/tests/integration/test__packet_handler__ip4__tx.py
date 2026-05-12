@@ -1609,3 +1609,162 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
             1,
             msg="Multicast outbound TTL must remain 1 regardless of ip4.default_ttl sysctl.",
         )
+
+
+class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
+    """
+    The 'ip4.allow_broadcast' policy gate tests.
+
+    Outbound broadcast emission is gated by 'ip4.allow_broadcast'
+    so a future broadcast-capable consumer must opt in explicitly
+    — mirrors the Linux per-socket SO_BROADCAST default-off
+    discipline. The DHCP-client RFC 2131 §3.1 path (src=0.0.0.0,
+    UDP sport=68/dport=67) bypasses the gate because the client
+    cannot complete a lease without broadcasting.
+    """
+
+    def test__phtx_ip4__limited_broadcast_dst_default_deny__dropped(self) -> None:
+        """
+        Ensure that with 'ip4.allow_broadcast' at its default
+        value (0) an outbound datagram to 255.255.255.255 with
+        a non-DHCP payload is silently dropped, the
+        'DROPPED__IP4__DST_BROADCAST_DISALLOWED' TxStatus is
+        returned, and the
+        'ip4__dst_broadcast_disallowed__drop' counter bumps.
+
+        Reference: RFC 919 §1 (broadcast emission requires explicit opt-in policy).
+        """
+
+        prior = self._packet_handler._packet_stats_tx.ip4__dst_broadcast_disallowed__drop
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=IP4__BROADCAST__LIMITED,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__DST_BROADCAST_DISALLOWED,
+            msg="Default-deny must return DROPPED__IP4__DST_BROADCAST_DISALLOWED for 255.255.255.255.",
+        )
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="Default-deny broadcast must not emit any frame.",
+        )
+        self.assertEqual(
+            self._packet_handler._packet_stats_tx.ip4__dst_broadcast_disallowed__drop,
+            prior + 1,
+            msg="ip4__dst_broadcast_disallowed__drop counter must bump on the drop.",
+        )
+
+    def test__phtx_ip4__limited_broadcast_dst_sysctl_allow__permitted(self) -> None:
+        """
+        Ensure that flipping 'ip4.allow_broadcast' to 1 allows
+        the same outbound datagram through to the wire — the
+        gate is the only barrier, and the operator override
+        unblocks downstream consumers.
+
+        Reference: RFC 919 §1 (broadcast emission permitted under explicit policy).
+        """
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        with sysctl_module.override("ip4.allow_broadcast", 1):
+            tx_status = self._packet_handler._phtx_ip4(
+                ip4__src=STACK__IP4_HOST.address,
+                ip4__dst=IP4__BROADCAST__LIMITED,
+                ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+            )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="Allow-broadcast must let the datagram through to the TX ring.",
+        )
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="Allow-broadcast must emit exactly one frame.",
+        )
+
+    def test__phtx_ip4__network_broadcast_dst_default_deny__dropped(self) -> None:
+        """
+        Ensure that the gate also drops outbound datagrams to a
+        subnet-directed broadcast (e.g. 10.0.1.255 for the
+        10.0.1.0/24 stack subnet) — the network-broadcast
+        emission path is symmetric with the limited-broadcast
+        path under the same policy.
+
+        Reference: RFC 922 §3 (subnet-directed broadcast policy).
+        """
+
+        # The stack host is 10.0.1.7/24, so 10.0.1.255 is the
+        # subnet-directed broadcast for the stack's network.
+        network_broadcast = Ip4Address("10.0.1.255")
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=network_broadcast,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.DROPPED__IP4__DST_BROADCAST_DISALLOWED,
+            msg="Default-deny must drop subnet-directed broadcast destinations.",
+        )
+
+    def test__phtx_ip4__dhcp_client_path_bypasses_gate(self) -> None:
+        """
+        Ensure the DHCP-client outbound path (src=0.0.0.0, UDP
+        sport=68, dport=67, dst=255.255.255.255) bypasses the
+        'ip4.allow_broadcast' gate so a freshly-booted host
+        can broadcast DHCPDISCOVER without the operator pre-
+        flipping the sysctl.
+
+        Reference: RFC 2131 §3.1 (DHCPDISCOVER MUST broadcast pre-bind).
+        """
+
+        from net_proto import UdpAssembler
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=Ip4Address(),
+            ip4__dst=IP4__BROADCAST__LIMITED,
+            ip4__payload=UdpAssembler(udp__sport=68, udp__dport=67, udp__payload=b"\x00" * 8),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="DHCP-client outbound path must bypass the broadcast gate.",
+        )
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="DHCP-client outbound must emit exactly one frame.",
+        )
+
+    def test__phtx_ip4__unicast_dst_unaffected_by_gate(self) -> None:
+        """
+        Ensure unicast destinations are unaffected by the gate
+        — the policy applies only to limited or subnet-directed
+        broadcast addresses; the common unicast path stays
+        unconditional.
+
+        Reference: PyTCP test infrastructure (regression net for
+        the broadcast gate carve-out).
+        """
+
+        tx_status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+            ip4__payload=RawAssembler(raw__payload=b"\x00", ip_proto=IpProto.from_int(99)),
+        )
+
+        self.assertEqual(
+            tx_status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="Unicast outbound must succeed regardless of broadcast gate.",
+        )

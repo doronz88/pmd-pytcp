@@ -148,6 +148,30 @@ class PacketHandlerIp4Tx(ABC):
             return result
         ip4__dst = result
 
+        # RFC 919 §1 / RFC 922 §3: outbound broadcast emission
+        # gated by 'ip4.allow_broadcast'. The DHCP-client RFC
+        # 2131 §3.1 path (src=0.0.0.0, UDP sport=68/dport=67) is
+        # the only consumer that legitimately broadcasts pre-
+        # bind and bypasses the gate. The src check after
+        # __validate_src_ip4_address pinpoints DHCP because the
+        # validator preserves src=0.0.0.0 only for that specific
+        # pattern.
+        if (ip4__dst.is_limited_broadcast or ip4__dst in self._ip4_broadcast) and not ip4_const.IP4__ALLOW_BROADCAST:
+            is_dhcp_client = (
+                ip4__src.is_unspecified
+                and isinstance(ip4__payload, UdpAssembler)
+                and ip4__payload.sport == 68
+                and ip4__payload.dport == 67
+            )
+            if not is_dhcp_client:
+                self._packet_stats_tx.ip4__dst_broadcast_disallowed__drop += 1
+                __debug__ and log(
+                    "ip4",
+                    f"{ip4__payload.tracker} - <WARN>Outbound broadcast to "
+                    f"{ip4__dst} dropped; set 'ip4.allow_broadcast=1' to permit</>",
+                )
+                return TxStatus.DROPPED__IP4__DST_BROADCAST_DISALLOWED
+
         # Assemble IPv4 packet.
         ip4_packet_tx = Ip4Assembler(
             ip4__src=ip4__src,

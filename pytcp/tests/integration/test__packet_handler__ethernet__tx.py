@@ -748,9 +748,20 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
         mutations do not leak into the module-level 'STACK__IP*_HOST'
         objects shared across tests. Configure each host's gateway per
         '_gateway_state' and install the pair on the packet handler.
+        Two of the parametrized cases exercise IPv4 broadcast
+        destinations, which the 'ip4.allow_broadcast' policy gate
+        (default 0) would otherwise drop; opt the suite in via a
+        sysctl override that 'tearDown' restores. The non-broadcast
+        cases are unaffected because their paths never consult the
+        sysctl.
         """
 
         super().setUp()
+
+        from pytcp.lib import sysctl as sysctl_module
+
+        sysctl_module.set("ip4.allow_broadcast", 1)
+        self.addCleanup(sysctl_module.reset_to_defaults)
 
         ip4_host = Ip4Host("10.0.1.7/24")
         ip6_host = Ip6Host("2001:db8:0:1::7/64")
@@ -776,6 +787,8 @@ class TestPacketHandlerEthernetTx(NetworkTestCase):
         Ensure the Packet Handler Ethernet TX path produces the
         expected frames, statuses, and statistics for each
         parametrized case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tx_handler = getattr(self._packet_handler, self._method_name)

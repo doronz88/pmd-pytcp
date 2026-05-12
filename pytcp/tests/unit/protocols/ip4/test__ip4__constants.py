@@ -198,3 +198,85 @@ class TestIp4DefaultTtlSysctl(TestCase):
                 str(ctx.exception),
                 msg=f"Rejection must surface the offending key for {bad!r}.",
             )
+
+
+class TestIp4AllowBroadcastSysctl(TestCase):
+    """
+    The 'ip4.allow_broadcast' sysctl registration and validator
+    tests.
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore sysctl defaults so a per-test mutation never
+        leaks into a subsequent test's baseline.
+        """
+
+        sysctl_module.reset_to_defaults()
+        super().tearDown()
+
+    def test__ip4__sysctl__allow_broadcast_default_is_zero(self) -> None:
+        """
+        Ensure 'IP4__ALLOW_BROADCAST' defaults to 0 — outbound
+        broadcast emission is disallowed unless the operator
+        explicitly opts in, matching the Linux per-socket
+        'SO_BROADCAST' default-off discipline.
+
+        Reference: Linux net.ipv4.conf.<iface>.bc_forwarding (default 0).
+        """
+
+        self.assertEqual(
+            ip4_const.IP4__ALLOW_BROADCAST,
+            0,
+            msg=f"IP4__ALLOW_BROADCAST must default to 0. Got: {ip4_const.IP4__ALLOW_BROADCAST}.",
+        )
+
+    def test__ip4__sysctl__allow_broadcast_is_registered(self) -> None:
+        """
+        Ensure the 'ip4.allow_broadcast' key is present in the
+        sysctl registry so operator overrides resolve through
+        the documented sysctl API.
+
+        Reference: RFC 919 §1 (broadcast scope policy).
+        """
+
+        self.assertIn(
+            "ip4.allow_broadcast",
+            sysctl_module.list_keys(),
+            msg="ip4.allow_broadcast must be a registered sysctl knob.",
+        )
+
+    def test__ip4__sysctl__allow_broadcast_accepts_zero_one(self) -> None:
+        """
+        Ensure the validator accepts the two documented modes
+        — 0 (deny broadcast emission) and 1 (allow broadcast
+        emission).
+
+        Reference: Linux net.ipv4.conf.<iface>.bc_forwarding (0/1 only).
+        """
+
+        for value in (0, 1):
+            sysctl_module.set("ip4.allow_broadcast", value)
+            self.assertEqual(
+                sysctl_module.get("ip4.allow_broadcast"),
+                value,
+                msg=f"ip4.allow_broadcast must accept value {value}.",
+            )
+
+    def test__ip4__sysctl__allow_broadcast_rejects_out_of_range(self) -> None:
+        """
+        Ensure the validator rejects values outside {0, 1} so a
+        typo cannot silently set the gate to a half-open state.
+
+        Reference: Linux net.ipv4.conf.<iface>.bc_forwarding (boolean 0/1).
+        """
+
+        for bad in (-1, 2, 99, True, False, "1", 1.0, None):
+            with self.assertRaises(ValueError) as ctx:
+                sysctl_module.set("ip4.allow_broadcast", bad)
+            self.assertIn(
+                "ip4.allow_broadcast",
+                str(ctx.exception),
+                msg=f"Rejection must surface the offending key for {bad!r}.",
+            )
