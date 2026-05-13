@@ -41,7 +41,7 @@ classified as one of:
 | §5.1    | RFC 8200 IPv6                                  | shipped             |
 | §5.2    | Extension Headers                              | shipped             |
 | §5.3    | Excessive option protections                   | partial (hard limits not exposed as sysctls) |
-| §5.4    | RFC 4861 Neighbor Discovery                    | partial (no Redirects, no NUD timers) |
+| §5.4    | RFC 4861 Neighbor Discovery                    | shipped (NUD + RFC 7559 + RFC 4311 + RFC 4429 + RFC 7527; Redirect is Phase-2 router) |
 | §5.5    | RFC 3971 SEND                                  | deliberately skipped (crypto extension) |
 | §5.6    | RFC 5175 RA Flags Option                       | deferred (no consumer in PyTCP) |
 | §5.7    | PMTU Discovery (RFC 8201) + min MTU            | shipped             |
@@ -52,7 +52,7 @@ classified as one of:
 | §5.12   | RFC 3168 ECN                                   | partial (TCP ECN echo wired; IP-layer mark setting not yet) |
 | §6.1    | RFC 4291 Addressing Architecture               | shipped             |
 | §6.2    | Multiple address support                       | shipped             |
-| §6.3    | RFC 4862 SLAAC                                 | partial (basic SLAAC + DAD; RFC 7217 stable IID deferred) |
+| §6.3    | RFC 4862 SLAAC                                 | shipped (basic SLAAC + DAD + RFC 7217 stable IIDs + Optimistic DAD + Enhanced DAD + §5.5.3(e)(6) 2-hour rule) |
 | §6.4    | RFC 4941 Privacy Extensions                    | deferred            |
 | §6.5    | RFC 3315 DHCPv6                                | deferred            |
 | §6.6    | RFC 6724 Default Address Selection             | partial             |
@@ -183,10 +183,10 @@ this as a hardening opportunity is worthwhile.
 | Duplicate Address Detection         | shipped                                    |
 | Solicited-Node multicast address    | shipped (`net_addr/ip6_address.py`)        |
 | Redirect (RX/TX)                    | deferred (host scope; RX would be Phase-1, TX is Phase-2 router) |
-| NUD timers                          | deferred (Phase-1 polish)                  |
-| RFC 6980 ND fragmentation rejection | deferred (parser does not yet refuse fragmented ND) |
-| RFC 7559 RS exponential backoff     | deferred                                   |
-| RFC 4311 host-to-router load share  | deferred                                   |
+| NUD timers (RFC 4861 §7.3)          | shipped (`pytcp/lib/neighbor.py` NUD framework; `neighbor.*` sysctls) |
+| RFC 6980 ND fragmentation rejection | partial — RX shipped (`packet_handler__icmp6__rx.py:175-191`); TX-side refuse-to-fragment-ND gate is a Phase-1 follow-up |
+| RFC 7559 RS exponential backoff     | shipped (`_send_icmp6_nd_router_solicitations_with_backoff` at `packet_handler/__init__.py:1431`; truncated binary exponential with ±10% jitter) |
+| RFC 4311 host-to-router load share  | shipped (`_get_icmp6_default_router_for_destination` at `packet_handler/__init__.py:974`; per-destination modulo over highest-pref equivalence class) |
 
 ### §5.5 SEcure Neighbor Discovery (SEND) — deliberately skipped
 
@@ -287,17 +287,17 @@ prefix delegation (RFC 8273) is **deferred**.
 
 ### §6.3 RFC 4862 SLAAC — partial
 
-**Adherence:** partial.
+**Adherence:** shipped.
 
-| Mechanism                                         | Status                          |
-|---------------------------------------------------|---------------------------------|
-| Link-local address generation (EUI-64)            | shipped                         |
-| Duplicate Address Detection                       | shipped (with §7.2.3 strictness — commit `88d09251`) |
-| Prefix Information option processing              | shipped + §5.5.3 (e)(1)-(e)(3) filters (commit `d23d17bb`) |
-| §5.5.3 (e)(6) 2-hour rule on lifetime extension   | deferred (needs SLAAC state machine refactor — see Phase-2 marker in `__phrx_icmp6__nd_router_advertisement`) |
-| RFC 7217 stable, opaque IIDs                      | deferred                        |
-| Optimistic DAD (RFC 4429)                         | deferred (RFC marks optional)   |
-| Enhanced DAD loopback detection (RFC 7527)        | deferred                        |
+| Mechanism                                         | Status                                                                                                       |
+|---------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| Link-local address generation                     | shipped (EUI-64 default + RFC 7217 stable opaque IID alternative; per `_derive_ip6_address_from_prefix`)     |
+| Duplicate Address Detection                       | shipped (with §7.2.3 strictness — commit `88d09251`)                                                         |
+| Prefix Information option processing              | shipped + §5.5.3 (e)(1)-(e)(3) filters (commit `d23d17bb`)                                                    |
+| §5.5.3 (e)(6) 2-hour rule on lifetime extension   | shipped (`packet_handler/__init__.py:615-630`; `pi__2hour_rule_ignored__drop` counter on guard)              |
+| RFC 7217 stable, opaque IIDs                      | shipped (`_derive_ip6_address_from_prefix` at `packet_handler/__init__.py:1141`; secret-keyed PRF with §6 regenerate-on-collision) |
+| Optimistic DAD (RFC 4429)                         | shipped (`_icmp6_dad__states` at `packet_handler/__init__.py:210`; address installed as OPTIMISTIC; NA emit-path clears Override flag per §3.3) |
+| Enhanced DAD loopback detection (RFC 7527)        | shipped (Nonce option codec in NS TX/RX paths; `packet_handler__icmp6__tx.py:184`, `packet_handler__icmp6__rx.py:877`) |
 
 ### §6.4 RFC 4941 Privacy Extensions — deferred
 
