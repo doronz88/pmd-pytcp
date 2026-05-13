@@ -236,6 +236,8 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_redirect__accept_redirects_zero__drop: int = 0
     icmp6__nd_message__fragmented__drop: int = 0
     icmp6__mld2_report: int = 0
+    icmp6__mld2_query: int = 0
+    icmp6__mld2_query__respond: int = 0
     icmp6__unknown: int = 0
 
     udp__pre_parse: int = 0

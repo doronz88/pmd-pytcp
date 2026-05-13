@@ -250,6 +250,11 @@ from net_proto.protocols.icmp6.message.icmp6__message__time_exceeded import (
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__query import (
+    ICMP6__MLD2__QUERY__LEN,
+    Icmp6Mld2MessageQuery,
+    Icmp6Mld2QueryCode,
+)
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
     ICMP6__MLD2__REPORT__LEN,
     Icmp6Mld2MessageReport,
@@ -645,6 +650,9 @@ __all__ = [
     "Icmp6Mld2MulticastAddressRecord",
     "Icmp6Mld2MulticastAddressRecordType",
     "Icmp6Mld2ReportCode",
+    "ICMP6__MLD2__QUERY__LEN",
+    "Icmp6Mld2MessageQuery",
+    "Icmp6Mld2QueryCode",
     "Icmp6Mld2MessageReport",
     "Icmp6NdMessage",
     "Icmp6NdNeighborAdvertisementCode",

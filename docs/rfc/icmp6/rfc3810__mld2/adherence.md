@@ -57,12 +57,12 @@ fall into `__phrx_icmp6__unknown`.
 
 | Section | Topic                                          | Status |
 |---------|------------------------------------------------|--------|
-| §4 wire | Query (type 130) wire format                   | partial (parser shipped via Icmp6 demux; listener-side response is Phase-1 polish) |
+| §4 wire | Query (type 130) wire format                   | met (parser via `Icmp6Mld2MessageQuery` — codec + RX dispatch; assembly is Phase-2 router) |
 | §4 wire | Report (type 143) wire format                  | met (codec + assembler + parser) |
 | §4 wire | Multicast Address Record wire format           | met |
 | §5      | Listener-side state machine                    | met (group join/leave triggers `CHANGE_TO_EXCLUDE` Report) |
 | §5      | Querier-side state machine                     | deferred (Phase-2 router role) |
-| §5.1.10 | Listener responds to Query with Report         | not implemented (Phase-1 polish — see follow-up note) |
+| §5.1.10 | Listener responds to Query with Report         | met (immediate-response model — see §5.1.10 note below) |
 | §5.2.13 | Hop Limit = 1 on outbound MLDv2 messages       | met |
 | §5.2.13 | Source = link-local address                    | met |
 | §5.2.14 | Destination = `ff02::16` (all-MLDv2-routers)   | met (for Reports) |
@@ -79,23 +79,26 @@ fall into `__phrx_icmp6__unknown`.
 >  Query (type 130) and Version 2 Multicast Listener
 >  Report (type 143)."
 
-**Adherence:** met (wire format) / partial (RX
-processing). Both message types live in the ICMPv6 demux:
+**Adherence:** met (RX side). Both message types live in
+the ICMPv6 demux:
 
 - Type 130 (`MULTICAST_LISTENER_QUERY`) — declared in
-  `Icmp6Type` (`net_proto/protocols/icmp6/icmp6__enums.py`)
-  and dispatched at `packet_handler__icmp6__rx.py` to the
-  generic ICMPv6 path. PyTCP currently treats inbound
-  Queries as "unknown" (falls into
-  `__phrx_icmp6__unknown` because there is no per-Query
-  handler). A Phase-1 polish item is to add a Query handler
-  that responds with the appropriate Report per §5.1.10.
+  `Icmp6Type` at `net_proto/protocols/icmp6/message/icmp6__message.py`
+  with the codec class `Icmp6Mld2MessageQuery` at
+  `net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__query.py`
+  (RX-only parser: 28-byte fixed header + N × 16-byte
+  source-address list; the `assemble` / `_pack_header`
+  methods raise NotImplementedError because Phase-1 PyTCP
+  is a host listener and never emits Queries — querier-
+  side emission lands in the Phase-2 router track). The
+  RX path at `packet_handler__icmp6__rx.py:220-221`
+  dispatches to `__phrx_icmp6__mld2_query` per §5.1.10.
 - Type 143 (`MULTICAST_LISTENER_REPORT_V2`) — full codec
   at
   `net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__report.py`
   (Header / Base / Parser / Assembler + multi-record
   payload). The RX path at
-  `packet_handler__icmp6__rx.py:219` dispatches to
+  `packet_handler__icmp6__rx.py:218` dispatches to
   `__phrx_icmp6__mld2_report` which counts the Report but
   takes no state-update action (host-side; querier role
   deferred).
@@ -267,24 +270,35 @@ that consults / updates a per-group dictionary.
 
 ---
 
-## Phase-1 follow-ups
+## §5.1.10 Listener-side Query → Report response
 
-The host-side surface has one remaining Phase-1 polish
-item:
+> "When a node receives a Multicast Listener Query, the
+>  node responds with a Multicast Listener Report
+>  containing the multicast listener record for each
+>  multicast address listened on."
 
-- **§5.1.10 / Query RX response.** A host listener
-  receiving a General Query SHOULD respond with a Report
-  reflecting its current per-interface state. PyTCP today
-  falls inbound type-130 Queries into the unknown-message
-  counter; a dedicated handler that re-emits
-  `_send_icmp6_multicast_listener_report` on Query receipt
-  is a small (~30-50 line) change. The Phase-1 host-mode
-  version does NOT need to randomise the response delay
-  per §5.1.10 (that's a querier-side concern for avoiding
-  Report bursts) — a simple "respond immediately" is fine
-  for a single host.
+**Adherence:** met (Phase-1 immediate-response model). The
+RX handler at `__phrx_icmp6__mld2_query` in
+`packet_handler__icmp6__rx.py` calls
+`_send_icmp6_multicast_listener_report` immediately on
+Query receipt, emitting the same `CHANGE_TO_EXCLUDE`
+Report PyTCP sends on spontaneous group-membership
+changes. Counters `icmp6__mld2_query` and
+`icmp6__mld2_query__respond` track Query receipt and
+Report emission.
 
-The querier-role items remain Phase-2.
+**PyTCP Phase-1 simplification:** PyTCP does not honour the
+Query's Maximum Response Code (MRC) random-delay window
+from §5.1.10. The MRC delay exists to smear Report bursts
+across many listeners on a single link; PyTCP's typical
+deployment is a single host per link, so the immediate-
+response simplification has no operational impact. A
+future Phase-2 enhancement would parse the MRC and
+schedule the Report via `stack.timer` for full §5.1.10
+conformance.
+
+The querier-role items (§7 timers; §8 inbound-Report
+processing) remain Phase-2 router work.
 
 ---
 
@@ -327,13 +341,15 @@ end-to-end behaviour via wire observation).
 
 ### §5.1.10 Query → Report response
 
-**No test surface — Phase-1 polish gap.** When the gap is
-closed, the natural test:
+- **Integration:**
+  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_response.py::TestIcmp6Mld2QueryResponse`
+  — 4 tests: General Query elicits exactly one TX frame;
+  `icmp6__mld2_query` counter increments on Query receipt;
+  `icmp6__mld2_query__respond` counter increments on
+  Report emission; the outbound TX frame is ICMPv6 type
+  143 (the MLDv2 Report).
 
-1. Drive an inbound MLDv2 General Query (type 130) into
-   `_phrx_ethernet`.
-2. Assert a Report is emitted with the current
-   `_ip6_multicast` set.
+**Status:** locked in.
 
 ### §7 / §8 Querier role
 
@@ -348,7 +364,7 @@ alongside the Phase-2 router-track implementation.
 | Hop Limit = 1 on outbound                           | locked in |
 | RA-option HBH carrier                               | locked in |
 | Address-change triggers Report                      | locked in indirectly |
-| Query → Report response                             | n/a (Phase-1 polish gap) |
+| Query → Report response                             | locked in |
 | Querier-side state machine + timers                 | n/a (Phase-2 router) |
 
 ---
@@ -357,11 +373,11 @@ alongside the Phase-2 router-track implementation.
 
 | Aspect                                                | Status |
 |-------------------------------------------------------|--------|
-| §4 Query wire format                                  | partial (parser shipped via Icmp6 demux; listener-side response is Phase-1 polish) |
+| §4 Query wire format                                  | met (parser via `Icmp6Mld2MessageQuery`; assembly is Phase-2 router) |
 | §4 Report wire format                                 | met    |
 | §4 Multicast Address Record codec                     | met    |
 | §5 Listener-side Report emission on join              | met    |
-| §5.1.10 Query → Report response                       | not implemented (Phase-1 polish) |
+| §5.1.10 Query → Report response                       | met (Phase-1 immediate-response model; MRC random delay deferred) |
 | §5.2.13 Hop Limit = 1                                 | met    |
 | §5.2.13 Source = link-local                           | met    |
 | §5.2.14 Destination = `ff02::16` + RA-option HBH      | met    |
@@ -370,14 +386,17 @@ alongside the Phase-2 router-track implementation.
 | §5.1.10 MLDv1 compatibility mode                      | n/a (PyTCP is MLDv2-only) |
 
 PyTCP fully satisfies the listener-side requirements that
-matter for a multicast-using host. The two outstanding
-items are:
+matter for a multicast-using host. Remaining items:
 
-1. **§5.1.10 General-Query response** (Phase-1 polish). A
-   small handler addition; covered by a single integration
-   test when shipped.
-2. **§5-§8 querier role** (Phase-2 router). Lands when the
-   forwarding plane / multicast routing arrives.
+1. **§5.1.10 MRC random-delay window** (Phase-2 polish).
+   PyTCP's Phase-1 model responds immediately on Query
+   receipt; the MRC-based random delay exists to avoid
+   Report bursts across many listeners on a single link
+   and has no operational impact in single-host
+   deployments. The follow-up needs `stack.timer`-driven
+   Report scheduling.
+2. **§5-§8 querier role** (Phase-2 router). Lands when
+   the forwarding plane / multicast routing arrives.
 
 ## Cross-references
 

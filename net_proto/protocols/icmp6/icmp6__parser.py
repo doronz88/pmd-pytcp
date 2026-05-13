@@ -63,6 +63,9 @@ from net_proto.protocols.icmp6.message.icmp6__message__time_exceeded import (
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__query import (
+    Icmp6Mld2MessageQuery,
+)
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import (
     Icmp6Mld2MessageReport,
 )
@@ -138,6 +141,8 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 return Icmp6NdMessageRedirect
             case Icmp6Type.MLD2__REPORT:
                 return Icmp6Mld2MessageReport
+            case Icmp6Type.MULTICAST_LISTENER_QUERY:
+                return Icmp6Mld2MessageQuery
             case _:
                 return Icmp6MessageUnknown
 

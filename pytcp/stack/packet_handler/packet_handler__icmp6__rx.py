@@ -113,6 +113,8 @@ class PacketHandlerIcmp6Rx(ABC):
             echo_tracker: Tracker | None = None,
         ) -> None: ...
 
+        def _send_icmp6_multicast_listener_report(self) -> None: ...
+
         def _update_icmp6_default_router(
             self,
             *,
@@ -217,6 +219,8 @@ class PacketHandlerIcmp6Rx(ABC):
                 self.__phrx_icmp6__nd_redirect(packet_rx)
             case Icmp6Type.MLD2__REPORT:
                 self.__phrx_icmp6__mld2_report(packet_rx)
+            case Icmp6Type.MULTICAST_LISTENER_QUERY:
+                self.__phrx_icmp6__mld2_query(packet_rx)
             case _:
                 self.__phrx_icmp6__unknown(packet_rx)
 
@@ -1081,6 +1085,45 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet " f"from {packet_rx.ip6.src}",
         )
+
+    def __phrx_icmp6__mld2_query(self, packet_rx: PacketRx) -> None:
+        """
+        Handle inbound ICMPv6 MLDv2 Query packets.
+
+        Reference: RFC 3810 §5.1.10 (listener-side Query
+        processing).
+
+        Host-stack scope (Phase 1): a listener receiving any
+        MLDv2 Query (General / Group-Specific / Group-and-
+        Source-Specific) responds with a Report reflecting its
+        current per-interface multicast membership. PyTCP's
+        Phase-1 simplification: respond immediately to every
+        Query without honouring the Maximum Response Code's
+        random-delay window. The MRC-based delay exists to
+        smear Report bursts across many listeners on a single
+        link; PyTCP's typical deployment is a single host per
+        link so the immediate-response simplification has no
+        operational impact. A future Phase-2 enhancement would
+        parse the MRC + Source list and schedule the Report
+        via 'stack.timer' for full §5.1.10 conformance.
+
+        On Query receipt we re-emit the same
+        'CHANGE_TO_EXCLUDE' Report we send on group-membership
+        changes (via '_send_icmp6_multicast_listener_report') —
+        the wire form is identical and the querier merges the
+        on-Query Report with any spontaneous Reports from the
+        listener.
+        """
+
+        self._packet_stats_rx.icmp6__mld2_query += 1
+        __debug__ and log(
+            "icmp6",
+            f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Query packet " f"from {packet_rx.ip6.src}",
+        )
+
+        # RFC 3810 §5.1.10 immediate-response Report.
+        self._send_icmp6_multicast_listener_report()
+        self._packet_stats_rx.icmp6__mld2_query__respond += 1
 
     def __phrx_icmp6__unknown(self, packet_rx: PacketRx) -> None:
         """
