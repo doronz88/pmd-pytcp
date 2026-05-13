@@ -442,20 +442,28 @@ def init(
     # handler share the same instances — ring drop counters and
     # per-protocol counters end up on a single dataclass for
     # unified-stats consumers.
-    from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+    from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 
     _packet_stats_rx = PacketStatsRx()
     _packet_stats_tx = PacketStatsTx()
+    # Link API Phase 3 — link-level aggregate counters (rx_bytes /
+    # tx_bytes). Shared instance bumped by RxRing on every
+    # successful 'os.read' and by TxRing on every successful
+    # 'enqueue'. Read by 'LinkApi.stats' for the
+    # 'rx_bytes' / 'tx_bytes' buckets.
+    _link_stats = LinkStatsCounters()
 
     tx_ring = TxRing(
         fd=fd,
         mtu=mtu,
         packet_stats=_packet_stats_tx,
+        link_stats=_link_stats,
     )
     rx_ring = RxRing(
         fd=fd,
         mtu=mtu,
         packet_stats=_packet_stats_rx,
+        link_stats=_link_stats,
     )
     nd_cache = NdCache()
 
@@ -476,6 +484,7 @@ def init(
                 ip6_lla_autoconfig=ip6_lla_autoconfig,
                 packet_stats_rx=_packet_stats_rx,
                 packet_stats_tx=_packet_stats_tx,
+                link_stats=_link_stats,
             )
         case InterfaceLayer.L3:
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
@@ -488,6 +497,7 @@ def init(
                 ip6_host=ip6_host,
                 packet_stats_rx=_packet_stats_rx,
                 packet_stats_tx=_packet_stats_tx,
+                link_stats=_link_stats,
             )
 
     # Phase 4 commit A — IPv4 address-control API. Bound to the

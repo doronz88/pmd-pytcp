@@ -54,7 +54,7 @@ from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
-from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
@@ -112,6 +112,7 @@ class PacketHandler(Subsystem, ABC):
 
     _packet_stats_rx: PacketStatsRx
     _packet_stats_tx: PacketStatsTx
+    _link_stats: LinkStatsCounters
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool
@@ -148,6 +149,7 @@ class PacketHandler(Subsystem, ABC):
         ip4_host: Ip4Host | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         """
         Class constructor.
@@ -162,6 +164,12 @@ class PacketHandler(Subsystem, ABC):
         # standalone unit-test callers.
         self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
         self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
+        # Link-level aggregate counters (bytes / multicast) bumped
+        # by the rings at frame receive / send time. Sharing the
+        # same instance across PacketHandler + RxRing + TxRing
+        # mirrors the 'packet_stats_*' pattern; consumers read via
+        # 'stack.link.stats'.
+        self._link_stats = link_stats if link_stats is not None else LinkStatsCounters()
 
         # Initialize the interface mtu.
         self._interface_mtu = interface_mtu
@@ -1256,6 +1264,7 @@ class PacketHandlerL2(
         ip6_gua_autoconfig: bool = True,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         """
         Class constructor.
@@ -1270,6 +1279,7 @@ class PacketHandlerL2(
             ip4_host=ip4_host,
             packet_stats_rx=packet_stats_rx,
             packet_stats_tx=packet_stats_tx,
+            link_stats=link_stats,
         )
 
         self._ip4_dhcp = ip4_dhcp

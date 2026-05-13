@@ -43,11 +43,13 @@ pytcp/lib/link_api.py
 ver 3.0.4
 """
 
+from dataclasses import dataclass, fields
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 
 if TYPE_CHECKING:
     from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -85,6 +87,104 @@ _FLAGS_BY_LAYER: dict[InterfaceLayer, frozenset[LinkFlag]] = {
     InterfaceLayer.L2: frozenset({LinkFlag.BROADCAST, LinkFlag.MULTICAST}),
     InterfaceLayer.L3: frozenset({LinkFlag.POINTOPOINT}),
 }
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class LinkStats:
+    """
+    Copy-by-value snapshot of cumulative link-level
+    interface statistics — Linux's 'struct
+    rtnl_link_stats64' first-eight-buckets equivalent
+    surfaced by 'ip -s link show'.
+
+    Bucket → PyTCP counter mapping (documented verbatim
+    here so future drop counters know which bucket they
+    join):
+
+    - 'rx_packets' / 'tx_packets':
+        L2 (TAP) → 'PacketStatsRx.ethernet__pre_parse' +
+                   'ethernet_802_3__pre_parse' /
+                   'PacketStatsTx.ethernet__pre_assemble' +
+                   'ethernet_802_3__pre_assemble'.
+        L3 (TUN) → 'ip4__pre_parse' + 'ip6__pre_parse' /
+                   'ip4__pre_assemble' + 'ip6__pre_assemble'.
+
+    - 'rx_bytes' / 'tx_bytes':
+        Read directly from 'LinkStatsCounters' bumped by
+        'RxRing' / 'TxRing' at frame receive / send time.
+        Wire-level bytes regardless of which protocol
+        consumed them.
+
+    - 'rx_errors':
+        Sum of every 'PacketStatsRx' field whose name ends
+        in '__failed_parse__drop' — these are structural
+        validation failures ("couldn't decode the wire
+        format"), Linux's 'rx_errors' equivalent.
+
+    - 'rx_dropped':
+        Sum of every 'PacketStatsRx' field whose name ends
+        in '__drop' EXCEPT '__failed_parse__drop' — these
+        are policy / config drops the stack chose to
+        discard for non-error reasons (no listener, MAC
+        filter mismatch, rate-limit suppression, etc.).
+
+    - 'tx_errors':
+        Sum of every 'PacketStatsTx' field whose name
+        starts with 'tx_ring__' AND ends in '__drop' —
+        kernel-level transmit failures (queue full,
+        OSError on writev).
+
+    - 'tx_dropped':
+        Sum of every 'PacketStatsTx' field whose name
+        ends in '__drop' EXCEPT the 'tx_ring__*__drop'
+        ones — policy / config TX drops (broadcast
+        disallowed, src not owned, scope mismatch,
+        link-local out-of-scope, etc.).
+
+    Phase 3 does NOT include multicast counters
+    ('rx_multicast' / 'tx_multicast' from Linux's
+    rtnl_link_stats64); a future revision may add them
+    when a consumer materialises.
+    """
+
+    rx_packets: int
+    rx_bytes: int
+    rx_errors: int
+    rx_dropped: int
+    tx_packets: int
+    tx_bytes: int
+    tx_errors: int
+    tx_dropped: int
+
+
+def _sum_drops(
+    stats: PacketStatsRx | PacketStatsTx,
+    *,
+    prefix: str = "",
+    suffix: str = "__drop",
+    exclude_suffix: str | None = None,
+    exclude_prefix: str | None = None,
+) -> int:
+    """
+    Sum dataclass int fields matching the prefix / suffix
+    filter — used to aggregate '*__drop' counters into
+    LinkStats error/dropped buckets without hard-coding
+    every field name.
+    """
+
+    total = 0
+    for field in fields(stats):
+        name = field.name
+        if not name.endswith(suffix):
+            continue
+        if prefix and not name.startswith(prefix):
+            continue
+        if exclude_suffix is not None and name.endswith(exclude_suffix):
+            continue
+        if exclude_prefix is not None and name.startswith(exclude_prefix):
+            continue
+        total += getattr(stats, name)
+    return total
 
 
 class LinkApi:
@@ -193,6 +293,54 @@ class LinkApi:
         from pytcp import stack
 
         return stack.stack_running
+
+    @property
+    def stats(self) -> LinkStats:
+        """
+        Return a copy-by-value snapshot of cumulative
+        link-level interface statistics — Linux 'ip -s
+        link show eth0' RX/TX block equivalent.
+
+        The returned 'LinkStats' is frozen + slotted; the
+        caller cannot mutate stack-internal state through
+        the snapshot per the Phase-3 north-star
+        "introspection is read-only" constraint. See the
+        'LinkStats' docstring for the bucket → counter
+        mapping; aggregation walks 'PacketStatsRx' /
+        'PacketStatsTx' fields by name pattern so adding
+        a new '__drop' counter automatically lands in the
+        right bucket (failed_parse vs other on RX; tx_ring
+        vs other on TX).
+        """
+
+        rx = self._packet_handler._packet_stats_rx
+        tx = self._packet_handler._packet_stats_tx
+        link = self._packet_handler._link_stats
+        layer = self._packet_handler._interface_layer
+
+        if layer is InterfaceLayer.L2:
+            rx_packets = rx.ethernet__pre_parse + rx.ethernet_802_3__pre_parse
+            tx_packets = tx.ethernet__pre_assemble + tx.ethernet_802_3__pre_assemble
+        else:
+            rx_packets = rx.ip4__pre_parse + rx.ip6__pre_parse
+            tx_packets = tx.ip4__pre_assemble + tx.ip6__pre_assemble
+
+        rx_errors = _sum_drops(rx, suffix="__failed_parse__drop")
+        rx_dropped = _sum_drops(rx, suffix="__drop", exclude_suffix="__failed_parse__drop")
+
+        tx_errors = _sum_drops(tx, prefix="tx_ring__", suffix="__drop")
+        tx_dropped = _sum_drops(tx, suffix="__drop", exclude_prefix="tx_ring__")
+
+        return LinkStats(
+            rx_packets=rx_packets,
+            rx_bytes=link.rx_bytes,
+            rx_errors=rx_errors,
+            rx_dropped=rx_dropped,
+            tx_packets=tx_packets,
+            tx_bytes=link.tx_bytes,
+            tx_errors=tx_errors,
+            tx_dropped=tx_dropped,
+        )
 
     @property
     def flags(self) -> frozenset[LinkFlag]:

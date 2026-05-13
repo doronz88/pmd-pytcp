@@ -41,6 +41,32 @@ class PacketStats:
 
 
 @dataclass(slots=True)
+class LinkStatsCounters:
+    """
+    Link-level aggregate counters consumed by the Phase-3
+    Link API ('pytcp.stack.link.stats'). Held on the
+    'PacketHandler' alongside 'PacketStatsRx' /
+    'PacketStatsTx' as a separate dataclass so adding
+    byte / multicast counters here does NOT change the
+    schema of 'PacketStatsRx' / 'PacketStatsTx' — the
+    existing integration-test 'exact=True' assertions
+    keep working unchanged (the 'exact' regression net
+    only checks 'PacketStatsRx' / 'PacketStatsTx' field
+    values, not 'LinkStatsCounters').
+
+    'rx_bytes' / 'tx_bytes' are bumped by 'RxRing' /
+    'TxRing' at frame receive / send time. They count
+    the wire-level byte length of each frame regardless
+    of which protocol consumed it, matching the Linux
+    'ifInOctets' / 'ifOutOctets' (RFC 1213 MIB-II)
+    semantics that 'ip -s link show' surfaces.
+    """
+
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+
+
+@dataclass(slots=True)
 class PacketStatsRx(PacketStats):
     """
     Data store for the RX packet handler statistics.

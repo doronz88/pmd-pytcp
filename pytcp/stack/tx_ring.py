@@ -48,7 +48,7 @@ from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     ETHERNET_802_3__HEADER__LEN,
 )
 from pytcp.lib.logger import log
-from pytcp.lib.packet_stats import PacketStatsTx
+from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsTx
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # Per-protocol-class dispatch table mapping the TX-side Assembler
@@ -85,6 +85,7 @@ class TxRing(Subsystem):
     _queue_full_drop_count: int
     _os_error_drop_count: int
     _packet_stats: PacketStatsTx | None
+    _link_stats: LinkStatsCounters | None
 
     @override
     def __init__(
@@ -94,6 +95,7 @@ class TxRing(Subsystem):
         mtu: int,
         queue_max_size: int = 1000,
         packet_stats: PacketStatsTx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         """
         Initialize access to TX file descriptor and the outbound queue.
@@ -121,6 +123,12 @@ class TxRing(Subsystem):
         # the shared stats when wired so unified-stats consumers
         # see them alongside per-protocol drops.
         self._packet_stats = packet_stats
+        # Optional shared 'LinkStatsCounters' object — when set,
+        # 'tx_bytes' is bumped here per successful 'enqueue'. The
+        # PacketHandler owns the canonical instance; sharing it
+        # gives the Link API a single source of truth for
+        # 'stats.tx_bytes'.
+        self._link_stats = link_stats
 
     @property
     def queue_full_drop_count(self) -> int:
@@ -307,6 +315,14 @@ class TxRing(Subsystem):
             # the deque, will not be drained. Acceptable during
             # shutdown.
             pass
+
+        # Link API tx_bytes: count wire-level frame bytes enqueued
+        # for transmission regardless of whether the kernel write
+        # ultimately succeeds. Matches Linux 'ifOutOctets' / 'ip
+        # -s link show' TX semantics (frames counted at the qdisc
+        # boundary, not at the device-write boundary).
+        if self._link_stats is not None:
+            self._link_stats.tx_bytes += len(packet_tx)
 
         __debug__ and log(
             "tx-ring",

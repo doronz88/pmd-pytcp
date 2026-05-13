@@ -38,7 +38,7 @@ from typing import override
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.logger import log
-from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx
 from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # Per-read kernel-buffer headroom over the configured L3 MTU. Sized
@@ -70,6 +70,7 @@ class RxRing(Subsystem):
     _queue_full_drop_count: int
     _os_error_drop_count: int
     _packet_stats: PacketStatsRx | None
+    _link_stats: LinkStatsCounters | None
 
     @override
     def __init__(
@@ -79,6 +80,7 @@ class RxRing(Subsystem):
         mtu: int,
         queue_max_size: int = 1000,
         packet_stats: PacketStatsRx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         """
         Initialize access to RX file descriptor and the inbound queue.
@@ -111,6 +113,12 @@ class RxRing(Subsystem):
         # dataclass. Ring properties below transparently dispatch
         # to whichever source is authoritative.
         self._packet_stats = packet_stats
+        # Optional shared 'LinkStatsCounters' object — when set,
+        # 'rx_bytes' is bumped here per successful 'os.read'. The
+        # PacketHandler owns the canonical instance; sharing it
+        # mirrors the 'packet_stats' pattern above and gives the
+        # Link API a single source of truth for 'stats.rx_bytes'.
+        self._link_stats = link_stats
 
     @property
     def queue_full_drop_count(self) -> int:
@@ -192,6 +200,14 @@ class RxRing(Subsystem):
                 "rx-ring",
                 f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
             )
+
+            # Link API rx_bytes: count wire-level frame bytes
+            # received from the kernel regardless of which
+            # protocol consumes them. Bumped here at the canonical
+            # RX entry point so both L2 (TAP) and L3 (TUN) paths
+            # are covered uniformly.
+            if self._link_stats is not None:
+                self._link_stats.rx_bytes += len(packet_rx.frame)
 
             if len(self._rx_deque) >= self._queue_max_size:
                 if self._packet_stats is not None:

@@ -42,7 +42,8 @@ from unittest.mock import patch
 from net_addr import MacAddress
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.link_api import LinkApi, LinkFlag
+from pytcp.lib.link_api import LinkApi, LinkFlag, LinkStats
+from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 
 if TYPE_CHECKING:
     from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -67,10 +68,16 @@ class _FakePacketHandlerL2:
         mac_unicast: MacAddress,
         interface_mtu: int,
         interface_name: str | None = None,
+        packet_stats_rx: PacketStatsRx | None = None,
+        packet_stats_tx: PacketStatsTx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         self._mac_unicast = mac_unicast
         self._interface_mtu = interface_mtu
         self._interface_name = interface_name
+        self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
+        self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
+        self._link_stats = link_stats if link_stats is not None else LinkStatsCounters()
 
 
 class _FakePacketHandlerL3:
@@ -88,9 +95,15 @@ class _FakePacketHandlerL3:
         *,
         interface_mtu: int,
         interface_name: str | None = None,
+        packet_stats_rx: PacketStatsRx | None = None,
+        packet_stats_tx: PacketStatsTx | None = None,
+        link_stats: LinkStatsCounters | None = None,
     ) -> None:
         self._interface_mtu = interface_mtu
         self._interface_name = interface_name
+        self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
+        self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
+        self._link_stats = link_stats if link_stats is not None else LinkStatsCounters()
 
 
 class TestLinkApiMacAddress(TestCase):
@@ -417,6 +430,270 @@ class TestLinkApiFlags(TestCase):
             frozenset,
             msg="LinkApi.flags must return a frozenset (copy-by-value).",
         )
+
+
+class TestLinkApiStats(TestCase):
+    """
+    'LinkApi.stats' returns a frozen 'LinkStats' snapshot
+    aggregating the per-protocol 'PacketStatsRx' /
+    'PacketStatsTx' counters and the link-level
+    'LinkStatsCounters' into the eight Linux-canonical
+    buckets (rx_packets / tx_packets / rx_bytes / tx_bytes
+    / rx_errors / tx_errors / rx_dropped / tx_dropped).
+    """
+
+    def test__link_api__stats__empty_fixture_returns_all_zeros(self) -> None:
+        """
+        Ensure 'stats' on a freshly-constructed fixture
+        (no traffic seen) returns 'LinkStats' with every
+        bucket at zero.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats,
+            LinkStats(
+                rx_packets=0,
+                rx_bytes=0,
+                rx_errors=0,
+                rx_dropped=0,
+                tx_packets=0,
+                tx_bytes=0,
+                tx_errors=0,
+                tx_dropped=0,
+            ),
+            msg="LinkApi.stats on an empty fixture must be all zeros.",
+        )
+
+    def test__link_api__stats__l2_rx_packets_from_ethernet_pre_parse(self) -> None:
+        """
+        Ensure 'rx_packets' on an L2 (TAP) handler reflects
+        the 'ethernet__pre_parse' counter.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        rx = PacketStatsRx()
+        rx.ethernet__pre_parse = 5
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            packet_stats_rx=rx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.rx_packets,
+            5,
+            msg="L2 rx_packets must equal ethernet__pre_parse.",
+        )
+
+    def test__link_api__stats__l3_rx_packets_from_ip_pre_parse(self) -> None:
+        """
+        Ensure 'rx_packets' on an L3 (TUN) handler reflects
+        the sum of 'ip4__pre_parse' and 'ip6__pre_parse'
+        counters (no Ethernet layer on TUN).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        rx = PacketStatsRx()
+        rx.ip4__pre_parse = 3
+        rx.ip6__pre_parse = 7
+        handler = _FakePacketHandlerL3(
+            interface_mtu=1500,
+            packet_stats_rx=rx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL3", handler))
+
+        self.assertEqual(
+            api.stats.rx_packets,
+            10,
+            msg="L3 rx_packets must equal ip4__pre_parse + ip6__pre_parse.",
+        )
+
+    def test__link_api__stats__rx_bytes_from_link_stats(self) -> None:
+        """
+        Ensure 'rx_bytes' reads directly from the
+        'LinkStatsCounters.rx_bytes' field bumped by the
+        RxRing at frame-receive time.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        link = LinkStatsCounters()
+        link.rx_bytes = 12345
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            link_stats=link,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.rx_bytes,
+            12345,
+            msg="rx_bytes must reflect the link-level LinkStatsCounters.rx_bytes.",
+        )
+
+    def test__link_api__stats__tx_bytes_from_link_stats(self) -> None:
+        """
+        Ensure 'tx_bytes' reads directly from the
+        'LinkStatsCounters.tx_bytes' field bumped by the
+        TxRing at frame-send time.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        link = LinkStatsCounters()
+        link.tx_bytes = 67890
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            link_stats=link,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.tx_bytes,
+            67890,
+            msg="tx_bytes must reflect the link-level LinkStatsCounters.tx_bytes.",
+        )
+
+    def test__link_api__stats__rx_errors_sums_failed_parse_drops(self) -> None:
+        """
+        Ensure 'rx_errors' sums every '*__failed_parse__drop'
+        counter across PacketStatsRx — these are structural
+        validation failures (couldn't decode the wire
+        format).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        rx = PacketStatsRx()
+        rx.ethernet__failed_parse__drop = 1
+        rx.ip4__failed_parse__drop = 2
+        rx.tcp__failed_parse__drop = 3
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            packet_stats_rx=rx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.rx_errors,
+            6,
+            msg="rx_errors must sum every *__failed_parse__drop counter.",
+        )
+
+    def test__link_api__stats__rx_dropped_sums_other_drops(self) -> None:
+        """
+        Ensure 'rx_dropped' sums every '__drop' counter that
+        is NOT a '__failed_parse__drop' — these are policy /
+        config drops, not structural failures.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        rx = PacketStatsRx()
+        rx.ethernet__dst_unknown__drop = 2
+        rx.ip4__no_proto_support__drop = 3
+        rx.udp__no_socket_match__icmp4_unreachable_suppressed = 0  # not a __drop
+        rx.ethernet__failed_parse__drop = 7  # error, NOT counted in dropped
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            packet_stats_rx=rx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.rx_dropped,
+            5,
+            msg="rx_dropped must sum non-failed_parse __drop counters.",
+        )
+
+    def test__link_api__stats__tx_errors_sums_tx_ring_drops(self) -> None:
+        """
+        Ensure 'tx_errors' sums every 'tx_ring__*__drop'
+        counter — kernel-level transmit failures (queue
+        full, OSError on writev).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        tx = PacketStatsTx()
+        tx.tx_ring__queue_full__drop = 2
+        tx.tx_ring__os_error__drop = 3
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            packet_stats_tx=tx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.tx_errors,
+            5,
+            msg="tx_errors must sum every tx_ring__*__drop counter.",
+        )
+
+    def test__link_api__stats__tx_dropped_sums_other_drops(self) -> None:
+        """
+        Ensure 'tx_dropped' sums every '__drop' counter on
+        PacketStatsTx that is NOT a 'tx_ring__*' counter —
+        these are policy / config TX drops (broadcast
+        disallowed, scope mismatch, src not owned, etc.).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        tx = PacketStatsTx()
+        tx.ip4__dst_broadcast_disallowed__drop = 1
+        tx.ip4__link_local_scope_mismatch__drop = 2
+        tx.ip6__src_scope_mismatch__drop = 4
+        tx.tx_ring__queue_full__drop = 99  # error, NOT counted in dropped
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            packet_stats_tx=tx,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.stats.tx_dropped,
+            7,
+            msg="tx_dropped must sum non-tx_ring __drop counters.",
+        )
+
+    def test__link_api__stats__returns_frozen_dataclass(self) -> None:
+        """
+        Ensure 'stats' returns a frozen dataclass (mutation
+        raises) so the caller cannot mutate stack-internal
+        state through the returned snapshot.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        from dataclasses import FrozenInstanceError
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        snapshot = api.stats
+        with self.assertRaises(FrozenInstanceError):
+            snapshot.rx_packets = 999  # type: ignore[misc]
 
 
 class TestLinkApiInterfaceLayer(TestCase):
