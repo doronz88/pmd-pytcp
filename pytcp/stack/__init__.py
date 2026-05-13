@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from net_addr import Ip4Host, Ip6Host, MacAddress
 from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.link_api import LinkApi
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
@@ -205,6 +206,14 @@ packet_handler: PacketHandlerL2 | PacketHandlerL3
 # / 'RTM_DELADDR' semantics. Set in 'init()' / 'mock__init()' after
 # 'packet_handler' is constructed.
 address: Ip4AddressApi
+# Link API Phase 0 — link-control surface (MAC, MTU, interface
+# layer; mutation lands in Phase 4). Mirrors Linux 'ip link' /
+# RTNETLINK 'RTM_GETLINK' / 'RTM_NEWLINK'. Constructed by 'init()'
+# / 'mock__init()' alongside 'address'. Replaces the
+# 'packet_handler._mac_unicast' reach-through used by DHCP and
+# RFC 3927 link-local construction. See
+# 'docs/refactor/link_api.md' for the full plan.
+link: LinkApi
 # Phase 4 commit B — DHCPv4 client subsystem. Constructed by
 # 'init()' iff 'ip4_dhcp=True' on an L2 interface; spawned as a
 # background thread by 'start()'; joined by 'stop()'. None on L3
@@ -305,13 +314,15 @@ def mock__init(
     mock__nd_cache: NdCache | None = None,
     mock__packet_handler: PacketHandlerL2 | None = None,
     mock__address: Ip4AddressApi | None = None,
+    mock__link: LinkApi | None = None,
     mock__dhcp4_client: Dhcp4Client | None = None,
 ) -> None:
     """
     Initialize stack components for unit testing.
     """
 
-    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler, address, dhcp4_client, link_local
+    global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler
+    global address, link, dhcp4_client, link_local
 
     if mock__timer is not None:
         timer = mock__timer
@@ -339,6 +350,15 @@ def mock__init(
         address = mock__address
     elif mock__packet_handler is not None:
         address = Ip4AddressApi(packet_handler=mock__packet_handler)
+
+    # Link API Phase 0 — same pattern as 'address'. Tests get a
+    # default 'LinkApi' bound to the mocked packet handler so
+    # consumer code reading 'stack.link.mac_address' works in
+    # isolation without bespoke harness wiring.
+    if mock__link is not None:
+        link = mock__link
+    elif mock__packet_handler is not None:
+        link = LinkApi(packet_handler=mock__packet_handler)
 
     # Phase 4 commit B — DHCPv4 lifecycle. Default to None unless
     # the harness explicitly opts in; existing tests (NetworkTestCase
@@ -453,8 +473,16 @@ def init(
     # Phase 4 commit A — IPv4 address-control API. Bound to the
     # newly-constructed 'packet_handler' so DHCP / operator-config
     # consumers never need to import the packet handler directly.
-    global address
+    global address, link
     address = Ip4AddressApi(packet_handler=packet_handler)
+
+    # Link API Phase 0 — link-control surface. Bound to the same
+    # packet handler so DHCP / link-local construction (and any
+    # future operator-config consumer) reads link-level facts via
+    # 'stack.link.*' instead of reaching into
+    # 'packet_handler._mac_unicast' / '._interface_mtu' /
+    # '._interface_layer'. See 'docs/refactor/link_api.md'.
+    link = LinkApi(packet_handler=packet_handler)
 
     # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
     # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
@@ -464,7 +492,13 @@ def init(
     # API is the Phase-3-clean kernel/userspace boundary surface.
     global dhcp4_client, link_local
     if ip4_dhcp and layer is InterfaceLayer.L2:
-        assert isinstance(packet_handler, PacketHandlerL2)
+        # MAC is read via the Link API surface so DHCP construction
+        # has no reach-through into packet handler internals. The
+        # 'mac is not None' assertion narrows
+        # 'MacAddress | None' → 'MacAddress' for mypy; on L2 the
+        # MAC is always populated.
+        dhcp_mac = link.mac_address
+        assert dhcp_mac is not None, "L2 stack must expose a unicast MAC via stack.link.mac_address."
         # Adapters that match the callback shape DHCP expects while
         # routing through the sanctioned address-API methods. The
         # 'address' singleton is bound to 'packet_handler' above so
@@ -472,7 +506,7 @@ def init(
         # via the public API surface rather than a reach-through.
         _address_api = address
         dhcp4_client = Dhcp4Client(
-            mac_address=packet_handler._mac_unicast,
+            mac_address=dhcp_mac,
             arp_dad_verifier=lambda addr: _address_api.probe(address=addr).success,
             arp_dad_announcer=lambda addr: _address_api.announce(address=addr),
             address_api=address,
@@ -489,7 +523,10 @@ def init(
     # internals. When no DHCP client exists the closure returns
     # False and the link-local fallback timer kicks immediately.
     if ip4_link_local and layer is InterfaceLayer.L2:
-        assert isinstance(packet_handler, PacketHandlerL2)
+        # MAC is read via the Link API surface, same pattern as
+        # the DHCP block above.
+        ll_mac = link.mac_address
+        assert ll_mac is not None, "L2 stack must expose a unicast MAC via stack.link.mac_address."
         # Capture the global into a local to avoid the closure
         # binding to the symbol at definition time (we want it to
         # read the live module-level 'dhcp4_client' on every call).
@@ -501,7 +538,7 @@ def init(
         from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal as _Ip4LinkLocal
 
         link_local = _Ip4LinkLocal(
-            mac_address=packet_handler._mac_unicast,
+            mac_address=ll_mac,
             address_api=address,
             is_dhcp_bound=_is_dhcp_bound,
         )
