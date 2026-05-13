@@ -114,6 +114,21 @@ autoconfiguration mechanisms:
 3. **IPv4 link-local autoconfig** (RFC 3927) — shipped via
    the RFC 3927 track (item D below).
 
+### Phase-3 sanctioned API surfaces
+
+The Phase-3 north-star (CLAUDE.md) lists seven sanctioned
+consumer-API surfaces. Status as of 2026-05-12:
+
+| Surface           | Status                                                                                       |
+|-------------------|----------------------------------------------------------------------------------------------|
+| Socket factory    | shipped (BSD-style `socket()` factory + methods)                                             |
+| Sysctl registry   | shipped (`pytcp.stack.sysctl`)                                                               |
+| **Link API**      | **shipped 2026-05-12** — read (mac/mtu/name/is_running/flags/stats) + mutation (set_mtu, set_mac_address). `up()`/`down()` deferred to Phase-2 multi-interface track. See `docs/refactor/link_api.md`. |
+| Address API       | shipped (RFC 3927 track) — `pytcp.stack.address` / `Ip4AddressApi`                            |
+| Route API         | not yet                                                                                      |
+| Neighbor API      | not yet                                                                                      |
+| Introspection API | partially shipped — `LinkApi.stats` covers per-interface counters; route table / neighbor cache / socket list introspection deferred |
+
 ### IPv4 #5 scope gate (closed)
 
 The IPv4 link-local TX-source scope gate (RFC 3927 §2.6) was

@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                                                                                                  |
 |-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | Plan — §6 decisions confirmed 2026-05-12; Phase 0 starting                                                                                                                                                                                             |
+| Status            | **Shipped** 2026-05-12 — Phases 0-5 complete; commits 41f7fd58 (decisions), cdc11324 (Phase 0), 3ceb4432 (Phase 1), efa64c8c (Phase 2), 5bb2cf2f (Phase 3), d4aed533 (Phase 4) on PyTCP_3_0__pre_release                                                |
 | Plan author       | RFC 3927 follow-up (2026-05-12)                                                                                                                                                                                                                        |
 | Source motivation | RFC 3927 Phase 5 closure raised the question: should `stack/__init__.py`'s `packet_handler._mac_unicast` read be promoted to a public surface? Per CLAUDE.md the Link API is the canonical Phase-3 home for that read (and friends).                   |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                                                                                               |
@@ -595,18 +595,18 @@ existing harness fixtures.
 
 ## 8. Effort estimate
 
-| Phase | Description                                            | Effort  | Cumulative |
-|-------|--------------------------------------------------------|---------|------------|
-| 0     | Read-only MAC + MTU + interface_layer                  | ~30 min | ~30 min    |
-| 1     | Interface name plumbing                                | ~30 min | ~1 h       |
-| 2     | Running state + flags enum                             | ~45 min | ~1.75 h    |
-| 3     | Stats introspection (incl. LinkStatsCounters dataclass) | ~1.5 h  | ~3.25 h    |
-| 4     | set_mtu + set_mac_address (stack-stopped-first)        | ~2.5 h  | ~5.75 h    |
-| 5     | Adherence + docs                                       | ~30 min | ~6.25 h    |
+| Phase | Description                                             | Effort  | Cumulative | Commit     |
+|-------|---------------------------------------------------------|---------|------------|------------|
+| 0     | Read-only MAC + MTU + interface_layer                   | ~30 min | ~30 min    | `cdc11324` |
+| 1     | Interface name plumbing                                 | ~30 min | ~1 h       | `3ceb4432` |
+| 2     | Running state + flags enum                              | ~45 min | ~1.75 h    | `efa64c8c` |
+| 3     | Stats introspection (incl. LinkStatsCounters dataclass) | ~1.5 h  | ~3.25 h    | `5bb2cf2f` |
+| 4     | set_mtu + set_mac_address (stack-stopped-first)         | ~2.5 h  | ~5.75 h    | `d4aed533` |
+| 5     | Adherence + docs                                        | ~30 min | ~6.25 h    | (this)     |
 
-**Total: ~6 h** (~a working day). Phases ship in numeric
-order, each as a focused commit. `up()`/`down()` deferred
-to the Phase-2 multi-interface track per §6.3.
+**Total: ~6 h** (~a working day). Phases shipped in
+numeric order, each as a focused commit. `up()`/`down()`
+deferred to the Phase-2 multi-interface track per §6.3.
 
 ---
 
