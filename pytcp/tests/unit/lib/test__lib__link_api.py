@@ -696,6 +696,288 @@ class TestLinkApiStats(TestCase):
             snapshot.rx_packets = 999  # type: ignore[misc]
 
 
+class TestLinkApiSetMtu(TestCase):
+    """
+    'LinkApi.set_mtu' validates and propagates an MTU
+    change to 'packet_handler._interface_mtu' and the
+    'stack.interface_mtu' module-level slot. Linux 'ip
+    link set eth0 mtu N' equivalent.
+    """
+
+    def test__link_api__set_mtu__updates_packet_handler(self) -> None:
+        """
+        Ensure 'set_mtu' updates the bound packet handler's
+        '_interface_mtu' attribute.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.set_mtu(mtu=1400)
+
+        self.assertEqual(
+            handler._interface_mtu,
+            1400,
+            msg="set_mtu must update packet_handler._interface_mtu.",
+        )
+
+    def test__link_api__set_mtu__updates_stack_module_global(self) -> None:
+        """
+        Ensure 'set_mtu' updates the module-level
+        'stack.interface_mtu' so legacy consumers reading
+        the global see the new value.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.set_mtu(mtu=1400)
+
+        self.assertEqual(
+            stack.interface_mtu,
+            1400,
+            msg="set_mtu must update stack.interface_mtu module-level slot.",
+        )
+
+    def test__link_api__set_mtu__at_minimum_accepted(self) -> None:
+        """
+        Ensure 'set_mtu' accepts the canonical minimum
+        IPv4 link MTU of 68 octets (the lowest legal MTU
+        per the IPv4 specification).
+
+        Reference: RFC 791 §3.2 (minimum IPv4 link MTU floor).
+        """
+
+        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.set_mtu(mtu=68)
+
+        self.assertEqual(
+            handler._interface_mtu,
+            68,
+            msg="set_mtu must accept the RFC 791 §3.2 floor of 68.",
+        )
+
+    def test__link_api__set_mtu__below_minimum_rejected(self) -> None:
+        """
+        Ensure 'set_mtu' rejects values below the canonical
+        minimum IPv4 link MTU of 68 octets.
+
+        Reference: RFC 791 §3.2 (minimum IPv4 link MTU floor).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        with self.assertRaises(ValueError) as ctx:
+            api.set_mtu(mtu=67)
+
+        self.assertIn(
+            "68",
+            str(ctx.exception),
+            msg="set_mtu rejection message must cite the minimum.",
+        )
+
+    def test__link_api__set_mtu__at_maximum_accepted(self) -> None:
+        """
+        Ensure 'set_mtu' accepts the uint16 wire-limit
+        maximum of 65535.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.set_mtu(mtu=65535)
+
+        self.assertEqual(
+            handler._interface_mtu,
+            65535,
+            msg="set_mtu must accept the uint16 ceiling of 65535.",
+        )
+
+    def test__link_api__set_mtu__above_maximum_rejected(self) -> None:
+        """
+        Ensure 'set_mtu' rejects values above the uint16
+        wire limit of 65535.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        with self.assertRaises(ValueError) as ctx:
+            api.set_mtu(mtu=65536)
+
+        self.assertIn(
+            "65535",
+            str(ctx.exception),
+            msg="set_mtu rejection message must cite the maximum.",
+        )
+
+
+class TestLinkApiSetMacAddress(TestCase):
+    """
+    'LinkApi.set_mac_address' validates and propagates a
+    MAC change to 'packet_handler._mac_unicast'. Linux
+    'ip link set eth0 address aa:bb:cc:dd:ee:ff'
+    equivalent. Requires the stack to be stopped per the
+    Linux 'ip link set down' precondition.
+    """
+
+    def test__link_api__set_mac_address__updates_packet_handler(self) -> None:
+        """
+        Ensure 'set_mac_address' updates the bound packet
+        handler's '_mac_unicast' attribute when the stack
+        is stopped.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.set_mac_address(mac_address=MacAddress("02:aa:bb:cc:dd:ee"))
+
+        self.assertEqual(
+            handler._mac_unicast,
+            MacAddress("02:aa:bb:cc:dd:ee"),
+            msg="set_mac_address must update packet_handler._mac_unicast when stopped.",
+        )
+
+    def test__link_api__set_mac_address__rejected_when_running(self) -> None:
+        """
+        Ensure 'set_mac_address' rejects the call when the
+        stack is running — Linux's 'ip link set down'
+        precondition. The operator must call
+        'stack.stop()' first.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        with self.assertRaises(RuntimeError) as ctx:
+            api.set_mac_address(mac_address=MacAddress("02:aa:bb:cc:dd:ee"))
+
+        self.assertIn(
+            "stop",
+            str(ctx.exception).lower(),
+            msg="set_mac_address rejection must reference the stop-first precondition.",
+        )
+
+    def test__link_api__set_mac_address__multicast_bit_rejected(self) -> None:
+        """
+        Ensure 'set_mac_address' rejects MACs with the
+        IEEE 802 multicast bit set (LSB of the first
+        byte) — a multicast MAC is not a valid unicast
+        identifier.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        with self.assertRaises(ValueError) as ctx:
+            api.set_mac_address(mac_address=MacAddress("01:00:5e:00:00:01"))
+
+        self.assertIn(
+            "unicast",
+            str(ctx.exception).lower(),
+            msg="set_mac_address multicast rejection must reference the unicast requirement.",
+        )
+
+    def test__link_api__set_mac_address__zero_rejected(self) -> None:
+        """
+        Ensure 'set_mac_address' rejects the all-zero MAC
+        ('00:00:00:00:00:00') — the unspecified MAC is not
+        a valid unicast identifier.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        with self.assertRaises(ValueError) as ctx:
+            api.set_mac_address(mac_address=MacAddress("00:00:00:00:00:00"))
+
+        self.assertIn(
+            "unicast",
+            str(ctx.exception).lower(),
+            msg="set_mac_address zero-MAC rejection must reference the unicast requirement.",
+        )
+
+    def test__link_api__set_mac_address__l3_rejected(self) -> None:
+        """
+        Ensure 'set_mac_address' rejects the call on an L3
+        (TUN) interface — TUN has no Ethernet layer and
+        therefore no MAC to set.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL3(interface_mtu=1500)
+        api = LinkApi(packet_handler=cast("PacketHandlerL3", handler))
+
+        with self.assertRaises(RuntimeError) as ctx:
+            api.set_mac_address(mac_address=MacAddress("02:aa:bb:cc:dd:ee"))
+
+        self.assertIn(
+            "L3",
+            str(ctx.exception),
+            msg="set_mac_address L3 rejection must reference the layer.",
+        )
+
+
 class TestLinkApiInterfaceLayer(TestCase):
     """
     'LinkApi.interface_layer' reports the bound packet

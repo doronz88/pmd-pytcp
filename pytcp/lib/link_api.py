@@ -89,6 +89,20 @@ _FLAGS_BY_LAYER: dict[InterfaceLayer, frozenset[LinkFlag]] = {
 }
 
 
+# RFC 791 §3.2 minimum IPv4 link MTU. The absolute floor for
+# any link that carries IPv4. NOTE: links with MTU below 1280
+# silently break IPv6 (RFC 8200 §5); operators that enable
+# IPv6 SHOULD keep MTU >= 1280. PyTCP does not currently
+# enforce the higher floor because there is no per-interface
+# IPv6 enable/disable knob to release the constraint when an
+# operator genuinely wants an IPv4-only low-MTU link.
+LINK_API__MTU__MIN: int = 68
+
+# uint16 wire limit — the largest MTU representable in the
+# 'Total Length' field of an IPv4 header (RFC 791 §3.1).
+LINK_API__MTU__MAX: int = 65535
+
+
 @dataclass(frozen=True, kw_only=True, slots=True)
 class LinkStats:
     """
@@ -341,6 +355,108 @@ class LinkApi:
             tx_errors=tx_errors,
             tx_dropped=tx_dropped,
         )
+
+    def set_mtu(self, *, mtu: int) -> None:
+        """
+        Set the interface MTU in bytes — Linux 'ip link
+        set eth0 mtu N' equivalent. Validates the value
+        against the RFC 791 §3.2 floor (68) and the uint16
+        wire limit (65535); propagates the update to every
+        site that caches the MTU (the packet handler,
+        'stack.interface_mtu', the TX/RX rings if present).
+
+        NOTE: values below 1280 break IPv6 (RFC 8200 §5).
+        PyTCP does not currently enforce a higher floor —
+        the operator owns the IPv4-only-low-MTU
+        consequences.
+
+        Raises 'ValueError' on out-of-range; the rejection
+        message cites the offending bound.
+        """
+
+        if not (LINK_API__MTU__MIN <= mtu <= LINK_API__MTU__MAX):
+            raise ValueError(
+                f"MTU {mtu} out of range. Must be between "
+                f"{LINK_API__MTU__MIN} (RFC 791 §3.2 floor) and "
+                f"{LINK_API__MTU__MAX} (uint16 wire limit)."
+            )
+
+        from pytcp import stack
+
+        # Canonical source of truth — the packet handler's
+        # '_interface_mtu' is what the TX paths read for MSS
+        # / fragmentation decisions.
+        self._packet_handler._interface_mtu = mtu
+
+        # Module-level slot — denormalized for legacy
+        # consumers that read 'stack.interface_mtu' directly.
+        stack.interface_mtu = mtu
+
+        # TX/RX rings cache the MTU as the writev / read size
+        # bound. Update them if present and the underlying
+        # object accepts the write. Suppressed 'AttributeError'
+        # handles two cases without bespoke harness wiring:
+        # (a) 'mock__init' fixtures that skip ring construction,
+        # and (b) 'create_autospec(TxRing, spec_set=True)' mocks
+        # that the NetworkTestCase harness installs (spec_set
+        # blocks unknown-attribute writes — '_mtu' is declared
+        # on TxRing but the autospec proxy does not expose it).
+        for ring_name in ("tx_ring", "rx_ring"):
+            ring = getattr(stack, ring_name, None)
+            if ring is None:
+                continue
+            try:
+                ring._mtu = mtu
+            except AttributeError:
+                pass
+
+    def set_mac_address(self, *, mac_address: MacAddress) -> None:
+        """
+        Set the interface unicast MAC address — Linux 'ip
+        link set eth0 address aa:bb:cc:dd:ee:ff'
+        equivalent.
+
+        Requires the stack to be STOPPED ('stack.stop()'
+        called, or 'stack.start()' not yet called) — the
+        Linux precondition is 'ip link set down' first; the
+        PyTCP analog is 'not stack.stack_running'. The
+        check exists because changing the MAC while the
+        stack is running invalidates in-flight ARP cache
+        entries on peers; the canonical recovery
+        (gratuitous announce) requires a clean start
+        sequence which is only available at boot.
+
+        Validates the new MAC must be unicast (multicast
+        bit clear) and non-zero — neither the all-zero MAC
+        nor any multicast MAC is a valid unicast
+        identifier.
+
+        Available only on L2 (TAP) interfaces; raises on
+        L3 (TUN) where there is no Ethernet layer.
+
+        Peer ARP / ND caches retain stale entries for the
+        old MAC until they age out naturally; consumers
+        that need immediate refresh should call
+        'stack.address.send_gratuitous_arp(address=...)'
+        for every owned IPv4 host after the next
+        'stack.start()'.
+        """
+
+        from pytcp import stack
+
+        if stack.stack_running:
+            raise RuntimeError("Cannot set MAC address while the stack is running. " "Call 'stack.stop()' first.")
+
+        if self._packet_handler._interface_layer is not InterfaceLayer.L2:
+            raise RuntimeError("Cannot set MAC address on L3 (TUN) interface — no Ethernet layer.")
+
+        if not mac_address.is_unicast:
+            raise ValueError(
+                f"MAC address {mac_address} is not a valid unicast MAC "
+                "(multicast bit must be clear and value must be non-zero)."
+            )
+
+        self._packet_handler._mac_unicast = mac_address
 
     @property
     def flags(self) -> frozenset[LinkFlag]:
