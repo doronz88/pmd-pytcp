@@ -44,6 +44,7 @@ from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
 from pytcp.stack.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
 from pytcp.stack.tx_ring import TxRing
 
@@ -152,6 +153,7 @@ class NetworkTestCase(TestCase):
     _packet_handler: PacketHandlerL2
 
     _stack__attr_snapshot: dict[str, object]
+    _ip6_flow_label_generation_prior: int
 
     def setUp(self) -> None:
         """
@@ -166,6 +168,18 @@ class NetworkTestCase(TestCase):
         # 'tearDown' can restore them and avoid leaking test-only
         # values (e.g. an empty 'LOG__CHANNEL') into unrelated tests.
         self._stack__attr_snapshot = {name: stack.__dict__[name] for name in _STACK__PATCHED_ATTRS}
+
+        # Snapshot the RFC 6437 flow-label generation toggle so
+        # 'tearDown' restores production behaviour (default 1 —
+        # auto-emit). The harness pins it to 0 for the duration
+        # of each test so existing golden-frame fixtures (which
+        # encode flow=0 in their IPv6 header word) continue to
+        # match without per-fixture regeneration. A dedicated
+        # integration test
+        # ('test__ip6__rfc6437_flow_label.py') flips this back
+        # to 1 inside its own setUp to exercise the auto-wire.
+        self._ip6_flow_label_generation_prior = ip6__constants_module.IP6__FLOW_LABEL_GENERATION
+        ip6__constants_module.IP6__FLOW_LABEL_GENERATION = 0
 
         # Patch the PyTCP stack settings to values suitable for unit tests.
         stack.__dict__.update(
@@ -291,5 +305,7 @@ class NetworkTestCase(TestCase):
         self._frag_id_patch.stop()
 
         stack.__dict__.update(self._stack__attr_snapshot)
+
+        ip6__constants_module.IP6__FLOW_LABEL_GENERATION = self._ip6_flow_label_generation_prior
 
         super().tearDown()

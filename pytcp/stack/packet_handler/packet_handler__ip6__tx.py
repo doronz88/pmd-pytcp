@@ -151,12 +151,27 @@ class PacketHandlerIp6Tx(ABC):
             return result
         ip6__dst = result
 
+        # RFC 6437 §3 Flow Label auto-generation. When the
+        # 'ip6.flow_label_generation' sysctl is non-zero
+        # (default 1), derive a stable 20-bit label from the
+        # (src, dst) pair so all packets of a given flow
+        # carry the same label. Operators / test harnesses
+        # that want flow=0 set the sysctl to 0.
+        from pytcp.protocols.ip6 import ip6__constants
+
+        ip6__flow = 0
+        if ip6__constants.IP6__FLOW_LABEL_GENERATION:
+            from pytcp.lib.ip6_flow_label import compute_ip6_flow_label
+
+            ip6__flow = compute_ip6_flow_label(src=ip6__src, dst=ip6__dst)
+
         # assemble IPv6 apcket
         ip6_packet_tx = Ip6Assembler(
             ip6__src=ip6__src,
             ip6__dst=ip6__dst,
             ip6__hop=ip6__hop,
             ip6__ecn=ip6__ecn,
+            ip6__flow=ip6__flow,
             ip6__payload=ip6__payload,
         )
 

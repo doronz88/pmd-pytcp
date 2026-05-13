@@ -440,6 +440,7 @@ def init(
     from pytcp.protocols.ip4_link_local import (  # noqa: F401  pylint: disable=unused-import
         ip4_link_local__constants,
     )
+    from pytcp.protocols.ip6 import ip6__constants  # noqa: F401  pylint: disable=unused-import
 
     if sysctls is not None:
         for key, value in sysctls.items():

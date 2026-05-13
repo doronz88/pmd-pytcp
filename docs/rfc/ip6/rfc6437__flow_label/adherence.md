@@ -22,27 +22,25 @@ Adherence levels: **met**, **partial**, **not implemented**,
 
 ## Top-line adherence
 
-PyTCP **partially** implements RFC 6437. The generator
-algorithm (`compute_ip6_flow_label`) is shipped and
-satisfies §3's uniformity + per-flow stability properties;
-auto-wiring it into the IPv6 TX path is deferred until the
-integration test corpus migrates from "expect flow=0
-golden frames" to "expect flow=hash(src,dst) golden
-frames" (~38 fixtures would need regeneration; needs the
-test harness to patch `IP6__FLOW_SECRET` deterministically
-per test).
-
-Callers that need an explicit Flow Label can already pass
-`ip6__flow=N` to `Ip6Assembler`; the default-zero behaviour
-satisfies RFC 6437 §2's "MUST NOT modify on forward"
-guarantee trivially (PyTCP does not forward) and is
-RFC-tolerated for hosts that "do not participate in
-flow-label-aware operation".
+PyTCP **meets** RFC 6437 host-side requirements. The
+generator algorithm (`compute_ip6_flow_label`) is shipped
+and the `_phtx_ip6` TX path consumes it by default — every
+outbound IPv6 frame carries a 20-bit Flow Label derived
+from the (src, dst) pair via BLAKE2s keyed by the
+stack-wide `IP6__FLOW_SECRET`. The
+`ip6.flow_label_generation` sysctl (default 1) toggles the
+behaviour; flipping it to 0 reverts to RFC 8200 §3 "no
+specific flow" emission (flow=0). The integration-test
+harness defaults the sysctl to 0 so existing golden-byte
+fixtures continue to match without per-fixture
+regeneration; a dedicated
+`test__ip6__rfc6437_flow_label.py` test class re-enables
+the sysctl to exercise the auto-wire.
 
 | Section | Topic                                              | Status |
 |---------|----------------------------------------------------|--------|
-| §2      | Flow Label is 20 bits, set by source, immutable on forward | met (wire format) |
-| §3      | Source SHOULD set a Flow Label per flow (uniform random) | partial — generator shipped; auto-wire is a follow-up |
+| §2      | Flow Label is 20 bits, set by source, immutable on forward | met (wire format + auto-emit) |
+| §3      | Source SHOULD set a Flow Label per flow (uniform random) | met (auto-wire shipped) |
 | §5      | Forwarders MUST NOT modify Flow Label              | met (no forwarding today; Phase-2 honour by design) |
 | §6.1    | ECMP/LAG using Flow Label                          | n/a (no PyTCP forwarder) |
 | §6.2    | Stateful load balancing using Flow Label           | n/a (no PyTCP load balancer) |
@@ -76,29 +74,34 @@ emission path that does not opt into the §3 generator.
 >  SHOULD assign each unrelated transport connection and
 >  application data stream to a new flow."
 
-**Adherence:** partial. The "deliver unchanged" guarantee
-is trivially met (PyTCP does not forward in Phase 1). The
+**Adherence:** met. The "deliver unchanged" guarantee is
+trivially met (PyTCP does not forward in Phase 1). The
 "source SHOULD assign each unrelated flow" requirement is
-partially met:
+met by the TX-path auto-wire:
 
 - The **generator algorithm** is shipped at
   `pytcp/lib/ip6_flow_label.py::compute_ip6_flow_label`:
   BLAKE2s-keyed hash of `(src, dst)` with the stack-wide
   16-byte `IP6__FLOW_SECRET`, folded to 20 bits.
-- The **TX path auto-wire** is deferred. Today the IPv6
-  TX path always emits with `flow=0` (the assembler
-  default). The wiring at `_phtx_ip6` is one-liner —
-  call `compute_ip6_flow_label(src=ip6__src,
-  dst=ip6__dst)` when `ip6__flow is None` — but flipping
-  it changes the wire format of every outbound IPv6
-  frame, which breaks ~38 integration tests that pin
-  specific golden frames with flow=0.
+- The **TX path auto-wire** is shipped at
+  `pytcp/stack/packet_handler/packet_handler__ip6__tx.py`:
+  when `ip6.flow_label_generation` sysctl is non-zero
+  (default 1), `_phtx_ip6` calls
+  `compute_ip6_flow_label(src=ip6__src, dst=ip6__dst)`
+  and passes the result to `Ip6Assembler` via the
+  `ip6__flow` kwarg.
 
-The wire change becomes tractable once the integration
-harness patches `IP6__FLOW_SECRET` to a known value per
-test (so flow labels are deterministic), at which point
-the affected fixtures can be regenerated mechanically.
-Tracked as a follow-up under this RFC.
+The integration test corpus's existing golden-frame
+fixtures (which encode flow=0 in their IPv6 header word)
+continue to match because `NetworkTestCase.setUp` pins
+`ip6.flow_label_generation = 0` for the duration of each
+test. The dedicated
+`pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py`
+flips the sysctl back to 1 in its own setUp to exercise
+the auto-wire — three tests assert (a) non-zero Flow
+Label on outbound frames, (b) on-wire Flow Label matches
+the generator's output, (c) flow=0 when the sysctl is
+disabled.
 
 > "The Flow Label value MUST be chosen from an
 >  approximation to a discrete uniform distribution."
@@ -177,24 +180,22 @@ operator concerns; a host stack's responsibility ends at
 
 ### §3 TX-path auto-wire
 
-**No test surface — follow-up gap.** When the wiring lands,
-the natural test:
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py::TestIp6Rfc6437FlowLabelAutoWire`
+  — 3 tests: outbound Echo Reply carries non-zero Flow
+  Label when sysctl is enabled; on-wire Flow Label
+  equals `compute_ip6_flow_label` output for the same
+  (src, dst); flow=0 when sysctl is disabled.
 
-1. Patch `IP6__FLOW_SECRET` to a known value.
-2. Drive an IPv6 emission via `_phtx_ip6`.
-3. Assert the on-wire `flow` field equals
-   `compute_ip6_flow_label(src=..., dst=...)`.
-
-The harness change (patch `IP6__FLOW_SECRET` per test)
-applies to every IPv6 TX integration test — once it
-lands, regenerating the golden frames is mechanical.
+**Status:** locked in.
 
 ### Test coverage summary
 
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
 | Generator algorithm (uniform, stable, secret-keyed) | locked in |
-| TX-path auto-wire                                   | n/a (follow-up gap) |
+| TX-path auto-wire                                   | locked in |
+| `ip6.flow_label_generation` sysctl on/off           | locked in |
 
 ---
 
@@ -203,18 +204,17 @@ lands, regenerating the golden frames is mechanical.
 | Aspect                                                | Status |
 |-------------------------------------------------------|--------|
 | §2 Flow Label wire format (20 bits, header word)      | met    |
-| §3 Source generator (uniform, per-flow stable)        | met (helper shipped) |
-| §3 TX-path auto-wire (emit non-zero flow by default)  | not implemented (follow-up — needs golden-frame regeneration) |
+| §3 Source generator (uniform, per-flow stable)        | met    |
+| §3 TX-path auto-wire (emit non-zero flow by default)  | met (`ip6.flow_label_generation` sysctl, default 1) |
 | §5 Forwarder immutability                             | met (vacuous — no forwarding today) |
 | §6.1 / §6.2 forwarder / load-balancer use             | n/a (no PyTCP forwarder) |
 
-PyTCP ships the RFC 6437 §3 generator algorithm with full
-unit-test coverage. The wire-format change (flipping the
-default flow label from 0 to `compute_ip6_flow_label(...)`)
-is a one-line change at `_phtx_ip6` blocked only on
-regenerating the IPv6 TX integration golden frames; that
-mechanical refactor lands when the test harness gains the
-`patch.object(stack, "IP6__FLOW_SECRET", ...)` slot.
+PyTCP fully ships RFC 6437 §3 — both the generator
+algorithm and the TX-path auto-wire. Production traffic
+carries non-zero per-(src, dst)-stable Flow Labels;
+operators that need flow=0 (e.g. running behind an older
+middlebox that treats non-zero flow as a special-case)
+flip `ip6.flow_label_generation` to 0.
 
 A future per-5-tuple refinement (sport, dport, proto)
 would land at the socket layer where the 4-tuple is
