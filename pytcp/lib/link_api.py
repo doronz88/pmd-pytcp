@@ -43,6 +43,7 @@ pytcp/lib/link_api.py
 ver 3.0.4
 """
 
+from enum import Enum, auto
 from typing import TYPE_CHECKING
 
 from net_addr import MacAddress
@@ -50,6 +51,40 @@ from pytcp.lib.interface_layer import InterfaceLayer
 
 if TYPE_CHECKING:
     from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
+
+
+class LinkFlag(Enum):
+    """
+    Per-interface flag set mirroring Linux's IFF_* flag
+    selection from 'linux/include/uapi/linux/if_link.h'.
+    PyTCP exposes the four flags that have a meaningful
+    semantic in the current stack:
+
+    - BROADCAST   — interface carries broadcast traffic
+                    (Ethernet on TAP).
+    - MULTICAST   — interface carries multicast traffic
+                    (Ethernet on TAP; IPv6 ND requires it).
+    - LOOPBACK    — loopback interface (no consumer today;
+                    listed for forward-compat with a future
+                    loopback adapter).
+    - POINTOPOINT — point-to-point link (TUN; no L2 broadcast
+                    domain).
+
+    Hardware-offload / multi-queue / qdisc flags from the
+    Linux header are deliberately out of scope per the
+    CLAUDE.md Project North Star non-goals.
+    """
+
+    BROADCAST = auto()
+    MULTICAST = auto()
+    LOOPBACK = auto()
+    POINTOPOINT = auto()
+
+
+_FLAGS_BY_LAYER: dict[InterfaceLayer, frozenset[LinkFlag]] = {
+    InterfaceLayer.L2: frozenset({LinkFlag.BROADCAST, LinkFlag.MULTICAST}),
+    InterfaceLayer.L3: frozenset({LinkFlag.POINTOPOINT}),
+}
 
 
 class LinkApi:
@@ -137,3 +172,45 @@ class LinkApi:
         """
 
         return self._packet_handler._interface_layer
+
+    @property
+    def is_running(self) -> bool:
+        """
+        Return True when the stack has been started via
+        'stack.start()' and not yet stopped via
+        'stack.stop()' — Linux's 'IFF_UP + IFF_RUNNING'
+        equivalent. PyTCP collapses the two flags into one
+        because per-subsystem-up granularity has no
+        consumer today; a future split (e.g. admin-up vs
+        link-up) would land as a Phase-2 multi-interface
+        extension.
+
+        Reads 'pytcp.stack.stack_running'; the module-level
+        flag is maintained by 'start()' / 'stop()' and
+        reset to False by 'mock__init()' for unit tests.
+        """
+
+        from pytcp import stack
+
+        return stack.stack_running
+
+    @property
+    def flags(self) -> frozenset[LinkFlag]:
+        """
+        Return the set of 'LinkFlag' values that apply to
+        this interface — Linux 'ip link show eth0' '<...>'
+        bracket equivalent.
+
+        Phase-1 derives the set from 'interface_layer':
+        L2 (TAP) carries BROADCAST + MULTICAST; L3 (TUN)
+        carries POINTOPOINT. A future commit may add
+        runtime-configurable flags (e.g. LOOPBACK when a
+        loopback adapter lands, NOARP / DEBUG / PROMISC
+        when consumers materialise).
+
+        Returns a 'frozenset' (immutable, copy-by-value)
+        so the caller cannot mutate stack-internal state
+        through the returned reference.
+        """
+
+        return _FLAGS_BY_LAYER[self._packet_handler._interface_layer]

@@ -37,10 +37,12 @@ ver 3.0.4
 
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
+from unittest.mock import patch
 
 from net_addr import MacAddress
+from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.link_api import LinkApi
+from pytcp.lib.link_api import LinkApi, LinkFlag
 
 if TYPE_CHECKING:
     from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -270,6 +272,150 @@ class TestLinkApiName(TestCase):
             api.name,
             "tun7",
             msg="LinkApi.name must work on L3 (TUN) handlers.",
+        )
+
+
+class TestLinkApiIsRunning(TestCase):
+    """
+    'LinkApi.is_running' reflects whether the stack has been
+    started (via 'stack.start()') and not yet stopped (via
+    'stack.stop()'). Mirrors Linux's
+    'IFF_UP + IFF_RUNNING' state.
+    """
+
+    def test__link_api__is_running__false_before_start(self) -> None:
+        """
+        Ensure 'is_running' is False when the stack has been
+        initialized but 'stack.start()' has not yet been
+        called (i.e. 'stack.stack_running' is its default
+        False).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertFalse(
+            api.is_running,
+            msg="LinkApi.is_running must be False before stack.start().",
+        )
+
+    def test__link_api__is_running__true_after_start(self) -> None:
+        """
+        Ensure 'is_running' is True when 'stack.start()' has
+        completed (i.e. 'stack.stack_running' is True).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "stack_running", True))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertTrue(
+            api.is_running,
+            msg="LinkApi.is_running must be True after stack.start().",
+        )
+
+    def test__link_api__is_running__false_after_stop(self) -> None:
+        """
+        Ensure 'is_running' is False after 'stack.stop()' has
+        cleared 'stack.stack_running'.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        # Simulate the post-stop state: stack_running cleared.
+        self.enterContext(patch.object(stack, "stack_running", False))
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertFalse(
+            api.is_running,
+            msg="LinkApi.is_running must be False after stack.stop().",
+        )
+
+
+class TestLinkApiFlags(TestCase):
+    """
+    'LinkApi.flags' returns a frozenset of 'LinkFlag' enum
+    values derived from the bound packet handler's
+    interface layer. L2 (TAP) carries BROADCAST +
+    MULTICAST; L3 (TUN) carries POINTOPOINT. Mirrors
+    Linux's IFF_* flag selection from
+    'linux/include/uapi/linux/if_link.h'.
+    """
+
+    def test__link_api__flags__l2_broadcast_and_multicast(self) -> None:
+        """
+        Ensure 'flags' for an L2 (TAP) handler includes
+        BROADCAST and MULTICAST — TAP interfaces carry
+        Ethernet which supports both.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.flags,
+            frozenset({LinkFlag.BROADCAST, LinkFlag.MULTICAST}),
+            msg="L2 LinkApi.flags must equal {BROADCAST, MULTICAST}.",
+        )
+
+    def test__link_api__flags__l3_pointopoint(self) -> None:
+        """
+        Ensure 'flags' for an L3 (TUN) handler includes
+        POINTOPOINT — TUN carries L3 frames without an
+        Ethernet layer, so broadcast / multicast do not
+        apply.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL3(interface_mtu=1500)
+        api = LinkApi(packet_handler=cast("PacketHandlerL3", handler))
+
+        self.assertEqual(
+            api.flags,
+            frozenset({LinkFlag.POINTOPOINT}),
+            msg="L3 LinkApi.flags must equal {POINTOPOINT}.",
+        )
+
+    def test__link_api__flags__returns_frozenset(self) -> None:
+        """
+        Ensure 'flags' returns an immutable 'frozenset' so
+        the caller cannot mutate the returned value into
+        stack-internal state.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertIsInstance(
+            api.flags,
+            frozenset,
+            msg="LinkApi.flags must return a frozenset (copy-by-value).",
         )
 
 

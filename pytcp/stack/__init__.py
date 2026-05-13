@@ -227,6 +227,15 @@ link_local: "Ip4LinkLocal | None" = None
 
 # Stack shared data.
 stack_initialized: bool = False
+# Link API Phase 2 — admin-up / running flag. True once
+# 'start()' has spawned every subsystem thread; False after
+# 'stop()' has signalled them to wind down. Linux's
+# IFF_UP + IFF_RUNNING equivalent (PyTCP collapses the two
+# because per-subsystem-up granularity has no consumer
+# today). Snapshotted/restored by 'NetworkTestCase' per
+# test so the flag does not leak across the integration
+# suite.
+stack_running: bool = False
 interface_mtu: int
 sockets: dict[SocketId, socket] = {}
 # RFC 1191 §3 / RFC 8201 §4 per-destination Path-MTU cache. Keyed
@@ -324,7 +333,13 @@ def mock__init(
     """
 
     global timer, rx_ring, tx_ring, arp_cache, nd_cache, packet_handler
-    global address, link, dhcp4_client, link_local
+    global address, link, dhcp4_client, link_local, stack_running
+
+    # Reset the Link API running flag per test so it does not
+    # leak from a prior test that called 'stack.start()'. The
+    # unit test corpus does not normally call start/stop, so
+    # the default 'False' is the right reset value.
+    stack_running = False
 
     if mock__timer is not None:
         timer = mock__timer
@@ -561,6 +576,9 @@ def start() -> None:
 
     assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
+    global stack_running
+    stack_running = True
+
     timer.start()
     if hasattr(packet_handler, "arp_cache"):
         arp_cache.start()
@@ -604,6 +622,9 @@ def stop() -> None:
     """
 
     assert stack_initialized, "Stack not initialized. Call 'stack.init()' first."
+
+    global stack_running
+    stack_running = False
 
     # Teardown order:
     #   0. dhcp4_client    — stop the DHCPv4 lifecycle FIRST so any
