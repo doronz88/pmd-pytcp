@@ -1,13 +1,13 @@
 # Link API — Phase-3 Link-Control Surface Plan
 
-| Field           | Value                                                                |
-|-----------------|----------------------------------------------------------------------|
-| Status          | Plan — implementation not yet started                                |
-| Plan author     | RFC 3927 follow-up (2026-05-12)                                      |
-| Source motivation | RFC 3927 Phase 5 closure raised the question: should `stack/__init__.py`'s `packet_handler._mac_unicast` read be promoted to a public surface? Per CLAUDE.md the Link API is the canonical Phase-3 home for that read (and friends). |
-| Target branch   | `PyTCP_3_0__pre_release`                                             |
-| Touch points    | new `pytcp/lib/link_api.py`, `pytcp/stack/__init__.py` (slot + wiring), `pytcp/stack/packet_handler/__init__.py` (back-end methods if mutation lands), test harness snapshot |
-| Linux analogue  | `ip link show` / `ip link set` / RTNETLINK `RTM_NEWLINK` / `RTM_GETLINK` / `RTM_SETLINK` |
+| Field             | Value                                                                                                                                                                                                                                                  |
+|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Status            | Plan — §6 decisions confirmed 2026-05-12; Phase 0 starting                                                                                                                                                                                             |
+| Plan author       | RFC 3927 follow-up (2026-05-12)                                                                                                                                                                                                                        |
+| Source motivation | RFC 3927 Phase 5 closure raised the question: should `stack/__init__.py`'s `packet_handler._mac_unicast` read be promoted to a public surface? Per CLAUDE.md the Link API is the canonical Phase-3 home for that read (and friends).                   |
+| Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                                                                                               |
+| Touch points      | new `pytcp/lib/link_api.py`, `pytcp/stack/__init__.py` (slot + wiring), `pytcp/stack/packet_handler/__init__.py` (back-end methods if mutation lands), `pytcp/lib/packet_stats.py` (`LinkStatsCounters` dataclass — Phase 3), test harness snapshot     |
+| Linux analogue    | `ip link show` / `ip link set` / RTNETLINK `RTM_NEWLINK` / `RTM_GETLINK` / `RTM_SETLINK`                                                                                                                                                               |
 
 This document is the implementation plan for shipping the
 **Phase-3 Link API** — one of the seven sanctioned consumer
@@ -194,55 +194,105 @@ mirror Linux's `IFF_*` selection.
 - `flags` for L2 includes BROADCAST + MULTICAST.
 - `flags` for L3 includes POINTOPOINT.
 
-### Phase 3 — Stats introspection (1 commit; ~45 min)
+### Phase 3 — Stats introspection (1 commit; ~1.5 hours)
 
 Mirrors Linux's `RX/TX bytes packets errors dropped` block
 in `ip -s link show`.
 
-**Properties:**
+**Properties + new dataclasses:**
 
 ```python
+# pytcp/lib/link_api.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class LinkStats:
     rx_bytes: int
     rx_packets: int
     rx_errors: int
     rx_dropped: int
+    rx_multicast: int
     tx_bytes: int
     tx_packets: int
     tx_errors: int
     tx_dropped: int
+    tx_multicast: int
 
 @property
 def stats(self) -> LinkStats:
     """Copy-by-value snapshot of cumulative interface stats.
-    Linux equivalent: 'ip -s link show' RX/TX block."""
+    Linux equivalent: 'ip -s link show' RX/TX block. See
+    docstring body for the bucket → PyTCP counter mapping
+    (e.g. rx_errors = sum of *__integrity_error__drop +
+    *__failed_parse__drop)."""
+
+# pytcp/lib/packet_stats.py (new sibling dataclass)
+@dataclass(slots=True)
+class LinkStatsCounters:
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+    rx_multicast: int = 0
+    tx_multicast: int = 0
 ```
 
-**Implementation:**
+**Implementation (per §6.4):**
 
-- Map the existing `PacketStatsRx` / `PacketStatsTx` fields
-  to the `LinkStats` shape. The mapping aggregates protocol-
-  specific counters into the four canonical buckets.
-- Each `stats` access returns a fresh frozen dataclass —
+- Add `LinkStatsCounters` to `pytcp/lib/packet_stats.py`.
+- Add `_link_stats: LinkStatsCounters` slot to
+  `PacketHandler`. Existing `_packet_stats_rx` /
+  `_packet_stats_tx` are untouched.
+- Increment `_link_stats.rx_bytes` at `_phrx_ethernet` start;
+  `_link_stats.tx_bytes` at `_send_out_packet`; multicast in
+  the multicast-receive / multicast-egress paths.
+- `LinkApi.stats` aggregates two sources:
+  - `rx_packets` / `rx_errors` / `rx_dropped` / `tx_*`
+    counters: sum existing `_packet_stats_rx` /
+    `_packet_stats_tx` fields per the documented bucket
+    mapping.
+  - `rx_bytes` / `tx_bytes` / `rx_multicast` /
+    `tx_multicast`: read directly from `_link_stats`.
+- Returns a fresh `LinkStats` (frozen, slotted) per call —
   copy-by-value per Phase-3 "introspection is read-only".
+- Extend `_STACK__PATCHED_ATTRS` (or whichever harness slot
+  manages packet-handler state) to snapshot/restore
+  `_link_stats` per test.
 
-**Open design decision:** which counters map to which
-buckets? Some protocol-specific drops (e.g.
-`ip4__src_not_owned__drop`) clearly map to `rx_errors`; some
-(e.g. `ip4__no_proto_support__drop`) are ambiguous. Phase 3
-proposes a draft mapping in the commit; review may revise.
+**Bucket → counter mapping** (documented verbatim in
+`LinkStats` docstring so future drops know their home):
+
+- `rx_packets` ← `ethernet__pre_parse` (L2) or
+  `ip4__pre_parse + ip6__pre_parse` (L3)
+- `tx_packets` ← `ethernet__tx` (L2) or
+  `ip4__tx + ip6__tx` (L3)
+- `rx_errors` ← sum of all `*__integrity_error__drop` +
+  `*__failed_parse__drop`
+- `tx_errors` ← TX-path structural failures
+- `rx_dropped` ← sum of `*__sanity_error__drop` +
+  `*__no_proto_support__drop` + `*__no_socket_match__drop`
+  + `*__not_for_us__drop` + `icmp*__rate_limited__drop`
+- `tx_dropped` ← `ip4__allow_broadcast__drop` +
+  `ip6__src_scope_mismatch__drop` +
+  `ip4__link_local_scope_mismatch__drop`
 
 **Tests-first:**
 
-- Empty `PacketStats*` → `LinkStats` with all zeros.
-- Populated `PacketStatsRx.ethernet__pre_parse=5` → `rx_packets >= 5`.
+- Empty fixture → `LinkStats` all zeros.
+- Populated `_packet_stats_rx.ethernet__pre_parse=5` →
+  `rx_packets == 5`.
+- Populated `_link_stats.rx_bytes=1500` → `rx_bytes == 1500`.
+- `_packet_stats_rx.ip4__integrity_error__drop=2` +
+  `_packet_stats_rx.tcp__integrity_error__drop=3` →
+  `rx_errors == 5`.
 - The returned `LinkStats` is frozen / slotted (mutation
-  raises).
+  raises `FrozenInstanceError`).
 
-### Phase 4 — Mutation: set_mtu + up/down (1 commit; ~2 hours)
+**Integration test impact:** zero. Existing `exact=True`
+assertions on `packet_stats_*` are untouched because no
+fields were added to those dataclasses.
+
+### Phase 4 — Mutation: set_mtu + set_mac_address (1 commit; ~2.5 hours)
 
 The minimal mutation surface that has plausible consumers.
+`up()` / `down()` are NOT in this phase (deferred per §6.3
+to the Phase-2 multi-interface track).
 
 **Methods:**
 
@@ -251,43 +301,31 @@ def set_mtu(self, *, mtu: int) -> None:
     """Set the interface MTU. Linux 'ip link set mtu N'.
     Propagates to packet_handler._interface_mtu and
     interface_mtu module global. Rejects values < 68 (RFC
-    791 §3.2) or > 65535."""
-
-def up(self) -> None:
-    """Mark the interface up. Equivalent to 'stack.start()'
-    when the stack is initialized but not running. No-op
-    when already up."""
-
-def down(self) -> None:
-    """Mark the interface down. Equivalent to 'stack.stop()'.
-    Stops all subsystems. The stack can be brought back up
-    via 'up()'."""
+    791 §3.2) or > 65535. NOTE: values below 1280 break
+    IPv6 (RFC 8200 §5); the docstring warns the operator."""
 
 def set_mac_address(self, *, mac_address: MacAddress) -> None:
-    """Phase-2 hotplug (deferred). Linux 'ip link set address'."""
+    """Set the interface MAC. Linux 'ip link set address'.
+    Requires the stack stopped first (stack.start() not run
+    yet, or stack.stop() already run); raises otherwise.
+    Validates the MAC (not multicast, not zero). Updates
+    packet_handler._mac_unicast. Schedules gratuitous
+    announce for every owned host (RFC 5227 §3 / RFC 4861
+    §7.2.6) at the next stack.start()."""
 ```
-
-**Open design decision:** `up()` / `down()` overlap with
-`stack.start()` / `stack.stop()`. Per Phase-3 north-star:
-
-> Stack lifecycle is its own API surface. `stack.init()` /
-> `stack.start()` / `stack.stop()` are the boundary; treat
-> them like `clone(2)` / `exit(2)` rather than ordinary
-> function calls.
-
-So `LinkApi.up/down` should delegate to `stack.start/stop`
-— not duplicate logic. The Linux equivalent is `ip link set
-up` which calls into the kernel's interface-up path; same
-shape.
 
 **Implementation:**
 
 - `set_mtu` writes through to `packet_handler._interface_mtu`,
   `stack.interface_mtu`, and the TxRing's MTU if it has
   one. Validates against RFC 791 §3.2 minimum (68 octets).
-- `up()` calls `stack.start()`; `down()` calls `stack.stop()`.
-- `set_mac_address` deferred to Phase 5 (or Phase-2 of the
-  multi-interface track).
+- `set_mac_address`:
+  1. Reject if `stack.stack_initialized` is True (linux-faithful
+     "down first").
+  2. Validate MAC (not multicast bit; not zero).
+  3. Update `packet_handler._mac_unicast`.
+  4. Mark every `_ip4_host` and `_ip6_host` for re-announce
+     at next start.
 
 **Tests-first:**
 
@@ -295,8 +333,15 @@ shape.
   and `stack.interface_mtu`.
 - `set_mtu(67)` rejects (below RFC 791 §3.2 minimum).
 - `set_mtu(70000)` rejects (above uint16).
-- `up()` / `down()` delegate to `stack.start/stop` (mock
-  the stack functions and verify call).
+- `set_mac_address` with stack running rejects with a clear
+  error message.
+- `set_mac_address` with stack stopped updates the MAC and
+  schedules re-announce.
+- `set_mac_address` validation: multicast bit rejection;
+  zero-MAC rejection.
+- Integration test: after `set_mac_address` + `stack.start()`,
+  the wire shows gratuitous ARP for every owned IPv4 host
+  and unsolicited NA for every owned IPv6 host.
 
 ### Phase 5 — Adherence refresh + docs (1 commit; ~30 min)
 
@@ -360,10 +405,15 @@ Plan uses **properties** for read access (`link.mac_address`,
 Linux RTNETLINK is method-shaped (`RTM_GETLINK`). PyTCP's
 existing `Ip4AddressApi.list_ip4_hosts()` is method-shaped.
 
-**Decision:** properties for single-value reads (mac, mtu,
-name, is_running, interface_layer); methods for richer
-operations (stats — which returns a dataclass; future
-queries that take filter args).
+**Decision (confirmed 2026-05-12):** **all reads are
+properties, including `stats`.** Pythonic default; matches
+`HeaderProperties` mixins and value-type field access
+across the codebase; `stats` allocation cost (aggregating
+~100 counters into a frozen dataclass) is microseconds, not
+a syscall — calling it a property is honest enough. Future
+Phase-3 IPC swap-out, if it ever lands, becomes a single
+sweep across the surface; pre-emptively making `stats` a
+method today doesn't help.
 
 ### 6.2 `set_mtu` validation policy
 
@@ -372,6 +422,14 @@ queries that take filter args).
 - Upper bound: **65535** (uint16 wire limit).
 - Alternative: enforce a higher minimum (e.g. 576 octets per
   RFC 1122 §3.3.3) — but 68 is the spec floor.
+
+**Decision (confirmed 2026-05-12):** **68 octets floor**.
+Matches Linux's `ETH_MIN_MTU` device-level enforcement.
+Accepts the IPv6-silently-breaks-below-1280 footgun as
+operator responsibility (Linux ships the same footgun;
+Linux releases it via per-interface IPv6 disable which
+PyTCP doesn't have yet, so the docstring warns the
+operator).
 
 ### 6.3 `up()` / `down()` overlap with `stack.start()` / `stack.stop()`
 
@@ -382,7 +440,13 @@ Alternative: drop `up/down` from LinkApi entirely; operators
 call `stack.start/stop`. Cleaner but loses the Linux-parity
 `ip link set up/down` ergonomics.
 
-**Decision:** ship delegating wrappers. Cheap, mirrors Linux.
+**Decision (confirmed 2026-05-12):** **defer `up()`/`down()`
+to the Phase-2 multi-interface track.** Phase-1 has no
+consumer demand (tests + examples call `stack.start/stop`
+directly and won't migrate); Phase-2 needs per-interface
+lifecycle with real semantics; shipping delegating wrappers
+today locks in semantics that will need to be torn out then.
+Phase 4 scope reduces to `set_mtu` + `set_mac_address` only.
 
 ### 6.4 Stats aggregation — which counters map to which buckets?
 
@@ -390,16 +454,51 @@ call `stack.start/stop`. Cleaner but loses the Linux-parity
 needs 8 canonical buckets. The mapping is a judgement call:
 
 - `rx_bytes` / `tx_bytes` — sum of frame lengths (need a new
-  byte counter — Phase 3 may add `rx_bytes`/`tx_bytes` to
-  PacketStats).
+  byte counter).
 - `rx_packets` ≈ `ethernet__pre_parse` (L2) or
   `ip4__pre_parse + ip6__pre_parse` (L3).
 - `rx_errors` ≈ sum of `*__integrity_error__drop` + similar.
 - `rx_dropped` ≈ sum of `*__no_proto_support__drop` + similar.
 - TX symmetric.
 
-**Decision:** ship a defensible draft mapping in Phase 3;
-review may revise.
+**Decision (confirmed 2026-05-12):** **separate
+`LinkStatsCounters` dataclass on `PacketHandler`**.
+Adding `rx_bytes`/`tx_bytes`/`rx_multicast`/`tx_multicast`
+directly to `PacketStatsRx`/`PacketStatsTx` would break
+every integration test using the strict `exact=True`
+assertion (the rule from `integration_testing.md §8`).
+Instead, Phase 3 adds a new sibling dataclass:
+
+```python
+# pytcp/lib/packet_stats.py (new sibling dataclass)
+@dataclass(slots=True)
+class LinkStatsCounters:
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+    rx_multicast: int = 0
+    tx_multicast: int = 0
+```
+
+`PacketHandler` grows a `_link_stats: LinkStatsCounters`
+slot alongside the existing `_packet_stats_rx` /
+`_packet_stats_tx`. Integration tests' `exact=True`
+assertions on `packet_stats_*` are completely untouched.
+
+`LinkApi.stats` combines both sources:
+- `rx_packets` / `rx_errors` / `rx_dropped` etc. —
+  aggregate from existing `_packet_stats_rx` fields (no new
+  per-protocol counters needed).
+- `rx_bytes` / `rx_multicast` etc. — read directly from
+  `_link_stats`.
+
+The aggregation mapping is documented verbatim in the
+`LinkStats` docstring so future contributors know which
+bucket a new drop counter belongs to.
+
+Harness `setUp` clears `link_stats` per-test (snapshot/restore
+extension to the existing `_STACK__PATCHED_ATTRS` pattern).
+Phase 3 effort bumps from ~45 min to ~1.5 h to cover the
+schema add + harness reset.
 
 ### 6.5 Multi-interface forward-compat
 
@@ -411,11 +510,15 @@ The Linux Link API is multi-interface (each call takes
 ifindex / name). The PyTCP equivalent would be
 `stack.link[interface_name]` or `stack.link.get(name)`.
 
-**Decision:** Phase 1 API is `stack.link.mac_address` (no
-interface arg). When multi-interface lands, the API becomes
+**Decision (confirmed 2026-05-12):** **Phase 1 API is
+`stack.link.mac_address` (no interface arg).** When
+multi-interface lands, the API becomes
 `stack.link["tap7"].mac_address` — the single-arg
-subscript is the natural Linux-parity upgrade path. No
-Phase-2 commitment in this track.
+subscript is the natural Linux-parity upgrade path. Phase-2
+multi-interface is a major refactor anyway (route table,
+FIB, forwarding plane); one more shape change at
+`stack.link` is rounding error compared to the rest. No
+Phase-2 commitment in this track; Phase-1 stays clean.
 
 ### 6.6 Mutation in Phase 1 — set_mtu only?
 
@@ -423,6 +526,40 @@ Phase-2 commitment in this track.
 `set_mtu` has plausible Phase-1 consumers (PMTU work,
 operator config). Plan ships `set_mtu` in Phase 4 of this
 track; defers `set_mac_address`.
+
+**Decision (confirmed 2026-05-12):** **ship
+`set_mac_address` in Phase 4 with Linux-faithful "stack
+stopped first" semantics.**
+
+`set_mac_address(mac_address=...)` requires the stack to be
+stopped (`stack.start()` not yet called, or `stack.stop()`
+already run). Rationale: Linux requires `ip link set down`
+before `ip link set address`; the equivalent here is "stack
+not running." This restriction lifts when multi-interface
+lands and per-interface lifecycle becomes meaningful.
+
+Implementation in Phase 4 covers:
+
+1. MAC validation (reject multicast bit set; reject all-zero).
+2. Update `packet_handler._mac_unicast`.
+3. Update RX MAC filter (the unicast filter changes; solicited
+   -node multicast is derived from IPv6 address and is
+   unaffected).
+4. Schedule gratuitous announce for every owned host:
+   - RFC 5227 §3 gratuitous ARP for each `_ip4_host`.
+   - RFC 4861 §7.2.6 unsolicited Neighbor Advertisement for
+     each `_ip6_host`.
+   Reuse `Ip4AddressApi.send_gratuitous_arp` from the RFC
+   3927 track.
+5. Tests: validation matrix + RX-filter assertion + wire-
+   level integration test for the announce sequence + "stack
+   not stopped" rejection.
+
+Phase 4 effort revises from ~30 min (set_mtu only) to
+~2.5 h (set_mtu + set_mac_address + stop-first guard
++ announce wire-level tests).
+
+`up()`/`down()` are NOT in Phase 4 — deferred per §6.3.
 
 ---
 
@@ -458,17 +595,18 @@ existing harness fixtures.
 
 ## 8. Effort estimate
 
-| Phase | Description                                | Effort   | Cumulative |
-|-------|--------------------------------------------|----------|------------|
-| 0     | Read-only MAC + MTU + interface_layer      | ~30 min  | ~30 min    |
-| 1     | Interface name plumbing                    | ~30 min  | ~1 h       |
-| 2     | Running state + flags enum                 | ~45 min  | ~1.75 h    |
-| 3     | Stats introspection                        | ~45 min  | ~2.5 h     |
-| 4     | set_mtu + up/down mutation                 | ~2 h     | ~4.5 h     |
-| 5     | Adherence + docs                           | ~30 min  | ~5 h       |
+| Phase | Description                                            | Effort  | Cumulative |
+|-------|--------------------------------------------------------|---------|------------|
+| 0     | Read-only MAC + MTU + interface_layer                  | ~30 min | ~30 min    |
+| 1     | Interface name plumbing                                | ~30 min | ~1 h       |
+| 2     | Running state + flags enum                             | ~45 min | ~1.75 h    |
+| 3     | Stats introspection (incl. LinkStatsCounters dataclass) | ~1.5 h  | ~3.25 h    |
+| 4     | set_mtu + set_mac_address (stack-stopped-first)        | ~2.5 h  | ~5.75 h    |
+| 5     | Adherence + docs                                       | ~30 min | ~6.25 h    |
 
-**Total: ~5 h** (~half a working day). Phases ship in
-numeric order, each as a focused commit.
+**Total: ~6 h** (~a working day). Phases ship in numeric
+order, each as a focused commit. `up()`/`down()` deferred
+to the Phase-2 multi-interface track per §6.3.
 
 ---
 
@@ -511,13 +649,13 @@ After Phase 5:
 
 ### Phase-3 north-star (CLAUDE.md)
 
-| Surface | Plane | Linux | PyTCP state after this track |
-|---|---|---|---|
-| Link API | Link control | `ip link` / RTNETLINK | **shipped** (read + set_mtu + up/down) |
-| Address API | Network-layer control | `ip addr` / RTNETLINK | shipped (RFC 3927 track) |
-| Route API | Routing control | `ip route` / RTNETLINK | not yet |
-| Neighbor API | Neighbor control | `ip neighbor` | not yet |
-| Introspection API | State observation | `/proc/net/*` | not yet (stats peek via Link API §3) |
+| Surface           | Plane                 | Linux                  | PyTCP state after this track                                    |
+|-------------------|-----------------------|------------------------|-----------------------------------------------------------------|
+| Link API          | Link control          | `ip link` / RTNETLINK  | **shipped** (read + set_mtu + set_mac_address; up/down Phase-2) |
+| Address API       | Network-layer control | `ip addr` / RTNETLINK  | shipped (RFC 3927 track)                                        |
+| Route API         | Routing control       | `ip route` / RTNETLINK | not yet                                                         |
+| Neighbor API      | Neighbor control      | `ip neighbor`          | not yet                                                         |
+| Introspection API | State observation     | `/proc/net/*`          | not yet (stats peek via Link API §3)                            |
 
 ### PyTCP internal references
 
@@ -542,17 +680,18 @@ After Phase 5:
 
 ### 12.1 Linux equivalents per phase
 
-| PyTCP after Phase N | Linux equivalent                            |
-|---------------------|---------------------------------------------|
-| Phase 0 `mac_address` | `ip link show eth0 | grep link/ether`     |
-| Phase 0 `mtu`         | `ip link show eth0 | grep mtu`            |
-| Phase 0 `interface_layer` | `ip link show eth0 | grep link/`      |
-| Phase 1 `name`        | `ip link show` first column                |
-| Phase 2 `is_running`  | `ip link show eth0 | grep state`           |
-| Phase 2 `flags`       | `ip link show eth0 | grep <FLAGS>`         |
-| Phase 3 `stats`       | `ip -s link show eth0`                     |
-| Phase 4 `set_mtu`     | `ip link set eth0 mtu N`                  |
-| Phase 4 `up`/`down`   | `ip link set eth0 up`/`down`              |
+| PyTCP after Phase N       | Linux equivalent                          |
+|---------------------------|-------------------------------------------|
+| Phase 0 `mac_address`     | `ip link show eth0 \| grep link/ether`    |
+| Phase 0 `mtu`             | `ip link show eth0 \| grep mtu`           |
+| Phase 0 `interface_layer` | `ip link show eth0 \| grep link/`         |
+| Phase 1 `name`            | `ip link show` first column               |
+| Phase 2 `is_running`      | `ip link show eth0 \| grep state`         |
+| Phase 2 `flags`           | `ip link show eth0 \| grep <FLAGS>`       |
+| Phase 3 `stats`           | `ip -s link show eth0`                    |
+| Phase 4 `set_mtu`         | `ip link set eth0 mtu N`                  |
+| Phase 4 `set_mac_address` | `ip link set eth0 address aa:bb:..`       |
+| Phase-2 (deferred) `up`/`down` | `ip link set eth0 up`/`down`         |
 
 ### 12.2 Phase-3 alignment
 
