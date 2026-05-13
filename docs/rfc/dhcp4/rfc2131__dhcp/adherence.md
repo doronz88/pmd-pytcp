@@ -22,27 +22,45 @@ narrative, §3.7 narrative, §4.2 administrative narrative,
 §5 Acknowledgments, §6 References, §7 Security
 boilerplate, §8 Author's Address) are omitted.
 
-PyTCP's DHCPv4 implementation has grown through Phases 0–4
-into a full RFC 2131 §4.4 client. The class
-`Dhcp4Client` at `pytcp/protocols/dhcp4/dhcp4__client.py` (1140 lines)
-subclasses `Subsystem` and runs as a long-lived
-background thread under `stack.start()` / `stack.stop()`.
-The FSM models INIT / SELECTING / REQUESTING / BOUND /
-RENEWING / REBINDING explicitly via a
-`Dhcp4State`-dispatched `_subsystem_loop`; only the
-INIT-REBOOT / REBOOTING branch is still absent (Phase 5).
-The client carries RFC 4361 §6.1 DUID/IAID Client
-Identifier, RFC 1542 §3.2 `secs` advance, RFC 2131 §4.1
-randomised exponential backoff, RFC 2131 §3.1 step 5
-DHCPDECLINE on ARP conflict (via a packet-handler
-callback that runs the RFC 5227 §2.1.1 Probe loop), RFC
-2131 §4.4.1 [1, 10]-second startup desynchronisation
-delay, RFC 2131 §4.4.5 T1 / T2 / lease-expiry
-deadlines, and RFC 2131 §4.4.6 DHCPRELEASE on graceful
-shutdown. A two-step `sync` API (`fetch()` /
-`release(lease)` / `renew(lease)` / `rebind(lease)`)
-exposes the same primitives for tests and operator CLI
-tools.
+PyTCP's DHCPv4 implementation has shipped through Phases
+0-8.x into a full RFC 2131 §4.4 client. The class
+`Dhcp4Client` at
+`pytcp/protocols/dhcp4/dhcp4__client.py` subclasses
+`Subsystem` and runs as a long-lived background thread
+under `stack.start()` / `stack.stop()`. The FSM models
+INIT / SELECTING / REQUESTING / BOUND / RENEWING /
+REBINDING / INIT-REBOOT / REBOOTING explicitly via a
+`Dhcp4State`-dispatched `_subsystem_loop`. The client
+carries:
+
+- RFC 4361 §6.1 DUID/IAID Client Identifier (Phase 3).
+- RFC 1542 §3.2 `secs` advance (Phase 1).
+- RFC 2131 §4.1 randomised exponential backoff (Phase 1).
+- RFC 2131 §3.1 step 5 DHCPDECLINE on ARP conflict
+  (Phase 2.2) via a packet-handler callback running the
+  RFC 5227 §2.1.1 Probe loop.
+- RFC 2131 §4.4.1 [1, 10]-second startup desync delay
+  (Phase 2.1).
+- RFC 2131 §4.4.1 multi-OFFER collection window
+  (Phase 8.x).
+- RFC 2131 §4.4.5 T1 / T2 / lease-expiry deadlines
+  (Phase 4 commit C), with RFC 2132 §9.7/§9.8 server-
+  supplied option 58 (T1) / option 59 (T2) overrides
+  honoured (Phase 8.x).
+- RFC 2131 §3.2 / §4.4.2 INIT-REBOOT cached-lease
+  fast-path (Phase 5).
+- RFC 4436 §4 DNAv4 link-change probe / fast-path
+  (Phase 6).
+- RFC 2131 §4.4.6 DHCPRELEASE on graceful shutdown
+  (Phase 4 commit D).
+- RFC 2132 §9.10 Maximum DHCP Message Size option 57
+  (Phase 8.1), option 51 lease-time hint in DISCOVER
+  (Phase 8.2), option 52 Option Overload parser-side
+  merge (Phase 8.4).
+
+A two-step `sync` API (`fetch()` / `release(lease)` /
+`renew(lease)` / `rebind(lease)`) exposes the same
+primitives for tests and operator CLI tools.
 
 A separate kernel/userspace boundary surface at
 `pytcp/lib/address_api.py` (`Ip4AddressApi`) mediates
@@ -52,18 +70,27 @@ table is wired end-to-end (see the table in the Overall
 assessment section).
 
 The wire-format library at `net_proto/protocols/dhcp4/`
-is comprehensive — full BOOTP-shape header, 13+ option
-codecs, integrity-validated parser — and every paragraph
-about message format is met.
+is comprehensive — full BOOTP-shape header, 15+ option
+codecs (including the Phase-8 polish set: max_msg_size,
+lease_time_hint, option_overload, renewal_time,
+rebinding_time), integrity-validated parser — and every
+paragraph about message format is met.
 
-Outstanding gaps against RFC 2131 §4.4: multiple-OFFER
-collection window (single-OFFER accept-first heuristic);
-server option 58 (T1) / option 59 (T2) overrides (parsed
-as `Dhcp4OptionUnknown` today, factor-based defaults
-always win); DHCPINFORM (no consumer); Maximum DHCP
-Message Size option 57 (Phase 8). The Phase 5 cached-
-lease / INIT-REBOOT fast-path is now shipped — see
-§3.2, §4.4.2, and the closing summary.
+Remaining items against the per-RFC adherence catalogue:
+
+- **§3.4 / §4.4.3 DHCPINFORM** — niche, no PyTCP
+  consumer for DNS/NTP/etc. configuration today.
+  Tracked in `docs/refactor/ip4_audit_punchlist.md` as
+  the DHCPv4 Phase 9 backlog item.
+- **RFC 3396 long-option concatenation** — parser-side
+  feature with no current consumer. Existing PyTCP
+  codecs produce payloads short enough that wire-level
+  splitting never happens. Land alongside RFC 3442
+  Classless Static Routes when that arrives.
+- **Phase 7 multi-default-gateway / route-table
+  integration** — blocked on the Route API (not yet
+  shipped; tracked under the Phase-3 sanctioned-API
+  punch list).
 
 ---
 
@@ -674,10 +701,11 @@ row (Phase 5).
 >  client. A client can receive the following messages
 >  from a server: DHCPOFFER, DHCPACK, DHCPNAK."
 
-**Adherence:** partial (Phase 4 commit C). The
-`Dhcp4State` enum at `dhcp4_client.py:86-101` declares
-all eight Figure-5 states. The `_subsystem_loop`
-dispatch at `:231-267` maps them to handlers:
+**Adherence:** met (Phase 4 commit C + Phase 5
+INIT-REBOOT). The `Dhcp4State` enum at
+`dhcp4_client.py:86-101` declares all eight Figure-5
+states. The `_subsystem_loop` dispatch at `:231-267`
+maps them to handlers:
 
 | Figure-5 state | PyTCP handler                                              |
 |----------------|------------------------------------------------------------|
