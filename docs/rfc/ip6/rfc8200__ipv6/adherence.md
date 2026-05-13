@@ -176,17 +176,33 @@ routing types with Segments Left > 0.
 
 ## §4.5 Fragment Header
 
-**Adherence:** shipped (pre-existing). PyTCP has had IPv6
-fragmentation reassembly since before the extension-header
-deployment. The Fragment header lives at
-`net_proto/protocols/ip6_frag/` and is wired through the
-chain walker via the existing re-entry pattern in
+**Adherence:** shipped. PyTCP has had IPv6 fragmentation
+reassembly since before the extension-header deployment.
+The Fragment header lives at `net_proto/protocols/ip6_frag/`
+and is wired through the chain walker via the re-entry
+pattern in
 `pytcp/stack/packet_handler/packet_handler__ip6_frag__rx.py`.
 
-The fragment-overlap rejection (RFC 5722) and atomic-fragment
-fast-path (RFC 8200 §4.5) are NOT yet implemented and are
-tracked as separate items (#281, #282 in the deployment
-plan).
+Reassembly state lives in the shared `IpFragTable` at
+`pytcp/protocols/ip/ip_frag_table.py` (shared with the IPv4
+reassembly path so the RFC 3168 §5.3 ECN aggregator works
+identically for both families). The table enforces:
+
+- **§4.5 atomic-fragment fast-path** (RFC 6946 §4): an
+  inbound fragment with `offset = 0` and `M = 0` is the
+  entire datagram and is delivered immediately without
+  touching the flow store. Implementation at
+  `ip_frag_table.py:161-172`.
+- **§4.5 overlap rejection** (RFC 5722 §3): a fragment that
+  overlaps any previously-stored fragment for the same flow
+  marks the flow as discarded; subsequent fragments for the
+  flow are silently dropped. Implementation at
+  `ip_frag_table.py:180-194`. Strict-reading interpretation
+  (exact-duplicate offsets are also overlapping).
+
+See the dedicated [`rfc5722__overlapping_fragments`](../rfc5722__overlapping_fragments/adherence.md)
+and [`rfc6946__atomic_fragments`](../rfc6946__atomic_fragments/adherence.md)
+adherence records for the per-RFC walk-throughs.
 
 ## §4.6 Destination Options Header
 
