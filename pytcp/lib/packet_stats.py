@@ -341,6 +341,7 @@ class PacketStatsTx(PacketStats):
 
     ip6_frag__pre_assemble: int = 0
     ip6_frag__send: int = 0
+    ip6_frag__nd_message__drop: int = 0
 
     icmp4__pre_assemble: int = 0
     icmp4__echo_reply__send: int = 0

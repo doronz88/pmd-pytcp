@@ -43,9 +43,39 @@ from net_proto import (
     TcpAssembler,
     UdpAssembler,
 )
+from net_proto.protocols.icmp6.message.icmp6__message import Icmp6Type
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
+
+# RFC 6980 §5 — NDP (Neighbor Discovery Protocol) message
+# types that MUST NOT use IPv6 fragmentation. A host that
+# receives a fragmented NDP message silently discards it
+# (RX-side gate at packet_handler__icmp6__rx.py); the TX
+# side refuses to fragment in the first place.
+_NDP_TYPES: frozenset[Icmp6Type] = frozenset(
+    {
+        Icmp6Type.ND__ROUTER_SOLICITATION,
+        Icmp6Type.ND__ROUTER_ADVERTISEMENT,
+        Icmp6Type.ND__NEIGHBOR_SOLICITATION,
+        Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
+        Icmp6Type.ND__REDIRECT,
+    }
+)
+
+
+def is_ndp_message(ip6_payload: object, /) -> bool:
+    """
+    Return True if the IPv6 payload is an ICMPv6 NDP message
+    (RS / RA / NS / NA / Redirect) per RFC 6980 §5. Used by
+    the IPv6 fragmentation TX path to refuse fragmentation
+    of NDP messages.
+
+    Reference: RFC 6980 §5 (NDP and SEND messages MUST NOT
+    use IPv6 fragmentation).
+    """
+
+    return isinstance(ip6_payload, Icmp6Assembler) and ip6_payload.message.type in _NDP_TYPES
 
 
 def _generate_ip6_frag_id() -> int:
@@ -103,6 +133,21 @@ class PacketHandlerIp6FragTx(ABC):
         """
 
         self._packet_stats_tx.ip6_frag__pre_assemble += 1
+
+        # RFC 6980 §5 — NDP and SEND messages MUST NOT use
+        # IPv6 fragmentation. The receiver silently discards
+        # fragmented NDP per the RX-side gate at
+        # packet_handler__icmp6__rx.py; the TX side refuses
+        # to fragment in the first place so we never emit a
+        # frame that would be discarded.
+        if is_ndp_message(ip6_packet_tx.payload):
+            self._packet_stats_tx.ip6_frag__nd_message__drop += 1
+            __debug__ and log(
+                "ip6",
+                f"{ip6_packet_tx.tracker} - <WARN>NDP message exceeds MTU; "
+                "RFC 6980 §5 forbids fragmentation; dropping</>",
+            )
+            return TxStatus.DROPPED__IP6__ND_FRAGMENTATION_FORBIDDEN
 
         if isinstance(ip6_packet_tx.payload, (TcpAssembler, UdpAssembler, Icmp6Assembler)):
             ip6_packet_tx.payload.pshdr_sum = ip6_packet_tx.pshdr_sum

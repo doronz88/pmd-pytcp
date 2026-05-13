@@ -75,6 +75,7 @@ _EXPECTED_MEMBERS: tuple[str, ...] = (
     "DROPPED__IP6__DST_UNSPECIFIED",
     "DROPPED__IP6__UNKNOWN",
     "DROPPED__IP6__EXT_FRAG_UNKNOWN",
+    "DROPPED__IP6__ND_FRAGMENTATION_FORBIDDEN",
     "DROPPED__UDP__UNKNOWN",
     "DROPPED__TCP__UNKNOWN",
     "DROPPED__ICMP4__UNKNOWN",
@@ -178,7 +179,7 @@ class TestTxStatusClass(TestCase):
             "_member": TxStatus.DROPPED__ICMP6__UNKNOWN,
             "_results": {
                 "name": "DROPPED__ICMP6__UNKNOWN",
-                "value": 36,
+                "value": 37,
                 "__str__": "DROPPED__ICMP6__UNKNOWN",
             },
         },

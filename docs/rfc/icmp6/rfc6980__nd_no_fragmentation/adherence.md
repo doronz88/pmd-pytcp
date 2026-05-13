@@ -20,7 +20,21 @@ single IPv6 packet sized below the link MTU and never
 invokes the IPv6 fragmentation extension header for ND
 traffic. The MUST-NOT-send half holds by construction —
 there is no codepath that would request fragmentation of
-an ND message.
+an ND message — and is additionally enforced by an
+explicit defensive gate in
+`packet_handler__ip6_frag__tx.py::_phtx_ip6_frag`: the
+`is_ndp_message(ip6_packet_tx.payload)` predicate (also
+exported from the same module for unit testing) returns
+True for any Icmp6Assembler whose message type is in
+{ND__ROUTER_SOLICITATION, ND__ROUTER_ADVERTISEMENT,
+ND__NEIGHBOR_SOLICITATION, ND__NEIGHBOR_ADVERTISEMENT,
+ND__REDIRECT}; the gate returns
+`TxStatus.DROPPED__IP6__ND_FRAGMENTATION_FORBIDDEN` and
+bumps the `ip6_frag__nd_message__drop` counter. The gate
+is dead code under normal operation (every ND message
+PyTCP emits today fits in a single MTU) but defends
+against hypothetical future code paths that might compose
+oversized ND options.
 
 **RX side** (MUST silently ignore on receipt if
 fragmented): a new `was_fragmented: bool` attribute on

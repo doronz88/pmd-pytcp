@@ -81,6 +81,7 @@ class TxStatus(NameEnum):
     DROPPED__IP6__UNKNOWN = auto()
 
     DROPPED__IP6__EXT_FRAG_UNKNOWN = auto()
+    DROPPED__IP6__ND_FRAGMENTATION_FORBIDDEN = auto()
 
     DROPPED__UDP__UNKNOWN = auto()
 
