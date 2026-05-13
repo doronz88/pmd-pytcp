@@ -63,6 +63,22 @@ IP6__SOLICITED_NODE_HOST_MASK = 0x0000_0000_0000_0000_0000_0000_00FF_FFFF
 IP6__PRIVATE_PREFIX = 0xFC00_0000_0000_0000_0000_0000_0000_0000  # RFC 4193 fc00::/7
 IP6__PRIVATE_PREFIX_MASK = 0xFE00_0000_0000_0000_0000_0000_0000_0000
 
+# RFC 3849 Documentation prefix — 2001:db8::/32
+IP6__DOCUMENTATION_PREFIX = 0x2001_0DB8_0000_0000_0000_0000_0000_0000
+IP6__DOCUMENTATION_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
+
+# RFC 6666 Discard-Only Address Block — 100::/64
+IP6__DISCARD_PREFIX = 0x0100_0000_0000_0000_0000_0000_0000_0000
+IP6__DISCARD_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_0000_0000_0000_0000
+
+# RFC 5180 Benchmarking — 2001:2::/48
+IP6__BENCHMARK_PREFIX = 0x2001_0002_0000_0000_0000_0000_0000_0000
+IP6__BENCHMARK_PREFIX_MASK = 0xFFFF_FFFF_FFFF_0000_0000_0000_0000_0000
+
+# RFC 4291 §2.5.5.2 IPv4-mapped IPv6 — ::ffff:0:0/96
+IP6__IPV4_MAPPED_PREFIX = 0x0000_0000_0000_0000_0000_FFFF_0000_0000
+IP6__IPV4_MAPPED_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_0000_0000
+
 IP6__REGEX = (
     r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
     r"([0-9a-fA-F]{1,4}:){1,7}:|"
@@ -232,3 +248,41 @@ class Ip6Address(IpAddress):
         """
 
         return self._address & IP6__PRIVATE_PREFIX_MASK == IP6__PRIVATE_PREFIX
+
+    @property
+    def is_documentation(self) -> bool:
+        """
+        Check if IPv6 address is in the 2001:db8::/32
+        documentation prefix (RFC 3849).
+        """
+
+        return self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
+
+    @property
+    def is_reserved(self) -> bool:
+        """
+        Check if IPv6 address belongs to a special-purpose
+        prefix from the IANA IPv6 Special-Purpose Address
+        Registry (RFC 6890 / RFC 8190) that is NOT already
+        covered by another predicate (is_loopback,
+        is_link_local, is_multicast, is_private,
+        is_unspecified). Currently recognises:
+
+        - 100::/64       (RFC 6666 Discard-Only)
+        - ::ffff:0:0/96  (RFC 4291 §2.5.5.2 IPv4-mapped)
+        - 2001:2::/48    (RFC 5180 Benchmarking)
+        - 2001:db8::/32  (RFC 3849 Documentation)
+
+        Additional prefixes (TEREDO, 6to4, ORCHIDv2, etc.)
+        will be folded in as PyTCP gains consumers that
+        need to distinguish them. See
+        `docs/rfc/ip6/rfc8190__ipv6_special_purpose/adherence.md`
+        for the per-prefix walk-through.
+        """
+
+        return (
+            self._address & IP6__DISCARD_PREFIX_MASK == IP6__DISCARD_PREFIX
+            or self._address & IP6__IPV4_MAPPED_PREFIX_MASK == IP6__IPV4_MAPPED_PREFIX
+            or self._address & IP6__BENCHMARK_PREFIX_MASK == IP6__BENCHMARK_PREFIX
+            or self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
+        )

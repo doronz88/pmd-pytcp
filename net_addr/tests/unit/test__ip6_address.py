@@ -1280,3 +1280,205 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
             msg="solicited_node_multicast must reject a multicast address.",
         ):
             _ = Ip6Address("ff02::1").solicited_node_multicast
+
+
+class TestIp6AddressIsDocumentation(TestCase):
+    """
+    'Ip6Address.is_documentation' recognises the 2001:db8::/32
+    documentation prefix per RFC 3849.
+    """
+
+    def test__net_addr__ip6_address__is_documentation__match(self) -> None:
+        """
+        Ensure an address in 2001:db8::/32 reports
+        is_documentation = True.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertTrue(
+            Ip6Address("2001:db8::1").is_documentation,
+            msg="2001:db8::1 must be recognised as documentation.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__boundary(self) -> None:
+        """
+        Ensure the upper boundary of 2001:db8::/32 reports
+        is_documentation = True.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertTrue(
+            Ip6Address("2001:db8:ffff:ffff:ffff:ffff:ffff:ffff").is_documentation,
+            msg="Last address in 2001:db8::/32 must be documentation.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__below(self) -> None:
+        """
+        Ensure addresses below the 2001:db8::/32 prefix report
+        is_documentation = False.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertFalse(
+            Ip6Address("2001:db7:ffff:ffff:ffff:ffff:ffff:ffff").is_documentation,
+            msg="2001:db7::/32 is not the documentation prefix.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__above(self) -> None:
+        """
+        Ensure addresses above the 2001:db8::/32 prefix report
+        is_documentation = False.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertFalse(
+            Ip6Address("2001:db9::1").is_documentation,
+            msg="2001:db9::/32 is not the documentation prefix.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__global_unrelated(self) -> None:
+        """
+        Ensure a regular global IPv6 address reports
+        is_documentation = False.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertFalse(
+            Ip6Address("2606:4700:4700::1111").is_documentation,
+            msg="Cloudflare public DNS is not documentation.",
+        )
+
+
+class TestIp6AddressIsReserved(TestCase):
+    """
+    'Ip6Address.is_reserved' aggregates the IPv6 special-purpose
+    prefixes from the IANA registry (RFC 8190 / RFC 6890) that
+    are not already covered by is_loopback / is_link_local /
+    is_multicast / is_private / is_unspecified.
+    """
+
+    def test__net_addr__ip6_address__is_reserved__discard(self) -> None:
+        """
+        Ensure 100::/64 (Discard-Only Address Block) reports
+        is_reserved = True.
+
+        Reference: RFC 6666 (A Discard Prefix for IPv6).
+        """
+
+        self.assertTrue(
+            Ip6Address("100::1").is_reserved,
+            msg="100::/64 discard prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__documentation(self) -> None:
+        """
+        Ensure 2001:db8::/32 (documentation) reports
+        is_reserved = True.
+
+        Reference: RFC 3849 (IPv6 Address Prefix Reserved for Documentation).
+        """
+
+        self.assertTrue(
+            Ip6Address("2001:db8::1").is_reserved,
+            msg="2001:db8::/32 documentation prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__benchmark(self) -> None:
+        """
+        Ensure 2001:2::/48 (benchmarking) reports
+        is_reserved = True.
+
+        Reference: RFC 5180 (IPv6 Benchmarking Methodology).
+        """
+
+        self.assertTrue(
+            Ip6Address("2001:2::1").is_reserved,
+            msg="2001:2::/48 benchmarking prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__ipv4_mapped(self) -> None:
+        """
+        Ensure ::ffff:0:0/96 (IPv4-mapped) reports
+        is_reserved = True.
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped IPv6 address).
+        """
+
+        self.assertTrue(
+            Ip6Address("::ffff:192.0.2.1").is_reserved,
+            msg="::ffff:0:0/96 IPv4-mapped prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__global_not_reserved(self) -> None:
+        """
+        Ensure a regular global unicast address reports
+        is_reserved = False.
+
+        Reference: RFC 8190 (Updates to Special-Purpose IP Address Registries).
+        """
+
+        self.assertFalse(
+            Ip6Address("2606:4700:4700::1111").is_reserved,
+            msg="Regular global unicast must not be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__link_local_not_reserved(self) -> None:
+        """
+        Ensure a link-local address reports is_reserved = False
+        (link-local has its own predicate).
+
+        Reference: RFC 8190 (the registry includes fe80::/10 but
+        PyTCP's is_link_local owns it).
+        """
+
+        self.assertFalse(
+            Ip6Address("fe80::1").is_reserved,
+            msg="Link-local addresses are covered by is_link_local, not is_reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__ula_not_reserved(self) -> None:
+        """
+        Ensure a ULA address reports is_reserved = False (ULA
+        has its own predicate via is_private).
+
+        Reference: RFC 4193 (the registry includes fc00::/7 but
+        PyTCP's is_private owns it).
+        """
+
+        self.assertFalse(
+            Ip6Address("fd00::1").is_reserved,
+            msg="ULA addresses are covered by is_private, not is_reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__loopback_not_reserved(self) -> None:
+        """
+        Ensure ::1 reports is_reserved = False (loopback has
+        its own predicate).
+
+        Reference: RFC 8190 (the registry includes ::1/128 but
+        PyTCP's is_loopback owns it).
+        """
+
+        self.assertFalse(
+            Ip6Address("::1").is_reserved,
+            msg="Loopback is covered by is_loopback, not is_reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__unspecified_not_reserved(self) -> None:
+        """
+        Ensure :: reports is_reserved = False (unspecified has
+        its own predicate).
+
+        Reference: RFC 8190 (the registry includes ::/128 but
+        PyTCP's is_unspecified owns it).
+        """
+
+        self.assertFalse(
+            Ip6Address("::").is_reserved,
+            msg="Unspecified is covered by is_unspecified, not is_reserved.",
+        )
