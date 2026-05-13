@@ -275,6 +275,7 @@ def initialize_interface__tap(interface_name: str, *, mac_address: MacAddress | 
         "layer": InterfaceLayer.L2,
         "mtu": INTERFACE__TAP__MTU,
         "mac_address": mac_address,
+        "interface_name": interface_name,
     }
 
 
@@ -302,6 +303,7 @@ def initialize_interface__tun(interface_name: str) -> dict[str, Any]:
         "fd": fd,
         "layer": InterfaceLayer.L3,
         "mtu": INTERFACE__TUN__MTU,
+        "interface_name": interface_name,
     }
 
 
@@ -378,6 +380,7 @@ def init(
     layer: InterfaceLayer,
     mtu: int = 1500,
     mac_address: MacAddress | None = None,
+    interface_name: str | None = None,
     ip4_support: bool = True,
     ip4_host: Ip4Host | None = (None if IP4_ADDRESS is None else Ip4Host(IP4_ADDRESS, gateway=IP4_GATEWAY)),
     ip4_dhcp: bool = True if IP4_ADDRESS is None else False,
@@ -448,6 +451,7 @@ def init(
             packet_handler = PacketHandlerL2(
                 mac_address=mac_address,
                 interface_mtu=mtu,
+                interface_name=interface_name,
                 ip4_support=ip4_support,
                 ip4_host=ip4_host,
                 ip4_dhcp=ip4_dhcp,
@@ -462,6 +466,7 @@ def init(
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
             packet_handler = PacketHandlerL3(
                 interface_mtu=mtu,
+                interface_name=interface_name,
                 ip4_support=ip4_support,
                 ip4_host=ip4_host,
                 ip6_support=ip6_support,

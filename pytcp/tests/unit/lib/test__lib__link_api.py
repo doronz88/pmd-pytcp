@@ -50,11 +50,11 @@ class _FakePacketHandlerL2:
     """
     Minimal L2 packet-handler stand-in for 'LinkApi' tests —
     exposes only the attributes 'LinkApi' reads
-    ('_mac_unicast', '_interface_mtu', '_interface_layer').
-    Using a hand-rolled class avoids the autospec ceremony
-    for the production PacketHandlerL2 class (which carries
-    ~50 attributes irrelevant to the API surface under
-    test).
+    ('_mac_unicast', '_interface_mtu', '_interface_layer',
+    '_interface_name'). Using a hand-rolled class avoids
+    the autospec ceremony for the production
+    PacketHandlerL2 class (which carries ~50 attributes
+    irrelevant to the API surface under test).
     """
 
     _interface_layer: InterfaceLayer = InterfaceLayer.L2
@@ -64,9 +64,11 @@ class _FakePacketHandlerL2:
         *,
         mac_unicast: MacAddress,
         interface_mtu: int,
+        interface_name: str | None = None,
     ) -> None:
         self._mac_unicast = mac_unicast
         self._interface_mtu = interface_mtu
+        self._interface_name = interface_name
 
 
 class _FakePacketHandlerL3:
@@ -79,8 +81,14 @@ class _FakePacketHandlerL3:
 
     _interface_layer: InterfaceLayer = InterfaceLayer.L3
 
-    def __init__(self, *, interface_mtu: int) -> None:
+    def __init__(
+        self,
+        *,
+        interface_mtu: int,
+        interface_name: str | None = None,
+    ) -> None:
         self._interface_mtu = interface_mtu
+        self._interface_name = interface_name
 
 
 class TestLinkApiMacAddress(TestCase):
@@ -189,6 +197,79 @@ class TestLinkApiMtu(TestCase):
             api.mtu,
             1500,
             msg="LinkApi.mtu must work on L3 handlers (no MAC) as well.",
+        )
+
+
+class TestLinkApiName(TestCase):
+    """
+    'LinkApi.name' returns the interface name recorded on
+    the bound packet handler, or None if no name was
+    plumbed through 'stack.init()'.
+    """
+
+    def test__link_api__name__returns_packet_handler_name(self) -> None:
+        """
+        Ensure 'name' returns the string recorded on the
+        bound packet handler's '_interface_name' attribute
+        (e.g. 'tap7').
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+            interface_name="tap7",
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertEqual(
+            api.name,
+            "tap7",
+            msg="LinkApi.name must reflect the bound handler's _interface_name.",
+        )
+
+    def test__link_api__name__returns_none_when_not_set(self) -> None:
+        """
+        Ensure 'name' returns None when the bound packet
+        handler was constructed without an
+        '_interface_name' value — e.g. by a unit-test
+        fixture or 'mock__init' that did not thread the
+        name through.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        self.assertIsNone(
+            api.name,
+            msg="LinkApi.name must be None when no interface name was recorded.",
+        )
+
+    def test__link_api__name__l3_handler(self) -> None:
+        """
+        Ensure 'name' works on L3 (TUN) handlers — the
+        interface name is recorded on the base packet
+        handler, independent of L2/L3 layer.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL3(
+            interface_mtu=1500,
+            interface_name="tun7",
+        )
+        api = LinkApi(packet_handler=cast("PacketHandlerL3", handler))
+
+        self.assertEqual(
+            api.name,
+            "tun7",
+            msg="LinkApi.name must work on L3 (TUN) handlers.",
         )
 
 

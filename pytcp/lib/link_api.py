@@ -115,6 +115,21 @@ class LinkApi:
         return self._packet_handler._interface_mtu
 
     @property
+    def name(self) -> str | None:
+        """
+        Return the interface name plumbed through by
+        'stack.init()' (e.g. 'tap7', 'tun7') — Linux
+        'ip link show' first-column equivalent.
+
+        Returns None when the packet handler was
+        constructed without an interface name — e.g. a
+        unit-test fixture or 'mock__init' that skipped
+        the name plumbing.
+        """
+
+        return self._packet_handler._interface_name
+
+    @property
     def interface_layer(self) -> InterfaceLayer:
         """
         Return the interface layer (L2 = TAP, L3 = TUN) —

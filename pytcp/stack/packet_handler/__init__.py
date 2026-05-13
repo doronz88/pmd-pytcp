@@ -113,6 +113,7 @@ class PacketHandler(Subsystem, ABC):
     _packet_stats_rx: PacketStatsRx
     _packet_stats_tx: PacketStatsTx
     _interface_mtu: int
+    _interface_name: str | None
     _ip6_support: bool
     _ip4_support: bool
     _ip6_host_candidate: list[Ip6Host]
@@ -142,6 +143,7 @@ class PacketHandler(Subsystem, ABC):
         interface_mtu: int,
         ip6_support: bool,
         ip4_support: bool,
+        interface_name: str | None = None,
         ip6_host: Ip6Host | None = None,
         ip4_host: Ip4Host | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
@@ -163,6 +165,12 @@ class PacketHandler(Subsystem, ABC):
 
         # Initialize the interface mtu.
         self._interface_mtu = interface_mtu
+
+        # Record the interface name as plumbed through by
+        # 'stack.init()' (None when the harness skips this).
+        # Read by the Link API's 'name' property; not used by
+        # the packet-handling paths.
+        self._interface_name = interface_name
 
         # Initialize support for IPv6 and IPv4 protocols.
         self._ip6_support = ip6_support
@@ -1238,6 +1246,7 @@ class PacketHandlerL2(
         *,
         mac_address: MacAddress,
         interface_mtu: int,
+        interface_name: str | None = None,
         ip4_support: bool = True,
         ip4_host: Ip4Host | None = None,
         ip4_dhcp: bool = True,
@@ -1254,6 +1263,7 @@ class PacketHandlerL2(
 
         super().__init__(
             interface_mtu=interface_mtu,
+            interface_name=interface_name,
             ip6_support=ip6_support,
             ip4_support=ip4_support,
             ip6_host=ip6_host,
