@@ -31,13 +31,15 @@ post-claim ARP conflicts, and coexists with the DHCPv4 client
 per RFC 3927 §2.11 (read-only state-poll; never modifies DHCP
 behaviour).
 
-Phases 1-3 (shipped): subsystem skeleton + INIT-state
+Phases 1-4 (shipped): subsystem skeleton + INIT-state
 candidate selection + _do_claiming via the ACD API with the
 retry / rate-limit loop pinned by RFC 3927 §9
 (MAX_CONFLICTS = 10, RATE_LIMIT_INTERVAL = 60s) +
 _on_bound_conflict (§2.5 defend / abandon decision tree)
-wired via the address-API subscribe_conflicts callback.
-Phase 4 (next): DHCPv4-fallback trigger.
+wired via the address-API subscribe_conflicts callback +
+_reconcile_with_dhcp (§1.9 / §2.11 fallback-on-DHCP-fail
+and halt-on-DHCP-bind) driven by a polled is_dhcp_bound
+predicate.
 
 pytcp/protocols/ip4_link_local/ip4_link_local__client.py
 
@@ -46,7 +48,7 @@ ver 3.0.4
 
 import time
 from enum import Enum
-from typing import override
+from typing import Callable, override
 
 from net_addr import Ip4Host, MacAddress
 from pytcp.lib.address_api import ConflictEvent, Ip4AddressApi, SubscriptionHandle
@@ -87,7 +89,13 @@ class Ip4LinkLocal(Subsystem):
 
     _subsystem_name = "IPv4 Link-Local Autoconfig"
 
-    def __init__(self, *, mac_address: MacAddress, address_api: Ip4AddressApi) -> None:
+    def __init__(
+        self,
+        *,
+        mac_address: MacAddress,
+        address_api: Ip4AddressApi,
+        is_dhcp_bound: Callable[[], bool] | None = None,
+    ) -> None:
         """
         Initialize the link-local autoconfig client. Binds to
         'mac_address' so the candidate-selection RNG seeds
@@ -95,14 +103,24 @@ class Ip4LinkLocal(Subsystem):
         host picks the same address across reboots without
         persistent storage). 'address_api' is the sanctioned
         Phase-3-clean surface the subsystem uses to claim
-        candidates ('claim_with_acd') and (in Phase 3) to
-        subscribe for post-claim conflict events.
+        candidates ('claim_with_acd') and to subscribe for
+        post-claim conflict events.
+
+        'is_dhcp_bound' is an optional zero-argument predicate
+        the subsystem polls on every tick to coordinate with
+        the DHCPv4 client per RFC 3927 §1.9 / §2.11. Pass None
+        when no DHCP client exists (link-local runs eager); pass
+        a closure like 'lambda: stack.dhcp4_client.state is
+        Dhcp4State.BOUND' to wire it up. The
+        'ip4_link_local.dhcp_fallback_timeout_ms' sysctl gates
+        whether the predicate is consulted at all: 0 disables
+        the feature even when a getter is wired.
         """
 
         super().__init__(info=str(mac_address))
         self._mac_address: MacAddress = mac_address
         self._address_api: Ip4AddressApi = address_api
-        self._state: Ip4LinkLocalState = Ip4LinkLocalState.INIT
+        self._is_dhcp_bound: Callable[[], bool] | None = is_dhcp_bound
         self._candidate: Ip4Host | None = None
         self._conflict_count: int = 0
         # RFC 3927 §2.5(b) DEFEND_INTERVAL bookkeeping. Holds the
@@ -113,20 +131,40 @@ class Ip4LinkLocal(Subsystem):
         # Subscription handle returned by 'subscribe_conflicts'
         # when the address is installed; passed back on abandon.
         self._subscription: SubscriptionHandle | None = None
+        # DHCP-fallback timer (RFC 3927 §1.9). 'None' = not
+        # started; a float = the monotonic timestamp DHCP was
+        # first observed unbound. The reconciler kicks off
+        # claim when (now - this) >= dhcp_fallback_timeout_ms.
+        self._dhcp_unbound_since: float | None = None
+        # If the DHCP-fallback feature is active at construction
+        # time (timeout > 0 AND a getter is wired), start
+        # HALTED so the reconciler can drive the kick. Otherwise
+        # start in INIT for eager claim. The sysctl is read once
+        # at construction; runtime changes to the sysctl do not
+        # restart the FSM (the reconciler still honours the live
+        # value on each tick, just from whatever state we're in).
+        if ip4ll_const.IP4_LINK_LOCAL__DHCP_FALLBACK_TIMEOUT_MS > 0 and is_dhcp_bound is not None:
+            self._state: Ip4LinkLocalState = Ip4LinkLocalState.HALTED
+        else:
+            self._state = Ip4LinkLocalState.INIT
 
     @override
     def _subsystem_loop(self) -> None:
         """
-        One FSM tick. Dispatches on '_state'.
+        One FSM tick. The DHCPv4 reconciler (RFC 3927 §1.9 /
+        §2.11) runs first so a fresh DHCP-bind / DHCP-loss
+        observation propagates before the per-state body runs.
         """
 
+        self._reconcile_with_dhcp()
         match self._state:
             case Ip4LinkLocalState.INIT:
                 self._do_init()
             case Ip4LinkLocalState.CLAIMING:
                 self._do_claiming()
             case Ip4LinkLocalState.BOUND:
-                # Phase 3 idle-with-subscription state.
+                # Idle; conflict handling is callback-driven via
+                # the address API's subscribe_conflicts.
                 pass
             case Ip4LinkLocalState.HALTED:
                 pass
@@ -266,3 +304,77 @@ class Ip4LinkLocal(Subsystem):
         self._defend_history.clear()
         self._conflict_count += 1
         self._state = Ip4LinkLocalState.INIT
+
+    def _reconcile_with_dhcp(self) -> None:
+        """
+        RFC 3927 §1.9 / §2.11 DHCPv4 coordination. Reads the
+        'is_dhcp_bound' predicate (if wired) on every tick and:
+
+        - When DHCP is BOUND: release any held link-local
+          address and transition to HALTED. The fallback
+          timer resets.
+        - When DHCP is NOT bound: start / continue the
+          fallback timer. If the timer has accumulated
+          'ip4_link_local.dhcp_fallback_timeout_ms' and the
+          FSM is HALTED, transition to INIT to kick off
+          autoconfig.
+
+        The 'dhcp_fallback_timeout_ms' sysctl gates the whole
+        feature: 0 means "no coordination — link-local runs
+        independently of DHCP". A None 'is_dhcp_bound' also
+        disables coordination (no DHCP client exists).
+
+        Per RFC 3927 §2.11 the DHCP client itself is unchanged
+        — coordination is one-way (link-local reads DHCP
+        state; DHCP never reads link-local state).
+        """
+
+        fallback_ms = ip4ll_const.IP4_LINK_LOCAL__DHCP_FALLBACK_TIMEOUT_MS
+        if fallback_ms == 0 or self._is_dhcp_bound is None:
+            return
+
+        if self._is_dhcp_bound():
+            # DHCP has a lease — release link-local if held
+            # (RFC 3927 §1.9 / §2.11).
+            if self._state is Ip4LinkLocalState.BOUND:
+                self._release_bound_address()
+            if self._state is not Ip4LinkLocalState.HALTED:
+                self._state = Ip4LinkLocalState.HALTED
+            self._dhcp_unbound_since = None
+            return
+
+        # DHCP not bound. Start / continue the fallback timer.
+        now = time.monotonic()
+        if self._dhcp_unbound_since is None:
+            self._dhcp_unbound_since = now
+
+        if self._state is Ip4LinkLocalState.HALTED:
+            elapsed_ms = (now - self._dhcp_unbound_since) * 1000.0
+            if elapsed_ms >= fallback_ms:
+                __debug__ and log(
+                    "stack",
+                    f"<lg>Link-Local</>: DHCP unbound for " f"{elapsed_ms / 1000:.1f}s, kicking off autoconfig",
+                )
+                self._state = Ip4LinkLocalState.INIT
+                self._dhcp_unbound_since = None
+
+    def _release_bound_address(self) -> None:
+        """
+        Release the bound link-local address back to the
+        address API — unsubscribe from conflict events,
+        remove the host, clear candidate / counter / history.
+        Used by the DHCP-bind reconcile path.
+        """
+
+        if self._subscription is not None:
+            self._address_api.unsubscribe_conflicts(handle=self._subscription)
+            self._subscription = None
+        if self._candidate is not None:
+            __debug__ and log(
+                "stack",
+                f"<lg>Link-Local</>: releasing {self._candidate.address} " f"(DHCP took over)",
+            )
+            self._address_api.remove_host(ip4_address=self._candidate.address)
+        self._candidate = None
+        self._defend_history.clear()
+        self._conflict_count = 0
