@@ -256,6 +256,17 @@ class Dhcp4Client(Subsystem):
             self._state = Dhcp4State.INIT
 
     @property
+    def state(self) -> Dhcp4State:
+        """
+        Read-only snapshot of the current FSM state. Exposed
+        so external coordinators (e.g. the RFC 3927 IPv4
+        link-local autoconfig client per §1.9 / §2.11) can
+        poll DHCP state without reaching into '_state'.
+        """
+
+        return self._state
+
+    @property
     def _expected_client_id(self) -> bytes:
         """
         RFC 4361 §6.1 Client Identifier — type=0xff + IAID + DUID.

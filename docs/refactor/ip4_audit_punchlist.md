@@ -66,7 +66,7 @@ inventory.
 
 | # | Item | RFC | Effort | Notes |
 |---|------|-----|--------|-------|
-| D | **IPv4 link-local autoconfig** | 3927 | 2-4 days | Closes the deferred IPv4 #5 (TX scope gate) alongside. Needs `docs/refactor/rfc3927_link_local_autoconfig.md` plan doc first, then phased commits. Real Linux-parity gap. |
+| ~~D~~ | ~~**IPv4 link-local autoconfig**~~ | ~~3927~~ | ~~2-4 days~~ | **SHIPPED** — phases 0 / 0.5 / 1 / 2 / 3 / 4 / 5 of the RFC 3927 track. Sanctioned ACD API on `Ip4AddressApi`; subsystem skeleton + MAC-seeded RNG; claim + retry + rate-limit; §2.5 defend / abandon; §1.9 / §2.11 DHCP coordination; stack-side wiring. Plan doc: `docs/refactor/rfc3927_link_local_autoconfig.md`. Adherence record: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md` (every §-section met). |
 | E | Multicast group membership API + IGMPv2/v3 | 1112 / 2236 / 3376 | Multi-day | All-hosts (224.0.0.1) preconfigured today; runtime JOIN/LEAVE / Reports / Queries deferred. |
 | F | IPv6 audit set parity sweep | — | 1-2 days | This session wrote 16 IPv4 audits but didn't refresh IPv6 audits in parallel. Symmetric topics (RFC 8200, RFC 8504) likely have similar Phase-1 sharpenings worth surfacing. |
 
@@ -106,42 +106,36 @@ full DHCPv4 adherence record.
 
 ### Autoconfiguration coverage
 
-PyTCP supports two of the three main IP autoconfiguration
-mechanisms today:
+PyTCP now supports **all three** main IPv4 / IPv6
+autoconfiguration mechanisms:
 
 1. **DHCPv4** — full client, shipped in earlier session.
-2. **IPv6 SLAAC** (RFC 4862) — shipped via ND track (memory:
-   "ND parity Tier 1-6 shipped 2026-05-10").
-3. **IPv4 link-local autoconfig** (RFC 3927) — outstanding
-   (item D above).
+2. **IPv6 SLAAC** (RFC 4862) — shipped via ND track.
+3. **IPv4 link-local autoconfig** (RFC 3927) — shipped via
+   the RFC 3927 track (item D below).
 
-### IPv4 #5 scope gate (deferred from this session)
+### IPv4 #5 scope gate (closed)
 
 The IPv4 link-local TX-source scope gate (RFC 3927 §2.6) was
-explicitly deferred per CLAUDE.md "don't add validation for
+originally deferred per CLAUDE.md "don't add validation for
 scenarios that can't happen" — without RFC 3927 autoconfig
-the stack never owns a 169.254/16 source. The gate lands
-naturally with item D above. The symmetric IPv6 gate (RFC
-4007 §6 / RFC 4291 §2.5.6) was reachable via the SLAAC code
-path and shipped in commit `77ee76bc`.
+the stack never owned a 169.254/16 source. The gate landed
+in Phase 0 of the RFC 3927 track; the autoconfig subsystem
+landed in Phases 1-5 alongside. The symmetric IPv6 gate (RFC
+4007 §6 / RFC 4291 §2.5.6) shipped earlier in commit
+`77ee76bc`.
 
 ## Recommended next-track sequencing
 
-The Phase-1 small-win track (items A + B + C) is closed.
-Remaining tracks, in rough order of impact:
+The Phase-1 small-win track (items A + B + C) and big-feature
+track (item D — RFC 3927 link-local autoconfig) are both
+closed. Remaining tracks, in rough order of impact:
 
-1. **Big substantive feature:** item D (RFC 3927 IPv4
-   link-local autoconfig) as a dedicated phased track.
-   Mirror the DHCPv4 sequencing — plan doc first
-   (`docs/refactor/rfc3927_link_local_autoconfig.md`), then
-   phased commits. 2-4 days. Closes the deferred IPv4
-   link-local TX scope gate alongside.
-
-2. **Audit-set parity:** item F (sweep IPv6 audits for
+1. **Audit-set parity:** item F (sweep IPv6 audits for
    symmetric gaps). Likely surfaces 3-5 Phase-1 items
    worth shipping symmetrically. 1-2 days.
 
-3. **Multicast group membership API + IGMP:** item E.
+2. **Multicast group membership API + IGMP:** item E.
    Multi-day; needs a public socket-level API surface
    coordinated with the socket parity track.
 

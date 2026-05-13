@@ -29,27 +29,28 @@ Security, §5 Acknowledgements) is omitted.
 
 ## Top-line adherence
 
-PyTCP **partial — Phase 1**: the 169.254/16 range is
-recognised at the address-classification layer
-(`is_link_local`) and feeds the source-selection scope
-ordering. The autoconfiguration state machine (pseudo-random
-address selection + ARP Probe + conflict resolution + ARP
-Announce + defense) is not implemented because PyTCP's
-primary address-acquisition path is **DHCPv4** (RFC 2131,
-audited under `docs/rfc/dhcp4/`); link-local autoconfiguration
-would be the DHCP-failure fallback per RFC 3927 §1.9.
+PyTCP **met (Phase 1 complete)**: the RFC 3927 IPv4 link-local
+autoconfig client ships as a `Subsystem` in
+`pytcp/protocols/ip4_link_local/`. Operators opt in via
+`stack.init(ip4_link_local=True)` and tune the DHCP-fallback
+window via the `ip4_link_local.dhcp_fallback_timeout_ms`
+sysctl. The §2.1 MAC-seeded RNG, §2.2 ARP probe, §2.4 ARP
+announce, §2.5(a/b) defend / abandon decision tree, §9 retry +
+rate-limit loop, and §1.9 / §2.11 DHCP coordination are all
+implemented. The §2.6 source/destination scope-mismatch gate
+on the TX path closes the §2.7 / §2.8 host-side cases.
 
-| Section | Topic                                                  | Status |
-|---------|--------------------------------------------------------|--------|
-| §1.9    | When to configure a Link-Local address (after DHCP fails) | not implemented |
-| §2.1    | Random address selection from 169.254.1.0 - 169.254.254.255 | not implemented |
-| §2.2    | Claim via ARP Probe                                    | not implemented |
-| §2.4    | Announce via gratuitous ARP                            | not implemented |
-| §2.5    | Conflict detection / defense                           | not implemented |
-| §2.6    | Source / destination address usage rules               | met (`_phtx_ip4` scope-mismatch gate) |
-| §2.7    | Link-local packets are not forwarded                   | n/a (no forwarding) |
-| §2.8    | Link-local packets are local-only                      | met (subsumed by §2.6) |
-| §2.11   | DHCPv4 client interaction                              | n/a (no link-local autoconfig) |
+| Section | Topic                                                       | Status |
+|---------|-------------------------------------------------------------|--------|
+| §1.9    | When to configure a Link-Local address (after DHCP fails)   | met (`_reconcile_with_dhcp` fallback timer) |
+| §2.1    | Random address selection from 169.254.1.0 - 169.254.254.255 | met (`ip4_link_local__rng.candidate_from_mac`) |
+| §2.2    | Claim via ARP Probe                                         | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.1.1) |
+| §2.4    | Announce via gratuitous ARP                                 | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.3) |
+| §2.5    | Conflict detection / defense                                | met (`_on_bound_conflict` defend/abandon decision tree) |
+| §2.6    | Source / destination address usage rules                    | met (`_phtx_ip4` scope-mismatch gate) |
+| §2.7    | Link-local packets are not forwarded                        | n/a (no forwarding) |
+| §2.8    | Link-local packets are local-only                           | met (subsumed by §2.6) |
+| §2.11   | DHCPv4 client interaction                                   | met (`_reconcile_with_dhcp` one-way state poll) |
 
 ---
 
@@ -59,19 +60,27 @@ would be the DHCP-failure fallback per RFC 3927 §1.9.
 > already has an IPv4 address assigned through a means other
 > than IPv4 Link-Local address autoconfiguration."
 
-**Adherence:** met (vacuously). PyTCP never auto-assigns a
-link-local address. Static configuration via the address API
-or DHCP-acquired addresses always take precedence.
+**Adherence:** met. `Ip4LinkLocal._reconcile_with_dhcp`
+polls `is_dhcp_bound()` on every subsystem-loop tick; while
+DHCP is BOUND the link-local subsystem stays HALTED (or
+releases any held address if it was BOUND when DHCP
+succeeded). The check runs before state dispatch so a
+DHCP-bind observation propagates without delay. Static
+addresses installed via the address API are not affected
+(the subsystem only claims if it has nothing).
 
 > "An IPv4 host that is configured with a routable address
 > obtained via PPP or some other means and is then attached to
 > a different link that does not have a DHCP server, may need
 > to obtain an IPv4 Link-Local address ..."
 
-**Adherence:** not implemented. PyTCP's DHCP client logic
-treats DHCP failure as terminal (the stack runs without an
-IPv4 address until the operator intervenes or DHCP recovers).
-Link-local fallback is a Phase-2 consideration.
+**Adherence:** met. The fallback timer in
+`_reconcile_with_dhcp` measures continuous DHCP-unbound time;
+after `ip4_link_local.dhcp_fallback_timeout_ms` milliseconds
+the subsystem transitions HALTED → INIT and starts claiming.
+A DHCP-bind during the fallback window resets the timer. The
+default sysctl value is 0 ("feature off") — operators opt in
+to the fallback policy.
 
 ## §2.1 Link-Local Address Selection
 
@@ -80,8 +89,41 @@ Link-local fallback is a Phase-2 consideration.
 > generator with a uniform distribution in the range from
 > 169.254.1.0 to 169.254.254.255 inclusive."
 
-**Adherence:** not implemented. No PyTCP code path generates
-a candidate link-local address.
+**Adherence:** met.
+`pytcp/protocols/ip4_link_local/ip4_link_local__rng.py::candidate_from_mac`
+implements a MAC-seeded Linear Congruential Generator that
+maps any (MAC, attempt) pair to a uniformly-distributed
+address in `169.254.1.0..169.254.254.255` (65024 addresses).
+The reserved first /24 (`169.254.0.0/24`) and last /24
+(`169.254.255.0/24`) are excluded by the modulus arithmetic.
+Linux comparison: avahi-autoipd uses the same manual-LCG
+pattern; systemd's sd_ipv4ll uses SipHash24 — both satisfy
+the §2.1 "different hosts diverge" rule.
+
+> "The pseudo-random number generation algorithm MUST be
+> chosen so that different hosts do not generate the same
+> sequence of numbers."
+
+**Adherence:** met. The LCG seeds from the 48-bit MAC; two
+hosts with different MACs always produce different first
+candidates.
+
+> "If the host has access to persistent information that is
+> different for each host, such as its IEEE 802 MAC address,
+> then the pseudo-random number generator SHOULD be seeded
+> using a value derived from this information."
+
+**Adherence:** met. The seed IS the MAC bytes (struct-packed
+as a 64-bit big-endian int).
+
+> "Hosts that are equipped with persistent storage MAY, for
+> each interface, record the IPv4 address they have
+> selected."
+
+**Adherence:** not implemented (MAY, not MUST). The MAC-
+seeded RNG gives reboot-stability without persistent storage
+for the same-host case. Phase 6 of the implementation track
+left persistent caching as an optional follow-on.
 
 ## §2.2 Claiming a Link-Local Address — ARP Probe
 
@@ -90,21 +132,16 @@ a candidate link-local address.
 > address in an ARP packet) a host MUST perform the probing
 > test described below ..."
 
-**Adherence:** not implemented. The ARP-probe machinery
-itself does exist in `pytcp/protocols/arp/` for DHCPv4 IPv4
-Address Conflict Detection (RFC 5227 — used by DHCP), but it
-is not wired to a link-local autoconfig consumer.
-
-When link-local autoconfig lands, the natural integration
-point is a new `pytcp/protocols/ip4_link_local/` subsystem
-that:
-
-1. Generates a candidate address from a seeded RNG (use the
-   MAC address per §2.1 recommendation).
-2. Calls the existing ARP-probe API.
-3. On conflict, regenerates and retries.
-4. On success, registers the address in `_ip4_host` and
-   schedules ARP Announce.
+**Adherence:** met.
+`Ip4LinkLocal._do_claiming` calls
+`stack.address.claim_with_acd(ip4_host=self._candidate)`
+which delegates to the underlying RFC 5227 §2.1.1 ARP probe
+sequence. The probe is synchronous (blocks ~5-9 s on the
+subsystem's dedicated thread). On clean probe the address
+is announced via RFC 5227 §2.3 and installed via
+`add_host`; on conflict the candidate is cleared and the
+FSM cycles back to INIT for a fresh attempt with the RNG's
+`attempt` counter incremented.
 
 ## §2.5 Conflict Detection and Defense (post-claim)
 
@@ -112,10 +149,28 @@ that:
 > effect for as long as a host is using an IPv4 Link-Local
 > address."
 
-**Adherence:** not implemented (no link-local autoconfig).
-Note that PyTCP's ARP cache does include conflict detection
-for the duplicate-MAC case but the link-local-specific
-defend-or-reconfigure decision tree (§2.5(a)/(b)) is absent.
+**Adherence:** met. On the BOUND transition,
+`Ip4LinkLocal._do_claiming` calls
+`stack.address.subscribe_conflicts(address=..., on_conflict=
+self._on_bound_conflict)`. The ARP RX path (RFC 5227 §2.4
+detection) fans events out via
+`Ip4AddressApi._fire_conflict_event`; the link-local
+subsystem's callback implements the §2.5 decision tree:
+
+- **§2.5(b)** — first conflict in `ARP__DEFEND_INTERVAL`:
+  one defensive gratuitous ARP via
+  `stack.address.send_gratuitous_arp`, stay BOUND.
+- **§2.5(a)** — second conflict within the window: abandon.
+  `abort_bound_tcp_sessions` honours the §2.5 paragraph 7
+  SHOULD (reset bound TCP sessions); `remove_host`
+  uninstalls the address; `unsubscribe_conflicts` tears
+  down the subscription; state cycles to INIT for a fresh
+  reconfigure.
+
+The decision uses `ARP__DEFEND_INTERVAL` (RFC 5227 §1.1
+DEFEND_INTERVAL = 10 s, exposed via the `arp.defend_interval`
+sysctl) — operator overrides resolve live via qualified-
+module access.
 
 ## §2.6 Source Address Usage
 
@@ -178,9 +233,26 @@ reaching the gateway-selection logic.
 > "A host that has obtained an IPv4 Link-Local address MAY
 > attempt to use DHCP to obtain a routable address."
 
-**Adherence:** n/a (no link-local autoconfig). The DHCP
-client (`pytcp/protocols/dhcp4/dhcp4__client.py`) operates
-without any link-local fallback.
+**Adherence:** met (one-way state poll). The DHCPv4 client
+is unchanged by the link-local subsystem —
+`pytcp/protocols/dhcp4/dhcp4__client.py` runs its own FSM
+independently. The link-local subsystem reads `dhcp4_client.state`
+via a dependency-injected `is_dhcp_bound: Callable[[], bool]`
+predicate, wired in `stack.init()` as `lambda:
+dhcp4_client.state is Dhcp4State.BOUND`. The DHCP client
+never reads link-local state — the coordination is strictly
+one-way, satisfying §2.11's "do not alter the DHCPv4 client"
+rule.
+
+> "A device that implements both IPv4 Link-Local and a DHCPv4
+> client should not alter the behavior of the DHCPv4 client to
+> accommodate IPv4 Link-Local configuration."
+
+**Adherence:** met. The DHCPv4 client constructor /
+lifecycle / FSM is identical with or without the link-local
+subsystem present. The only DHCP-side change in the
+RFC 3927 track was adding a read-only `state` property on
+`Dhcp4Client` so external callers don't reach into `_state`.
 
 ---
 
@@ -220,18 +292,73 @@ without any link-local fallback.
 
 **Status:** locked in.
 
-### Phase-2 gaps (autoconfig state machine, source/dst gating)
+### §2.1 MAC-seeded candidate generator
 
-**No test surface — Phase 2.** When link-local autoconfig
-lands:
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__rng.py`
+  Seven cases: same-MAC determinism, different-MAC
+  divergence, attempt-counter rolls the sequence, every
+  candidate in [169.254.1.0, 169.254.254.255], reserved
+  first /24 excluded, reserved last /24 excluded, range
+  constants match RFC.
 
-1. Address-selection PRNG seeded from MAC produces a stable
-   per-boot candidate.
-2. ARP probe round-trip with mock conflicting peer →
-   regenerate.
-3. ARP Announce after successful probe.
-4. Conflict-during-use → defense-or-reconfigure decision.
-5. TX-side gate rejects mismatched-scope sends.
+**Status:** locked in.
+
+### §2.2 / §2.4 ARP Probe + Announce via the ACD API
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__claiming.py`
+  Six FSM cases: clean claim → BOUND with candidate
+  installed; conflict → INIT + counter bump + candidate
+  cleared; retry picks a different candidate via attempt-
+  roll; MAX_CONFLICTS triggers RATE_LIMIT sleep + counter
+  reset; sysctl overrides honoured via qualified-module
+  access; `_subsystem_loop` dispatches CLAIMING. Six
+  sysctl-shape cases for `max_conflicts` /
+  `rate_limit_interval_s`.
+
+**Status:** locked in.
+
+### §2.5 Defend / abandon decision
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__bound.py`
+  Five cases: BOUND transition subscribes for conflicts;
+  first conflict in window → defend (single gratuitous
+  ARP); second conflict in window → abandon (abort TCP,
+  remove host, unsubscribe, → INIT); two conflicts outside
+  the window → both defend (rolling window);
+  `ARP__DEFEND_INTERVAL` honoured via qualified-module
+  access.
+
+**Status:** locked in.
+
+### §1.9 / §2.11 DHCPv4 coordination
+
+- **Unit:**
+  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__dhcp.py`
+  Ten cases: feature disabled (timeout=0) → eager INIT;
+  feature enabled + DHCP getter → initial HALTED; DHCP-bind
+  while BOUND → release + halt; DHCP-unbound continuously
+  past timeout → HALTED→INIT kick; within window → stays
+  HALTED; DHCP-bind during window resets the timer; no
+  DHCP getter → eager; sysctl default 0; registered;
+  rejects negative.
+
+**Status:** locked in.
+
+### §2.6 TX-side scope-mismatch gate
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  Five cases: link-local src + global dst → drop with new
+  TxStatus + counter bump; symmetric global src + link-
+  local dst → same drop; link-local src + link-local dst →
+  passes the gate; global src + global dst → unaffected;
+  DHCP-client path (src=0.0.0.0 + dst=255.255.255.255) →
+  unaffected.
+
+**Status:** locked in.
 
 ### Test coverage summary
 
@@ -239,9 +366,12 @@ lands:
 |-------------------------------------------------------|----------|
 | Link-local predicate (169.254/16 recognition)         | locked in |
 | Link-local scope in source selection                  | locked in |
-| §2.1-§2.5 Link-local autoconfig state machine         | n/a (not implemented) |
+| §2.1 MAC-seeded candidate generator                   | locked in |
+| §2.2 / §2.4 ARP probe + announce via ACD API          | locked in |
+| §2.5 Defend / abandon decision tree                   | locked in |
 | §2.6 TX-side scope-mismatch gate                      | locked in |
 | §2.8 Link-local-not-to-router                         | locked in (subsumed by §2.6) |
+| §1.9 / §2.11 DHCPv4 coordination                      | locked in |
 
 ---
 
@@ -249,18 +379,25 @@ lands:
 
 | Aspect                                              | Status |
 |-----------------------------------------------------|--------|
-| §1.9 Link-local fallback when DHCP fails            | not implemented (Phase 2) |
-| §2.1 Random address selection from 169.254.1-254/24  | not implemented |
-| §2.2 ARP Probe                                       | not implemented (ARP-probe machinery exists for ACD/DHCP) |
-| §2.4 ARP Announce                                    | not implemented for link-local |
-| §2.5 Conflict detection / defense                   | not implemented |
-| §2.6 TX-side scope-mismatch gate                    | met (Phase 0 of RFC 3927 track) |
+| §1.9 Link-local fallback when DHCP fails            | met (fallback timer in `_reconcile_with_dhcp`) |
+| §2.1 Random address selection from 169.254.1-254/24 | met (MAC-seeded LCG in `ip4_link_local__rng`) |
+| §2.2 ARP Probe                                      | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.1.1) |
+| §2.4 ARP Announce                                   | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.3) |
+| §2.5 Conflict detection / defense                   | met (`_on_bound_conflict` decision tree) |
+| §2.6 TX-side scope-mismatch gate                    | met (`_phtx_ip4` scope check) |
 | §2.7 / §2.8 No forwarding / local-only              | n/a (host) / met (subsumed by §2.6) |
-| §2.11 DHCP client interaction                       | n/a (no autoconfig) |
+| §2.11 DHCP client interaction                       | met (one-way state poll; DHCP behaviour unchanged) |
 
-PyTCP recognises 169.254/16 at the address layer but does not
-auto-acquire link-local addresses. The full Phase-2 work would
-be a new `pytcp/protocols/ip4_link_local/` subsystem driven by
-DHCPv4 failure timeouts, mirroring the structural pattern of
-the existing DHCPv4 client. Until a consumer materialises this
-remains deferred.
+PyTCP **fully implements** the RFC 3927 IPv4 link-local
+autoconfig mechanism for the host-stack case (Phase 1 of the
+project north-star). The implementation lives in
+`pytcp/protocols/ip4_link_local/` as a `Subsystem` instantiated
+by `stack.init(ip4_link_local=True)`. Operators opt in via the
+`ip4_link_local` boot kwarg and tune the DHCP-fallback window
+via `ip4_link_local.dhcp_fallback_timeout_ms`. The Linux
+analogues are `avahi-autoipd` / `dhcpcd --ipv4ll` /
+`systemd-networkd`'s `LinkLocalAddressing=fallback`.
+
+The implementation track is documented in
+`docs/refactor/rfc3927_link_local_autoconfig.md`, shipped in
+phases 0-5 on `PyTCP_3_0__pre_release`.

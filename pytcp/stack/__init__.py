@@ -361,6 +361,7 @@ def init(
     ip4_support: bool = True,
     ip4_host: Ip4Host | None = (None if IP4_ADDRESS is None else Ip4Host(IP4_ADDRESS, gateway=IP4_GATEWAY)),
     ip4_dhcp: bool = True if IP4_ADDRESS is None else False,
+    ip4_link_local: bool = False,
     ip6_support: bool = True,
     ip6_host: Ip6Host | None = (None if IP6_ADDRESS is None else Ip6Host(IP6_ADDRESS, gateway=IP6_GATEWAY)),
     ip6_gua_autoconfig: bool = True if IP6_ADDRESS is None else False,
@@ -461,7 +462,7 @@ def init(
     # probe and §2.3 announce surfaces as callbacks; the lifecycle
     # never reaches into 'packet_handler' internals directly — the
     # API is the Phase-3-clean kernel/userspace boundary surface.
-    global dhcp4_client
+    global dhcp4_client, link_local
     if ip4_dhcp and layer is InterfaceLayer.L2:
         assert isinstance(packet_handler, PacketHandlerL2)
         # Adapters that match the callback shape DHCP expects while
@@ -478,6 +479,34 @@ def init(
         )
     else:
         dhcp4_client = None
+
+    # RFC 3927 IPv4 Link-Local autoconfig client subsystem.
+    # Constructed only on L2 (link-local depends on Ethernet/ARP);
+    # operator opts in via 'ip4_link_local=True'. The 'is_dhcp_bound'
+    # closure reads 'dhcp4_client.state' via the public 'state'
+    # property so the link-local subsystem can implement RFC 3927
+    # §1.9 / §2.11 coordination without reaching into DHCP
+    # internals. When no DHCP client exists the closure returns
+    # False and the link-local fallback timer kicks immediately.
+    if ip4_link_local and layer is InterfaceLayer.L2:
+        assert isinstance(packet_handler, PacketHandlerL2)
+        # Capture the global into a local to avoid the closure
+        # binding to the symbol at definition time (we want it to
+        # read the live module-level 'dhcp4_client' on every call).
+        from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4State
+
+        def _is_dhcp_bound() -> bool:
+            return dhcp4_client is not None and dhcp4_client.state is Dhcp4State.BOUND
+
+        from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal as _Ip4LinkLocal
+
+        link_local = _Ip4LinkLocal(
+            mac_address=packet_handler._mac_unicast,
+            address_api=address,
+            is_dhcp_bound=_is_dhcp_bound,
+        )
+    else:
+        link_local = None
 
     interface_mtu = mtu
     stack_initialized = True
@@ -497,6 +526,14 @@ def start() -> None:
     tx_ring.start()
     rx_ring.start()
     packet_handler.start()
+
+    # RFC 3927 link-local autoconfig subsystem. Start BEFORE the
+    # DHCP wait so the two FSMs run in parallel — the link-local
+    # subsystem's '_reconcile_with_dhcp' polls DHCP state and
+    # naturally waits until 'dhcp_fallback_timeout_ms' has elapsed
+    # of continuous DHCP-unbound time before claiming.
+    if link_local is not None:
+        link_local.start()
 
     # Phase 4 commit B — DHCPv4 lifecycle. Start AFTER the packet
     # handler so the TX/RX/socket plumbing is live; block up to
@@ -539,6 +576,8 @@ def stop() -> None:
     #   5. arp_cache / nd_cache — stop cache-refresh threads.
     if dhcp4_client is not None:
         dhcp4_client.stop()
+    if link_local is not None:
+        link_local.stop()
     packet_handler.stop()
     timer.stop()
     rx_ring.stop()
