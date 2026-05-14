@@ -135,30 +135,33 @@ class RawSocket(socket):
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
 
-    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+    def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. RAW
         sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6
-        options through the base-class helpers.
+        options through the base-class helpers. 'value' is 'int'
+        for scalar options and 'bytes' for IP_OPTIONS.
         """
 
-        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+        if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
-        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+        if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         raise OSError(
             errno.ENOPROTOOPT,
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
-    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.
-        Symmetric to 'setsockopt'.
+        Symmetric to 'setsockopt': 'int' for scalar options,
+        'bytes' for IP_OPTIONS.
         """
 
+        value: int | bytes | None
         if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
             return value
         if level == IPPROTO_IP and (value := self._ipproto_ip_getsockopt(optname)) is not None:

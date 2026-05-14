@@ -282,7 +282,7 @@ class TcpSocket(socket):
             rx_buffer_len=len(session._rx_buffer),
         )
 
-    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+    def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API.
 
@@ -292,7 +292,8 @@ class TcpSocket(socket):
         disables. Unknown 'level' / 'optname' pairs raise OSError
         (mirrors POSIX 'ENOPROTOOPT' / 'EINVAL' shape, kept as
         plain OSError so callers can grep without importing
-        errno enums).
+        errno enums). 'value' is 'int' for scalar options and
+        'bytes' for IP_OPTIONS (RFC 1122 §4.1.3.2).
 
         Example:
 
@@ -302,10 +303,10 @@ class TcpSocket(socket):
             # Connection now has RFC 1122 §4.2.3.6 keep-alive enabled.
         """
 
-        if level == SOL_SOCKET and optname == SO_KEEPALIVE:
+        if isinstance(value, int) and level == SOL_SOCKET and optname == SO_KEEPALIVE:
             self._so_keepalive = bool(value)
             return
-        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+        if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
         # IPPROTO_IP / IPPROTO_IPV6 round-trip storage for TCP
         # sockets: the per-socket TTL / Hop-Limit / TOS / TClass
@@ -313,9 +314,9 @@ class TcpSocket(socket):
         # the FSM segment-emit path is a follow-up commit.
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
-        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+        if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
-        if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
+        if isinstance(value, int) and level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             self._tcp_keepidle = int(value)
             return
         if level == IPPROTO_TCP and optname == TCP_KEEPINTVL:
@@ -352,14 +353,14 @@ class TcpSocket(socket):
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
-    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.
 
         Symmetric to 'setsockopt': only the (level, optname)
         pairs accepted by 'setsockopt' are accepted here.
         Returns the stored value as 'int' (boolean options
-        return 0 or 1).
+        return 0 or 1) or 'bytes' (IP_OPTIONS).
         """
 
         if level == SOL_SOCKET and optname == SO_KEEPALIVE:

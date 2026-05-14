@@ -618,6 +618,258 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         with self.assertRaises(TimeoutError):
             s.recvfrom(timeout=0.01)
 
+    def _make_md_with_options(self) -> UdpMetadata:
+        """
+        Build a canonical IPv4 'UdpMetadata' envelope carrying a
+        Router Alert IPv4 option (RFC 2113) on the inbound datagram.
+        """
+
+        from net_proto.protocols.ip4.options.ip4__option__router_alert import (
+            Ip4OptionRouterAlert,
+        )
+        from net_proto.protocols.ip4.options.ip4__options import Ip4Options
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(b"payload"),
+            ip4__options=Ip4Options(Ip4OptionRouterAlert()),
+        )
+
+    def test__udp_socket__recvmsg_returns_quadruple(self) -> None:
+        """
+        Ensure recvmsg() returns the four-element
+        '(data, ancdata, msg_flags, address)' tuple matching the
+        Python stdlib 'socket.recvmsg' shape.
+
+        Reference: RFC 1122 §4.1.3.2 (UDP MUST pass IP options to
+        the application layer).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md())
+
+        result = s.recvmsg()
+
+        self.assertEqual(
+            len(result),
+            4,
+            msg="recvmsg() must return a 4-tuple (data, ancdata, msg_flags, address).",
+        )
+
+    def test__udp_socket__recvmsg_ipv4_address_two_tuple(self) -> None:
+        """
+        Ensure recvmsg() returns a 2-tuple '(host, port)' as the
+        address for IPv4 sockets, matching stdlib
+        'socket.recvmsg' on AF_INET.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md())
+
+        _data, _ancdata, _flags, address = s.recvmsg()
+
+        self.assertEqual(
+            address,
+            ("10.0.0.2", 5678),
+            msg="recvmsg() on AF_INET must return a (host, port) 2-tuple.",
+        )
+
+    def test__udp_socket__recvmsg_ipv6_address_four_tuple(self) -> None:
+        """
+        Ensure recvmsg() returns a 4-tuple
+        '(host, port, flowinfo, scope_id)' as the address for
+        IPv6 sockets, matching stdlib 'socket.recvmsg' on
+        AF_INET6.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip6Address
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+        md = UdpMetadata(
+            ip__ver=IpVersion.IP6,
+            ip__local_address=Ip6Address("2001:db8::1"),
+            ip__remote_address=Ip6Address("2001:db8::2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(b"payload"),
+        )
+        s.process_udp_packet(md)
+
+        _data, _ancdata, _flags, address = s.recvmsg()
+
+        self.assertEqual(
+            address,
+            ("2001:db8::2", 5678, 0, 0),
+            msg="recvmsg() on AF_INET6 must return a (host, port, flowinfo, scope_id) 4-tuple.",
+        )
+
+    def test__udp_socket__recvmsg_no_options_no_ancdata(self) -> None:
+        """
+        Ensure recvmsg() returns an empty ancdata list when the
+        inbound datagram carries no IPv4 options, regardless of
+        whether IP_RECVOPTS is set on the socket.
+
+        Reference: RFC 1122 §4.1.3.2 (cmsg surface limited to
+        options actually carried).
+        """
+
+        from pytcp.socket import IP_RECVOPTS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
+        s.process_udp_packet(self._make_md())
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="recvmsg() must return empty ancdata when the datagram carries no IPv4 options.",
+        )
+
+    def test__udp_socket__recvmsg_options_with_ip_recvopts_returns_cmsg(self) -> None:
+        """
+        Ensure recvmsg(ancbufsize > 0) returns an IP_OPTIONS cmsg
+        carrying the raw IPv4 options block when 'IP_RECVOPTS' is
+        set on the socket and the inbound datagram carried IPv4
+        options. The cmsg shape is
+        '(IPPROTO_IP, IP_OPTIONS, raw_bytes)'.
+
+        Reference: RFC 1122 §4.1.3.2 (UDP MUST pass IP options to
+        the application layer).
+        """
+
+        from pytcp.socket import IP_OPTIONS, IP_RECVOPTS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
+        s.process_udp_packet(self._make_md_with_options())
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            len(ancdata),
+            1,
+            msg="recvmsg(ancbufsize>0) on a datagram with IPv4 options must return one cmsg when IP_RECVOPTS=1.",
+        )
+        level, type_, value = ancdata[0]
+        self.assertEqual(
+            level,
+            int(IPPROTO_IP),
+            msg="IP_OPTIONS cmsg must use level=IPPROTO_IP.",
+        )
+        self.assertEqual(
+            type_,
+            int(IP_OPTIONS),
+            msg="IP_OPTIONS cmsg must use type=IP_OPTIONS.",
+        )
+        # Router Alert option: kind=0x94, len=0x04, value=0x0000.
+        self.assertEqual(
+            value,
+            b"\x94\x04\x00\x00",
+            msg="IP_OPTIONS cmsg value must be the raw options block bytes.",
+        )
+
+    def test__udp_socket__recvmsg_options_without_ip_recvopts_no_cmsg(self) -> None:
+        """
+        Ensure recvmsg() returns empty ancdata when IP_RECVOPTS is
+        not set on the socket, even if the inbound datagram
+        carries IPv4 options. Mirrors Linux's per-socket gating —
+        application must opt in to receive ancillary IP options.
+
+        Reference: RFC 1122 §4.1.3.2 (IP_RECVOPTS gates the
+        ancillary-data pass-through).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md_with_options())
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="recvmsg() must return empty ancdata when IP_RECVOPTS is not set.",
+        )
+
+    def test__udp_socket__recvmsg_options_with_zero_ancbufsize_no_cmsg(self) -> None:
+        """
+        Ensure recvmsg(ancbufsize=0) returns empty ancdata even
+        when IP_RECVOPTS=1 and the datagram carried IPv4
+        options. The zero buffer size means the caller asked for
+        no ancillary data; matches stdlib's default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import IP_RECVOPTS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
+        s.process_udp_packet(self._make_md_with_options())
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=0)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="recvmsg(ancbufsize=0) must return empty ancdata regardless of IP_RECVOPTS.",
+        )
+
+    def test__udp_socket__recvmsg_data_returned_as_bytes(self) -> None:
+        """
+        Ensure recvmsg() returns the data element as 'bytes' (not
+        'memoryview'), matching stdlib 'socket.recvmsg'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md(b"hello"))
+
+        data, _ancdata, _flags, _address = s.recvmsg()
+
+        self.assertIsInstance(
+            data,
+            bytes,
+            msg="recvmsg() must return data as 'bytes', not memoryview.",
+        )
+        self.assertEqual(
+            data,
+            b"hello",
+            msg="recvmsg() must return the queued payload as bytes.",
+        )
+
+    def test__udp_socket__recvmsg_timeout_raises(self) -> None:
+        """
+        Ensure recvmsg() with a finite timeout raises
+        'TimeoutError' when no packet arrives, matching
+        recv / recvfrom behaviour.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        with self.assertRaises(TimeoutError):
+            s.recvmsg(timeout=0.01)
+
 
 class TestUdpSocketClose(_UdpSocketTestCase):
     """
@@ -1332,6 +1584,179 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             s.getsockopt(SOL_SOCKET, SO_SNDTIMEO),
             5,
             msg="SO_SNDTIMEO must round-trip the configured value.",
+        )
+
+    def test__udp_socket__ip_options_round_trip_empty(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_OPTIONS, b"") clears the
+        per-socket IPv4 options block and getsockopt returns an
+        empty bytes object. The empty-block default is what an
+        unmodified socket reports.
+
+        Reference: RFC 1122 §4.1.3.2 (UDP MUST pass IP options to
+        the IP layer).
+        """
+
+        from pytcp.socket import IP_OPTIONS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_OPTIONS),
+            b"",
+            msg="Default IP_OPTIONS must be an empty bytes object.",
+        )
+
+        s.setsockopt(IPPROTO_IP, IP_OPTIONS, b"")
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_OPTIONS),
+            b"",
+            msg="Empty IP_OPTIONS must round-trip.",
+        )
+
+    def test__udp_socket__ip_options_round_trip_router_alert(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_OPTIONS, <router alert>)
+        stores the bytes block and getsockopt returns it verbatim.
+        The Router Alert option (RFC 2113) is exactly 4 bytes
+        (kind=0x94, len=4, value=0x0000) and therefore needs no
+        padding to align the IPv4 header to a 32-bit-word
+        boundary.
+
+        Reference: RFC 1122 §4.1.3.2 (application MUST be able to
+        specify IP options to be sent).
+        """
+
+        from pytcp.socket import IP_OPTIONS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        router_alert_bytes = b"\x94\x04\x00\x00"
+
+        s.setsockopt(IPPROTO_IP, IP_OPTIONS, router_alert_bytes)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_OPTIONS),
+            router_alert_bytes,
+            msg="IP_OPTIONS must round-trip the supplied bytes block verbatim.",
+        )
+
+    def test__udp_socket__ip_options_rejects_unaligned_block(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_OPTIONS, <unaligned>)
+        raises OSError(EINVAL). The IPv4 header length is encoded
+        in 32-bit words so the options block must be a multiple
+        of 4 bytes; Linux's setsockopt enforces the same.
+
+        Reference: RFC 791 §3.1 (IHL field counts 32-bit words).
+        """
+
+        import errno
+
+        from pytcp.socket import IP_OPTIONS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            s.setsockopt(IPPROTO_IP, IP_OPTIONS, b"\x94\x04\x00")
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EINVAL,
+            msg="Unaligned IP_OPTIONS must raise EINVAL.",
+        )
+
+    def test__udp_socket__ip_options_rejects_oversize_block(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_OPTIONS, <>40 bytes>)
+        raises OSError(EINVAL). The IPv4 header is 60 bytes
+        maximum (IHL=15 32-bit words), so the options block is
+        capped at 40 bytes.
+
+        Reference: RFC 791 §3.1 (IHL maximum = 15 → 60 byte
+        header → 40 byte options).
+        """
+
+        import errno
+
+        from pytcp.socket import IP_OPTIONS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            s.setsockopt(IPPROTO_IP, IP_OPTIONS, b"\x01" * 44)
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EINVAL,
+            msg="Oversize IP_OPTIONS must raise EINVAL.",
+        )
+
+    def test__udp_socket__ip_options_rejects_malformed_block(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_OPTIONS, <malformed>)
+        raises OSError(EINVAL). An option with length < 2 is
+        wire-malformed; the parser's integrity check rejects it.
+
+        Reference: RFC 791 §3.1 (TLV length-field semantics).
+        """
+
+        import errno
+
+        from pytcp.socket import IP_OPTIONS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            # Option kind=0x83 (LSRR), length=0x01 (invalid; must be ≥ 2).
+            s.setsockopt(IPPROTO_IP, IP_OPTIONS, b"\x83\x01\x00\x00")
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EINVAL,
+            msg="Malformed IP_OPTIONS must raise EINVAL.",
+        )
+
+    def test__udp_socket__ip_recvopts_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_RECVOPTS, 1) toggles the
+        per-socket flag that gates IP_OPTIONS cmsg emission on
+        recvmsg, and getsockopt returns the stored value.
+
+        Reference: RFC 1122 §4.1.3.2 (UDP MUST pass received IP
+        options to the application layer).
+        """
+
+        from pytcp.socket import IP_RECVOPTS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVOPTS),
+            0,
+            msg="Default IP_RECVOPTS must be 0.",
+        )
+
+        s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVOPTS),
+            1,
+            msg="IP_RECVOPTS=1 must round-trip.",
+        )
+
+        s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVOPTS),
+            0,
+            msg="IP_RECVOPTS=0 must round-trip.",
         )
 
 

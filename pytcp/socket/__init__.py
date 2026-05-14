@@ -40,6 +40,12 @@ from typing import Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
+from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
+from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
+from net_proto.protocols.ip4.options.ip4__options import (
+    IP4__OPTIONS__MAX_LEN,
+    Ip4Options,
+)
 from pytcp.lib.name_enum import NameEnum
 from pytcp.socket.socket_id import SocketId
 
@@ -109,10 +115,53 @@ SO_SNDTIMEO: int = 21  # level=SOL_SOCKET; float seconds: persistent send timeou
 # IPPROTO_IP-level options (Linux numbers from <netinet/ip.h>).
 IP_TOS: int = 1  # level=IPPROTO_IP; int: 8-bit DSCP+ECN (RFC 2474)
 IP_TTL: int = 2  # level=IPPROTO_IP; int 1-255: per-socket TTL override
+IP_OPTIONS: int = 4  # level=IPPROTO_IP; bytes: 0-40 raw IPv4 options block (RFC 1122 §4.1.3.2)
+IP_RECVOPTS: int = 6  # level=IPPROTO_IP; int 0/1: enable IP_OPTIONS cmsg on recvmsg (RFC 1122 §4.1.3.2)
+IP_RETOPTS: int = 7  # level=IPPROTO_IP; int 0/1: deprecated alias of IP_RECVOPTS (Linux compat)
 
 # IPPROTO_IPV6-level options (Linux numbers from <netinet/in.h>).
 IPV6_UNICAST_HOPS: int = 16  # level=IPPROTO_IPV6; int 1-255: per-socket Hop-Limit override
 IPV6_TCLASS: int = 67  # level=IPPROTO_IPV6; int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
+
+
+def _validate_ip4_options_bytes(value: bytes, /) -> bytes:
+    """
+    Validate a raw IPv4 options block supplied to
+    setsockopt(IPPROTO_IP, IP_OPTIONS, value). The block must be
+    no longer than IP4__OPTIONS__MAX_LEN, 4-byte aligned (RFC 791
+    requires the IPv4 header length be a 32-bit-word count), and
+    parseable as a sequence of IPv4 options. The validated bytes
+    are returned for the caller to store. Raises 'OSError(EINVAL)'
+    on any violation, matching Linux's setsockopt behaviour.
+    """
+
+    if len(value) > IP4__OPTIONS__MAX_LEN:
+        raise OSError(
+            errno.EINVAL,
+            f"IP_OPTIONS block must be 0..{IP4__OPTIONS__MAX_LEN} bytes, got {len(value)}",
+        )
+
+    if len(value) % 4 != 0:
+        raise OSError(
+            errno.EINVAL,
+            f"IP_OPTIONS block must be 4-byte aligned, got {len(value)} bytes",
+        )
+
+    if not value:
+        return value
+
+    # Pre-pad a synthetic IPv4 header so the integrity walker reads
+    # at IP4__HEADER__LEN like a real packet would.
+    synthetic_frame = bytes(IP4__HEADER__LEN) + value
+    synthetic_hlen = IP4__HEADER__LEN + len(value)
+
+    try:
+        Ip4Options.validate_integrity(frame=synthetic_frame, hlen=synthetic_hlen)
+        Ip4Options.from_buffer(value)
+    except Ip4IntegrityError as error:
+        raise OSError(errno.EINVAL, f"IP_OPTIONS block is malformed: {error}") from error
+
+    return value
 
 
 # BSD-socket 'shutdown(how)' constants per POSIX. Linux-numbered
@@ -215,6 +264,8 @@ class socket(ABC):
     _so_sndtimeo: float | None
     _ip_ttl: int | None
     _ip_tos: int
+    _ip_options: bytes
+    _ip_recvopts: bool
     _ipv6_unicast_hops: int | None
     _ipv6_tclass: int
 
@@ -249,6 +300,8 @@ class socket(ABC):
         self._so_sndtimeo = None
         self._ip_ttl = None
         self._ip_tos = 0
+        self._ip_options = bytes()
+        self._ip_recvopts = False
         self._ipv6_unicast_hops = None
         self._ipv6_tclass = 0
 
@@ -280,25 +333,42 @@ class socket(ABC):
                 return True
         return False
 
-    def _ipproto_ip_setsockopt(self, optname: int, value: int, /) -> bool:
+    def _ipproto_ip_setsockopt(self, optname: int, value: int | bytes, /) -> bool:
         """
         Apply an IPPROTO_IP-level setsockopt option; return True if
-        handled. Currently supports IP_TTL (1-255 per-socket override)
-        and IP_TOS (8-bit DSCP+ECN per-packet marking).
+        handled. Currently supports IP_TTL (1-255 per-socket
+        override), IP_TOS (8-bit DSCP+ECN per-packet marking),
+        IP_OPTIONS (0-40 raw IPv4 options block per RFC 1122
+        §4.1.3.2), and IP_RECVOPTS / IP_RETOPTS (enable IP_OPTIONS
+        cmsg on recvmsg).
         """
 
         match optname:
             case _ if optname == IP_TTL:
+                if not isinstance(value, int):
+                    raise OSError(errno.EINVAL, f"IP_TTL value must be int, got {type(value).__name__}")
                 if not 0 < int(value) < 256:
                     raise OSError(errno.EINVAL, f"IP_TTL must be in 1..255, got {value!r}")
                 self._ip_ttl = int(value)
                 return True
             case _ if optname == IP_TOS:
+                if not isinstance(value, int):
+                    raise OSError(errno.EINVAL, f"IP_TOS value must be int, got {type(value).__name__}")
                 self._ip_tos = int(value) & 0xFF
+                return True
+            case _ if optname == IP_OPTIONS:
+                if not isinstance(value, (bytes, bytearray, memoryview)):
+                    raise OSError(errno.EINVAL, f"IP_OPTIONS value must be bytes, got {type(value).__name__}")
+                self._ip_options = _validate_ip4_options_bytes(bytes(value))
+                return True
+            case _ if optname in (IP_RECVOPTS, IP_RETOPTS):
+                if not isinstance(value, int):
+                    raise OSError(errno.EINVAL, f"IP_RECVOPTS value must be int, got {type(value).__name__}")
+                self._ip_recvopts = bool(value)
                 return True
         return False
 
-    def _ipproto_ip_getsockopt(self, optname: int, /) -> int | None:
+    def _ipproto_ip_getsockopt(self, optname: int, /) -> int | bytes | None:
         """
         Get an IPPROTO_IP-level option's stored value, or 'None' if
         the option is not handled here.
@@ -309,6 +379,10 @@ class socket(ABC):
                 return self._ip_ttl or 0
             case _ if optname == IP_TOS:
                 return self._ip_tos
+            case _ if optname == IP_OPTIONS:
+                return self._ip_options
+            case _ if optname in (IP_RECVOPTS, IP_RETOPTS):
+                return int(self._ip_recvopts)
         return None
 
     def _ipproto_ipv6_setsockopt(self, optname: int, value: int, /) -> bool:
@@ -364,6 +438,21 @@ class socket(ABC):
         if self._address_family is AddressFamily.INET6:
             return self._ipv6_tclass & 0x03
         return self._ip_tos & 0x03
+
+    def _effective_ip4_options(self) -> Ip4Options | None:
+        """
+        Get the per-socket IPv4 options object set via
+        'setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)' for IPv4
+        sockets, or 'None' for IPv6 sockets (IPv6 has no
+        equivalent — extension headers are handled via a
+        separate ancillary-data track, RFC 3542).
+        """
+
+        if self._address_family is not AddressFamily.INET4:
+            return None
+        if not self._ip_options:
+            return None
+        return Ip4Options.from_buffer(self._ip_options)
 
     def _sol_socket_getsockopt(self, optname: int, /) -> int | None:
         """

@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import Tracker, UdpAssembler
+from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -77,6 +78,7 @@ class PacketHandlerUdpTx(ABC):
             ip4__src: Ip4Address,
             ip4__ttl: int | None = None,
             ip4__flag_df: bool = False,
+            ip4__options: Ip4Options = Ip4Options(),
             ip4__payload: Ip4Payload = RawAssembler(),
         ) -> TxStatus: ...
 
@@ -90,6 +92,7 @@ class PacketHandlerUdpTx(ABC):
         udp__payload: bytes = bytes(),
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip4__options: Ip4Options | None = None,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
         """
@@ -135,6 +138,11 @@ class PacketHandlerUdpTx(ABC):
                 }
                 if ip__ttl is not None:
                     ip4_kwargs["ip4__ttl"] = ip__ttl
+                # Per-socket IPv4 options block (RFC 1122 §4.1.3.2)
+                # threads through from setsockopt(IP_OPTIONS) on
+                # the originating UDP socket.
+                if ip4__options is not None and len(ip4__options) > 0:
+                    ip4_kwargs["ip4__options"] = ip4__options
                 return self._phtx_ip4(**ip4_kwargs)
             case _:
                 raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
@@ -149,6 +157,7 @@ class PacketHandlerUdpTx(ABC):
         udp__payload: bytes = bytes(),
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip4__options: Ip4Options | None = None,
     ) -> TxStatus:
         """
         Interface method for UDP Socket -> Packet Assembler communication.
@@ -162,4 +171,5 @@ class PacketHandlerUdpTx(ABC):
             udp__payload=udp__payload,
             ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
+            ip4__options=ip4__options,
         )

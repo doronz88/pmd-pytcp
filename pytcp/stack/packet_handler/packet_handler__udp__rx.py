@@ -79,6 +79,7 @@ class PacketHandlerUdpRx(ABC):
             udp__payload: bytes = bytes(),
             ip__ttl: int | None = None,
             ip__ecn: int = 0,
+            ip4__options: object = None,
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
 
@@ -138,7 +139,12 @@ class PacketHandlerUdpRx(ABC):
             packet_rx.udp.payload, memoryview
         ), f"The payload must be a memoryview. Got {type(packet_rx.udp.payload)}"
 
-        # Create UdpMetadata object and try to find matching UDP socket.
+        # Create UdpMetadata object and try to find matching UDP
+        # socket. 'ip4__options' surfaces the inbound IPv4 options
+        # block (RFC 1122 §4.1.3.2) to recvmsg-emitted IP_OPTIONS
+        # cmsg; 'None' for IPv6 datagrams and for IPv4 datagrams
+        # without options.
+        ip4__options = packet_rx.ip4.options if packet_rx.ip.ver is IpVersion.IP4 and packet_rx.ip4.options else None
         packet_rx_md = UdpMetadata(
             ip__ver=packet_rx.ip.ver,
             ip__local_address=packet_rx.ip.dst,
@@ -146,6 +152,7 @@ class PacketHandlerUdpRx(ABC):
             ip__remote_address=packet_rx.ip.src,
             udp__remote_port=packet_rx.udp.sport,
             udp__data=packet_rx.udp.payload,
+            ip4__options=ip4__options,
             tracker=packet_rx.tracker,
         )
 

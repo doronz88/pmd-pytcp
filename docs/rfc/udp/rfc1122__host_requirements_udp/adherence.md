@@ -56,7 +56,7 @@ partial:
 | §       | Topic                                          | Status                                    |
 |---------|------------------------------------------------|-------------------------------------------|
 | §4.1.3.1 | UDP send Port Unreachable                     | met (with rate-limiting per §3.2.2)       |
-| §4.1.3.2 | IP options pass-through (RX + TX)             | not implemented (IP-options surface not exposed at socket layer) |
+| §4.1.3.2 | IP options pass-through (RX + TX)             | met (RX via recvmsg + IP_RECVOPTS; TX via setsockopt(IP_OPTIONS)) |
 | §4.1.3.3 | Pass ICMP errors up to application            | met (notify_unreachable / notify_pmtu / notify_time_exceeded / notify_parameter_problem socket callbacks) |
 | §4.1.3.4 | Generate + check checksum (MUST)              | met                                        |
 | §4.1.3.4 | Silently discard bad checksum                 | met                                        |
@@ -104,28 +104,41 @@ suppression).
 >  sent in its UDP datagrams, and UDP MUST pass these
 >  options to the IP layer."
 
-**Adherence:** not implemented. PyTCP's IPv4 layer parses
-options for its own use (Source/Record Route, Timestamp,
-Router Alert) — see
-[RFC 791 audit](../../ip4/rfc791__ip4/adherence.md) — but
-the parsed option list is not exposed via the UDP socket
-API. `UdpMetadata` does not carry an `ip_options` field;
-`sendto()` / `send()` accept no `IP_OPTIONS` ancillary
-data; `setsockopt(IPPROTO_IP, IP_OPTIONS, ...)` is not
-wired.
+**Adherence:** met. PyTCP plumbs the IPv4 options block
+through the UDP socket API in both directions:
 
-This MUST is hard to claim conformance on for any modern
-stack — Linux exposes `IP_OPTIONS` via setsockopt but very
-few applications use it. PyTCP's current operating profile
-(DHCP / DNS / NTP-style UDP traffic) does not consume IP
-options. **Phase-1 gap, low operational impact.**
+- **RX pass-through.** `UdpMetadata.ip4__options`
+  (`pytcp/socket/udp__metadata.py`) carries the inbound
+  IPv4 options object; the UDP RX handler populates it
+  from `packet_rx.ip4.options` at
+  `pytcp/stack/packet_handler/packet_handler__udp__rx.py`.
+  Applications retrieve the raw options block via
+  `recvmsg(ancbufsize > 0)` on a socket that has
+  `setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)` enabled; the
+  cmsg shape is `(IPPROTO_IP, IP_OPTIONS, raw_bytes)` —
+  matching Linux's `<sys/socket.h>` ancillary-data format
+  for IP_OPTIONS.
 
-**Fix sketch:** add an `ip_options` member to
-`UdpMetadata`; populate from `packet_rx.ip4.options` in
-`packet_handler__udp__rx.py:128-137`; expose via
-`recvmsg()` ancillary data when that API lands. TX side:
-add an `ip__options` kwarg to `send_udp_packet()` and
-plumb through to `_phtx_ip4`.
+- **TX pass-through.** `setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)`
+  (`pytcp/socket/__init__.py::_ipproto_ip_setsockopt`)
+  validates the bytes block (≤ 40 bytes, 4-byte aligned,
+  parseable as IPv4 options) and stores it on the socket
+  as `_ip_options`. Subsequent `send()` / `sendto()` calls
+  thread the parsed options through
+  `_phtx_udp` → `_phtx_ip4` via the existing
+  `ip4__options` parameter
+  (`packet_handler__ip4__tx.py`). The outbound IPv4
+  header carries the options; the assembler's hlen
+  reflects them; the existing fragment-aware TX path
+  copies them per RFC 791 §3.1 copy-flag rules.
+
+The Linux socket-option numeric values are mirrored:
+`IP_OPTIONS = 4`, `IP_RECVOPTS = 6`, `IP_RETOPTS = 7`
+(deprecated alias).
+
+The setsockopt validator rejects unaligned, oversize, and
+malformed option blocks with `OSError(EINVAL)`, matching
+Linux's setsockopt behaviour.
 
 ---
 
@@ -395,7 +408,10 @@ options.
   (the DSCP bits live with TOS — full DSCP plumbing is
   half-shipped, tracked in the
   [RFC 2474 audit](../../ip4/rfc2474__dscp/adherence.md)).
-- **IP options** → not implemented (see §4.1.3.2).
+- **IP options** → `setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)`
+  sets the per-socket IPv4 options block; the TX path
+  threads it through `_phtx_udp` to `_phtx_ip4` (see
+  §4.1.3.2).
 
 > "UDP MAY pass the received TOS up to the application
 >  layer."
@@ -493,6 +509,35 @@ not closed; Phase-3 socket-parity item)**.
 
 **Status:** locked in.
 
+### §4.1.3.2 IP options pass-through (RX + TX)
+
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  — six tests pin
+  `setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)` round-trip
+  (empty + Router Alert), EINVAL on unaligned / oversize /
+  malformed blocks, and `IP_RECVOPTS` round-trip.
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
+  — ten tests pin `recvmsg()` 4-tuple shape, AF_INET
+  2-tuple address, AF_INET6 4-tuple address, ancdata
+  emission gated by `IP_RECVOPTS`, `ancbufsize=0`
+  suppresses cmsg, and the data is returned as bytes.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsRecvmsgPassThrough`
+  — three tests drive end-to-end RX with Router Alert IPv4
+  options: cmsg returned when `IP_RECVOPTS=1`, suppressed
+  when `IP_RECVOPTS=0`, empty when the datagram has no
+  options.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsSendto`
+  — two tests pin end-to-end TX: outbound wire frame
+  carries the per-socket IP_OPTIONS block with the
+  correct `hlen` bump; absence of `setsockopt(IP_OPTIONS)`
+  keeps the default 20-byte header.
+
+**Status:** locked in.
+
 ### Test coverage summary
 
 | Aspect                                              | Coverage |
@@ -507,7 +552,7 @@ not closed; Phase-3 socket-parity item)**.
 | `is_unspecified` source RX drop                     | locked in |
 | Broadcast / multicast / directed-broadcast source RX drop | locked in |
 | TTL + TOS per-socket override                       | locked in |
-| IP options pass-through (RX + TX)                   | n/a (not implemented) |
+| IP options pass-through (RX + TX)                   | locked in |
 
 ---
 
@@ -520,9 +565,9 @@ the column the RFC assigns; PyTCP status follows.
 | Feature                                                | §       | RFC level | PyTCP status |
 |--------------------------------------------------------|---------|-----------|--------------|
 | UDP send Port Unreachable                              | 4.1.3.1 | SHOULD    | met (rate-limited) |
-| Pass rcv'd IP options to applic layer                  | 4.1.3.2 | MUST      | not implemented |
-| Applic layer can specify IP options in Send            | 4.1.3.2 | MUST      | not implemented |
-| UDP passes IP options down to IP layer                 | 4.1.3.2 | MUST      | not implemented |
+| Pass rcv'd IP options to applic layer                  | 4.1.3.2 | MUST      | met (recvmsg cmsg gated by IP_RECVOPTS) |
+| Applic layer can specify IP options in Send            | 4.1.3.2 | MUST      | met (setsockopt IP_OPTIONS) |
+| UDP passes IP options down to IP layer                 | 4.1.3.2 | MUST      | met (_phtx_udp threads ip4__options to _phtx_ip4) |
 | Pass ICMP msgs up to applic layer                      | 4.1.3.3 | MUST      | met (notify_* callbacks; IP_RECVERR API parity deferred) |
 | UDP able to generate/check checksum                    | 4.1.3.4 | MUST      | met |
 | Silently discard bad checksum                          | 4.1.3.4 | MUST      | met |
@@ -536,25 +581,26 @@ the column the RFC assigns; PyTCP status follows.
 | Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified at UDP layer) |
 | Only send valid IP source address                      | 4.1.3.6 | MUST      | met |
 | Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / RECV_ICMP); GET_MAXSIZES partial; ADVISE_DELIVPROB not implemented |
-| Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met for TTL + TOS; not implemented for IP options |
+| Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met (TTL via IP_TTL; TOS via IP_TOS; IP options via IP_OPTIONS) |
 | Pass received TOS up to applic layer                   | 4.1.4   | MAY       | not implemented (no consumer) |
 
-**Principal gap:**
+**Principal gap:** none. Every "MUST" row in the §4.1.5
+requirements-summary table is now met. The remaining
+deltas are the MAY-level items (`Sender option to not
+generate checksum`, `Receiver option to require checksum`,
+`Pass received TOS up to applic layer`) — declined absent
+a PyTCP consumer — plus the partial-met
+`GET_MAXSIZES` (no `IP_MTU` getsockopt yet; tracked as
+item #3 in `docs/refactor/udp_remaining_items.md`).
 
-1. **IP options at the UDP / socket interface** (§4.1.3.2)
-   — three "MUST" rows in the requirements summary are
-   currently "not implemented." This is the most
-   substantial gap in the §4.1 audit. Modern UDP traffic
-   rarely uses IP options, so the operational impact is
-   low, but the conformance gap is real.
+Four previously-flagged gaps in this audit are now closed:
 
-The IP-options gap is a Phase-1 polish track that would
-touch the socket API (extend `UdpMetadata` with
-`ip_options`; add `recvmsg()` ancillary-data API; expose
-`setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`).
-
-Three previously-flagged gaps in this audit are now closed:
-
+- **§4.1.3.2 IP options pass-through (RX + TX)** — three
+  MUST rows in the requirements summary; closed by adding
+  `IP_OPTIONS` / `IP_RECVOPTS` setsockopt support, the
+  `recvmsg` ancillary-data API, `UdpMetadata.ip4__options`,
+  and TX plumbing through `_phtx_udp` →
+  `_phtx_ip4(ip4__options=...)`.
 - **§4.1.3.4 computed-zero → all-ones substitution** —
   both UDP serialization paths apply the substitution
   per RFC 768.

@@ -41,6 +41,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | `57aaa7ad` | UDP RX IPv6 cksum=0 default-discard (RFC 6935 §5) |
 | `94863af4` | RFC 1122 §4.1.3.6 audit correction (filter is at IP layer) |
 | _(pending)_ | RFC 1122 §3.2.1.3 directed-broadcast source filter (#2) |
+| _(pending)_ | RFC 1122 §4.1.3.2 IP options pass-through (#1) — IP_OPTIONS / IP_RECVOPTS + recvmsg |
 
 ---
 
@@ -48,7 +49,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 
 | # | Item | RFC clause | Audit verdict | Effort | Priority |
 |---|---|---|---|---|---|
-| 1 | IP options pass-through to/from application | RFC 1122 §4.1.3.2 | "not implemented" (3 MUSTs) | ~half-day | **High** — only actual conformance gap |
+| 1 | ~~IP options pass-through to/from application~~ **SHIPPED** | RFC 1122 §4.1.3.2 | met (IP_OPTIONS setsockopt + IP_RECVOPTS + recvmsg ancillary data) | done | — |
 | 2 | ~~Directed-broadcast source filter~~ **SHIPPED** | RFC 1122 §4.1.3.6 residual | met (RX-handler `_ip4_broadcast` membership check) | done | — |
 | 3 | `IP_MTU` / `IPV6_PATHMTU` getsockopt | RFC 1122 §4.1.4 GET_MAXSIZES | "partial — Phase-3 socket-parity" | ~2-3h | Medium |
 | 4 | `IP_RECVERR` / `MSG_ERRQUEUE` socket-API | RFC 1122 §4.1.3.3 API parity | "Phase-3 socket-parity" | ~half-day | Medium |
@@ -59,10 +60,29 @@ are MAY-level RFC items with no current PyTCP consumer.
 
 ---
 
-## #1 — IP options pass-through (RFC 1122 §4.1.3.2)
+## #1 — IP options pass-through (RFC 1122 §4.1.3.2) — **SHIPPED**
 
-**Status:** open. **The only item the RFC 1122 §4.1
-audit explicitly calls a conformance gap.**
+**Status:** closed. Shipped as the IP_OPTIONS / IP_RECVOPTS
+setsockopt surface, `recvmsg()` ancillary-data API,
+`UdpMetadata.ip4__options` plumbing, and TX wiring
+through `_phtx_udp` → `_phtx_ip4(ip4__options=...)`.
+Pinned by unit tests at
+`pytcp/tests/unit/socket/test__socket__udp__socket.py`
+(7 setsockopt + 10 recvmsg) and integration tests at
+`pytcp/tests/integration/protocols/udp/test__udp__ip_options.py`
+(5 end-to-end). Audit ripple landed in
+`docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`
+§4.1.3.2: three "not implemented" rows flipped to "met";
+"Principal gap" paragraph closed out; new test-coverage
+audit block added.
+
+Item #5 (IP_RECVTOS) inherits the recvmsg cmsg
+infrastructure; the half-day estimate now ~1 hour.
+Item #4 (IP_RECVERR / MSG_ERRQUEUE) also inherits the
+recvmsg shape, though the error-queue mechanics remain
+their own work.
+
+Original brief (kept for archaeology):
 
 ### What the RFC says
 

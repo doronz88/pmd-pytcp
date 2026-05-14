@@ -52,6 +52,7 @@ from pytcp.lib.ip_helper import (
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    IP_OPTIONS,
     IPPROTO_IP,
     IPPROTO_IPV6,
     SOL_SOCKET,
@@ -110,30 +111,34 @@ class UdpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
 
-    def setsockopt(self, level: int | IpProto, optname: int, value: int, /) -> None:
+    def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. UDP
         sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6
-        options through the base-class helpers.
+        options through the base-class helpers. 'value' is 'int'
+        for scalar options (SO_*, IP_TTL, IP_TOS, IPV6_*) and
+        'bytes' for IP_OPTIONS (RFC 1122 §4.1.3.2 raw options block).
         """
 
-        if level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
+        if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
-        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+        if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         raise OSError(
             errno.ENOPROTOOPT,
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
-    def getsockopt(self, level: int | IpProto, optname: int, /) -> int:
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.
-        Symmetric to 'setsockopt'.
+        Symmetric to 'setsockopt': 'int' for scalar options,
+        'bytes' for IP_OPTIONS.
         """
 
+        value: int | bytes | None
         if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
             return value
         if level == IPPROTO_IP and (value := self._ipproto_ip_getsockopt(optname)) is not None:
@@ -335,6 +340,7 @@ class UdpSocket(socket):
             udp__payload=data,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
+            ip4__options=self._effective_ip4_options(),
         )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
@@ -379,6 +385,7 @@ class UdpSocket(socket):
             udp__payload=data,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
+            ip4__options=self._effective_ip4_options(),
         )
 
         sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
@@ -491,6 +498,94 @@ class UdpSocket(socket):
                     packet_rx_md.udp__remote_port,
                 ),
             )
+
+        if effective_timeout is None and not self._blocking:
+            raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
+        raise TimeoutError("UDP Socket - Receive operation timed out.")
+
+    def recvmsg(
+        self,
+        bufsize: int | None = None,
+        ancbufsize: int = 0,
+        flags: int = 0,
+        timeout: float | None = None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
+        """
+        Receive a UDP datagram along with ancillary data (control
+        messages) and the sender's address. Mirrors the Python
+        stdlib 'socket.recvmsg(bufsize, ancbufsize=0, flags=0)'
+        signature.
+
+        Returns '(data, ancdata, msg_flags, address)'. 'ancdata'
+        is a list of '(cmsg_level, cmsg_type, cmsg_data)' tuples;
+        IP_OPTIONS cmsgs are emitted when 'IP_RECVOPTS' is set on
+        the socket and the inbound datagram carried IPv4 options
+        (RFC 1122 §4.1.3.2). 'address' is a 2-tuple
+        '(host, port)' for IPv4 and a 4-tuple
+        '(host, port, flowinfo, scope_id)' for IPv6, matching
+        Python stdlib 'socket.recvmsg'.
+
+        'ancbufsize' is currently advisory only — PyTCP returns
+        every cmsg the socket has enabled regardless of buffer
+        size; truncation handling is a follow-up commit. 'flags'
+        is reserved for future MSG_* support.
+        """
+
+        del flags  # MSG_* flags not yet honored.
+
+        # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
+        # supplies the default; otherwise the blocking flag picks
+        # blocking-forever vs non-blocking-EAGAIN.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+
+        if acquired:
+            packet_rx_md = self._packet_rx_md.pop(0)
+            data_rx = packet_rx_md.udp__data
+            if bufsize is not None:
+                data_rx = data_rx[:bufsize]
+            if not self._packet_rx_md:
+                self._drain_readable()
+                if self._packet_rx_md:
+                    self._signal_readable()
+
+            ancdata: list[tuple[int, int, bytes]] = []
+            if self._ip_recvopts and packet_rx_md.ip4__options is not None and ancbufsize > 0:
+                ancdata.append(
+                    (
+                        int(IPPROTO_IP),
+                        int(IP_OPTIONS),
+                        bytes(packet_rx_md.ip4__options),
+                    )
+                )
+
+            address: tuple[str, int] | tuple[str, int, int, int]
+            if self._address_family is AddressFamily.INET6:
+                # Linux IPv6 sockaddr_in6: '(host, port, flowinfo,
+                # scope_id)'. PyTCP doesn't track per-datagram flow
+                # label / scope id today; return 0 for both. A future
+                # commit can plumb them through 'UdpMetadata'.
+                address = (
+                    str(packet_rx_md.ip__remote_address),
+                    packet_rx_md.udp__remote_port,
+                    0,
+                    0,
+                )
+            else:
+                address = (
+                    str(packet_rx_md.ip__remote_address),
+                    packet_rx_md.udp__remote_port,
+                )
+
+            __debug__ and log(
+                "socket",
+                f"<B><g>[{self}]</> - <lg>Received</> {len(data_rx)} bytes of data, " f"{len(ancdata)} cmsg(s)",
+            )
+
+            return bytes(data_rx), ancdata, 0, address
 
         if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))

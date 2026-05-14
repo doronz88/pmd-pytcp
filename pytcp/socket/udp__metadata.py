@@ -41,6 +41,7 @@ from pytcp.socket.socket_id import SocketId
 
 if TYPE_CHECKING:
     from net_proto.lib.tracker import Tracker
+    from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -56,6 +57,13 @@ class UdpMetadata:
     udp__local_port: int
     udp__remote_port: int
     udp__data: memoryview = memoryview(bytes())
+
+    # IPv4 options block carried by the inbound datagram, parsed
+    # into an 'Ip4Options' object. 'None' for IPv6 datagrams and
+    # for IPv4 datagrams with no options. Surfaced to applications
+    # via 'recvmsg' as an 'IP_OPTIONS' cmsg per RFC 1122 §4.1.3.2
+    # when 'IP_RECVOPTS' is set on the receiving socket.
+    ip4__options: Ip4Options | None = None
 
     tracker: Tracker | None = None
 
