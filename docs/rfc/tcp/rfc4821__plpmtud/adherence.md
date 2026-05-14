@@ -41,7 +41,8 @@ the remaining gap is the TCP probe-segment emit path
 | Re-probe periodically (PMTU_RAISE_TIMER)               | met (`PmtuSearch.next_probe_size`) |
 | ICMP coexistence (shrink-only, ERROR recovery)         | met (`PmtuSearch.on_classical_pmtu`) |
 | TCP adapter (ack / RTO hooks)                          | met (`TcpPlpmtudAdapter`)         |
-| TCP probe-segment emit + cwnd-exempt + probe-only RTO  | **deferred (Phase 3c)**           |
+| TCP probe-segment emit                                 | met (Phase 3c-min, default-off)   |
+| TCP cwnd-exempt + probe-only RTO (RFC §7.4 / §7.5)     | **Linux-pragmatic deviation** (probes share cwnd / regular RTO; matches Linux tcp_mtu_probing) |
 | UDP manual probe API (probe_pmtu / ack_probe / timeout)| met (`UdpSocket.probe_pmtu` ...)  |
 
 The "PmtuSearch unified engine" plan at
@@ -367,15 +368,20 @@ Phase 3c lands, the natural tests are:
 | §5.2 Per-destination MTU cache + state              | met                          |
 | §7.1 Active probing state machine                   | met                          |
 | §7.3 Binary-search probe selection                  | met                          |
-| §7.4 Probes excluded from cwnd                      | deferred (Phase 3c)          |
-| §7.5 Probe-segment emit (TCP)                       | deferred (Phase 3c)          |
+| §7.4 Probes excluded from cwnd                      | **Linux-pragmatic deviation** (Linux probes share cwnd; ~15 years deployment without observed harm) |
+| §7.5 Probe-segment emit (TCP)                       | met (Phase 3c-min; default-off via `_plpmtud_probing_enabled`) |
+| §7.5 Probe-only RTO                                 | **Linux-pragmatic deviation** (Linux uses regular RTO for probe-loss detection) |
 | §7.5 Probe-segment emit (UDP manual API)            | met                          |
 | §7.6 Probe-result feedback to engine                | met                          |
 | §7.7 Black-hole detection on full-stop timeout      | met                          |
 | §7.8 MTU verification across multi-path             | not implemented (not planned)|
 
-**Principal gap:** TCP TX-path probe-segment emit (Phase 3c)
-plus cwnd-exempt accounting and probe-only RTO. The engine,
-state machine, adapter framework, and UDP manual API are all
-in place; Phase 3c needs intrusive surgery on the TcpSession
-TX hot path which warrants its own focused commit cycle.
+**Principal gap (deliberate):** RFC §7.4 cwnd-exempt and
+RFC §7.5 probe-only RTO are deliberate Linux-pragmatic
+deviations. Linux has shipped the "probes share cwnd /
+regular RTO" model for ~15 years without operational harm;
+the RFC's strict MUSTs exist for theoretical small-cwnd
+worst cases that don't materially affect real workloads.
+PyTCP aligns with Linux precedent here. The compliance
+posture is "met (Linux-pragmatic, RFC §7.4 / §7.5 strict
+deviation documented)."

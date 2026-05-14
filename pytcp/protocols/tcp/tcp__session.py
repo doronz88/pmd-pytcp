@@ -182,13 +182,21 @@ class TcpSession:
         # into 'stack.pmtu_state' on first classical PMTU
         # signal (via '_apply_pmtu_update') so per-destination
         # state is shared across sessions to the same peer.
-        # Phase 3c will wire probe emission to TcpSession's
-        # segment-emit hot path; for now the adapter is in
-        # place so ACK / RTO hooks can feed it.
         self._plpmtud_adapter: TcpPlpmtudAdapter = TcpPlpmtudAdapter(
             remote_ip_address=remote_ip_address,
             interface_mtu=stack.interface_mtu,
         )
+        # Linux 'tcp_mtu_probing' sysctl equivalent. Default
+        # OFF matching Linux's tcp_mtu_probing=0 — operators
+        # opt in by flipping this flag. When enabled, the
+        # probe-emit hook in '_transmit_data' polls the
+        # adapter on each transmission and emits a probe-
+        # sized segment when the engine has a candidate
+        # larger than the current snd_mss. Linux's
+        # intermediate value 1 ("enable after RTO loss
+        # suspected to be black-hole") is not yet modeled;
+        # PyTCP treats this as a hard on/off boolean.
+        self._plpmtud_probing_enabled: bool = False
 
         # Whether to advertise WSCALE on this session's outbound
         # SYN / SYN+ACK. Defaults True (the modern, throughput-
@@ -2512,7 +2520,7 @@ class TcpSession:
             # now probes share the data cwnd / RTO machinery.
             probe_size_to_record: int | None = None
             candidate_mtu = self._plpmtud_adapter.candidate_mtu
-            if candidate_mtu is not None:
+            if self._plpmtud_probing_enabled and candidate_mtu is not None:
                 probe_payload = candidate_mtu - self._ip_tcp_overhead - options_overhead
                 if (
                     probe_payload > self._win.snd_mss
@@ -3475,10 +3483,22 @@ class TcpSession:
         # PLPMTUD adapter: notify of snd.una advance so any
         # in-flight probe whose seq is now <= new_snd_una
         # gets dispatched as an on_probe_ack event.
+        # Linux 'tcp_mtu_probe_success' equivalent: a
+        # successful probe ack grows the engine's
+        # 'current_mtu'; sync 'self._win.snd_mss' to match
+        # so future data segments use the newly-confirmed
+        # larger MSS. Detect the growth by snapshotting the
+        # engine's current_mtu around the dispatch — only
+        # fires when on_probe_ack actually advanced it.
+        plpmtud_current_before = self._plpmtud_adapter.current_mtu
         self._plpmtud_adapter.on_snd_una_advance(
             new_snd_una=self._snd_seq.una,
             now=time.monotonic(),
         )
+        if self._plpmtud_adapter.current_mtu > plpmtud_current_before:
+            engine_mss = self._plpmtud_adapter.current_mtu - self._ip_tcp_overhead
+            if engine_mss > self._win.snd_mss:
+                self._win.snd_mss = engine_mss
         # RFC 9406 §4.2 round-boundary detection: if SND.UNA
         # has reached or passed the round's window_end_seq,
         # rotate the per-round minRTT trackers. The first

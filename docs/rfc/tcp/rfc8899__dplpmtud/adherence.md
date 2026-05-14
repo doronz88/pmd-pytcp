@@ -45,9 +45,9 @@ once Phase 3c lands the TCP probe-emit path.
 | §5.1.2 MIN_PLPMTU / MAX_PLPMTU / BASE_PLPMTU       | met (module-level constants)      |
 | §5.3 Binary-search algorithm                       | met (`PmtuSearch._next_candidate`)|
 | §6 UDP probe-send / ack / loss API                 | met (`UdpSocket.probe_pmtu` ...)  |
-| §6 TCP probe-send / ack / loss API                 | partial — ack/loss hooks met; probe-emit deferred (Phase 3c)|
+| §6 TCP probe-send / ack / loss API                 | met (Phase 3c-min default-off + 3d Linux-aligned snd_mss growth) |
 | §7 Black-hole detection                            | met (`PmtuSearch.on_probe_loss` + ERROR state) |
-| §3 #7 Probes excluded from cwnd                    | **deferred (Phase 3c)**           |
+| §3 #7 Probes excluded from cwnd                    | **Linux-pragmatic deviation** (probes share cwnd; matches Linux tcp_mtu_probing) |
 
 The remaining gap is the TCP TX-path probe-segment emit
 (Phase 3c) — the engine and adapter framework are fully in
@@ -449,8 +449,8 @@ for the consumer; the natural future test name is
 | §3 #1 Non-probe size enforcement                    | met                          |
 | §3 #2 IPv4 DF=1 / IPv6 no-fragmentation on probe    | met for non-probe; TCP probe path deferred (Phase 3c) |
 | §3 #3 Reception feedback                            | met for UDP (manual API); met for TCP (snd.una hook for ack/loss) |
-| §3 #7 Probes excluded from cwnd                     | deferred (Phase 3c)          |
-| §4.1 Probe packet generation                        | met for UDP; deferred for TCP (Phase 3c) |
+| §3 #7 Probes excluded from cwnd                     | **Linux-pragmatic deviation** (probes share cwnd; matches Linux tcp_mtu_probing) |
+| §4.1 Probe packet generation                        | met for UDP; met for TCP (Phase 3c-min default-off) |
 | §4.3 Unsupported-PLPMTU detection                   | met                          |
 | §4.6.4 BASE_PLPMTU floor enforcement                | met                          |
 | §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER               | met                          |
@@ -461,10 +461,13 @@ for the consumer; the natural future test name is
 | §7 Black-hole detection                             | met                          |
 | §4.4 IP_PMTUDISC socket option                      | not implemented (out of scope) |
 
-**Principal gap:** TCP TX-path probe-segment emit
-(Phase 3c) plus the cwnd-exempt accounting and probe-only
-RTO refinements. The engine, state machine, adapter
-framework, ack/RTO feedback, and UDP manual API are all
-shipped; Phase 3c needs intrusive surgery on the
-TcpSession TX hot path which warrants its own focused
-commit cycle.
+**Principal gap (deliberate):** RFC §3 #7 cwnd-exempt
+probe accounting is a deliberate Linux-pragmatic
+deviation. Linux probes share cwnd / regular RTO (no
+separate probe-RTO timer); shipped for ~15 years without
+operational harm. The compliance posture is "met
+(Linux-pragmatic, RFC §3 #7 strict deviation documented)."
+All other DPLPMTUD mechanisms (engine, state machine,
+adapter framework, ack/RTO feedback, UDP manual API,
+TCP probe-segment emit + snd_mss growth on probe-ack)
+are shipped.

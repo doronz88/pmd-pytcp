@@ -129,6 +129,9 @@ class TestTcpPlpmtudProbeEmit(TcpSessionTestCase):
         """
 
         session = self._make_established_session()
+        # Enable PLPMTUD probing (Linux 'tcp_mtu_probing=1'
+        # equivalent; default is OFF matching Linux).
+        session._plpmtud_probing_enabled = True
         # Artificially shrink snd_mss so the engine's BASE
         # candidate (1200 bytes IPv4) exceeds it.
         session._win.snd_mss = 500
@@ -171,6 +174,7 @@ class TestTcpPlpmtudProbeEmit(TcpSessionTestCase):
         """
 
         session = self._make_established_session()
+        session._plpmtud_probing_enabled = True
         session._win.snd_mss = 500
         session._cc.snd_ewn = 5000
         session._tx.buffer.extend(b"A" * 5000)
@@ -199,6 +203,7 @@ class TestTcpPlpmtudProbeEmit(TcpSessionTestCase):
         """
 
         session = self._make_established_session()
+        session._plpmtud_probing_enabled = True
         session._win.snd_mss = 500
         session._cc.snd_ewn = 5000
         # Only 100 bytes buffered — far below the 1160-byte
@@ -226,6 +231,7 @@ class TestTcpPlpmtudProbeEmit(TcpSessionTestCase):
         """
 
         session = self._make_established_session()
+        session._plpmtud_probing_enabled = True
         session._win.snd_mss = 500
         session._cc.snd_ewn = 5000
         session._tx.buffer.extend(b"A" * 5000)

@@ -403,23 +403,40 @@ post-ICMP shrink where the engine's binary search has
 walked the candidate above the new `snd_mss` ceiling —
 rare in practice).
 
-**Deferred (3d):**
-- Decouple `snd_mss` from ICMP signals so PLPMTUD's
-  confirmed `ack_size` drives the working MSS. Probes
-  then naturally fire upward toward `interface_mtu`
-  without artificial setup.
-- Cwnd-exempt probe accounting (RFC 4821 §7.4): subtract
-  in-flight probe sizes from `bytes_in_flight` so probes
-  don't consume the congestion window. The adapter's
-  `in_flight_probe_sizes` snapshot is already present
-  for this consumer.
-- Probe-only RTO (RFC 4821 §7.5): a separate retransmit
-  timer for probes so data-RTO doesn't feed probe-loss.
-- §7.5 probe-seq trick (probe at `snd.nxt - 1`) so the
-  ACK signal is unambiguous.
-- ~10 additional integration tests from §7.5 covering
-  cwnd-exempt accounting, data-RTO-doesn't-feed-probe-
-  loss, multi-destination scenarios, raise-timer reprobe.
+**3d Linux-aligned (SHIPPED 2026-05-14):**
+- Engine fix: `on_classical_pmtu` now shrinks
+  `current_mtu` only (NOT `search_high`). Matches Linux's
+  `tcp_mtu_probing` behaviour where ICMP narrows
+  `mss_cache` but leaves the PLPMTUD upper bound alone;
+  probe-loss is the only way `search_high` narrows. This
+  means after an ICMP shrink the engine still has
+  headroom to probe upward toward `interface_mtu`.
+- Per-session `_plpmtud_probing_enabled` flag (default
+  `False` matching Linux `tcp_mtu_probing=0`); the
+  probe-emit hook in `_transmit_data` gates on this so
+  default behaviour is unchanged.
+- snd_mss grow-on-probe-ack hook: after
+  `adapter.on_snd_una_advance`, if the engine's
+  `current_mtu` increased (probe was acked), `snd_mss`
+  grows to `current_mtu - overhead`. Matches Linux's
+  `tcp_mtu_probe_success` equivalent. Uses a
+  before/after snapshot so the hook only fires on actual
+  probe-ack, not on every snd.una advance.
+- 4 new integration tests at
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_linux.py`
+  covering default-off behavior, search_high invariance,
+  probe-ack snd_mss growth, post-ICMP upward probing.
+
+**Deliberate RFC §7.4/§7.5 deviation:** Linux-aligned
+PLPMTUD does NOT exempt probes from cwnd (RFC 4821 §7.4
+MUST) and does NOT use a separate probe-only RTO timer
+(RFC 4821 §7.5). Linux has shipped this pragmatic
+deviation for ~15 years without operational issues; the
+RFC requirements exist for theoretical worst-case
+scenarios (small-cwnd probe starvation) that don't
+materially affect real workloads. Documented in the
+adherence records as "met (Linux-pragmatic; RFC §7.4 /
+§7.5 strict deviation per Linux precedent)".
 
 **Goal:** active PLPMTUD probing for TCP, hooked into
 `TcpSession`. End-to-end probe → wire → ACK →

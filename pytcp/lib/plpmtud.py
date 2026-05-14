@@ -392,18 +392,27 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
                     self._enter_search_complete(now=now)
 
             case PmtuState.BASE | PmtuState.SEARCHING | PmtuState.SEARCH_COMPLETE:
-                # Only shrinks; never raises PLPMTU.
+                # Linux-aligned: ICMP shrinks 'current_mtu'
+                # (the working PLPMTU per RFC 8201 §4) but
+                # does NOT lower 'search_high' — the engine
+                # must still be able to probe upward toward
+                # interface_mtu to detect path-MTU
+                # increases / verify the ICMP signal. This
+                # matches Linux's 'tcp_mtu_probing'
+                # behaviour where ICMP affects 'mss_cache'
+                # but leaves the PLPMTUD upper bound alone;
+                # 'search_high' only narrows on probe-loss.
+                # RFC 4821 §7.6 allows MAY-set-from-ICMP;
+                # PyTCP / Linux opt out.
                 if effective < self._current_mtu:
                     self._current_mtu = effective
-                if effective < self._search_high:
-                    self._search_high = effective
-                # If an in-flight candidate is now too
-                # large, abandon it and recompute.
-                if self._candidate_mtu is not None and self._candidate_mtu > effective:
-                    self._candidate_mtu = self._next_candidate()
-                    self._probe_timer_expiry = None
-                    if self._candidate_mtu is None and self._state is not PmtuState.BASE:
-                        self._enter_search_complete(now=now)
+                # In-flight candidates are left unchanged
+                # — if a candidate is now > effective the
+                # probe will fail on the wire and the
+                # probe-loss path will narrow search_high.
+                # Linux's pragmatic choice: don't try to
+                # second-guess in-flight probes from the
+                # ICMP signal.
 
     def confirm_current(self, size: int) -> None:
         """
