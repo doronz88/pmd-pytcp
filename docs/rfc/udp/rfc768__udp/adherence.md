@@ -1,0 +1,512 @@
+# RFC 768 — User Datagram Protocol
+
+| Field       | Value                                |
+|-------------|--------------------------------------|
+| RFC number  | 768                                  |
+| Title       | User Datagram Protocol               |
+| Author      | J. Postel                            |
+| Category    | Internet Standard (STD 6)            |
+| Date        | August 1980                          |
+| Updates     | (none — original UDP specification)  |
+| Source text | [`rfc768.txt`](rfc768.txt)           |
+
+This document records, paragraph by paragraph, how the
+current PyTCP codebase relates to each normative statement
+in RFC 768. The audit was performed by reading the RFC
+text fresh and inspecting `net_proto/protocols/udp/`,
+`pytcp/stack/packet_handler/packet_handler__udp__rx.py`,
+`pytcp/stack/packet_handler/packet_handler__udp__tx.py`,
+and `pytcp/socket/udp__socket.py` directly. Adherence
+levels are described in plain language. Sections without
+normative content (Introduction, Protocol Application,
+References) are omitted.
+
+---
+
+## Top-line adherence
+
+PyTCP **meets** the core RFC 768 wire format and semantics
+on both the send and receive paths. Two pragmatic
+deviations are flagged for follow-up:
+
+1. **RX rejects `sport == 0`** as a sanity error. RFC 768
+   explicitly states Source Port is **optional** and zero
+   is the sentinel for "absent." Linux accepts inbound
+   `sport=0`; PyTCP drops it (`UdpSanityError`).
+2. **TX does not substitute the all-ones value when the
+   computed checksum is zero.** RFC 768 mandates that a
+   computed-zero checksum be transmitted as `0xFFFF` so
+   the wire value `0x0000` unambiguously means "no
+   checksum generated." PyTCP's assembler writes the raw
+   `inet_cksum` output, so a packet whose payload happens
+   to yield a zero one's-complement sum is sent with
+   cksum=0 — receivers would interpret it as
+   "no-checksum," masking corruption.
+
+Both deviations are low-impact in practice (sport=0 is
+rare; a payload that yields cksum=0 is uncommon outside
+hand-crafted test traffic) but they are spec violations
+worth closing.
+
+| Section            | Topic                              | Status |
+|--------------------|------------------------------------|--------|
+| Format             | 8-byte fixed header wire layout    | met    |
+| Fields / Source Port | Optional, zero if absent         | met (TX); **not met (RX rejects sport=0)** |
+| Fields / Destination Port | Per-destination semantics    | met    |
+| Fields / Length    | ≥ 8 octets (incl. header)          | met    |
+| Fields / Checksum  | One's-complement over pseudo+UDP+data | met (RX + TX compute); **partial (TX zero-→-all-ones substitution missing)** |
+| Pseudo header      | src+dst+zero+protocol+UDP-length   | met    |
+| Checksum-zero RX   | Transmitted 0 = "no checksum"      | met    |
+| User Interface     | Create receive ports; recv with source info; send with (data, ports, addresses) | met (BSD socket facade) |
+| IP Interface       | UDP module reads src/dst/protocol from IP | met |
+| Protocol Number    | IP protocol 17                     | met    |
+
+---
+
+## Format
+
+> "User Datagram Header Format: Source Port (16), Destination
+>  Port (16), Length (16), Checksum (16), data octets ..."
+
+**Adherence:** met. The header dataclass at
+`net_proto/protocols/udp/udp__header.py:54-77` carries the
+four 16-bit fields in wire order; `UDP__HEADER__LEN = 8`
+and `UDP__HEADER__STRUCT = "! HH HH"` (line 50-51) pin the
+big-endian struct format. The ASCII packet diagram at
+lines 44-48 mirrors the RFC's diagram verbatim.
+
+---
+
+## Fields — Source Port
+
+> "Source Port is an optional field, when meaningful, it
+>  indicates the port of the sending process, and may be
+>  assumed to be the port to which a reply should be
+>  addressed in the absence of any other information. If
+>  not used, a value of zero is inserted."
+
+**Adherence (TX):** met. The assembler at
+`net_proto/protocols/udp/udp__assembler.py:50-71` defaults
+`udp__sport=0`, so a caller that does not care about the
+source port emits a datagram with `sport=0` — matching
+the RFC's "value of zero" sentinel.
+
+**Adherence (RX): not met.** The parser's sanity check at
+`net_proto/protocols/udp/udp__parser.py:111-114` raises
+`UdpSanityError` on inbound `sport == 0`:
+
+```python
+if (value := self.sport) == 0:
+    raise UdpSanityError(
+        f"The 'sport' field must be greater than 0. Got: {value!r}",
+    )
+```
+
+The RFC explicitly permits zero as the "source port not
+used" form. Linux accepts inbound sport=0 (`udp_v4_get_port`
+and friends impose no source-port-zero filter on RX). The
+deviation is greppable and pinned by
+`net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
+— the test currently locks in the wrong behaviour, so any
+future fix needs the test updated in the same commit.
+
+**Fix sketch:** remove the `sport == 0` branch from
+`_validate_sanity` (the parser would still reject other
+sanity violations).
+
+---
+
+## Fields — Destination Port
+
+> "Destination Port has a meaning within the context of a
+>  particular internet destination address."
+
+**Adherence:** met. The RX dispatch path at
+`pytcp/stack/packet_handler/packet_handler__udp__rx.py:128-147`
+constructs a `UdpMetadata` keyed by
+`(ip__local_address, udp__local_port)` and walks the
+socket table for a matching listener — so the same dport
+value can resolve to different sockets depending on the
+destination IP.
+
+PyTCP also rejects inbound `dport == 0`
+(`udp__parser.py:116-119`). RFC 768 itself does not
+forbid this; the IANA registry reserves port 0 as
+"unassigned" but Linux conventionally drops dport=0 on
+RX as well. The behaviour is consistent with the
+deployed Internet posture, just not pinned by RFC 768
+itself.
+
+---
+
+## Fields — Length
+
+> "Length is the length in octets of this user datagram
+>  including this header and the data. (This means the
+>  minimum value of the length is eight.)"
+
+**Adherence:** met. The parser integrity check at
+`net_proto/protocols/udp/udp__parser.py:76-89` rejects
+any datagram where `plen < UDP__HEADER__LEN = 8` and
+additionally cross-validates `plen == ip__payload_len`:
+
+```python
+if not (UDP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
+    raise UdpIntegrityError(...)
+plen = int.from_bytes(self._frame[4:6])
+if not (UDP__HEADER__LEN <= plen == self._ip__payload_len <= len(self._frame)):
+    raise UdpIntegrityError(...)
+```
+
+The cross-check between `plen` and the IP layer's
+payload-length advisory closes an out-of-bounds parse
+that the bare-RFC minimum check would miss.
+
+On TX, `udp__assembler.py:69` computes
+`plen = UDP__HEADER__LEN + len(self._payload)`, so a
+zero-payload datagram emits `plen = 8` (the RFC minimum).
+
+---
+
+## Fields — Checksum
+
+> "Checksum is the 16-bit one's complement of the one's
+>  complement sum of a pseudo header of information from
+>  the IP header, the UDP header, and the data, padded
+>  with zero octets at the end (if necessary) to make a
+>  multiple of two octets."
+
+**Adherence:** met. The 16-bit one's-complement sum is
+computed by `net_proto/lib/inet_cksum.py:39-78` over all
+buffers passed in. The UDP TX path at
+`net_proto/protocols/udp/udp__assembler.py:79-80` calls:
+
+```python
+header[6:8] = inet_cksum(header, self._payload, init=self.pshdr_sum).to_bytes(2)
+```
+
+where `pshdr_sum` is the precomputed IP pseudo-header
+contribution (the IPv4 / IPv6 TX paths populate it).
+
+The RX path at `udp__parser.py:91-94` verifies:
+
+```python
+if int.from_bytes(self._frame[6:8]) != 0 and inet_cksum(
+    self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum
+):
+    raise UdpIntegrityError("The packet checksum must be valid.")
+```
+
+`inet_cksum(...)` returns 0 when the data + pseudo-header
+sum to all-ones (the one's-complement zero), so a valid
+inbound packet passes the predicate.
+
+> "If the computed checksum is zero, it is transmitted as
+>  all ones (the equivalent in one's complement
+>  arithmetic). An all zero transmitted checksum value
+>  means that the transmitter generated no checksum (for
+>  debugging or for higher level protocols that don't
+>  care)."
+
+**Adherence (RX zero-skip):** met. The `!= 0` guard at
+`udp__parser.py:91` ensures a wire value of `0x0000`
+bypasses checksum validation, treating the datagram as
+"sender did not generate a checksum."
+
+**Adherence (TX zero-→-all-ones substitution): not met.**
+The assembler writes `inet_cksum(...)` directly into the
+header bytes; if the one's-complement sum yields
+`0x0000`, the wire carries `0x0000` rather than `0xFFFF`.
+A receiver would mis-interpret the corruption-detection
+field as "no checksum generated" and skip validation.
+
+**Fix sketch:** at `udp__assembler.py:80`, substitute
+`0xFFFF` for a computed `0x0000`:
+
+```python
+cksum = inet_cksum(header, self._payload, init=self.pshdr_sum)
+header[6:8] = (cksum if cksum != 0 else 0xFFFF).to_bytes(2)
+```
+
+The same `or 0xFFFF` swap belongs in
+`net_proto/protocols/udp/udp__base.py:87` (the
+`__buffer__` path).
+
+The fix is a one-line change; the cost has been the
+absence of a regression test pinning the all-ones
+substitution. Adding a test that constructs a payload
+known to sum to zero (e.g. `b"\xff\xff"` paired with a
+specific pseudo-header) would lock it in.
+
+---
+
+## Pseudo header
+
+> "The pseudo header conceptually prefixed to the UDP
+>  header contains the source address, the destination
+>  address, the protocol, and the UDP length. This
+>  information gives protection against misrouted
+>  datagrams. This checksum procedure is the same as is
+>  used in TCP."
+
+**Adherence:** met. The IPv4 TX path populates the
+pseudo-header sum in
+`pytcp/stack/packet_handler/packet_handler__ip4__tx.py`
+before invoking the UDP assembler; the IPv6 TX path
+populates it in
+`pytcp/stack/packet_handler/packet_handler__ip6__tx.py`.
+The `pshdr_sum: int = 0` attribute on `Udp` base
+(`net_proto/protocols/udp/udp__base.py:49`) is overwritten
+per-instance. The RX side mirrors via
+`packet_rx.ip.pshdr_sum` and feeds it into `inet_cksum`'s
+`init=` argument so the verifier folds the pseudo-header
+contribution into the computed sum.
+
+The pseudo-header layout (src/dst + zero + protocol +
+length) matches the diagram in RFC 768 page 2 verbatim;
+the IPv4 layer constructs it per RFC 791 + RFC 1122
+§3.2.1.2, the IPv6 layer per RFC 8200 §8.1.
+
+---
+
+## User Interface
+
+> "A user interface should allow the creation of new
+>  receive ports, receive operations on the receive ports
+>  that return the data octets and an indication of source
+>  port and source address, and an operation that allows a
+>  datagram to be sent, specifying the data, source and
+>  destination ports and addresses to be sent."
+
+**Adherence:** met. The BSD-socket facade at
+`pytcp/socket/udp__socket.py` exposes the full UDP user
+interface:
+
+- `bind(address)` at `udp__socket.py:202` — create a
+  receive port.
+- `recvfrom(bufsize, timeout)` at `udp__socket.py:448` —
+  return data octets plus `(source_address, source_port)`
+  tuple, satisfying the "indication of source port and
+  source address" requirement.
+- `sendto(data, address)` at `udp__socket.py:350` —
+  specify data + destination, the source address/port
+  picked from the bound state.
+- `recv` / `send` / `connect` / `close` follow the BSD
+  conventions for connected and unconnected use.
+
+The socket-API plane is the canonical user surface per
+the project's Phase-3 north-star design (BSD socket
+factory `socket(AF_INET\|AF_INET6, SOCK_DGRAM, IPPROTO_UDP)`
+returns a `UdpSocket`).
+
+---
+
+## IP Interface
+
+> "The UDP module must be able to determine the source
+>  and destination internet addresses and the protocol
+>  field from the internet header."
+
+**Adherence:** met. The RX path reads `packet_rx.ip.src`,
+`packet_rx.ip.dst`, `packet_rx.ip.pshdr_sum`, and
+`packet_rx.ip.payload_len` from the parent IP parser
+(IPv4 or IPv6) — see
+`packet_handler__udp__rx.py:129-137` for the metadata
+construction. The TX path injects the pseudo-header sum
+via the IP-layer assembler hooks (the IPv4 / IPv6 TX
+mixin sets `udp_packet_tx.pshdr_sum` before calling
+`assemble`).
+
+> "One possible UDP/IP interface would return the whole
+>  internet datagram including all of the internet header
+>  in response to a receive operation."
+
+**Adherence:** met as an optional surface via
+`RawSocket(AF_INET, SOCK_RAW, IPPROTO_UDP)` /
+`SOCK_RAW + IPPROTO_RAW`, which receives the full IP
+header plus payload. The normative requirement is only
+that such an interface be "possible"; PyTCP exposes it.
+
+---
+
+## Protocol Number
+
+> "This is protocol 17 (21 octal) when used in the
+>  Internet Protocol."
+
+**Adherence:** met. `IpProto.UDP = 17` lives in
+`net_proto/lib/enums.py` (the canonical IANA codepoint).
+The IPv4 and IPv6 RX dispatchers use this codepoint to
+route inbound packets to `_phrx_udp`.
+
+---
+
+## Beyond RFC 768 (clarifications inherited from other RFCs)
+
+RFC 768 predates IPv6 by 16 years and does not address
+several modern operational concerns. The relevant
+clarifications come from:
+
+- **RFC 1122 §4.1.3.4 ICMP messages**: a UDP receiver
+  with no matching socket SHOULD emit ICMP Port
+  Unreachable. PyTCP wires this at
+  `packet_handler__udp__rx.py:180-230` with rate-limiting
+  via `try_emit_icmp_error` and counters
+  `udp__no_socket_match__respond_icmp4_unreachable` /
+  `udp__no_socket_match__respond_icmp6_unreachable`.
+- **RFC 8200 §8.1** (IPv6 UDP): the IPv6 receiver MUST
+  discard UDP packets with cksum=0 (except for tunnel
+  protocols per RFC 6935). PyTCP currently treats RX
+  cksum=0 identically on IPv4 and IPv6 (skip validation).
+  This is a Phase-1 polish gap — the IPv6 path should
+  reject cksum=0 unless a per-socket
+  `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` opt-in is set
+  (Linux socket options). Cross-referenced from
+  `docs/rfc/ip6/rfc8200__ipv6/adherence.md` §8.1.
+
+These are not RFC-768 conformance gaps in the strict
+sense — RFC 768 itself is silent on IPv6 and on the
+ICMP-Unreachable-on-no-socket behaviour — but they are
+the natural follow-ups when a reader extends the audit.
+
+---
+
+## Test coverage audit
+
+### Header wire format
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py`
+  — pins the 8-byte fixed shape, per-field uint16
+  bounds, and the `__post_init__` assertions on every
+  field.
+
+**Status:** locked in.
+
+### Assembler operation
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py`
+  — pins assembler `__bytes__`, `__len__`, `__str__`,
+  `__repr__`, payload concatenation, and per-aspect
+  reflection across the parametric matrix.
+
+**Status:** locked in.
+
+### Parser integrity checks
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py`
+  — pins the `UDP__HEADER__LEN <= ip__payload_len <=
+  len(frame)` constraint, the `plen == ip__payload_len`
+  cross-check, and the checksum-zero RX bypass; also the
+  boundary-accepted minimum-length frame.
+
+**Status:** locked in.
+
+### Parser sanity checks
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
+  — pins the rejection of `sport == 0` and `dport == 0`.
+
+**Status:** locked in (but the `sport == 0` case is
+**pinning a deviation from RFC 768** — see the Source
+Port section). When the deviation is fixed, this test's
+sport=0 case becomes the positive control.
+
+### Parser operation
+
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py`
+  — pins parser `header`, `payload`, `packet_rx.udp`
+  installation, and frame-advance behaviour across the
+  parametric matrix.
+
+**Status:** locked in.
+
+### Packet handler RX (no-socket → ICMP Unreachable)
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__udp__rx.py`
+  — pins the RX dispatch including socket lookup and
+  the ICMP-Unreachable emission when no socket matches
+  (both IPv4 and IPv6 paths). Also pins the
+  `udp__pre_parse` / `udp__socket_match` /
+  `udp__no_socket_match__*` counters.
+
+**Status:** locked in.
+
+### Packet handler TX
+
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__udp__tx.py`
+  — pins outbound wire format across IPv4 and IPv6
+  parametric cases with and without payload.
+
+**Status:** locked in.
+
+### BSD socket facade
+
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py`
+  — pins `bind` / `connect` / `send` / `sendto` / `recv`
+  / `recvfrom` / `close` plus the
+  `setsockopt`/`getsockopt` plumbing.
+
+**Status:** locked in.
+
+### Test coverage summary
+
+| Aspect                                              | Coverage |
+|-----------------------------------------------------|----------|
+| Header wire format (8-byte, big-endian)             | locked in |
+| Length minimum = 8 octets                           | locked in |
+| Cross-check `plen == ip__payload_len`               | locked in |
+| Checksum compute (TX) / verify (RX)                 | locked in |
+| Checksum-zero RX skip                               | locked in |
+| Checksum-zero TX → all-ones substitution            | **n/a (gap not closed; add test with fix)** |
+| Source Port optional / `sport == 0` accepted on RX  | **n/a (gap not closed; test currently pins the deviation)** |
+| Destination port semantics (per-IP socket dispatch) | locked in |
+| ICMP Unreachable on no matching socket              | locked in |
+| BSD user interface (bind/recv/send/close)           | locked in |
+| Pseudo-header construction (IPv4 + IPv6)            | locked in |
+
+---
+
+## Overall assessment
+
+| Aspect                                                | Status |
+|-------------------------------------------------------|--------|
+| Format / 8-byte fixed header                          | met    |
+| Source Port optional (TX defaults to 0)               | met    |
+| Source Port `== 0` accepted on RX                     | **not met** (parser rejects with `UdpSanityError`) |
+| Destination Port per-IP semantics                     | met    |
+| Length ≥ 8 octets                                     | met    |
+| Length cross-check vs IP payload-length advisory      | met (stronger than RFC) |
+| Checksum compute over pseudo + UDP + data             | met    |
+| Checksum-zero RX = "no checksum, skip"                | met    |
+| Checksum compute-zero TX → all-ones substitution      | **not met** (assembler emits raw `0x0000`) |
+| Pseudo-header layout (src + dst + 0 + proto + UDP-len) | met   |
+| User interface (BSD socket facade)                    | met    |
+| IP interface (UDP reads src/dst/proto from IP)        | met    |
+| Protocol Number = 17                                  | met    |
+
+PyTCP **broadly conforms** to RFC 768. Two concrete
+deviations are documented above with one-line fix
+sketches: the assembler should substitute `0xFFFF` for a
+computed-zero checksum, and the parser's
+`_validate_sanity` should accept `sport == 0`. Both fixes
+are mechanical; both are bounded by a single existing
+test file whose expectations need to flip in the same
+commit.
+
+---
+
+## Cross-references
+
+- IPv4 datagram framing: [`../../ip4/rfc791__ip4/adherence.md`](../../ip4/rfc791__ip4/adherence.md)
+- IPv4 host requirements (incl. UDP §4.1): [`../../ip4/rfc1122__host_requirements_ip4/adherence.md`](../../ip4/rfc1122__host_requirements_ip4/adherence.md)
+- IPv6 UDP checksum-mandatory rule: [`../../ip6/rfc8200__ipv6/adherence.md`](../../ip6/rfc8200__ipv6/adherence.md)
+- ICMP Port Unreachable on no matching socket: [`../../icmp4/rfc792__icmp4/adherence.md`](../../icmp4/rfc792__icmp4/adherence.md) and [`../../icmp6/rfc4443__icmp6/adherence.md`](../../icmp6/rfc4443__icmp6/adherence.md)
+- PyTCP UDP socket facade lives at `pytcp/socket/udp__socket.py`; broader socket-API parity audit at `docs/refactor/socket_linux_parity_audit.md`.
