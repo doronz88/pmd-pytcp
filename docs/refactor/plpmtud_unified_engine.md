@@ -458,11 +458,36 @@ session-internal adapter is per-instance.
 **Effort:** ~1.5-2 days. The probe-emit + ACK detection
 path is the longest single piece of work in this plan.
 
-### Phase 4 — UDP adapter (manual probe API)
+### Phase 4 — UDP adapter (manual probe API) — SHIPPED 2026-05-14
 
 **Goal:** expose a per-socket probe API so application
 protocols that have their own ACK channel (QUIC-style,
 echo-server-style) can drive PLPMTUD.
+
+**Shipped:**
+- `pytcp/protocols/udp/udp__plpmtud_adapter.py` —
+  `UdpPlpmtudAdapter` wrapping `PmtuSearch` with a
+  single-outstanding-probe slot. 13 unit tests at
+  `pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`.
+- `UdpSocket` gains lazy-allocated `_plpmtud_adapter`,
+  `_ensure_plpmtud_adapter` helper, and three public
+  methods:
+  - `probe_pmtu(size=N)` — emits a zero-padded UDP
+    datagram of size N (engine recommendation when size
+    is None).
+  - `ack_probe()` — application's app-layer ACK confirms
+    the in-flight probe.
+  - `timeout_probe()` — application's app-layer timer
+    expired without an ACK.
+- `notify_pmtu` routes the classical PMTU signal through
+  the per-socket adapter and mirrors the engine into
+  `stack.pmtu_state`.
+- 6 integration tests at
+  `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
+  cover probe-emit (sized datagram on wire), ack → state
+  transition, MAX_PROBES timeouts → ERROR + min clamp,
+  concurrent-probe rejection, unconnected-socket
+  rejection, ack-then-reprobe chain.
 
 **Touches:**
 - `pytcp/protocols/udp/udp__plpmtud_adapter.py` — new

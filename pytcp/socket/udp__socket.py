@@ -53,8 +53,8 @@ from pytcp.lib.ip_helper import (
     pick_local_port,
 )
 from pytcp.lib.logger import log
-from pytcp.lib.plpmtud import PmtuSearch
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.udp.udp__plpmtud_adapter import UdpPlpmtudAdapter
 from pytcp.socket import (
     IP_OPTIONS,
     IP_RECVERR,
@@ -136,6 +136,14 @@ class UdpSocket(socket):
         # setsockopt(SOL_UDP, UDP_NO_CHECK6_TX, 1).
         self._udp_no_check6_tx: bool = False
         self._udp_no_check6_rx: bool = False
+        # RFC 4821 / RFC 8899 per-socket PLPMTUD adapter, lazily
+        # allocated on first 'probe_pmtu' / 'notify_pmtu' for a
+        # connected destination. UDP has no native ACK channel,
+        # so PLPMTUD is driven by the application via
+        # 'probe_pmtu' / 'ack_probe' / 'timeout_probe'; unconnected
+        # sockets have no fixed destination and therefore no
+        # adapter.
+        self._plpmtud_adapter: UdpPlpmtudAdapter | None = None
 
         match self._address_family:
             case AddressFamily.INET6:
@@ -878,6 +886,97 @@ class UdpSocket(socket):
             embedded_datagram=embedded_datagram,
         )
 
+    def _ensure_plpmtud_adapter(self) -> UdpPlpmtudAdapter | None:
+        """
+        Lazy-allocate the per-socket PLPMTUD adapter on first
+        ICMP / probe event. Returns None when the socket has no
+        connected remote (probing requires a fixed destination)
+        or 'stack.interface_mtu' is unset (unit-test fixtures).
+        """
+
+        if self._plpmtud_adapter is not None:
+            return self._plpmtud_adapter
+        if self._remote_ip_address.is_unspecified:
+            return None
+        iface_mtu = stack.__dict__.get("interface_mtu")
+        if iface_mtu is None:
+            return None
+        self._plpmtud_adapter = UdpPlpmtudAdapter(
+            remote_ip_address=self._remote_ip_address,
+            interface_mtu=iface_mtu,
+        )
+        return self._plpmtud_adapter
+
+    def probe_pmtu(self, *, size: int | None = None) -> int | None:
+        """
+        Emit a PLPMTUD probe datagram to the socket's connected
+        peer. Returns the probe size (in bytes, including IP +
+        UDP headers) if a probe was emitted, or None when:
+
+        - The socket has no connected destination
+        - A probe is already in flight (single-outstanding invariant)
+        - The engine has no probe to recommend (when size is None)
+
+        If 'size' is provided, that exact size is used (the
+        application chose its own probe size). If 'size' is
+        None, the engine's recommendation is used.
+
+        The probe payload is zero-padded so the UDP datagram's
+        IP packet size matches the requested probe size. The
+        application is responsible for calling 'ack_probe()'
+        when its app-layer ACK confirms the probe arrived,
+        or 'timeout_probe()' when its app-layer timer expires.
+
+        Reference: RFC 4821 §5 / RFC 8899 §6.
+        """
+
+        adapter = self._ensure_plpmtud_adapter()
+        if adapter is None:
+            return None
+        now = time.monotonic()
+        chosen_size = adapter.probe_pmtu(size=size, now=now)
+        if chosen_size is None:
+            return None
+        # IP packet size - IP header - UDP header = UDP payload size.
+        ip_overhead = 40 if isinstance(self._remote_ip_address, Ip6Address) else 20
+        udp_payload_size = max(chosen_size - ip_overhead - 8, 0)
+        payload = b"\x00" * udp_payload_size
+        try:
+            self.sendto(payload, (str(self._remote_ip_address), self._remote_port))
+        except OSError:
+            # Sendto failed (e.g. routing); clear the in-flight
+            # slot so the application can retry.
+            adapter.timeout_probe(now=now)
+            return None
+        return chosen_size
+
+    def ack_probe(self) -> None:
+        """
+        Notify the PLPMTUD adapter that the application's
+        app-layer ACK confirmed the in-flight probe.
+
+        Reference: RFC 4821 §7.6.1 / RFC 8899 §6.
+        """
+
+        adapter = self._ensure_plpmtud_adapter()
+        if adapter is None:
+            return
+        adapter.ack_probe(now=time.monotonic())
+
+    def timeout_probe(self) -> None:
+        """
+        Notify the PLPMTUD adapter that the application's
+        app-layer timer expired without an ACK; the in-flight
+        probe is declared lost.
+
+        Reference: RFC 4821 §7.5 / RFC 8899 §6.
+        """
+
+        adapter = self._ensure_plpmtud_adapter()
+        if adapter is None:
+            return
+        adapter.timeout_probe(now=time.monotonic())
+
     def notify_pmtu(
         self,
         *,
@@ -902,30 +1001,15 @@ class UdpSocket(socket):
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
 
-        # Mirror the classical PMTU signal into the unified PLPMTUD
-        # engine ('stack.pmtu_state'). Lazy-allocate on first signal
-        # so destinations that never receive ICMP feedback stay out
-        # of the registry. Skipped when 'stack.interface_mtu' is not
-        # yet set (unit-test fixtures that exercise notify_pmtu
-        # without a full stack init).
-        iface_mtu = stack.__dict__.get("interface_mtu")
-        if iface_mtu is not None:
-            engine = stack.pmtu_state.get(self._remote_ip_address)
-            if engine is None:
-                if isinstance(self._remote_ip_address, Ip6Address):
-                    engine_ip6: PmtuSearch[Ip6Address] = PmtuSearch(
-                        address=self._remote_ip_address,
-                        interface_mtu=iface_mtu,
-                    )
-                    engine = engine_ip6
-                else:
-                    engine_ip4: PmtuSearch[Ip4Address] = PmtuSearch(
-                        address=self._remote_ip_address,
-                        interface_mtu=iface_mtu,
-                    )
-                    engine = engine_ip4
-                stack.pmtu_state[self._remote_ip_address] = engine
-            engine.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
+        # Route the classical PMTU signal through the per-socket
+        # PLPMTUD adapter; lazy-allocate if the socket is connected
+        # and the stack interface_mtu is available. Mirror the
+        # adapter's engine into 'stack.pmtu_state' so sibling
+        # sockets to the same destination share the same engine.
+        adapter = self._ensure_plpmtud_adapter()
+        if adapter is not None:
+            adapter.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
+            stack.pmtu_state[self._remote_ip_address] = adapter.engine
 
         if offender_ip is None or not self._is_recverr_enabled():
             return
