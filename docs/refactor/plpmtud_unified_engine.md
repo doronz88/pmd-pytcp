@@ -355,7 +355,47 @@ omitted: passes-alone / fails-in-suite.
 
 **Effort:** ~half-day.
 
-### Phase 3 — TCP adapter + probe emission
+### Phase 3 — TCP adapter + probe emission — PARTIAL (3a + 3b shipped 2026-05-14)
+
+**Shipped (3a + 3b):**
+- `pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — adapter
+  class wrapping `PmtuSearch` engine + in-flight probe
+  tracking. 12 unit tests at
+  `pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`.
+- `TcpSession.__init__` constructs a per-session adapter.
+- `_apply_pmtu_update` routes classical-PMTUD signals
+  through the adapter + mirrors the engine into
+  `stack.pmtu_state`.
+- snd.una advance hook (in the canonical
+  `_process_ack_packet` site) calls
+  `adapter.on_snd_una_advance` so probes whose seq is
+  acked dispatch as `on_probe_ack`.
+- RTO firing hook (in the canonical retransmit-counter
+  increment site) calls `adapter.on_rto_timeout` so
+  in-flight probes are declared lost; no-op when no
+  probes in flight (RFC 4821 §7.5).
+- 5 integration tests at
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`.
+
+**Deferred (3c):**
+- Probe-segment emit: hook the TCP TX path to ask
+  `adapter.maybe_probe(now)` and pad the next segment
+  to `probe_size` with zero bytes (RFC 4821 §5 +
+  §7.5's probe-seq trick).
+- Cwnd-exempt probe accounting (RFC 4821 §7.4): subtract
+  in-flight probe sizes from `bytes_in_flight` so probes
+  don't consume the congestion window. The adapter's
+  `in_flight_probe_sizes` snapshot is already present
+  for this consumer.
+- Probe-only RTO (RFC 4821 §7.5): a separate retransmit
+  timer for probes so data-RTO doesn't feed probe-loss.
+- ~14 integration tests from §7.5 covering probe-emit /
+  ack / RTO loss / black-hole / raise-timer / multi-dest.
+
+3c is intrusive on TcpSession's TX hot path and requires
+careful regression testing of the existing TCP suite —
+warrants its own focused commit cycle rather than being
+bundled with 3a / 3b.
 
 **Goal:** active PLPMTUD probing for TCP, hooked into
 `TcpSession`. End-to-end probe → wire → ACK →
