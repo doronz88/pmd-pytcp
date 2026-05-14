@@ -223,7 +223,7 @@ Each phase is one focused commit (or one tests-first +
 one fix pair) per the project's tests-first / commit-
 discipline rules. Phases are mechanically reversible.
 
-### Phase 0 — Audit refresh
+### Phase 0 — Audit refresh — SHIPPED 2026-05-14
 
 **Goal:** lift the per-RFC adherence records into
 "what we now have / what is still missing" rather than
@@ -240,6 +240,15 @@ discipline rules. Phases are mechanically reversible.
 **Tests:** none. Documentation only.
 
 **Effort:** ~1-2 hours.
+
+**Shipped:** both adherence records refreshed against
+the current substrate (`stack.pmtu_cache`,
+`_apply_pmtu_update`, `notify_pmtu`, `_effective_pmtu`).
+Per-RFC punch list (§7 below) and test matrix (§7.5)
+cross-reference back into both audits. Substrate rows
+flipped from "not implemented" to "met (substrate)";
+active-probing rows remain "not implemented" with a
+forward pointer to Phases 1-4.
 
 ### Phase 1 — `PmtuSearch` shared engine
 
