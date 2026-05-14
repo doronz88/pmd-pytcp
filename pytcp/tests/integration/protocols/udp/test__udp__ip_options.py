@@ -46,13 +46,14 @@ pytcp/tests/integration/protocols/udp/test__udp__ip_options.py
 ver 3.0.4
 """
 
-from net_addr import Ip4Address, IpVersion, MacAddress
+from net_addr import Ip4Address, Ip6Address, IpVersion, MacAddress
 from net_proto import (
     EthernetAssembler,
     Ip4Assembler,
     Ip4OptionRouterAlert,
     Ip4Options,
     Ip4Parser,
+    Ip6Assembler,
     UdpAssembler,
 )
 from net_proto.lib.packet_rx import PacketRx
@@ -60,7 +61,12 @@ from pytcp import stack
 from pytcp.socket import (
     IP_OPTIONS,
     IP_RECVOPTS,
+    IP_RECVTOS,
+    IP_TOS,
     IPPROTO_IP,
+    IPPROTO_IPV6,
+    IPV6_RECVTCLASS,
+    IPV6_TCLASS,
     AddressFamily,
     IpProto,
     SocketType,
@@ -70,8 +76,10 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
 
 _STACK_MAC = MacAddress("02:00:00:00:00:07")
 _STACK_IP4 = Ip4Address("10.0.1.7")
+_STACK_IP6 = Ip6Address("2001:db8:0:1::7")
 _HOST_A_MAC = MacAddress("02:00:00:00:00:91")
 _HOST_A_IP4 = Ip4Address("10.0.1.91")
+_HOST_A_IP6 = Ip6Address("2001:db8:0:1::91")
 _LOCAL_PORT = 4444
 _REMOTE_PORT = 5555
 _ROUTER_ALERT_BYTES = b"\x94\x04\x00\x00"
@@ -348,4 +356,245 @@ class TestUdpIpOptionsSendto(NetworkTestCase):
             bytes(ip4_parser.options),
             b"",
             msg="Outbound IPv4 options block must be empty when IP_OPTIONS is unset.",
+        )
+
+
+def _build_udp_frame_ipv4_with_tos(*, dscp: int, ecn: int, payload: bytes) -> bytes:
+    """
+    Build an Ethernet/IPv4/UDP datagram from HOST_A → STACK with
+    the supplied DSCP and ECN bits (combined as the IPv4 TOS
+    byte via '(dscp << 2) | ecn' on the wire).
+    """
+
+    return bytes(
+        EthernetAssembler(
+            ethernet__src=_HOST_A_MAC,
+            ethernet__dst=_STACK_MAC,
+            ethernet__payload=Ip4Assembler(
+                ip4__src=_HOST_A_IP4,
+                ip4__dst=_STACK_IP4,
+                ip4__dscp=dscp,
+                ip4__ecn=ecn,
+                ip4__payload=UdpAssembler(
+                    udp__sport=_REMOTE_PORT,
+                    udp__dport=_LOCAL_PORT,
+                    udp__payload=payload,
+                ),
+            ),
+        )
+    )
+
+
+def _build_udp_frame_ipv6_with_tclass(*, dscp: int, ecn: int, payload: bytes) -> bytes:
+    """
+    Build an Ethernet/IPv6/UDP datagram from HOST_A → STACK
+    with the supplied DSCP and ECN bits (combined as the IPv6
+    Traffic Class byte via '(dscp << 2) | ecn' on the wire).
+    """
+
+    return bytes(
+        EthernetAssembler(
+            ethernet__src=_HOST_A_MAC,
+            ethernet__dst=_STACK_MAC,
+            ethernet__payload=Ip6Assembler(
+                ip6__src=_HOST_A_IP6,
+                ip6__dst=_STACK_IP6,
+                ip6__dscp=dscp,
+                ip6__ecn=ecn,
+                ip6__payload=UdpAssembler(
+                    udp__sport=_REMOTE_PORT,
+                    udp__dport=_LOCAL_PORT,
+                    udp__payload=payload,
+                ),
+            ),
+        )
+    )
+
+
+class TestUdpIpRecvTos(NetworkTestCase):
+    """
+    Inbound IPv4 TOS byte surfaces via 'recvmsg' as IP_TOS cmsg.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bind an IPv4 UdpSocket; snapshot 'stack.sockets' to keep
+        the registration from leaking into sibling tests.
+        """
+
+        super().setUp()
+        self._sockets_prior = dict(stack.sockets)
+        stack.sockets.clear()
+        self.addCleanup(self._restore_sockets)
+
+        self._socket = UdpSocket(
+            family=AddressFamily.INET4,
+            type=SocketType.DGRAM,
+            protocol=IpProto.UDP,
+        )
+        self._socket._local_ip_address = _STACK_IP4
+        self._socket._local_port = _LOCAL_PORT
+        stack.sockets[self._socket.socket_id] = self._socket
+
+    def _restore_sockets(self) -> None:
+        """Restore the snapshotted 'stack.sockets' dict."""
+        stack.sockets.clear()
+        stack.sockets.update(self._sockets_prior)
+
+    def test__udp__ip_recvtos__returns_tos_byte_when_enabled(self) -> None:
+        """
+        Ensure an inbound IPv4 UDP datagram with DSCP=48 / ECN=2
+        surfaces through 'recvmsg(ancbufsize>0)' as an IP_TOS
+        cmsg carrying the combined byte 0xC2 (one byte per
+        Linux's 'ip(7)' wire shape) when 'IP_RECVTOS' is set on
+        the receiving socket.
+
+        Reference: RFC 1122 §4.1.4 (UDP MAY pass received TOS up
+        to the application layer).
+        """
+
+        self._socket.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+
+        self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_ipv4_with_tos(dscp=48, ecn=2, payload=b"hello")))
+
+        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+
+        self.assertEqual(
+            data,
+            b"hello",
+            msg="recvmsg() must return the inbound UDP payload as bytes.",
+        )
+        self.assertEqual(
+            ancdata,
+            [(int(IPPROTO_IP), int(IP_TOS), b"\xc2")],
+            msg="IP_TOS cmsg must carry the single-byte TOS value (DSCP<<2 | ECN).",
+        )
+
+    def test__udp__ip_recvtos__suppresses_cmsg_when_disabled(self) -> None:
+        """
+        Ensure an inbound IPv4 UDP datagram with a non-zero TOS
+        byte delivers the payload through 'recvmsg' but omits
+        the IP_TOS cmsg when 'IP_RECVTOS' is NOT set on the
+        socket.
+
+        Reference: RFC 1122 §4.1.4 (IP_RECVTOS gates the
+        ancillary-data pass-through).
+        """
+
+        self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_ipv4_with_tos(dscp=48, ecn=2, payload=b"hello")))
+
+        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+
+        self.assertEqual(
+            data,
+            b"hello",
+            msg="Payload must be delivered regardless of IP_RECVTOS.",
+        )
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="ancdata must be empty when IP_RECVTOS is not set.",
+        )
+
+
+class TestUdpIpV6RecvTClass(NetworkTestCase):
+    """
+    Inbound IPv6 Traffic Class byte surfaces via 'recvmsg' as
+    IPV6_TCLASS cmsg.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bind an IPv6 UdpSocket; snapshot 'stack.sockets' to keep
+        the registration from leaking into sibling tests.
+        """
+
+        super().setUp()
+        self._sockets_prior = dict(stack.sockets)
+        stack.sockets.clear()
+        self.addCleanup(self._restore_sockets)
+
+        self._socket = UdpSocket(
+            family=AddressFamily.INET6,
+            type=SocketType.DGRAM,
+            protocol=IpProto.UDP,
+        )
+        self._socket._local_ip_address = _STACK_IP6
+        self._socket._local_port = _LOCAL_PORT
+        stack.sockets[self._socket.socket_id] = self._socket
+
+    def _restore_sockets(self) -> None:
+        """Restore the snapshotted 'stack.sockets' dict."""
+        stack.sockets.clear()
+        stack.sockets.update(self._sockets_prior)
+
+    def test__udp__ipv6_recvtclass__returns_tclass_int_when_enabled(self) -> None:
+        """
+        Ensure an inbound IPv6 UDP datagram with DSCP=48 / ECN=2
+        surfaces through 'recvmsg(ancbufsize>0)' as an
+        IPV6_TCLASS cmsg carrying the combined byte 0xC2 as a
+        4-byte big-endian integer (matching Linux's 'ipv6(7)'
+        wire shape — sizeof(int)) when 'IPV6_RECVTCLASS' is
+        set on the receiving socket.
+
+        Reference: RFC 3542 §6.5 (IPv6 Traffic Class ancillary
+        data).
+        """
+
+        self._socket.setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 1)
+
+        self._packet_handler._phrx_ethernet(
+            PacketRx(_build_udp_frame_ipv6_with_tclass(dscp=48, ecn=2, payload=b"hello"))
+        )
+
+        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+
+        self.assertEqual(
+            data,
+            b"hello",
+            msg="recvmsg() must return the inbound IPv6 UDP payload as bytes.",
+        )
+        self.assertEqual(
+            len(ancdata),
+            1,
+            msg="Datagram with non-zero TClass must surface one cmsg when IPV6_RECVTCLASS=1.",
+        )
+        level, type_, value = ancdata[0]
+        self.assertEqual(
+            (level, type_),
+            (int(IPPROTO_IPV6), int(IPV6_TCLASS)),
+            msg="IPV6_TCLASS cmsg must use (IPPROTO_IPV6, IPV6_TCLASS).",
+        )
+        self.assertEqual(
+            int.from_bytes(value, "big"),
+            0xC2,
+            msg="IPV6_TCLASS cmsg value must be a 4-byte big-endian int matching the TClass byte.",
+        )
+
+    def test__udp__ipv6_recvtclass__suppresses_cmsg_when_disabled(self) -> None:
+        """
+        Ensure an inbound IPv6 UDP datagram with a non-zero
+        Traffic Class byte delivers the payload through
+        'recvmsg' but omits the IPV6_TCLASS cmsg when
+        'IPV6_RECVTCLASS' is NOT set on the socket.
+
+        Reference: RFC 3542 §6.5 (IPV6_RECVTCLASS gates the
+        ancillary-data pass-through).
+        """
+
+        self._packet_handler._phrx_ethernet(
+            PacketRx(_build_udp_frame_ipv6_with_tclass(dscp=48, ecn=2, payload=b"hello"))
+        )
+
+        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+
+        self.assertEqual(
+            data,
+            b"hello",
+            msg="Payload must be delivered regardless of IPV6_RECVTCLASS.",
+        )
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="ancdata must be empty when IPV6_RECVTCLASS is not set.",
         )

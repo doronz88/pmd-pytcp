@@ -118,9 +118,11 @@ IP_TTL: int = 2  # level=IPPROTO_IP; int 1-255: per-socket TTL override
 IP_OPTIONS: int = 4  # level=IPPROTO_IP; bytes: 0-40 raw IPv4 options block (RFC 1122 §4.1.3.2)
 IP_RECVOPTS: int = 6  # level=IPPROTO_IP; int 0/1: enable IP_OPTIONS cmsg on recvmsg (RFC 1122 §4.1.3.2)
 IP_RETOPTS: int = 7  # level=IPPROTO_IP; int 0/1: deprecated alias of IP_RECVOPTS (Linux compat)
+IP_RECVTOS: int = 13  # level=IPPROTO_IP; int 0/1: enable IP_TOS cmsg on recvmsg (RFC 1122 §4.1.4 MAY)
 
 # IPPROTO_IPV6-level options (Linux numbers from <netinet/in.h>).
 IPV6_UNICAST_HOPS: int = 16  # level=IPPROTO_IPV6; int 1-255: per-socket Hop-Limit override
+IPV6_RECVTCLASS: int = 66  # level=IPPROTO_IPV6; int 0/1: enable IPV6_TCLASS cmsg on recvmsg (RFC 3542 §6.5)
 IPV6_TCLASS: int = 67  # level=IPPROTO_IPV6; int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
 
 
@@ -266,8 +268,10 @@ class socket(ABC):
     _ip_tos: int
     _ip_options: bytes
     _ip_recvopts: bool
+    _ip_recvtos: bool
     _ipv6_unicast_hops: int | None
     _ipv6_tclass: int
+    _ipv6_recvtclass: bool
 
     def __init__(
         self,
@@ -302,8 +306,10 @@ class socket(ABC):
         self._ip_tos = 0
         self._ip_options = bytes()
         self._ip_recvopts = False
+        self._ip_recvtos = False
         self._ipv6_unicast_hops = None
         self._ipv6_tclass = 0
+        self._ipv6_recvtclass = False
 
     def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
         """
@@ -366,6 +372,11 @@ class socket(ABC):
                     raise OSError(errno.EINVAL, f"IP_RECVOPTS value must be int, got {type(value).__name__}")
                 self._ip_recvopts = bool(value)
                 return True
+            case _ if optname == IP_RECVTOS:
+                if not isinstance(value, int):
+                    raise OSError(errno.EINVAL, f"IP_RECVTOS value must be int, got {type(value).__name__}")
+                self._ip_recvtos = bool(value)
+                return True
         return False
 
     def _ipproto_ip_getsockopt(self, optname: int, /) -> int | bytes | None:
@@ -383,6 +394,8 @@ class socket(ABC):
                 return self._ip_options
             case _ if optname in (IP_RECVOPTS, IP_RETOPTS):
                 return int(self._ip_recvopts)
+            case _ if optname == IP_RECVTOS:
+                return int(self._ip_recvtos)
         return None
 
     def _ipproto_ipv6_setsockopt(self, optname: int, value: int, /) -> bool:
@@ -401,6 +414,9 @@ class socket(ABC):
             case _ if optname == IPV6_TCLASS:
                 self._ipv6_tclass = int(value) & 0xFF
                 return True
+            case _ if optname == IPV6_RECVTCLASS:
+                self._ipv6_recvtclass = bool(value)
+                return True
         return False
 
     def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
@@ -414,6 +430,8 @@ class socket(ABC):
                 return self._ipv6_unicast_hops or 0
             case _ if optname == IPV6_TCLASS:
                 return self._ipv6_tclass
+            case _ if optname == IPV6_RECVTCLASS:
+                return int(self._ipv6_recvtclass)
         return None
 
     def _effective_ip_ttl(self) -> int | None:

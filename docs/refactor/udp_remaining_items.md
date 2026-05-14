@@ -42,6 +42,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | `94863af4` | RFC 1122 §4.1.3.6 audit correction (filter is at IP layer) |
 | _(pending)_ | RFC 1122 §3.2.1.3 directed-broadcast source filter (#2) |
 | _(pending)_ | RFC 1122 §4.1.3.2 IP options pass-through (#1) — IP_OPTIONS / IP_RECVOPTS + recvmsg |
+| _(pending)_ | RFC 1122 §4.1.4 received-TOS pass-through (#5) — IP_RECVTOS + IPV6_RECVTCLASS cmsg |
 
 ---
 
@@ -53,7 +54,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | 2 | ~~Directed-broadcast source filter~~ **SHIPPED** | RFC 1122 §4.1.3.6 residual | met (RX-handler `_ip4_broadcast` membership check) | done | — |
 | 3 | `IP_MTU` / `IPV6_PATHMTU` getsockopt | RFC 1122 §4.1.4 GET_MAXSIZES | "partial — Phase-3 socket-parity" | ~2-3h | Medium |
 | 4 | `IP_RECVERR` / `MSG_ERRQUEUE` socket-API | RFC 1122 §4.1.3.3 API parity | "Phase-3 socket-parity" | ~half-day | Medium |
-| 5 | `IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary | RFC 1122 §4.1.4 MAY | "not implemented (MAY)" | ~2-3h | Low |
+| 5 | ~~`IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary~~ **SHIPPED** | RFC 1122 §4.1.4 MAY | met (recvmsg IP_TOS / IPV6_TCLASS cmsg gated by per-socket flag) | done | — |
 | 6 | `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` per-port opt-in | RFC 6935 §5 alternative mode | "Phase-3 socket-parity; no consumer" | ~half-day | Deferred — no consumer |
 | 7 | PLPMTUD for UDP audit + implementation | RFC 8899 | "not yet audited" | new audit + impl, ~1-2 days | Low |
 | 8 | RFC 6056 Algorithm 4 / 5 | RFC 6056 §3.3.4/§3.3.5 | "not implemented (no operational need)" | ~half-day each | Skip — no conformance pressure |
@@ -342,10 +343,27 @@ infrastructure with #1.
 
 ---
 
-## #5 — `IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary
+## #5 — `IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary — **SHIPPED**
 
-**Status:** open. RFC 1122 §4.1.4 MAY — no conformance
-pressure.
+**Status:** closed. Shipped on top of the
+`recvmsg`/cmsg infrastructure from #1. New constants
+`IP_RECVTOS=13` and `IPV6_RECVTCLASS=66`; new socket
+attrs `_ip_recvtos` / `_ipv6_recvtclass`;
+`UdpMetadata.ip__tos` carries the combined DSCP+ECN
+byte populated from the parsed IP header; `recvmsg`
+emits `IP_TOS` cmsg as a single byte (matching Linux's
+`ip(7)`) or `IPV6_TCLASS` cmsg as a 4-byte big-endian
+int (matching Linux's `ipv6(7)`). Pinned by 8 unit
+tests (2 setsockopt + 6 recvmsg) plus 4 integration
+tests (2 IPv4 + 2 IPv6 end-to-end). Audit ripple landed
+in
+`docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`
+§4.1.4: row flipped from "not implemented (MAY)" to
+"met"; closed-gaps footer bumped to five.
+
+Effort was ~1 hour, in line with the post-#1 estimate.
+
+Original brief (kept for archaeology):
 
 ### What it does
 

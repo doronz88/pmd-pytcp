@@ -65,6 +65,15 @@ class UdpMetadata:
     # when 'IP_RECVOPTS' is set on the receiving socket.
     ip4__options: Ip4Options | None = None
 
+    # Combined TOS (IPv4) / Traffic Class (IPv6) byte computed
+    # from the inbound datagram's DSCP and ECN bits as
+    # '(dscp << 2) | ecn'. Surfaced to applications via
+    # 'recvmsg' as an 'IP_TOS' cmsg (IPv4, 1 byte) or
+    # 'IPV6_TCLASS' cmsg (IPv6, 4-byte int) per RFC 1122 §4.1.4
+    # / RFC 3542 §6.5 when 'IP_RECVTOS' / 'IPV6_RECVTCLASS' is
+    # set on the receiving socket.
+    ip__tos: int = 0
+
     tracker: Tracker | None = None
 
     @property

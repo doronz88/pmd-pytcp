@@ -49,9 +49,12 @@ partial:
   for a `/24`) are dropped in the IPv4 RX packet handler
   against the configured `_ip4_broadcast` table.
 - §4.1.4 "MAY pass received TOS up to application layer":
-  **partial** — IP_TOS is settable on TX (per-socket TOS
-  / DSCP override) but the RX path does not expose the
-  received TOS as ancillary data (no `IP_RECVTOS`).
+  **met** — `IP_TOS` is settable on TX (per-socket
+  override); the RX path surfaces the received TOS byte
+  through `recvmsg` as an `IP_TOS` cmsg when
+  `IP_RECVTOS` is set on the socket. The parallel IPv6
+  surface (`IPV6_RECVTCLASS` / `IPV6_TCLASS` cmsg) is
+  also wired per RFC 3542 §6.5.
 
 | §       | Topic                                          | Status                                    |
 |---------|------------------------------------------------|-------------------------------------------|
@@ -70,7 +73,7 @@ partial:
 | §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified filtered at UDP layer) |
 | §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_host` / `_ip6_host`) |
 | §4.1.4   | Application MUST set TTL, TOS, IP options     | met for TTL + TOS; not implemented for IP options |
-| §4.1.4   | Pass received TOS up to application (MAY)     | not implemented (MAY)                      |
+| §4.1.4   | Pass received TOS up to application (MAY)     | met (recvmsg IP_TOS cmsg gated by IP_RECVTOS) |
 
 ---
 
@@ -416,10 +419,28 @@ options.
 > "UDP MAY pass the received TOS up to the application
 >  layer."
 
-**Adherence:** not implemented (MAY). The received TOS
-byte is parsed but not surfaced via `UdpMetadata` or any
-ancillary-data API. Linux's `IP_RECVTOS` /
-`IPV6_RECVTCLASS` would land here.
+**Adherence:** met. PyTCP surfaces the received TOS
+byte (computed as `(dscp << 2) | ecn` from the parsed
+IPv4 header) through `recvmsg` as an `IP_TOS` cmsg
+when `IP_RECVTOS` is set on the socket. The cmsg shape
+mirrors Linux's `ip(7)`: a single byte. The parallel
+IPv6 surface adds `IPV6_RECVTCLASS` /
+`IPV6_TCLASS` cmsg per RFC 3542 §6.5 — Traffic Class
+delivered as a 4-byte big-endian integer matching
+Linux's `ipv6(7)` wire shape.
+
+- TOS byte plumbing:
+  `pytcp/socket/udp__metadata.py::UdpMetadata.ip__tos`,
+  populated in the UDP RX handler from
+  `packet_rx.ip.dscp` and `packet_rx.ip.ecn`.
+- Socket flags: `_ip_recvtos` (IPv4),
+  `_ipv6_recvtclass` (IPv6) on
+  `pytcp/socket/__init__.py::socket`.
+- Cmsg emission: `pytcp/socket/udp__socket.py::UdpSocket.recvmsg`
+  alongside the existing IP_OPTIONS branch.
+
+Linux socket-option numeric values are mirrored:
+`IP_RECVTOS = 13`, `IPV6_RECVTCLASS = 66`.
 
 ---
 
@@ -509,6 +530,31 @@ not closed; Phase-3 socket-parity item)**.
 
 **Status:** locked in.
 
+### §4.1.4 received TOS pass-through (IP_RECVTOS / IPV6_RECVTCLASS)
+
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  — two tests pin `IP_RECVTOS` and `IPV6_RECVTCLASS`
+  round-trip via setsockopt / getsockopt.
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
+  — six tests pin recvmsg IP_TOS cmsg emission gated by
+  `IP_RECVTOS` (one-byte value, both non-zero and zero
+  TOS), IPV6_TCLASS cmsg emission gated by
+  `IPV6_RECVTCLASS` (4-byte big-endian int), and the
+  `ancbufsize=0` suppression invariant.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpRecvTos`
+  — two tests drive end-to-end IPv4 RX with DSCP=48 /
+  ECN=2: cmsg returned when `IP_RECVTOS=1`, suppressed
+  when `IP_RECVTOS=0`.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpV6RecvTClass`
+  — two tests drive end-to-end IPv6 RX with the parallel
+  IPV6_TCLASS cmsg shape.
+
+**Status:** locked in.
+
 ### §4.1.3.2 IP options pass-through (RX + TX)
 
 - **Unit:**
@@ -553,6 +599,7 @@ not closed; Phase-3 socket-parity item)**.
 | Broadcast / multicast / directed-broadcast source RX drop | locked in |
 | TTL + TOS per-socket override                       | locked in |
 | IP options pass-through (RX + TX)                   | locked in |
+| Received TOS / TClass pass-through (IP_RECVTOS / IPV6_RECVTCLASS) | locked in |
 
 ---
 
@@ -582,18 +629,19 @@ the column the RFC assigns; PyTCP status follows.
 | Only send valid IP source address                      | 4.1.3.6 | MUST      | met |
 | Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / RECV_ICMP); GET_MAXSIZES partial; ADVISE_DELIVPROB not implemented |
 | Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met (TTL via IP_TTL; TOS via IP_TOS; IP options via IP_OPTIONS) |
-| Pass received TOS up to applic layer                   | 4.1.4   | MAY       | not implemented (no consumer) |
+| Pass received TOS up to applic layer                   | 4.1.4   | MAY       | met (recvmsg IP_TOS cmsg gated by IP_RECVTOS; IPv6: IPV6_TCLASS + IPV6_RECVTCLASS per RFC 3542 §6.5) |
 
 **Principal gap:** none. Every "MUST" row in the §4.1.5
-requirements-summary table is now met. The remaining
-deltas are the MAY-level items (`Sender option to not
-generate checksum`, `Receiver option to require checksum`,
-`Pass received TOS up to applic layer`) — declined absent
-a PyTCP consumer — plus the partial-met
-`GET_MAXSIZES` (no `IP_MTU` getsockopt yet; tracked as
-item #3 in `docs/refactor/udp_remaining_items.md`).
+requirements-summary table is now met, and the
+`Pass received TOS up to applic layer` MAY row is also
+met. The remaining deltas are the cksum-skip MAY items
+(`Sender option to not generate checksum`, `Receiver
+option to require checksum`) — declined absent a PyTCP
+consumer — plus the partial-met `GET_MAXSIZES` (no
+`IP_MTU` getsockopt yet; tracked as item #3 in
+`docs/refactor/udp_remaining_items.md`).
 
-Four previously-flagged gaps in this audit are now closed:
+Five previously-flagged gaps in this audit are now closed:
 
 - **§4.1.3.2 IP options pass-through (RX + TX)** — three
   MUST rows in the requirements summary; closed by adding
@@ -614,6 +662,11 @@ Four previously-flagged gaps in this audit are now closed:
   (`_ip4_broadcast` membership check). Closes the
   Phase-1 follow-up flagged in earlier revisions of
   this audit.
+- **§4.1.4 received TOS pass-through (MAY)** — closed by
+  adding `IP_RECVTOS` / `IPV6_RECVTCLASS` setsockopt
+  support and `IP_TOS` / `IPV6_TCLASS` recvmsg cmsg
+  emission. `UdpMetadata.ip__tos` carries the combined
+  DSCP+ECN byte populated from the parsed IP header.
 
 ---
 

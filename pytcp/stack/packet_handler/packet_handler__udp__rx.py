@@ -143,7 +143,9 @@ class PacketHandlerUdpRx(ABC):
         # socket. 'ip4__options' surfaces the inbound IPv4 options
         # block (RFC 1122 §4.1.3.2) to recvmsg-emitted IP_OPTIONS
         # cmsg; 'None' for IPv6 datagrams and for IPv4 datagrams
-        # without options.
+        # without options. 'ip__tos' carries the combined
+        # DSCP+ECN byte (RFC 1122 §4.1.4 / RFC 3542 §6.5) for
+        # recvmsg-emitted IP_TOS / IPV6_TCLASS cmsg.
         ip4__options = packet_rx.ip4.options if packet_rx.ip.ver is IpVersion.IP4 and packet_rx.ip4.options else None
         packet_rx_md = UdpMetadata(
             ip__ver=packet_rx.ip.ver,
@@ -153,6 +155,7 @@ class PacketHandlerUdpRx(ABC):
             udp__remote_port=packet_rx.udp.sport,
             udp__data=packet_rx.udp.payload,
             ip4__options=ip4__options,
+            ip__tos=(packet_rx.ip.dscp << 2) | packet_rx.ip.ecn,
             tracker=packet_rx.tracker,
         )
 

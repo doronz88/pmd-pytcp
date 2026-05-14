@@ -618,6 +618,41 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         with self.assertRaises(TimeoutError):
             s.recvfrom(timeout=0.01)
 
+    def _make_md_with_tos(self, tos: int = 0xC2) -> UdpMetadata:
+        """
+        Build a canonical IPv4 'UdpMetadata' envelope carrying a
+        non-zero TOS byte. Default 0xC2 == DSCP=48 / ECN=2
+        (ECT(0)), matching the IP_TOS tests.
+        """
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(b"payload"),
+            ip__tos=tos,
+        )
+
+    def _make_md_ip6_with_tclass(self, tclass: int = 0xC2) -> UdpMetadata:
+        """
+        Build a canonical IPv6 'UdpMetadata' envelope carrying a
+        non-zero Traffic Class byte.
+        """
+
+        from net_addr import Ip6Address
+
+        return UdpMetadata(
+            ip__ver=IpVersion.IP6,
+            ip__local_address=Ip6Address("2001:db8::1"),
+            ip__remote_address=Ip6Address("2001:db8::2"),
+            udp__local_port=1234,
+            udp__remote_port=5678,
+            udp__data=memoryview(b"payload"),
+            ip__tos=tclass,
+        )
+
     def _make_md_with_options(self) -> UdpMetadata:
         """
         Build a canonical IPv4 'UdpMetadata' envelope carrying a
@@ -854,6 +889,171 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             data,
             b"hello",
             msg="recvmsg() must return the queued payload as bytes.",
+        )
+
+    def test__udp_socket__recvmsg_ip_tos_with_recvtos_returns_cmsg(self) -> None:
+        """
+        Ensure recvmsg(ancbufsize > 0) returns an IP_TOS cmsg
+        carrying the inbound datagram's TOS byte (one byte,
+        matching Linux's 'ip(7)' wire shape) when 'IP_RECVTOS'
+        is set on an AF_INET socket.
+
+        Reference: RFC 1122 §4.1.4 (UDP MAY pass received TOS up
+        to the application layer).
+        """
+
+        from pytcp.socket import IP_RECVTOS, IP_TOS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+        s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            len(ancdata),
+            1,
+            msg="recvmsg(ancbufsize>0) must surface one cmsg when IP_RECVTOS=1.",
+        )
+        self.assertEqual(
+            ancdata[0],
+            (int(IPPROTO_IP), int(IP_TOS), b"\xc2"),
+            msg="IP_TOS cmsg must carry (IPPROTO_IP, IP_TOS, single-byte TOS).",
+        )
+
+    def test__udp_socket__recvmsg_ip_tos_without_recvtos_no_cmsg(self) -> None:
+        """
+        Ensure recvmsg() returns empty ancdata for the IP_TOS
+        cmsg when 'IP_RECVTOS' is not set on the socket, even
+        though the inbound datagram had a non-zero TOS byte.
+
+        Reference: RFC 1122 §4.1.4 (IP_RECVTOS gates the
+        ancillary-data pass-through).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="ancdata must be empty when IP_RECVTOS is not set.",
+        )
+
+    def test__udp_socket__recvmsg_ip_tos_zero_byte_with_recvtos_returns_cmsg(self) -> None:
+        """
+        Ensure recvmsg() emits an IP_TOS cmsg with value b"\\x00"
+        when 'IP_RECVTOS' is set and the inbound datagram
+        carried TOS=0. The cmsg is unconditional once the
+        per-socket flag is set; applications distinguish
+        absence-of-option from zero-valued option by the cmsg
+        presence.
+
+        Reference: RFC 1122 §4.1.4 (TOS surface is per-datagram).
+        """
+
+        from pytcp.socket import IP_RECVTOS, IP_TOS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+        s.process_udp_packet(self._make_md_with_tos(tos=0))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            ancdata,
+            [(int(IPPROTO_IP), int(IP_TOS), b"\x00")],
+            msg="IP_TOS cmsg must be emitted with b'\\x00' for a zero-TOS datagram when IP_RECVTOS=1.",
+        )
+
+    def test__udp_socket__recvmsg_ipv6_tclass_with_recvtclass_returns_cmsg(self) -> None:
+        """
+        Ensure recvmsg(ancbufsize > 0) on an AF_INET6 socket
+        returns an IPV6_TCLASS cmsg carrying the inbound
+        datagram's Traffic Class byte as a 4-byte big-endian
+        integer (matching Linux's 'ipv6(7)' wire shape) when
+        'IPV6_RECVTCLASS' is set.
+
+        Reference: RFC 3542 §6.5 (IPv6 Traffic Class ancillary
+        data uses sizeof(int)).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_RECVTCLASS, IPV6_TCLASS
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 1)
+        s.process_udp_packet(self._make_md_ip6_with_tclass(tclass=0xC2))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            len(ancdata),
+            1,
+            msg="recvmsg(ancbufsize>0) must surface one cmsg when IPV6_RECVTCLASS=1.",
+        )
+        level, type_, value = ancdata[0]
+        self.assertEqual(
+            (level, type_),
+            (int(IPPROTO_IPV6), int(IPV6_TCLASS)),
+            msg="IPV6_TCLASS cmsg must use (IPPROTO_IPV6, IPV6_TCLASS).",
+        )
+        self.assertEqual(
+            int.from_bytes(value, "big"),
+            0xC2,
+            msg="IPV6_TCLASS cmsg value must be a 4-byte big-endian int matching the Traffic Class byte.",
+        )
+
+    def test__udp_socket__recvmsg_ipv6_tclass_without_recvtclass_no_cmsg(self) -> None:
+        """
+        Ensure recvmsg() on an AF_INET6 socket returns empty
+        ancdata when 'IPV6_RECVTCLASS' is not set, even though
+        the inbound datagram carried a non-zero Traffic Class
+        byte.
+
+        Reference: RFC 3542 §6.5 (per-socket opt-in for
+        IPV6_TCLASS ancillary data).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+        s.process_udp_packet(self._make_md_ip6_with_tclass(tclass=0xC2))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="ancdata must be empty when IPV6_RECVTCLASS is not set.",
+        )
+
+    def test__udp_socket__recvmsg_ip_tos_zero_ancbufsize_no_cmsg(self) -> None:
+        """
+        Ensure recvmsg(ancbufsize=0) returns empty ancdata even
+        when 'IP_RECVTOS' is set, mirroring the zero-buffer
+        semantics already enforced for IP_OPTIONS.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import IP_RECVTOS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+        s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
+
+        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=0)
+
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="recvmsg(ancbufsize=0) must return empty ancdata regardless of IP_RECVTOS.",
         )
 
     def test__udp_socket__recvmsg_timeout_raises(self) -> None:
@@ -1720,6 +1920,81 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             ctx.exception.errno,
             errno.EINVAL,
             msg="Malformed IP_OPTIONS must raise EINVAL.",
+        )
+
+    def test__udp_socket__ip_recvtos_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_RECVTOS, 1) toggles the
+        per-socket flag that gates IP_TOS cmsg emission on
+        recvmsg, and getsockopt returns the stored value.
+
+        Reference: RFC 1122 §4.1.4 (UDP MAY pass received TOS up
+        to the application layer).
+        """
+
+        from pytcp.socket import IP_RECVTOS, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVTOS),
+            0,
+            msg="Default IP_RECVTOS must be 0.",
+        )
+
+        s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVTOS),
+            1,
+            msg="IP_RECVTOS=1 must round-trip.",
+        )
+
+        s.setsockopt(IPPROTO_IP, IP_RECVTOS, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_RECVTOS),
+            0,
+            msg="IP_RECVTOS=0 must round-trip.",
+        )
+
+    def test__udp_socket__ipv6_recvtclass_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 1)
+        toggles the per-socket flag that gates IPV6_TCLASS cmsg
+        emission on recvmsg, and getsockopt returns the stored
+        value.
+
+        Reference: RFC 3542 §6.5 (IPv6 Traffic Class ancillary
+        data).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_RECVTCLASS
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS),
+            0,
+            msg="Default IPV6_RECVTCLASS must be 0.",
+        )
+
+        s.setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 1)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS),
+            1,
+            msg="IPV6_RECVTCLASS=1 must round-trip.",
+        )
+
+        s.setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS),
+            0,
+            msg="IPV6_RECVTCLASS=0 must round-trip.",
         )
 
     def test__udp_socket__ip_recvopts_round_trip(self) -> None:

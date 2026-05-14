@@ -53,8 +53,10 @@ from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
     IP_OPTIONS,
+    IP_TOS,
     IPPROTO_IP,
     IPPROTO_IPV6,
+    IPV6_TCLASS,
     SOL_SOCKET,
     AddressFamily,
     IpProto,
@@ -561,6 +563,28 @@ class UdpSocket(socket):
                         bytes(packet_rx_md.ip4__options),
                     )
                 )
+            # IP_TOS / IPV6_TCLASS ancillary data (RFC 1122 §4.1.4
+            # / RFC 3542 §6.5). Linux's wire shape diverges across
+            # the families: IP_TOS cmsg is one byte ('uint8_t' in
+            # ip(7)); IPV6_TCLASS cmsg is a 4-byte integer
+            # ('int' in ipv6(7)). Mirror both exactly.
+            if ancbufsize > 0:
+                if self._address_family is AddressFamily.INET4 and self._ip_recvtos:
+                    ancdata.append(
+                        (
+                            int(IPPROTO_IP),
+                            int(IP_TOS),
+                            bytes([packet_rx_md.ip__tos & 0xFF]),
+                        )
+                    )
+                elif self._address_family is AddressFamily.INET6 and self._ipv6_recvtclass:
+                    ancdata.append(
+                        (
+                            int(IPPROTO_IPV6),
+                            int(IPV6_TCLASS),
+                            (packet_rx_md.ip__tos & 0xFF).to_bytes(4, "big"),
+                        )
+                    )
 
             address: tuple[str, int] | tuple[str, int, int, int]
             if self._address_family is AddressFamily.INET6:
