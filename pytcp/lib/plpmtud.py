@@ -194,6 +194,19 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
 
         return self._candidate_mtu is not None
 
+    @property
+    def candidate_mtu(self) -> int | None:
+        """
+        Get the current candidate probe size without
+        committing — read-only peek that does NOT arm the
+        PROBE_TIMER. Returns None when no candidate is set
+        (idle in SEARCH_COMPLETE / ERROR / DISABLED).
+        Callers that want to actually emit a probe must use
+        'next_probe_size' which arms the timer.
+        """
+
+        return self._candidate_mtu
+
     def disable(self) -> None:
         """
         Disable probing entirely. Used by adapters that

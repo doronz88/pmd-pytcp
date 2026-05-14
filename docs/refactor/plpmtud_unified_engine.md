@@ -377,11 +377,37 @@ omitted: passes-alone / fails-in-suite.
 - 5 integration tests at
   `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`.
 
-**Deferred (3c):**
-- Probe-segment emit: hook the TCP TX path to ask
-  `adapter.maybe_probe(now)` and pad the next segment
-  to `probe_size` with zero bytes (RFC 4821 §5 +
-  §7.5's probe-seq trick).
+**3c-minimum (SHIPPED 2026-05-14):**
+- Probe-segment emit hook in `TcpSession._transmit_data`:
+  when the engine has a candidate AND `probe_payload
+  > snd_mss` AND enough application data is buffered to
+  fill the probe, the next emitted segment carries
+  `probe_payload` bytes (sized at the probe instead of
+  the regular MSS).
+- `adapter.record_emitted_probe(seq, size)` called after
+  successful emit; the snd.una hook (already wired in
+  Phase 3b) then detects the probe-ack.
+- `PmtuSearch.candidate_mtu` / `TcpPlpmtudAdapter.candidate_mtu`
+  peek properties (do not arm PROBE_TIMER) so the
+  feasibility check can run before committing.
+- 4 integration tests at
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_probe_emit.py`.
+
+**Known limitation:** the probe-emit gate
+`probe_payload > snd_mss` only fires when `snd_mss` is
+below the engine's candidate. In PyTCP's current
+classical-PMTUD coupling, `snd_mss` saturates at
+`interface_mtu - overhead`, so probe-emit fires only
+under artificially-shrunken `snd_mss` conditions (or
+post-ICMP shrink where the engine's binary search has
+walked the candidate above the new `snd_mss` ceiling —
+rare in practice).
+
+**Deferred (3d):**
+- Decouple `snd_mss` from ICMP signals so PLPMTUD's
+  confirmed `ack_size` drives the working MSS. Probes
+  then naturally fire upward toward `interface_mtu`
+  without artificial setup.
 - Cwnd-exempt probe accounting (RFC 4821 §7.4): subtract
   in-flight probe sizes from `bytes_in_flight` so probes
   don't consume the congestion window. The adapter's
@@ -389,13 +415,11 @@ omitted: passes-alone / fails-in-suite.
   for this consumer.
 - Probe-only RTO (RFC 4821 §7.5): a separate retransmit
   timer for probes so data-RTO doesn't feed probe-loss.
-- ~14 integration tests from §7.5 covering probe-emit /
-  ack / RTO loss / black-hole / raise-timer / multi-dest.
-
-3c is intrusive on TcpSession's TX hot path and requires
-careful regression testing of the existing TCP suite —
-warrants its own focused commit cycle rather than being
-bundled with 3a / 3b.
+- §7.5 probe-seq trick (probe at `snd.nxt - 1`) so the
+  ACK signal is unambiguous.
+- ~10 additional integration tests from §7.5 covering
+  cwnd-exempt accounting, data-RTO-doesn't-feed-probe-
+  loss, multi-destination scenarios, raise-timer reprobe.
 
 **Goal:** active PLPMTUD probing for TCP, hooked into
 `TcpSession`. End-to-end probe → wire → ACK →

@@ -2491,6 +2491,45 @@ class TcpSession:
                 options_overhead += 12
             mss_for_data = max(self._win.snd_mss - options_overhead, 1)
             transmit_data_len = min(mss_for_data, usable_window, remaining_data_len)
+
+            # RFC 4821 §5 / §7.5 PLPMTUD probe-segment emit
+            # (Phase 3c). When the engine has a candidate probe
+            # size and there is enough application data to fill
+            # 'probe_payload' bytes, override the segment size
+            # so this segment goes out as a probe instead of a
+            # regular MSS-sized data segment. Probes are
+            # standard TCP data segments — the peer ACKs them
+            # like any other data. The IP packet ends up at
+            # 'candidate_mtu' bytes; if the path supports it
+            # the probe is acked and PLPMTUD advances
+            # search_low; otherwise the probe is lost and the
+            # engine narrows search_high.
+            #
+            # Phase 3d will add cwnd-exempt accounting (RFC
+            # 4821 §7.4) so probes don't consume the
+            # congestion window, and probe-only RTO (RFC 4821
+            # §7.5) so data-RTO doesn't feed probe-loss. For
+            # now probes share the data cwnd / RTO machinery.
+            probe_size_to_record: int | None = None
+            candidate_mtu = self._plpmtud_adapter.candidate_mtu
+            if candidate_mtu is not None:
+                probe_payload = candidate_mtu - self._ip_tcp_overhead - options_overhead
+                if (
+                    probe_payload > self._win.snd_mss
+                    and probe_payload <= usable_window
+                    and probe_payload <= remaining_data_len
+                ):
+                    # Feasibility check passed; commit the
+                    # probe. 'maybe_probe' returns None when a
+                    # previous probe is still in flight
+                    # (engine's PROBE_TIMER not yet expired),
+                    # so this also serves as the
+                    # one-probe-at-a-time gate.
+                    reserved = self._plpmtud_adapter.maybe_probe(now=time.monotonic())
+                    if reserved is not None:
+                        probe_size_to_record = reserved
+                        transmit_data_len = probe_payload
+
             if remaining_data_len:
                 __debug__ and log(
                     "tcp-ss",
@@ -2556,6 +2595,7 @@ class TcpSession:
                     # remaining_data_len'; that is the marker for "this
                     # is the last segment of the buffered write".
                     is_last_segment_of_write = transmit_data_len == remaining_data_len
+                    probe_emit_seq = self._snd_seq.nxt
                     __debug__ and log(
                         "tcp-ss",
                         f"[{self}] - Transmitting data segment: seq {self._snd_seq.nxt} len {len(transmit_data)}",
@@ -2565,6 +2605,19 @@ class TcpSession:
                         flag_psh=is_last_segment_of_write,
                         data=bytes(transmit_data),
                     )
+                    if probe_size_to_record is not None:
+                        # Record the just-emitted probe so the
+                        # adapter's snd.una hook can detect the
+                        # ACK when it arrives. The "end seq" of
+                        # the probe is the post-emit snd.nxt
+                        # (probe_emit_seq + transmit_data_len);
+                        # 'on_snd_una_advance' acks when snd.una
+                        # passes the probe's recorded seq.
+                        probe_terminal_seq = (probe_emit_seq + transmit_data_len) & 0xFFFFFFFF
+                        self._plpmtud_adapter.record_emitted_probe(
+                            seq=probe_terminal_seq,
+                            size=probe_size_to_record,
+                        )
                     # If we just sent a partial, record its post-end
                     # seq so the Minshall check can defer subsequent
                     # partials until this one is ACK'd.

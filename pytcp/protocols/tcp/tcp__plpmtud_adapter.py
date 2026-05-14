@@ -123,6 +123,19 @@ class TcpPlpmtudAdapter:
         return self._engine.state
 
     @property
+    def candidate_mtu(self) -> int | None:
+        """
+        Get the engine's current candidate probe size
+        without committing (no PROBE_TIMER arming). Callers
+        check this before deciding whether they have enough
+        application data to fill the probe; only after the
+        feasibility check do they call 'maybe_probe' to
+        actually reserve the probe slot.
+        """
+
+        return self._engine.candidate_mtu
+
+    @property
     def in_flight_probe_sizes(self) -> tuple[int, ...]:
         """
         Get a snapshot of in-flight probe sizes for RFC 4821
