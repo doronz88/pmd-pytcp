@@ -73,6 +73,14 @@ IPPROTO_RAW = IpProto.RAW
 # = 6) above, keeping the existing module surface.
 SOL_SOCKET: int = 1
 
+# BSD setsockopt 'level' parameter for UDP-level options
+# (Linux number from <netinet/udp.h>, matching stdlib
+# 'socket.SOL_UDP' / 'socket.IPPROTO_UDP' on Linux). Used as
+# the 'level' argument for 'UDP_NO_CHECK6_TX' /
+# 'UDP_NO_CHECK6_RX' (RFC 6935 §5 zero-cksum opt-in for
+# tunnel encapsulations).
+SOL_UDP: int = 17
+
 
 class SocketOption(IntEnum):
     """
@@ -176,6 +184,23 @@ IPV6_MTU = IpV6Option.IPV6_MTU
 IPV6_RECVERR = IpV6Option.IPV6_RECVERR
 IPV6_RECVTCLASS = IpV6Option.IPV6_RECVTCLASS
 IPV6_TCLASS = IpV6Option.IPV6_TCLASS
+
+
+class UdpOption(IntEnum):
+    """
+    SOL_UDP-level setsockopt 'optname' values (Linux numbers
+    from <linux/udp.h>; matches stdlib socket.UDP_* module-
+    level constants on Linux). PyTCP currently supports the
+    RFC 6935 §5 zero-cksum opt-in pair for tunnel
+    encapsulations.
+    """
+
+    UDP_NO_CHECK6_TX = 101  # int 0/1: sender emits cksum=0 instead of computing
+    UDP_NO_CHECK6_RX = 102  # int 0/1: receiver accepts inbound cksum=0 on this port
+
+
+UDP_NO_CHECK6_TX = UdpOption.UDP_NO_CHECK6_TX
+UDP_NO_CHECK6_RX = UdpOption.UDP_NO_CHECK6_RX
 
 
 class MsgFlag(IntEnum):

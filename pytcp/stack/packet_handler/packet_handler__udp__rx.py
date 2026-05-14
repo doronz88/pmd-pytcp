@@ -77,6 +77,7 @@ class PacketHandlerUdpRx(ABC):
             udp__sport: int,
             udp__dport: int,
             udp__payload: bytes = bytes(),
+            udp__no_cksum: bool = False,
             ip__ttl: int | None = None,
             ip__ecn: int = 0,
             ip4__options: object = None,
@@ -102,6 +103,37 @@ class PacketHandlerUdpRx(ABC):
             echo_tracker: Tracker | None = None,
         ) -> TxStatus: ...
 
+    def __phrx_udp__retry_zero_cksum_ip6(self, packet_rx: PacketRx) -> bool:
+        """
+        Look up any socket bound to the destination port with
+        'UDP_NO_CHECK6_RX' set; if one exists, retry the parser
+        with 'accept_zero_cksum_ip6=True' so the RFC 6935 §5
+        alternative-mode datagram is accepted. Returns True when
+        the retry succeeded (caller continues normal delivery)
+        and False when no opted-in socket was found (caller
+        drops with the default-mode counter bump).
+        """
+
+        # UDP header byte layout (RFC 768): bytes 0-1 = sport,
+        # 2-3 = dport. Peek both directly from the raw frame;
+        # the parser raised before 'packet_rx.udp' could be set.
+        raw_sport = int.from_bytes(packet_rx.frame[0:2])
+        raw_dport = int.from_bytes(packet_rx.frame[2:4])
+
+        candidate_md = UdpMetadata(
+            ip__ver=packet_rx.ip.ver,
+            ip__local_address=packet_rx.ip.dst,
+            udp__local_port=raw_dport,
+            ip__remote_address=packet_rx.ip.src,
+            udp__remote_port=raw_sport,
+        )
+        for socket_id in candidate_md.socket_ids:
+            socket = cast(UdpSocket, stack.sockets.get(socket_id, None))
+            if socket is not None and socket._udp_no_check6_rx:
+                UdpParser(packet_rx, accept_zero_cksum_ip6=True)
+                return True
+        return False
+
     def _phrx_udp(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound UDP packets.
@@ -113,16 +145,22 @@ class PacketHandlerUdpRx(ABC):
             UdpParser(packet_rx)
 
         except UdpZeroCksumIp6Error as error:
-            # RFC 8200 §8.1 / RFC 6935 §5: silent discard, no
-            # ICMPv6 Parameter Problem. The dedicated counter
-            # gives operators a greppable observability signal
-            # distinct from generic UDP parse failures.
-            self._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
-            __debug__ and log(
-                "udp",
-                f"{packet_rx.tracker} - <CRIT>{error}</>",
-            )
-            return
+            # RFC 8200 §8.1 / RFC 6935 §5: default-mode silent
+            # discard. Before dropping, check the RFC 6935 §5
+            # per-port opt-in: if any socket bound to the
+            # destination port has 'UDP_NO_CHECK6_RX' set, the
+            # tunnel-encapsulation alternative mode accepts
+            # the datagram and the parse retries with the
+            # bypass enabled. Peek dport from the raw UDP
+            # header (bytes 2-3) — the parser raised before
+            # 'packet_rx.udp' was set.
+            if not self.__phrx_udp__retry_zero_cksum_ip6(packet_rx):
+                self._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
+                __debug__ and log(
+                    "udp",
+                    f"{packet_rx.tracker} - <CRIT>{error}</>",
+                )
+                return
 
         except PacketValidationError as error:
             self._packet_stats_rx.udp__failed_parse__drop += 1

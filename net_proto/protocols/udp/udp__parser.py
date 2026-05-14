@@ -53,15 +53,22 @@ class UdpParser(Udp, ProtoParser):
 
     _payload: Buffer
 
-    def __init__(self, packet_rx: PacketRx) -> None:
+    def __init__(self, packet_rx: PacketRx, *, accept_zero_cksum_ip6: bool = False) -> None:
         """
         Initialize the UDP packet parser.
+        'accept_zero_cksum_ip6' is the RFC 6935 §5 per-port
+        opt-in lever consumed by the UDP RX handler when an
+        inbound IPv6 datagram with cksum=0 matches a socket
+        with 'UDP_NO_CHECK6_RX' set: the handler re-parses
+        with this flag True so the parser bypasses the
+        RFC 8200 §8.1 default-mode integrity drop.
         """
 
         self._frame = packet_rx.frame
         self._ip__payload_len = packet_rx.ip.payload_len
         self._ip__pshdr_sum = packet_rx.ip.pshdr_sum
         self._ip__ver = packet_rx.ip.ver
+        self._accept_zero_cksum_ip6 = accept_zero_cksum_ip6
 
         self._validate_integrity()
         self._parse()
@@ -94,18 +101,21 @@ class UdpParser(Udp, ProtoParser):
         raw_cksum = int.from_bytes(self._frame[6:8])
 
         if raw_cksum == 0:
-            # RFC 8200 §8.1 (preserved by RFC 6935 §5): IPv6
-            # receivers MUST discard zero-cksum UDP packets by
-            # default. The RFC 6935 per-port opt-in for tunnel
-            # encapsulations is not implemented today; no PyTCP
-            # consumer needs it.
-            if self._ip__ver is IpVersion.IP6:
+            # RFC 8200 §8.1: IPv6 receivers MUST discard
+            # zero-cksum UDP packets by default. RFC 6935 §5
+            # carves out an alternative-mode opt-in for tunnel
+            # encapsulations; the UDP RX handler retries the
+            # parse with 'accept_zero_cksum_ip6=True' when the
+            # destination port matches a socket with
+            # 'UDP_NO_CHECK6_RX' set.
+            if self._ip__ver is IpVersion.IP6 and not self._accept_zero_cksum_ip6:
                 raise UdpZeroCksumIp6Error(
                     "IPv6 UDP datagram with zero checksum on a port " "not configured for RFC 6935 zero-checksum mode.",
                 )
-            # RFC 768: IPv4 cksum=0 means "sender did not compute
-            # a checksum"; accept the datagram and skip
-            # validation.
+            # RFC 768 / RFC 6935 §5: IPv4 cksum=0 means
+            # "sender did not compute" (always accepted); IPv6
+            # cksum=0 with the per-port opt-in skips
+            # validation by design.
             return
 
         if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):

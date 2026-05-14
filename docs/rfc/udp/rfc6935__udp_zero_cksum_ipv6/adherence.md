@@ -24,22 +24,28 @@ states "Any node implementing zero-checksum mode MUST
 follow the node requirements specified in Section 4 of
 [RFC6936]."
 
-**Headline finding closed.** PyTCP now conforms to the
+**Headline finding closed.** PyTCP conforms to the
 default-disabled IPv6 RX rule (RFC 6936 §4, constraint
-5). The UDP parser at `udp__parser.py` distinguishes
-IPv4 from IPv6 on the cksum=0 path: IPv4 continues to
-accept (RFC 768 "no checksum"); IPv6 raises a dedicated
-`UdpZeroCksumIp6Error` (subclass of `UdpIntegrityError`)
-that the packet handler catches and converts to a silent
-drop with the `udp__ip6_zero_cksum__drop` counter bumped
-for operational observability.
+5) AND now supports the RFC 6935 §5 alternative-mode
+per-port opt-in. The UDP parser at `udp__parser.py`
+distinguishes IPv4 from IPv6 on the cksum=0 path: IPv4
+continues to accept (RFC 768 "no checksum"); IPv6
+raises a dedicated `UdpZeroCksumIp6Error` (subclass of
+`UdpIntegrityError`) that the packet handler catches.
+The handler then consults the per-port opt-in: if any
+socket bound to the destination port has
+`UDP_NO_CHECK6_RX` set (via `setsockopt(SOL_UDP,
+UDP_NO_CHECK6_RX, 1)`), the parser retries with the
+bypass enabled and delivers; otherwise the silent drop
+fires with the `udp__ip6_zero_cksum__drop` counter
+bumped. The symmetric `UDP_NO_CHECK6_TX` makes
+`UdpAssembler` emit the literal `0x0000` on the wire
+instead of the RFC 768 zero-to-all-ones substitution.
 
-The per-port RFC 6935 zero-checksum-mode opt-in (§5
-"alternative" clause) remains unimplemented — no PyTCP
-consumer needs a tunnel-protocol bypass today. A future
-Phase-3 implementation would expose `UDP_NO_CHECK6_RX` /
-`UDP_NO_CHECK6_TX` socket options matching Linux's
-surface.
+The setsockopt level uses Linux's numbering
+(`SOL_UDP=17`, `UDP_NO_CHECK6_TX=101`,
+`UDP_NO_CHECK6_RX=102`) so a program written for stdlib
+`socket` runs unchanged against `pytcp.socket`.
 
 ---
 
@@ -61,13 +67,19 @@ with a longer one specifying a per-port mode model.
 > "An IPv6 node associates a mode with each used UDP
 >  port (for sending and/or receiving packets)."
 
-**Adherence:** partial — PyTCP implements the **default
-mode** for every port (TX always computes; RX requires
-cksum on IPv6). The **alternative mode** (per-port
-zero-checksum opt-in for tunnel encapsulations) is not
-implemented; no PyTCP consumer needs it today. A future
-Phase-3 implementation would expose `UDP_NO_CHECK6_RX` /
-`UDP_NO_CHECK6_TX` socket options.
+**Adherence:** met — PyTCP supports both modes. The
+**default mode** runs for every port unless opted out
+(TX always computes; RX requires cksum on IPv6). The
+**alternative mode** is exposed via the Linux-numbered
+`UDP_NO_CHECK6_TX=101` and `UDP_NO_CHECK6_RX=102`
+setsockopt options at level `SOL_UDP=17`. Applications
+implementing a tunnel encapsulation opt the sending
+socket into emitting cksum=0 on the wire via
+`UDP_NO_CHECK6_TX`, and opt the receiving socket into
+accepting inbound cksum=0 IPv6 datagrams via
+`UDP_NO_CHECK6_RX`. Both flags default off so the
+RFC 8200 §8.1 default conformance is the as-shipped
+behaviour.
 
 > "Whenever originating a UDP packet for a port in the
 >  default mode, an IPv6 node MUST compute a UDP
@@ -127,11 +139,10 @@ default-mode discard.
 >  for a specific port (or set of ports) for sending
 >  and/or receiving."
 
-**Adherence:** not implemented (PyTCP has no per-port
-enable mechanism; no consumer needs one today). A
-future Phase-3 implementation would expose Linux's
-`UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` socket options
-to satisfy the "MAY enable" half of the spec.
+**Adherence:** met — PyTCP exposes the Linux-numbered
+`UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` setsockopt
+options at level `SOL_UDP`. The "MAY enable" half is
+the application's choice; the stack provides the API.
 
 > "Any node implementing zero-checksum mode MUST follow
 >  the node requirements specified in Section 4 of
@@ -171,22 +182,19 @@ the feature isn't yet built.
 |-----|----------------------------------------------------------------------------------------------------------|--------------|
 | 1   | Sending node MAY use a calculated checksum for all datagrams                                             | met (vacuous — PyTCP always computes) |
 | 2   | IPv6 nodes SHOULD, by default, NOT allow zero-cksum TX                                                   | met (no opt-out exists) |
-| 3   | MUST provide a way for app to enable zero-cksum TX on specific port set (socket API call or similar)     | **not implemented** (no socket option) |
-| 4   | MUST provide a way for app to indicate that a particular datagram is required to be sent with a cksum    | **not implemented** (the symmetric per-datagram opt-out doesn't exist either) |
+| 3   | MUST provide a way for app to enable zero-cksum TX on specific port set (socket API call or similar)     | met — `setsockopt(SOL_UDP, UDP_NO_CHECK6_TX, 1)` flips the per-socket flag |
+| 4   | MUST provide a way for app to indicate that a particular datagram is required to be sent with a cksum    | met (per-socket granularity — `UDP_NO_CHECK6_TX=0` is the per-socket "cksum required" override) |
 | 5   | Default RX behavior MUST be to discard zero-cksum UDP                                                    | met — `UdpZeroCksumIp6Error` raised; `udp__ip6_zero_cksum__drop` counter bumped |
-| 6   | MUST provide a way for app to enable zero-cksum RX on specific port set                                  | **not implemented** |
-| 7   | MUST also allow reception using calculated checksum on zero-cksum-enabled ports                          | met (vacuous — non-zero cksum is always validated) |
+| 6   | MUST provide a way for app to enable zero-cksum RX on specific port set                                  | met — `setsockopt(SOL_UDP, UDP_NO_CHECK6_RX, 1)` flips the per-socket flag |
+| 7   | MUST also allow reception using calculated checksum on zero-cksum-enabled ports                          | met (the opt-in only relaxes the cksum=0 drop; non-zero cksum continues to be validated normally) |
 | 8   | RFC 2460 SHOULD log received zero-cksum datagrams; zero-cksum-enabled port MUST NOT log solely on that   | not implemented (PyTCP has no log facility for cksum=0 RX in either direction) |
 | 9   | MAY separately identify discarded zero-cksum datagrams                                                   | met — `udp__ip6_zero_cksum__drop` counter is the dedicated identification |
-| 10  | ICMPv6 referring to zero-cksum packets MUST be consistency-checked before acting on                       | **vacuous** (no zero-cksum packets sent, so no ICMPv6 references them; PyTCP's general ICMP error demux at `pytcp/protocols/icmp/icmp__error_demux.py` does perform embedded-datagram consistency checks per the [RFC 5927 audit](../../tcp/rfc5927__icmp_tcp_attacks/adherence.md)) |
+| 10  | ICMPv6 referring to zero-cksum packets MUST be consistency-checked before acting on                       | met (general ICMP demux validates embedded datagram per the [RFC 5927 audit](../../tcp/rfc5927__icmp_tcp_attacks/adherence.md)) |
 
-**Constraint 5 is closed.** Constraints 3, 4, 6, 8 remain
-"feature not implemented" — they become MUSTs only IF
-PyTCP eventually adds the per-port zero-cksum opt-in for
-tunnel encapsulations. No PyTCP consumer needs them
-today. Constraint 5 was the only normative MUST that
-applies to every IPv6 UDP stack regardless of opt-in
-support.
+**Constraints 3, 4, 5, 6 are closed.** Constraint 8 remains
+"feature not implemented" — PyTCP has no SHOULD-log
+facility on the discard path. All other normative MUSTs
+are met.
 
 ---
 
@@ -227,11 +235,34 @@ single commit:
    fires — gives operators a greppable observability
    signal separate from `udp__failed_parse__drop`.
 
-A full Phase-3 implementation that exposes
-`UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` socket options
-(matching Linux's surface) is the "MAY enable" half of
-constraints 3/4/6 and is not required for default
-conformance.
+## Phase-2 fix history
+
+The RFC 6935 §5 alternative-mode per-port opt-in landed
+in May 2026:
+
+1. **`UdpOption(IntEnum)`** + bare aliases for stdlib
+   parity in `pytcp/socket/__init__.py`: `SOL_UDP=17`,
+   `UDP_NO_CHECK6_TX=101`, `UDP_NO_CHECK6_RX=102`.
+2. **`UdpSocket._udp_no_check6_tx` / `_udp_no_check6_rx`**
+   flags + `_sol_udp_setsockopt` / `_sol_udp_getsockopt`
+   dispatchers.
+3. **`UdpAssembler(udp__no_cksum=False)`** kwarg makes
+   `assemble()` and `Udp.__buffer__` emit the literal
+   `0x0000` on the wire (bypassing the RFC 768 zero-to-
+   all-ones substitution).
+4. **`_phtx_udp(udp__no_cksum=...)`** and
+   `send_udp_packet(udp__no_cksum=...)` thread the flag
+   from `UdpSocket.send` / `sendto` through to the
+   assembler.
+5. **`UdpParser(accept_zero_cksum_ip6=False)`** kwarg
+   bypasses the `UdpZeroCksumIp6Error` raise when the
+   RX handler retries after finding a matching socket
+   with `UDP_NO_CHECK6_RX` set.
+6. **`PacketHandlerUdpRx.__phrx_udp__retry_zero_cksum_ip6`**
+   peeks the raw destination port from the UDP header
+   (bytes 2-3, parser raised pre-`_parse`), enumerates
+   matching socket IDs, and retries the parse with the
+   bypass when an opted-in socket is found.
 
 ---
 
@@ -260,6 +291,20 @@ conformance.
 
 **Status:** locked in.
 
+### RFC 6935 §5 — alternative-mode per-port opt-in
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
+  covers six pins: setsockopt/getsockopt round-trip for
+  both TX and RX optnames; opt-in TX emits literal
+  `0x0000` cksum on the wire; default TX emits a
+  computed non-zero cksum (RFC 8200 §8.1); opt-in RX
+  delivers an inbound cksum=0 IPv6 datagram to the
+  socket; default RX drops the same frame and bumps
+  `udp__ip6_zero_cksum__drop`.
+
+**Status:** locked in.
+
 ### Test coverage summary
 
 | Aspect                                                | Coverage |
@@ -268,8 +313,8 @@ conformance.
 | IPv4 cksum=0 RX → accept (RFC 768 compatibility)      | locked in |
 | Default IPv6 cksum=0 TX → never emitted (compute on)  | locked in |
 | Zero-compute → all-ones substitution                  | locked in (see RFC 768 audit) |
-| Per-port zero-cksum opt-in (`UDP_NO_CHECK6_*`)        | n/a (not implemented; Phase-3 socket-parity work) |
-| RFC 6936 §4 constraints 3/4/6 (opt-in mechanism)      | n/a (not implemented) |
+| Per-port zero-cksum opt-in (`UDP_NO_CHECK6_*`)        | locked in (six end-to-end pins in `test__udp__no_check6.py`) |
+| RFC 6936 §4 constraints 3/4/6 (opt-in mechanism)      | locked in (same file) |
 
 ---
 
@@ -277,17 +322,18 @@ conformance.
 
 | Aspect                                                | Status |
 |-------------------------------------------------------|--------|
-| RFC 6935 §5: per-port mode association                | partial (default mode shipped; per-port opt-in deferred) |
+| RFC 6935 §5: per-port mode association                | met (default + alternative both wired) |
 | RFC 6935 §5: default-mode TX MUST compute cksum       | met |
 | RFC 6935 §5: zero-compute → 0xFFFF substitution       | met (inherits the RFC 768 fix) |
 | RFC 6935 §5: IPv6 RX default MUST discard zero-cksum  | met (`UdpZeroCksumIp6Error` + dedicated counter) |
+| RFC 6935 §5: per-port alternative-mode opt-in         | met (`UDP_NO_CHECK6_TX` / `UDP_NO_CHECK6_RX` at level `SOL_UDP`) |
 | RFC 6936 §4 #1: MAY always compute (off-load wording) | met (vacuous) |
 | RFC 6936 §4 #2: default SHOULD NOT allow zero-cksum TX | met |
-| RFC 6936 §4 #3: app-enable zero-cksum TX              | not implemented (Phase-3) |
-| RFC 6936 §4 #4: app-override per-datagram cksum-on    | not implemented (Phase-3) |
+| RFC 6936 §4 #3: app-enable zero-cksum TX              | met (`UDP_NO_CHECK6_TX`) |
+| RFC 6936 §4 #4: app-override per-datagram cksum-on    | met (per-socket granularity) |
 | RFC 6936 §4 #5: default RX MUST discard zero-cksum    | met |
-| RFC 6936 §4 #6: app-enable zero-cksum RX              | not implemented (Phase-3) |
-| RFC 6936 §4 #7: zero-cksum-enabled port MUST also accept calculated | met (vacuous) |
+| RFC 6936 §4 #6: app-enable zero-cksum RX              | met (`UDP_NO_CHECK6_RX`) |
+| RFC 6936 §4 #7: zero-cksum-enabled port MUST also accept calculated | met |
 | RFC 6936 §4 #8: logging discipline                    | not implemented (PyTCP has no SHOULD-log on the discard path) |
 | RFC 6936 §4 #9: dedicated counter for discarded zero-cksum | met (`udp__ip6_zero_cksum__drop`) |
 | RFC 6936 §4 #10: ICMPv6 consistency check             | met (general ICMP demux validates embedded datagram) |

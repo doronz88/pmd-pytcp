@@ -90,13 +90,17 @@ class PacketHandlerUdpTx(ABC):
         udp__sport: int,
         udp__dport: int,
         udp__payload: bytes = bytes(),
+        udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
         ip4__options: Ip4Options | None = None,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
         """
-        Handle outbound UDP packets.
+        Handle outbound UDP packets. 'udp__no_cksum' threads
+        through to 'UdpAssembler' to emit the RFC 6935 §5
+        alternative-mode zero checksum (literal 0x0000) when
+        the originating socket has 'UDP_NO_CHECK6_TX' set.
         """
 
         self._packet_stats_tx.udp__pre_assemble += 1
@@ -105,6 +109,7 @@ class PacketHandlerUdpTx(ABC):
             udp__sport=udp__sport,
             udp__dport=udp__dport,
             udp__payload=udp__payload,
+            udp__no_cksum=udp__no_cksum,
             echo_tracker=echo_tracker,
         )
 
@@ -155,12 +160,16 @@ class PacketHandlerUdpTx(ABC):
         udp__local_port: int,
         udp__remote_port: int,
         udp__payload: bytes = bytes(),
+        udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
         ip4__options: Ip4Options | None = None,
     ) -> TxStatus:
         """
-        Interface method for UDP Socket -> Packet Assembler communication.
+        Interface method for UDP Socket -> Packet Assembler
+        communication. 'udp__no_cksum' threads through the
+        UdpSocket.send / sendto path to enable the RFC 6935 §5
+        zero-checksum opt-in.
         """
 
         return self._phtx_udp(
@@ -169,6 +178,7 @@ class PacketHandlerUdpTx(ABC):
             udp__sport=udp__local_port,
             udp__dport=udp__remote_port,
             udp__payload=udp__payload,
+            udp__no_cksum=udp__no_cksum,
             ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
             ip4__options=ip4__options,

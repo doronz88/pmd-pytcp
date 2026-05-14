@@ -47,6 +47,13 @@ class Udp(Proto, UdpHeaderProperties):
     _payload: Buffer
 
     pshdr_sum: int = 0
+    # RFC 6935 §5 zero-checksum opt-in flag. Class-level
+    # default False so the standard RFC 768 substitution path
+    # runs. The UDP assembler overrides per-instance when the
+    # originating socket has 'UDP_NO_CHECK6_TX' set; the
+    # parser never sets this attribute (parsed packets carry
+    # their own '_header.cksum' wire value).
+    _udp__no_cksum: bool = False
 
     @override
     def __len__(self) -> int:
@@ -84,11 +91,17 @@ class Udp(Proto, UdpHeaderProperties):
 
         buffer = bytearray(self._header)
         buffer += self._payload
-        # RFC 768: a computed checksum of zero is transmitted
-        # as all-ones so the wire value 0x0000 remains
-        # unambiguously the "no checksum generated" sentinel.
-        cksum = inet_cksum(buffer, init=self.pshdr_sum)
-        buffer[6:8] = (cksum or 0xFFFF).to_bytes(2)
+        if self._udp__no_cksum:
+            # RFC 6935 §5 alternative mode: emit the literal
+            # value 0x0000.
+            buffer[6:8] = b"\x00\x00"
+        else:
+            # RFC 768: a computed checksum of zero is
+            # transmitted as all-ones so the wire value
+            # 0x0000 remains unambiguously the "no checksum
+            # generated" sentinel.
+            cksum = inet_cksum(buffer, init=self.pshdr_sum)
+            buffer[6:8] = (cksum or 0xFFFF).to_bytes(2)
 
         return memoryview(buffer)
 

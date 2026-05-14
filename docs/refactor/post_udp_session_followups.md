@@ -56,13 +56,46 @@ The TCP socket-API error-queue surface landed:
 
 10700 tests passing, 4 skipped. `make lint` clean.
 
-### 2. UDP #6 — `UDP_NO_CHECK6_RX/TX` per-port opt-in
+### 2. UDP #6 — `UDP_NO_CHECK6_RX/TX` per-port opt-in — SHIPPED 2026-05-14
 
-**Status:** deferred — no PyTCP consumer needs the
-RFC 6935 zero-cksum-IPv6 alternative mode (no tunnel
-protocol). Resume when a real consumer needs it.
+The RFC 6935 §5 alternative-mode per-port opt-in
+landed despite the original "defer until consumer"
+recommendation:
 
-**Source:** `docs/refactor/udp_remaining_items.md` #6.
+- `pytcp/socket/__init__.py`: `SOL_UDP=17`,
+  `UdpOption(IntEnum)` with `UDP_NO_CHECK6_TX=101` /
+  `UDP_NO_CHECK6_RX=102` + bare aliases (Linux
+  numbering for stdlib parity).
+- `UdpSocket._udp_no_check6_tx` / `_udp_no_check6_rx`
+  flags + `_sol_udp_setsockopt` / `_sol_udp_getsockopt`
+  dispatchers.
+- `UdpAssembler(udp__no_cksum=False)` kwarg makes
+  `assemble()` and `Udp.__buffer__` emit literal
+  `0x0000` (bypassing the RFC 768 zero-to-all-ones
+  substitution).
+- `_phtx_udp(udp__no_cksum=...)` and
+  `send_udp_packet(udp__no_cksum=...)` thread the flag
+  from socket through to assembler.
+- `UdpParser(accept_zero_cksum_ip6=False)` kwarg
+  bypasses the `UdpZeroCksumIp6Error` raise on retry.
+- `PacketHandlerUdpRx.__phrx_udp__retry_zero_cksum_ip6`
+  peeks the raw dport (bytes 2-3 of the UDP header,
+  parser raised pre-`_parse`), enumerates matching
+  socket IDs via `UdpMetadata.socket_ids`, and retries
+  the parse with the bypass when an opted-in socket
+  is found.
+- 6 new integration tests in
+  `pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
+  cover: get/set round-trip for TX and RX; TX opt-in
+  emits cksum=0x0000 literal; TX default emits
+  computed non-zero cksum; RX opt-in delivers cksum=0
+  IPv6 to socket; RX default drops + counter bump.
+- RFC 6935 / 6936 adherence record refreshed: §5
+  per-port opt-in flipped from "partial / not
+  implemented" to "met"; RFC 6936 §4 constraints
+  3/4/6/7 all flipped from "not implemented" to "met".
+
+10706 tests passing, 4 skipped. `make lint` clean.
 
 ### 3. UDP #7 — PLPMTUD for UDP (RFC 8899)
 

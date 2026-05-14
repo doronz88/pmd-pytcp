@@ -63,6 +63,9 @@ from pytcp.socket import (
     IPV6_TCLASS,
     MSG_ERRQUEUE,
     SOL_SOCKET,
+    SOL_UDP,
+    UDP_NO_CHECK6_RX,
+    UDP_NO_CHECK6_TX,
     AddressFamily,
     IpProto,
     SocketType,
@@ -119,6 +122,18 @@ class UdpSocket(socket):
         # overflow at 'ERROR_QUEUE__MAX_LEN'.
         self._error_queue: deque[ErrorQueueEntry] = deque(maxlen=ERROR_QUEUE__MAX_LEN)
         self._error_queue_ready = threading.Semaphore(0)
+        # RFC 6935 §5 per-port zero-checksum opt-in for the
+        # IPv6 alternative mode (tunnel encapsulations: LISP,
+        # MPLS-in-UDP, Geneve, GTP-U, GRE-in-UDP, NSH-in-UDP).
+        # Both flags default to False; the IPv6 receiver gate
+        # defaults to "drop cksum=0" per RFC 8200 §8.1 and the
+        # TX path computes a checksum normally. Applications
+        # implementing a tunnel encapsulation opt the listening
+        # / sending socket in via setsockopt(SOL_UDP,
+        # UDP_NO_CHECK6_RX, 1) and / or
+        # setsockopt(SOL_UDP, UDP_NO_CHECK6_TX, 1).
+        self._udp_no_check6_tx: bool = False
+        self._udp_no_check6_rx: bool = False
 
         match self._address_family:
             case AddressFamily.INET6:
@@ -133,9 +148,9 @@ class UdpSocket(socket):
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. UDP
-        sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6
-        options through the base-class helpers. 'value' is 'int'
-        for scalar options (SO_*, IP_TTL, IP_TOS, IPV6_*) and
+        sockets honor SOL_SOCKET / IPPROTO_IP / IPPROTO_IPV6 /
+        SOL_UDP options. 'value' is 'int' for scalar options
+        (SO_*, IP_TTL, IP_TOS, IPV6_*, UDP_NO_CHECK6_*) and
         'bytes' for IP_OPTIONS (RFC 1122 §4.1.3.2 raw options block).
         """
 
@@ -144,6 +159,8 @@ class UdpSocket(socket):
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
         if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+            return
+        if isinstance(value, int) and level == SOL_UDP and self._sol_udp_setsockopt(optname, value):
             return
         raise OSError(
             errno.ENOPROTOOPT,
@@ -164,10 +181,42 @@ class UdpSocket(socket):
             return value
         if level == IPPROTO_IPV6 and (value := self._ipproto_ipv6_getsockopt(optname)) is not None:
             return value
+        if level == SOL_UDP and (value := self._sol_udp_getsockopt(optname)) is not None:
+            return value
         raise OSError(
             errno.ENOPROTOOPT,
             f"getsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
+
+    def _sol_udp_setsockopt(self, optname: int, value: int, /) -> bool:
+        """
+        Apply a SOL_UDP-level setsockopt option; return True if
+        handled. Currently supports the RFC 6935 §5 zero-cksum
+        opt-in pair: UDP_NO_CHECK6_TX (sender emits cksum=0)
+        and UDP_NO_CHECK6_RX (receiver accepts inbound cksum=0
+        on the bound port).
+        """
+
+        if optname == UDP_NO_CHECK6_TX:
+            self._udp_no_check6_tx = bool(value)
+            return True
+        if optname == UDP_NO_CHECK6_RX:
+            self._udp_no_check6_rx = bool(value)
+            return True
+        return False
+
+    def _sol_udp_getsockopt(self, optname: int, /) -> int | None:
+        """
+        Read a SOL_UDP-level option's stored value, or 'None' if
+        the optname is not a SOL_UDP option (the caller then
+        raises 'ENOPROTOOPT'). Booleans return 0 or 1.
+        """
+
+        if optname == UDP_NO_CHECK6_TX:
+            return int(self._udp_no_check6_tx)
+        if optname == UDP_NO_CHECK6_RX:
+            return int(self._udp_no_check6_rx)
+        return None
 
     def _get_ip_addresses(
         self,
@@ -357,6 +406,7 @@ class UdpSocket(socket):
             udp__local_port=self._local_port,
             udp__remote_port=self._remote_port,
             udp__payload=data,
+            udp__no_cksum=self._udp_no_check6_tx,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
             ip4__options=self._effective_ip4_options(),
@@ -402,6 +452,7 @@ class UdpSocket(socket):
             udp__local_port=self._local_port,
             udp__remote_port=remote_port,
             udp__payload=data,
+            udp__no_cksum=self._udp_no_check6_tx,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
             ip4__options=self._effective_ip4_options(),
