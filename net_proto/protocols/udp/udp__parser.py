@@ -108,11 +108,12 @@ class UdpParser(Udp, ProtoParser):
         Ensure sanity of the UDP packet after parsing it.
         """
 
-        if (value := self.sport) == 0:
-            raise UdpSanityError(
-                f"The 'sport' field must be greater than 0. Got: {value!r}",
-            )
-
+        # RFC 768 designates the Source Port as optional with a
+        # wire value of 0 meaning "source port not used"; the
+        # receiver delivers such datagrams normally. No sanity
+        # check on sport. The Destination Port is not optional;
+        # IANA reserves port 0 as unassigned and Linux drops
+        # inbound dport=0 too — keep the rejection.
         if (value := self.dport) == 0:
             raise UdpSanityError(
                 f"The 'dport' field must be greater than 0. Got: {value!r}",

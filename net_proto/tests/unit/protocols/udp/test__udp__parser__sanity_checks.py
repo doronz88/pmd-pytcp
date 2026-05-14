@@ -41,16 +41,6 @@ from net_proto import PacketRx, UdpParser, UdpSanityError
 @parameterized_class(
     [
         {
-            "_description": "The 'sport' field equals 0.",
-            # UDP wire frame (8 bytes, header-only):
-            #   Bytes 0-1 : 0x0000 -> sport=0 (sanity violation)
-            #   Bytes 2-3 : 0xd431 -> dport=54321
-            #   Bytes 4-5 : 0x0008 -> plen=8
-            #   Bytes 6-7 : 0x2bc6 -> cksum (valid for init=0)
-            "_frame_rx": b"\x00\x00\xd4\x31\x00\x08\x2b\xc6",
-            "_error_message": "The 'sport' field must be greater than 0. Got: 0",
-        },
-        {
             "_description": "The 'dport' field equals 0.",
             # UDP wire frame (8 bytes, header-only):
             #   Bytes 0-1 : 0x3039 -> sport=12345
@@ -101,4 +91,53 @@ class TestUdpParserSanityChecks(TestCase):
             str(error.exception),
             f"[SANITY ERROR][UDP] {self._error_message}",
             msg=f"Unexpected sanity-error message for case: {self._description}",
+        )
+
+
+class TestUdpParserSourcePortOptional(TestCase):
+    """
+    The UDP parser source-port-optional (RFC 768) tests.
+
+    RFC 768 designates Source Port as an optional field; the wire
+    value 0 is the documented "source port not used" sentinel. The
+    receiver MUST accept and deliver such datagrams.
+    """
+
+    def test__udp__parser__source_port_zero_accepted(self) -> None:
+        """
+        Ensure a UDP datagram with sport=0 parses to completion
+        without raising a sanity error.
+
+        Reference: RFC 768 (Source Port is optional; zero
+        sentinel means "not used").
+        """
+
+        # UDP wire frame (8 bytes, header-only), sport=0:
+        #   Bytes 0-1 : 0x0000 -> sport=0 (RFC 768 absent sentinel)
+        #   Bytes 2-3 : 0xd431 -> dport=54321
+        #   Bytes 4-5 : 0x0008 -> plen=8 (header-only)
+        #   Bytes 6-7 : 0x2bc6 -> cksum (valid for init=0)
+        frame_rx = b"\x00\x00\xd4\x31\x00\x08\x2b\xc6"
+        packet_rx = PacketRx(frame_rx)
+        packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(frame_rx),
+            pshdr_sum=0,
+        )
+
+        parser = UdpParser(packet_rx)
+
+        self.assertEqual(
+            parser.sport,
+            0,
+            msg="UDP parser must accept sport=0 (RFC 768 source-port-optional).",
+        )
+        self.assertEqual(
+            parser.dport,
+            54321,
+            msg="UDP parser must parse the rest of the header normally when sport=0.",
+        )
+        self.assertIs(
+            packet_rx.udp,
+            parser,
+            msg="UDP parser must install itself on packet_rx for sport=0 frames.",
         )

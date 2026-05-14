@@ -25,26 +25,25 @@ References) are omitted.
 
 ## Top-line adherence
 
-PyTCP **meets** the core RFC 768 wire format and semantics
-on both the send and receive paths. One pragmatic
-deviation is flagged for follow-up:
+PyTCP **fully meets** the core RFC 768 wire format and
+semantics on both the send and receive paths. Two
+deviations previously flagged in this audit have been
+closed:
 
-1. **RX rejects `sport == 0`** as a sanity error. RFC 768
-   explicitly states Source Port is **optional** and zero
-   is the sentinel for "absent." Linux accepts inbound
-   `sport=0`; PyTCP drops it (`UdpSanityError`).
-
-The TX checksum zero-to-all-ones substitution gap
-previously flagged in this audit is now closed — both
-serialization paths (`udp__assembler.py::assemble` and
-`udp__base.py::__buffer__`) substitute `0xFFFF` for a
-computed `0x0000` per RFC 768. See §"Fields — Checksum"
-below for details.
+- **TX checksum zero-to-all-ones substitution** —
+  both serialization paths (`udp__assembler.py::assemble`
+  and `udp__base.py::__buffer__`) substitute `0xFFFF`
+  for a computed `0x0000`. See §"Fields — Checksum"
+  below.
+- **RX `sport == 0` acceptance** — the parser no longer
+  rejects sport=0; RFC 768 designates the Source Port
+  as optional with zero as the "not used" sentinel. See
+  §"Fields — Source Port" below.
 
 | Section            | Topic                              | Status |
 |--------------------|------------------------------------|--------|
 | Format             | 8-byte fixed header wire layout    | met    |
-| Fields / Source Port | Optional, zero if absent         | met (TX); **not met (RX rejects sport=0)** |
+| Fields / Source Port | Optional, zero if absent         | met (TX defaults to 0; RX accepts sport=0) |
 | Fields / Destination Port | Per-destination semantics    | met    |
 | Fields / Length    | ≥ 8 octets (incl. header)          | met    |
 | Fields / Checksum  | One's-complement over pseudo+UDP+data | met (RX + TX compute + TX zero-→-all-ones substitution) |
@@ -84,28 +83,28 @@ lines 44-48 mirrors the RFC's diagram verbatim.
 source port emits a datagram with `sport=0` — matching
 the RFC's "value of zero" sentinel.
 
-**Adherence (RX): not met.** The parser's sanity check at
-`net_proto/protocols/udp/udp__parser.py:111-114` raises
-`UdpSanityError` on inbound `sport == 0`:
+**Adherence (RX):** met. The parser's `_validate_sanity`
+at `net_proto/protocols/udp/udp__parser.py` no longer
+rejects `sport == 0`; only the `dport == 0` rejection
+remains (IANA reserves port 0 as unassigned, and Linux
+also drops inbound dport=0 — that case is consistent
+with the deployed Internet posture rather than a literal
+RFC 768 requirement).
 
-```python
-if (value := self.sport) == 0:
-    raise UdpSanityError(
-        f"The 'sport' field must be greater than 0. Got: {value!r}",
-    )
-```
+Inbound UDP datagrams with `sport=0` parse to completion
+and reach the socket-dispatch layer at
+`pytcp/stack/packet_handler/packet_handler__udp__rx.py`,
+where they're delivered to a matching listener via the
+normal `(local_addr, local_port, remote_addr,
+remote_port=0)` 4-tuple match — the same code path that
+handles unconnected receiver sockets.
 
-The RFC explicitly permits zero as the "source port not
-used" form. Linux accepts inbound sport=0 (`udp_v4_get_port`
-and friends impose no source-port-zero filter on RX). The
-deviation is greppable and pinned by
-`net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
-— the test currently locks in the wrong behaviour, so any
-future fix needs the test updated in the same commit.
-
-**Fix sketch:** remove the `sport == 0` branch from
-`_validate_sanity` (the parser would still reject other
-sanity violations).
+Pinned by the positive-control test
+`TestUdpParserSourcePortOptional::test__udp__parser__source_port_zero_accepted`
+at `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`,
+which constructs a sport=0 frame and asserts the parser
+runs to completion with `parser.sport == 0` and
+`packet_rx.udp` installed.
 
 ---
 
@@ -406,13 +405,14 @@ the natural follow-ups when a reader extends the audit.
 ### Parser sanity checks
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
-  — pins the rejection of `sport == 0` and `dport == 0`.
+  `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py::TestUdpParserSanityChecks`
+  — pins the rejection of `dport == 0`.
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py::TestUdpParserSourcePortOptional`
+  — pins the RFC 768 source-port-optional acceptance of
+  `sport == 0` frames.
 
-**Status:** locked in (but the `sport == 0` case is
-**pinning a deviation from RFC 768** — see the Source
-Port section). When the deviation is fixed, this test's
-sport=0 case becomes the positive control.
+**Status:** locked in.
 
 ### Parser operation
 
@@ -465,7 +465,7 @@ sport=0 case becomes the positive control.
 | Checksum compute (TX) / verify (RX)                 | locked in |
 | Checksum-zero RX skip                               | locked in |
 | Checksum-zero TX → all-ones substitution            | locked in |
-| Source Port optional / `sport == 0` accepted on RX  | **n/a (gap not closed; test currently pins the deviation)** |
+| Source Port optional / `sport == 0` accepted on RX  | locked in (`TestUdpParserSourcePortOptional`) |
 | Destination port semantics (per-IP socket dispatch) | locked in |
 | ICMP Unreachable on no matching socket              | locked in |
 | BSD user interface (bind/recv/send/close)           | locked in |
@@ -479,7 +479,7 @@ sport=0 case becomes the positive control.
 |-------------------------------------------------------|--------|
 | Format / 8-byte fixed header                          | met    |
 | Source Port optional (TX defaults to 0)               | met    |
-| Source Port `== 0` accepted on RX                     | **not met** (parser rejects with `UdpSanityError`) |
+| Source Port `== 0` accepted on RX                     | met (parser delivers sport=0 frames per RFC 768) |
 | Destination Port per-IP semantics                     | met    |
 | Length ≥ 8 octets                                     | met    |
 | Length cross-check vs IP payload-length advisory      | met (stronger than RFC) |
@@ -491,16 +491,11 @@ sport=0 case becomes the positive control.
 | IP interface (UDP reads src/dst/proto from IP)        | met    |
 | Protocol Number = 17                                  | met    |
 
-PyTCP **broadly conforms** to RFC 768. One concrete
-deviation remains: the parser's `_validate_sanity`
-should accept `sport == 0` per the RFC's "optional
-source port" rule. That fix is mechanical and bounded
-by a single existing test file whose expectations need
-to flip in the same commit.
-
-The previously-flagged TX checksum zero-to-all-ones
-substitution gap is closed — both serialization paths
-substitute `0xFFFF` for a computed `0x0000`.
+PyTCP **fully conforms** to RFC 768. Both deviations
+previously flagged in this audit are now closed: the
+parser accepts `sport == 0` per the source-port-optional
+rule, and both UDP TX serialization paths substitute
+`0xFFFF` for a computed `0x0000` per the all-ones rule.
 
 ---
 
