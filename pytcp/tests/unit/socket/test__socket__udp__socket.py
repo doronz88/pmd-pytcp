@@ -1769,6 +1769,165 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="IP_TOS must round-trip the full 8-bit DSCP+ECN value.",
         )
 
+    def test__udp_socket__ip_mtu_returns_cached_pmtu_on_connected_ipv4(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) on a connected IPv4
+        UDP socket returns the cached Path-MTU for the remote
+        address from 'stack.pmtu_cache'.
+
+        Reference: RFC 1122 §3.4 (GET_MAXSIZES).
+        Reference: RFC 1191 §3 (Path-MTU discovery surfacing).
+        """
+
+        from pytcp import stack as _stack
+        from pytcp.socket import IP_MTU, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        remote = Ip4Address("10.0.0.5")
+        s._remote_ip_address = remote
+        s._remote_port = 1234
+
+        _stack.pmtu_cache[remote] = 1400
+        self.addCleanup(_stack.pmtu_cache.pop, remote, None)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IP, IP_MTU),
+            1400,
+            msg="IP_MTU must return the cached PMTU for a connected IPv4 socket.",
+        )
+
+    def test__udp_socket__ip_mtu_falls_back_to_interface_mtu(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns
+        'stack.interface_mtu' when 'stack.pmtu_cache' has no
+        entry for the connected remote — Linux's same fallback.
+
+        Reference: RFC 1122 §3.4 (GET_MAXSIZES fallback to link MTU).
+        """
+
+        from pytcp import stack as _stack
+        from pytcp.socket import IP_MTU, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s._remote_ip_address = Ip4Address("10.0.0.99")
+        s._remote_port = 5678
+
+        with patch.object(_stack, "interface_mtu", 1500, create=True):
+            self.assertEqual(
+                s.getsockopt(IPPROTO_IP, IP_MTU),
+                1500,
+                msg="IP_MTU must fall back to stack.interface_mtu when no PMTU is cached.",
+            )
+
+    def test__udp_socket__ip_mtu_unconnected_raises_enotconn(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) on an unconnected
+        socket raises OSError(ENOTCONN). The MTU surface is
+        defined per-destination; without a destination there is
+        no meaningful value to return.
+
+        Reference: Linux 'ip(7)' (IP_MTU returns ENOTCONN when
+        the socket has no peer).
+        """
+
+        import errno
+
+        from pytcp.socket import IP_MTU, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            s.getsockopt(IPPROTO_IP, IP_MTU)
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.ENOTCONN,
+            msg="IP_MTU on an unconnected socket must raise OSError(ENOTCONN).",
+        )
+
+    def test__udp_socket__ip_mtu_setsockopt_rejected(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_MTU, ...) raises
+        OSError(ENOPROTOOPT). The IP_MTU option is getsockopt-
+        only — Linux rejects writes the same way.
+
+        Reference: Linux 'ip(7)' (IP_MTU is a read-only socket
+        option).
+        """
+
+        import errno
+
+        from pytcp.socket import IP_MTU, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            s.setsockopt(IPPROTO_IP, IP_MTU, 1500)
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.ENOPROTOOPT,
+            msg="setsockopt on IP_MTU must raise OSError(ENOPROTOOPT) — read-only.",
+        )
+
+    def test__udp_socket__ipv6_mtu_returns_cached_pmtu_on_connected_ipv6(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IPV6, IPV6_MTU) on a connected
+        IPv6 UDP socket returns the cached Path-MTU for the
+        remote address from 'stack.pmtu_cache'.
+
+        Reference: RFC 1122 §3.4 (GET_MAXSIZES, IPv6 parallel).
+        Reference: RFC 8201 §4 (IPv6 PMTUD surfacing).
+        """
+
+        from net_addr import Ip6Address
+        from pytcp import stack as _stack
+        from pytcp.socket import IPPROTO_IPV6, IPV6_MTU
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+        remote = Ip6Address("2001:db8::5")
+        s._remote_ip_address = remote
+        s._remote_port = 1234
+
+        _stack.pmtu_cache[remote] = 1280
+        self.addCleanup(_stack.pmtu_cache.pop, remote, None)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_MTU),
+            1280,
+            msg="IPV6_MTU must return the cached PMTU for a connected IPv6 socket.",
+        )
+
+    def test__udp_socket__ipv6_mtu_unconnected_raises_enotconn(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IPV6, IPV6_MTU) on an
+        unconnected IPv6 socket raises OSError(ENOTCONN).
+
+        Reference: Linux 'ipv6(7)' (IPV6_MTU returns ENOTCONN
+        when the socket has no peer).
+        """
+
+        import errno
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_MTU
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(OSError) as ctx:
+            s.getsockopt(IPPROTO_IPV6, IPV6_MTU)
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.ENOTCONN,
+            msg="IPV6_MTU on an unconnected socket must raise OSError(ENOTCONN).",
+        )
+
     def test__udp_socket__so_sndtimeo_round_trip(self) -> None:
         """
         Ensure SO_SNDTIMEO round-trips via setsockopt / getsockopt.

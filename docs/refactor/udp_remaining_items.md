@@ -43,6 +43,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | _(pending)_ | RFC 1122 §3.2.1.3 directed-broadcast source filter (#2) |
 | _(pending)_ | RFC 1122 §4.1.3.2 IP options pass-through (#1) — IP_OPTIONS / IP_RECVOPTS + recvmsg |
 | _(pending)_ | RFC 1122 §4.1.4 received-TOS pass-through (#5) — IP_RECVTOS + IPV6_RECVTCLASS cmsg |
+| _(pending)_ | RFC 1122 §3.4 GET_MAXSIZES via IP_MTU / IPV6_MTU getsockopt (#3) |
 
 ---
 
@@ -52,7 +53,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 |---|---|---|---|---|---|
 | 1 | ~~IP options pass-through to/from application~~ **SHIPPED** | RFC 1122 §4.1.3.2 | met (IP_OPTIONS setsockopt + IP_RECVOPTS + recvmsg ancillary data) | done | — |
 | 2 | ~~Directed-broadcast source filter~~ **SHIPPED** | RFC 1122 §4.1.3.6 residual | met (RX-handler `_ip4_broadcast` membership check) | done | — |
-| 3 | `IP_MTU` / `IPV6_PATHMTU` getsockopt | RFC 1122 §4.1.4 GET_MAXSIZES | "partial — Phase-3 socket-parity" | ~2-3h | Medium |
+| 3 | ~~`IP_MTU` / `IPV6_MTU` getsockopt~~ **SHIPPED** | RFC 1122 §3.4 GET_MAXSIZES | met (per-socket effective PMTU via getsockopt) | done | — |
 | 4 | `IP_RECVERR` / `MSG_ERRQUEUE` socket-API | RFC 1122 §4.1.3.3 API parity | "Phase-3 socket-parity" | ~half-day | Medium |
 | 5 | ~~`IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary~~ **SHIPPED** | RFC 1122 §4.1.4 MAY | met (recvmsg IP_TOS / IPV6_TCLASS cmsg gated by per-socket flag) | done | — |
 | 6 | `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` per-port opt-in | RFC 6935 §5 alternative mode | "Phase-3 socket-parity; no consumer" | ~half-day | Deferred — no consumer |
@@ -231,9 +232,33 @@ broadcast); assert the packet is dropped with the new
 
 ---
 
-## #3 — `IP_MTU` / `IPV6_PATHMTU` getsockopt
+## #3 — `IP_MTU` / `IPV6_MTU` getsockopt — **SHIPPED**
 
-**Status:** open. Phase-3 socket-API parity.
+**Status:** closed. Shipped `IP_MTU=14` and `IPV6_MTU=24`
+getsockopt at the base `socket` class via a new
+`_effective_pmtu()` helper that reads `stack.pmtu_cache`
+keyed by the connected remote address and falls back to
+`stack.interface_mtu`. Unconnected sockets raise
+`OSError(ENOTCONN)` (Linux `ip(7)` / `ipv6(7)`
+semantics); setsockopt on these options is rejected
+with `ENOPROTOOPT` since the dispatch never matches.
+Pinned by 6 unit tests + 2 integration tests
+(`TestUdpSocketApiIpMtuGetsockopt` exercises the
+end-to-end ICMPv4 Frag-Needed → cache update →
+getsockopt readback).
+
+Skipped `IPV6_PATHMTU=61` (struct `ip6_mtuinfo`, 32-byte
+packed shape) — the integer `IPV6_MTU` covers the common
+case; add the struct variant when an explicit consumer
+needs it.
+
+Audit ripple in
+`docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`:
+§4.1.4 `GET_MAXSIZES` narrative flipped from "partial"
+to "met"; requirements-summary row updated; closed-gaps
+footer bumped to six.
+
+Original brief (kept for archaeology):
 
 ### What the RFC implies
 

@@ -119,9 +119,13 @@ IP_OPTIONS: int = 4  # level=IPPROTO_IP; bytes: 0-40 raw IPv4 options block (RFC
 IP_RECVOPTS: int = 6  # level=IPPROTO_IP; int 0/1: enable IP_OPTIONS cmsg on recvmsg (RFC 1122 §4.1.3.2)
 IP_RETOPTS: int = 7  # level=IPPROTO_IP; int 0/1: deprecated alias of IP_RECVOPTS (Linux compat)
 IP_RECVTOS: int = 13  # level=IPPROTO_IP; int 0/1: enable IP_TOS cmsg on recvmsg (RFC 1122 §4.1.4 MAY)
+IP_MTU: int = (
+    14  # level=IPPROTO_IP; int (getsockopt only): effective PMTU for connected peer (RFC 1122 §3.4 GET_MAXSIZES)
+)
 
 # IPPROTO_IPV6-level options (Linux numbers from <netinet/in.h>).
 IPV6_UNICAST_HOPS: int = 16  # level=IPPROTO_IPV6; int 1-255: per-socket Hop-Limit override
+IPV6_MTU: int = 24  # level=IPPROTO_IPV6; int (getsockopt only): effective PMTU for connected peer
 IPV6_RECVTCLASS: int = 66  # level=IPPROTO_IPV6; int 0/1: enable IPV6_TCLASS cmsg on recvmsg (RFC 3542 §6.5)
 IPV6_TCLASS: int = 67  # level=IPPROTO_IPV6; int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
 
@@ -396,6 +400,8 @@ class socket(ABC):
                 return int(self._ip_recvopts)
             case _ if optname == IP_RECVTOS:
                 return int(self._ip_recvtos)
+            case _ if optname == IP_MTU:
+                return self._effective_pmtu()
         return None
 
     def _ipproto_ipv6_setsockopt(self, optname: int, value: int, /) -> bool:
@@ -432,6 +438,8 @@ class socket(ABC):
                 return self._ipv6_tclass
             case _ if optname == IPV6_RECVTCLASS:
                 return int(self._ipv6_recvtclass)
+            case _ if optname == IPV6_MTU:
+                return self._effective_pmtu()
         return None
 
     def _effective_ip_ttl(self) -> int | None:
@@ -456,6 +464,30 @@ class socket(ABC):
         if self._address_family is AddressFamily.INET6:
             return self._ipv6_tclass & 0x03
         return self._ip_tos & 0x03
+
+    def _effective_pmtu(self) -> int:
+        """
+        Get the effective Path-MTU for this socket's connected
+        peer: the cached value from 'stack.pmtu_cache' (populated
+        by the ICMPv4 / ICMPv6 PMTUD callbacks) when present,
+        otherwise the configured 'stack.interface_mtu' as a link-
+        layer fallback (matching Linux's IP_MTU semantics).
+
+        Raises 'OSError(ENOTCONN)' when the socket has no
+        connected remote, mirroring Linux 'ip(7)' / 'ipv6(7)' —
+        the MTU surface is defined per-destination, so an
+        unconnected socket has no meaningful value to return.
+        """
+
+        # Import here to avoid a top-level circular cycle between
+        # pytcp.socket and pytcp.stack at module load.
+        from pytcp import stack as _stack
+
+        if self._remote_ip_address.is_unspecified:
+            raise OSError(errno.ENOTCONN, "Socket is not connected — IP_MTU/IPV6_MTU has no peer")
+        if self._remote_ip_address in _stack.pmtu_cache:
+            return _stack.pmtu_cache[self._remote_ip_address]
+        return _stack.interface_mtu
 
     def _effective_ip4_options(self) -> Ip4Options | None:
         """

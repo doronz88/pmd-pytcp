@@ -378,12 +378,15 @@ abstract RFC 1122 §3.4 routine to a concrete call:
 - **GET_SRCADDR** → `getsockname()` at
   `pytcp/socket/__init__.py:640` returns the local
   address (after wildcard bind, the picked source).
-- **GET_MAXSIZES** → MTU discovery is exposed via PMTU
-  cache (`stack.pmtu_cache`); applications can query
-  effective MSS through socket-side state (not currently
-  via a stdlib-compatible `getsockopt`, but the
-  information is available — `IP_MTU` is a Linux-specific
-  option that lands as a Phase-3 socket-parity item).
+- **GET_MAXSIZES** → `getsockopt(IPPROTO_IP, IP_MTU)` and
+  `getsockopt(IPPROTO_IPV6, IPV6_MTU)` return the effective
+  Path-MTU for a connected socket — the cached value from
+  `stack.pmtu_cache` (populated by the ICMPv4 / ICMPv6
+  PMTUD callbacks) when present, otherwise
+  `stack.interface_mtu`. Unconnected sockets raise
+  `OSError(ENOTCONN)`, matching Linux 'ip(7)' / 'ipv6(7)'
+  semantics. The options are getsockopt-only;
+  setsockopt rejects them with `ENOPROTOOPT`.
 - **ADVISE_DELIVPROB** → not exposed (PyTCP has no
   routing-failure-rate feedback mechanism; the closest
   proxy is `notify_pmtu` from inbound ICMP "Packet Too
@@ -530,6 +533,24 @@ not closed; Phase-3 socket-parity item)**.
 
 **Status:** locked in.
 
+### §3.4 GET_MAXSIZES via IP_MTU / IPV6_MTU getsockopt
+
+- **Unit:**
+  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  — six tests pin `getsockopt(IP_MTU)` cache hit,
+  `interface_mtu` fallback, `ENOTCONN` on unconnected
+  socket, setsockopt rejection with `ENOPROTOOPT`, and
+  the IPv6 mirror cases.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpMtuGetsockopt`
+  — two tests drive end-to-end: bind+connect → empty cache
+  returns `interface_mtu`; bind+connect + outbound UDP +
+  inbound ICMPv4 Frag-Needed → cache populated →
+  `getsockopt(IP_MTU)` returns the advertised next-hop
+  MTU.
+
+**Status:** locked in.
+
 ### §4.1.4 received TOS pass-through (IP_RECVTOS / IPV6_RECVTCLASS)
 
 - **Unit:**
@@ -600,6 +621,7 @@ not closed; Phase-3 socket-parity item)**.
 | TTL + TOS per-socket override                       | locked in |
 | IP options pass-through (RX + TX)                   | locked in |
 | Received TOS / TClass pass-through (IP_RECVTOS / IPV6_RECVTCLASS) | locked in |
+| GET_MAXSIZES via IP_MTU / IPV6_MTU getsockopt        | locked in |
 
 ---
 
@@ -627,21 +649,23 @@ the column the RFC assigns; PyTCP status follows.
 | Applic layer notified of Local IP addr used            | 4.1.3.5 | SHOULD    | met (`getsockname()`) |
 | Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified at UDP layer) |
 | Only send valid IP source address                      | 4.1.3.6 | MUST      | met |
-| Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / RECV_ICMP); GET_MAXSIZES partial; ADVISE_DELIVPROB not implemented |
+| Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / GET_MAXSIZES / RECV_ICMP); ADVISE_DELIVPROB not implemented |
 | Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met (TTL via IP_TTL; TOS via IP_TOS; IP options via IP_OPTIONS) |
 | Pass received TOS up to applic layer                   | 4.1.4   | MAY       | met (recvmsg IP_TOS cmsg gated by IP_RECVTOS; IPv6: IPV6_TCLASS + IPV6_RECVTCLASS per RFC 3542 §6.5) |
 
 **Principal gap:** none. Every "MUST" row in the §4.1.5
-requirements-summary table is now met, and the
+requirements-summary table is now met, the
 `Pass received TOS up to applic layer` MAY row is also
-met. The remaining deltas are the cksum-skip MAY items
+met, and the previously-partial `GET_MAXSIZES`
+(`IP_MTU` / `IPV6_MTU` getsockopt) is now fully met.
+The remaining deltas are the cksum-skip MAY items
 (`Sender option to not generate checksum`, `Receiver
 option to require checksum`) — declined absent a PyTCP
-consumer — plus the partial-met `GET_MAXSIZES` (no
-`IP_MTU` getsockopt yet; tracked as item #3 in
-`docs/refactor/udp_remaining_items.md`).
+consumer — and the unimplemented `ADVISE_DELIVPROB`
+(`§3.4` advisory delivery-probability surface; PyTCP
+has no routing-failure-rate feedback mechanism).
 
-Five previously-flagged gaps in this audit are now closed:
+Six previously-flagged gaps in this audit are now closed:
 
 - **§4.1.3.2 IP options pass-through (RX + TX)** — three
   MUST rows in the requirements summary; closed by adding
@@ -667,6 +691,11 @@ Five previously-flagged gaps in this audit are now closed:
   support and `IP_TOS` / `IPV6_TCLASS` recvmsg cmsg
   emission. `UdpMetadata.ip__tos` carries the combined
   DSCP+ECN byte populated from the parsed IP header.
+- **§3.4 GET_MAXSIZES via socket API** — closed by adding
+  `IP_MTU` / `IPV6_MTU` getsockopt: returns the cached
+  `stack.pmtu_cache[remote]` when present, falling back
+  to `stack.interface_mtu`; raises `OSError(ENOTCONN)`
+  on unconnected sockets to match Linux 'ip(7)'.
 
 ---
 

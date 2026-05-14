@@ -54,7 +54,9 @@ from net_proto import (
     Ip4Assembler,
     UdpAssembler,
 )
+from pytcp import stack
 from pytcp.socket import (
+    IP_MTU,
     IP_TTL,
     IPPROTO_IP,
     AddressFamily,
@@ -340,6 +342,107 @@ class TestUdpSocketApiIpTtlOnWire(UdpTestCase):
             probe.ip_ttl,
             7,
             msg="setsockopt(IP_TTL, 7) must thread through to the outbound IPv4 TTL field.",
+        )
+
+
+class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
+    """
+    getsockopt(IP_MTU) on a connected UDP socket returns the
+    cached Path-MTU updated by an inbound ICMPv4 Frag-Needed.
+    Pins the end-to-end wiring: ICMPv4 RX demux → pmtu_cache
+    update → getsockopt readback.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bind + connect a UDP socket to HOST_A:5555 so the
+        ICMPv4 demux finds it via the embedded 4-tuple. Force
+        a known 'stack.interface_mtu' so the "no cache entry"
+        fallback assertion is deterministic.
+        """
+
+        super().setUp()
+        self._socket = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=STACK__IP4_HOST.address,
+            local_port=_LOCAL_PORT,
+            remote_ip=HOST_A__IP4_ADDRESS,
+            remote_port=_REMOTE_PORT,
+        )
+        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
+        stack.interface_mtu = 1500
+        self.addCleanup(self._restore_interface_mtu)
+
+    def _restore_interface_mtu(self) -> None:
+        """Restore the prior 'stack.interface_mtu' value."""
+        if self._interface_mtu_prior is None:
+            stack.__dict__.pop("interface_mtu", None)
+        else:
+            stack.interface_mtu = self._interface_mtu_prior
+
+    def test__udp_socket_api__ip_mtu__fallback_to_interface_mtu_without_pmtud(self) -> None:
+        """
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns
+        'stack.interface_mtu' when no ICMPv4 Frag-Needed has
+        landed for the connected peer yet.
+
+        Reference: RFC 1122 §3.4 (GET_MAXSIZES; link-MTU is the
+        baseline before PMTUD narrows it).
+        """
+
+        self.assertEqual(
+            self._socket.getsockopt(IPPROTO_IP, IP_MTU),
+            1500,
+            msg="IP_MTU must return stack.interface_mtu when pmtu_cache is empty.",
+        )
+
+    def test__udp_socket_api__ip_mtu__updates_after_icmp_frag_needed(self) -> None:
+        """
+        Ensure an inbound ICMPv4 Type 3 Code 4 (Fragmentation
+        Needed) frame whose embedded IPv4+UDP header matches
+        the connected socket's 4-tuple updates
+        'stack.pmtu_cache' for the remote address, and a
+        subsequent getsockopt(IP_MTU) returns the advertised
+        next-hop MTU.
+
+        Reference: RFC 1191 §3 (Path-MTU discovery).
+        Reference: RFC 1122 §3.4 (GET_MAXSIZES surfaces the
+        learned PMTU to the application).
+        """
+
+        # Stage 1: emit a UDP datagram so the ICMPv4 demux can
+        # match the embedded 4-tuple to our socket.
+        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        outbound_frame = self._frames_tx[-1]
+        embedded_ip4_and_udp = outbound_frame[14:]
+
+        # Stage 2: ICMPv4 Frag-Needed carrying that embedded
+        # datagram + the new next-hop MTU.
+        frag_needed_frame = bytes(
+            EthernetAssembler(
+                ethernet__src=_HOST_A_MAC,
+                ethernet__dst=_STACK_MAC,
+                ethernet__payload=Ip4Assembler(
+                    ip4__src=HOST_A__IP4_ADDRESS,
+                    ip4__dst=STACK__IP4_HOST.address,
+                    ip4__payload=Icmp4Assembler(
+                        icmp4__message=Icmp4MessageDestinationUnreachable(
+                            code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
+                            mtu=1280,
+                            data=embedded_ip4_and_udp,
+                        ),
+                    ),
+                ),
+            )
+        )
+        self._drive_udp_rx(frame=frag_needed_frame)
+
+        # Stage 3: the pmtu_cache update is now visible via
+        # IP_MTU.
+        self.assertEqual(
+            self._socket.getsockopt(IPPROTO_IP, IP_MTU),
+            1280,
+            msg="IP_MTU must return the ICMPv4-advertised next-hop MTU after PMTUD.",
         )
 
 
