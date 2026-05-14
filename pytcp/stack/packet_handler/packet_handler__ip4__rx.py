@@ -142,6 +142,22 @@ class PacketHandlerIp4Rx(ABC):
             )
             return
 
+        # Martian source filter: drop inbound packets whose source
+        # address is the directed broadcast of a locally configured
+        # subnet (RFC 1122 §3.2.1.3 — a source address MUST NOT be a
+        # broadcast address). The limited-broadcast / multicast /
+        # reserved cases are caught by the parser sanity check; this
+        # gate covers the per-subnet directed-broadcast class that
+        # requires '_ip4_host' state to recognise.
+        if packet_rx.ip4.src in self._ip4_broadcast:
+            self._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - <WARN>Dropping IPv4 packet with "
+                f"directed-broadcast source {packet_rx.ip4.src} (martian source)</>",
+            )
+            return
+
         # Check if received packet has been sent to us directly or by
         # unicast/broadcast, allow any destination if no unicast address
         # is configured (for DHCP client).

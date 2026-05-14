@@ -40,6 +40,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | `38d83e2e` | UDP RX accept sport=0 (RFC 768 source-port-optional) |
 | `57aaa7ad` | UDP RX IPv6 cksum=0 default-discard (RFC 6935 §5) |
 | `94863af4` | RFC 1122 §4.1.3.6 audit correction (filter is at IP layer) |
+| _(pending)_ | RFC 1122 §3.2.1.3 directed-broadcast source filter (#2) |
 
 ---
 
@@ -48,7 +49,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | # | Item | RFC clause | Audit verdict | Effort | Priority |
 |---|---|---|---|---|---|
 | 1 | IP options pass-through to/from application | RFC 1122 §4.1.3.2 | "not implemented" (3 MUSTs) | ~half-day | **High** — only actual conformance gap |
-| 2 | Directed-broadcast source filter | RFC 1122 §4.1.3.6 residual | "Phase-1 follow-up" | ~1-2h | Low |
+| 2 | ~~Directed-broadcast source filter~~ **SHIPPED** | RFC 1122 §4.1.3.6 residual | met (RX-handler `_ip4_broadcast` membership check) | done | — |
 | 3 | `IP_MTU` / `IPV6_PATHMTU` getsockopt | RFC 1122 §4.1.4 GET_MAXSIZES | "partial — Phase-3 socket-parity" | ~2-3h | Medium |
 | 4 | `IP_RECVERR` / `MSG_ERRQUEUE` socket-API | RFC 1122 §4.1.3.3 API parity | "Phase-3 socket-parity" | ~half-day | Medium |
 | 5 | `IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary | RFC 1122 §4.1.4 MAY | "not implemented (MAY)" | ~2-3h | Low |
@@ -131,11 +132,24 @@ exists.
 
 ---
 
-## #2 — Directed-broadcast source filter (RFC 1122 §4.1.3.6 residual)
+## #2 — Directed-broadcast source filter (RFC 1122 §4.1.3.6 residual) — **SHIPPED**
 
-**Status:** open. Not a strict conformance gap (the audit
-verdict is "met" — RFC 1122 §4.1.3.6 gives "broadcast or
-multicast" as an example, not an exhaustive enumeration).
+**Status:** closed. Shipped as the directed-broadcast
+martian-source filter at
+`pytcp/stack/packet_handler/packet_handler__ip4__rx.py:145-157`.
+Pinned by
+`pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py`
+(three tests: local-subnet directed broadcast dropped,
+remote-subnet directed broadcast accepted, unicast source
+unaffected). Counter:
+`PacketStatsRx.ip4__src_directed_broadcast__drop`.
+Audit ripple landed in
+`docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`
+§4.1.3.6 (preamble narrative, requirements summary,
+test coverage audit, overall assessment, closed-gaps
+footer).
+
+Original brief (kept for archaeology):
 
 ### What's filtered today
 

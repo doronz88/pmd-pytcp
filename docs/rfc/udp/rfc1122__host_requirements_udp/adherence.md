@@ -45,10 +45,9 @@ partial:
   met (filtered at the IP layer). PyTCP drops broadcast
   and multicast UDP sources via the IPv4 / IPv6 parser
   sanity checks before the UDP layer ever sees the
-  packet. Directed-broadcast (e.g. `10.0.1.255` for a
-  `/24`) is the remaining gap — it requires
-  per-interface configured-network awareness and is a
-  Phase-1 follow-up.
+  packet. Directed-broadcast sources (e.g. `10.0.1.255`
+  for a `/24`) are dropped in the IPv4 RX packet handler
+  against the configured `_ip4_broadcast` table.
 - §4.1.4 "MAY pass received TOS up to application layer":
   **partial** — IP_TOS is settable on TX (per-socket TOS
   / DSCP override) but the RX path does not expose the
@@ -68,7 +67,7 @@ partial:
 | §4.1.3.5 | Pass specific-destination addr to application | met (via PacketRx + UdpMetadata)          |
 | §4.1.3.5 | Application can specify local IP / wildcard   | met (`bind()`)                             |
 | §4.1.3.5 | Application notified of local IP used         | met (`getsockname()`)                      |
-| §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (broadcast + multicast filtered at IP-layer parser; unspecified filtered at UDP layer; directed-broadcast is a Phase-1 follow-up) |
+| §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified filtered at UDP layer) |
 | §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_host` / `_ip6_host`) |
 | §4.1.4   | Application MUST set TTL, TOS, IP options     | met for TTL + TOS; not implemented for IP options |
 | §4.1.4   | Pass received TOS up to application (MAY)     | not implemented (MAY)                      |
@@ -319,17 +318,23 @@ the UDP parser never runs (`udp__pre_parse == 0`), the
 socket dispatch never fires, and the
 `ip{4,6}__failed_parse__drop` counter bumps once.
 
-**Residual gap: directed-broadcast filtering.** A UDP
-datagram bearing `src=10.0.1.255` for a connected
-`/24` is currently accepted by the IPv4 parser
-(`is_limited_broadcast` only matches `255.255.255.255`).
-Closing this requires per-interface configured-network
-awareness — the parser would need to check the source
-against `_ip4_host[].network.broadcast` for every
-configured host. That's a Phase-1 follow-up; the
-audit's status remains "met" because RFC 1122 §4.1.3.6
-gives an example ("a broadcast or multicast address")
-rather than enumerating every form of invalid source.
+- **Directed-broadcast sources** (e.g. `10.0.1.255` for
+  a host on `10.0.1.0/24`) are dropped at the **IPv4
+  RX packet handler**, immediately after the parser
+  succeeds:
+
+  ```python
+  if packet_rx.ip4.src in self._ip4_broadcast:
+      self._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
+      return
+  ```
+
+  See `pytcp/stack/packet_handler/packet_handler__ip4__rx.py:145-157`.
+  The check uses the `_ip4_broadcast` property which
+  walks `_ip4_host[].network.broadcast` for every
+  configured subnet. Per-subnet awareness can't live
+  in the parser (parsers are stateless) so the check
+  lives in the handler.
 
 > "When a host sends a UDP datagram, the source address
 >  MUST be (one of) the IP address(es) of the host."
@@ -465,13 +470,17 @@ not closed; Phase-3 socket-parity item)**.
 - **Integration:** the existing IPv4 `src=0.0.0.0`
   parametric case exercises the UDP-layer
   `udp__ip_source_unspecified` drop.
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py::TestIp4MartianSourceDirectedBroadcast`
+  — three tests pin (a) directed broadcast of a locally
+  configured subnet is dropped and bumps
+  `ip4__src_directed_broadcast__drop`, (b) directed
+  broadcast of a remote (non-configured) subnet is
+  accepted as a unicast source, (c) a regular unicast
+  source is unaffected.
 
 **Status:** locked in for limited-broadcast, multicast
-(both IP versions), and unspecified. Directed-broadcast
-(e.g. `10.0.1.255` for a `/24`) is a Phase-1
-follow-up — no current test surface, would require
-per-interface configured-network awareness in the IPv4
-parser.
+(both IP versions), unspecified, and directed-broadcast.
 
 ### §4.1.4 TTL + TOS per-socket override
 
@@ -496,7 +505,7 @@ parser.
 | `IP_RECVERR` / `MSG_ERRQUEUE` API parity            | n/a (Phase-3 socket-parity track) |
 | `getsockname()` reveals picked source               | locked in |
 | `is_unspecified` source RX drop                     | locked in |
-| Broadcast / multicast source RX drop                | n/a (gap not closed; add test with fix) |
+| Broadcast / multicast / directed-broadcast source RX drop | locked in |
 | TTL + TOS per-socket override                       | locked in |
 | IP options pass-through (RX + TX)                   | n/a (not implemented) |
 
@@ -524,7 +533,7 @@ the column the RFC assigns; PyTCP status follows.
 | Applic layer can specify Local IP addr                 | 4.1.3.5 | MUST      | met (`bind()`) |
 | Applic layer specify wild Local IP addr                | 4.1.3.5 | MUST      | met |
 | Applic layer notified of Local IP addr used            | 4.1.3.5 | SHOULD    | met (`getsockname()`) |
-| Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | met (bcast + mcast filtered at IP-layer parser; unspecified at UDP layer; directed-broadcast is a Phase-1 follow-up) |
+| Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified at UDP layer) |
 | Only send valid IP source address                      | 4.1.3.6 | MUST      | met |
 | Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / RECV_ICMP); GET_MAXSIZES partial; ADVISE_DELIVPROB not implemented |
 | Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met for TTL + TOS; not implemented for IP options |
@@ -539,29 +548,26 @@ the column the RFC assigns; PyTCP status follows.
    rarely uses IP options, so the operational impact is
    low, but the conformance gap is real.
 
-**Phase-1 follow-up (not a conformance gap):**
-directed-broadcast source filtering (§4.1.3.6) — the
-IPv4 parser already drops limited-broadcast and
-multicast sources; directed-broadcast (e.g.
-`10.0.1.255` for a `/24`) would need per-interface
-configured-network awareness to catch.
-
 The IP-options gap is a Phase-1 polish track that would
 touch the socket API (extend `UdpMetadata` with
 `ip_options`; add `recvmsg()` ancillary-data API; expose
 `setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`).
 
-Two previously-flagged gaps in this audit are now closed:
+Three previously-flagged gaps in this audit are now closed:
 
 - **§4.1.3.4 computed-zero → all-ones substitution** —
   both UDP serialization paths apply the substitution
   per RFC 768.
-- **§4.1.3.6 invalid-source-address filtering** — the
-  IPv4/IPv6 parser sanity checks already reject
-  broadcast/multicast sources before the UDP layer
-  runs. The audit's "partial" status was an inaccurate
-  reading; the filter exists, just at a different
-  layer than expected.
+- **§4.1.3.6 broadcast/multicast source filtering** —
+  the IPv4/IPv6 parser sanity checks reject
+  limited-broadcast, multicast, and reserved sources
+  before the UDP layer runs.
+- **§4.1.3.6 directed-broadcast source filtering** —
+  the IPv4 RX packet handler drops sources matching any
+  locally configured subnet's broadcast address
+  (`_ip4_broadcast` membership check). Closes the
+  Phase-1 follow-up flagged in earlier revisions of
+  this audit.
 
 ---
 
