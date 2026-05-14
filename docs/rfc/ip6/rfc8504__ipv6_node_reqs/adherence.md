@@ -40,7 +40,7 @@ classified as one of:
 | §4      | Sub-IP Layer (link-layer RFCs)                 | N/A (TAP/TUN abstracts the link) |
 | §5.1    | RFC 8200 IPv6                                  | shipped             |
 | §5.2    | Extension Headers                              | shipped             |
-| §5.3    | Excessive option protections                   | partial (hard limits not exposed as sysctls) |
+| §5.3    | Excessive option protections                   | shipped (`ip6.ext_hdr_max_*` sysctls + RX cap gate) |
 | §5.4    | RFC 4861 Neighbor Discovery                    | shipped (NUD + RFC 7559 + RFC 4311 + RFC 4429 + RFC 7527; Redirect is Phase-2 router) |
 | §5.5    | RFC 3971 SEND                                  | deliberately skipped (crypto extension) |
 | §5.6    | RFC 5175 RA Flags Option                       | deferred (no consumer in PyTCP) |
@@ -151,7 +151,7 @@ type 0 is hard-dropped per RFC 5095. See the
 [RFC 8200 audit](../rfc8200__ipv6/adherence.md) and the
 [RFC 5095 audit](../rfc5095__deprecate_rh0/adherence.md).
 
-### §5.3 Protecting a Node from Excessive Extension Header Options — partial
+### §5.3 Protecting a Node from Excessive Extension Header Options — shipped
 
 > "A host MAY limit the number of consecutive PAD1 options
 > ... A host MAY limit the number of bytes in a PADN option
@@ -159,15 +159,37 @@ type 0 is hard-dropped per RFC 5095. See the
 > impose a limit on the maximum number of non-padding
 > options ..."
 
-**Adherence:** partial. PyTCP does enforce the option-
-length and -alignment rules from RFC 8200 §4.2 (covered by
-the §4 audit). The RFC 8504 §5.3 *configurable* limits
-(MAY) are not exposed as sysctl knobs — the parser accepts
-any number of options up to the natural extension-header
-length cap. A stack-level cap on extension-header length
-is a Phase-1 polish item; the explicit MAY phrasing of the
-clause means non-conformance is acceptable, but tracking
-this as a hardening opportunity is worthwhile.
+**Adherence:** shipped. PyTCP enforces three configurable
+caps via the sysctl registry, applied by the IPv6 RX path
+after a successful HBH / Destination Options parse:
+
+- `ip6.ext_hdr_max_options` (default 16) — total option
+  count per Hop-by-Hop / Destination Options header.
+- `ip6.ext_hdr_max_pad_bytes` (default 16) — total Pad-
+  byte budget per header (Pad1 contributes 1, PadN of
+  length N contributes 2 + N).
+- `ip6.ext_hdr_max_unknown_options` (default 2) —
+  unknown-option count per header.
+
+The defaults are deliberately permissive — Linux's option-
+validation defaults pass legitimate traffic with reasonable
+padding, and PyTCP matches that behaviour. Setting any cap
+to 0 disables that check.
+
+The cap-check helper lives at
+`pytcp/lib/ip6_ext_hdr_limits.py::check_ext_hdr_option_caps`;
+the RX wiring is at
+`pytcp/stack/packet_handler/packet_handler__ip6__rx.py::_phrx_ip6_hbh`
+and `::_phrx_ip6_dest_opts`. A cap violation drops the
+packet silently (the §5.3 caps are resource-exhaustion
+defences; the receiver is not obliged to emit ICMPv6
+Parameter Problem) and bumps
+`ip6_hbh__option_cap_exceeded__drop` or
+`ip6_dest_opts__option_cap_exceeded__drop`.
+
+The pre-existing option-length and -alignment rules from
+RFC 8200 §4.2 remain in force (covered by the §4 audit) —
+the §5.3 caps layer on top.
 
 ### §5.4 Neighbor Discovery for IPv6 — partial
 
@@ -481,6 +503,59 @@ deferred operational-tooling item.
 
 **Adherence:** deferred. NETCONF / YANG integration is a
 deferred operational-tooling item.
+
+---
+
+## Test coverage audit (§5.3 option-cap gate)
+
+### §5.3 option-count cap
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__option_count_cap_drops_packet`
+  — drives an HBH with 22 consecutive Pad1 options and
+  asserts the packet is dropped + the
+  `ip6_hbh__option_cap_exceeded__drop` counter bumps once.
+
+**Status:** locked in.
+
+### §5.3 pad-byte cap
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__pad_bytes_cap_drops_packet`
+  — drives an HBH whose total Pad-byte budget (PadN data +
+  trailing Pad1s) exceeds the cap; asserts drop + counter.
+
+**Status:** locked in.
+
+### §5.3 unknown-option cap
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__unknown_count_cap_drops_packet`
+  — drives an HBH carrying three unrecognized options
+  (action-bit pattern "skip on unrecognized"); asserts
+  drop + counter.
+
+**Status:** locked in.
+
+### §5.3 positive control (within caps)
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__within_caps_passes`
+  — drives an HBH well under every cap and asserts the
+  `cap_exceeded` counter does NOT bump while the parser
+  runs to completion.
+
+**Status:** locked in.
+
+### Test coverage summary
+
+| Aspect                                  | Coverage  |
+|-----------------------------------------|-----------|
+| §5.3 option-count cap (HBH RX)          | locked in |
+| §5.3 pad-byte cap (HBH RX)              | locked in |
+| §5.3 unknown-option cap (HBH RX)        | locked in |
+| §5.3 positive control (within caps)     | locked in |
+| §5.3 DestOpts RX cap-check parity       | covered by shared helper; positive HBH coverage exercises the same code path |
 
 ---
 

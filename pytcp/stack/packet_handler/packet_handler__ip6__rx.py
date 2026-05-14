@@ -61,6 +61,10 @@ from net_proto.protocols.ip6_routing.ip6_routing__errors import (
 )
 from net_proto.protocols.ip6_routing.ip6_routing__parser import Ip6RoutingParser
 from pytcp import stack
+from pytcp.lib.ip6_ext_hdr_limits import (
+    Ip6ExtHdrCapViolation,
+    check_ext_hdr_option_caps,
+)
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
@@ -292,6 +296,14 @@ class PacketHandlerIp6Rx(ABC):
             return self.__phrx_ip6__handle_options_sanity_error(
                 packet_rx, error_pointer=error.pointer, chain_offset=chain_offset
             )
+        # RFC 8504 §5.3 resource-exhaustion option-cap gate. Caps
+        # are configurable via 'ip6.ext_hdr_max_*' sysctls.
+        try:
+            check_ext_hdr_option_caps(packet_rx.ip6_hbh.options)
+        except Ip6ExtHdrCapViolation as error:
+            self._packet_stats_rx.ip6_hbh__option_cap_exceeded__drop += 1
+            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            return False
         return True
 
     def _phrx_ip6_routing(self, packet_rx: PacketRx, /, *, chain_offset: int) -> bool:
@@ -332,6 +344,14 @@ class PacketHandlerIp6Rx(ABC):
             return self.__phrx_ip6__handle_options_sanity_error(
                 packet_rx, error_pointer=error.pointer, chain_offset=chain_offset
             )
+        # RFC 8504 §5.3 resource-exhaustion option-cap gate. Caps
+        # are configurable via 'ip6.ext_hdr_max_*' sysctls.
+        try:
+            check_ext_hdr_option_caps(packet_rx.ip6_dest_opts.options)
+        except Ip6ExtHdrCapViolation as error:
+            self._packet_stats_rx.ip6_dest_opts__option_cap_exceeded__drop += 1
+            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            return False
         return True
 
     def __phrx_ip6__handle_options_sanity_error(

@@ -149,11 +149,13 @@ class PacketStatsRx(PacketStats):
 
     ip6_hbh__pre_parse: int = 0
     ip6_hbh__failed_parse: int = 0
+    ip6_hbh__option_cap_exceeded__drop: int = 0
     ip6_routing__pre_parse: int = 0
     ip6_routing__failed_parse: int = 0
     ip6_routing__rh0__drop: int = 0
     ip6_dest_opts__pre_parse: int = 0
     ip6_dest_opts__failed_parse: int = 0
+    ip6_dest_opts__option_cap_exceeded__drop: int = 0
     ip6__hbh__not_first__drop: int = 0
     ip6__no_next_header: int = 0
 
