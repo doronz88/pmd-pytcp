@@ -126,13 +126,14 @@ Per-RFC adherence audits live at `docs/rfc/<family>/rfcXXXX__<name>/adherence.md
 
 ## Canonical Rules
 
-PyTCP has nine canonical rule files in `.claude/rules/`. They are auto-loaded into the session context — read the relevant one before any non-trivial change. CLAUDE.md does not duplicate their content; when something feels missing here, it lives in one of the rules below.
+PyTCP has ten canonical rule files in `.claude/rules/`. They are auto-loaded into the session context — read the relevant one before any non-trivial change. CLAUDE.md does not duplicate their content; when something feels missing here, it lives in one of the rules below.
 
 | Rule | What it covers | Read when |
 |---|---|---|
 | [`feature_implementation.md`](.claude/rules/feature_implementation.md) | tests-first workflow, spec grounding, commit discipline, phase reporting | Every code change |
 | [`python_features.md`](.claude/rules/python_features.md) | Python 3.10–3.14 language features (PEP 604 / 585 / 695 / 696 / 698 / 649); forbidden pre-3.10 fallbacks | Any new file or refactor |
 | [`typing.md`](.claude/rules/typing.md) | mypy strict, annotations, generics, `Self` / `@override`, `Protocol` / `TypedDict`, `cast` and `# type: ignore` policy | Any annotation |
+| [`enums.md`](.claude/rules/enums.md) | enum discipline — protocol codepoints / socket-option numbers / flag bits as IntEnum/ProtoEnum members; stdlib-socket-parity bare-alias pattern; forbidden bare-int-as-enum constants | Any new constant representing one of a set |
 | [`source_files.md`](.claude/rules/source_files.md) | general source-file mechanics — file skeleton, copyright block, module docstring, imports, naming, formatting, inline comments, source docstrings | Any new source file |
 | [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `net_addr/` |
 | [`net_proto.md`](.claude/rules/net_proto.md) | `net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `net_proto/protocols/` |

@@ -243,13 +243,23 @@ def _validate_ip4_options_bytes(value: bytes, /) -> bytes:
     return value
 
 
-# BSD-socket 'shutdown(how)' constants per POSIX. Linux-numbered
-# values matching stdlib 'socket.SHUT_*'. RFC 9293 §3.9.1
-# half-close support: SHUT_WR triggers FIN emission like CLOSE
-# but leaves the read side open; SHUT_RD discards inbound data.
-SHUT_RD: int = 0
-SHUT_WR: int = 1
-SHUT_RDWR: int = 2
+class ShutdownHow(IntEnum):
+    """
+    BSD-socket 'shutdown(how)' values per POSIX (Linux-
+    numbered, matching Python stdlib 'socket.SHUT_*'). RFC
+    9293 §3.9.1 half-close support: SHUT_WR triggers FIN
+    emission like CLOSE but leaves the read side open;
+    SHUT_RD discards inbound data.
+    """
+
+    SHUT_RD = 0
+    SHUT_WR = 1
+    SHUT_RDWR = 2
+
+
+SHUT_RD = ShutdownHow.SHUT_RD
+SHUT_WR = ShutdownHow.SHUT_WR
+SHUT_RDWR = ShutdownHow.SHUT_RDWR
 
 
 class gaierror(OSError):

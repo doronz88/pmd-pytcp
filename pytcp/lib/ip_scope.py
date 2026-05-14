@@ -23,52 +23,37 @@
 
 
 """
-This module contains pure helpers backing the RFC 6724 §6
-default source-address selection algorithm applied to IPv4.
+RFC 4007 §5 / RFC 4291 §2.7 address-scope enum shared by the
+IPv4 and IPv6 source-selection helpers
+('pytcp/lib/ip4_source_selection.py' and
+'pytcp/lib/ip6_source_selection.py'). The numeric values are
+the same across families so the RFC 6724 §5 rule-2
+'same-scope' comparison stays a plain integer compare
+regardless of address family.
 
-The IPv4 family has no SLAAC PREFERRED/DEPRECATED state, no
-temporary-address machinery, and no §10.3 policy table, so
-only rules 1, 2, and 8 of the §5 algorithm apply. The
-helpers exposed here mirror the IPv6 ones in
-'pytcp/lib/ip6_source_selection.py': scope extraction
-('ip4_address_scope') and 32-bit common-prefix-length
-('common_prefix_len'). The selector itself lives on the
-IPv4 TX mixin because it needs the runtime address book.
-
-pytcp/lib/ip4_source_selection.py
+pytcp/lib/ip_scope.py
 
 ver 3.0.4
 """
 
-from net_addr import Ip4Address
-from pytcp.lib.ip_scope import IpScope
+from enum import IntEnum
 
 
-def ip4_address_scope(address: Ip4Address, /) -> IpScope:
+class IpScope(IntEnum):
     """
-    Return the RFC 4007-style scope value for the given IPv4
-    address. Loopback (127.0.0.0/8) is interface-local;
-    link-local (169.254.0.0/16) is link-local; everything else
-    — including RFC 1918 private space and public addresses —
-    reports as global.
-    """
+    RFC 4007 §5 / RFC 4291 §2.7 scope codepoints, shared
+    across IPv4 and IPv6. PyTCP's source-selection helpers
+    return this for cross-family scope comparison; the int
+    values match Linux's IPv6 scope codepoints so
+    cross-family rule-2 ordering is a plain integer compare.
 
-    if address.is_loopback:
-        return IpScope.INTERFACE_LOCAL
-    if address.is_link_local:
-        return IpScope.LINK_LOCAL
-    return IpScope.GLOBAL
-
-
-def common_prefix_len(a: Ip4Address, b: Ip4Address, /) -> int:
-    """
-    Return the number of leading bits the two IPv4 addresses
-    share. Identical addresses share 32 bits; addresses that
-    disagree at bit position N share N bits. Symmetric in its
-    arguments.
+    INTERFACE_LOCAL covers IPv4 loopback (127.0.0.0/8) and
+    IPv6 loopback (::1); LINK_LOCAL covers IPv4 link-local
+    (169.254.0.0/16) and IPv6 link-local (fe80::/10); GLOBAL
+    is everything else, including RFC 1918 private and
+    routable public addresses.
     """
 
-    xor = int(a) ^ int(b)
-    if xor == 0:
-        return 32
-    return 32 - xor.bit_length()
+    INTERFACE_LOCAL = 0x1
+    LINK_LOCAL = 0x2
+    GLOBAL = 0xE

@@ -39,21 +39,16 @@ ver 3.0.4
 """
 
 from net_addr import Ip6Address
-
-# Scope codepoints per RFC 4007 §5 / RFC 4291 §2.7. Numeric
-# values are the multicast 'scop' field encoding so unicast and
-# multicast scopes share a single integer space and rule-2
-# comparison stays a plain integer comparison.
-IP6__SCOPE__INTERFACE_LOCAL: int = 0x1
-IP6__SCOPE__LINK_LOCAL: int = 0x2
-IP6__SCOPE__GLOBAL: int = 0xE
+from pytcp.lib.ip_scope import IpScope
 
 
-def ip6_address_scope(address: Ip6Address, /) -> int:
+def ip6_address_scope(address: Ip6Address, /) -> IpScope | int:
     """
     Return the RFC 4007 §5 / RFC 4291 §2.7 scope value for the
     given IPv6 address. Multicast addresses report their 'scop'
-    nibble verbatim; unicast addresses are categorised as
+    nibble verbatim (as an int — multicast scope encoding can
+    include codepoints outside the IpScope enum, e.g.
+    site-local 0x5); unicast addresses are categorised as
     interface-local (loopback ::1), link-local (fe80::/10), or
     global (everything else, including ULA and the unspecified
     address). The unspecified address is reported as global so
@@ -64,10 +59,10 @@ def ip6_address_scope(address: Ip6Address, /) -> int:
     if address.is_multicast:
         return (int(address) >> 112) & 0xF
     if address.is_loopback:
-        return IP6__SCOPE__INTERFACE_LOCAL
+        return IpScope.INTERFACE_LOCAL
     if address.is_link_local:
-        return IP6__SCOPE__LINK_LOCAL
-    return IP6__SCOPE__GLOBAL
+        return IpScope.LINK_LOCAL
+    return IpScope.GLOBAL
 
 
 def common_prefix_len(a: Ip6Address, b: Ip6Address, /) -> int:
