@@ -81,7 +81,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet 802.3 - dst is our stack unicast MAC, accepted",
+            "_description": "Ethernet 802.3 - dst is our stack unicast MAC, accepted; LLC parse fails on empty payload",
             "_frames_rx": [
                 # Ethernet 802.3
                 #   Destination MAC : 02:00:00:00:00:07 (stack unicast)
@@ -89,32 +89,36 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Length          : 0x0000 (no LLC payload — header-only frame)
                 #
                 # Summary: Header-only 802.3 frame addressed to the stack unicast MAC.
-                #          Parser accepts it, classifier bumps the unicast counter.
+                #          MAC filter accepts; LLC parser then fails on the empty
+                #          payload (no room for the 3-byte LLC header).
                 b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x00\x00",
             ],
             "_expected__frames_tx": [],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet_802_3__pre_parse=1,
                 ethernet_802_3__dst_unicast=1,
+                ethernet_802_3__llc_failed_parse__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet 802.3 - dst is our solicited-node multicast MAC, accepted",
+            "_description": "Ethernet 802.3 - dst is solicited-node multicast MAC; LLC fails on empty payload",
             "_frames_rx": [
                 # Ethernet 802.3
                 #   Destination MAC : 33:33:ff:00:00:07 (solicited-node multicast for 2001:db8:0:1::7)
                 #   Source MAC      : 52:54:00:df:85:37
                 #   Length          : 0x0000 (no LLC payload — header-only frame)
                 #
-                # Summary: Header-only 802.3 frame addressed to a multicast MAC the stack
-                #          has joined. Parser accepts; classifier bumps the multicast counter.
+                # Summary: Header-only 802.3 frame addressed to a multicast MAC the
+                #          stack has joined. MAC filter accepts; LLC parser then
+                #          fails on the empty payload.
                 b"\x33\x33\xff\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x00\x00",
             ],
             "_expected__frames_tx": [],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet_802_3__pre_parse=1,
                 ethernet_802_3__dst_multicast=1,
+                ethernet_802_3__llc_failed_parse__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
@@ -138,21 +142,22 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet 802.3 - dst is broadcast MAC, accepted",
+            "_description": "Ethernet 802.3 - dst is broadcast MAC, accepted; LLC parse fails on empty payload",
             "_frames_rx": [
                 # Ethernet 802.3
                 #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
                 #   Source MAC      : 52:54:00:df:85:37
                 #   Length          : 0x0000 (no LLC payload — header-only frame)
                 #
-                # Summary: Header-only 802.3 broadcast frame. Parser accepts; classifier
-                #          bumps the broadcast counter.
+                # Summary: Header-only 802.3 broadcast frame. MAC filter accepts; LLC
+                #          parser then fails on the empty payload.
                 b"\xff\xff\xff\xff\xff\xff\x52\x54\x00\xdf\x85\x37\x00\x00",
             ],
             "_expected__frames_tx": [],
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet_802_3__pre_parse=1,
                 ethernet_802_3__dst_broadcast=1,
+                ethernet_802_3__llc_failed_parse__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },

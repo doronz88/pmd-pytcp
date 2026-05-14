@@ -120,27 +120,30 @@ class _StubHandler(PacketHandlerEthernet8023Rx):
 @parameterized_class(
     [
         {
-            "_description": "Ethernet 802.3 frame addressed to stack unicast MAC.",
+            "_description": "Ethernet 802.3 frame addressed to stack unicast MAC (LLC parse fails on empty payload).",
             "_frame": _FRAME_802_3__DST_UNICAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
                 "ethernet_802_3__dst_unicast": 1,
+                "ethernet_802_3__llc_failed_parse__drop": 1,
             },
         },
         {
-            "_description": "Ethernet 802.3 frame addressed to stack multicast MAC.",
+            "_description": "Ethernet 802.3 frame addressed to stack multicast MAC (LLC parse fails on empty payload).",
             "_frame": _FRAME_802_3__DST_MULTICAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
                 "ethernet_802_3__dst_multicast": 1,
+                "ethernet_802_3__llc_failed_parse__drop": 1,
             },
         },
         {
-            "_description": "Ethernet 802.3 frame addressed to broadcast MAC.",
+            "_description": "Ethernet 802.3 frame addressed to broadcast MAC (LLC parse fails on empty payload).",
             "_frame": _FRAME_802_3__DST_BROADCAST,
             "_results": {
                 "ethernet_802_3__pre_parse": 1,
                 "ethernet_802_3__dst_broadcast": 1,
+                "ethernet_802_3__llc_failed_parse__drop": 1,
             },
         },
         {

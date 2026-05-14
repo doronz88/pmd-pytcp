@@ -95,6 +95,31 @@ class PacketStatsRx(PacketStats):
     ethernet_802_3__dst_unicast: int = 0
     ethernet_802_3__dst_multicast: int = 0
     ethernet_802_3__dst_broadcast: int = 0
+    # LLC dispatch (Phase 2 of the LLC/SNAP wire-up).
+    ethernet_802_3__llc_failed_parse__drop: int = 0
+    ethernet_802_3__llc_stp_bpdu__drop: int = 0
+    ethernet_802_3__llc_novell_ipx__drop: int = 0
+    ethernet_802_3__llc_global_dsap__drop: int = 0
+    ethernet_802_3__llc_unknown_dsap__drop: int = 0
+    # SNAP dispatch (DSAP=0xAA branch).
+    ethernet_802_3__snap_failed_parse__drop: int = 0
+    ethernet_802_3__snap_rfc1042_ip4: int = 0
+    ethernet_802_3__snap_rfc1042_ip6: int = 0
+    ethernet_802_3__snap_rfc1042_arp: int = 0
+    ethernet_802_3__snap_rfc1042_unknown__drop: int = 0
+    # Cisco SNAP (OUI=0x00000C) — individual counters per
+    # protocol so log analysis can identify which Cisco
+    # management traffic is on the wire.
+    ethernet_802_3__snap_cisco_cdp__drop: int = 0
+    ethernet_802_3__snap_cisco_cgmp__drop: int = 0
+    ethernet_802_3__snap_cisco_vtp__drop: int = 0
+    ethernet_802_3__snap_cisco_dtp__drop: int = 0
+    ethernet_802_3__snap_cisco_pvst_plus__drop: int = 0
+    ethernet_802_3__snap_cisco_vlan_bridge__drop: int = 0
+    ethernet_802_3__snap_cisco_udld__drop: int = 0
+    ethernet_802_3__snap_cisco_unknown__drop: int = 0
+    # Other SNAP OUIs (IEEE 802.1, Apple, etc.).
+    ethernet_802_3__snap_unknown_oui__drop: int = 0
 
     arp__pre_parse: int = 0
     arp__failed_parse__drop: int = 0
