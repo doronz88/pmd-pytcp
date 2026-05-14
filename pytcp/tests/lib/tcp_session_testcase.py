@@ -149,6 +149,7 @@ class TcpSessionTestCase(NetworkTestCase):
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
     _pmtu_cache_prior: dict[Any, Any]
+    _pmtu_state_prior: dict[Any, Any]
     _icmp4_error_rate_limiter_prior: IcmpErrorRateLimiter
     _icmp6_error_rate_limiter_prior: IcmpErrorRateLimiter
 
@@ -204,6 +205,12 @@ class TcpSessionTestCase(NetworkTestCase):
         self._pmtu_cache_prior = dict(stack.pmtu_cache)
         stack.pmtu_cache.clear()
 
+        # 'stack.pmtu_state' is the unified PLPMTUD engine registry
+        # added by Phase 2 of the PLPMTUD plan; snapshot/clear it
+        # alongside the legacy pmtu_cache.
+        self._pmtu_state_prior = dict(stack.pmtu_state)
+        stack.pmtu_state.clear()
+
         # ICMP error rate limiters: snapshot+replace with fresh
         # instances so a TCP test that triggers ICMP error suppression
         # (e.g. via the UDP closed-port emitter from a peer probe)
@@ -238,6 +245,9 @@ class TcpSessionTestCase(NetworkTestCase):
 
         stack.pmtu_cache.clear()
         stack.pmtu_cache.update(self._pmtu_cache_prior)
+
+        stack.pmtu_state.clear()
+        stack.pmtu_state.update(self._pmtu_state_prior)
 
         stack.icmp4_error_rate_limiter = self._icmp4_error_rate_limiter_prior
         stack.icmp6_error_rate_limiter = self._icmp6_error_rate_limiter_prior

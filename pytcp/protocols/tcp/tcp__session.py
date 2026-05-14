@@ -41,6 +41,7 @@ from net_addr import Ip4Address, Ip6Address
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.lib.plpmtud import PmtuSearch
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
@@ -814,6 +815,33 @@ class TcpSession:
             self._win.snd_mss = new_mss
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+
+        # Mirror the classical PMTU signal into the unified PLPMTUD
+        # engine ('stack.pmtu_state'). The PmtuSearch instance is
+        # lazily allocated on first ICMP signal for the destination;
+        # subsequent signals call on_classical_pmtu() which clamps to
+        # the family floor and (in ERROR state) recovers to SEARCHING.
+        # Skipped when 'stack.interface_mtu' is not yet set (unit-test
+        # fixtures that exercise _apply_pmtu_update without a full
+        # stack init).
+        iface_mtu = stack.__dict__.get("interface_mtu")
+        if iface_mtu is not None:
+            engine = stack.pmtu_state.get(self._remote_ip_address)
+            if engine is None:
+                if isinstance(self._remote_ip_address, Ip6Address):
+                    engine_ip6: PmtuSearch[Ip6Address] = PmtuSearch(
+                        address=self._remote_ip_address,
+                        interface_mtu=iface_mtu,
+                    )
+                    engine = engine_ip6
+                else:
+                    engine_ip4: PmtuSearch[Ip4Address] = PmtuSearch(
+                        address=self._remote_ip_address,
+                        interface_mtu=iface_mtu,
+                    )
+                    engine = engine_ip4
+                stack.pmtu_state[self._remote_ip_address] = engine
+            engine.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
 
         # RFC 1191 §6.5 walkback. Only fire when (a) the MSS actually
         # shrunk and (b) at least one in-flight segment is oversized

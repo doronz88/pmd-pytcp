@@ -58,6 +58,7 @@ from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, Ip6Address
+    from pytcp.lib.plpmtud import PmtuSearch
     from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal
     from pytcp.socket import socket
 
@@ -296,7 +297,36 @@ sockets: dict[SocketId, socket] = {}
 # in Phases 4-6 of the ICMP demux + PMTUD refactor; consulted by
 # UDP and TCP TX paths for fragment-or-fail / MSS-recompute
 # decisions. Process-lifetime only — entries do not expire.
+# Legacy scalar view; new consumers should call 'current_pmtu(dst)'
+# below which prefers 'pmtu_state' when present.
 pmtu_cache: dict[Ip4Address | Ip6Address, int] = {}
+
+# RFC 4821 / RFC 8899 per-destination PLPMTUD engine state. Each
+# entry is a PmtuSearch instance whose state machine
+# (BASE / SEARCHING / SEARCH_COMPLETE / ERROR) the per-transport
+# adapter drives. Phase 2 of the PLPMTUD plan
+# (docs/refactor/plpmtud_unified_engine.md) introduces this dict
+# alongside the legacy 'pmtu_cache' above; subsequent phases wire
+# the TCP and UDP adapters that mutate it via PmtuSearch's public
+# API ('on_probe_ack' / 'on_probe_loss' / 'on_classical_pmtu' /
+# 'next_probe_size' / 'confirm_current').
+pmtu_state: dict[Ip4Address | Ip6Address, PmtuSearch[Ip4Address] | PmtuSearch[Ip6Address]] = {}
+
+
+def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
+    """
+    Return the current PLPMTU for 'dst', preferring the active
+    PLPMTUD engine state ('pmtu_state') over the legacy
+    classical-PMTUD scalar cache ('pmtu_cache'). Returns None
+    when no signal has been observed for the destination — the
+    caller should fall back to 'stack.interface_mtu'.
+    """
+
+    engine = pmtu_state.get(dst)
+    if engine is not None:
+        return engine.current_mtu
+    return pmtu_cache.get(dst)
+
 
 # RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) outbound ICMP error rate
 # limiters. One per L3 version so a flood of v4 errors cannot

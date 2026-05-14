@@ -153,7 +153,13 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
             self._base_mtu = BASE_PLPMTU__IP4
         self._max_mtu = max(interface_mtu, self._min_mtu)
         self._state = PmtuState.BASE
-        self._current_mtu = max(self._min_mtu, self._base_mtu)
+        # current_mtu starts at the interface MTU, not BASE_PLPMTU
+        # — until probing or ICMP signals tell us otherwise, the
+        # link MTU is the best available estimate (matches Linux's
+        # pragmatic classical-PMTUD-compatible behaviour). The
+        # BASE_PLPMTU value is the size of the initial *probe*, not
+        # the working PLPMTU.
+        self._current_mtu = self._max_mtu
         self._candidate_mtu = self._base_mtu
         self._ack_size = self._min_mtu
         self._search_high = self._max_mtu

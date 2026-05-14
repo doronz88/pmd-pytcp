@@ -250,11 +250,20 @@ flipped from "not implemented" to "met (substrate)";
 active-probing rows remain "not implemented" with a
 forward pointer to Phases 1-4.
 
-### Phase 1 — `PmtuSearch` shared engine
+### Phase 1 — `PmtuSearch` shared engine — SHIPPED 2026-05-14
 
 **Goal:** ship the state machine as a stateful runtime
 class under `pytcp/lib/plpmtud.py` with full unit-test
 coverage. No integration.
+
+**Shipped:** `pytcp/lib/plpmtud.py` (`PmtuSearch[A]` +
+`PmtuState` + module-level RFC-default constants) plus
+21 unit tests at `pytcp/tests/unit/lib/test__lib__plpmtud.py`
+covering the §7.5 Phase-1 test matrix. Engine initializes
+with `current_mtu = interface_mtu` so it stays
+compatible with classical-PMTUD callers; the BASE_PLPMTU
+constant is the size of the initial probe, not the
+working PLPMTU.
 
 **Touches:**
 - `pytcp/lib/plpmtud.py` — new file. PEP 695 generic
@@ -289,11 +298,26 @@ coverage. No integration.
 
 **Effort:** ~half-day. Pure code, no async or threading.
 
-### Phase 2 — Promote `pmtu_cache` to `pmtu_state`
+### Phase 2 — Promote `pmtu_cache` to `pmtu_state` — SHIPPED 2026-05-14
 
 **Goal:** the per-destination registry stores
 `PmtuSearch` instances. Existing consumers keep working
 via a backward-compat accessor.
+
+**Shipped:** `stack.pmtu_state` registry +
+`stack.current_pmtu(dst)` helper land alongside the
+legacy `pmtu_cache`; `_apply_pmtu_update` (TCP) and
+`notify_pmtu` (UDP) mirror every classical PTB into the
+registry; `_effective_pmtu()` reads via the precedence
+helper (engine state preferred, cache as fallback). The
+three socket-touching test harnesses
+(`IcmpTestCase` / `TcpSessionTestCase` / `UdpTestCase`)
+snapshot+clear+restore `stack.pmtu_state` alongside
+`pmtu_cache` so the new module state cannot leak
+across tests. Six new unit tests at
+`pytcp/tests/unit/lib/test__lib__pmtu_state.py` pin the
+registry shape, lazy fallback to legacy cache,
+per-destination isolation, and IPv4 / IPv6 keying.
 
 **Touches:**
 - `pytcp/stack/__init__.py` — add `pmtu_state` dict +

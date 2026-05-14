@@ -104,6 +104,7 @@ class UdpTestCase(NetworkTestCase):
 
     _sockets_prior: dict[Any, Any]
     _pmtu_cache_prior: dict[Any, Any]
+    _pmtu_state_prior: dict[Any, Any]
     _icmp4_error_rate_limiter_prior: IcmpErrorRateLimiter
     _icmp6_error_rate_limiter_prior: IcmpErrorRateLimiter
 
@@ -139,6 +140,12 @@ class UdpTestCase(NetworkTestCase):
         self._pmtu_cache_prior = dict(stack.pmtu_cache)
         stack.pmtu_cache.clear()
 
+        # 'stack.pmtu_state' is the unified PLPMTUD engine registry
+        # added by Phase 2 of the PLPMTUD plan; snapshot/clear
+        # alongside the legacy pmtu_cache.
+        self._pmtu_state_prior = dict(stack.pmtu_state)
+        stack.pmtu_state.clear()
+
         # ICMP error rate limiters: snapshot+replace with fresh
         # instances so a UDP test that triggers ICMP error
         # delivery (notify_unreachable / notify_pmtu /
@@ -161,6 +168,9 @@ class UdpTestCase(NetworkTestCase):
 
         stack.pmtu_cache.clear()
         stack.pmtu_cache.update(self._pmtu_cache_prior)
+
+        stack.pmtu_state.clear()
+        stack.pmtu_state.update(self._pmtu_state_prior)
 
         stack.icmp4_error_rate_limiter = self._icmp4_error_rate_limiter_prior
         stack.icmp6_error_rate_limiter = self._icmp6_error_rate_limiter_prior

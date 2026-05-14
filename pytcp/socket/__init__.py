@@ -592,10 +592,13 @@ class socket(ABC):
     def _effective_pmtu(self) -> int:
         """
         Get the effective Path-MTU for this socket's connected
-        peer: the cached value from 'stack.pmtu_cache' (populated
-        by the ICMPv4 / ICMPv6 PMTUD callbacks) when present,
-        otherwise the configured 'stack.interface_mtu' as a link-
-        layer fallback (matching Linux's IP_MTU semantics).
+        peer: the value reported by 'stack.current_pmtu()'
+        (which prefers the active PLPMTUD engine state in
+        'stack.pmtu_state' and falls back to the legacy
+        classical-PMTUD scalar in 'stack.pmtu_cache') when
+        present, otherwise the configured 'stack.interface_mtu'
+        as a link-layer fallback (matching Linux's IP_MTU
+        semantics).
 
         Raises 'OSError(ENOTCONN)' when the socket has no
         connected remote, mirroring Linux 'ip(7)' / 'ipv6(7)' —
@@ -609,8 +612,9 @@ class socket(ABC):
 
         if self._remote_ip_address.is_unspecified:
             raise OSError(errno.ENOTCONN, "Socket is not connected — IP_MTU/IPV6_MTU has no peer")
-        if self._remote_ip_address in _stack.pmtu_cache:
-            return _stack.pmtu_cache[self._remote_ip_address]
+        current = _stack.current_pmtu(self._remote_ip_address)
+        if current is not None:
+            return current
         return _stack.interface_mtu
 
     def _effective_ip4_options(self) -> Ip4Options | None:

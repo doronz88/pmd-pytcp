@@ -35,6 +35,7 @@ from __future__ import annotations
 import errno
 import os
 import threading
+import time
 from collections import deque
 from typing import TYPE_CHECKING, override
 
@@ -52,6 +53,7 @@ from pytcp.lib.ip_helper import (
     pick_local_port,
 )
 from pytcp.lib.logger import log
+from pytcp.lib.plpmtud import PmtuSearch
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
     IP_OPTIONS,
@@ -899,6 +901,31 @@ class UdpSocket(socket):
         """
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+
+        # Mirror the classical PMTU signal into the unified PLPMTUD
+        # engine ('stack.pmtu_state'). Lazy-allocate on first signal
+        # so destinations that never receive ICMP feedback stay out
+        # of the registry. Skipped when 'stack.interface_mtu' is not
+        # yet set (unit-test fixtures that exercise notify_pmtu
+        # without a full stack init).
+        iface_mtu = stack.__dict__.get("interface_mtu")
+        if iface_mtu is not None:
+            engine = stack.pmtu_state.get(self._remote_ip_address)
+            if engine is None:
+                if isinstance(self._remote_ip_address, Ip6Address):
+                    engine_ip6: PmtuSearch[Ip6Address] = PmtuSearch(
+                        address=self._remote_ip_address,
+                        interface_mtu=iface_mtu,
+                    )
+                    engine = engine_ip6
+                else:
+                    engine_ip4: PmtuSearch[Ip4Address] = PmtuSearch(
+                        address=self._remote_ip_address,
+                        interface_mtu=iface_mtu,
+                    )
+                    engine = engine_ip4
+                stack.pmtu_state[self._remote_ip_address] = engine
+            engine.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
 
         if offender_ip is None or not self._is_recverr_enabled():
             return
