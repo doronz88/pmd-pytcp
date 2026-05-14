@@ -27,35 +27,34 @@ reads "Principal gap: none."
 
 ## Direct follow-on items
 
-### 1. TCP-side IP_RECVERR / MSG_ERRQUEUE
+### 1. TCP-side IP_RECVERR / MSG_ERRQUEUE — SHIPPED 2026-05-14
 
-**Source:** flagged in commit `7a737d63` body. The UDP-side
-error queue + cmsg infrastructure landed; TCP needs the
-parallel surface. TCP's `notify_*` callbacks already exist
-and dispatch to the FSM, but there's no equivalent
-'recvmsg(MSG_ERRQUEUE)' surface on `TcpSocket`.
+The TCP socket-API error-queue surface landed:
 
-**Scope:**
-- Extend `TcpSocket` with the same `_error_queue` /
-  `_ip_recverr` / `_ipv6_recverr` flags / `recvmsg(MSG_ERRQUEUE)`
-  method that `UdpSocket` has.
-- Update the ICMP demux callers in
-  `packet_handler__icmp{4,6}__rx.py` for the TCP branch
-  (currently `int(message.code)` for TCP — replace with
-  enum, pass through `icmp_origin` / `embedded_datagram` /
-  `offender_ip` like the UDP path).
-- The error-queue plumbing (`pytcp.socket.error_queue`
-  module — `ErrorQueueEntry`, `SoEeOrigin`, `icmp4_to_errno`
-  / `icmp6_to_errno`, `pack_sock_extended_err`) is shared
-  and ready to consume.
-- Decide: does TCP's recvmsg(MSG_ERRQUEUE) behavior need
-  to interact with FSM state? Linux's TCP IP_RECVERR
-  queues per-socket regardless of FSM — the application
-  gets the error context independent of whether the
-  session has been reset/closed yet.
+- `TcpSocket._error_queue` / `_error_queue_ready` /
+  `notify_unreachable` / `notify_time_exceeded` /
+  `notify_parameter_problem` / `notify_pmtu` / `recvmsg`
+  / `_recvmsg_errqueue` mirror the UDP shape, sharing
+  the `build_icmp_error_entry` helper extracted to
+  `pytcp/socket/error_queue.py`.
+- ICMPv4 / ICMPv6 demux TCP dispatchers
+  (`packet_handler__icmp{4,6}__rx.py`) now call
+  `socket.notify_*` alongside the existing
+  `session.tcp_fsm(IcmpMetadata(...))` event, with
+  enum-typed `icmp_type` / `icmp_code` (Icmp4Type /
+  Icmp6Type / Icmp{4,6}DestinationUnreachableCode /
+  Icmp{4,6}TimeExceededCode / Icmp{4,6}ParameterProblemCode)
+  + `SoEeOrigin.ICMP{,6}` + offender + embedded.
+- 13 new integration tests in
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
+  cover get/set round-trip, ICMPv4 dest-unreachable /
+  frag-needed / time-exceeded / parameter-problem,
+  ICMPv6 dest-unreachable / packet-too-big, gating,
+  FIFO bound, FSM-independence.
+- RFC 1122 §4.2.3.9 adherence record refreshed to
+  reflect the new full-propagation surface.
 
-**Effort:** ~half-day (smaller than the UDP version
-because the error_queue module exists).
+10700 tests passing, 4 skipped. `make lint` clean.
 
 ### 2. UDP #6 — `UDP_NO_CHECK6_RX/TX` per-port opt-in
 

@@ -250,22 +250,46 @@ scope for this TCP audit.
 > "TCP MUST act on an ICMP error message passed up
 > from the IP layer."
 
-**Adherence:** met (minimal interpretation). PyTCP
-receives ICMP Destination Unreachable / Time Exceeded
-at the IP layer; the demux beyond UDP is not wired
-into TcpSession, so the TCP layer "acts on" the error
-indirectly: the offending segment's RTO eventually
-fires the RFC 1122 §4.2.3.5 R2 abort threshold (≥ 100s)
-and the connection terminates. The stronger
-interpretation (per-error early abort, socket-level
-error propagation to user code) crosscuts RFC 1191 /
-RFC 4821 PMTUD which are tracked as separate gap-
-reports under their own audit records. The §4.2.3.9
-"MUST act on" wording is satisfied at the
-fault-tolerance minimum: the TCP layer does not crash
-on ICMP error receipt, the connection does not hang
-indefinitely, and the eventual RTO + R2 abort provides
-a recovery path for unrecoverable destinations.
+**Adherence:** met. PyTCP propagates inbound ICMPv4 /
+ICMPv6 errors matching a connected TCP 4-tuple along
+two parallel paths:
+
+1. **FSM-event path.** The ICMP demux
+   (`packet_handler__icmp{4,6}__rx.py`) routes Destination
+   Unreachable / Time Exceeded / Parameter Problem /
+   Fragmentation Needed / Packet Too Big to the
+   matching `TcpSession` via `session.tcp_fsm(icmp=
+   IcmpMetadata(...))`. Per-code routing maps Net /
+   Host / Port unreachable to the
+   `ConnError.NET_UNREACHABLE` / `HOST_UNREACHABLE` /
+   `REFUSED` surfacing on `TcpSession` (RFC 5927 §4
+   sequence-in-window guard applies); PMTU
+   indications drive the per-destination
+   `stack.pmtu_cache` + `snd_mss` recompute.
+2. **Socket-API error-queue path (Linux IP_RECVERR /
+   IPV6_RECVERR parity).** When the application
+   opts in via `setsockopt(IPPROTO_IP, IP_RECVERR, 1)`
+   / `IPV6_RECVERR`, the matched `TcpSocket` receives
+   `notify_unreachable` / `notify_time_exceeded` /
+   `notify_parameter_problem` / `notify_pmtu`
+   alongside the FSM-event call. Each notification
+   appends an `ErrorQueueEntry` carrying the
+   Linux-shape `sock_extended_err` field mapping
+   (`errno`, `origin`, `type`, `code`, `ee_info=MTU`
+   on PMTU) and the embedded triggering segment. The
+   application drains via `recvmsg(flags=
+   MSG_ERRQUEUE)` and reads the cmsg bytes exactly
+   as `<linux/errqueue.h>` defines (16-byte
+   `sock_extended_err` + 16-byte `sockaddr_in` /
+   28-byte `sockaddr_in6`). FSM transition is
+   independent — entries queued during one FSM state
+   remain readable after the session has transitioned
+   to CLOSED.
+
+Beyond the per-error early abort, the legacy R2-abort
+fallback (≥ 100 s retransmit, RFC 1122 §4.2.3.5)
+still applies for ICMP errors the demux cannot match
+to a session.
 
 ---
 
@@ -323,6 +347,27 @@ the modern RFC's record:
 
 **Status:** locked in.
 
+### §4.2.3.9 ICMP error propagation (FSM + IP_RECVERR)
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`,
+  `test__tcp__session__icmp__time_exceeded.py`,
+  `test__tcp__session__icmp__param_problem.py`,
+  `test__tcp__session__icmp__pmtu.py` (+ the `__ip6`
+  parallels) lock the FSM-event path — per-code
+  routing, RFC 5927 §4 sequence-in-window guard, PMTU
+  cache update, ConnError surfacing.
+- **Integration (Linux IP_RECVERR parity):**
+  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
+  locks the socket-API error-queue path: get/set
+  round-trip, ICMPv4 dest-unreachable / frag-needed /
+  time-exceeded / parameter-problem enqueues, ICMPv6
+  dest-unreachable / packet-too-big enqueues, gating,
+  FIFO-bound at 32 entries, FSM-independent
+  readability.
+
+**Status:** locked in.
+
 ---
 
 ## Overall assessment
@@ -346,7 +391,7 @@ the modern RFC's record:
 | §4.2.3.6 Keep-alives                            | met (with socket-API control)                                    |
 | §4.2.3.7 Multihoming                            | n/a (not modelled)                                               |
 | §4.2.3.8 IP options                             | n/a                                                              |
-| §4.2.3.9 ICMP messages                          | met (R2 abort fallback; PMTUD tracked under RFC 1191/4821)       |
+| §4.2.3.9 ICMP messages                          | met (FSM-event path + IP_RECVERR / IPV6_RECVERR error queue)     |
 | §4.2.3.10 Remote address validation             | met (via RFC 5961)                                               |
 
 PyTCP implements every RFC 1122 §4.2 clause that
@@ -354,16 +399,19 @@ remains relevant after the supersession by newer
 RFCs (RFC 6298, RFC 7323, RFC 9293, RFC 5961,
 RFC 6691, RFC 6093, RFC 6191). The §4.2 clauses
 that are PyTCP-native (PSH, Nagle, persist timer,
-delayed ACK, R2 abort, keep-alives) are all met.
-The two minor gaps:
+delayed ACK, R2 abort, keep-alives, ICMP error
+propagation) are all met.
 
-1. §4.2.3.9 ICMP message propagation to TCP
-   sessions — PyTCP silently drops ICMP errors;
-   the §4.2.3.9 wording is permissive but the
-   spirit suggests softer error feedback.
-2. §4.2.2.13 connection reuse — RFC 6191 §2
+The one remaining minor gap:
+
+1. §4.2.2.13 connection reuse — RFC 6191 §2
    sub-case A.1 only is implemented; sub-cases A.2/
    A.3/B.1/B.2 are not (audited under RFC 6191).
 
-Both are documented as known gaps in the relevant
-audits.
+The §4.2.3.9 ICMP propagation gap previously
+flagged here was closed in May 2026: the ICMP demux
+now dispatches per-error notifications to the
+matching `TcpSession` (FSM event) and to the
+matched `TcpSocket` (Linux IP_RECVERR /
+IPV6_RECVERR error queue, drained via
+`recvmsg(MSG_ERRQUEUE)`).

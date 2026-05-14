@@ -298,7 +298,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp6__dispatch_tcp_unreachable(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp6__dispatch_tcp_unreachable(packet_rx, embedded, message)
             return
 
     def __phrx_icmp6__dispatch_udp_unreachable(
@@ -351,13 +351,14 @@ class PacketHandlerIcmp6Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        icmp_code: int,
+        message: Icmp6MessageDestinationUnreachable,
     ) -> None:
         """
         Route an ICMPv6 Destination Unreachable carrying an embedded
         TCP segment to the matching TcpSession via TcpSocket. Applies
-        the RFC 5927 §4 sequence-in-window guard.
+        the RFC 5927 §4 sequence-in-window guard. Also pushes the
+        ICMP context onto the matched TcpSocket's IPV6_RECVERR
+        error queue.
         """
 
         socket_id = SocketId(
@@ -386,9 +387,16 @@ class PacketHandlerIcmp6Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.DEST_UNREACHABLE,
                 icmp_type=1,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=6,
             ),
+        )
+        socket.notify_unreachable(
+            icmp_origin=SoEeOrigin.ICMP6,
+            icmp_type=Icmp6Type.DESTINATION_UNREACHABLE,
+            icmp_code=message.code,
+            offender_ip=packet_rx.ip6.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp6__destination_unreachable__tcp__notify += 1
 
@@ -429,7 +437,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp6__time_exceeded__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp6__time_exceeded__dispatch_tcp(packet_rx, embedded, message)
             return
 
     def __phrx_icmp6__time_exceeded__dispatch_udp(
@@ -479,13 +487,14 @@ class PacketHandlerIcmp6Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        icmp_code: int,
+        message: Icmp6MessageTimeExceeded,
     ) -> None:
         """
         Route an ICMPv6 Time Exceeded carrying an embedded TCP segment
         to the matching TcpSession via TcpSocket. Applies the RFC 5927
-        §4 sequence-in-window guard before notifying.
+        §4 sequence-in-window guard before notifying. Also pushes the
+        ICMP context onto the matched TcpSocket's IPV6_RECVERR error
+        queue.
         """
 
         socket_id = SocketId(
@@ -513,9 +522,16 @@ class PacketHandlerIcmp6Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.TIME_EXCEEDED,
                 icmp_type=3,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=6,
             ),
+        )
+        socket.notify_time_exceeded(
+            icmp_type=Icmp6Type.TIME_EXCEEDED,
+            icmp_code=message.code,
+            icmp_origin=SoEeOrigin.ICMP6,
+            offender_ip=packet_rx.ip6.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp6__time_exceeded__tcp__notify += 1
 
@@ -555,7 +571,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp6__parameter_problem__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp6__parameter_problem__dispatch_tcp(packet_rx, embedded, message)
             return
 
     def __phrx_icmp6__parameter_problem__dispatch_udp(
@@ -605,13 +621,14 @@ class PacketHandlerIcmp6Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        icmp_code: int,
+        message: Icmp6MessageParameterProblem,
     ) -> None:
         """
         Route an ICMPv6 Parameter Problem carrying an embedded TCP
         segment to the matching TcpSession via TcpSocket. Applies the
-        RFC 5927 §4 sequence-in-window guard before notifying.
+        RFC 5927 §4 sequence-in-window guard before notifying. Also
+        pushes the ICMP context onto the matched TcpSocket's
+        IPV6_RECVERR error queue.
         """
 
         socket_id = SocketId(
@@ -640,9 +657,16 @@ class PacketHandlerIcmp6Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.PARAM_PROBLEM,
                 icmp_type=4,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=6,
             ),
+        )
+        socket.notify_parameter_problem(
+            icmp_type=Icmp6Type.PARAMETER_PROBLEM,
+            icmp_code=message.code,
+            icmp_origin=SoEeOrigin.ICMP6,
+            offender_ip=packet_rx.ip6.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp6__parameter_problem__tcp__notify += 1
 
@@ -696,20 +720,23 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp6__dispatch_tcp_pmtu(packet_rx, embedded, mtu=message.mtu)
+            self.__phrx_icmp6__dispatch_tcp_pmtu(packet_rx, embedded, message)
             return
 
     def __phrx_icmp6__dispatch_tcp_pmtu(
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        mtu: int,
+        message: Icmp6MessagePacketTooBig,
     ) -> None:
         """
         Route an ICMPv6 Packet Too Big carrying an embedded TCP
         segment to the matching TcpSession via a PMTU FSM event.
-        Applies the RFC 5927 §4 sequence-in-window guard.
+        Applies the RFC 5927 §4 sequence-in-window guard. Also
+        pushes the ICMPv6 context onto the matched TcpSocket's
+        IPV6_RECVERR error queue (errno=EMSGSIZE,
+        ee_info=next_hop_mtu) so 'recvmsg(MSG_ERRQUEUE)'
+        applications can read the new MTU.
         """
 
         socket_id = SocketId(
@@ -732,16 +759,24 @@ class PacketHandlerIcmp6Rx(ABC):
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
-            f"for Packet Too Big from {packet_rx.ip6.src}, mtu={mtu}</>",
+            f"for Packet Too Big from {packet_rx.ip6.src}, mtu={message.mtu}</>",
         )
         session.tcp_fsm(
             icmp=IcmpMetadata(
                 category=IcmpCategory.PMTU,
                 icmp_type=2,
                 icmp_code=0,
-                next_hop_mtu=mtu,
+                next_hop_mtu=message.mtu,
                 ip_version=6,
             ),
+        )
+        socket.notify_pmtu(
+            next_hop_mtu=message.mtu,
+            icmp_origin=SoEeOrigin.ICMP6,
+            icmp_type=Icmp6Type.PACKET_TOO_BIG,
+            icmp_code=message.code,
+            offender_ip=packet_rx.ip6.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
 

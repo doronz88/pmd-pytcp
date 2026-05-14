@@ -226,6 +226,43 @@ def icmp6_to_errno(*, icmp_type: int, icmp_code: int) -> int:
             return _errno.EHOSTUNREACH
 
 
+def build_icmp_error_entry(
+    *,
+    icmp_origin: SoEeOrigin,
+    icmp_type: int,
+    icmp_code: int,
+    offender_ip: Ip4Address | Ip6Address,
+    embedded_datagram: bytes,
+) -> ErrorQueueEntry:
+    """
+    Build an 'ErrorQueueEntry' for an inbound ICMP error matched
+    to a socket. Maps the ICMP (type, code) pair to the POSIX
+    errno per the family's mapping table — Linux
+    'icmp_err_convert' for ICMPv4, 'icmpv6_err_convert' for
+    ICMPv6 — based on the supplied 'icmp_origin'.
+
+    Shared by UdpSocket and TcpSocket so the construction is
+    identical across protocols. Both PMTU paths (errno=EMSGSIZE
+    + ee_info=MTU) are still constructed inline by the caller's
+    notify_pmtu because they carry the MTU as 'ee_info'; this
+    helper is for the four non-PMTU notify paths.
+    """
+
+    if icmp_origin is SoEeOrigin.ICMP6:
+        errno_ = icmp6_to_errno(icmp_type=icmp_type, icmp_code=icmp_code)
+    else:
+        errno_ = icmp4_to_errno(icmp_type=icmp_type, icmp_code=icmp_code)
+
+    return ErrorQueueEntry(
+        errno=errno_,
+        origin=icmp_origin,
+        icmp_type=icmp_type,
+        icmp_code=icmp_code,
+        offender_ip=offender_ip,
+        embedded_datagram=embedded_datagram,
+    )
+
+
 def pack_sock_extended_err(entry: ErrorQueueEntry, /) -> bytes:
     """
     Pack one 'ErrorQueueEntry' into the Linux wire shape

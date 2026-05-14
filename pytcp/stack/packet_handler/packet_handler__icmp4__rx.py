@@ -199,8 +199,8 @@ class PacketHandlerIcmp4Rx(ABC):
             self.__phrx_icmp4__dispatch_tcp(
                 packet_rx,
                 embedded,
-                icmp_code=int(message.code),
-                frag_needed_mtu=message.mtu if is_frag_needed else None,
+                message,
+                is_frag_needed=is_frag_needed,
             )
             return
 
@@ -267,16 +267,19 @@ class PacketHandlerIcmp4Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
+        message: Icmp4MessageDestinationUnreachable,
         *,
-        icmp_code: int,
-        frag_needed_mtu: int | None,
+        is_frag_needed: bool,
     ) -> None:
         """
         Route an ICMPv4 Destination Unreachable carrying an embedded
         TCP segment to the matching TcpSession via TcpSocket. Applies
         the RFC 5927 §4 sequence-in-window guard. Code-4 Frag-Needed
         with a non-None mtu drives the PMTU FSM event; every other
-        code drives a DEST_UNREACHABLE FSM event.
+        code drives a DEST_UNREACHABLE FSM event. In addition, the
+        matched TcpSocket is notified via 'notify_pmtu' /
+        'notify_unreachable' so 'recvmsg(MSG_ERRQUEUE)' applications
+        with IP_RECVERR set see the ICMP context.
         """
 
         socket_id = SocketId(
@@ -297,20 +300,31 @@ class PacketHandlerIcmp4Rx(ABC):
             self._packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
-        if frag_needed_mtu is not None:
+        embedded_datagram = bytes(message.data)
+        offender_ip = packet_rx.ip4.src
+
+        if is_frag_needed and message.mtu is not None:
             __debug__ and log(
                 "icmp4",
                 f"{packet_rx.tracker} - <INFO>Found matching TCP session "
-                f"for Frag-Needed from {packet_rx.ip4.src}, mtu={frag_needed_mtu}</>",
+                f"for Frag-Needed from {packet_rx.ip4.src}, mtu={message.mtu}</>",
             )
             session.tcp_fsm(
                 icmp=IcmpMetadata(
                     category=IcmpCategory.PMTU,
                     icmp_type=3,
                     icmp_code=4,
-                    next_hop_mtu=frag_needed_mtu,
+                    next_hop_mtu=message.mtu,
                     ip_version=4,
                 ),
+            )
+            socket.notify_pmtu(
+                next_hop_mtu=message.mtu,
+                icmp_origin=SoEeOrigin.ICMP,
+                icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+                icmp_code=message.code,
+                offender_ip=offender_ip,
+                embedded_datagram=embedded_datagram,
             )
             self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
             return
@@ -324,9 +338,16 @@ class PacketHandlerIcmp4Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.DEST_UNREACHABLE,
                 icmp_type=3,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=4,
             ),
+        )
+        socket.notify_unreachable(
+            icmp_origin=SoEeOrigin.ICMP,
+            icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+            icmp_code=message.code,
+            offender_ip=offender_ip,
+            embedded_datagram=embedded_datagram,
         )
         self._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
 
@@ -368,7 +389,7 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp4__time_exceeded__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp4__time_exceeded__dispatch_tcp(packet_rx, embedded, message)
             return
 
     def __phrx_icmp4__time_exceeded__dispatch_udp(
@@ -418,13 +439,14 @@ class PacketHandlerIcmp4Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        icmp_code: int,
+        message: Icmp4MessageTimeExceeded,
     ) -> None:
         """
         Route an ICMPv4 Time Exceeded carrying an embedded TCP segment
         to the matching TcpSession via TcpSocket. Applies the RFC 5927
-        §4 sequence-in-window guard before notifying the session.
+        §4 sequence-in-window guard before notifying the session, and
+        also pushes the ICMP context onto the matched TcpSocket's
+        IP_RECVERR error queue.
         """
 
         socket_id = SocketId(
@@ -452,9 +474,16 @@ class PacketHandlerIcmp4Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.TIME_EXCEEDED,
                 icmp_type=11,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=4,
             ),
+        )
+        socket.notify_time_exceeded(
+            icmp_type=Icmp4Type.TIME_EXCEEDED,
+            icmp_code=message.code,
+            icmp_origin=SoEeOrigin.ICMP,
+            offender_ip=packet_rx.ip4.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp4__time_exceeded__tcp__notify += 1
 
@@ -496,7 +525,7 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.proto is IpProto.TCP:
-            self.__phrx_icmp4__parameter_problem__dispatch_tcp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp4__parameter_problem__dispatch_tcp(packet_rx, embedded, message)
             return
 
     def __phrx_icmp4__parameter_problem__dispatch_udp(
@@ -546,13 +575,14 @@ class PacketHandlerIcmp4Rx(ABC):
         self,
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
-        *,
-        icmp_code: int,
+        message: Icmp4MessageParameterProblem,
     ) -> None:
         """
         Route an ICMPv4 Parameter Problem carrying an embedded TCP
         segment to the matching TcpSession via TcpSocket. Applies
         the RFC 5927 §4 sequence-in-window guard before notifying.
+        Also pushes the ICMP context onto the matched TcpSocket's
+        IP_RECVERR error queue.
         """
 
         socket_id = SocketId(
@@ -581,9 +611,16 @@ class PacketHandlerIcmp4Rx(ABC):
             icmp=IcmpMetadata(
                 category=IcmpCategory.PARAM_PROBLEM,
                 icmp_type=12,
-                icmp_code=icmp_code,
+                icmp_code=int(message.code),
                 ip_version=4,
             ),
+        )
+        socket.notify_parameter_problem(
+            icmp_type=Icmp4Type.PARAMETER_PROBLEM,
+            icmp_code=message.code,
+            icmp_origin=SoEeOrigin.ICMP,
+            offender_ip=packet_rx.ip4.src,
+            embedded_datagram=bytes(message.data),
         )
         self._packet_stats_rx.icmp4__parameter_problem__tcp__notify += 1
 

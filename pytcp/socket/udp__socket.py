@@ -73,6 +73,7 @@ from pytcp.socket.error_queue import (
     ERROR_QUEUE__MAX_LEN,
     ErrorQueueEntry,
     SoEeOrigin,
+    build_icmp_error_entry,
     pack_sock_extended_err,
 )
 
@@ -874,27 +875,16 @@ class UdpSocket(socket):
     ) -> None:
         """
         Shared body for notify_unreachable / time_exceeded /
-        parameter_problem: map the ICMP (type, code) pair to
-        the POSIX errno per the family's mapping table and
-        append the resulting 'ErrorQueueEntry'. Internal helper.
+        parameter_problem: build an 'ErrorQueueEntry' via the
+        shared 'build_icmp_error_entry' helper and append it.
+        Internal helper.
         """
 
-        from pytcp.socket.error_queue import icmp4_to_errno, icmp6_to_errno
-
-        icmp_type_int = int(icmp_type)
-        icmp_code_int = int(icmp_code)
-
-        if icmp_origin is SoEeOrigin.ICMP6:
-            errno_ = icmp6_to_errno(icmp_type=icmp_type_int, icmp_code=icmp_code_int)
-        else:
-            errno_ = icmp4_to_errno(icmp_type=icmp_type_int, icmp_code=icmp_code_int)
-
         self._enqueue_error(
-            ErrorQueueEntry(
-                errno=errno_,
-                origin=icmp_origin,
-                icmp_type=icmp_type_int,
-                icmp_code=icmp_code_int,
+            build_icmp_error_entry(
+                icmp_origin=icmp_origin,
+                icmp_type=int(icmp_type),
+                icmp_code=int(icmp_code),
                 offender_ip=offender_ip,
                 embedded_datagram=embedded_datagram,
             )
