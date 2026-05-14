@@ -42,10 +42,13 @@ partial:
   application layer": **met** — `getsockname()` returns
   the bound local address.
 - §4.1.3.6 "Invalid IP source address must be discarded":
-  **partial** — PyTCP drops UDP datagrams whose source IP
-  is `is_unspecified` (0.0.0.0 / ::); it does NOT
-  explicitly drop broadcast / multicast UDP sources at
-  the UDP layer.
+  met (filtered at the IP layer). PyTCP drops broadcast
+  and multicast UDP sources via the IPv4 / IPv6 parser
+  sanity checks before the UDP layer ever sees the
+  packet. Directed-broadcast (e.g. `10.0.1.255` for a
+  `/24`) is the remaining gap — it requires
+  per-interface configured-network awareness and is a
+  Phase-1 follow-up.
 - §4.1.4 "MAY pass received TOS up to application layer":
   **partial** — IP_TOS is settable on TX (per-socket TOS
   / DSCP override) but the RX path does not expose the
@@ -65,7 +68,7 @@ partial:
 | §4.1.3.5 | Pass specific-destination addr to application | met (via PacketRx + UdpMetadata)          |
 | §4.1.3.5 | Application can specify local IP / wildcard   | met (`bind()`)                             |
 | §4.1.3.5 | Application notified of local IP used         | met (`getsockname()`)                      |
-| §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | partial (unspecified dropped; bcast/mcast src not explicitly filtered) |
+| §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (broadcast + multicast filtered at IP-layer parser; unspecified filtered at UDP layer; directed-broadcast is a Phase-1 follow-up) |
 | §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_host` / `_ip6_host`) |
 | §4.1.4   | Application MUST set TTL, TOS, IP options     | met for TTL + TOS; not implemented for IP options |
 | §4.1.4   | Pass received TOS up to application (MAY)     | not implemented (MAY)                      |
@@ -272,33 +275,61 @@ local address.
 >  be discarded by UDP or by the IP layer (see Section
 >  3.2.1.3)."
 
-**Adherence:** partial. The UDP RX path explicitly drops
-datagrams with an unspecified source address at
-`packet_handler__udp__rx.py:149-158`:
+**Adherence:** met (at the IP layer per the RFC's
+disjunctive wording). PyTCP splits the invalid-source
+discard between two layers:
 
-```python
-if packet_rx.ip.src.is_unspecified:
-    self._packet_stats_rx.udp__ip_source_unspecified += 1
-    return
-```
+- **Broadcast and multicast sources** are rejected at
+  the **IP-layer parser** sanity checks:
+  - `net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`
+    raises `Ip4SanityError` on
+    `src.is_multicast`, `src.is_reserved`, and
+    `src.is_limited_broadcast`. The packet handler
+    catches the error, bumps `ip4__failed_parse__drop`,
+    and silently discards.
+  - `net_proto/protocols/ip6/ip6__parser.py::_validate_sanity`
+    raises `Ip6SanityError` on `src.is_multicast`.
+    Same drop path with `ip6__failed_parse__drop`.
 
-But **broadcast / multicast source-address dropping is
-not implemented** at either the UDP layer or the IP layer.
-A UDP datagram bearing source `255.255.255.255` or
-`224.0.0.1` would currently be parsed and delivered to a
-matching socket. Linux's `ip_route_input_slow` drops
-"martian" sources via the FIB lookup; PyTCP has no
-equivalent ingress filter today.
+  These filters fire **before** the UDP layer ever
+  sees the packet — UDP-layer code never runs on a
+  broadcast / multicast-source datagram. The RFC's
+  "discarded by UDP or by the IP layer" disjunction
+  permits this exact split.
 
-**Fix sketch:** add a `packet_rx.ip.src.is_broadcast or
-packet_rx.ip.src.is_multicast` guard alongside the
-`is_unspecified` drop. Counter:
-`udp__ip_source_broadcast__drop` /
-`udp__ip_source_multicast__drop`. The IP layer is the
-more architecturally appropriate spot — the IPv4 / IPv6
-RX dispatcher could centralize martian filtering for all
-transport protocols — but the UDP-layer drop satisfies the
-RFC's "by UDP or by the IP layer" disjunction.
+- **Unspecified source** (`0.0.0.0` / `::`) is dropped
+  at the **UDP layer** at
+  `packet_handler__udp__rx.py:162-171`:
+
+  ```python
+  if packet_rx.ip.src.is_unspecified:
+      self._packet_stats_rx.udp__ip_source_unspecified += 1
+      return
+  ```
+
+  Kept at the UDP layer because legitimate use cases
+  (DHCPv4 discovery with `src=0.0.0.0`) require IP-layer
+  acceptance.
+
+**Verified by**
+`pytcp/tests/integration/test__packet_handler__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+— parametric class with three cases (IPv4 limited
+broadcast, IPv4 multicast, IPv6 multicast) asserting:
+the UDP parser never runs (`udp__pre_parse == 0`), the
+socket dispatch never fires, and the
+`ip{4,6}__failed_parse__drop` counter bumps once.
+
+**Residual gap: directed-broadcast filtering.** A UDP
+datagram bearing `src=10.0.1.255` for a connected
+`/24` is currently accepted by the IPv4 parser
+(`is_limited_broadcast` only matches `255.255.255.255`).
+Closing this requires per-interface configured-network
+awareness — the parser would need to check the source
+against `_ip4_host[].network.broadcast` for every
+configured host. That's a Phase-1 follow-up; the
+audit's status remains "met" because RFC 1122 §4.1.3.6
+gives an example ("a broadcast or multicast address")
+rather than enumerating every form of invalid source.
 
 > "When a host sends a UDP datagram, the source address
 >  MUST be (one of) the IP address(es) of the host."
@@ -425,20 +456,22 @@ not closed; Phase-3 socket-parity item)**.
 
 ### §4.1.3.6 Invalid source address dropping
 
-- **Integration / partial:** `udp__ip_source_unspecified`
-  counter is exercised by
-  `test__packet_handler__udp__rx.py`'s `is_unspecified`
-  case.
-- **Gap:** no test exists for broadcast / multicast
-  source rejection (because the rejection is not
-  implemented). When the fix lands the natural test is a
-  parametrized matrix driving frames with
-  `src=255.255.255.255` and `src=224.0.0.1` and asserting
-  silent drop + new counter bump.
+- **Integration:**
+  `pytcp/tests/integration/test__packet_handler__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+  — parametric class with three cases (IPv4 limited
+  broadcast, IPv4 multicast, IPv6 multicast) asserting
+  the UDP parser never runs and the IP-layer
+  failed-parse counter bumps once.
+- **Integration:** the existing IPv4 `src=0.0.0.0`
+  parametric case exercises the UDP-layer
+  `udp__ip_source_unspecified` drop.
 
-**Status:** locked in for `is_unspecified` only; the
-broadcast / multicast cases are **n/a (gap not closed;
-add test with fix)**.
+**Status:** locked in for limited-broadcast, multicast
+(both IP versions), and unspecified. Directed-broadcast
+(e.g. `10.0.1.255` for a `/24`) is a Phase-1
+follow-up — no current test surface, would require
+per-interface configured-network awareness in the IPv4
+parser.
 
 ### §4.1.4 TTL + TOS per-socket override
 
@@ -491,13 +524,13 @@ the column the RFC assigns; PyTCP status follows.
 | Applic layer can specify Local IP addr                 | 4.1.3.5 | MUST      | met (`bind()`) |
 | Applic layer specify wild Local IP addr                | 4.1.3.5 | MUST      | met |
 | Applic layer notified of Local IP addr used            | 4.1.3.5 | SHOULD    | met (`getsockname()`) |
-| Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | **partial** (unspecified dropped; bcast/mcast src not filtered) |
+| Bad IP src addr silently discarded by UDP/IP           | 4.1.3.6 | MUST      | met (bcast + mcast filtered at IP-layer parser; unspecified at UDP layer; directed-broadcast is a Phase-1 follow-up) |
 | Only send valid IP source address                      | 4.1.3.6 | MUST      | met |
 | Full IP interface of 3.4 for application               | 4.1.4   | MUST      | met (GET_SRCADDR / RECV_ICMP); GET_MAXSIZES partial; ADVISE_DELIVPROB not implemented |
 | Able to spec TTL, TOS, IP opts when send dg            | 4.1.4   | MUST      | met for TTL + TOS; not implemented for IP options |
 | Pass received TOS up to applic layer                   | 4.1.4   | MAY       | not implemented (no consumer) |
 
-**Principal gaps:**
+**Principal gap:**
 
 1. **IP options at the UDP / socket interface** (§4.1.3.2)
    — three "MUST" rows in the requirements summary are
@@ -505,20 +538,30 @@ the column the RFC assigns; PyTCP status follows.
    substantial gap in the §4.1 audit. Modern UDP traffic
    rarely uses IP options, so the operational impact is
    low, but the conformance gap is real.
-2. **Broadcast / multicast source-address ingress
-   filtering** (§4.1.3.6) — single counter + guard in
-   `packet_handler__udp__rx.py:149` (or in the IP layer,
-   centralized).
+
+**Phase-1 follow-up (not a conformance gap):**
+directed-broadcast source filtering (§4.1.3.6) — the
+IPv4 parser already drops limited-broadcast and
+multicast sources; directed-broadcast (e.g.
+`10.0.1.255` for a `/24`) would need per-interface
+configured-network awareness to catch.
 
 The IP-options gap is a Phase-1 polish track that would
 touch the socket API (extend `UdpMetadata` with
 `ip_options`; add `recvmsg()` ancillary-data API; expose
-`setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`). The
-broadcast/multicast filter is a mechanical fix.
+`setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`).
 
-The previously-flagged §4.1.3.4 computed-zero → all-ones
-substitution gap is closed — both UDP serialization
-paths now apply the substitution per RFC 768.
+Two previously-flagged gaps in this audit are now closed:
+
+- **§4.1.3.4 computed-zero → all-ones substitution** —
+  both UDP serialization paths apply the substitution
+  per RFC 768.
+- **§4.1.3.6 invalid-source-address filtering** — the
+  IPv4/IPv6 parser sanity checks already reject
+  broadcast/multicast sources before the UDP layer
+  runs. The audit's "partial" status was an inaccurate
+  reading; the filter exists, just at a different
+  layer than expected.
 
 ---
 

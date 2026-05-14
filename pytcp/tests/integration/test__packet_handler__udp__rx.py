@@ -620,3 +620,113 @@ class TestPacketHandlerUdpRxIp6ZeroCksumDrop(NetworkTestCase):
             0,
             msg="Dropped packet must not reach the socket-dispatch layer.",
         )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "IPv4 source = 255.255.255.255 (limited broadcast).",
+            # Ethernet II / IPv4 / UDP. IPv4 src=255.255.255.255,
+            # dst=10.0.1.7. UDP cksum=0 (IPv4 accept-no-cksum) —
+            # payload "hello".
+            "_frame_rx": (
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x21\x00\x01\x00\x00\x40\x11\xb9\x65\xff\xff\xff\xff\x0a\x00"
+                b"\x01\x07\x03\xe8\x1e\x61\x00\x0d\x00\x00\x68\x65\x6c\x6c\x6f"
+            ),
+            "_expected__ip_layer": "ip4",
+        },
+        {
+            "_description": "IPv4 source = 224.0.0.1 (all-systems multicast).",
+            "_frame_rx": (
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00\x45\x00"
+                b"\x00\x21\x00\x01\x00\x00\x40\x11\xa4\x66\xe0\x00\x00\x01\x0a\x00"
+                b"\x01\x07\x03\xe8\x1e\x61\x00\x0d\x00\x00\x68\x65\x6c\x6c\x6f"
+            ),
+            "_expected__ip_layer": "ip4",
+        },
+        {
+            "_description": "IPv6 source = ff02::1 (all-nodes multicast).",
+            # Ethernet II / IPv6 / UDP. IPv6 src=ff02::1,
+            # dst=2001:db8:0:1::7. UDP cksum=0xffff (valid placeholder
+            # — IPv6 cksum=0 would be dropped by the RFC 6935 gate; we
+            # care about IP-source filtering here).
+            "_frame_rx": (
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+                b"\x00\x00\x00\x0d\x11\x40\xff\x02\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x01\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+                b"\x00\x00\x00\x00\x00\x07\x03\xe8\x1e\x61\x00\x0d\xff\xff\x68\x65"
+                b"\x6c\x6c\x6f"
+            ),
+            "_expected__ip_layer": "ip6",
+        },
+    ]
+)
+class TestPacketHandlerUdpRxInvalidSourceAddress(NetworkTestCase):
+    """
+    Verify the RFC 1122 §4.1.3.6 invalid-source-address discard
+    rule for UDP: a datagram arriving with a broadcast or
+    multicast IP source is dropped before the UDP layer even
+    sees it.
+
+    The RFC clause permits the drop to happen at "UDP or the IP
+    layer". PyTCP closes it at the IP layer — the IPv4 and IPv6
+    parsers reject these sources via 'Ip4SanityError' /
+    'Ip6SanityError' (`_validate_sanity` in
+    `net_proto/protocols/ip4/ip4__parser.py` and the IPv6
+    counterpart). UDP-layer code never sees the packet; the
+    relevant counter is `ip{4,6}__failed_parse__drop`.
+    """
+
+    _description: str
+    _frame_rx: bytes
+    _expected__ip_layer: str
+
+    def test__packet_handler__udp__rx__invalid_source_dropped_at_ip_layer(self) -> None:
+        """
+        Ensure inbound UDP frames with broadcast or multicast
+        IP source addresses are silently dropped at the IP-
+        layer parser (sanity check) and never reach the UDP
+        handler. The RFC permits the drop at either UDP or
+        the IP layer; PyTCP closes it at the IP layer.
+
+        Reference: RFC 1122 §4.1.3.6 (Invalid Addresses — a UDP
+        datagram with an invalid source address must be
+        discarded by UDP or by the IP layer).
+        """
+
+        self._packet_handler._phrx_ethernet(PacketRx(self._frame_rx))
+
+        # The IP layer parser sanity-rejected the source, so
+        # the UDP layer never ran.
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.udp__pre_parse,
+            0,
+            msg=(
+                f"UDP parser must NOT run on invalid-source packet for case: "
+                f"{self._description}. The IP layer's sanity check drops it first."
+            ),
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.udp__socket_match,
+            0,
+            msg=f"Dropped packet must not reach socket dispatch for case: {self._description}.",
+        )
+
+        # The dedicated IP-layer failed-parse counter bumps.
+        if self._expected__ip_layer == "ip4":
+            self.assertEqual(
+                self._packet_handler.packet_stats_rx.ip4__failed_parse__drop,
+                1,
+                msg=(
+                    f"IPv4 parser sanity-error must bump 'ip4__failed_parse__drop' " f"for case: {self._description}."
+                ),
+            )
+        else:
+            self.assertEqual(
+                self._packet_handler.packet_stats_rx.ip6__failed_parse__drop,
+                1,
+                msg=(
+                    f"IPv6 parser sanity-error must bump 'ip6__failed_parse__drop' " f"for case: {self._description}."
+                ),
+            )
