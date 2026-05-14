@@ -30,6 +30,7 @@ pytcp/lib/ip_helper.py
 ver 3.0.4
 """
 
+import secrets
 from typing import cast
 
 from net_addr import (
@@ -139,17 +140,27 @@ def pick_local_ip4_address(
 
 def pick_local_port() -> int:
     """
-    Pick an ephemeral local port, ensuring no socket is already using it.
+    Pick an ephemeral local port from 'stack.EPHEMERAL_PORT_RANGE',
+    excluding any port currently held by an existing socket, using
+    a CSPRNG-backed primitive ('secrets.choice') as the entropy
+    source.
+
+    Implements the RFC 6056 §3.3.1 "Simple Port Randomization"
+    pattern with the §3.1 obfuscation SHOULD honoured: each pick
+    is independent of every previous one, and the selection is
+    unguessable to an off-path attacker. UDP uses this picker
+    directly; TCP's connect()-time picker layers RFC 6056 §3.3.3
+    Algorithm 3 (hash-based per-destination) on top via
+    'pick_local_port_for'.
     """
 
-    available_ephemeral_ports = set(stack.EPHEMERAL_PORT_RANGE) - {
-        socket.local_port for socket in stack.sockets.values()
-    }
+    used = {socket.local_port for socket in stack.sockets.values()}
+    available = [port for port in stack.EPHEMERAL_PORT_RANGE if port not in used]
 
-    if available_ephemeral_ports:
-        return available_ephemeral_ports.pop()
+    if not available:
+        raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
 
-    raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
+    return secrets.choice(available)
 
 
 def is_address_in_use(

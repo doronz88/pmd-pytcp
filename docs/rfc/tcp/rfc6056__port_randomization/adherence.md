@@ -33,13 +33,13 @@ corpus (RFC 1122 has separate records under `arp/`,
 
 | §        | Topic                                          | PyTCP status (TCP) |
 |----------|------------------------------------------------|--------------------|
-| §3.1     | Obfuscation of port selection                  | partial — see UDP audit |
-| §3.2     | Ephemeral port range (49152-65535 or wider)    | **not met** — `range(32168, 60700, 2)` is narrow + step=2; see UDP audit |
-| §3.3.1   | Algorithm 1 (Simple Randomization)             | closest classification of PyTCP's behaviour |
-| §3.3.3   | Algorithm 3 (Hash-Based, RFC 6528-style)       | **not implemented for TCP** — TCP-specific recommendation; the RFC's preferred choice for TCP |
+| §3.1     | Obfuscation of port selection                  | met (shared fix; `secrets.choice` — see UDP audit) |
+| §3.2     | Ephemeral port range (49152-65535 or wider)    | met (shared fix; `range(32768, 61000)` Linux parity — see UDP audit) |
+| §3.3.1   | Algorithm 1 (Simple Randomization)             | implemented — used for TCP `bind(0)` (no destination known) |
+| §3.3.3   | Algorithm 3 (Hash-Based, RFC 6528-style)       | **not implemented for TCP** — Phase-2 hardening; the RFC's §3.5-preferred choice for TCP `connect()` |
 | §3.3.4   | Algorithm 4 (Double-Hash + Increment Table)    | not implemented |
 | §3.3.5   | Algorithm 5 (Random Increments)                | not implemented |
-| §3.5     | Choosing an algorithm                          | partial — picker is closest to Algorithm 1, while §3.5 recommends Algorithm 3 for TCP |
+| §3.5     | Choosing an algorithm                          | partial — Algorithm 1 conformant for `bind()`-then-`connect()`; Algorithm 3 deferred for direct `connect()` |
 | §4       | NAPT interaction                               | N/A — PyTCP is not a NAPT |
 
 The UDP-side audit catalogues the implementation in
@@ -196,17 +196,18 @@ ports would consume the same scaffolding.
 
 ## Cross-references — shared findings with UDP audit
 
-The implementation details (set-pop entropy, narrow range,
-step=2, `secrets.choice` fix sketch) are documented once
-in the UDP audit. This record lists the cross-references
-rather than duplicating:
+The Phase-1 fix (widened ephemeral range +
+`secrets.choice` entropy) was applied to the shared
+`pick_local_port` helper and benefits both protocols.
+The implementation details are documented once in the
+UDP audit:
 
 | Finding                                                | Detail in |
 |--------------------------------------------------------|-----------|
-| §3.1 obfuscation: set-pop is non-cryptographic         | [UDP audit §3.1](../../udp/rfc6056__port_randomization/adherence.md#31-characteristics-of-a-good-algorithm) |
-| §3.2 port range: range(32168, 60700, 2) is narrow      | [UDP audit §3.2](../../udp/rfc6056__port_randomization/adherence.md#32-ephemeral-port-number-range) |
-| §3.3.1 PyTCP's algorithm classification                | [UDP audit §3.3.1](../../udp/rfc6056__port_randomization/adherence.md#331-algorithm-1--simple-port-randomization) |
-| Phase-1 fix sketch (widen range + `secrets.choice`)    | [UDP audit "Fix sketch"](../../udp/rfc6056__port_randomization/adherence.md#fix-sketch) |
+| §3.1 obfuscation: `secrets.choice` for entropy         | [UDP audit §3.1](../../udp/rfc6056__port_randomization/adherence.md#31-characteristics-of-a-good-algorithm) |
+| §3.2 port range: `range(32768, 61000)` Linux parity    | [UDP audit §3.2](../../udp/rfc6056__port_randomization/adherence.md#32-ephemeral-port-number-range) |
+| §3.3.1 Algorithm 1 implementation                      | [UDP audit §3.3.1](../../udp/rfc6056__port_randomization/adherence.md#331-algorithm-1--simple-port-randomization) |
+| Phase-1 fix history                                    | [UDP audit "Phase-1 fix history"](../../udp/rfc6056__port_randomization/adherence.md#phase-1-fix-history) |
 
 ---
 
@@ -259,26 +260,27 @@ in** for the algorithm classification.
 
 | Aspect                                                | Status |
 |-------------------------------------------------------|--------|
-| §3.1 Obfuscation                                      | partial (shared finding, see UDP audit) |
-| §3.2 Range                                            | **not met** (shared finding, see UDP audit) |
-| §3.3.1 Algorithm 1 (UDP-acceptable)                   | classified — what PyTCP does today |
-| §3.3.3 Algorithm 3 (TCP-recommended per §3.5)         | **not implemented** — TCP-specific Phase-2 hardening |
+| §3.1 Obfuscation                                      | met (shared Phase-1 fix; `secrets.choice`) |
+| §3.2 Range                                            | met (shared Phase-1 fix; `range(32768, 61000)`) |
+| §3.3.1 Algorithm 1 (UDP-acceptable)                   | implemented — used for `bind(0)` (no destination yet) |
+| §3.3.3 Algorithm 3 (TCP-recommended per §3.5)         | **not implemented** — Phase-2 hardening for `connect()` |
 | §3.3.4 Algorithm 4                                    | not implemented (refinement on 3) |
 | §3.3.5 Algorithm 5                                    | not implemented |
 | §3.4 Secret-key handling                              | N/A today; pattern established (TCP__ISS_SECRET) for future |
-| §3.5 Lazy-binding hybrid (Alg 2 / Alg 3)              | not implemented |
+| §3.5 Lazy-binding hybrid (Alg 2 / Alg 3)              | partial — Algorithm 1 fallback in place; Algorithm 3 on `connect()` deferred to Phase 2 |
 | §4 NAPT                                               | N/A |
 
-**Phase-1 fix (shared with UDP):** widen the ephemeral
-range and use `secrets.choice` instead of set-pop —
-documented in the UDP audit. Lifts both TCP and UDP
-from "partial / not met" to "met" on §3.1 + §3.2.
+**Phase-1 fix (shared with UDP)** has landed: widened
+the ephemeral range to Linux parity and replaced
+set-pop entropy with `secrets.choice`. Both TCP and UDP
+now satisfy RFC 6056 §3.1 and §3.2.
 
-**Phase-2 fix (TCP-specific):** implement Algorithm 3
-with the `TCP__PORT_SECRET` secret-key pattern. Adds
-the per-destination isolation property that distinguishes
-TCP source-port handling from UDP. Linux-parity for the
-TCP socket layer.
+**Phase-2 (TCP-specific) remains:** implement
+Algorithm 3 with the `TCP__PORT_SECRET` secret-key
+pattern for the `connect()` path where the destination
+tuple is in scope. Adds the per-destination isolation
+property that RFC 6056 §3.5 recommends for TCP and that
+Linux's `__inet_hash_connect` already provides.
 
 ---
 

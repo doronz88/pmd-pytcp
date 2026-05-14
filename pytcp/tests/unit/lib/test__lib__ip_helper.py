@@ -424,6 +424,45 @@ class TestPickLocalPort(TestCase):
             msg="pick_local_port() must pick the single remaining free port when all others are in use.",
         )
 
+    def test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy(self) -> None:
+        """
+        Ensure the picker delegates the final selection to
+        'secrets.choice', a CSPRNG-backed primitive, rather than
+        relying on Python set-pop hash ordering. The
+        'secrets.choice' call MUST receive the unused-ports
+        collection (anything in EPHEMERAL_PORT_RANGE that no
+        existing socket has claimed) so an attacker observing
+        one selection learns nothing useful about future ones.
+
+        Reference: RFC 6056 §3.1 (obfuscate the ephemeral port
+        selection; needs cryptographic-quality randomness).
+        """
+
+        sockets = {"s1": SimpleNamespace(local_port=10002)}
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006)),
+            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
+            patch("pytcp.lib.ip_helper.secrets.choice", return_value=10005) as mock_choice,
+        ):
+            port = pick_local_port()
+
+        self.assertEqual(
+            port,
+            10005,
+            msg="pick_local_port() must return the value secrets.choice yields.",
+        )
+        mock_choice.assert_called_once()
+        (passed_pool,), _kwargs = mock_choice.call_args
+        self.assertEqual(
+            sorted(passed_pool),
+            [10000, 10001, 10003, 10004, 10005],
+            msg=(
+                "secrets.choice must be invoked with every port from "
+                "EPHEMERAL_PORT_RANGE that no existing socket has claimed."
+            ),
+        )
+
     def test__ip_helper__pick_local_port__raises_when_exhausted(self) -> None:
         """
         Ensure 'pick_local_port()' raises 'OSError' with the canonical

@@ -163,6 +163,36 @@ class TestStackModuleConstants(TestCase):
             msg="EPHEMERAL_PORT_RANGE must be non-empty.",
         )
 
+    def test__stack__ephemeral_port_range__rfc6056_conformant(self) -> None:
+        """
+        Ensure the ephemeral port range is contiguous (step == 1)
+        so every port in the range is a valid candidate, and the
+        pool is at least the size of the IANA dynamic range
+        (16384 ports) to give an off-path attacker a sufficiently
+        large guessing space.
+
+        Reference: RFC 6056 §3.2 (Ephemeral Port Number Range).
+        """
+
+        self.assertEqual(
+            stack.EPHEMERAL_PORT_RANGE.step,
+            1,
+            msg="EPHEMERAL_PORT_RANGE must have step=1; gaps reduce entropy without benefit.",
+        )
+        self.assertGreaterEqual(
+            len(stack.EPHEMERAL_PORT_RANGE),
+            16384,
+            msg=(
+                "EPHEMERAL_PORT_RANGE must contain at least 16384 ports "
+                "(IANA dynamic-range size) to satisfy the largest-possible-range SHOULD."
+            ),
+        )
+        self.assertGreaterEqual(
+            stack.EPHEMERAL_PORT_RANGE.start,
+            1024,
+            msg="EPHEMERAL_PORT_RANGE start must be >= 1024 (above the Well-Known Ports range).",
+        )
+
     def test__stack__fragment_timeouts_positive(self) -> None:
         """
         Ensure IP fragment reassembly timeouts are positive. A value

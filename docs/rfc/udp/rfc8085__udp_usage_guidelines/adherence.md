@@ -51,7 +51,7 @@ Summary, §8 References) are omitted.
 | §3.6    | Limited Applicability / Controlled Envs     | application obligation |
 | §4.1    | Multicast Congestion Control                | application obligation |
 | §4.2    | Message Size Guidelines for Multicast       | application obligation; PyTCP's multicast TX path is RFC 1112 / RFC 4861 SNMA |
-| §5.1    | Using UDP Ports                             | partial — sender SHOULD NOT use sport=0 (TX default violates, RX rejects) ; randomized source port is naive set-pop (not RFC 6056-conformant) |
+| §5.1    | Using UDP Ports                             | partial — sender SHOULD NOT use sport=0 (TX default violates, RX rejects) ; randomized source port now RFC 6056-conformant via `secrets.choice` |
 | §5.1.1  | Source-port entropy + IPv6 flow label       | met (RFC 6437 flow-label auto-wire shipped) |
 | §5.1.2  | Multiple UDP ports per application          | application obligation |
 | §5.2    | ICMP Guidelines                             | met at stack layer (notify_* socket callbacks deliver ICMP errors); application-side `IP_RECVERR` API parity is a Phase-3 item |
@@ -272,44 +272,20 @@ on port 0." The SHOULD NOT is honoured.
 >  [RFC6056]; UDP applications should follow the same
 >  technique."
 
-**Adherence:** **partial / weak**. PyTCP's
-`pick_local_port()` at `pytcp/lib/ip_helper.py:140-152`:
-
-```python
-def pick_local_port() -> int:
-    available_ephemeral_ports = set(stack.EPHEMERAL_PORT_RANGE) - {
-        socket.local_port for socket in stack.sockets.values()
-    }
-    if available_ephemeral_ports:
-        return available_ephemeral_ports.pop()
-    raise OSError(...)
-```
-
-Constructs a `set` of unused ports and `.pop()`s an
-arbitrary element. Python set iteration order is
-implementation-defined (hash-based, with hash
-randomization since 3.3) so the result is
-**non-deterministic but not cryptographically random**.
-
-Two specific concerns:
-
-1. **The ephemeral range is unusually narrow:**
-   `stack.EPHEMERAL_PORT_RANGE = range(32168, 60700, 2)`
-   at `pytcp/stack/__init__.py:175`. Note the **step=2**
-   — only even ports. That's a 14,266-port pool,
-   significantly smaller than Linux's
-   `32768-60999` (28,232 ports) and a fraction of the
-   IANA dynamic range `49152-65535` (16,384 ports).
-   Step=2 is unexplained and reduces entropy by 1 bit
-   for no apparent gain.
-2. **No formal RFC 6056 Algorithm.** Set-pop is closest
-   to RFC 6056 Algorithm 2 (random-port, sample-and-test
-   for collisions) but the "random" half is incidental
-   not cryptographic.
+**Adherence:** met (Phase-1 fix). PyTCP's
+`pick_local_port()` at `pytcp/lib/ip_helper.py:140-163`
+draws from a Linux-parity ephemeral range
+(`range(32768, 61000)` — 28,232 ports) via
+`secrets.choice`, satisfying both RFC 6056 §3.1 (CSPRNG
+entropy) and §3.2 (largest-possible-range SHOULD).
 
 Cross-reference: the dedicated
 [RFC 6056 audit](../rfc6056__port_randomization/adherence.md)
-(task #572) catalogues this in detail with a fix sketch.
+catalogues the implementation. Algorithm 3 hash-based
+per-destination selection — the TCP-specific §3.5
+recommendation — is tracked in the
+[TCP-side RFC 6056 audit](../../tcp/rfc6056__port_randomization/adherence.md)
+as a separate Phase-2 hardening item.
 
 ### §5.1.1 Source Port Entropy and the IPv6 Flow Label
 
@@ -411,21 +387,26 @@ expressed through the cross-referenced audits.
 | §4 Multicast UDP usage                                | application obligation (stack ships MLDv2 / RFC 1112) |
 | §5.1 Sender SHOULD NOT sport=0                        | partial — BSD socket layer picks ephemeral; raw `_phtx_udp` permits sport=0 |
 | §5.1 Receiver SHOULD NOT bind port 0                  | met (bind(0) means "pick ephemeral", not "listen on port 0") |
-| §5.1 Random source port (RFC 6056)                    | partial — set-pop is non-deterministic but not cryptographic; range is unusually narrow with step=2 |
+| §5.1 Random source port (RFC 6056)                    | met (`secrets.choice` + Linux-parity range — see dedicated RFC 6056 audit) |
 | §5.1.1 IPv6 flow label set                            | met (RFC 6437 auto-wire shipped) |
 | §5.2 UDP passes ICMP errors up                        | met (stack layer); IP_RECVERR API parity deferred |
 
 PyTCP **broadly satisfies its stack-side obligations**
-under RFC 8085. The principal stack-side gaps are:
+under RFC 8085. The remaining stack-side gaps are:
 
-1. **Ephemeral port allocator is not RFC 6056-conformant**
-   — narrow range with step=2; set-pop selection. Covered
-   by RFC 6056 audit.
-2. **No per-port IPv6 zero-cksum opt-in** — covered by
-   RFC 6935/6936 audit.
-3. **No `IP_MTU` / `IPV6_PATHMTU` getsockopt to expose
+1. **No per-port IPv6 zero-cksum opt-in** — covered by
+   [RFC 6935/6936 audit](../rfc6935__udp_zero_cksum_ipv6/adherence.md).
+2. **No `IP_MTU` / `IPV6_PATHMTU` getsockopt to expose
    discovered PMTU** to the application — Phase-3 socket-
    parity item.
+3. **TCP Algorithm 3 (RFC 6056 §3.3.3) not implemented**
+   — covered by [TCP-side RFC 6056 audit](../../tcp/rfc6056__port_randomization/adherence.md);
+   does not affect UDP conformance.
+
+The previously-flagged ephemeral port allocator gap
+(narrow range, step=2, non-cryptographic entropy) has
+been closed — the picker now uses `secrets.choice` over
+`range(32768, 61000)`.
 
 The application-obligation clauses (~70% of the
 document) do not impose any stack work; they are

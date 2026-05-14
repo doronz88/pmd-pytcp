@@ -171,8 +171,15 @@ IP6__FRAG_FLOW_TIMEOUT = 5
 # and should always be disabled).
 UDP__ECHO_NATIVE = False
 
-# Ephemeral port range, used for picking local ports for outbound connections.
-EPHEMERAL_PORT_RANGE = range(32168, 60700, 2)
+# RFC 6056 §3.2 ephemeral port range. Matches the Linux
+# default ('net.ipv4.ip_local_port_range = 32768 60999')
+# so PyTCP picks from a 28,232-port pool — well above the
+# 16,384-port floor RFC 6056 §3.2 mentions for the IANA
+# dynamic range, and large enough to give the §3.1
+# obfuscation SHOULD meaningful guessing-space against an
+# off-path attacker. Step=1 (every port is a candidate);
+# the historical step=2 even-only restriction is gone.
+EPHEMERAL_PORT_RANGE = range(32768, 61000)
 
 # Logger configuration - LOG__CHANNEL sets which subsystems of stack log to the
 # console, LOG__DEBUG adds info about class/method caller.

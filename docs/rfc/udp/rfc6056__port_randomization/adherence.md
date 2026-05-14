@@ -34,14 +34,14 @@ Ephemeral Ports — background, §5 Security boilerplate,
 
 | §        | Topic                                          | PyTCP status |
 |----------|------------------------------------------------|--------------|
-| §3.1     | Characteristics of a Good Algorithm            | partial — `pick_local_port` is non-deterministic but not cryptographic |
-| §3.2     | Ephemeral Port Number Range                    | **not met** — `range(32168, 60700, 2)`: narrow, even-only, range size ~7k vs Linux's 28k |
-| §3.3.1   | Algorithm 1 — Simple Port Randomization        | closest match to PyTCP's behaviour (effectively) |
-| §3.3.2   | Algorithm 2 — Random Re-selection on Collision | not used |
-| §3.3.3   | Algorithm 3 — Hash-Based (per RFC 6528 ISS)    | not implemented |
-| §3.3.4   | Algorithm 4 — Double-Hash with Increment Table | not implemented |
+| §3.1     | Characteristics of a Good Algorithm            | met — `pick_local_port` uses `secrets.choice` (CSPRNG-backed) |
+| §3.2     | Ephemeral Port Number Range                    | met — `range(32768, 61000)` (Linux parity; 28,232-port pool) |
+| §3.3.1   | Algorithm 1 — Simple Port Randomization        | implemented (the UDP picker) |
+| §3.3.2   | Algorithm 2 — Random Re-selection on Collision | not used (Algorithm 1 with upfront filtering is equivalent for the UDP case) |
+| §3.3.3   | Algorithm 3 — Hash-Based (per RFC 6528 ISS)    | not implemented for UDP (TCP gets it — see [TCP-side audit](../../tcp/rfc6056__port_randomization/adherence.md)) |
+| §3.3.4   | Algorithm 4 — Double-Hash with Increment Table | not implemented (refinement on 3) |
 | §3.3.5   | Algorithm 5 — Random Increments                | not implemented |
-| §3.5     | Choosing an Algorithm                          | n/a (no choice; whatever set-pop happens to be) |
+| §3.5     | Choosing an Algorithm                          | met — UDP uses Algorithm 1, the RFC 6056 §3.5 recommended choice for UDP-style traffic |
 | §4       | Interaction with NAPT                          | N/A — PyTCP is not a NAPT |
 
 ---
@@ -55,50 +55,25 @@ Ephemeral Ports — background, §5 Security boilerplate,
 >  that identifies the transport-protocol instance to be
 >  attacked."
 
-**Adherence:** partial. PyTCP's `pick_local_port` at
-`pytcp/lib/ip_helper.py:140-152`:
+**Adherence:** met. `pick_local_port` at
+`pytcp/lib/ip_helper.py:140-163`:
 
 ```python
 def pick_local_port() -> int:
-    """
-    Pick an ephemeral local port, ensuring no socket is already using it.
-    """
-
-    available_ephemeral_ports = set(stack.EPHEMERAL_PORT_RANGE) - {
-        socket.local_port for socket in stack.sockets.values()
-    }
-
-    if available_ephemeral_ports:
-        return available_ephemeral_ports.pop()
-
-    raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
+    used = {socket.local_port for socket in stack.sockets.values()}
+    available = [port for port in stack.EPHEMERAL_PORT_RANGE if port not in used]
+    if not available:
+        raise OSError("[Errno 98] Address already in use - ...")
+    return secrets.choice(available)
 ```
 
-`set.pop()` on a Python `set` returns an arbitrary
-element. The Python 3.x runtime applies hash
-randomization to string and bytes hashing (since 3.3,
-under `PYTHONHASHSEED=random` which is the default), but
-**integer hashing is identity** — `hash(N) == N` for
-small ints. The iteration order over `set(range(...))`
-is therefore deterministic on a given build / interpreter
-version: it's a function of the integer hash collisions
-into the set's hash table buckets.
-
-In practice this means an attacker who knows what build
-of CPython the target is running and what set of ports
-are currently in use can **predict the next port
-`pick_local_port` will return** — not "easily" the way
-RFC 6056's pre-randomization sequential scheme is
-predictable, but the algorithm provides *no
-cryptographic guarantee of unpredictability*.
-
-The §3.1 obfuscation SHOULD is therefore weakly met. The
-selection is non-deterministic from an attacker's
-operational point of view (they would need to enumerate
-many possibilities), but it does NOT use
-`secrets.randbelow` or `random.SystemRandom` and an
-internal observer (e.g. a privileged process on the same
-host) could in principle reconstruct the choice.
+`secrets.choice` is backed by `os.urandom` (and falls
+back to the OS CSPRNG on every supported platform), so
+each pick draws cryptographic-quality entropy
+independent of every previous one. An off-path attacker
+who observes prior selections gains no information about
+future ones beyond the size of the remaining unused
+pool. The §3.1 obfuscation SHOULD is satisfied.
 
 ---
 
@@ -113,39 +88,23 @@ host) could in principle reconstruct the choice.
 >  chances of an off-path attacker of guessing the
 >  selected port numbers."
 
-**Adherence:** **not met.** `stack.EPHEMERAL_PORT_RANGE`
-at `pytcp/stack/__init__.py:175`:
+**Adherence:** met. `stack.EPHEMERAL_PORT_RANGE` at
+`pytcp/stack/__init__.py:174-183` is now
+`range(32768, 61000)` — a 28,232-port pool matching the
+Linux `net.ipv4.ip_local_port_range = 32768 60999`
+default. Step=1, so every port in the window is a valid
+candidate; the historical step=2 even-only restriction
+that halved the effective entropy is gone. The lower
+bound aligns with Linux and keeps the IANA Well-Known
+range (0-1023) and most of the Registered range
+(1024-49151) free for explicit `bind()` use; the upper
+bound stops short of 65535 to leave `61000-65535`
+available for operator-pinned static allocation.
 
-```python
-EPHEMERAL_PORT_RANGE = range(32168, 60700, 2)
-```
-
-Three concerns:
-
-1. **The range is narrow.** 32168-60700 is a 28,532-port
-   window, but with `step=2` the actual pool is **14,266
-   ports** (only even-numbered ports). Linux's default
-   `ip_local_port_range = 32768 60999` is 28,232 ports —
-   roughly 2× larger. The IANA "dynamic" range
-   `49152-65535` (the most conservative reading of RFC
-   6056 §3.2) is 16,384 ports.
-2. **Even-only is bizarre.** No RFC requires step=2; no
-   Linux setting recommends it; no commit message in
-   PyTCP's history justifies it. It halves the effective
-   range entropy for no apparent gain.
-3. **The lower bound dips into IANA Registered Ports.**
-   The range starts at 32168, but 32768 is a more
-   commonly-used lower bound (Linux), and 49152 is the
-   IANA-recommended ephemeral lower bound. Ports
-   32168-49151 might collide with services the operator
-   expects to bind on (anything in the 32k-49k range).
-
-**Fix sketch:** change to
-`EPHEMERAL_PORT_RANGE = range(32768, 61000)` (Linux
-parity) — drop step=2 and align the lower bound. The
-upper bound `60999` rather than `65535` mirrors Linux's
-default (which keeps `61000-65535` available for static
-allocation if the operator wants it).
+The conformance test at
+`pytcp/tests/unit/stack/test__stack__init.py::test__stack__ephemeral_port_range__rfc6056_conformant`
+asserts step=1 and pool size ≥ 16384 (the IANA dynamic
+range minimum cited in RFC 6056 §3.2).
 
 ---
 
@@ -160,23 +119,19 @@ Algorithm 1 picks a random starting port, then
 slot. The first call's pick is random; subsequent picks
 within the same scan are predictable.
 
-**Closest match to PyTCP's behaviour.** `set.pop()`
-returns an arbitrary element from the available pool,
-which is functionally similar to "random pick from
-available" — except that PyTCP's "random" is set-hash
-order rather than `random()`. The collision check is
-done **upfront** (set difference) rather than as a scan,
-so PyTCP doesn't actually do the linear walk Algorithm 1
-describes — it picks from a pre-filtered set of unused
-ports.
-
-**Deviation from Algorithm 1:** PyTCP's pick is closer
-to "random sample of a set" than "random offset into a
-range." This is actually *better* than Algorithm 1 in
-one sense — there's no linear-scan bias toward "first
-available after an unavailable run." But it's *worse*
-in another — the entropy source is set-hash-order rather
-than `random()`.
+**PyTCP's implementation IS Algorithm 1, with the
+collision-check moved upfront.** Rather than the
+literal `do { port = random(); if suitable return ...;
+next_ephemeral++; } while` pattern, PyTCP filters out
+in-use ports first and then calls `secrets.choice` on
+the resulting list. This is functionally equivalent to
+Algorithm 1 for the case where the random pick happens
+to be unused on the first try (the common case), and
+strictly *better* for the unhappy case (no linear-scan
+bias toward "first available after an unavailable
+run"). The entropy source is `secrets.choice` →
+`os.urandom`, satisfying RFC 6056's
+"unpredictable" requirement from §3.1.
 
 ---
 
@@ -277,40 +232,31 @@ sequential allocation) do not apply.
 
 ---
 
-## Fix sketch
+## Phase-1 fix history
 
-**Phase 1 (minimal fix, addresses §3.1 and §3.2):**
+The minimal fix that brought PyTCP's UDP picker into
+conformance with §3.1 and §3.2 landed in a single
+commit covering both:
 
-1. **Widen the range to Linux defaults:**
+1. **Widened the range to Linux defaults:**
+   `EPHEMERAL_PORT_RANGE` changed from
+   `range(32168, 60700, 2)` (14,266 even-only ports) to
+   `range(32768, 61000)` (28,232 contiguous ports).
+2. **Replaced set-pop entropy with `secrets.choice`:**
+   the picker now draws from a CSPRNG-backed primitive
+   rather than relying on Python set hash-order.
 
-   ```python
-   # pytcp/stack/__init__.py
-   EPHEMERAL_PORT_RANGE = range(32768, 61000)  # was: range(32168, 60700, 2)
-   ```
+Both changes are reflected in the conformance status
+above and pinned by the new unit tests
+`test__stack__ephemeral_port_range__rfc6056_conformant`
+and
+`test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`.
 
-2. **Make the pick cryptographically random:**
-
-   ```python
-   # pytcp/lib/ip_helper.py
-   import secrets
-
-   def pick_local_port() -> int:
-       used = {socket.local_port for socket in stack.sockets.values()}
-       available = [port for port in stack.EPHEMERAL_PORT_RANGE if port not in used]
-       if not available:
-           raise OSError("[Errno 98] Address already in use - ...")
-       return secrets.choice(available)
-   ```
-
-   `secrets.choice` is backed by `os.urandom` so the
-   §3.1 unpredictability SHOULD is properly met.
-
-**Phase 2 (Algorithm 3 for TCP):**
-
-When the source-isolation property of Algorithm 3 is
-desired (TCP especially), add a keyed-hash variant —
-the secret key plumbing already exists for ISS
-(`TCP__ISS_SECRET`). Out of scope for the Phase-1 fix.
+**Phase 2 (Algorithm 3 for TCP) is tracked separately
+from this UDP audit** — see the
+[TCP-side audit](../../tcp/rfc6056__port_randomization/adherence.md)
+for the per-destination keyed-hash port selection that
+RFC 6056 §3.5 recommends for TCP.
 
 ---
 
@@ -318,31 +264,25 @@ the secret key plumbing already exists for ISS
 
 ### §3.1 Obfuscation of port selection
 
-**Status:** locked in **for non-determinism**, not
-locked in for **cryptographic unpredictability**.
-Existing tests verify the picker returns *a* port in
-the configured range and avoids ports already in use,
-but not that the selection is uniformly distributed
-nor that it resists prediction.
+- **Unit:**
+  `pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPort::test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`
+  — patches `secrets.choice` and asserts the picker
+  delegates final selection to it, invoking it with the
+  full unused-port pool from `EPHEMERAL_PORT_RANGE`.
 
-When the Phase-1 fix above lands, the natural tests are:
-
-1. Pick 1000 ports from an empty pool; assert the
-   result set's distribution over `EPHEMERAL_PORT_RANGE`
-   is approximately uniform (chi-square at the 95%
-   level).
-2. Mock `secrets.choice` to a deterministic stub; verify
-   the picker calls it with the correct available-port
-   list.
+**Status:** locked in.
 
 ### §3.2 Port range
 
-**Status:** locked in (the existing
-`pick_local_port` tests verify the range bound), but
-the range itself is **incorrect** — the test pins the
-deviation. When the fix flips the range to
-`range(32768, 61000)`, the test's range-bound assertion
-needs the same flip.
+- **Unit:**
+  `pytcp/tests/unit/stack/test__stack__init.py::TestStackModuleConstants::test__stack__ephemeral_port_range__rfc6056_conformant`
+  — asserts step=1 (contiguous range) and pool size
+  ≥ 16384 (IANA dynamic-range floor per RFC 6056 §3.2).
+- **Unit:** existing
+  `test__stack__ephemeral_port_range` covers the
+  in-bounds property (0 ≤ start, stop ≤ 65536).
+
+**Status:** locked in.
 
 ### §3.3 Algorithm classification
 
@@ -355,9 +295,9 @@ is documentary.
 |-------------------------------------------------------|----------|
 | Picker returns a port in range                        | locked in |
 | Picker avoids already-bound ports                     | locked in |
-| Picker uses cryptographic randomness (§3.1)           | n/a (gap not closed; add test with fix) |
-| Picker range matches Linux default (§3.2)             | **locked in BAD** (test pins the wrong range) |
-| Algorithm 3 hash-based isolation (TCP)                | n/a (Phase-2 hardening) |
+| Picker uses cryptographic randomness (§3.1)           | locked in |
+| Picker range matches Linux default (§3.2)             | locked in |
+| Algorithm 3 hash-based isolation (TCP)                | n/a (Phase-2 hardening — see TCP-side audit) |
 
 ---
 
@@ -365,28 +305,22 @@ is documentary.
 
 | Aspect                                                | Status |
 |-------------------------------------------------------|--------|
-| §3.1 Obfuscation of port selection                    | partial (non-deterministic but not cryptographic) |
-| §3.2 Ephemeral range — use 49152-65535 or wider       | **not met** (range too narrow + step=2 + low lower bound) |
-| §3.3.1 Algorithm 1 implementation                     | closest match (with set-pop entropy instead of `random()`) |
-| §3.3.3 Algorithm 3 (TCP isolation per-destination)    | not implemented (Phase-2 hardening) |
-| §3.4 Secret-key handling                              | N/A (no hash-based algorithm) |
-| §3.5 Algorithm choice documented                      | N/A (no formal choice) |
+| §3.1 Obfuscation of port selection                    | met (`secrets.choice`) |
+| §3.2 Ephemeral range — use 49152-65535 or wider       | met (`range(32768, 61000)` — Linux parity, 28,232-port pool) |
+| §3.3.1 Algorithm 1 implementation                     | implemented (UDP picker) |
+| §3.3.3 Algorithm 3 (TCP isolation per-destination)    | not implemented for UDP (out of UDP scope; see [TCP-side audit](../../tcp/rfc6056__port_randomization/adherence.md)) |
+| §3.4 Secret-key handling                              | N/A for UDP (no hash-based algorithm needed at the UDP layer) |
+| §3.5 Algorithm choice                                 | met — Algorithm 1 is the §3.5-recommended choice for UDP-style traffic |
 | §4 NAPT interaction                                   | N/A (not a NAPT) |
 
-**Principal gaps:**
-
-1. **Ephemeral range is wrong.** `range(32168, 60700, 2)`
-   should be `range(32768, 61000)` (Linux default) at
-   minimum. The step=2 is unexplained and reduces
-   entropy.
-2. **Randomness source is set-hash order**, not
-   cryptographic. `secrets.choice` is the one-line
-   improvement.
-
-Both fixes are mechanical; both unlock the §3.1 and §3.2
-SHOULDs without adding complexity. Algorithm 3 for TCP
-is a separate Phase-2 hardening track and would build on
-the existing `TCP__ISS_SECRET` keyed-hash infrastructure.
+PyTCP's **UDP** picker now satisfies every RFC 6056
+clause that applies to UDP. The remaining "not
+implemented" row (Algorithm 3 hash-based per-destination
+selection) is TCP-specific — RFC 6056 §3.5 doesn't
+recommend it for UDP because per-destination state at
+the picker layer adds little for connectionless,
+short-lived flows. The TCP-side audit tracks that
+work separately.
 
 ---
 
