@@ -35,11 +35,12 @@ corpus (RFC 1122 has separate records under `arp/`,
 |----------|------------------------------------------------|--------------------|
 | §3.1     | Obfuscation of port selection                  | met (shared fix; `secrets.choice` — see UDP audit) |
 | §3.2     | Ephemeral port range (49152-65535 or wider)    | met (shared fix; `range(32768, 61000)` Linux parity — see UDP audit) |
-| §3.3.1   | Algorithm 1 (Simple Randomization)             | implemented — used for TCP `bind(0)` (no destination known) |
-| §3.3.3   | Algorithm 3 (Hash-Based, RFC 6528-style)       | **not implemented for TCP** — Phase-2 hardening; the RFC's §3.5-preferred choice for TCP `connect()` |
-| §3.3.4   | Algorithm 4 (Double-Hash + Increment Table)    | not implemented |
+| §3.3.1   | Algorithm 1 (Simple Randomization)             | implemented — used for TCP `bind(0)` (no destination known yet) |
+| §3.3.3   | Algorithm 3 (Hash-Based, RFC 6528-style)       | met — used for TCP `connect()` via `pick_local_port_for` |
+| §3.3.4   | Algorithm 4 (Double-Hash + Increment Table)    | not implemented (refinement on 3) |
 | §3.3.5   | Algorithm 5 (Random Increments)                | not implemented |
-| §3.5     | Choosing an algorithm                          | partial — Algorithm 1 conformant for `bind()`-then-`connect()`; Algorithm 3 deferred for direct `connect()` |
+| §3.4     | Secret-key considerations                      | met — `TCP__PORT_SECRET` (16 random bytes at module import, never persisted, regenerated on restart) |
+| §3.5     | Choosing an algorithm                          | met — Algorithm 3 on `connect()`, Algorithm 1 fallback on pre-bound sockets |
 | §4       | NAPT interaction                               | N/A — PyTCP is not a NAPT |
 
 The UDP-side audit catalogues the implementation in
@@ -71,7 +72,7 @@ that don't apply equally to UDP:
 
 ## TCP-specific findings
 
-### §3.3.3 Algorithm 3 — Hash-Based Selection (TCP
+### §3.3.3 Algorithm 3 — Hash-Based Selection (TCP)
 
 The RFC 6056 §3.3.3 algorithm:
 
@@ -102,47 +103,56 @@ destination AND the per-stack secret. Two consequences:
    remote_port)` walk forward from the same offset,
    spreading port usage across the range deterministically.
 
-**Adherence:** not implemented. PyTCP's current picker
-ignores the destination tuple entirely. The fix would
-plumb `(remote_ip, remote_port)` from the `connect()`
-call site through to `pick_local_port`:
+**Adherence:** met. PyTCP ships
+`pick_local_port_for(*, local_ip, remote_ip, remote_port)`
+at `pytcp/lib/ip_helper.py`:
 
 ```python
-# pytcp/lib/ip_helper.py
 def pick_local_port_for(
     *,
     local_ip: Ip4Address | Ip6Address,
     remote_ip: Ip4Address | Ip6Address,
     remote_port: int,
 ) -> int:
-    """RFC 6056 §3.3.3 Algorithm 3 — hash-based offset."""
-    offset = int.from_bytes(
-        hashlib.blake2s(
-            bytes(local_ip) + bytes(remote_ip) +
-            remote_port.to_bytes(2, "big"),
-            key=stack.TCP__PORT_SECRET,
-            digest_size=4,
-        ).digest()
-    )
-    used = {socket.local_port for socket in stack.sockets.values()}
+    digest = hashlib.blake2s(
+        bytes(local_ip) + bytes(remote_ip) + remote_port.to_bytes(2, "big"),
+        key=stack.TCP__PORT_SECRET,
+        digest_size=4,
+    ).digest()
+    offset = int.from_bytes(digest, "big")
     pool = list(stack.EPHEMERAL_PORT_RANGE)
-    for i in range(len(pool)):
-        port = pool[(offset + i) % len(pool)]
+    used = {socket.local_port for socket in stack.sockets.values()}
+    pool_len = len(pool)
+    for i in range(pool_len):
+        port = pool[(offset + i) % pool_len]
         if port not in used:
             return port
     raise OSError("...")
 ```
 
-A new `TCP__PORT_SECRET` at `pytcp/stack/__init__.py`
-mirrors `TCP__ISS_SECRET` (`secrets.token_bytes(16)` at
-import, never persisted).
+The TCP `connect()` call site at
+`pytcp/socket/tcp__socket.py` orders operations so the
+destination IP is resolved before the picker runs, then
+invokes `pick_local_port_for(local_ip, remote_ip,
+remote_port)` to derive the source port. The
+`TCP__PORT_SECRET` (16 random bytes at module import
+via `secrets.token_bytes`) keys the BLAKE2s hash; same
+allocation pattern as `TCP__ISS_SECRET` /
+`TCP__FASTOPEN_SECRET` / `IP6__FLOW_SECRET`.
 
-This is **Phase-2 hardening** — the Phase-1 fix proposed
-in the UDP audit (widen the range, use `secrets.choice`)
-covers most of the §3.1 / §3.2 SHOULDs and is enough to
-move both TCP and UDP from "partial" to "met" on the
-common clauses. Algorithm 3 is a Phase-2 step that brings
-TCP to Linux parity.
+The unit tests at
+`pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPortFor`
+pin the three RFC-relevant properties:
+
+- **Deterministic for same inputs** (same offset for the
+  same five-tuple inputs + secret).
+- **Per-destination isolated** (different `remote_ip`
+  values produce different ports).
+- **Secret-keyed** (mutating `TCP__PORT_SECRET` produces
+  different ports for the same inputs).
+
+Plus the operational properties (linear scan past
+in-use ports; raise on exhaustion).
 
 ### TCP-specific call sites for the picker
 
@@ -233,26 +243,39 @@ When Algorithm 3 lands, the natural test is:
    the offset for a given `(local, remote)` tuple
    matches the computed BLAKE2s hash.
 
-### §3.5 lazy-binding issue (bind before connect)
+### §3.3.3 Algorithm 3 — per-destination isolation
+
+- **Unit:**
+  `pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPortFor`
+  — 5 tests: same inputs + secret → same port;
+  different `remote_ip` → different ports; different
+  secret → different ports; skips ports in use (linear
+  scan); raises OSError on exhaustion.
+
+**Status:** locked in.
+
+### §3.5 lazy-binding (bind before connect)
 
 **Existing test:**
 `pytcp/tests/unit/socket/test__socket__tcp__socket.py:296+`
 patches `pytcp.socket.tcp__socket.pick_local_port` for
-the ephemeral-assignment-on-bind path. The test pins
-the picker is called, not whether it follows Algorithm
-1/2/3.
+the ephemeral-assignment-on-`bind(0)` path. The test
+pins the picker is called via the bare (no-destination)
+`pick_local_port` route — matching RFC 6056 §3.5's
+Algorithm 1 fallback for the case where the destination
+isn't yet known.
 
-**Status:** locked in for the plumbing; **not locked
-in** for the algorithm classification.
+**Status:** locked in.
 
 ### Test coverage summary
 
 | Aspect                                                | Coverage |
 |-------------------------------------------------------|----------|
-| Picker is invoked on TCP bind(0) / connect()           | locked in |
-| §3.3.3 Algorithm 3 per-destination isolation          | n/a (gap not closed; Phase-2) |
-| §3.5 lazy-binding via Algorithm 2 fall-back            | n/a (gap not closed; Phase-2) |
-| Phase-1 common picker fixes                            | covered by UDP audit |
+| Picker is invoked on TCP `bind(0)` / `connect()`      | locked in |
+| §3.3.3 Algorithm 3 per-destination isolation          | locked in |
+| §3.3.3 Algorithm 3 secret-keyed                       | locked in |
+| §3.5 lazy-binding Algorithm 1 fallback                | locked in |
+| Phase-1 common picker fixes                           | covered by UDP audit |
 
 ---
 
@@ -263,24 +286,27 @@ in** for the algorithm classification.
 | §3.1 Obfuscation                                      | met (shared Phase-1 fix; `secrets.choice`) |
 | §3.2 Range                                            | met (shared Phase-1 fix; `range(32768, 61000)`) |
 | §3.3.1 Algorithm 1 (UDP-acceptable)                   | implemented — used for `bind(0)` (no destination yet) |
-| §3.3.3 Algorithm 3 (TCP-recommended per §3.5)         | **not implemented** — Phase-2 hardening for `connect()` |
-| §3.3.4 Algorithm 4                                    | not implemented (refinement on 3) |
+| §3.3.3 Algorithm 3 (TCP-recommended per §3.5)         | met — used on `connect()` via `pick_local_port_for` |
+| §3.3.4 Algorithm 4                                    | not implemented (refinement on 3; no operational need) |
 | §3.3.5 Algorithm 5                                    | not implemented |
-| §3.4 Secret-key handling                              | N/A today; pattern established (TCP__ISS_SECRET) for future |
-| §3.5 Lazy-binding hybrid (Alg 2 / Alg 3)              | partial — Algorithm 1 fallback in place; Algorithm 3 on `connect()` deferred to Phase 2 |
+| §3.4 Secret-key handling                              | met — `TCP__PORT_SECRET` follows the established 128-bit per-process token pattern |
+| §3.5 Lazy-binding hybrid (Alg 1 / Alg 3)              | met — Algorithm 1 on `bind(0)`; Algorithm 3 on `connect()` |
 | §4 NAPT                                               | N/A |
 
-**Phase-1 fix (shared with UDP)** has landed: widened
-the ephemeral range to Linux parity and replaced
-set-pop entropy with `secrets.choice`. Both TCP and UDP
-now satisfy RFC 6056 §3.1 and §3.2.
+PyTCP **fully conforms** to RFC 6056 for both TCP and
+UDP. The shared Phase-1 fix brought §3.1 and §3.2 into
+compliance; the TCP-specific Phase-2 fix added
+Algorithm 3 for the `connect()` path — Linux-parity
+behaviour with per-destination port-subspace isolation
+and a 128-bit secret keying the BLAKE2s offset.
 
-**Phase-2 (TCP-specific) remains:** implement
-Algorithm 3 with the `TCP__PORT_SECRET` secret-key
-pattern for the `connect()` path where the destination
-tuple is in scope. Adds the per-destination isolation
-property that RFC 6056 §3.5 recommends for TCP and that
-Linux's `__inet_hash_connect` already provides.
+Algorithm 4 (RFC 6056 §3.3.4 — double-hash with
+per-destination increment table) is a refinement on
+Algorithm 3 that reduces port-reuse frequency at the
+cost of additional kernel memory. PyTCP has no
+operational need that Algorithm 3 alone doesn't already
+address; Algorithm 4 remains "not implemented" without
+a conformance impact.
 
 ---
 

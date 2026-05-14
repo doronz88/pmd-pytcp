@@ -48,6 +48,7 @@ from pytcp.lib.ip_helper import (
     is_address_in_use,
     pick_local_ip_address,
     pick_local_port,
+    pick_local_port_for,
 )
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp.tcp__enums import CcMode
@@ -522,14 +523,26 @@ class TcpSocket(socket):
         if (remote_port := address[1]) not in range(0, 65536):
             raise OverflowError("connect(): port must be 0-65535. - [Port out of range]")
 
-        # Assigning local port makes socket "bound" if not "bound" already.
-        if (local_port := self._local_port) not in range(1, 65536):
-            local_port = pick_local_port()
-
-        # Set local and remote ip addresses appropriately.
+        # Set local and remote ip addresses appropriately. Resolving the
+        # remote IP first lets the local-port picker key its
+        # RFC 6056 §3.3.3 Algorithm 3 offset on the full destination
+        # tuple — per-destination isolation the bare 'pick_local_port'
+        # cannot provide.
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
+
+        # Assigning local port makes socket "bound" if not "bound" already.
+        # When the socket wasn't pre-bound (no explicit bind()), use the
+        # destination-aware Algorithm 3 picker; the per-(local, remote)
+        # secret-keyed offset means an off-path attacker cannot predict
+        # the source port from observations of other flows.
+        if (local_port := self._local_port) not in range(1, 65536):
+            local_port = pick_local_port_for(
+                local_ip=local_ip_address,
+                remote_ip=remote_ip_address,
+                remote_port=remote_port,
+            )
 
         # Re-register socket with new socket id.
         stack.sockets.pop(self.socket_id, None)

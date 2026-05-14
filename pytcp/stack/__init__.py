@@ -106,6 +106,19 @@ IP6__FLOW_SECRET: bytes = secrets.token_bytes(16)
 # it stable for the process lifetime.
 TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
 
+# RFC 6056 §3.3.3 Algorithm 3 port-selection secret. Used
+# by 'pytcp.lib.ip_helper.pick_local_port_for' to compute
+# a per-(local_ip, remote_ip, remote_port) BLAKE2s-keyed
+# offset into 'EPHEMERAL_PORT_RANGE' so the source port
+# for a TCP connect() is unpredictable to an off-path
+# attacker AND independent of the source ports chosen for
+# connections to other destinations (the §3.3.3
+# per-destination subspace property). Same allocation
+# pattern as 'TCP__ISS_SECRET' / 'TCP__FASTOPEN_SECRET' /
+# 'IP6__FLOW_SECRET': 128 bits at module import, never
+# persisted, regenerated on process restart.
+TCP__PORT_SECRET: bytes = secrets.token_bytes(16)
+
 # Mutable TCP-stack-level state (TFO cookie cache + negative
 # cache + pending-request counter). Aggregated under one
 # 'TcpStack' instance so test fixtures snapshot+restore one

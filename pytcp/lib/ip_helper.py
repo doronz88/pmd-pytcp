@@ -30,6 +30,7 @@ pytcp/lib/ip_helper.py
 ver 3.0.4
 """
 
+import hashlib
 import secrets
 from typing import cast
 
@@ -161,6 +162,56 @@ def pick_local_port() -> int:
         raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
 
     return secrets.choice(available)
+
+
+def pick_local_port_for(
+    *,
+    local_ip: Ip4Address | Ip6Address,
+    remote_ip: Ip4Address | Ip6Address,
+    remote_port: int,
+) -> int:
+    """
+    Pick an ephemeral local port using RFC 6056 §3.3.3
+    Algorithm 3: a BLAKE2s-keyed hash of (local_ip, remote_ip,
+    remote_port) under the stack-wide 'TCP__PORT_SECRET' computes
+    a starting offset into 'stack.EPHEMERAL_PORT_RANGE'; a linear
+    scan from that offset returns the first port not currently
+    held by an existing socket.
+
+    Two RFC-relevant properties follow:
+
+    - **§3.3.3 per-destination isolation.** Connecting to two
+      different remote endpoints starts the scan at independent
+      offsets, so an attacker observing the source port for one
+      flow learns nothing about source ports for flows to other
+      destinations.
+    - **§3.4 secret-keyed.** The per-process
+      'TCP__PORT_SECRET' (16 random bytes at module import)
+      keys the hash so the offset table cannot be precomputed
+      by an off-path attacker.
+
+    Falls back to walking the full range on collision (the
+    common case is the first slot being free, since the
+    cryptographic hash spreads offsets uniformly).
+    """
+
+    digest = hashlib.blake2s(
+        bytes(local_ip) + bytes(remote_ip) + remote_port.to_bytes(2, "big"),
+        key=stack.TCP__PORT_SECRET,
+        digest_size=4,
+    ).digest()
+    offset = int.from_bytes(digest, "big")
+
+    pool = list(stack.EPHEMERAL_PORT_RANGE)
+    used = {socket.local_port for socket in stack.sockets.values()}
+    pool_len = len(pool)
+
+    for i in range(pool_len):
+        port = pool[(offset + i) % pool_len]
+        if port not in used:
+            return port
+
+    raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
 
 
 def is_address_in_use(

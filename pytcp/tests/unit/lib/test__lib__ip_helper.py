@@ -51,6 +51,7 @@ from pytcp.lib.ip_helper import (
     pick_local_ip6_address,
     pick_local_ip_address,
     pick_local_port,
+    pick_local_port_for,
     str_to_ip,
 )
 from pytcp.socket import AddressFamily, SocketType
@@ -483,6 +484,186 @@ class TestPickLocalPort(TestCase):
             "[Errno 98] Address already in use",
             str(context.exception),
             msg="pick_local_port() must raise with the canonical Errno 98 message when exhausted.",
+        )
+
+
+class TestPickLocalPortFor(TestCase):
+    """
+    The 'pick_local_port_for()' destination-aware Algorithm 3 tests.
+    """
+
+    def test__ip_helper__pick_local_port_for__deterministic_for_same_inputs(self) -> None:
+        """
+        Ensure two calls with identical (local_ip, remote_ip,
+        remote_port) and the same stack secret pick the same
+        port — Algorithm 3 is a keyed-hash offset, deterministic
+        in its inputs.
+
+        Reference: RFC 6056 §3.3.3 (Algorithm 3: same offset for
+        the same five-tuple inputs).
+        """
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.lib.ip_helper.stack.sockets", {}),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+        ):
+            port_a = pick_local_port_for(
+                local_ip=Ip4Address("10.0.0.1"),
+                remote_ip=Ip4Address("198.51.100.1"),
+                remote_port=443,
+            )
+            port_b = pick_local_port_for(
+                local_ip=Ip4Address("10.0.0.1"),
+                remote_ip=Ip4Address("198.51.100.1"),
+                remote_port=443,
+            )
+
+        self.assertEqual(
+            port_a,
+            port_b,
+            msg="Algorithm 3 must return the same port for identical inputs + secret.",
+        )
+
+    def test__ip_helper__pick_local_port_for__different_destinations_isolated(self) -> None:
+        """
+        Ensure two calls with different remote tuples produce
+        different starting offsets — the Algorithm 3 §3.3.3
+        per-destination isolation property. Without isolation
+        an attacker who learns one source port could predict
+        others.
+
+        Reference: RFC 6056 §3.3.3 (per-destination subspace).
+        """
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.lib.ip_helper.stack.sockets", {}),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+        ):
+            port_to_server_a = pick_local_port_for(
+                local_ip=Ip4Address("10.0.0.1"),
+                remote_ip=Ip4Address("198.51.100.1"),
+                remote_port=443,
+            )
+            port_to_server_b = pick_local_port_for(
+                local_ip=Ip4Address("10.0.0.1"),
+                remote_ip=Ip4Address("198.51.100.2"),
+                remote_port=443,
+            )
+
+        self.assertNotEqual(
+            port_to_server_a,
+            port_to_server_b,
+            msg="Algorithm 3 must yield different ports for different remote addresses.",
+        )
+
+    def test__ip_helper__pick_local_port_for__secret_keyed(self) -> None:
+        """
+        Ensure two calls with identical inputs but DIFFERENT
+        stack secrets pick different ports — the offset must be
+        keyed by the per-process secret so an off-path attacker
+        cannot precompute the offset table.
+
+        Reference: RFC 6056 §3.4 (secret-key considerations).
+        """
+
+        local_ip = Ip4Address("10.0.0.1")
+        remote_ip = Ip4Address("198.51.100.1")
+        remote_port = 443
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.lib.ip_helper.stack.sockets", {}),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+        ):
+            port_secret_zero = pick_local_port_for(
+                local_ip=local_ip,
+                remote_ip=remote_ip,
+                remote_port=remote_port,
+            )
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.lib.ip_helper.stack.sockets", {}),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\xff" * 16),
+        ):
+            port_secret_ones = pick_local_port_for(
+                local_ip=local_ip,
+                remote_ip=remote_ip,
+                remote_port=remote_port,
+            )
+
+        self.assertNotEqual(
+            port_secret_zero,
+            port_secret_ones,
+            msg="Algorithm 3 offset must change when the per-stack secret changes.",
+        )
+
+    def test__ip_helper__pick_local_port_for__skips_ports_already_in_use(self) -> None:
+        """
+        Ensure the picker scans forward from the hashed offset
+        when the initial pick is already taken — Algorithm 3's
+        linear scan over EPHEMERAL_PORT_RANGE.
+
+        Reference: RFC 6056 §3.3.3 (linear scan on collision).
+        """
+
+        # Build a sockets map that occupies the first many ports
+        # in the range; the picker must walk past them.
+        used_ports = list(range(40000, 40050))
+        sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in used_ports}
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+        ):
+            port = pick_local_port_for(
+                local_ip=Ip4Address("10.0.0.1"),
+                remote_ip=Ip4Address("198.51.100.1"),
+                remote_port=443,
+            )
+
+        self.assertNotIn(
+            port,
+            used_ports,
+            msg="pick_local_port_for must skip ports held by existing sockets.",
+        )
+        self.assertIn(
+            port,
+            range(40000, 50000),
+            msg="pick_local_port_for must return a value from the configured range.",
+        )
+
+    def test__ip_helper__pick_local_port_for__raises_when_exhausted(self) -> None:
+        """
+        Ensure the picker raises OSError with the canonical
+        '[Errno 98] Address already in use' message when every
+        port in the range is claimed, matching the contract of
+        the bare 'pick_local_port'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(40000, 40010)}
+
+        with (
+            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 40010)),
+            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
+            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+        ):
+            with self.assertRaises(OSError) as context:
+                pick_local_port_for(
+                    local_ip=Ip4Address("10.0.0.1"),
+                    remote_ip=Ip4Address("198.51.100.1"),
+                    remote_port=443,
+                )
+
+        self.assertIn(
+            "[Errno 98] Address already in use",
+            str(context.exception),
+            msg="pick_local_port_for must raise with the canonical Errno 98 message when exhausted.",
         )
 
 
