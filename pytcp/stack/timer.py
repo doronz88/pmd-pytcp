@@ -43,7 +43,7 @@ class TimerTask:
     Timer task support class.
     """
 
-    _method: Callable[[Any], None]
+    _method: Callable[..., None]
     _args: list[Any]
     _kwargs: dict[str, Any]
     _delay: int
@@ -56,7 +56,7 @@ class TimerTask:
     def __init__(
         self,
         *,
-        method: Callable[[Any], None],
+        method: Callable[..., None],
         args: list[Any],
         kwargs: dict[str, Any],
         delay: int,
@@ -174,7 +174,7 @@ class Timer(Subsystem):
     def register_method(
         self,
         *,
-        method: Callable[[Any], None],
+        method: Callable[..., None],
         args: list[Any] | None = None,
         kwargs: dict[str, Any] | None = None,
         delay: int = 1,

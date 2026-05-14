@@ -239,6 +239,8 @@ class PacketStatsRx(PacketStats):
     icmp6__nd_message__fragmented__drop: int = 0
     icmp6__mld2_report: int = 0
     icmp6__mld2_query: int = 0
+    icmp6__mld2_query__scheduled: int = 0
+    icmp6__mld2_query__superseded: int = 0
     icmp6__mld2_query__respond: int = 0
     icmp6__unknown: int = 0
 

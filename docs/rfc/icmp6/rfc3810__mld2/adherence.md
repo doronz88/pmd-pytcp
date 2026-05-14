@@ -62,7 +62,7 @@ fall into `__phrx_icmp6__unknown`.
 | §4 wire | Multicast Address Record wire format           | met |
 | §5      | Listener-side state machine                    | met (group join/leave triggers `CHANGE_TO_EXCLUDE` Report) |
 | §5      | Querier-side state machine                     | deferred (Phase-2 router role) |
-| §5.1.10 | Listener responds to Query with Report         | met (immediate-response model — see §5.1.10 note below) |
+| §5.1.10 | Listener responds to Query with Report         | met (MRC random-delay window, `stack.timer`-scheduled) |
 | §5.2.13 | Hop Limit = 1 on outbound MLDv2 messages       | met |
 | §5.2.13 | Source = link-local address                    | met |
 | §5.2.14 | Destination = `ff02::16` (all-MLDv2-routers)   | met (for Reports) |
@@ -277,25 +277,56 @@ that consults / updates a per-group dictionary.
 >  containing the multicast listener record for each
 >  multicast address listened on."
 
-**Adherence:** met (Phase-1 immediate-response model). The
-RX handler at `__phrx_icmp6__mld2_query` in
-`packet_handler__icmp6__rx.py` calls
-`_send_icmp6_multicast_listener_report` immediately on
-Query receipt, emitting the same `CHANGE_TO_EXCLUDE`
-Report PyTCP sends on spontaneous group-membership
-changes. Counters `icmp6__mld2_query` and
-`icmp6__mld2_query__respond` track Query receipt and
-Report emission.
+**Adherence:** met. The RX handler at
+`__phrx_icmp6__mld2_query` in `packet_handler__icmp6__rx.py`
+emits the same `CHANGE_TO_EXCLUDE` Report PyTCP sends on
+spontaneous group-membership changes; the wire form is
+identical and the querier merges the on-Query Report with
+any spontaneous Reports from the listener.
 
-**PyTCP Phase-1 simplification:** PyTCP does not honour the
-Query's Maximum Response Code (MRC) random-delay window
-from §5.1.10. The MRC delay exists to smear Report bursts
-across many listeners on a single link; PyTCP's typical
-deployment is a single host per link, so the immediate-
-response simplification has no operational impact. A
-future Phase-2 enhancement would parse the MRC and
-schedule the Report via `stack.timer` for full §5.1.10
-conformance.
+**MRC random-delay window:** PyTCP honours the §5.1.10
+random-delay rule. On Query receipt the handler:
+
+1. Decodes the Maximum Response Code field via the §5.1.3
+   helper `_mld2_mrc_to_mrd_ms` (linear for MRC < 32768;
+   floating-point `(mant | 0x1000) << (exp + 3)` for
+   MRC ≥ 32768).
+2. Picks a uniformly-random delay in [0, MRD] via the
+   `_mld2_query__pick_response_delay_ms` method (extracted
+   for deterministic test patching; backed by
+   `random.randint`).
+3. Schedules the Report via `stack.timer.register_method`
+   with `repeat_count=0` (one-shot); the timer-fired
+   callback `_mld2_query__deferred_send` clears the
+   pending state and emits the Report.
+
+**Coalescing per §5.1.10:** the handler tracks the absolute
+`stack.timer.now_ms` at which the next Report will fire
+in `_mld2_query__pending_response_at_ms`. A subsequent
+Query whose computed response time is **later** than the
+existing pending entry is absorbed without rescheduling;
+one whose computed time is **earlier** supersedes the
+pending entry — the old timer is cancelled via
+`unregister_method` and a new one registered.
+
+**Counters:**
+
+- `icmp6__mld2_query` — every inbound Query.
+- `icmp6__mld2_query__scheduled` — bumped on each timer
+  registration (initial + reschedule).
+- `icmp6__mld2_query__superseded` — bumped when an
+  earlier Query cancels a pending Report.
+- `icmp6__mld2_query__respond` — bumped when the Report is
+  actually emitted (immediate-send for delay=0 OR
+  timer-fired deferred send).
+
+**Delay = 0 fast path:** the Timer's tick semantics
+(`remaining_delay -= 1; if remaining_delay: return`) mean a
+task registered with `delay=0` never fires (it ticks to -1
+which is truthy). The handler short-circuits delay=0 to a
+synchronous `_send_icmp6_multicast_listener_report` call,
+preserving the immediate-response behaviour the RFC's
+[0, MRD] interval permits at its zero endpoint.
 
 The querier-role items (§7 timers; §8 inbound-Report
 processing) remain Phase-2 router work.
@@ -339,15 +370,44 @@ processing) remain Phase-2 router work.
 change → Report" assertion; the integration cases pin the
 end-to-end behaviour via wire observation).
 
-### §5.1.10 Query → Report response
+### §5.1.10 Query → Report response (wire-format)
 
 - **Integration:**
   `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_response.py::TestIcmp6Mld2QueryResponse`
-  — 4 tests: General Query elicits exactly one TX frame;
+  — 4 tests with the delay-picker patched to 0 (immediate
+  emission): General Query elicits exactly one TX frame;
   `icmp6__mld2_query` counter increments on Query receipt;
   `icmp6__mld2_query__respond` counter increments on
   Report emission; the outbound TX frame is ICMPv6 type
   143 (the MLDv2 Report).
+
+**Status:** locked in.
+
+### §5.1.3 MRC → MRD decoder
+
+- **Integration (unit-style):**
+  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2MrcEncodingDecode`
+  — 2 tests: linear mapping for MRC < 32768;
+  floating-point decoding for MRC ≥ 32768 across exp/mant
+  corner cases (0x8000, 0x8FFF, 0xFFFF).
+
+**Status:** locked in.
+
+### §5.1.10 MRC random-delay window
+
+- **Integration:**
+  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2QueryDelayWindow`
+  — 5 tests covering the full deferred-send lifecycle:
+  (a) non-zero delay defers the Report (no synchronous
+  TX; FakeTimer advance triggers the fire);
+  (b) delay=0 fast-path emits synchronously without
+  registering a timer;
+  (c) later Query coalesces (no reschedule, no
+  `superseded` bump);
+  (d) earlier Query supersedes (counter bumps; original
+  timer cancelled and never fires);
+  (e) pending-state attribute clears to None after the
+  Report is sent.
 
 **Status:** locked in.
 
@@ -364,7 +424,9 @@ alongside the Phase-2 router-track implementation.
 | Hop Limit = 1 on outbound                           | locked in |
 | RA-option HBH carrier                               | locked in |
 | Address-change triggers Report                      | locked in indirectly |
-| Query → Report response                             | locked in |
+| Query → Report response (wire format)               | locked in |
+| §5.1.3 MRC → MRD decoder                            | locked in |
+| §5.1.10 MRC random-delay window + coalescing        | locked in |
 | Querier-side state machine + timers                 | n/a (Phase-2 router) |
 
 ---
@@ -377,7 +439,7 @@ alongside the Phase-2 router-track implementation.
 | §4 Report wire format                                 | met    |
 | §4 Multicast Address Record codec                     | met    |
 | §5 Listener-side Report emission on join              | met    |
-| §5.1.10 Query → Report response                       | met (Phase-1 immediate-response model; MRC random delay deferred) |
+| §5.1.10 Query → Report response                       | met (MRC random-delay window + coalescing; `stack.timer`-scheduled) |
 | §5.2.13 Hop Limit = 1                                 | met    |
 | §5.2.13 Source = link-local                           | met    |
 | §5.2.14 Destination = `ff02::16` + RA-option HBH      | met    |
@@ -388,15 +450,8 @@ alongside the Phase-2 router-track implementation.
 PyTCP fully satisfies the listener-side requirements that
 matter for a multicast-using host. Remaining items:
 
-1. **§5.1.10 MRC random-delay window** (Phase-2 polish).
-   PyTCP's Phase-1 model responds immediately on Query
-   receipt; the MRC-based random delay exists to avoid
-   Report bursts across many listeners on a single link
-   and has no operational impact in single-host
-   deployments. The follow-up needs `stack.timer`-driven
-   Report scheduling.
-2. **§5-§8 querier role** (Phase-2 router). Lands when
-   the forwarding plane / multicast routing arrives.
+1. **§5-§8 querier role** (Phase-2 router). Lands when the
+   forwarding plane / multicast routing arrives.
 
 ## Cross-references
 

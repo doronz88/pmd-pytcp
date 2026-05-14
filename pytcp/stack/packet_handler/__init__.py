@@ -1247,6 +1247,7 @@ class PacketHandlerL2(
     _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
+    _mld2_query__pending_response_at_ms: int | None
 
     @override
     def __init__(
@@ -1342,6 +1343,15 @@ class PacketHandlerL2(
         # Used for the ICMPv6 ND RA address auto configuration.
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
         self._icmp6_ra__event: Semaphore = threading.Semaphore(0)
+
+        # RFC 3810 §5.1.10 deferred-Report state. Tracks the
+        # absolute 'stack.timer.now_ms' at which the next
+        # scheduled MLDv2 Report will fire on Query receipt;
+        # None means no Report is pending. Coalesces multiple
+        # inbound Queries: a Query whose computed response
+        # time is later than the existing pending entry is
+        # absorbed without rescheduling.
+        self._mld2_query__pending_response_at_ms: int | None = None
 
         # RFC 4861 §6.3.4 default-router list — entries learned
         # from inbound RAs, indexed implicitly by RA source link-

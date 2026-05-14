@@ -30,6 +30,7 @@ pytcp/subsystems/packet_handler/packet_handler__icmp6__rx.py
 ver 3.0.4
 """
 
+import random
 from abc import ABC
 from typing import TYPE_CHECKING, cast
 
@@ -52,6 +53,9 @@ from net_proto import (
     PacketRx,
     PacketValidationError,
 )
+from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__query import (
+    Icmp6Mld2MessageQuery,
+)
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSignalResult
 from pytcp.lib.logger import log
@@ -66,6 +70,34 @@ from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 from pytcp.stack.packet_handler._icmp_error_demux import EmbeddedL4, parse_embedded_l4
+
+
+def _mld2_mrc_to_mrd_ms(mrc: int) -> int:
+    """
+    RFC 3810 §5.1.3 — convert a 16-bit Maximum Response
+    Code (MRC) to the corresponding Maximum Response Delay
+    (MRD) in milliseconds.
+
+    For mrc < 32768: MRD = mrc (linear ms representation).
+
+    For mrc >= 32768, the field encodes a floating-point
+    value:
+
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |1| exp |          mant         |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+        exp  = (mrc >> 12) & 0x7
+        mant = mrc & 0xfff
+        MRD  = (mant | 0x1000) << (exp + 3)
+    """
+
+    if mrc < 32768:
+        return mrc
+    exp = (mrc >> 12) & 0x7
+    mant = mrc & 0xFFF
+    return (mant | 0x1000) << (exp + 3)
 
 
 class PacketHandlerIcmp6Rx(ABC):
@@ -87,6 +119,7 @@ class PacketHandlerIcmp6Rx(ABC):
         _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
+        _mld2_query__pending_response_at_ms: int | None
 
         # pylint: disable=unused-argument
 
@@ -1096,16 +1129,17 @@ class PacketHandlerIcmp6Rx(ABC):
         Host-stack scope (Phase 1): a listener receiving any
         MLDv2 Query (General / Group-Specific / Group-and-
         Source-Specific) responds with a Report reflecting its
-        current per-interface multicast membership. PyTCP's
-        Phase-1 simplification: respond immediately to every
-        Query without honouring the Maximum Response Code's
-        random-delay window. The MRC-based delay exists to
-        smear Report bursts across many listeners on a single
-        link; PyTCP's typical deployment is a single host per
-        link so the immediate-response simplification has no
-        operational impact. A future Phase-2 enhancement would
-        parse the MRC + Source list and schedule the Report
-        via 'stack.timer' for full §5.1.10 conformance.
+        current per-interface multicast membership. The
+        response is delayed by a uniformly-random value in
+        [0, Maximum Response Delay] per §5.1.10 so a link
+        with many listeners spreads Report bursts across the
+        delay window rather than synchronizing them.
+
+        Coalescing rule: a Query whose computed response time
+        is later than an already-pending Report is absorbed
+        without rescheduling; a Query whose computed response
+        time is earlier supersedes the pending Report by
+        cancelling its timer and registering a new one.
 
         On Query receipt we re-emit the same
         'CHANGE_TO_EXCLUDE' Report we send on group-membership
@@ -1121,7 +1155,69 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Query packet " f"from {packet_rx.ip6.src}",
         )
 
-        # RFC 3810 §5.1.10 immediate-response Report.
+        message = packet_rx.icmp6.message
+        assert isinstance(message, Icmp6Mld2MessageQuery)
+
+        mrd_ms = _mld2_mrc_to_mrd_ms(message.maximum_response_code)
+        delay_ms = self._mld2_query__pick_response_delay_ms(mrd_ms)
+
+        # Delay 0 is the special "send right now" case. Bypass
+        # the timer registration — the production 'Timer'
+        # subsystem ticks remaining_delay from N down to 0 and
+        # only fires when it hits 0, so registering with
+        # delay=0 would leave the task dangling at -1 forever.
+        if delay_ms == 0:
+            self._mld2_query__send_now()
+            return
+
+        response_at = stack.timer.now_ms + delay_ms
+        pending = self._mld2_query__pending_response_at_ms
+        if pending is not None and pending <= response_at:
+            # Existing pending Report fires sooner than this new
+            # Query would; absorb the Query per §5.1.10
+            # coalescing rule.
+            return
+
+        if pending is not None:
+            # Newer Query supersedes: cancel the old timer.
+            stack.timer.unregister_method(self._mld2_query__deferred_send)
+            self._packet_stats_rx.icmp6__mld2_query__superseded += 1
+
+        self._mld2_query__pending_response_at_ms = response_at
+        stack.timer.register_method(
+            method=self._mld2_query__deferred_send,
+            delay=delay_ms,
+            repeat_count=0,
+        )
+        self._packet_stats_rx.icmp6__mld2_query__scheduled += 1
+
+    def _mld2_query__pick_response_delay_ms(self, mrd_ms: int) -> int:
+        """
+        RFC 3810 §5.1.10 random-response delay selection:
+        return a uniformly-random integer in [0, mrd_ms].
+        Extracted as a method so tests can patch it to a
+        deterministic value.
+        """
+
+        return random.randint(0, mrd_ms)
+
+    def _mld2_query__deferred_send(self) -> None:
+        """
+        Timer-fired callback that emits the pending MLDv2
+        Report and clears the per-handler pending state.
+        """
+
+        self._mld2_query__pending_response_at_ms = None
+        self._mld2_query__send_now()
+
+    def _mld2_query__send_now(self) -> None:
+        """
+        Emit the listener-side MLDv2 Report and bump the
+        canonical 'icmp6__mld2_query__respond' counter.
+        Shared between the immediate-send (delay=0) path and
+        the deferred-send (timer-fired) path.
+        """
+
         self._send_icmp6_multicast_listener_report()
         self._packet_stats_rx.icmp6__mld2_query__respond += 1
 

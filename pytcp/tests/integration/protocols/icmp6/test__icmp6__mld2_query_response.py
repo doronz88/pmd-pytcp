@@ -127,6 +127,13 @@ class TestIcmp6Mld2QueryResponse(IcmpTestCase):
         # join ff02::1; the harness fixture doesn't.
         self._packet_handler._mac_multicast.append(MacAddress("33:33:00:00:00:01"))
 
+        # RFC 3810 §5.1.10 random-delay window is exercised by
+        # the dedicated 'test__icmp6__mld2_query_delay_window'
+        # suite; here, force delay=0 so the Report is emitted
+        # synchronously and these wire-format assertions stay
+        # straightforward.
+        self._packet_handler._mld2_query__pick_response_delay_ms = lambda mrd_ms: 0  # type: ignore[method-assign]
+
     def test__icmp6__mld2_query__triggers_report_on_wire(self) -> None:
         """
         Ensure an inbound MLDv2 General Query elicits exactly
