@@ -75,7 +75,17 @@ transport adapter is the right factoring.
 
 ## 3. Architecture
 
-### 3.1 Shared engine — `net_proto/lib/plpmtud.py`
+### 3.1 Shared engine — `pytcp/lib/plpmtud.py`
+
+`PmtuSearch` is stateful runtime machinery — per-destination
+state, timer-driven, ACK-feedback-driven, registered on
+`stack.pmtu_state`. That places it in `pytcp/`, not
+`net_proto/` (which is the stateless packet
+parse/assemble/validate library — see `CLAUDE.md` package
+boundaries). The canonical precedent is the generic
+`NeighborCache[A, P]` base at `pytcp/lib/neighbor.py`: same
+PEP 695 shape, same stateful-runtime classification, same
+consumed-by-stack-level-adapters pattern.
 
 PEP 695 generic over the address type:
 
@@ -233,16 +243,18 @@ discipline rules. Phases are mechanically reversible.
 
 ### Phase 1 — `PmtuSearch` shared engine
 
-**Goal:** ship the state machine as a pure dataclass
-under `net_proto/lib/plpmtud.py` with full unit-test
+**Goal:** ship the state machine as a stateful runtime
+class under `pytcp/lib/plpmtud.py` with full unit-test
 coverage. No integration.
 
 **Touches:**
-- `net_proto/lib/plpmtud.py` — new file. PEP 695 generic
+- `pytcp/lib/plpmtud.py` — new file. PEP 695 generic
   class, RFC 8899 §5 state machine, candidate MTU
   ladder, timer machinery, black-hole detection, ICMP
-  signal absorption.
-- `net_proto/tests/unit/lib/test__lib__plpmtud.py` —
+  signal absorption. Sits alongside
+  `pytcp/lib/neighbor.py` as a peer stateful-runtime
+  helper.
+- `pytcp/tests/unit/lib/test__lib__plpmtud.py` —
   per-state transition tests, ladder convergence,
   black-hole entry/exit, ICMP-signal short-circuit.
 
@@ -565,27 +577,119 @@ when Phase 0 lands.
 
 ### RFC 4821 (TCP PLPMTUD)
 
-| Clause | Today | After plan |
-|--------|-------|-----------|
-| §3 Probing without ICMP | not implemented | met (Phase 3) |
-| §5 Probe segment generation | not implemented | met (Phase 3) |
-| §7.1 PROBE_TIMER | not implemented | met (Phase 1 + 3) |
-| §7.4 Probes excluded from cwnd | not implemented | met (Phase 3, §5.1) |
-| §7.5 Black-hole detection | not implemented | met (Phase 1, §5.3) |
-| §7.6 Re-probe periodically (raise) | not implemented | met (Phase 1 raise timer) |
+| Clause                              | Today           | After plan                |
+|-------------------------------------|-----------------|---------------------------|
+| §3 Probing without ICMP             | not implemented | met (Phase 3)             |
+| §5 Probe segment generation         | not implemented | met (Phase 3)             |
+| §7.1 PROBE_TIMER                    | not implemented | met (Phase 1 + 3)         |
+| §7.4 Probes excluded from cwnd      | not implemented | met (Phase 3, §5.1)       |
+| §7.5 Black-hole detection           | not implemented | met (Phase 1, §5.3)       |
+| §7.6 Re-probe periodically (raise)  | not implemented | met (Phase 1 raise timer) |
 
 ### RFC 8899 (Datagram-transport PLPMTUD)
 
-| Clause | Today | After plan |
-|--------|-------|-----------|
-| §4 Substrate (per-dest cache) | met | met |
-| §4.6.4 BASE_PMTU floor | not enforced | met (Phase 1) |
-| §5 State machine | not implemented | met (Phase 1) |
-| §5.1 PROBE_COUNT / PROBE_TIMER constants | not implemented | met (Phase 1) |
-| §5.3 Binary search | not implemented | met (Phase 1, §5.6) |
-| §5.4 SEARCH_COMPLETE → raise | not implemented | met (Phase 1) |
-| §6 Datagram transport API (probe send / ack / loss) | not implemented | met for TCP (Phase 3) + manual UDP (Phase 4) |
-| §7 Black-hole detection | not implemented | met (Phase 1) |
+| Clause                                              | Today           | After plan                                            |
+|-----------------------------------------------------|-----------------|-------------------------------------------------------|
+| §4 Substrate (per-dest cache)                       | met             | met                                                   |
+| §4.6.4 BASE_PMTU floor                              | not enforced    | met (Phase 1)                                         |
+| §5 State machine                                    | not implemented | met (Phase 1)                                         |
+| §5.1 PROBE_COUNT / PROBE_TIMER constants            | not implemented | met (Phase 1)                                         |
+| §5.3 Binary search                                  | not implemented | met (Phase 1, §5.6)                                   |
+| §5.4 SEARCH_COMPLETE → raise                        | not implemented | met (Phase 1)                                         |
+| §6 Datagram transport API (probe send / ack / loss) | not implemented | met for TCP (Phase 3) + manual UDP (Phase 4)          |
+| §7 Black-hole detection                             | not implemented | met (Phase 1)                                         |
+
+### Test matrix
+
+Every met-after-plan row above is locked in by a specific
+test method. Names are placeholders pending implementation;
+Phase 5 audit refresh greps the actual `path::TestClass::test_method`
+strings against this matrix. **Tests are written before the
+code they pin**, per `feature_implementation.md` §2 — each
+row's test is in the same commit (or the immediately
+preceding tests-first commit) as the implementation that
+flips it green.
+
+#### Phase 1 — engine unit tests (`pytcp/tests/unit/lib/test__lib__plpmtud.py`)
+
+| Clause / failure mode                              | TestClass                       | test_method                                                       |
+|----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
+| RFC 8899 §4.6.4 IPv6 floor (≥ 1280)                | TestPmtuSearch__Construction    | test__plpmtud__ip6_floor_min_pmtu_1280                            |
+| RFC 8899 §4.6.4 IPv4 floor (≥ 576)                 | TestPmtuSearch__Construction    | test__plpmtud__ip4_floor_min_pmtu_576                             |
+| RFC 8899 §5 state=BASE on construction             | TestPmtuSearch__Construction    | test__plpmtud__initial_state_is_base                              |
+| RFC 8899 §5 BASE → SEARCHING on ack(base)          | TestPmtuSearch__Base            | test__plpmtud__base__ack_transitions_to_searching                 |
+| RFC 8899 §5 SEARCHING → SEARCH_COMPLETE            | TestPmtuSearch__Searching       | test__plpmtud__searching__converges_to_search_complete            |
+| RFC 8899 §5 SEARCHING → ERROR on PROBE_COUNT loss  | TestPmtuSearch__Searching       | test__plpmtud__searching__probe_count_losses_enter_error          |
+| RFC 8899 §5.1 PROBE_COUNT default = 3              | TestPmtuSearch__Constants       | test__plpmtud__probe_count_default_is_3                           |
+| RFC 8899 §5.1 PROBE_TIMER default = 30 s           | TestPmtuSearch__Constants       | test__plpmtud__probe_timer_default_is_30s                         |
+| RFC 8899 §5.1 next_probe_size pre-timer = None     | TestPmtuSearch__Timer           | test__plpmtud__next_probe_size_pre_timer_is_none                  |
+| RFC 8899 §5.3 binary-search ladder convergence     | TestPmtuSearch__Ladder          | test__plpmtud__binary_search_ladder_convergence                   |
+| RFC 8899 §5.3 8-byte granularity convergence       | TestPmtuSearch__Ladder          | test__plpmtud__ladder_converges_at_8_byte_granularity             |
+| RFC 8899 §5.4 SEARCH_COMPLETE → raise re-search    | TestPmtuSearch__Raise           | test__plpmtud__raise_timer_re_enters_searching                    |
+| RFC 8899 §6 on_probe_ack advances SEARCH_LOW       | TestPmtuSearch__Api             | test__plpmtud__on_probe_ack_advances_search_low                   |
+| RFC 8899 §6 on_probe_loss advances probe_count     | TestPmtuSearch__Api             | test__plpmtud__on_probe_loss_advances_probe_count                 |
+| RFC 8899 §6 on_classical_pmtu lowers SEARCH_HIGH   | TestPmtuSearch__Api             | test__plpmtud__on_classical_pmtu_shrinks_search_high              |
+| RFC 8899 §7 three consecutive losses → ERROR       | TestPmtuSearch__BlackHole       | test__plpmtud__three_consecutive_losses_enter_error               |
+| RFC 8899 §7 ERROR → SEARCHING on ICMP recovery     | TestPmtuSearch__BlackHole       | test__plpmtud__error__icmp_signal_recovers_to_searching           |
+| §5.3 ICMP signal in SEARCHING shrinks ceiling      | TestPmtuSearch__IcmpInterleave  | test__plpmtud__searching__icmp_signal_shrinks_search_high         |
+| §6 IPv6 MIN_PMTU invariant under any input         | TestPmtuSearch__Construction    | test__plpmtud__ip6_min_pmtu_invariant_under_lower_icmp_signal     |
+| §6 Transient single-loss does NOT enter ERROR      | TestPmtuSearch__BlackHole       | test__plpmtud__single_loss_does_not_enter_error                   |
+
+#### Phase 2 — registry tests (`pytcp/tests/unit/lib/test__lib__pmtu_state.py`)
+
+| Concern                                            | TestClass                       | test_method                                                       |
+|----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
+| RFC 8899 §4 lazy allocation on classical PMTU      | TestPmtuStateRegistry           | test__pmtu_state__lazy_allocation_on_classical_pmtu               |
+| Backward-compat current_pmtu scalar accessor       | TestPmtuStateRegistry           | test__pmtu_state__current_pmtu_returns_scalar                     |
+| Distinct PmtuSearch per destination                | TestPmtuStateRegistry           | test__pmtu_state__per_destination_isolation                       |
+| Harness setUp clears stack.pmtu_state              | TestPmtuStateHarness            | test__pmtu_state__harness_setup_clears_registry                   |
+| Harness tearDown restores stack.pmtu_state         | TestPmtuStateHarness            | test__pmtu_state__harness_teardown_restores_registry              |
+
+#### Phase 3 — TCP adapter integration tests (`pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud.py`)
+
+| Clause / failure mode                              | TestClass                       | test_method                                                       |
+|----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
+| RFC 4821 §3 Probing without ICMP                   | TestTcpPlpmtud__ProbeEmit       | test__tcp__plpmtud__established_probe_emitted_after_timer         |
+| RFC 4821 §5 Probe-segment size matches candidate   | TestTcpPlpmtud__ProbeEmit       | test__tcp__plpmtud__probe_segment_size_matches_candidate          |
+| RFC 4821 §7.1 PROBE_TIMER 30 s cadence             | TestTcpPlpmtud__Timer           | test__tcp__plpmtud__probe_timer_30s_cadence                       |
+| RFC 4821 §7.4 Probe excluded from cwnd             | TestTcpPlpmtud__CwndExempt      | test__tcp__plpmtud__probe_does_not_consume_cwnd                   |
+| RFC 4821 §7.4 bytes_in_flight skips probe          | TestTcpPlpmtud__CwndExempt      | test__tcp__plpmtud__bytes_in_flight_excludes_probe_segment        |
+| RFC 4821 §7.5 Probe-seq at snd.nxt - 1             | TestTcpPlpmtud__ProbeSeq        | test__tcp__plpmtud__probe_seq_is_snd_nxt_minus_one                |
+| RFC 4821 §7.5 Probe ACK → engine.on_probe_ack      | TestTcpPlpmtud__LossDetection   | test__tcp__plpmtud__probe_ack_calls_on_probe_ack                  |
+| RFC 4821 §7.5 Probe-RTO → engine.on_probe_loss     | TestTcpPlpmtud__LossDetection   | test__tcp__plpmtud__probe_rto_calls_on_probe_loss                 |
+| RFC 4821 §7.5 Data-RTO does NOT feed probe-loss    | TestTcpPlpmtud__LossDetection   | test__tcp__plpmtud__data_rto_does_not_feed_probe_loss             |
+| RFC 4821 §7.5 Black-hole clamps to min_pmtu        | TestTcpPlpmtud__BlackHole       | test__tcp__plpmtud__black_hole_clamps_to_min_pmtu                 |
+| RFC 4821 §7.6 Raise timer re-probes               | TestTcpPlpmtud__Raise           | test__tcp__plpmtud__search_complete_raise_timer_reprobes          |
+| §5.3 Classical PMTUD interleave                    | TestTcpPlpmtud__IcmpInterleave  | test__tcp__plpmtud__icmp_packet_too_big_shrinks_during_search     |
+| §6 No probe before ESTABLISHED                     | TestTcpPlpmtud__StateGates      | test__tcp__plpmtud__no_probe_before_established                   |
+| §6 IPv4 + IPv6 parallel destinations independent   | TestTcpPlpmtud__Multidest       | test__tcp__plpmtud__ip4_ip6_parallel_search_states                |
+
+Plus segment-factory unit tests at `net_proto/tests/unit/protocols/tcp/test__tcp__segment_factory__plpmtud.py`:
+
+| Aspect                                             | TestClass                       | test_method                                                       |
+|----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
+| build_probe_segment size matches request           | TestTcpSegmentFactory__Probe    | test__tcp__segment_factory__probe_size_matches_request            |
+| build_probe_segment zero-padded payload            | TestTcpSegmentFactory__Probe    | test__tcp__segment_factory__probe_payload_is_zero_padded          |
+| build_probe_segment seq = snd.nxt - 1              | TestTcpSegmentFactory__Probe    | test__tcp__segment_factory__probe_seq_is_snd_nxt_minus_one        |
+
+#### Phase 4 — UDP adapter integration tests (`pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`)
+
+| Clause / failure mode                              | TestClass                       | test_method                                                       |
+|----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
+| RFC 8899 §6 probe_pmtu emits sized datagram        | TestUdpPlpmtud__ProbeEmit       | test__udp__plpmtud__probe_pmtu_emits_sized_datagram               |
+| RFC 8899 §6 ack_probe advances current_pmtu        | TestUdpPlpmtud__Api             | test__udp__plpmtud__ack_probe_advances_current_pmtu               |
+| RFC 8899 §6 timeout_probe × PROBE_COUNT → ERROR    | TestUdpPlpmtud__BlackHole       | test__udp__plpmtud__timeout_probe_count_enters_error              |
+| RFC 8899 §7 ERROR → SEARCHING on app recovery      | TestUdpPlpmtud__BlackHole       | test__udp__plpmtud__error__ack_recovers_to_searching              |
+| §6 Re-probe while in-flight rejected               | TestUdpPlpmtud__Api             | test__udp__plpmtud__probe_pmtu_rejects_concurrent_probe           |
+| §6 Probe in DISABLED state rejected                | TestUdpPlpmtud__StateGates      | test__udp__plpmtud__probe_pmtu_disabled_returns_error             |
+
+Total new test surface: **~46 methods across 6 files**
+(20 engine unit, 5 registry unit, 14 TCP integration, 3
+segment-factory unit, 6 UDP integration). Phase 5's audit
+refresh maps every "met (Phase N)" row above to the
+corresponding `path::TestClass::test_method` string in
+`docs/rfc/tcp/rfc4821__plpmtud/adherence.md` and
+`docs/rfc/tcp/rfc8899__dplpmtud/adherence.md`.
 
 ---
 
