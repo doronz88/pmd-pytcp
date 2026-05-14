@@ -84,7 +84,11 @@ class Udp(Proto, UdpHeaderProperties):
 
         buffer = bytearray(self._header)
         buffer += self._payload
-        buffer[6:8] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
+        # RFC 768: a computed checksum of zero is transmitted
+        # as all-ones so the wire value 0x0000 remains
+        # unambiguously the "no checksum generated" sentinel.
+        cksum = inet_cksum(buffer, init=self.pshdr_sum)
+        buffer[6:8] = (cksum or 0xFFFF).to_bytes(2)
 
         return memoryview(buffer)
 

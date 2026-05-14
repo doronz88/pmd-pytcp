@@ -32,6 +32,7 @@ ver 3.0.4
 
 from typing import Any
 from unittest import TestCase
+from unittest.mock import patch
 
 from parameterized import parameterized_class  # type: ignore
 
@@ -334,6 +335,113 @@ class TestUdpAssemblerMisc(TestCase):
             udp__assembler.tracker.echo_tracker,
             echo_tracker,
             msg="Assembler tracker must carry the provided echo_tracker.",
+        )
+
+    def test__udp__assembler__assemble__zero_compute_substituted_with_all_ones(self) -> None:
+        """
+        Ensure 'assemble()' substitutes the wire value 0xFFFF
+        when the computed one's-complement checksum is zero, so
+        the on-wire 0x0000 unambiguously means 'sender did not
+        compute a checksum'.
+
+        Reference: RFC 768 (computed-zero UDP checksum MUST be
+        transmitted as all ones).
+        """
+
+        assembler = UdpAssembler(udp__sport=12345, udp__dport=80, udp__payload=b"x")
+        buffers: list[Buffer] = []
+
+        with patch(
+            "net_proto.protocols.udp.udp__assembler.inet_cksum",
+            return_value=0,
+        ):
+            assembler.assemble(buffers)
+
+        cksum_field = int.from_bytes(bytes(buffers[0])[6:8], "big")
+        self.assertEqual(
+            cksum_field,
+            0xFFFF,
+            msg=("Computed-zero UDP checksum must be transmitted as 0xFFFF, " f"not 0x0000. Got: 0x{cksum_field:04x}."),
+        )
+
+    def test__udp__assembler__assemble__nonzero_compute_passes_through(self) -> None:
+        """
+        Ensure 'assemble()' writes a non-zero computed checksum
+        to the wire verbatim — the substitution rule only fires
+        on a computed zero.
+
+        Reference: RFC 768 (only the zero case is substituted).
+        """
+
+        assembler = UdpAssembler(udp__sport=12345, udp__dport=80, udp__payload=b"x")
+        buffers: list[Buffer] = []
+
+        with patch(
+            "net_proto.protocols.udp.udp__assembler.inet_cksum",
+            return_value=0x1234,
+        ):
+            assembler.assemble(buffers)
+
+        cksum_field = int.from_bytes(bytes(buffers[0])[6:8], "big")
+        self.assertEqual(
+            cksum_field,
+            0x1234,
+            msg=("Non-zero computed UDP checksum must be transmitted unchanged. " f"Got: 0x{cksum_field:04x}."),
+        )
+
+    def test__udp__base__bytes__zero_compute_substituted_with_all_ones(self) -> None:
+        """
+        Ensure 'bytes(assembler)' (the single-buffer __buffer__
+        path on Udp base) applies the same RFC 768 zero-to-all-
+        ones substitution as the multi-buffer 'assemble()' path.
+
+        Reference: RFC 768 (computed-zero UDP checksum MUST be
+        transmitted as all ones — applies on every TX path).
+        """
+
+        assembler = UdpAssembler(udp__sport=12345, udp__dport=80, udp__payload=b"x")
+
+        with patch(
+            "net_proto.protocols.udp.udp__base.inet_cksum",
+            return_value=0,
+        ):
+            wire = bytes(assembler)
+
+        cksum_field = int.from_bytes(wire[6:8], "big")
+        self.assertEqual(
+            cksum_field,
+            0xFFFF,
+            msg=(
+                "Computed-zero UDP checksum from __buffer__ must be transmitted as 0xFFFF, "
+                f"not 0x0000. Got: 0x{cksum_field:04x}."
+            ),
+        )
+
+    def test__udp__base__bytes__nonzero_compute_passes_through(self) -> None:
+        """
+        Ensure 'bytes(assembler)' writes a non-zero computed
+        checksum verbatim — the substitution only fires on a
+        computed zero.
+
+        Reference: RFC 768 (only the zero case is substituted).
+        """
+
+        assembler = UdpAssembler(udp__sport=12345, udp__dport=80, udp__payload=b"x")
+
+        with patch(
+            "net_proto.protocols.udp.udp__base.inet_cksum",
+            return_value=0xABCD,
+        ):
+            wire = bytes(assembler)
+
+        cksum_field = int.from_bytes(wire[6:8], "big")
+        self.assertEqual(
+            cksum_field,
+            0xABCD,
+            msg=(
+                "Non-zero computed UDP checksum from __buffer__ must be transmitted unchanged. "
+                f"Got: 0x{cksum_field:04x}."
+            ),
         )
 
     def test__udp__assembler__defaults(self) -> None:

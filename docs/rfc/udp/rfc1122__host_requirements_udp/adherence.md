@@ -61,7 +61,7 @@ partial:
 | §4.1.3.4 | Sender option to skip checksum (MAY)          | not implemented (MAY, no PyTCP consumer)   |
 | §4.1.3.4 | Default is to checksum (MUST)                 | met (assembler always computes)           |
 | §4.1.3.4 | Receiver option to require checksum (MAY)     | not implemented (MAY, no PyTCP consumer)   |
-| §4.1.3.4 | Computed-zero-cksum → all-ones (MUST)         | **not met** — flagged in [RFC 768 audit](../rfc768__udp/adherence.md) |
+| §4.1.3.4 | Computed-zero-cksum → all-ones (MUST)         | met — both UDP TX paths substitute `0xFFFF` for a computed `0x0000` |
 | §4.1.3.5 | Pass specific-destination addr to application | met (via PacketRx + UdpMetadata)          |
 | §4.1.3.5 | Application can specify local IP / wildcard   | met (`bind()`)                             |
 | §4.1.3.5 | Application notified of local IP used         | met (`getsockname()`)                      |
@@ -405,15 +405,15 @@ not closed; Phase-3 socket-parity item)**.
 
 ### §4.1.3.4 Computed-zero → all-ones substitution
 
-**No test surface — gap not yet closed.** Covered in the
-[RFC 768 audit](../rfc768__udp/adherence.md) §"Fields —
-Checksum"; when the fix lands the natural test is:
+- **Unit:**
+  `net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`
+  — four tests across both serialization paths
+  (`assemble()` multi-buffer and `__buffer__` single-
+  buffer) × both branches (zero compute → 0xFFFF on
+  wire, non-zero compute → pass-through). Each patches
+  `inet_cksum` to drive the predicate deterministically.
 
-1. Construct a UDP datagram whose payload + pseudo-header
-   sums to one's-complement zero (`b"\xff\xff"` with a
-   pseudo-header tuned to invert).
-2. Assemble + inspect the on-wire `cksum` field.
-3. Assert it equals `0xFFFF`, not `0x0000`.
+**Status:** locked in.
 
 ### §4.1.3.5 Multihoming — specific-destination + getsockname
 
@@ -458,7 +458,7 @@ add test with fix)**.
 | ICMP Port Unreachable on no socket                  | locked in |
 | Silent discard on bad checksum                      | locked in |
 | Checksum cksum=0 RX bypass                          | locked in |
-| Computed-zero TX → all-ones (MUST)                  | n/a (gap not closed; add test with fix) |
+| Computed-zero TX → all-ones (MUST)                  | locked in |
 | `notify_*` ICMP error pass-up                       | locked in |
 | `IP_RECVERR` / `MSG_ERRQUEUE` API parity            | n/a (Phase-3 socket-parity track) |
 | `getsockname()` reveals picked source               | locked in |
@@ -509,16 +509,16 @@ the column the RFC assigns; PyTCP status follows.
    filtering** (§4.1.3.6) — single counter + guard in
    `packet_handler__udp__rx.py:149` (or in the IP layer,
    centralized).
-3. **Checksum compute-zero → all-ones** (§4.1.3.4) —
-   inherited from the [RFC 768 audit](../rfc768__udp/adherence.md);
-   one-line fix.
 
-The first is a Phase-1 polish track that would touch the
-socket API (extend `UdpMetadata` with `ip_options`; add
-`recvmsg()` ancillary-data API; expose
-`setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`). The latter
-two are mechanical one-liners with corresponding test
-additions.
+The IP-options gap is a Phase-1 polish track that would
+touch the socket API (extend `UdpMetadata` with
+`ip_options`; add `recvmsg()` ancillary-data API; expose
+`setsockopt(IPPROTO_IP, IP_OPTIONS, ...)`). The
+broadcast/multicast filter is a mechanical fix.
+
+The previously-flagged §4.1.3.4 computed-zero → all-ones
+substitution gap is closed — both UDP serialization
+paths now apply the substitution per RFC 768.
 
 ---
 

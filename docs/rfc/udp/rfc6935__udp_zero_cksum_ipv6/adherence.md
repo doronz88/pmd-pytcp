@@ -66,15 +66,13 @@ TX" with no port-keyed configuration.
 **Adherence (compute):** met — PyTCP always computes the
 UDP cksum on TX.
 
-**Adherence (zero-to-all-ones substitution):** **not
-met** — same gap flagged in the
+**Adherence (zero-to-all-ones substitution):** met —
+both UDP serialization paths apply the substitution per
+RFC 768 / RFC 2460 / RFC 6935. See
 [RFC 768 audit](../rfc768__udp/adherence.md) §"Fields —
-Checksum." The assembler at
-`net_proto/protocols/udp/udp__assembler.py:79-83` writes
-the raw `inet_cksum` result without substituting `0xFFFF`
-for a computed zero. The IPv4 side allows this
-ambiguity (cksum=0 means "no cksum"); the IPv6 side does
-not — RFC 6935 explicitly preserves the RFC 2460 MUST.
+Checksum" for the implementation details and the
+locking unit tests at
+`net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`.
 
 > "IPv6 receivers MUST by default discard UDP packets
 >  containing a zero checksum and SHOULD log the error."
@@ -203,8 +201,9 @@ constraint 5 without adding the full opt-in machinery:
    elif inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
        raise UdpIntegrityError("The packet checksum must be valid.")
    ```
-3. **Add the all-ones-substitution on TX** (the
-   companion fix flagged in the RFC 768 audit).
+3. ~~Add the all-ones-substitution on TX~~ — **done**;
+   see [RFC 768 audit](../rfc768__udp/adherence.md)
+   §"Fields — Checksum".
 4. **Add a new RX stat counter**
    `udp__ip6_zero_cksum__drop` so the gap is observable.
 
@@ -244,7 +243,7 @@ above lands, the natural tests are:
 |-------------------------------------------------------|----------|
 | Default IPv6 cksum=0 RX → discard                     | **n/a (gap not closed; add test with fix)** |
 | Default IPv6 cksum=0 TX → never emitted (compute on)  | locked in (via `test__udp__assembler__operation.py` which always sees non-zero cksum) |
-| Zero-compute → all-ones substitution                  | **n/a (gap not closed; add test with fix)** |
+| Zero-compute → all-ones substitution                  | locked in (see RFC 768 audit) |
 | Per-port zero-cksum opt-in (`UDP_NO_CHECK6_*`)        | **n/a (not implemented; Phase-3 socket-parity work)** |
 | RFC 6936 §4 constraints 3/4/6 (opt-in mechanism)      | **n/a (not implemented)** |
 
@@ -256,7 +255,7 @@ above lands, the natural tests are:
 |-------------------------------------------------------|--------|
 | RFC 6935 §5: per-port mode association                | not implemented |
 | RFC 6935 §5: default-mode TX MUST compute cksum       | met |
-| RFC 6935 §5: zero-compute → 0xFFFF substitution       | not met (inherits from RFC 768 audit) |
+| RFC 6935 §5: zero-compute → 0xFFFF substitution       | met (inherits the RFC 768 fix) |
 | RFC 6935 §5: IPv6 RX default MUST discard zero-cksum  | **NOT MET** (silent accept) |
 | RFC 6936 §4 #1: MAY always compute (off-load wording) | met (vacuous) |
 | RFC 6936 §4 #2: default SHOULD NOT allow zero-cksum TX | met |

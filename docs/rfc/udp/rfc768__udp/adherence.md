@@ -26,27 +26,20 @@ References) are omitted.
 ## Top-line adherence
 
 PyTCP **meets** the core RFC 768 wire format and semantics
-on both the send and receive paths. Two pragmatic
-deviations are flagged for follow-up:
+on both the send and receive paths. One pragmatic
+deviation is flagged for follow-up:
 
 1. **RX rejects `sport == 0`** as a sanity error. RFC 768
    explicitly states Source Port is **optional** and zero
    is the sentinel for "absent." Linux accepts inbound
    `sport=0`; PyTCP drops it (`UdpSanityError`).
-2. **TX does not substitute the all-ones value when the
-   computed checksum is zero.** RFC 768 mandates that a
-   computed-zero checksum be transmitted as `0xFFFF` so
-   the wire value `0x0000` unambiguously means "no
-   checksum generated." PyTCP's assembler writes the raw
-   `inet_cksum` output, so a packet whose payload happens
-   to yield a zero one's-complement sum is sent with
-   cksum=0 — receivers would interpret it as
-   "no-checksum," masking corruption.
 
-Both deviations are low-impact in practice (sport=0 is
-rare; a payload that yields cksum=0 is uncommon outside
-hand-crafted test traffic) but they are spec violations
-worth closing.
+The TX checksum zero-to-all-ones substitution gap
+previously flagged in this audit is now closed — both
+serialization paths (`udp__assembler.py::assemble` and
+`udp__base.py::__buffer__`) substitute `0xFFFF` for a
+computed `0x0000` per RFC 768. See §"Fields — Checksum"
+below for details.
 
 | Section            | Topic                              | Status |
 |--------------------|------------------------------------|--------|
@@ -54,7 +47,7 @@ worth closing.
 | Fields / Source Port | Optional, zero if absent         | met (TX); **not met (RX rejects sport=0)** |
 | Fields / Destination Port | Per-destination semantics    | met    |
 | Fields / Length    | ≥ 8 octets (incl. header)          | met    |
-| Fields / Checksum  | One's-complement over pseudo+UDP+data | met (RX + TX compute); **partial (TX zero-→-all-ones substitution missing)** |
+| Fields / Checksum  | One's-complement over pseudo+UDP+data | met (RX + TX compute + TX zero-→-all-ones substitution) |
 | Pseudo header      | src+dst+zero+protocol+UDP-length   | met    |
 | Checksum-zero RX   | Transmitted 0 = "no checksum"      | met    |
 | User Interface     | Create receive ports; recv with source info; send with (data, ports, addresses) | met (BSD socket facade) |
@@ -213,30 +206,36 @@ inbound packet passes the predicate.
 bypasses checksum validation, treating the datagram as
 "sender did not generate a checksum."
 
-**Adherence (TX zero-→-all-ones substitution): not met.**
-The assembler writes `inet_cksum(...)` directly into the
-header bytes; if the one's-complement sum yields
-`0x0000`, the wire carries `0x0000` rather than `0xFFFF`.
-A receiver would mis-interpret the corruption-detection
-field as "no checksum generated" and skip validation.
+**Adherence (TX zero-→-all-ones substitution):** met.
+Both UDP serialization paths apply the substitution
+after computing the one's-complement sum:
 
-**Fix sketch:** at `udp__assembler.py:80`, substitute
-`0xFFFF` for a computed `0x0000`:
+- `net_proto/protocols/udp/udp__assembler.py::assemble`
+  (multi-buffer path used by the per-protocol TX
+  pipeline).
+- `net_proto/protocols/udp/udp__base.py::__buffer__`
+  (single-buffer path used by `bytes(udp)` and any
+  caller that needs a contiguous wire image).
+
+Both use the idiomatic Python short-circuit:
 
 ```python
 cksum = inet_cksum(header, self._payload, init=self.pshdr_sum)
-header[6:8] = (cksum if cksum != 0 else 0xFFFF).to_bytes(2)
+header[6:8] = (cksum or 0xFFFF).to_bytes(2)
 ```
 
-The same `or 0xFFFF` swap belongs in
-`net_proto/protocols/udp/udp__base.py:87` (the
-`__buffer__` path).
+`cksum or 0xFFFF` evaluates to `0xFFFF` when the
+computed sum is `0` (the only one's-complement zero
+representation that would collide with the
+"no-checksum" sentinel) and passes any non-zero value
+through verbatim.
 
-The fix is a one-line change; the cost has been the
-absence of a regression test pinning the all-ones
-substitution. Adding a test that constructs a payload
-known to sum to zero (e.g. `b"\xff\xff"` paired with a
-specific pseudo-header) would lock it in.
+Pinned by four unit tests at
+`net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`
+covering both serialization paths × both branches
+(zero → substituted, non-zero → pass-through), each
+patching `inet_cksum` to drive the predicate
+deterministically.
 
 ---
 
@@ -465,7 +464,7 @@ sport=0 case becomes the positive control.
 | Cross-check `plen == ip__payload_len`               | locked in |
 | Checksum compute (TX) / verify (RX)                 | locked in |
 | Checksum-zero RX skip                               | locked in |
-| Checksum-zero TX → all-ones substitution            | **n/a (gap not closed; add test with fix)** |
+| Checksum-zero TX → all-ones substitution            | locked in |
 | Source Port optional / `sport == 0` accepted on RX  | **n/a (gap not closed; test currently pins the deviation)** |
 | Destination port semantics (per-IP socket dispatch) | locked in |
 | ICMP Unreachable on no matching socket              | locked in |
@@ -486,20 +485,22 @@ sport=0 case becomes the positive control.
 | Length cross-check vs IP payload-length advisory      | met (stronger than RFC) |
 | Checksum compute over pseudo + UDP + data             | met    |
 | Checksum-zero RX = "no checksum, skip"                | met    |
-| Checksum compute-zero TX → all-ones substitution      | **not met** (assembler emits raw `0x0000`) |
+| Checksum compute-zero TX → all-ones substitution      | met (both serialization paths apply the substitution) |
 | Pseudo-header layout (src + dst + 0 + proto + UDP-len) | met   |
 | User interface (BSD socket facade)                    | met    |
 | IP interface (UDP reads src/dst/proto from IP)        | met    |
 | Protocol Number = 17                                  | met    |
 
-PyTCP **broadly conforms** to RFC 768. Two concrete
-deviations are documented above with one-line fix
-sketches: the assembler should substitute `0xFFFF` for a
-computed-zero checksum, and the parser's
-`_validate_sanity` should accept `sport == 0`. Both fixes
-are mechanical; both are bounded by a single existing
-test file whose expectations need to flip in the same
-commit.
+PyTCP **broadly conforms** to RFC 768. One concrete
+deviation remains: the parser's `_validate_sanity`
+should accept `sport == 0` per the RFC's "optional
+source port" rule. That fix is mechanical and bounded
+by a single existing test file whose expectations need
+to flip in the same commit.
+
+The previously-flagged TX checksum zero-to-all-ones
+substitution gap is closed — both serialization paths
+substitute `0xFFFF` for a computed `0x0000`.
 
 ---
 
