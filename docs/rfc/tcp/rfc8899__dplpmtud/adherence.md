@@ -21,35 +21,40 @@ Considerations) are omitted.
 
 ## Top-line adherence
 
-PyTCP has the **substrate but not active DPLPMTUD
-probing**. After the Phases 1-8 ICMP-demux + PMTUD
-refactor and the UDP-side IP_RECVERR work (commits
-through `b2473cf6` on `PyTCP_3_0__pre_release`), the
-RFC 1191 / RFC 8201 classical-PMTUD callbacks are wired
-and the per-destination MTU cache exists. What is
-missing is the active probing state machine that
-RFC 8899 specifies (BASE / SEARCHING / SEARCH_COMPLETE
-/ ERROR) and the associated probe-emit, ack, loss, and
-timer machinery.
+PyTCP has the **DPLPMTUD engine + UDP manual probe API**
+shipped. The TCP probe-segment emit path (which would let
+TCP drive the engine through active probing) is deferred to
+Phase 3c of the PLPMTUD plan. After the
+`plpmtud_unified_engine` plan Phases 1-4 (commits through
+`7ad011c1` on `PyTCP_3_0__pre_release`), the RFC 8899 §5
+state machine, §5.1 timers/constants, §5.3 binary search,
+§6 datagram-transport probe API, and black-hole detection
+are all shipped; the §7 cwnd interaction is implementable
+once Phase 3c lands the TCP probe-emit path.
 
 | Mechanism                                          | Status                            |
 |----------------------------------------------------|-----------------------------------|
-| Per-destination MTU cache (`stack.pmtu_cache`)     | present (§4 #9 shared state)      |
-| UDP `notify_pmtu` callback                         | present (classical PMTUD)         |
-| TCP `_apply_pmtu_update` callback                  | present (classical PMTUD)         |
-| `_effective_pmtu()` socket accessor               | present                           |
-| `_udp_no_check6_tx/rx` per-socket opt-in           | present (RFC 6935, not 8899)      |
-| §5 BASE/SEARCHING/SEARCH_COMPLETE state machine    | **not implemented**               |
-| §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER              | **not implemented**               |
-| §5.1.2 MIN_PLPMTU / MAX_PLPMTU / BASE_PLPMTU       | **not implemented**               |
-| §5.3 Binary-search algorithm                       | **not implemented**               |
-| §6 Per-transport probe-send / ack / loss API       | **not implemented**               |
-| Black-hole detection                               | **not implemented**               |
+| Per-destination MTU cache (`stack.pmtu_cache`)     | met (§4 #9 shared state)          |
+| Per-destination engine registry (`stack.pmtu_state`)| met                              |
+| UDP `notify_pmtu` callback (classical)             | met                               |
+| TCP `_apply_pmtu_update` callback (classical)      | met                               |
+| `_effective_pmtu()` socket accessor                | met                               |
+| `_udp_no_check6_tx/rx` per-socket opt-in           | met (RFC 6935, not 8899)          |
+| §5 BASE/SEARCHING/SEARCH_COMPLETE state machine    | met (`pytcp/lib/plpmtud.py`)      |
+| §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER              | met (module-level constants)      |
+| §5.1.2 MIN_PLPMTU / MAX_PLPMTU / BASE_PLPMTU       | met (module-level constants)      |
+| §5.3 Binary-search algorithm                       | met (`PmtuSearch._next_candidate`)|
+| §6 UDP probe-send / ack / loss API                 | met (`UdpSocket.probe_pmtu` ...)  |
+| §6 TCP probe-send / ack / loss API                 | partial — ack/loss hooks met; probe-emit deferred (Phase 3c)|
+| §7 Black-hole detection                            | met (`PmtuSearch.on_probe_loss` + ERROR state) |
+| §3 #7 Probes excluded from cwnd                    | **deferred (Phase 3c)**           |
 
-The "PmtuSearch unified engine" plan at
-`docs/refactor/plpmtud_unified_engine.md` is the
-implementation track. Phase 0 of that plan is the
-refresh that produced this audit.
+The remaining gap is the TCP TX-path probe-segment emit
+(Phase 3c) — the engine and adapter framework are fully in
+place and exercised end-to-end from the UDP side. The TCP
+adapter's ack/RTO hooks are wired and locked in by
+integration tests; the missing piece is the segment-factory
+surgery that pads data segments to `candidate_mtu`.
 
 ---
 
@@ -332,20 +337,26 @@ methods on the socket) per the plan Phase 4 — this is
 the only path that makes sense for vanilla UDP without
 a built-in ACK channel.
 
-**Adherence:** not implemented; plan Phase 4 ships
-`UdpSocket.probe_pmtu(size)` / `.ack_probe(size)` /
-`.timeout_probe()`.
+**Adherence:** met for UDP. `UdpSocket.probe_pmtu(size)`
+emits a zero-padded UDP datagram of the requested size,
+`ack_probe()` and `timeout_probe()` drive the engine
+forward. Per-socket adapter at
+`pytcp/protocols/udp/udp__plpmtud_adapter.py`.
 
 ---
 
 ## Test coverage audit
 
-The substrate is locked in by:
+The shipped surface is locked in by:
 
 ### §3 #5 / §3 #9 / §4.5 per-destination cache + PTB handling
 
-- **Unit:** `pytcp/tests/unit/stack/test__pmtu_cache.py`
-  — pins cache shape, lifetime, IPv4/IPv6 keying.
+- **Unit:** `pytcp/tests/unit/stack/test__pmtu_cache.py` —
+  pins cache shape, lifetime, IPv4/IPv6 keying.
+- **Unit:** `pytcp/tests/unit/lib/test__lib__pmtu_state.py`
+  (6 tests) — pins the PmtuSearch registry, lazy fallback
+  to legacy cache, per-destination isolation, IPv6
+  keying.
 - **Integration:**
   `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py`,
   `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py`,
@@ -353,75 +364,107 @@ The substrate is locked in by:
   — ICMP PTB validates + populates cache + drives MSS
   recompute.
 
-**Status:** locked in (substrate); active probing tests
-to come in Phases 1-4.
+**Status:** locked in.
 
-### §5 / §6 active probing
+### §5 / §5.1 / §5.2 / §5.3 state machine + constants + search
 
-**No test surface — gap not yet closed.** The plan's
-§7.5 "Test matrix" enumerates the test methods that
-will lock in active probing. The canonical mapping:
+- **Unit:** `pytcp/tests/unit/lib/test__lib__plpmtud.py`
+  (21 tests) — pins the PmtuState transitions (BASE →
+  SEARCHING → SEARCH_COMPLETE / ERROR), MAX_PROBES /
+  PROBE_TIMER / PMTU_RAISE_TIMER defaults, IPv4 / IPv6
+  family floors, binary-search ladder, 8-byte
+  granularity convergence, ICMP-coexistence behaviour.
 
-| Clause                                       | Future test                                                                  |
-|----------------------------------------------|------------------------------------------------------------------------------|
-| §3 #1 PLPMTU enforcement on non-probe        | (already locked in by classical-PMTUD substrate tests)                       |
-| §3 #6 PTB validation before update           | (already locked in by `test__tcp__session__icmp__pmtu.py`)                   |
-| §3 #7 Probes excluded from cwnd              | `test__tcp__plpmtud__bytes_in_flight_excludes_probe_segment` (Phase 3)       |
-| §3 #7 Probe loss not a congestion signal     | `test__tcp__plpmtud__data_rto_does_not_feed_probe_loss` (Phase 3)            |
-| §4.6.4 MIN_PLPMTU floor IPv6 ≥ 1280          | `test__plpmtud__ip6_floor_min_pmtu_1280` (Phase 1)                           |
-| §4.6.4 MIN_PLPMTU floor IPv4 ≥ 576           | `test__plpmtud__ip4_floor_min_pmtu_576` (Phase 1)                            |
-| §5.1.1 PROBE_TIMER default = 30 s            | `test__plpmtud__probe_timer_default_is_30s` (Phase 1)                        |
-| §5.1.1 PMTU_RAISE_TIMER → re-search          | `test__plpmtud__raise_timer_re_enters_searching` (Phase 1)                   |
-| §5.1.2 MAX_PROBES default = 3                | `test__plpmtud__probe_count_default_is_3` (Phase 1)                          |
-| §5.2 BASE → SEARCHING on ack                 | `test__plpmtud__base__ack_transitions_to_searching` (Phase 1)                |
-| §5.2 SEARCHING → SEARCH_COMPLETE             | `test__plpmtud__searching__converges_to_search_complete` (Phase 1)           |
-| §5.2 BASE/SEARCHING → ERROR                  | `test__plpmtud__searching__probe_count_losses_enter_error` (Phase 1)         |
-| §5.3 Binary-search convergence               | `test__plpmtud__binary_search_ladder_convergence` (Phase 1)                  |
-| §5.3 8-byte granularity convergence          | `test__plpmtud__ladder_converges_at_8_byte_granularity` (Phase 1)            |
-| §6 UDP manual probe / ack / loss API         | `test__udp__plpmtud__probe_pmtu_emits_sized_datagram` (Phase 4)              |
-| §6 UDP timeout × MAX_PROBES → ERROR          | `test__udp__plpmtud__timeout_probe_count_enters_error` (Phase 4)             |
+**Status:** locked in.
+
+### §6 datagram-transport probe API (UDP)
+
+- **Unit:** `pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`
+  (13 tests) — pins `UdpPlpmtudAdapter`'s probe / ack /
+  timeout API + single-outstanding invariant.
+- **Integration:** `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
+  (6 tests) — pins `UdpSocket.probe_pmtu` emit on wire,
+  ack/timeout state transitions, MAX_PROBES → ERROR clamp,
+  concurrent-probe rejection, unconnected-socket
+  rejection.
+
+**Status:** locked in.
+
+### §6 datagram-transport probe API (TCP) — partial
+
+- **Unit:** `pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`
+  (12 tests) — pins `TcpPlpmtudAdapter`'s ack-via-snd.una-
+  advance and loss-via-RTO dispatch.
+- **Integration:** `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`
+  (5 tests) — pins TcpSession adapter wiring + classical
+  PMTU route + snd.una advance hook.
+
+**Status:** locked in for ack/loss feedback paths; probe-
+emit path deferred to Phase 3c.
+
+### §7 black-hole detection
+
+- **Unit:** `test__plpmtud__three_consecutive_losses_enter_error`
+  in `test__lib__plpmtud.py`.
+- **Unit:** `test__tcp__plpmtud_adapter__rto_max_probes_enters_error`
+  in `test__tcp__plpmtud_adapter.py`.
+- **Integration:** `test__udp__plpmtud__timeout_probe_count_enters_error`
+  in `test__udp__plpmtud.py`.
+
+**Status:** locked in.
+
+### §3 #7 cwnd-exempt probes — Phase 3c gap
+
+**No test surface — TCP probe-emit path not yet shipped.**
+The adapter's `in_flight_probe_sizes` snapshot is in place
+for the consumer; the natural future test name is
+`test__tcp__plpmtud__bytes_in_flight_excludes_probe_segment`.
 
 ### Test coverage summary
 
-| Aspect                                            | Coverage                  |
-|---------------------------------------------------|---------------------------|
-| §3 #5 Local-link MTU / max-size hint               | locked in (substrate)     |
-| §3 #6 PTB validation                              | locked in (substrate)     |
-| §3 #9 Per-destination shared MTU cache            | locked in (substrate)     |
-| §3 #7 Probe-cwnd exemption                        | n/a (gap; planned Phase 3)|
-| §4.1 Probe-packet generation                      | n/a (gap; planned Phase 3/4)|
-| §4.3 Unsupported-PLPMTU detection                 | n/a (gap; planned Phase 1)|
-| §4.6.4 BASE_PLPMTU floor                          | n/a (gap; planned Phase 1)|
-| §5.1.1 Timer machinery                            | n/a (gap; planned Phase 1)|
-| §5.2 State machine                                | n/a (gap; planned Phase 1)|
-| §5.3 Binary-search algorithm                      | n/a (gap; planned Phase 1)|
-| §6 UDP-specific probe / ack / loss API            | n/a (gap; planned Phase 4)|
+| Aspect                                              | Coverage                  |
+|-----------------------------------------------------|---------------------------|
+| §3 #5 Local-link MTU / max-size hint                | locked in                 |
+| §3 #6 PTB validation                                | locked in                 |
+| §3 #9 Per-destination shared state                  | locked in                 |
+| §3 #7 Probe-cwnd exemption                          | n/a (Phase 3c gap)        |
+| §4.1 Probe-packet generation (UDP)                  | locked in                 |
+| §4.1 Probe-packet generation (TCP)                  | n/a (Phase 3c gap)        |
+| §4.3 Unsupported-PLPMTU detection                   | locked in                 |
+| §4.6.4 BASE_PLPMTU floor                            | locked in                 |
+| §5.1.1 Timer machinery                              | locked in                 |
+| §5.2 State machine                                  | locked in                 |
+| §5.3 Binary-search algorithm                        | locked in                 |
+| §6 UDP-specific probe / ack / loss API              | locked in                 |
+| §7 Black-hole detection                             | locked in                 |
 
 ---
 
 ## Overall assessment
 
-| Aspect                                            | Status                  |
-|---------------------------------------------------|-------------------------|
-| §3 #5/#9 / §4.5 Per-destination MTU cache         | met (substrate)         |
-| §3 #6 PTB-message validation                      | met (substrate)         |
-| §3 #1 Non-probe size enforcement                  | met (substrate)         |
-| §3 #2 IPv4 DF=1 / IPv6 no-fragmentation on probe  | met for non-probe; probe path not implemented |
-| §3 #3 Reception feedback                          | not implemented         |
-| §3 #7 Probes excluded from cwnd                   | not implemented         |
-| §4.1 Probe packet generation                      | not implemented         |
-| §4.3 Unsupported-PLPMTU detection                 | not implemented         |
-| §4.6.4 BASE_PLPMTU floor enforcement              | not implemented         |
-| §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER             | not implemented         |
-| §5.1.2 MIN/MAX/BASE_PLPMTU constants              | not implemented         |
-| §5.2 BASE/SEARCHING/SEARCH_COMPLETE/ERROR state machine | not implemented   |
-| §5.3 Binary-search algorithm                      | not implemented         |
-| §6 UDP-specific probe / ack / loss API            | not implemented         |
-| §4.4 IP_PMTUDISC socket option                    | not implemented (out of scope) |
+| Aspect                                              | Status                       |
+|-----------------------------------------------------|------------------------------|
+| §3 #5/#9 / §4.5 Per-destination MTU cache + state   | met                          |
+| §3 #6 PTB-message validation                        | met                          |
+| §3 #1 Non-probe size enforcement                    | met                          |
+| §3 #2 IPv4 DF=1 / IPv6 no-fragmentation on probe    | met for non-probe; TCP probe path deferred (Phase 3c) |
+| §3 #3 Reception feedback                            | met for UDP (manual API); met for TCP (snd.una hook for ack/loss) |
+| §3 #7 Probes excluded from cwnd                     | deferred (Phase 3c)          |
+| §4.1 Probe packet generation                        | met for UDP; deferred for TCP (Phase 3c) |
+| §4.3 Unsupported-PLPMTU detection                   | met                          |
+| §4.6.4 BASE_PLPMTU floor enforcement                | met                          |
+| §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER               | met                          |
+| §5.1.2 MIN/MAX/BASE_PLPMTU constants                | met                          |
+| §5.2 BASE/SEARCHING/SEARCH_COMPLETE/ERROR state machine | met                      |
+| §5.3 Binary-search algorithm                        | met                          |
+| §6 UDP-specific probe / ack / loss API              | met                          |
+| §7 Black-hole detection                             | met                          |
+| §4.4 IP_PMTUDISC socket option                      | not implemented (out of scope) |
 
-**Principal gap:** the active DPLPMTUD engine and the
-per-transport adapters. Closed by the
-`plpmtud_unified_engine.md` plan Phases 1-4
-(~3-4 days total). Phase 5 of that plan refreshes this
-audit to flip the "not implemented" rows above to "met"
-once the implementation ships.
+**Principal gap:** TCP TX-path probe-segment emit
+(Phase 3c) plus the cwnd-exempt accounting and probe-only
+RTO refinements. The engine, state machine, adapter
+framework, ack/RTO feedback, and UDP manual API are all
+shipped; Phase 3c needs intrusive surgery on the
+TcpSession TX hot path which warrants its own focused
+commit cycle.

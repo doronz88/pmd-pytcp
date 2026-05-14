@@ -97,13 +97,33 @@ recommendation:
 
 10706 tests passing, 4 skipped. `make lint` clean.
 
-### 3. UDP #7 — PLPMTUD for UDP (RFC 8899)
+### 3. UDP #7 — PLPMTUD for UDP (RFC 8899) — SHIPPED 2026-05-14
 
-**Status:** deferred. Own audit + design track. RFC 8899
-is substantial — would need
-`docs/rfc/udp/rfc8899__plpmtud/adherence.md` first.
+The unified PLPMTUD engine and the UDP-side manual probe
+API landed across Phases 0-4 of
+`docs/refactor/plpmtud_unified_engine.md`:
 
-**Source:** `docs/refactor/udp_remaining_items.md` #7.
+- `pytcp/lib/plpmtud.py` — `PmtuSearch[A]` shared engine
+  with the RFC 8899 §5 state machine (BASE / SEARCHING /
+  SEARCH_COMPLETE / ERROR), §5.3 binary-search ladder,
+  §5.1 timer/constant defaults, §7 black-hole detection.
+- `stack.pmtu_state` — per-destination engine registry
+  alongside the legacy `stack.pmtu_cache`;
+  `stack.current_pmtu(dst)` accessor prefers the engine
+  state.
+- `UdpPlpmtudAdapter` — per-socket adapter wrapping the
+  engine with a single-outstanding-probe slot.
+- `UdpSocket.probe_pmtu(size)` / `ack_probe()` /
+  `timeout_probe()` — application-driven probe API
+  consistent with RFC 8899 §6 (QUIC's PATH_CHALLENGE /
+  SCTP's HEARTBEAT / app-layer echo all viable consumers).
+- `TcpPlpmtudAdapter` — TCP-side adapter (ack/loss
+  feedback hooks wired into TcpSession).
+
+RFC 4821 / RFC 8899 adherence records refreshed; the
+TCP probe-segment emit path (Phase 3c) remains deferred.
+
+10769 tests passing, 4 skipped. `make lint` clean.
 
 ### 4. On-touch enum migrations
 

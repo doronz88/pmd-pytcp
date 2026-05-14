@@ -524,10 +524,19 @@ SCTP's HEARTBEAT chunks are the production model.
 the search engine already exists and there's no FSM
 to wire into.
 
-### Phase 5 — Audit ripple
+### Phase 5 — Audit ripple — SHIPPED 2026-05-14
 
 **Goal:** reflect the shipped surface in the per-RFC
 records.
+
+**Shipped:** RFC 4821 / RFC 8899 adherence records
+refreshed; UDP #7 marked SHIPPED in
+`docs/refactor/post_udp_session_followups.md`; Phase 5
+of the plan doc marked SHIPPED. The Principal Gap row
+on both audits is now "TCP TX-path probe-segment emit
+(Phase 3c)", with the engine / adapter framework /
+classical PMTU coexistence / UDP manual API all locked
+in.
 
 **Touches:**
 - `docs/rfc/tcp/rfc4821__plpmtud/adherence.md` — flip
