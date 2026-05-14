@@ -41,7 +41,6 @@ from net_addr import Ip4Address, Ip6Address
 from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.plpmtud import PmtuSearch
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
@@ -93,6 +92,7 @@ from pytcp.protocols.tcp.tcp__hystart import (
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
 from pytcp.protocols.tcp.tcp__iss import compute_iss
 from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg, pipe
+from pytcp.protocols.tcp.tcp__plpmtud_adapter import TcpPlpmtudAdapter
 from pytcp.protocols.tcp.tcp__rack import (
     RackSegment,
     rack_compute_reo_wnd,
@@ -174,6 +174,21 @@ class TcpSession:
         # See 'state/tcp__state__window.py'.
         self._win: WindowState = WindowState()
         self._win.rcv_mss = stack.interface_mtu - self._ip_tcp_overhead
+
+        # RFC 4821 / RFC 8899 per-session PLPMTUD adapter.
+        # Wraps a PmtuSearch engine bound to the remote
+        # address's family floor and tracks in-flight probe
+        # segments for ACK / loss detection. Lazily mirrors
+        # into 'stack.pmtu_state' on first classical PMTU
+        # signal (via '_apply_pmtu_update') so per-destination
+        # state is shared across sessions to the same peer.
+        # Phase 3c will wire probe emission to TcpSession's
+        # segment-emit hot path; for now the adapter is in
+        # place so ACK / RTO hooks can feed it.
+        self._plpmtud_adapter: TcpPlpmtudAdapter = TcpPlpmtudAdapter(
+            remote_ip_address=remote_ip_address,
+            interface_mtu=stack.interface_mtu,
+        )
 
         # Whether to advertise WSCALE on this session's outbound
         # SYN / SYN+ACK. Defaults True (the modern, throughput-
@@ -816,32 +831,14 @@ class TcpSession:
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
 
-        # Mirror the classical PMTU signal into the unified PLPMTUD
-        # engine ('stack.pmtu_state'). The PmtuSearch instance is
-        # lazily allocated on first ICMP signal for the destination;
-        # subsequent signals call on_classical_pmtu() which clamps to
-        # the family floor and (in ERROR state) recovers to SEARCHING.
-        # Skipped when 'stack.interface_mtu' is not yet set (unit-test
-        # fixtures that exercise _apply_pmtu_update without a full
-        # stack init).
-        iface_mtu = stack.__dict__.get("interface_mtu")
-        if iface_mtu is not None:
-            engine = stack.pmtu_state.get(self._remote_ip_address)
-            if engine is None:
-                if isinstance(self._remote_ip_address, Ip6Address):
-                    engine_ip6: PmtuSearch[Ip6Address] = PmtuSearch(
-                        address=self._remote_ip_address,
-                        interface_mtu=iface_mtu,
-                    )
-                    engine = engine_ip6
-                else:
-                    engine_ip4: PmtuSearch[Ip4Address] = PmtuSearch(
-                        address=self._remote_ip_address,
-                        interface_mtu=iface_mtu,
-                    )
-                    engine = engine_ip4
-                stack.pmtu_state[self._remote_ip_address] = engine
-            engine.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
+        # Route the classical PMTU signal through the per-session
+        # PLPMTUD adapter (which dispatches to the engine), then
+        # mirror the engine into the shared 'stack.pmtu_state'
+        # registry so siblings to the same destination see the
+        # same state.
+        now = time.monotonic()
+        self._plpmtud_adapter.on_classical_pmtu(next_hop_mtu, now=now)
+        stack.pmtu_state[self._remote_ip_address] = self._plpmtud_adapter.engine
 
         # RFC 1191 §6.5 walkback. Only fire when (a) the MSS actually
         # shrunk and (b) at least one in-flight segment is oversized
@@ -2737,6 +2734,12 @@ class TcpSession:
         # silent peer cannot drive 'rto_ms' to overflow.
         self._rto_state = back_off(self._rto_state)
         self._retransmit_count += 1
+        # PLPMTUD adapter: declare any in-flight probe lost so
+        # the engine sees the RTO event as a probe-loss
+        # signal. No-op when no probes were in flight (RFC
+        # 4821 §7.5 — data-RTO alone does not feed
+        # probe-loss).
+        self._plpmtud_adapter.on_rto_timeout(now=time.monotonic())
         # RFC 6298 §5.7 second-clause SYN-retransmit counter.
         # Increment when the retransmit fires while the
         # handshake is still in progress: SYN_SENT (active
@@ -3416,6 +3419,13 @@ class TcpSession:
         # delta when the cum-ACK straddles the 32-bit wrap.
         bytes_acked = (packet_rx_md.tcp__ack - self._snd_seq.una) & 0xFFFF_FFFF
         self._snd_seq.una = packet_rx_md.tcp__ack
+        # PLPMTUD adapter: notify of snd.una advance so any
+        # in-flight probe whose seq is now <= new_snd_una
+        # gets dispatched as an on_probe_ack event.
+        self._plpmtud_adapter.on_snd_una_advance(
+            new_snd_una=self._snd_seq.una,
+            now=time.monotonic(),
+        )
         # RFC 9406 §4.2 round-boundary detection: if SND.UNA
         # has reached or passed the round's window_end_seq,
         # rotate the per-round minRTT trackers. The first
