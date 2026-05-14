@@ -37,6 +37,7 @@ import os
 import secrets
 import struct
 import sys
+from enum import IntFlag
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Host, Ip6Host, MacAddress
@@ -67,11 +68,32 @@ assert sys.version_info >= (
 ), "PyTCP stack requires Python version 3.12 or higher to run."
 
 
-# Constants for TUN/TAP interface.
+# TUN/TAP ioctl request number (Linux <linux/if_tun.h>);
+# single value, no enum domain.
 TUNSETIFF = 0x400454CA
-IFF_TUN = 0x0001
-IFF_TAP = 0x0002
-IFF_NO_PI = 0x1000
+
+
+class TunTapFlag(IntFlag):
+    """
+    TUN/TAP interface flags passed in the 'ifr_flags' field of
+    the 'TUNSETIFF' ioctl. Linux numbers from
+    '<linux/if_tun.h>'. 'IFF_TUN' and 'IFF_TAP' are mutually
+    exclusive (interface type); 'IFF_NO_PI' is a separate
+    modifier flag, OR'd in to suppress the 4-byte packet-info
+    header on RX/TX.
+    """
+
+    IFF_TUN = 0x0001
+    IFF_TAP = 0x0002
+    IFF_NO_PI = 0x1000
+
+
+# Bare module-level aliases — IFF_* are commonly referenced
+# directly (mirroring how C code uses '#define IFF_TUN'), and
+# the test fixture imports them as 'stack.IFF_TUN'.
+IFF_TUN = TunTapFlag.IFF_TUN
+IFF_TAP = TunTapFlag.IFF_TAP
+IFF_NO_PI = TunTapFlag.IFF_NO_PI
 
 # PyTCP code metadata.
 PYTCP_VERSION = "ver 3.0.4"
