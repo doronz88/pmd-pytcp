@@ -48,7 +48,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6SlaacAddress,
     Icmp6TempAddress,
 )
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 # Two stable SLAAC hosts on adjacent /64s plus a temporary
 # address derived from each prefix. The temp addresses have
@@ -102,7 +102,7 @@ def _temp(host: Ip6Host, prefix: Ip6Network, *, deprecated: bool = False) -> Icm
     )
 
 
-class TestRfc6724Rule7TempPreferenceEnabled(NetworkTestCase):
+class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
     """
     The 'icmp6.use_tempaddr=2' rule-7 preference tests.
     """
@@ -191,7 +191,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(NetworkTestCase):
         )
 
 
-class TestRfc6724Rule7TempNoPreference(NetworkTestCase):
+class TestRfc6724Rule7TempNoPreference(Ip6TestCase):
     """
     The 'icmp6.use_tempaddr=1' rule-7 no-preference tests.
     """
@@ -230,7 +230,7 @@ class TestRfc6724Rule7TempNoPreference(NetworkTestCase):
         )
 
 
-class TestRfc6724Rule7TempDisabled(NetworkTestCase):
+class TestRfc6724Rule7TempDisabled(Ip6TestCase):
     """
     The 'icmp6.use_tempaddr=0' rule-7 disabled tests.
     """

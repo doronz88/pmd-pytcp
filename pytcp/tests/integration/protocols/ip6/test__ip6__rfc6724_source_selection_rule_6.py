@@ -45,10 +45,10 @@ ver 3.0.4
 """
 
 from net_addr import Ip6Address, Ip6Host
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 
-class TestRfc6724Rule6PolicyLabel(NetworkTestCase):
+class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
     """
     The RFC 6724 §5 rule 6 (prefer matching label) tests.
     """

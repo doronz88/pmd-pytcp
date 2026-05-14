@@ -44,7 +44,7 @@ import time
 
 from net_addr import Ip6Address, Ip6Host, Ip6Network
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 # Stack-host fixtures used as candidate sources. Three /64s on the
 # same link, plus a link-local. The link-local is what every IPv6
@@ -63,7 +63,7 @@ _DST_IN_PREFIX_B = Ip6Address("2001:db8:0:2::91")
 _DST_OUTSIDE_ALL = Ip6Address("2001:db8:9:9::91")
 
 
-class TestRfc6724Rule1SameAddress(NetworkTestCase):
+class TestRfc6724Rule1SameAddress(Ip6TestCase):
     """
     RFC 6724 §5 rule 1 — prefer same address — tests.
     """
@@ -100,7 +100,7 @@ class TestRfc6724Rule1SameAddress(NetworkTestCase):
         )
 
 
-class TestRfc6724Rule2Scope(NetworkTestCase):
+class TestRfc6724Rule2Scope(Ip6TestCase):
     """
     RFC 6724 §5 rule 2 — prefer appropriate scope — tests.
     """
@@ -241,7 +241,7 @@ class TestRfc6724Rule2Scope(NetworkTestCase):
         )
 
 
-class TestRfc6724Rule3Deprecated(NetworkTestCase):
+class TestRfc6724Rule3Deprecated(Ip6TestCase):
     """
     RFC 6724 §5 rule 3 — avoid deprecated addresses — tests.
     """
@@ -330,7 +330,7 @@ class TestRfc6724Rule3Deprecated(NetworkTestCase):
         )
 
 
-class TestRfc6724Rule8LongestMatch(NetworkTestCase):
+class TestRfc6724Rule8LongestMatch(Ip6TestCase):
     """
     RFC 6724 §5 rule 8 — longest matching prefix — tests.
     """
@@ -395,7 +395,7 @@ class TestRfc6724Rule8LongestMatch(NetworkTestCase):
         )
 
 
-class TestRfc6724SelectorBoundaries(NetworkTestCase):
+class TestRfc6724SelectorBoundaries(Ip6TestCase):
     """
     The 'PacketHandler._select_ip6_source' boundary tests.
     """

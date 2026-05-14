@@ -50,7 +50,7 @@ from net_proto import (
     Ip4Assembler,
 )
 from net_proto.lib.packet_rx import PacketRx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 
 _STACK_MAC = MacAddress("02:00:00:00:00:07")
 _STACK_IP4 = Ip4Address("10.0.1.7")
@@ -85,7 +85,7 @@ def _build_echo_request(*, ip4__src: Ip4Address, ethernet__src: MacAddress) -> b
     )
 
 
-class TestIp4MartianSourceDirectedBroadcast(NetworkTestCase):
+class TestIp4MartianSourceDirectedBroadcast(Ip4TestCase):
     """
     The IPv4 martian-source directed-broadcast filter tests.
     """

@@ -42,7 +42,7 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address, Ip4Host
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 
 # Stack-host fixtures used as candidate sources. Three hosts
 # in distinct /24s plus a link-local IPv4 in 169.254.0.0/16.
@@ -57,7 +57,7 @@ _DST_IN_PREFIX_B = Ip4Address("10.0.2.50")
 _DST_OUTSIDE_ALL = Ip4Address("8.8.8.8")
 
 
-class TestRfc6724Ip4Rule1SameAddress(NetworkTestCase):
+class TestRfc6724Ip4Rule1SameAddress(Ip4TestCase):
     """
     The IPv4 RFC 6724 §5 rule 1 (prefer same address) tests.
     """
@@ -94,7 +94,7 @@ class TestRfc6724Ip4Rule1SameAddress(NetworkTestCase):
         )
 
 
-class TestRfc6724Ip4Rule2Scope(NetworkTestCase):
+class TestRfc6724Ip4Rule2Scope(Ip4TestCase):
     """
     The IPv4 RFC 6724 §5 rule 2 (prefer appropriate scope) tests.
     """
@@ -149,7 +149,7 @@ class TestRfc6724Ip4Rule2Scope(NetworkTestCase):
         )
 
 
-class TestRfc6724Ip4Rule8LongestMatch(NetworkTestCase):
+class TestRfc6724Ip4Rule8LongestMatch(Ip4TestCase):
     """
     The IPv4 RFC 6724 §5 rule 8 (longest matching prefix) tests.
     """
@@ -209,7 +209,7 @@ class TestRfc6724Ip4Rule8LongestMatch(NetworkTestCase):
         )
 
 
-class TestRfc6724Ip4SelectorBoundaries(NetworkTestCase):
+class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
     """
     The 'PacketHandler._select_ip4_source' boundary tests.
     """
