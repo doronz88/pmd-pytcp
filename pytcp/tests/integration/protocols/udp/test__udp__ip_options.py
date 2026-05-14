@@ -57,7 +57,6 @@ from net_proto import (
     UdpAssembler,
 )
 from net_proto.lib.packet_rx import PacketRx
-from pytcp import stack
 from pytcp.socket import (
     IP_OPTIONS,
     IP_RECVOPTS,
@@ -68,11 +67,8 @@ from pytcp.socket import (
     IPV6_RECVTCLASS,
     IPV6_TCLASS,
     AddressFamily,
-    IpProto,
-    SocketType,
 )
-from pytcp.socket.udp__socket import UdpSocket
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.udp_testcase import UdpTestCase
 
 _STACK_MAC = MacAddress("02:00:00:00:00:07")
 _STACK_IP4 = Ip4Address("10.0.1.7")
@@ -132,37 +128,25 @@ def _build_udp_frame_plain(*, payload: bytes) -> bytes:
     )
 
 
-class TestUdpIpOptionsRecvmsgPassThrough(NetworkTestCase):
+class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
     """
     Inbound IPv4 options surface via 'recvmsg' as IP_OPTIONS cmsg.
     """
 
     def setUp(self) -> None:
         """
-        Bind a UdpSocket so the RX dispatch hands the inbound
-        datagram to the application-layer queue. Snapshot+clear
-        'stack.sockets' to keep the per-test socket registration
-        from leaking into sibling tests.
+        Bind an IPv4 UdpSocket on the canonical fixture address so
+        the RX dispatch hands the inbound datagram to the
+        application-layer queue. 'UdpTestCase' snapshots
+        'stack.sockets' so the registration does not leak.
         """
 
         super().setUp()
-        self._sockets_prior = dict(stack.sockets)
-        stack.sockets.clear()
-        self.addCleanup(self._restore_sockets)
-
-        self._socket = UdpSocket(
+        self._socket = self._bind_udp_socket(
             family=AddressFamily.INET4,
-            type=SocketType.DGRAM,
-            protocol=IpProto.UDP,
+            local_ip=_STACK_IP4,
+            local_port=_LOCAL_PORT,
         )
-        self._socket._local_ip_address = _STACK_IP4
-        self._socket._local_port = _LOCAL_PORT
-        stack.sockets[self._socket.socket_id] = self._socket
-
-    def _restore_sockets(self) -> None:
-        """Restore the snapshotted 'stack.sockets' dict."""
-        stack.sockets.clear()
-        stack.sockets.update(self._sockets_prior)
 
     def test__udp__ip_options__recvmsg_returns_cmsg_when_recvopts_enabled(self) -> None:
         """
@@ -260,27 +244,24 @@ class TestUdpIpOptionsRecvmsgPassThrough(NetworkTestCase):
         )
 
 
-class TestUdpIpOptionsSendto(NetworkTestCase):
+class TestUdpIpOptionsSendto(UdpTestCase):
     """
     Outbound UDP datagrams carry the per-socket IP_OPTIONS block.
     """
 
     def setUp(self) -> None:
         """
-        Bind a UdpSocket so 'sendto' has a stack-known local
-        address / port to source from.
+        Bind an IPv4 UdpSocket so 'sendto' has a stack-known
+        local address / port to source from. 'UdpTestCase'
+        snapshots 'stack.sockets'.
         """
 
         super().setUp()
-        self._socket = UdpSocket(
+        self._socket = self._bind_udp_socket(
             family=AddressFamily.INET4,
-            type=SocketType.DGRAM,
-            protocol=IpProto.UDP,
+            local_ip=_STACK_IP4,
+            local_port=_LOCAL_PORT,
         )
-        self._socket._local_ip_address = _STACK_IP4
-        self._socket._local_port = _LOCAL_PORT
-        stack.sockets[self._socket.socket_id] = self._socket
-        self.addCleanup(self._socket.close)
 
     def test__udp__ip_options__sendto_emits_options_block_on_wire(self) -> None:
         """
@@ -411,35 +392,23 @@ def _build_udp_frame_ipv6_with_tclass(*, dscp: int, ecn: int, payload: bytes) ->
     )
 
 
-class TestUdpIpRecvTos(NetworkTestCase):
+class TestUdpIpRecvTos(UdpTestCase):
     """
     Inbound IPv4 TOS byte surfaces via 'recvmsg' as IP_TOS cmsg.
     """
 
     def setUp(self) -> None:
         """
-        Bind an IPv4 UdpSocket; snapshot 'stack.sockets' to keep
-        the registration from leaking into sibling tests.
+        Bind an IPv4 UdpSocket on the canonical fixture address.
+        'UdpTestCase' snapshots 'stack.sockets'.
         """
 
         super().setUp()
-        self._sockets_prior = dict(stack.sockets)
-        stack.sockets.clear()
-        self.addCleanup(self._restore_sockets)
-
-        self._socket = UdpSocket(
+        self._socket = self._bind_udp_socket(
             family=AddressFamily.INET4,
-            type=SocketType.DGRAM,
-            protocol=IpProto.UDP,
+            local_ip=_STACK_IP4,
+            local_port=_LOCAL_PORT,
         )
-        self._socket._local_ip_address = _STACK_IP4
-        self._socket._local_port = _LOCAL_PORT
-        stack.sockets[self._socket.socket_id] = self._socket
-
-    def _restore_sockets(self) -> None:
-        """Restore the snapshotted 'stack.sockets' dict."""
-        stack.sockets.clear()
-        stack.sockets.update(self._sockets_prior)
 
     def test__udp__ip_recvtos__returns_tos_byte_when_enabled(self) -> None:
         """
@@ -497,7 +466,7 @@ class TestUdpIpRecvTos(NetworkTestCase):
         )
 
 
-class TestUdpIpV6RecvTClass(NetworkTestCase):
+class TestUdpIpV6RecvTClass(UdpTestCase):
     """
     Inbound IPv6 Traffic Class byte surfaces via 'recvmsg' as
     IPV6_TCLASS cmsg.
@@ -505,28 +474,16 @@ class TestUdpIpV6RecvTClass(NetworkTestCase):
 
     def setUp(self) -> None:
         """
-        Bind an IPv6 UdpSocket; snapshot 'stack.sockets' to keep
-        the registration from leaking into sibling tests.
+        Bind an IPv6 UdpSocket on the canonical fixture address.
+        'UdpTestCase' snapshots 'stack.sockets'.
         """
 
         super().setUp()
-        self._sockets_prior = dict(stack.sockets)
-        stack.sockets.clear()
-        self.addCleanup(self._restore_sockets)
-
-        self._socket = UdpSocket(
+        self._socket = self._bind_udp_socket(
             family=AddressFamily.INET6,
-            type=SocketType.DGRAM,
-            protocol=IpProto.UDP,
+            local_ip=_STACK_IP6,
+            local_port=_LOCAL_PORT,
         )
-        self._socket._local_ip_address = _STACK_IP6
-        self._socket._local_port = _LOCAL_PORT
-        stack.sockets[self._socket.socket_id] = self._socket
-
-    def _restore_sockets(self) -> None:
-        """Restore the snapshotted 'stack.sockets' dict."""
-        stack.sockets.clear()
-        stack.sockets.update(self._sockets_prior)
 
     def test__udp__ipv6_recvtclass__returns_tclass_int_when_enabled(self) -> None:
         """
