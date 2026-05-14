@@ -102,32 +102,105 @@ TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
 TCP_CONGESTION = SocketOption.TCP_CONGESTION
 TCP_FASTOPEN = SocketOption.TCP_FASTOPEN
 
-# SOL_SOCKET-level options sharing integer values with IPPROTO_TCP-
-# level options (Linux numbers, disambiguated by 'level' parameter
-# of setsockopt, not by the optname value itself).
-SO_REUSEADDR: int = 2  # level=SOL_SOCKET; bool: bypass "address in use" on rebind
-SO_BROADCAST: int = 6  # level=SOL_SOCKET; bool: allow UDP broadcast send
-SO_SNDBUF: int = 7  # level=SOL_SOCKET; int: send-buffer cap (storage only)
-SO_RCVBUF: int = 8  # level=SOL_SOCKET; int: recv-buffer cap (storage only)
-SO_RCVTIMEO: int = 20  # level=SOL_SOCKET; float seconds: persistent recv timeout
-SO_SNDTIMEO: int = 21  # level=SOL_SOCKET; float seconds: persistent send timeout
 
-# IPPROTO_IP-level options (Linux numbers from <netinet/ip.h>).
-IP_TOS: int = 1  # level=IPPROTO_IP; int: 8-bit DSCP+ECN (RFC 2474)
-IP_TTL: int = 2  # level=IPPROTO_IP; int 1-255: per-socket TTL override
-IP_OPTIONS: int = 4  # level=IPPROTO_IP; bytes: 0-40 raw IPv4 options block (RFC 1122 §4.1.3.2)
-IP_RECVOPTS: int = 6  # level=IPPROTO_IP; int 0/1: enable IP_OPTIONS cmsg on recvmsg (RFC 1122 §4.1.3.2)
-IP_RETOPTS: int = 7  # level=IPPROTO_IP; int 0/1: deprecated alias of IP_RECVOPTS (Linux compat)
-IP_RECVTOS: int = 13  # level=IPPROTO_IP; int 0/1: enable IP_TOS cmsg on recvmsg (RFC 1122 §4.1.4 MAY)
-IP_MTU: int = (
-    14  # level=IPPROTO_IP; int (getsockopt only): effective PMTU for connected peer (RFC 1122 §3.4 GET_MAXSIZES)
-)
+class SolSocketOption(IntEnum):
+    """
+    SOL_SOCKET-level setsockopt 'optname' values that share
+    integer space with IPPROTO_TCP-level options (Linux
+    numbers from <sys/socket.h>; disambiguated by the
+    'level' parameter of setsockopt, not by the optname
+    value itself). The 'TCP_*' family lives on
+    'SocketOption' above; this enum holds the rest of the
+    socket-level surface that PyTCP supports.
+    """
 
-# IPPROTO_IPV6-level options (Linux numbers from <netinet/in.h>).
-IPV6_UNICAST_HOPS: int = 16  # level=IPPROTO_IPV6; int 1-255: per-socket Hop-Limit override
-IPV6_MTU: int = 24  # level=IPPROTO_IPV6; int (getsockopt only): effective PMTU for connected peer
-IPV6_RECVTCLASS: int = 66  # level=IPPROTO_IPV6; int 0/1: enable IPV6_TCLASS cmsg on recvmsg (RFC 3542 §6.5)
-IPV6_TCLASS: int = 67  # level=IPPROTO_IPV6; int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
+    SO_REUSEADDR = 2  # bool: bypass "address in use" on rebind
+    SO_BROADCAST = 6  # bool: allow UDP broadcast send
+    SO_SNDBUF = 7  # int: send-buffer cap (storage only)
+    SO_RCVBUF = 8  # int: recv-buffer cap (storage only)
+    SO_RCVTIMEO = 20  # float seconds: persistent recv timeout
+    SO_SNDTIMEO = 21  # float seconds: persistent send timeout
+
+
+SO_REUSEADDR = SolSocketOption.SO_REUSEADDR
+SO_BROADCAST = SolSocketOption.SO_BROADCAST
+SO_SNDBUF = SolSocketOption.SO_SNDBUF
+SO_RCVBUF = SolSocketOption.SO_RCVBUF
+SO_RCVTIMEO = SolSocketOption.SO_RCVTIMEO
+SO_SNDTIMEO = SolSocketOption.SO_SNDTIMEO
+
+
+class IpOption(IntEnum):
+    """
+    IPPROTO_IP-level setsockopt 'optname' values (Linux
+    numbers from <netinet/ip.h>; matches Python stdlib
+    'socket.IP_*' module-level constants on Linux).
+    """
+
+    IP_TOS = 1  # int: 8-bit DSCP+ECN (RFC 2474)
+    IP_TTL = 2  # int 1-255: per-socket TTL override
+    IP_OPTIONS = 4  # bytes: 0-40 raw IPv4 options block (RFC 1122 §4.1.3.2)
+    IP_RECVOPTS = 6  # int 0/1: enable IP_OPTIONS cmsg on recvmsg (RFC 1122 §4.1.3.2)
+    IP_RETOPTS = 7  # int 0/1: deprecated alias of IP_RECVOPTS (Linux compat)
+    IP_RECVERR = 11  # int 0/1: enable error queue (recvmsg MSG_ERRQUEUE — Linux ip(7))
+    IP_RECVTOS = 13  # int 0/1: enable IP_TOS cmsg on recvmsg (RFC 1122 §4.1.4 MAY)
+    IP_MTU = 14  # int (getsockopt only): effective PMTU for connected peer (RFC 1122 §3.4 GET_MAXSIZES)
+
+
+IP_TOS = IpOption.IP_TOS
+IP_TTL = IpOption.IP_TTL
+IP_OPTIONS = IpOption.IP_OPTIONS
+IP_RECVOPTS = IpOption.IP_RECVOPTS
+IP_RETOPTS = IpOption.IP_RETOPTS
+IP_RECVERR = IpOption.IP_RECVERR
+IP_RECVTOS = IpOption.IP_RECVTOS
+IP_MTU = IpOption.IP_MTU
+
+
+class IpV6Option(IntEnum):
+    """
+    IPPROTO_IPV6-level setsockopt 'optname' values (Linux
+    numbers from <netinet/in.h>; matches Python stdlib
+    'socket.IPV6_*' module-level constants on Linux).
+    """
+
+    IPV6_UNICAST_HOPS = 16  # int 1-255: per-socket Hop-Limit override
+    IPV6_MTU = 24  # int (getsockopt only): effective PMTU for connected peer
+    IPV6_RECVERR = 25  # int 0/1: enable IPv6 error queue (recvmsg MSG_ERRQUEUE — Linux ipv6(7))
+    IPV6_RECVTCLASS = 66  # int 0/1: enable IPV6_TCLASS cmsg on recvmsg (RFC 3542 §6.5)
+    IPV6_TCLASS = 67  # int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
+
+
+IPV6_UNICAST_HOPS = IpV6Option.IPV6_UNICAST_HOPS
+IPV6_MTU = IpV6Option.IPV6_MTU
+IPV6_RECVERR = IpV6Option.IPV6_RECVERR
+IPV6_RECVTCLASS = IpV6Option.IPV6_RECVTCLASS
+IPV6_TCLASS = IpV6Option.IPV6_TCLASS
+
+
+class MsgFlag(IntEnum):
+    """
+    MSG_* flag bits for recvmsg / recvfrom / sendmsg (Linux
+    numbers from <sys/socket.h>; matches Python stdlib
+    'socket.MSG_*' module-level constants on Linux). PyTCP
+    currently honors MSG_ERRQUEUE only; other flags are
+    reserved for future surface.
+    """
+
+    MSG_ERRQUEUE = 0x2000
+
+
+MSG_ERRQUEUE = MsgFlag.MSG_ERRQUEUE
+
+# 'struct sock_extended_err.ee_origin' values (Linux
+# <linux/errqueue.h>) live as 'SoEeOrigin' members in
+# 'pytcp.socket.error_queue'. The constant is PyTCP-
+# internal — Python stdlib 'socket' does not expose
+# SO_EE_ORIGIN_*, so applications either define their own
+# bare-int constants for stdlib portability or import
+# 'pytcp.socket.error_queue.SoEeOrigin' for the typed
+# enum. Use 'SoEeOrigin.ICMP' / 'SoEeOrigin.ICMP6' at
+# PyTCP-side call sites.
 
 
 def _validate_ip4_options_bytes(value: bytes, /) -> bytes:
@@ -273,9 +346,11 @@ class socket(ABC):
     _ip_options: bytes
     _ip_recvopts: bool
     _ip_recvtos: bool
+    _ip_recverr: bool
     _ipv6_unicast_hops: int | None
     _ipv6_tclass: int
     _ipv6_recvtclass: bool
+    _ipv6_recverr: bool
 
     def __init__(
         self,
@@ -311,9 +386,11 @@ class socket(ABC):
         self._ip_options = bytes()
         self._ip_recvopts = False
         self._ip_recvtos = False
+        self._ip_recverr = False
         self._ipv6_unicast_hops = None
         self._ipv6_tclass = 0
         self._ipv6_recvtclass = False
+        self._ipv6_recverr = False
 
     def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
         """
@@ -381,6 +458,11 @@ class socket(ABC):
                     raise OSError(errno.EINVAL, f"IP_RECVTOS value must be int, got {type(value).__name__}")
                 self._ip_recvtos = bool(value)
                 return True
+            case _ if optname == IP_RECVERR:
+                if not isinstance(value, int):
+                    raise OSError(errno.EINVAL, f"IP_RECVERR value must be int, got {type(value).__name__}")
+                self._ip_recverr = bool(value)
+                return True
         return False
 
     def _ipproto_ip_getsockopt(self, optname: int, /) -> int | bytes | None:
@@ -400,6 +482,8 @@ class socket(ABC):
                 return int(self._ip_recvopts)
             case _ if optname == IP_RECVTOS:
                 return int(self._ip_recvtos)
+            case _ if optname == IP_RECVERR:
+                return int(self._ip_recverr)
             case _ if optname == IP_MTU:
                 return self._effective_pmtu()
         return None
@@ -423,6 +507,9 @@ class socket(ABC):
             case _ if optname == IPV6_RECVTCLASS:
                 self._ipv6_recvtclass = bool(value)
                 return True
+            case _ if optname == IPV6_RECVERR:
+                self._ipv6_recverr = bool(value)
+                return True
         return False
 
     def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
@@ -438,6 +525,8 @@ class socket(ABC):
                 return self._ipv6_tclass
             case _ if optname == IPV6_RECVTCLASS:
                 return int(self._ipv6_recvtclass)
+            case _ if optname == IPV6_RECVERR:
+                return int(self._ipv6_recverr)
             case _ if optname == IPV6_MTU:
                 return self._effective_pmtu()
         return None

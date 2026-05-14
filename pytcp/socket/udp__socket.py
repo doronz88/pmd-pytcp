@@ -35,6 +35,7 @@ from __future__ import annotations
 import errno
 import os
 import threading
+from collections import deque
 from typing import TYPE_CHECKING, override
 
 from net_addr import (
@@ -43,6 +44,7 @@ from net_addr import (
     Ip6Address,
     Ip6AddressFormatError,
 )
+from net_proto.lib.proto_enum import ProtoEnum
 from pytcp import stack
 from pytcp.lib.ip_helper import (
     is_address_in_use,
@@ -53,16 +55,25 @@ from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
     IP_OPTIONS,
+    IP_RECVERR,
     IP_TOS,
     IPPROTO_IP,
     IPPROTO_IPV6,
+    IPV6_RECVERR,
     IPV6_TCLASS,
+    MSG_ERRQUEUE,
     SOL_SOCKET,
     AddressFamily,
     IpProto,
     SocketType,
     gaierror,
     socket,
+)
+from pytcp.socket.error_queue import (
+    ERROR_QUEUE__MAX_LEN,
+    ErrorQueueEntry,
+    SoEeOrigin,
+    pack_sock_extended_err,
 )
 
 if TYPE_CHECKING:
@@ -102,6 +113,11 @@ class UdpSocket(socket):
         self._packet_rx_md: list[UdpMetadata] = []
         self._packet_rx_md_ready = threading.Semaphore(0)
         self._unreachable = False
+        # Per-socket ICMP error queue (RFC 1122 §4.1.3.3 surface
+        # via Linux IP_RECVERR / IPV6_RECVERR). FIFO-drop on
+        # overflow at 'ERROR_QUEUE__MAX_LEN'.
+        self._error_queue: deque[ErrorQueueEntry] = deque(maxlen=ERROR_QUEUE__MAX_LEN)
+        self._error_queue_ready = threading.Semaphore(0)
 
         match self._address_family:
             case AddressFamily.INET6:
@@ -529,11 +545,15 @@ class UdpSocket(socket):
 
         'ancbufsize' is currently advisory only — PyTCP returns
         every cmsg the socket has enabled regardless of buffer
-        size; truncation handling is a follow-up commit. 'flags'
-        is reserved for future MSG_* support.
+        size; truncation handling is a follow-up commit. When
+        'flags & MSG_ERRQUEUE' is set the call dequeues an
+        ICMP error from the per-socket error queue instead of
+        reading the data queue (Linux 'ip(7)' /
+        'ipv6(7)' semantics, RFC 1122 §4.1.3.3 surface).
         """
 
-        del flags  # MSG_* flags not yet honored.
+        if flags & MSG_ERRQUEUE:
+            return self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
 
         # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
         # supplies the default; otherwise the blocking flag picks
@@ -615,6 +635,61 @@ class UdpSocket(socket):
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
+    def _recvmsg_errqueue(
+        self,
+        *,
+        ancbufsize: int,
+        timeout: float | None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
+        """
+        Dequeue one entry from the per-socket ICMP error queue
+        and return it in the Linux 'recvmsg(MSG_ERRQUEUE)'
+        4-tuple shape. The data portion is the original
+        outbound datagram that triggered the ICMP error (as
+        quoted in the ICMP error 'data' field); the ancillary
+        data carries an 'IP_RECVERR' / 'IPV6_RECVERR' cmsg
+        whose payload is the packed 'struct sock_extended_err'
+        + offender sockaddr. The address tuple is the ICMP
+        source.
+
+        Reference: RFC 1122 §4.1.3.3 (pass ICMP errors up to
+        the application).
+        Reference: Linux 'ip(7)' / 'ipv6(7)' (IP_RECVERR /
+        IPV6_RECVERR API shape).
+        """
+
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
+            acquired = self._error_queue_ready.acquire(blocking=False)
+        else:
+            acquired = self._error_queue_ready.acquire(timeout=effective_timeout)
+
+        if not acquired:
+            if effective_timeout is None and not self._blocking:
+                raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
+            raise TimeoutError("UDP Socket - Receive operation timed out.")
+
+        entry = self._error_queue.popleft()
+        cmsg_payload = pack_sock_extended_err(entry)
+        ancdata: list[tuple[int, int, bytes]] = []
+        if ancbufsize > 0:
+            if isinstance(entry.offender_ip, Ip4Address):
+                ancdata.append((int(IPPROTO_IP), int(IP_RECVERR), cmsg_payload))
+            else:
+                ancdata.append((int(IPPROTO_IPV6), int(IPV6_RECVERR), cmsg_payload))
+
+        # Address tuple shape matches the data-path 'recvmsg'
+        # convention: 2-tuple for AF_INET, 4-tuple for AF_INET6.
+        # The offender is the ICMP source; port is 0 because
+        # ICMP carries no port.
+        address: tuple[str, int] | tuple[str, int, int, int]
+        if isinstance(entry.offender_ip, Ip4Address):
+            address = (str(entry.offender_ip), 0)
+        else:
+            address = (str(entry.offender_ip), 0, 0, 0)
+
+        return entry.embedded_datagram, ancdata, int(MSG_ERRQUEUE), address
+
     @override
     def close(self) -> None:
         """
@@ -635,46 +710,192 @@ class UdpSocket(socket):
         self._packet_rx_md_ready.release()
         self._signal_readable()
 
-    def notify_unreachable(self) -> None:
+    def _is_recverr_enabled(self) -> bool:
         """
-        Set the unreachable notification.
+        Return True when the per-family RECVERR flag is set so the
+        notify_* paths should enqueue the error for later
+        'recvmsg(MSG_ERRQUEUE)' dequeue.
+        """
+
+        if self._address_family is AddressFamily.INET6:
+            return self._ipv6_recverr
+        return self._ip_recverr
+
+    def _enqueue_error(self, entry: ErrorQueueEntry, /) -> None:
+        """
+        Append an 'ErrorQueueEntry' to the per-socket error
+        queue and release the readability semaphore so a
+        blocking 'recvmsg(MSG_ERRQUEUE)' wakes up. No-op when
+        the per-family RECVERR flag is unset.
+        """
+
+        if not self._is_recverr_enabled():
+            return
+        # deque(maxlen=...) silently drops the oldest entry on
+        # overflow — matches the FIFO-drop semantics documented
+        # on 'ErrorQueueEntry'.
+        self._error_queue.append(entry)
+        self._error_queue_ready.release()
+
+    def notify_unreachable(
+        self,
+        *,
+        icmp_origin: SoEeOrigin = SoEeOrigin.NONE,
+        icmp_type: ProtoEnum | int = 0,
+        icmp_code: ProtoEnum | int = 0,
+        offender_ip: Ip4Address | Ip6Address | None = None,
+        embedded_datagram: bytes = b"",
+    ) -> None:
+        """
+        Inbound ICMP Destination Unreachable matched against this
+        socket. Sets the 'unreachable' flag so the next data-path
+        'recv()' raises 'ConnectionRefusedError' (legacy BSD
+        single-error surface) and, when 'IP_RECVERR' /
+        'IPV6_RECVERR' is set on the socket, also appends an
+        'ErrorQueueEntry' so the application can dequeue the
+        full ICMP context via 'recvmsg(MSG_ERRQUEUE)'.
         """
 
         self._unreachable = True
 
-    def notify_time_exceeded(self, *, icmp_type: int, icmp_code: int) -> None:
+        if offender_ip is None or not self._is_recverr_enabled():
+            return
+
+        self._enqueue_icmp_error(
+            icmp_origin=icmp_origin,
+            icmp_type=icmp_type,
+            icmp_code=icmp_code,
+            offender_ip=offender_ip,
+            embedded_datagram=embedded_datagram,
+        )
+
+    def notify_time_exceeded(
+        self,
+        *,
+        icmp_type: ProtoEnum | int,
+        icmp_code: ProtoEnum | int,
+        icmp_origin: SoEeOrigin = SoEeOrigin.NONE,
+        offender_ip: Ip4Address | Ip6Address | None = None,
+        embedded_datagram: bytes = b"",
+    ) -> None:
         """
-        Pass an inbound ICMP Time Exceeded notification that the RX
-        handler has matched against this socket. RFC 1122 §3.2.2.4
-        mandates the transport layer be informed; current behaviour
-        is purely a hook (counter bumps in the packet handler) so a
-        future MSG_ERRQUEUE / IP_RECVERR feature can deliver this to
-        the application without a separate plumbing pass.
+        Inbound ICMP Time Exceeded matched against this socket.
+        Surfaces via 'recvmsg(MSG_ERRQUEUE)' when the per-family
+        RECVERR flag is set; no data-path side effect otherwise
+        (legacy 'ConnectionRefusedError' path is Port-Unreachable
+        only). RFC 1122 §3.2.2.4 mandates pass-to-transport.
         """
 
-        # Accept arguments to keep the future MSG_ERRQUEUE handler's
-        # signature stable; the body is intentionally minimal today.
-        del icmp_type, icmp_code
+        if offender_ip is None or not self._is_recverr_enabled():
+            return
 
-    def notify_parameter_problem(self, *, icmp_type: int, icmp_code: int) -> None:
+        self._enqueue_icmp_error(
+            icmp_origin=icmp_origin,
+            icmp_type=icmp_type,
+            icmp_code=icmp_code,
+            offender_ip=offender_ip,
+            embedded_datagram=embedded_datagram,
+        )
+
+    def notify_parameter_problem(
+        self,
+        *,
+        icmp_type: ProtoEnum | int,
+        icmp_code: ProtoEnum | int,
+        icmp_origin: SoEeOrigin = SoEeOrigin.NONE,
+        offender_ip: Ip4Address | Ip6Address | None = None,
+        embedded_datagram: bytes = b"",
+    ) -> None:
         """
-        Pass an inbound ICMP Parameter Problem notification that the
-        RX handler has matched against this socket. Same hook shape
-        as notify_time_exceeded — RFC 1122 §3.2.2.5 mandates pass-to-
-        transport.
+        Inbound ICMP Parameter Problem matched against this
+        socket. Surfaces via 'recvmsg(MSG_ERRQUEUE)' when the
+        per-family RECVERR flag is set. RFC 1122 §3.2.2.5
+        mandates pass-to-transport.
         """
 
-        del icmp_type, icmp_code
+        if offender_ip is None or not self._is_recverr_enabled():
+            return
 
-    def notify_pmtu(self, *, next_hop_mtu: int) -> None:
+        self._enqueue_icmp_error(
+            icmp_origin=icmp_origin,
+            icmp_type=icmp_type,
+            icmp_code=icmp_code,
+            offender_ip=offender_ip,
+            embedded_datagram=embedded_datagram,
+        )
+
+    def notify_pmtu(
+        self,
+        *,
+        next_hop_mtu: int,
+        icmp_origin: SoEeOrigin = SoEeOrigin.NONE,
+        icmp_type: ProtoEnum | int = 0,
+        icmp_code: ProtoEnum | int = 0,
+        offender_ip: Ip4Address | Ip6Address | None = None,
+        embedded_datagram: bytes = b"",
+    ) -> None:
         """
-        Receive a Path-MTU update for this socket's remote peer. The
-        per-destination MTU is recorded in 'stack.pmtu_cache' so the
-        next 'sendto' call can fragment-or-fail-or-shrink against it.
-        Currently a thin shim: the callback's behaviour is just to
-        update the cache; the policy for what to do with the smaller
-        MTU is deferred to a future feature commit (RFC 4821 / 8899
-        active probing).
+        Inbound ICMPv4 Fragmentation Needed or ICMPv6 Packet Too
+        Big matched against this socket. Records the per-
+        destination Path-MTU in 'stack.pmtu_cache' so the next
+        'sendto()' fragment-or-fail-or-shrink decision uses the
+        updated value, and (when RECVERR is set) appends an
+        'ErrorQueueEntry' carrying 'errno=EMSGSIZE' and
+        'ee_info=next_hop_mtu' per Linux semantics so
+        'recvmsg(MSG_ERRQUEUE)' applications can read the
+        new MTU.
         """
 
         stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+
+        if offender_ip is None or not self._is_recverr_enabled():
+            return
+
+        self._enqueue_error(
+            ErrorQueueEntry(
+                errno=errno.EMSGSIZE,
+                origin=icmp_origin,
+                icmp_type=int(icmp_type),
+                icmp_code=int(icmp_code),
+                ee_info=next_hop_mtu,
+                offender_ip=offender_ip,
+                embedded_datagram=embedded_datagram,
+            )
+        )
+
+    def _enqueue_icmp_error(
+        self,
+        *,
+        icmp_origin: SoEeOrigin,
+        icmp_type: ProtoEnum | int,
+        icmp_code: ProtoEnum | int,
+        offender_ip: Ip4Address | Ip6Address,
+        embedded_datagram: bytes,
+    ) -> None:
+        """
+        Shared body for notify_unreachable / time_exceeded /
+        parameter_problem: map the ICMP (type, code) pair to
+        the POSIX errno per the family's mapping table and
+        append the resulting 'ErrorQueueEntry'. Internal helper.
+        """
+
+        from pytcp.socket.error_queue import icmp4_to_errno, icmp6_to_errno
+
+        icmp_type_int = int(icmp_type)
+        icmp_code_int = int(icmp_code)
+
+        if icmp_origin is SoEeOrigin.ICMP6:
+            errno_ = icmp6_to_errno(icmp_type=icmp_type_int, icmp_code=icmp_code_int)
+        else:
+            errno_ = icmp4_to_errno(icmp_type=icmp_type_int, icmp_code=icmp_code_int)
+
+        self._enqueue_error(
+            ErrorQueueEntry(
+                errno=errno_,
+                origin=icmp_origin,
+                icmp_type=icmp_type_int,
+                icmp_code=icmp_code_int,
+                offender_ip=offender_ip,
+                embedded_datagram=embedded_datagram,
+            )
+        )

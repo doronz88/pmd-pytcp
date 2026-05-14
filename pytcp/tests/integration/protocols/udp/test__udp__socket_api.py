@@ -517,3 +517,138 @@ class TestUdpSocketApiIcmpUnreachable(UdpTestCase):
             self._socket._unreachable,
             msg="The unreachable flag must be cleared after raising ConnectionRefusedError.",
         )
+
+
+class TestUdpSocketApiIpRecverr(UdpTestCase):
+    """
+    Inbound ICMPv4 Destination Unreachable populates the
+    per-socket error queue when IP_RECVERR=1; the queued
+    entry surfaces via 'recvmsg(MSG_ERRQUEUE)' with the
+    embedded datagram + Linux-shape cmsg.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bind + connect a UDP socket so the ICMPv4 demux can
+        match the embedded 4-tuple to this socket.
+        """
+
+        super().setUp()
+        self._socket = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=STACK__IP4_HOST.address,
+            local_port=_LOCAL_PORT,
+            remote_ip=HOST_A__IP4_ADDRESS,
+            remote_port=_REMOTE_PORT,
+        )
+
+    def test__udp_socket_api__ip_recverr__port_unreachable_surfaces_via_errqueue(self) -> None:
+        """
+        Ensure an inbound ICMPv4 Port Unreachable matched to a
+        connected UDP socket with 'IP_RECVERR=1' appears on the
+        per-socket error queue and dequeues via
+        'recvmsg(flags=MSG_ERRQUEUE)' with the embedded
+        outbound datagram as the data portion and an
+        'IP_RECVERR' cmsg whose 32-byte payload packs the
+        Linux 'sock_extended_err' (origin=ICMP, type=3,
+        code=3, errno=ECONNREFUSED) + offender 'sockaddr_in'.
+
+        Reference: RFC 1122 §4.1.3.3 (UDP MUST pass ICMP
+        errors up to the application).
+        Reference: Linux 'ip(7)' (IP_RECVERR cmsg wire shape).
+        """
+
+        from pytcp.socket import IP_RECVERR, IPPROTO_IP, MSG_ERRQUEUE
+
+        self._socket.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+
+        # Stage 1: outbound UDP datagram (drives the demux's
+        # embedded-4-tuple matcher).
+        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        outbound_frame = self._frames_tx[-1]
+        embedded_ip4_and_udp = outbound_frame[14:]
+
+        # Stage 2: ICMPv4 Port Unreachable referencing that
+        # datagram.
+        unreachable_frame = _build_icmp4_unreachable_for_udp(
+            code=Icmp4DestinationUnreachableCode.PORT,
+            triggering_udp_4tuple_payload=embedded_ip4_and_udp,
+        )
+        self._drive_udp_rx(frame=unreachable_frame)
+
+        # Stage 3: dequeue via recvmsg(MSG_ERRQUEUE). Data is
+        # the embedded triggering datagram (the IPv4+UDP
+        # header + payload from stage 1).
+        data, ancdata, flags, address = self._socket.recvmsg(
+            ancbufsize=256,
+            flags=MSG_ERRQUEUE,
+            timeout=0.5,
+        )
+
+        self.assertEqual(
+            data,
+            embedded_ip4_and_udp,
+            msg="recvmsg(MSG_ERRQUEUE) data must be the embedded triggering datagram.",
+        )
+        self.assertEqual(
+            flags,
+            int(MSG_ERRQUEUE),
+            msg="msg_flags must include the MSG_ERRQUEUE bit.",
+        )
+        self.assertEqual(
+            address,
+            (str(HOST_A__IP4_ADDRESS), 0),
+            msg="recvmsg address must be the ICMP offender's IP (port=0).",
+        )
+
+        self.assertEqual(len(ancdata), 1)
+        level, type_, value = ancdata[0]
+        self.assertEqual(level, int(IPPROTO_IP))
+        self.assertEqual(type_, int(IP_RECVERR))
+        self.assertEqual(
+            len(value),
+            32,
+            msg="sock_extended_err (16) + sockaddr_in (16) = 32 bytes.",
+        )
+
+        # Unpack ee_errno / ee_origin / ee_type / ee_code from
+        # the cmsg payload to verify Linux-shape parity.
+        import struct
+
+        ee_errno, ee_origin, ee_type, ee_code = struct.unpack("=IBBB", value[:7])
+        import errno as errno_mod
+
+        self.assertEqual(
+            ee_errno,
+            errno_mod.ECONNREFUSED,
+            msg="ee_errno must map ICMPv4 type=3 code=3 to ECONNREFUSED.",
+        )
+        self.assertEqual(ee_origin, 2, msg="SoEeOrigin.ICMP == 2")
+        self.assertEqual(ee_type, 3, msg="ICMPv4 Destination Unreachable type=3")
+        self.assertEqual(ee_code, 3, msg="ICMPv4 Port Unreachable code=3")
+
+    def test__udp_socket_api__ip_recverr__disabled_empty_queue(self) -> None:
+        """
+        Ensure an inbound ICMPv4 Port Unreachable does NOT
+        populate the error queue when 'IP_RECVERR=0' (default).
+        The legacy 'ConnectionRefusedError' path on next
+        'recv()' still fires (covered by
+        TestUdpSocketApiIcmpUnreachable above).
+
+        Reference: RFC 1122 §4.1.3.3 (per-socket opt-in to
+        the error-queue surface).
+        """
+
+        from pytcp.socket import MSG_ERRQUEUE
+
+        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        embedded_ip4_and_udp = self._frames_tx[-1][14:]
+
+        unreachable_frame = _build_icmp4_unreachable_for_udp(
+            code=Icmp4DestinationUnreachableCode.PORT,
+            triggering_udp_4tuple_payload=embedded_ip4_and_udp,
+        )
+        self._drive_udp_rx(frame=unreachable_frame)
+
+        with self.assertRaises(TimeoutError):
+            self._socket.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)

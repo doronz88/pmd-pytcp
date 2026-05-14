@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip6Address, Ip6Network, IpVersion
 from net_proto import (
+    Icmp6DestinationUnreachableCode,
     Icmp6MessageDestinationUnreachable,
     Icmp6MessageEchoReply,
     Icmp6MessageEchoRequest,
@@ -47,7 +48,9 @@ from net_proto import (
     Icmp6NdMessageRedirect,
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdMessageRouterSolicitation,
+    Icmp6ParameterProblemCode,
     Icmp6Parser,
+    Icmp6TimeExceededCode,
     Icmp6Type,
     IpProto,
     PacketRx,
@@ -63,6 +66,7 @@ from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
+from pytcp.socket.error_queue import SoEeOrigin
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.socket_id import SocketId
@@ -285,14 +289,26 @@ class PacketHandlerIcmp6Rx(ABC):
         message = packet_rx.icmp6.message
 
         if embedded.proto is IpProto.UDP:
-            self.__phrx_icmp6__dispatch_udp_unreachable(packet_rx, embedded)
+            self.__phrx_icmp6__dispatch_udp_unreachable(
+                packet_rx,
+                embedded,
+                icmp_code=message.code,
+                embedded_datagram=bytes(message.data),
+            )
             return
 
         if embedded.proto is IpProto.TCP:
             self.__phrx_icmp6__dispatch_tcp_unreachable(packet_rx, embedded, icmp_code=int(message.code))
             return
 
-    def __phrx_icmp6__dispatch_udp_unreachable(self, packet_rx: PacketRx, embedded: EmbeddedL4) -> None:
+    def __phrx_icmp6__dispatch_udp_unreachable(
+        self,
+        packet_rx: PacketRx,
+        embedded: EmbeddedL4,
+        *,
+        icmp_code: Icmp6DestinationUnreachableCode,
+        embedded_datagram: bytes,
+    ) -> None:
         """
         Route an ICMPv6 Destination Unreachable carrying an embedded
         UDP segment to the matching UdpSocket.notify_unreachable.
@@ -317,7 +333,13 @@ class PacketHandlerIcmp6Rx(ABC):
                     f"listening UDP socket {socket} for Unreachable "
                     f"packet from {packet_rx.ip6.src}</>",
                 )
-                socket.notify_unreachable()
+                socket.notify_unreachable(
+                    icmp_origin=SoEeOrigin.ICMP6,
+                    icmp_type=Icmp6Type.DESTINATION_UNREACHABLE,
+                    icmp_code=icmp_code,
+                    offender_ip=packet_rx.ip6.src,
+                    embedded_datagram=embedded_datagram,
+                )
                 return
 
         __debug__ and log(
@@ -398,7 +420,12 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.UDP:
-            self.__phrx_icmp6__time_exceeded__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp6__time_exceeded__dispatch_udp(
+                packet_rx,
+                embedded,
+                icmp_code=message.code,
+                embedded_datagram=bytes(message.data),
+            )
             return
 
         if embedded.proto is IpProto.TCP:
@@ -410,7 +437,8 @@ class PacketHandlerIcmp6Rx(ABC):
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
         *,
-        icmp_code: int,
+        icmp_code: Icmp6TimeExceededCode,
+        embedded_datagram: bytes,
     ) -> None:
         """
         Route an ICMPv6 Time Exceeded carrying an embedded UDP segment
@@ -432,7 +460,13 @@ class PacketHandlerIcmp6Rx(ABC):
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Time Exceeded from {packet_rx.ip6.src}</>",
                 )
-                socket.notify_time_exceeded(icmp_type=3, icmp_code=icmp_code)
+                socket.notify_time_exceeded(
+                    icmp_type=Icmp6Type.TIME_EXCEEDED,
+                    icmp_code=icmp_code,
+                    icmp_origin=SoEeOrigin.ICMP6,
+                    offender_ip=packet_rx.ip6.src,
+                    embedded_datagram=embedded_datagram,
+                )
                 self._packet_stats_rx.icmp6__time_exceeded__udp__notify += 1
                 return
 
@@ -512,7 +546,12 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.proto is IpProto.UDP:
-            self.__phrx_icmp6__parameter_problem__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp6__parameter_problem__dispatch_udp(
+                packet_rx,
+                embedded,
+                icmp_code=message.code,
+                embedded_datagram=bytes(message.data),
+            )
             return
 
         if embedded.proto is IpProto.TCP:
@@ -524,7 +563,8 @@ class PacketHandlerIcmp6Rx(ABC):
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
         *,
-        icmp_code: int,
+        icmp_code: Icmp6ParameterProblemCode,
+        embedded_datagram: bytes,
     ) -> None:
         """
         Route an ICMPv6 Parameter Problem carrying an embedded UDP
@@ -546,7 +586,13 @@ class PacketHandlerIcmp6Rx(ABC):
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Parameter Problem from {packet_rx.ip6.src}</>",
                 )
-                socket.notify_parameter_problem(icmp_type=4, icmp_code=icmp_code)
+                socket.notify_parameter_problem(
+                    icmp_type=Icmp6Type.PARAMETER_PROBLEM,
+                    icmp_code=icmp_code,
+                    icmp_origin=SoEeOrigin.ICMP6,
+                    offender_ip=packet_rx.ip6.src,
+                    embedded_datagram=embedded_datagram,
+                )
                 self._packet_stats_rx.icmp6__parameter_problem__udp__notify += 1
                 return
 
@@ -637,7 +683,14 @@ class PacketHandlerIcmp6Rx(ABC):
             for socket_id in packet.socket_ids:
                 if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
                     stack.pmtu_cache[cast(Ip6Address, embedded.remote_ip)] = message.mtu
-                    socket.notify_pmtu(next_hop_mtu=message.mtu)
+                    socket.notify_pmtu(
+                        next_hop_mtu=message.mtu,
+                        icmp_origin=SoEeOrigin.ICMP6,
+                        icmp_type=Icmp6Type.PACKET_TOO_BIG,
+                        icmp_code=message.code,
+                        offender_ip=packet_rx.ip6.src,
+                        embedded_datagram=bytes(message.data),
+                    )
                     self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
                     return
             return

@@ -1928,6 +1928,247 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="IPV6_MTU on an unconnected socket must raise OSError(ENOTCONN).",
         )
 
+    def test__udp_socket__ip_recverr_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IP, IP_RECVERR, 1) toggles the
+        per-socket flag that gates ICMP-error queue population
+        for recvmsg(MSG_ERRQUEUE), and getsockopt returns the
+        stored value.
+
+        Reference: RFC 1122 §4.1.3.3 (UDP MUST pass ICMP errors
+        up to the application).
+        """
+
+        from pytcp.socket import IP_RECVERR, IPPROTO_IP
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        self.assertEqual(s.getsockopt(IPPROTO_IP, IP_RECVERR), 0)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+        self.assertEqual(s.getsockopt(IPPROTO_IP, IP_RECVERR), 1)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 0)
+        self.assertEqual(s.getsockopt(IPPROTO_IP, IP_RECVERR), 0)
+
+    def test__udp_socket__ipv6_recverr_round_trip(self) -> None:
+        """
+        Ensure setsockopt(IPPROTO_IPV6, IPV6_RECVERR, 1) toggles
+        the per-socket flag for IPv6 error-queue population.
+
+        Reference: RFC 1122 §4.1.3.3 (pass ICMP errors up; IPv6
+        parallel surface).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_RECVERR
+
+        s = UdpSocket(family=AddressFamily.INET6)
+        self.addCleanup(s.close)
+
+        self.assertEqual(s.getsockopt(IPPROTO_IPV6, IPV6_RECVERR), 0)
+        s.setsockopt(IPPROTO_IPV6, IPV6_RECVERR, 1)
+        self.assertEqual(s.getsockopt(IPPROTO_IPV6, IPV6_RECVERR), 1)
+
+    def test__udp_socket__notify_unreachable_enqueues_error_when_recverr_set(self) -> None:
+        """
+        Ensure notify_unreachable with full ICMP context appends
+        an ErrorQueueEntry to the per-socket error queue when
+        IP_RECVERR is set. The entry carries the
+        ICMP→errno-mapped errno, ICMP origin / type / code,
+        offender address, and embedded triggering datagram.
+
+        Reference: RFC 1122 §4.1.3.3.
+        """
+
+        import errno as errno_mod
+
+        from net_proto import Icmp4DestinationUnreachableCode, Icmp4Type
+        from pytcp.socket import IP_RECVERR, IPPROTO_IP
+        from pytcp.socket.error_queue import SoEeOrigin
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+
+        s.notify_unreachable(
+            icmp_origin=SoEeOrigin.ICMP,
+            icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+            icmp_code=Icmp4DestinationUnreachableCode.PORT,
+            offender_ip=Ip4Address("10.0.0.5"),
+            embedded_datagram=b"triggering-datagram",
+        )
+
+        self.assertEqual(
+            len(s._error_queue),
+            1,
+            msg="notify_unreachable must enqueue exactly one error when IP_RECVERR=1.",
+        )
+        entry = s._error_queue[0]
+        self.assertEqual(entry.errno, errno_mod.ECONNREFUSED)
+        self.assertEqual(entry.origin, SoEeOrigin.ICMP)
+        self.assertEqual(entry.icmp_type, int(Icmp4Type.DESTINATION_UNREACHABLE))
+        self.assertEqual(entry.icmp_code, int(Icmp4DestinationUnreachableCode.PORT))
+        self.assertEqual(entry.offender_ip, Ip4Address("10.0.0.5"))
+        self.assertEqual(entry.embedded_datagram, b"triggering-datagram")
+
+    def test__udp_socket__notify_unreachable_no_enqueue_when_recverr_unset(self) -> None:
+        """
+        Ensure notify_unreachable does NOT enqueue when
+        IP_RECVERR is unset. The legacy '_unreachable' flag
+        still toggles so 'recv()' raises ConnectionRefusedError
+        per the BSD single-error surface.
+
+        Reference: RFC 1122 §4.1.3.3 (legacy
+        ConnectionRefusedError path always wired).
+        """
+
+        from net_proto import Icmp4DestinationUnreachableCode, Icmp4Type
+        from pytcp.socket.error_queue import SoEeOrigin
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        s.notify_unreachable(
+            icmp_origin=SoEeOrigin.ICMP,
+            icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+            icmp_code=Icmp4DestinationUnreachableCode.PORT,
+            offender_ip=Ip4Address("10.0.0.5"),
+            embedded_datagram=b"x",
+        )
+
+        self.assertEqual(len(s._error_queue), 0)
+        self.assertTrue(s._unreachable)
+
+    def test__udp_socket__notify_pmtu_enqueues_emsgsize_with_ee_info(self) -> None:
+        """
+        Ensure notify_pmtu appends an ErrorQueueEntry whose
+        'errno' is EMSGSIZE and whose 'ee_info' carries the
+        advertised next-hop MTU (Linux's IP_RECVERR
+        sock_extended_err.ee_info convention).
+
+        Reference: RFC 1191 §3 (Path-MTU discovery PMTU
+        surfacing as IP_RECVERR EMSGSIZE).
+        """
+
+        import errno as errno_mod
+
+        from net_proto import Icmp4DestinationUnreachableCode, Icmp4Type
+        from pytcp.socket import IP_RECVERR, IPPROTO_IP
+        from pytcp.socket.error_queue import SoEeOrigin
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+
+        s.notify_pmtu(
+            next_hop_mtu=1280,
+            icmp_origin=SoEeOrigin.ICMP,
+            icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+            icmp_code=Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED,
+            offender_ip=Ip4Address("10.0.0.5"),
+            embedded_datagram=b"big-datagram",
+        )
+
+        self.assertEqual(len(s._error_queue), 1)
+        entry = s._error_queue[0]
+        self.assertEqual(entry.errno, errno_mod.EMSGSIZE)
+        self.assertEqual(entry.ee_info, 1280)
+
+    def test__udp_socket__recvmsg_errqueue_returns_cmsg_with_embedded_datagram(self) -> None:
+        """
+        Ensure recvmsg(flags=MSG_ERRQUEUE) dequeues one
+        ErrorQueueEntry and returns the 4-tuple
+        '(embedded_datagram, [cmsg], MSG_ERRQUEUE, offender_addr)'
+        matching Linux 'recvmsg(MSG_ERRQUEUE)' shape. The cmsg
+        payload is a packed 'struct sock_extended_err' +
+        offender sockaddr (16+16=32 bytes for IPv4).
+
+        Reference: Linux 'ip(7)' (IP_RECVERR cmsg wire shape).
+        """
+
+        from net_proto import Icmp4DestinationUnreachableCode, Icmp4Type
+        from pytcp.socket import (
+            IP_RECVERR,
+            IPPROTO_IP,
+            MSG_ERRQUEUE,
+        )
+        from pytcp.socket.error_queue import SoEeOrigin
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+
+        s.notify_unreachable(
+            icmp_origin=SoEeOrigin.ICMP,
+            icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+            icmp_code=Icmp4DestinationUnreachableCode.PORT,
+            offender_ip=Ip4Address("10.0.0.5"),
+            embedded_datagram=b"the-triggering-packet",
+        )
+
+        data, ancdata, flags, address = s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE)
+
+        self.assertEqual(data, b"the-triggering-packet")
+        self.assertEqual(flags, int(MSG_ERRQUEUE))
+        self.assertEqual(address, ("10.0.0.5", 0))
+        self.assertEqual(len(ancdata), 1)
+        level, type_, value = ancdata[0]
+        self.assertEqual(level, int(IPPROTO_IP))
+        self.assertEqual(type_, int(IP_RECVERR))
+        self.assertEqual(len(value), 32, msg="sock_extended_err (16) + sockaddr_in (16) = 32 bytes.")
+
+    def test__udp_socket__recvmsg_errqueue_empty_raises(self) -> None:
+        """
+        Ensure recvmsg(flags=MSG_ERRQUEUE, timeout=0.01) on an
+        empty error queue raises TimeoutError (or
+        BlockingIOError on a non-blocking socket).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pytcp.socket import MSG_ERRQUEUE
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        with self.assertRaises(TimeoutError):
+            s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
+
+    def test__udp_socket__error_queue_bounded_drops_oldest(self) -> None:
+        """
+        Ensure the per-socket error queue caps at
+        ERROR_QUEUE__MAX_LEN entries (32) and drops the oldest
+        entry on overflow (FIFO drop, deque(maxlen=) semantics).
+
+        Reference: PyTCP error-queue cap (no RFC clause; Linux
+        equivalent caps via 'sysctl_optmem_max' byte budget).
+        """
+
+        from net_proto import Icmp4DestinationUnreachableCode, Icmp4Type
+        from pytcp.socket import IP_RECVERR, IPPROTO_IP
+        from pytcp.socket.error_queue import ERROR_QUEUE__MAX_LEN, SoEeOrigin
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+        s.setsockopt(IPPROTO_IP, IP_RECVERR, 1)
+
+        for i in range(ERROR_QUEUE__MAX_LEN + 5):
+            s.notify_unreachable(
+                icmp_origin=SoEeOrigin.ICMP,
+                icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+                icmp_code=Icmp4DestinationUnreachableCode.PORT,
+                offender_ip=Ip4Address("10.0.0.5"),
+                embedded_datagram=str(i).encode(),
+            )
+
+        self.assertEqual(len(s._error_queue), ERROR_QUEUE__MAX_LEN)
+        # Oldest 5 entries (indices 0-4) dropped; the queue now
+        # starts at index 5.
+        self.assertEqual(s._error_queue[0].embedded_datagram, b"5")
+        self.assertEqual(
+            s._error_queue[-1].embedded_datagram,
+            str(ERROR_QUEUE__MAX_LEN + 4).encode(),
+        )
+
     def test__udp_socket__so_sndtimeo_round_trip(self) -> None:
         """
         Ensure SO_SNDTIMEO round-trips via setsockopt / getsockopt.

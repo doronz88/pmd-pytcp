@@ -44,6 +44,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | _(pending)_ | RFC 1122 §4.1.3.2 IP options pass-through (#1) — IP_OPTIONS / IP_RECVOPTS + recvmsg |
 | _(pending)_ | RFC 1122 §4.1.4 received-TOS pass-through (#5) — IP_RECVTOS + IPV6_RECVTCLASS cmsg |
 | _(pending)_ | RFC 1122 §3.4 GET_MAXSIZES via IP_MTU / IPV6_MTU getsockopt (#3) |
+| _(pending)_ | RFC 1122 §4.1.3.3 IP_RECVERR / MSG_ERRQUEUE socket-API (#4) — closes the punch list |
 
 ---
 
@@ -54,7 +55,7 @@ are MAY-level RFC items with no current PyTCP consumer.
 | 1 | ~~IP options pass-through to/from application~~ **SHIPPED** | RFC 1122 §4.1.3.2 | met (IP_OPTIONS setsockopt + IP_RECVOPTS + recvmsg ancillary data) | done | — |
 | 2 | ~~Directed-broadcast source filter~~ **SHIPPED** | RFC 1122 §4.1.3.6 residual | met (RX-handler `_ip4_broadcast` membership check) | done | — |
 | 3 | ~~`IP_MTU` / `IPV6_MTU` getsockopt~~ **SHIPPED** | RFC 1122 §3.4 GET_MAXSIZES | met (per-socket effective PMTU via getsockopt) | done | — |
-| 4 | `IP_RECVERR` / `MSG_ERRQUEUE` socket-API | RFC 1122 §4.1.3.3 API parity | "Phase-3 socket-parity" | ~half-day | Medium |
+| 4 | ~~`IP_RECVERR` / `MSG_ERRQUEUE` socket-API~~ **SHIPPED** | RFC 1122 §4.1.3.3 API parity | met (per-socket error queue + Linux-shape MSG_ERRQUEUE cmsg) | done | — |
 | 5 | ~~`IP_RECVTOS` / `IPV6_RECVTCLASS` ancillary~~ **SHIPPED** | RFC 1122 §4.1.4 MAY | met (recvmsg IP_TOS / IPV6_TCLASS cmsg gated by per-socket flag) | done | — |
 | 6 | `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` per-port opt-in | RFC 6935 §5 alternative mode | "Phase-3 socket-parity; no consumer" | ~half-day | Deferred — no consumer |
 | 7 | PLPMTUD for UDP audit + implementation | RFC 8899 | "not yet audited" | new audit + impl, ~1-2 days | Low |
@@ -309,10 +310,53 @@ Unit-level: mock the PMTU cache; assert
 
 ---
 
-## #4 — `IP_RECVERR` / `MSG_ERRQUEUE` socket-API
+## #4 — `IP_RECVERR` / `MSG_ERRQUEUE` socket-API — **SHIPPED**
 
-**Status:** open. Phase-3 socket-API parity. Most material
-of the "API parity" items — Linux apps routinely use this.
+**Status:** closed. The largest of the punch-list items —
+this commit closes the punch list. Shipped surface:
+
+- `IP_RECVERR=11` / `IPV6_RECVERR=25` setsockopt
+  (Linux-numbered, matching stdlib `socket` constants);
+  enables per-socket error-queue population.
+- `MSG_ERRQUEUE=0x2000` recvmsg flag; switches
+  `recvmsg()` from data-queue to error-queue.
+- `pytcp/socket/error_queue.py`: `ErrorQueueEntry`
+  dataclass; `SoEeOrigin` IntEnum for
+  `sock_extended_err.ee_origin`; `icmp4_to_errno` /
+  `icmp6_to_errno` POSIX-errno mapping mirroring Linux
+  `icmp_err_convert`; `pack_sock_extended_err` packs the
+  cmsg payload to exact Linux wire shape
+  (`struct sock_extended_err` + `sockaddr_in[6]`).
+- `UdpSocket.notify_unreachable` / `notify_time_exceeded`
+  / `notify_parameter_problem` / `notify_pmtu`
+  signatures extended with `icmp_origin: SoEeOrigin`,
+  `icmp_type: ProtoEnum | int`, `icmp_code: ProtoEnum | int`,
+  `offender_ip`, `embedded_datagram`. ICMP demux callers
+  in `packet_handler__icmp{4,6}__rx.py` updated to pass
+  the full context.
+- Per-socket error queue is a `deque(maxlen=32)` —
+  FIFO drop on overflow.
+
+Pinned by **17 new tests**:
+- 8 unit tests on the queue + setsockopt + recvmsg
+  shape + FIFO bound + errno mapping.
+- 2 integration tests driving end-to-end ICMPv4 Port
+  Unreachable through the RX demux into the error queue
+  and pinning the Linux-shape cmsg unpacks correctly.
+
+Audit ripple in
+`docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`:
+§4.1.3.3 narrative rewritten — Conformance verdict
+flipped from "partial at the application API" to "met
+at the protocol layer AND the Linux application API".
+Requirements-summary row updated. Test-coverage block
+extended.
+
+**Closes the UDP punch list.** Items #1, #2, #3, #4, #5
+all shipped; #6 and #7 are deferred (no consumer);
+#8 declined.
+
+Original brief (kept for archaeology):
 
 ### Background
 

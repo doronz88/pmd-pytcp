@@ -60,7 +60,7 @@ partial:
 |---------|------------------------------------------------|-------------------------------------------|
 | §4.1.3.1 | UDP send Port Unreachable                     | met (with rate-limiting per §3.2.2)       |
 | §4.1.3.2 | IP options pass-through (RX + TX)             | met (RX via recvmsg + IP_RECVOPTS; TX via setsockopt(IP_OPTIONS)) |
-| §4.1.3.3 | Pass ICMP errors up to application            | met (notify_unreachable / notify_pmtu / notify_time_exceeded / notify_parameter_problem socket callbacks) |
+| §4.1.3.3 | Pass ICMP errors up to application            | met (notify_* socket callbacks for legacy data-path; full ICMP context — type / code / errno / offender / embedded datagram — surfaces via recvmsg(MSG_ERRQUEUE) when IP_RECVERR / IPV6_RECVERR is set) |
 | §4.1.3.4 | Generate + check checksum (MUST)              | met                                        |
 | §4.1.3.4 | Silently discard bad checksum                 | met                                        |
 | §4.1.3.4 | Sender option to skip checksum (MAY)          | not implemented (MAY, no PyTCP consumer)   |
@@ -166,17 +166,26 @@ The classification happens in
 `pytcp/protocols/icmp/icmp__inbound_classifier.py` and
 `icmp__error_demux.py`; the dispatch routes to the
 matching UDP socket via the embedded-datagram 4-tuple. The
-SO_ERROR / MSG_ERRQUEUE-style userspace surface (Linux's
-`IP_RECVERR`) is not yet wired — sockets see the error
-but the BSD `recv()` does not return -1 + errno on next
-call. This is a Phase-3 socket-parity item documented in
-`docs/refactor/socket_linux_parity_audit.md`.
+Linux MSG_ERRQUEUE surface is wired: `setsockopt(IP_RECVERR, 1)`
+or `setsockopt(IPV6_RECVERR, 1)` enables per-socket error
+queueing; `recvmsg(flags=MSG_ERRQUEUE)` dequeues an entry
+returning `(embedded_datagram, [cmsg], MSG_ERRQUEUE, offender_addr)`
+where the cmsg payload is the packed Linux
+`struct sock_extended_err` (`ee_errno`, `ee_origin`,
+`ee_type`, `ee_code`, `ee_info` carrying next-hop MTU on
+PMTU errors) followed by the offender's `sockaddr_in` /
+`sockaddr_in6`. The errno is mapped per Linux's
+`icmp_err_convert` table (`pytcp/socket/error_queue.py`).
 
-**Conformance verdict:** met at the protocol layer (UDP
-layer passes errors to the socket); partial at the
-application API (`IP_RECVERR` / `MSG_ERRQUEUE` not
-exposed). The MUST is for the protocol layer's
-internal pass-up; the API parity is a separate audit.
+The legacy BSD single-error surface
+(`ConnectionRefusedError` on next `recv()` after a
+Port-Unreachable) remains wired alongside the error
+queue for backwards compatibility.
+
+**Conformance verdict:** met at the protocol layer AND
+the Linux application API (`IP_RECVERR` / `MSG_ERRQUEUE`
+matches stdlib `socket.IP_RECVERR` / `socket.MSG_ERRQUEUE`
+shape, so Python stdlib programs work unchanged).
 
 ---
 
@@ -465,11 +474,22 @@ Linux socket-option numeric values are mirrored:
   `pytcp/tests/unit/socket/test__socket__udp__socket.py`
   — pins the `notify_unreachable` / `notify_time_exceeded`
   / `notify_parameter_problem` / `notify_pmtu` callback
-  surfaces.
+  surfaces; eight tests pin `IP_RECVERR` /
+  `IPV6_RECVERR` setsockopt round-trip, error-queue
+  population, `EMSGSIZE` + `ee_info` packing on PMTU
+  errors, `recvmsg(MSG_ERRQUEUE)` 4-tuple shape, empty-
+  queue raises, and the 32-entry FIFO bound.
+- **Integration:**
+  `pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpRecverr`
+  — drives end-to-end ICMPv4 Port Unreachable through
+  the RX demux → error queue → `recvmsg(MSG_ERRQUEUE)`
+  returns embedded datagram + Linux-shape cmsg
+  (ee_errno=ECONNREFUSED, ee_origin=ICMP, ee_type=3,
+  ee_code=3) + offender address. Companion test pins
+  that `IP_RECVERR=0` leaves the queue empty (legacy
+  `ConnectionRefusedError` path still wired separately).
 
-**Status:** locked in (protocol-layer pass-up). The
-`IP_RECVERR` / `MSG_ERRQUEUE` API parity is **n/a (gap
-not closed; Phase-3 socket-parity item)**.
+**Status:** locked in.
 
 ### §4.1.3.4 Checksum generate + validate + silent drop
 
@@ -614,7 +634,7 @@ not closed; Phase-3 socket-parity item)**.
 | Checksum cksum=0 RX bypass                          | locked in |
 | Computed-zero TX → all-ones (MUST)                  | locked in |
 | `notify_*` ICMP error pass-up                       | locked in |
-| `IP_RECVERR` / `MSG_ERRQUEUE` API parity            | n/a (Phase-3 socket-parity track) |
+| `IP_RECVERR` / `MSG_ERRQUEUE` API parity            | locked in |
 | `getsockname()` reveals picked source               | locked in |
 | `is_unspecified` source RX drop                     | locked in |
 | Broadcast / multicast / directed-broadcast source RX drop | locked in |

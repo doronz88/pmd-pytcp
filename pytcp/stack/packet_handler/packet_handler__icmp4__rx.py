@@ -41,7 +41,9 @@ from net_proto import (
     Icmp4MessageEchoRequest,
     Icmp4MessageParameterProblem,
     Icmp4MessageTimeExceeded,
+    Icmp4ParameterProblemCode,
     Icmp4Parser,
+    Icmp4TimeExceededCode,
     Icmp4Type,
     IpProto,
     PacketRx,
@@ -53,6 +55,7 @@ from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp4.icmp4__echo_options import echo_reply_options
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
+from pytcp.socket.error_queue import SoEeOrigin
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.socket_id import SocketId
@@ -232,12 +235,27 @@ class PacketHandlerIcmp4Rx(ABC):
                     f"listening UDP socket {socket}, for Unreachable "
                     f"packet from {packet_rx.ip4.src}</>",
                 )
+                embedded_datagram = bytes(message.data)
+                offender_ip = packet_rx.ip4.src
                 if is_frag_needed and message.mtu is not None:
                     stack.pmtu_cache[cast(Ip4Address, embedded.remote_ip)] = message.mtu
-                    socket.notify_pmtu(next_hop_mtu=message.mtu)
+                    socket.notify_pmtu(
+                        next_hop_mtu=message.mtu,
+                        icmp_origin=SoEeOrigin.ICMP,
+                        icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+                        icmp_code=message.code,
+                        offender_ip=offender_ip,
+                        embedded_datagram=embedded_datagram,
+                    )
                     self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
                 else:
-                    socket.notify_unreachable()
+                    socket.notify_unreachable(
+                        icmp_origin=SoEeOrigin.ICMP,
+                        icmp_type=Icmp4Type.DESTINATION_UNREACHABLE,
+                        icmp_code=message.code,
+                        offender_ip=offender_ip,
+                        embedded_datagram=embedded_datagram,
+                    )
                 return
 
         __debug__ and log(
@@ -341,7 +359,12 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.proto is IpProto.UDP:
-            self.__phrx_icmp4__time_exceeded__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp4__time_exceeded__dispatch_udp(
+                packet_rx,
+                embedded,
+                icmp_code=message.code,
+                embedded_datagram=bytes(message.data),
+            )
             return
 
         if embedded.proto is IpProto.TCP:
@@ -353,7 +376,8 @@ class PacketHandlerIcmp4Rx(ABC):
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
         *,
-        icmp_code: int,
+        icmp_code: Icmp4TimeExceededCode,
+        embedded_datagram: bytes,
     ) -> None:
         """
         Route an ICMPv4 Time Exceeded carrying an embedded UDP segment
@@ -375,7 +399,13 @@ class PacketHandlerIcmp4Rx(ABC):
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Time Exceeded from {packet_rx.ip4.src}</>",
                 )
-                socket.notify_time_exceeded(icmp_type=11, icmp_code=icmp_code)
+                socket.notify_time_exceeded(
+                    icmp_type=Icmp4Type.TIME_EXCEEDED,
+                    icmp_code=icmp_code,
+                    icmp_origin=SoEeOrigin.ICMP,
+                    offender_ip=packet_rx.ip4.src,
+                    embedded_datagram=embedded_datagram,
+                )
                 self._packet_stats_rx.icmp4__time_exceeded__udp__notify += 1
                 return
 
@@ -457,7 +487,12 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.proto is IpProto.UDP:
-            self.__phrx_icmp4__parameter_problem__dispatch_udp(packet_rx, embedded, icmp_code=int(message.code))
+            self.__phrx_icmp4__parameter_problem__dispatch_udp(
+                packet_rx,
+                embedded,
+                icmp_code=message.code,
+                embedded_datagram=bytes(message.data),
+            )
             return
 
         if embedded.proto is IpProto.TCP:
@@ -469,7 +504,8 @@ class PacketHandlerIcmp4Rx(ABC):
         packet_rx: PacketRx,
         embedded: EmbeddedL4,
         *,
-        icmp_code: int,
+        icmp_code: Icmp4ParameterProblemCode,
+        embedded_datagram: bytes,
     ) -> None:
         """
         Route an ICMPv4 Parameter Problem carrying an embedded UDP
@@ -491,7 +527,13 @@ class PacketHandlerIcmp4Rx(ABC):
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Parameter Problem from {packet_rx.ip4.src}</>",
                 )
-                socket.notify_parameter_problem(icmp_type=12, icmp_code=icmp_code)
+                socket.notify_parameter_problem(
+                    icmp_type=Icmp4Type.PARAMETER_PROBLEM,
+                    icmp_code=icmp_code,
+                    icmp_origin=SoEeOrigin.ICMP,
+                    offender_ip=packet_rx.ip4.src,
+                    embedded_datagram=embedded_datagram,
+                )
                 self._packet_stats_rx.icmp4__parameter_problem__udp__notify += 1
                 return
 
