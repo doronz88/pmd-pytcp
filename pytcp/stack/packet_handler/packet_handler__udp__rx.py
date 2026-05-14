@@ -45,6 +45,7 @@ from net_proto import (
     PacketValidationError,
     UdpParser,
 )
+from net_proto.protocols.udp.udp__errors import UdpZeroCksumIp6Error
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
@@ -109,6 +110,18 @@ class PacketHandlerUdpRx(ABC):
 
         try:
             UdpParser(packet_rx)
+
+        except UdpZeroCksumIp6Error as error:
+            # RFC 8200 §8.1 / RFC 6935 §5: silent discard, no
+            # ICMPv6 Parameter Problem. The dedicated counter
+            # gives operators a greppable observability signal
+            # distinct from generic UDP parse failures.
+            self._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
+            __debug__ and log(
+                "udp",
+                f"{packet_rx.tracker} - <CRIT>{error}</>",
+            )
+            return
 
         except PacketValidationError as error:
             self._packet_stats_rx.udp__failed_parse__drop += 1

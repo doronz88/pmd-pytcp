@@ -539,3 +539,84 @@ class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
             ),
             msg="udp__no_socket_match__respond_icmp4_unreachable must bump (not echo).",
         )
+
+
+class TestPacketHandlerUdpRxIp6ZeroCksumDrop(NetworkTestCase):
+    """
+    Test the RFC 6935 §5 / RFC 8200 §8.1 IPv6 UDP zero-checksum
+    default-discard rule. An inbound IPv6 UDP datagram with
+    cksum=0 is dropped silently at the parser; the dedicated
+    'udp__ip6_zero_cksum__drop' counter bumps, no ICMPv6 error
+    is emitted, and the packet does not reach the socket
+    dispatch.
+    """
+
+    def test__packet_handler__udp__rx__ipv6_zero_cksum_dropped(self) -> None:
+        """
+        Ensure an IPv6 UDP frame with cksum=0 is silently
+        dropped at the parser layer with the dedicated counter
+        bumped exactly once.
+
+        Reference: RFC 8200 §8.1 (IPv6 receivers MUST discard
+        zero-cksum UDP).
+        Reference: RFC 6935 §5 (preserves the MUST-discard
+        default; per-port opt-in not implemented).
+        Reference: RFC 6936 §4 constraint 5 (default RX
+        behaviour MUST be to discard zero-cksum UDP).
+        """
+
+        # Ethernet II
+        #   Destination MAC : 02:00:00:00:00:07 (us)
+        #   Source MAC      : 02:00:00:00:00:91 (host A)
+        #   Ethertype       : 0x86dd (IPv6)
+        #
+        # IPv6
+        #   Payload Length : 0x000d (13 bytes = UDP header + "hello")
+        #   Next Header    : 17 (UDP)
+        #   Hop Limit      : 64
+        #   Source IP      : 2001:db8:0:1::91
+        #   Destination IP : 2001:db8:0:1::7
+        #
+        # UDP
+        #   Source Port  : 1000
+        #   Dest Port    : 7777
+        #   Length       : 0x000d
+        #   Checksum     : 0x0000 (the RFC 6935 default-discard trigger)
+        #   Payload      : "hello"
+        frame_rx = (
+            b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
+            b"\x00\x00\x00\x0d\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+            b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
+            b"\x00\x00\x00\x00\x00\x07\x03\xe8\x1e\x61\x00\x0d\x00\x00\x68\x65"
+            b"\x6c\x6c\x6f"
+        )
+
+        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
+
+        self.assertEqual(
+            len(self._frames_tx),
+            0,
+            msg="IPv6 UDP cksum=0 must be silently dropped — no ICMPv6 error emitted.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.udp__ip6_zero_cksum__drop,
+            1,
+            msg="udp__ip6_zero_cksum__drop must bump exactly once on the IPv6 cksum=0 drop path.",
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.udp__failed_parse__drop,
+            0,
+            msg=(
+                "udp__failed_parse__drop must NOT bump — the dedicated counter "
+                "udp__ip6_zero_cksum__drop takes precedence for the RFC 6935 "
+                "discard path."
+            ),
+        )
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.udp__socket_match,
+            0,
+            msg="Dropped packet must not reach the socket-dispatch layer.",
+        )

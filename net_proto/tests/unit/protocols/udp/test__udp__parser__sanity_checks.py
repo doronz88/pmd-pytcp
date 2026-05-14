@@ -35,6 +35,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import IpVersion
 from net_proto import PacketRx, UdpParser, UdpSanityError
 
 
@@ -75,6 +76,7 @@ class TestUdpParserSanityChecks(TestCase):
         self._packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=len(self._frame_rx),
             pshdr_sum=0,
+            ver=IpVersion.IP4,
         )
 
     def test__udp__parser__sanity_error(self) -> None:
@@ -122,6 +124,7 @@ class TestUdpParserSourcePortOptional(TestCase):
         packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=len(frame_rx),
             pshdr_sum=0,
+            ver=IpVersion.IP4,
         )
 
         parser = UdpParser(packet_rx)

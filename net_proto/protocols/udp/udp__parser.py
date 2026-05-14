@@ -32,6 +32,7 @@ ver 3.0.4
 
 from typing import override
 
+from net_addr import IpVersion
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.packet_rx import PacketRx
@@ -40,6 +41,7 @@ from net_proto.protocols.udp.udp__base import Udp
 from net_proto.protocols.udp.udp__errors import (
     UdpIntegrityError,
     UdpSanityError,
+    UdpZeroCksumIp6Error,
 )
 from net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
 
@@ -59,6 +61,7 @@ class UdpParser(Udp, ProtoParser):
         self._frame = packet_rx.frame
         self._ip__payload_len = packet_rx.ip.payload_len
         self._ip__pshdr_sum = packet_rx.ip.pshdr_sum
+        self._ip__ver = packet_rx.ip.ver
 
         self._validate_integrity()
         self._parse()
@@ -88,9 +91,24 @@ class UdpParser(Udp, ProtoParser):
                 f"{plen=}, {self._ip__payload_len=}, {len(self._frame)=}",
             )
 
-        if int.from_bytes(self._frame[6:8]) != 0 and inet_cksum(
-            self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum
-        ):
+        raw_cksum = int.from_bytes(self._frame[6:8])
+
+        if raw_cksum == 0:
+            # RFC 8200 §8.1 (preserved by RFC 6935 §5): IPv6
+            # receivers MUST discard zero-cksum UDP packets by
+            # default. The RFC 6935 per-port opt-in for tunnel
+            # encapsulations is not implemented today; no PyTCP
+            # consumer needs it.
+            if self._ip__ver is IpVersion.IP6:
+                raise UdpZeroCksumIp6Error(
+                    "IPv6 UDP datagram with zero checksum on a port " "not configured for RFC 6935 zero-checksum mode.",
+                )
+            # RFC 768: IPv4 cksum=0 means "sender did not compute
+            # a checksum"; accept the datagram and skip
+            # validation.
+            return
+
+        if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise UdpIntegrityError("The packet checksum must be valid.")
 
     @override

@@ -45,7 +45,7 @@ Summary, §8 References) are omitted.
 | §3.2    | Message Size Guidelines / PMTU              | partial — stack ships PMTUD per RFCs 1191 / 8201; sets DF=1 on UDP TX; PLPMTUD per RFC 8899 is a deferred Phase-1 polish item |
 | §3.3    | Reliability Guidelines                      | application obligation |
 | §3.4    | Checksum Guidelines                         | met (TX always cksum; RX verifies non-zero cksum); IPv6 zero-cksum tunneling is covered by RFC 6935/6936 audit (deferred) |
-| §3.4.1  | IPv6 Zero UDP Checksum                      | not implemented (no `UDP_NO_CHECK6_*` socket options) — covered by RFC 6935/6936 audit |
+| §3.4.1  | IPv6 Zero UDP Checksum                      | partial — default-mode discard now in force (Phase-1 fix); per-port opt-in for tunnels deferred to Phase-3 socket options |
 | §3.4.2  | UDP-Lite                                    | N/A — UDP-Lite is a separate protocol (proto 136); PyTCP does not implement it |
 | §3.5    | Middlebox Traversal Guidelines              | application obligation |
 | §3.6    | Limited Applicability / Controlled Envs     | application obligation |
@@ -148,18 +148,14 @@ zero-cksum-mode escape hatch (which the next subsection
 RFC 8085 §3.4.1 would allow for tunnel protocols).
 
 On RX side: PyTCP's parser at
-`net_proto/protocols/udp/udp__parser.py:91-94` treats RX
-cksum=0 as "no cksum was generated" and bypasses
-validation — **on both IPv4 and IPv6**. RFC 2460 (later
-RFC 8200 §8.1) requires the IPv6 receiver to discard a
-UDP datagram with cksum=0 unless an explicit per-port
-opt-in is configured. PyTCP's silent acceptance is a
-**partial gap** with respect to RFC 8085 §3.4 (which
-inherits the RFC 2460 MUST).
+`net_proto/protocols/udp/udp__parser.py` distinguishes
+IPv4 (RFC 768 cksum=0 means "no cksum"; accept) from
+IPv6 (RFC 8200 §8.1 / RFC 6935 §5 default-discard;
+raise `UdpZeroCksumIp6Error` + bump
+`udp__ip6_zero_cksum__drop` counter).
 
-Cross-reference: this gap is the subject of the dedicated
-[RFC 6935/6936 audit](../rfc6935__udp_zero_cksum_ipv6/adherence.md)
-(task #570).
+Cross-reference: full discussion in the
+[RFC 6935/6936 audit](../rfc6935__udp_zero_cksum_ipv6/adherence.md).
 
 ### §3.4.1 IPv6 Zero UDP Checksum
 
@@ -169,11 +165,14 @@ Cross-reference: this gap is the subject of the dedicated
 >  zero-checksum mode for IPv6 on a UDP destination port
 >  that is specifically enabled."
 
-**Adherence:** partial. The MUST default-enabled side is
-met (TX always cksums; no opt-out). The "receiving
-endpoint MUST only allow zero-checksum on a specifically-
-enabled port" side is **not met** — PyTCP accepts IPv6
-UDP cksum=0 on every port, no per-port enable list.
+**Adherence:** met. The MUST default-enabled side is
+met on both TX (always cksums; no opt-out) and RX
+(IPv6 cksum=0 is rejected via `UdpZeroCksumIp6Error`
+with the dedicated `udp__ip6_zero_cksum__drop` counter
+for observability). The "receiving endpoint MUST only
+allow zero-checksum on a specifically-enabled port"
+half is conformant because PyTCP doesn't enable
+zero-checksum mode on any port today.
 
 Cross-reference: full discussion in the
 [RFC 6935/6936 audit](../rfc6935__udp_zero_cksum_ipv6/adherence.md).
@@ -378,7 +377,7 @@ expressed through the cross-referenced audits.
 | §3.3 Reliability                                      | application obligation |
 | §3.4 Checksum default on (TX + RX)                    | met |
 | §3.4 IPv6 cksum required (TX)                         | met |
-| §3.4 IPv6 cksum=0 RX must discard (no per-port opt-in) | **partial / not met** (silent accept; see RFC 6935 audit) |
+| §3.4 IPv6 cksum=0 RX must discard (no per-port opt-in) | met (see RFC 6935 audit) |
 | §3.4.1 Default cksum-on for IPv6                      | met |
 | §3.4.1 Per-port enable list for IPv6 zero-cksum       | not implemented |
 | §3.4.2 UDP-Lite                                       | N/A (separate protocol, not implemented) |

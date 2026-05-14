@@ -45,6 +45,24 @@ class UdpIntegrityError(PacketIntegrityError):
         super().__init__("[UDP] " + message)
 
 
+class UdpZeroCksumIp6Error(UdpIntegrityError):
+    """
+    Exception raised when an inbound IPv6 UDP datagram carries
+    cksum=0 on a port not configured for RFC 6935 zero-checksum
+    mode. Subclassed from 'UdpIntegrityError' so existing
+    'PacketValidationError' catches continue to drop the packet
+    correctly; the dedicated subclass lets the RX packet handler
+    bump 'udp__ip6_zero_cksum__drop' separately from the generic
+    'udp__failed_parse__drop' counter for operational
+    observability.
+
+    RFC 8200 §8.1 (and RFC 2460 §8.1 before it) require IPv6
+    receivers to discard zero-checksum UDP packets by default.
+    RFC 6935 §5 preserves the default-discard rule and adds a
+    per-port opt-in for tunnel encapsulations.
+    """
+
+
 class UdpSanityError(PacketSanityError):
     """
     Exception raised when UDP packet sanity check fails.

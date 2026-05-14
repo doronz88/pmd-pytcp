@@ -36,6 +36,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import IpVersion
 from net_proto import PacketRx, UdpHeader, UdpParser
 
 
@@ -123,9 +124,11 @@ class TestUdpParserOperation(TestCase):
     """
     The UDP packet parser operation tests.
 
-    The UDP parser reads only 'ip.payload_len' and 'ip.pshdr_sum' from
-    the containing IP layer, so a SimpleNamespace stub is sufficient and
-    the tests are agnostic to whether the carrier is IPv4 or IPv6.
+    The UDP parser reads 'ip.payload_len', 'ip.pshdr_sum', and 'ip.ver'
+    from the containing IP layer, so a SimpleNamespace stub is
+    sufficient. These operation-path fixtures default the carrier to
+    IPv4; IPv6-specific behaviour (e.g. RFC 6935 zero-cksum
+    default-discard) is covered by dedicated test classes elsewhere.
     """
 
     _description: str
@@ -142,6 +145,7 @@ class TestUdpParserOperation(TestCase):
         self._packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=len(self._frame_rx),
             pshdr_sum=0,
+            ver=IpVersion.IP4,
         )
 
     def test__udp__parser__header(self) -> None:

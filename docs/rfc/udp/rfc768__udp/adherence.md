@@ -354,13 +354,15 @@ clarifications come from:
   `udp__no_socket_match__respond_icmp6_unreachable`.
 - **RFC 8200 §8.1** (IPv6 UDP): the IPv6 receiver MUST
   discard UDP packets with cksum=0 (except for tunnel
-  protocols per RFC 6935). PyTCP currently treats RX
-  cksum=0 identically on IPv4 and IPv6 (skip validation).
-  This is a Phase-1 polish gap — the IPv6 path should
-  reject cksum=0 unless a per-socket
-  `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX` opt-in is set
-  (Linux socket options). Cross-referenced from
-  `docs/rfc/ip6/rfc8200__ipv6/adherence.md` §8.1.
+  protocols per RFC 6935). PyTCP now satisfies this: the
+  parser distinguishes the IP version on the cksum=0
+  path, raises `UdpZeroCksumIp6Error` for IPv6, and the
+  packet handler converts it to a silent drop with the
+  `udp__ip6_zero_cksum__drop` counter bumped. The
+  per-port `UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX`
+  socket-option opt-in remains a Phase-3 socket-parity
+  item. Full discussion in
+  [`docs/rfc/udp/rfc6935__udp_zero_cksum_ipv6/adherence.md`](../rfc6935__udp_zero_cksum_ipv6/adherence.md).
 
 These are not RFC-768 conformance gaps in the strict
 sense — RFC 768 itself is silent on IPv6 and on the

@@ -35,7 +35,9 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
+from net_addr import IpVersion
 from net_proto import PacketRx, UdpIntegrityError, UdpParser
+from net_proto.protocols.udp.udp__errors import UdpZeroCksumIp6Error
 
 # A valid 8-byte UDP frame used as the baseline for parser-integrity
 # fixtures. Callers perturb exactly one aspect (payload_len, plen,
@@ -128,9 +130,11 @@ class TestUdpParserIntegrityChecks(TestCase):
     """
     The UDP packet parser integrity checks tests.
 
-    The UDP parser reads only 'ip.payload_len' and 'ip.pshdr_sum' from
-    the containing IP layer, so a SimpleNamespace stub is sufficient and
-    the tests are agnostic to whether the carrier is IPv4 or IPv6.
+    The UDP parser reads 'ip.payload_len', 'ip.pshdr_sum', and 'ip.ver'
+    from the containing IP layer, so a SimpleNamespace stub is
+    sufficient. These structural-integrity fixtures default the carrier
+    to IPv4; the dedicated 'TestUdpParserIntegrityZeroCksumIp6' class
+    below covers the IPv6-only cksum=0 default-discard rule.
     """
 
     _description: str
@@ -149,6 +153,7 @@ class TestUdpParserIntegrityChecks(TestCase):
         self._packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=self._ip__payload_len,
             pshdr_sum=self._ip__pshdr_sum,
+            ver=IpVersion.IP4,
         )
 
     def test__udp__parser__integrity_error(self) -> None:
@@ -192,6 +197,7 @@ class TestUdpParserIntegrityBoundary(TestCase):
         packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=len(_BASELINE_FRAME),
             pshdr_sum=0,
+            ver=IpVersion.IP4,
         )
 
         parser = UdpParser(packet_rx)
@@ -212,25 +218,29 @@ class TestUdpParserIntegrityBoundary(TestCase):
             msg="Baseline-frame parser must report plen=8.",
         )
 
-    def test__udp__parser__integrity__zero_cksum_skips_validation(self) -> None:
+    def test__udp__parser__integrity__zero_cksum_skips_validation_ipv4(self) -> None:
         """
-        Ensure a frame with cksum=0 bypasses checksum validation even
-        when the bytes would otherwise not sum to zero. RFC 768 allows a
-        transmitter to set the UDP checksum to zero, in which case the
-        receiver must not validate it.
+        Ensure a frame with cksum=0 bypasses checksum validation
+        on IPv4 — the wire sentinel "sender did not compute a
+        checksum" — even when the bytes would otherwise not sum
+        to zero.
+
+        Reference: RFC 768 (IPv4 cksum=0 means "no checksum
+        generated"; receiver delivers normally).
         """
 
         # UDP wire frame (8 bytes, header-only, cksum=0):
         #   Bytes 0-1 : 0x3039 -> sport=12345
         #   Bytes 2-3 : 0xd431 -> dport=54321
         #   Bytes 4-5 : 0x0008 -> plen=8
-        #   Bytes 6-7 : 0x0000 -> cksum=0 (validation skipped)
+        #   Bytes 6-7 : 0x0000 -> cksum=0 (validation skipped on IPv4)
         frame = b"\x30\x39\xd4\x31\x00\x08\x00\x00"
 
         packet_rx = PacketRx(frame)
         packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
             payload_len=len(frame),
             pshdr_sum=0,
+            ver=IpVersion.IP4,
         )
 
         parser = UdpParser(packet_rx)
@@ -238,5 +248,63 @@ class TestUdpParserIntegrityBoundary(TestCase):
         self.assertEqual(
             parser.cksum,
             0,
-            msg="Zero-cksum frame must pass integrity with cksum=0 preserved on the header.",
+            msg="Zero-cksum IPv4 frame must pass integrity with cksum=0 preserved on the header.",
+        )
+
+
+class TestUdpParserIntegrityZeroCksumIp6(TestCase):
+    """
+    The UDP parser RFC 6935 / RFC 8200 §8.1 zero-cksum
+    default-discard tests.
+
+    IPv6 has no header checksum, so the UDP checksum is the only
+    end-to-end integrity check protecting the IPv6 source /
+    destination addresses, port numbers, and length. RFC 8200
+    §8.1 (preserved by RFC 6935 §5) requires the receiver to
+    discard IPv6 UDP packets with cksum=0 unless a per-port
+    RFC 6935 zero-checksum mode is enabled — which PyTCP does
+    not implement today, so every cksum=0 IPv6 UDP datagram is
+    dropped at the parser.
+    """
+
+    def test__udp__parser__integrity__ipv6_zero_cksum_rejected(self) -> None:
+        """
+        Ensure an IPv6 UDP frame with cksum=0 is rejected with
+        UdpZeroCksumIp6Error so the packet handler can drop it
+        and bump the dedicated 'udp__ip6_zero_cksum__drop'
+        counter.
+
+        Reference: RFC 8200 §8.1 (IPv6 receivers MUST discard
+        zero-cksum UDP).
+        Reference: RFC 6935 §5 (preserves the MUST-discard
+        default; per-port opt-in is the only escape).
+        Reference: RFC 6936 §4 constraint 5 (default RX
+        behaviour MUST be to discard zero-cksum UDP).
+        """
+
+        # UDP wire frame (8 bytes, header-only, cksum=0):
+        frame = b"\x30\x39\xd4\x31\x00\x08\x00\x00"
+
+        packet_rx = PacketRx(frame)
+        packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(frame),
+            pshdr_sum=0,
+            ver=IpVersion.IP6,
+        )
+
+        with self.assertRaises(UdpZeroCksumIp6Error) as error:
+            UdpParser(packet_rx)
+
+        self.assertIn(
+            "IPv6",
+            str(error.exception),
+            msg="UdpZeroCksumIp6Error message must mention the IPv6 RFC rationale.",
+        )
+        self.assertIsInstance(
+            error.exception,
+            UdpIntegrityError,
+            msg=(
+                "UdpZeroCksumIp6Error must subclass UdpIntegrityError so existing "
+                "PacketValidationError catches still cover it."
+            ),
         )
