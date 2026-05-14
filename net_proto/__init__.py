@@ -445,7 +445,31 @@ from net_proto.protocols.ip6_frag.ip6_frag__header import (
     Ip6FragHeader,
 )
 from net_proto.protocols.ip6_frag.ip6_frag__parser import Ip6FragParser
+from net_proto.protocols.llc.llc__assembler import LlcAssembler
+from net_proto.protocols.llc.llc__base import Llc
+from net_proto.protocols.llc.llc__enums import LlcControl, LlcSap
+from net_proto.protocols.llc.llc__errors import (
+    LlcIntegrityError,
+    LlcSanityError,
+)
+from net_proto.protocols.llc.llc__header import (
+    LLC__HEADER__LEN,
+    LlcHeader,
+)
+from net_proto.protocols.llc.llc__parser import LlcParser
 from net_proto.protocols.raw.raw__assembler import RawAssembler
+from net_proto.protocols.snap.snap__assembler import SnapAssembler
+from net_proto.protocols.snap.snap__base import Snap
+from net_proto.protocols.snap.snap__enums import SnapCiscoProtocol, SnapOui
+from net_proto.protocols.snap.snap__errors import (
+    SnapIntegrityError,
+    SnapSanityError,
+)
+from net_proto.protocols.snap.snap__header import (
+    SNAP__HEADER__LEN,
+    SnapHeader,
+)
+from net_proto.protocols.snap.snap__parser import SnapParser
 from net_proto.protocols.tcp.options.tcp__option import TCP__OPTION__LEN
 from net_proto.protocols.tcp.options.tcp__option__accecn0 import (
     TCP__OPTION__ACCECN0__LEN,
@@ -575,6 +599,24 @@ __all__ = [
     "EthernetParser",
     "EthernetPayload",
     "EthernetSanityError",
+    "LLC__HEADER__LEN",
+    "Llc",
+    "LlcAssembler",
+    "LlcControl",
+    "LlcHeader",
+    "LlcIntegrityError",
+    "LlcParser",
+    "LlcSanityError",
+    "LlcSap",
+    "SNAP__HEADER__LEN",
+    "Snap",
+    "SnapAssembler",
+    "SnapCiscoProtocol",
+    "SnapHeader",
+    "SnapIntegrityError",
+    "SnapOui",
+    "SnapParser",
+    "SnapSanityError",
     "ICMP4__DESTINATION_UNREACHABLE__LEN",
     "ICMP4__ECHO_REPLY__LEN",
     "ICMP4__ECHO_REQUEST__LEN",

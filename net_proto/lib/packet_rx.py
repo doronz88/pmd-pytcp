@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from net_proto.protocols.ip6_routing.ip6_routing__parser import (
         Ip6RoutingParser,
     )
+    from net_proto.protocols.llc.llc__parser import LlcParser
+    from net_proto.protocols.snap.snap__parser import SnapParser
     from net_proto.protocols.tcp.tcp__parser import TcpParser
     from net_proto.protocols.udp.udp__parser import UdpParser
 
@@ -80,6 +82,8 @@ class PacketRx:
 
         self.ethernet: EthernetParser
         self.ethernet_802_3: Ethernet8023Parser
+        self.llc: LlcParser
+        self.snap: SnapParser
         self.arp: ArpParser
         self.ip: Ip6Parser | Ip4Parser
         self.ip4: Ip4Parser
