@@ -30,144 +30,89 @@ pytcp/runtime/timer.py
 ver 3.0.4
 """
 
+import heapq
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable, override
 
 from pytcp.lib.logger import log
 from pytcp.runtime.subsystem import Subsystem
 
-# Millisecond timer-tick cadence — the worker thread sleeps this
-# long between iterations of '_subsystem_loop'. Subclasses of
-# 'Subsystem' would normally use 'SUBSYSTEM_SLEEP_TIME__SEC'
-# (0.1 s); Timer needs sub-second resolution because every
-# countdown unit ('delay' in 'register_method' /  'timeout' in
-# 'register_timer') is in milliseconds, and the per-tick
-# decrement is what makes a 'delay=1000' register fire at ~1 s.
-TIMER_TICK__SEC: float = 0.001
+# Ceiling on the worker's idle wait. When the heap is empty the
+# worker blocks on 'threading.Event.wait(timeout=_IDLE_WAKEUP__SEC)'
+# rather than forever, so the stop event is re-checked at least
+# this often even on a fully idle stack.
+_IDLE_WAKEUP__SEC: float = 60.0
 
 
-class TimerTask:
+@dataclass(slots=True, kw_only=True)
+class TimerHandle:
     """
-    A registered method scheduled by 'Timer.register_method'.
-    Counts down 'delay' ticks (1 ms each per 'TIMER_TICK__SEC')
-    before invoking the bound method; optionally repeats with
-    a linear or exponential backoff and an early-exit
-    'stop_condition' predicate.
+    Cancellation handle returned by 'Timer.call_later' and
+    'Timer.call_periodic'. Pass it to 'Timer.cancel(handle)' to
+    deactivate the entry; cancellation is lazy (the worker skips
+    cancelled handles when they reach the top of the heap).
     """
 
-    _method: Callable[..., None]
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _delay: int
-    _delay_exp: bool
-    _repeat_count: int
-    _stop_condition: Callable[[], bool] | None
-    _remaining_delay: int
-    _delay_exp_factor: int
+    method: Callable[..., None]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    deadline_ms: int
+    seq: int
+    period_ms: int | None = None
+    cancelled: bool = False
 
-    def __init__(
-        self,
-        *,
-        method: Callable[..., None],
-        args: list[Any],
-        kwargs: dict[str, Any],
-        delay: int,
-        delay_exp: bool,
-        repeat_count: int,
-        stop_condition: Callable[[], bool] | None,
-    ) -> None:
-        """
-        Class constructor. 'delay' must be >= 1 (countdown is in
-        milliseconds; delay=0 has no defensible semantics).
-        'repeat_count = -1' means infinite; 'delay_exp' multiplies
-        the delay by 2**iteration after each method execution.
-        """
 
-        assert delay >= 1, f"TimerTask delay must be >= 1; got {delay}"
+@dataclass(slots=True, order=True)
+class _HeapEntry:
+    """
+    Heap node wrapping a 'TimerHandle'. Ordered solely by
+    '(deadline_ms, seq)'; the handle itself is excluded from
+    comparison so 'heapq' never inspects it.
+    """
 
-        self._method = method
-        self._args = args
-        self._kwargs = kwargs
-        self._delay = delay
-        self._delay_exp = delay_exp
-        self._repeat_count = repeat_count
-        self._stop_condition = stop_condition
-        self._remaining_delay = delay
-        self._delay_exp_factor = 0
-
-    @property
-    def method(self) -> Callable[..., None]:
-        """
-        Getter for the registered method. Consumed by
-        'Timer.unregister_method' which matches by method
-        equality (bound methods compare equal when their
-        '__self__' and '__func__' are identical).
-        """
-
-        return self._method
-
-    @property
-    def remaining_delay(self) -> int:
-        """
-        Getter for the '_remaining_delay' attribute.
-        """
-
-        return self._remaining_delay
-
-    def tick(self) -> None:
-        """
-        Tick input from timer.
-        """
-
-        self._remaining_delay -= 1
-
-        if self._stop_condition and self._stop_condition():
-            self._remaining_delay = 0
-            return
-
-        if self._remaining_delay:
-            return
-
-        self._method(*self._args, **self._kwargs)
-
-        if self._repeat_count:
-            self._remaining_delay = self._delay * (1 << self._delay_exp_factor) if self._delay_exp else self._delay
-            if self._delay_exp:
-                self._delay_exp_factor += 1
-            if self._repeat_count > 0:
-                self._repeat_count -= 1
+    deadline_ms: int
+    seq: int
+    handle: TimerHandle = field(compare=False)
 
 
 class Timer(Subsystem):
     """
-    Stack-wide millisecond-resolution timer Subsystem. Holds two
-    parallel registries:
+    Stack-wide millisecond-resolution timer Subsystem.
 
-    - '_tasks' — list of 'TimerTask' entries registered via
-      'register_method'. Each entry's countdown decrements once
-      per tick; when it reaches zero the bound method runs.
-    - '_timers' — dict of named delay timers registered via
-      'register_timer'. Each entry's timeout decrements once per
-      tick; consumers poll via 'is_expired(name)'.
+    Maintains a single min-heap of '_HeapEntry' nodes keyed by
+    '(deadline_ms, seq)'. The worker thread (inherited from
+    'Subsystem') sleeps on a 'threading.Event' until the nearest
+    deadline or until a registration / cancellation wakes it, then
+    pops and dispatches every due entry. Periodic entries are
+    re-armed by advancing their deadline by exactly 'period_ms'
+    (interval-based, so they do not drift).
 
-    The worker thread (inherited from 'Subsystem') runs
-    '_subsystem_loop' at ~1 ms cadence ('TIMER_TICK__SEC').
-    External callers register / unregister from arbitrary stack
-    threads; '_lock' (RLock) guards every read / write of both
-    registries so concurrent register-during-tick races cannot
-    drop entries.
+    External callers register / cancel from arbitrary stack
+    threads; '_lock' (RLock) guards every heap mutation. Callback
+    invocation happens with the lock released so a handler may
+    re-enter 'call_later' / 'cancel' without deadlocking.
+
+    A legacy shim layer ('register_method', 'register_timer',
+    'is_expired', 'unregister_method',
+    'unregister_timers_with_prefix') maps the old name / flag API
+    onto the new core so existing TCP / ICMPv6 consumers do not
+    churn in the same commit.
 
     Note: 'is_expired(name)' returns True for unknown names —
-    a never-registered timer is treated as already-expired,
-    same as one that counted down to zero.
+    a never-registered named timer collapses with one that has
+    already fired.
     """
 
     _subsystem_name = "Timer"
 
-    _tasks: list[TimerTask]
-    _timers: dict[str, int]
+    _heap: list[_HeapEntry]
     _lock: threading.RLock
+    _wakeup: threading.Event
+    _seq: int
+    _legacy_method_handles: dict[Callable[..., None], list[TimerHandle]]
+    _legacy_named_flags: dict[str, TimerHandle]
 
     @override
     def __init__(self) -> None:
@@ -177,9 +122,12 @@ class Timer(Subsystem):
 
         super().__init__()
 
-        self._tasks = []
-        self._timers = {}
+        self._heap = []
         self._lock = threading.RLock()
+        self._wakeup = threading.Event()
+        self._seq = 0
+        self._legacy_method_handles = {}
+        self._legacy_named_flags = {}
 
     @property
     def now_ms(self) -> int:
@@ -196,30 +144,152 @@ class Timer(Subsystem):
 
         return time.monotonic_ns() // 1_000_000
 
+    def _next_seq(self) -> int:
+        """
+        Return a fresh monotonic sequence number. Callers hold
+        '_lock'; the counter breaks heap-key ties so same-deadline
+        entries fire in registration order.
+        """
+
+        seq = self._seq
+        self._seq += 1
+        return seq
+
+    def call_later(
+        self,
+        delay_ms: int,
+        method: Callable[..., None],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> TimerHandle:
+        """
+        Schedule 'method(*args, **kwargs)' to fire once after
+        'delay_ms' milliseconds. Returns a cancellation handle the
+        caller must retain if it wants to cancel later.
+        """
+
+        assert delay_ms >= 0, f"call_later delay_ms must be >= 0; got {delay_ms}"
+
+        with self._lock:
+            handle = TimerHandle(
+                method=method,
+                args=args,
+                kwargs=kwargs,
+                deadline_ms=self.now_ms + delay_ms,
+                seq=self._next_seq(),
+            )
+            heapq.heappush(self._heap, _HeapEntry(handle.deadline_ms, handle.seq, handle))
+
+        self._wakeup.set()
+        return handle
+
+    def call_periodic(
+        self,
+        period_ms: int,
+        method: Callable[..., None],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> TimerHandle:
+        """
+        Schedule 'method(*args, **kwargs)' to fire every
+        'period_ms' milliseconds, starting 'period_ms' from now.
+        Re-armed interval-based (no drift). Returns a cancellation
+        handle the caller must retain if it wants to cancel later.
+        """
+
+        assert period_ms >= 1, f"call_periodic period_ms must be >= 1; got {period_ms}"
+
+        with self._lock:
+            handle = TimerHandle(
+                method=method,
+                args=args,
+                kwargs=kwargs,
+                deadline_ms=self.now_ms + period_ms,
+                seq=self._next_seq(),
+                period_ms=period_ms,
+            )
+            heapq.heappush(self._heap, _HeapEntry(handle.deadline_ms, handle.seq, handle))
+
+        self._wakeup.set()
+        return handle
+
+    def cancel(self, handle: TimerHandle, /) -> None:
+        """
+        Mark 'handle' as cancelled. The worker drops it the next
+        time it surfaces at the top of the heap. Idempotent; a
+        no-op if the handle already fired or was already cancelled.
+        """
+
+        handle.cancelled = True
+        self._wakeup.set()
+
+    @override
+    def stop(self) -> None:
+        """
+        Stop the subsystem. Sets the stop event and wakes the
+        worker out of its 'Event.wait()' so teardown does not
+        block for up to '_IDLE_WAKEUP__SEC' on an idle stack.
+        """
+
+        self._event__stop_subsystem.set()
+        self._wakeup.set()
+        super().stop()
+
     @override
     def _subsystem_loop(self) -> None:
         """
-        Execute registered methods on every timer tick.
+        Pop and dispatch every due heap entry, re-arm periodics,
+        then block until the next deadline or a wakeup signal.
         """
 
-        time.sleep(TIMER_TICK__SEC)
+        while True:
+            self._wakeup.clear()
 
-        with self._lock:
-            # Adjust registered timers
-            for name in self._timers:
-                self._timers[name] -= 1
+            with self._lock:
+                now = self.now_ms
 
-            # Cleanup expired timers
-            self._timers = {name: timeout for name, timeout in self._timers.items() if timeout}
+                due: list[TimerHandle] = []
+                while self._heap and self._heap[0].deadline_ms <= now:
+                    entry = heapq.heappop(self._heap)
+                    if entry.handle.cancelled:
+                        continue
+                    due.append(entry.handle)
 
-            # Tick registered methods. RLock allows a method's
-            # body to call back into register_method /
-            # unregister_method without deadlocking.
-            for task in self._tasks:
-                task.tick()
+                for handle in due:
+                    if handle.period_ms is not None and not handle.cancelled:
+                        handle.deadline_ms += handle.period_ms
+                        handle.seq = self._next_seq()
+                        heapq.heappush(
+                            self._heap,
+                            _HeapEntry(handle.deadline_ms, handle.seq, handle),
+                        )
 
-            # Cleanup expired methods
-            self._tasks = [task for task in self._tasks if task.remaining_delay]
+                if self._heap:
+                    wait_s = max(0.0, (self._heap[0].deadline_ms - now) / 1000.0)
+                else:
+                    wait_s = _IDLE_WAKEUP__SEC
+
+            for handle in due:
+                try:
+                    handle.method(*handle.args, **handle.kwargs)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    name = getattr(handle.method, "__name__", repr(handle.method))
+                    __debug__ and log("timer", f"<r>Handler raised: {name}</>")
+
+            if self._event__stop_subsystem.is_set():
+                return
+
+            self._wakeup.wait(timeout=wait_s)
+
+            if self._event__stop_subsystem.is_set():
+                return
+
+    # ----------------------------------------------------------------
+    # Legacy shim layer — maps the old name / flag API onto the new
+    # heap core. Removed in a later phase once consumers migrate.
+    # ----------------------------------------------------------------
 
     def register_method(
         self,
@@ -233,31 +303,41 @@ class Timer(Subsystem):
         stop_condition: Callable[[], bool] | None = None,
     ) -> None:
         """
-        Register method to be executed by timer.
+        LEGACY. Shim over 'call_later' / 'call_periodic'.
+
+        'repeat_count == -1' maps to 'call_periodic(period_ms=delay)';
+        'repeat_count == 0' maps to 'call_later(delay_ms=delay)'. The
+        dropped features ('delay_exp', 'stop_condition', finite
+        'repeat_count') have no production consumer and are asserted
+        out.
         """
+
+        assert delay >= 1, f"register_method delay must be >= 1; got {delay}"
+        assert delay_exp is False, "register_method delay_exp not supported"
+        assert stop_condition is None, "register_method stop_condition not supported"
+        assert repeat_count in (-1, 0), f"register_method repeat_count must be -1 or 0; got {repeat_count}"
 
         __debug__ and log(
             "timer",
             f"<r>Registering method: {method.__name__}, delay={delay}</>",
         )
 
-        task = TimerTask(
-            method=method,
-            args=[] if args is None else args,
-            kwargs={} if kwargs is None else kwargs,
-            delay=delay,
-            delay_exp=delay_exp,
-            repeat_count=repeat_count,
-            stop_condition=stop_condition,
-        )
+        call_args = () if args is None else tuple(args)
+        call_kwargs = {} if kwargs is None else kwargs
+
+        if repeat_count == -1:
+            handle = self.call_periodic(delay, method, *call_args, **call_kwargs)
+        else:
+            handle = self.call_later(delay, method, *call_args, **call_kwargs)
+
         with self._lock:
-            self._tasks.append(task)
+            self._legacy_method_handles.setdefault(method, []).append(handle)
 
     def register_timer(self, *, name: str, timeout: int) -> None:
         """
-        Register delay timer. 'timeout' must be >= 1 (countdown
-        is in milliseconds; timeout=0 would expire on the very
-        next tick which the existing call sites never want).
+        LEGACY. Shim over 'call_later' that clears a named flag
+        instead of invoking a consumer method. Re-registering an
+        existing name cancels the prior entry first.
         """
 
         assert timeout >= 1, f"register_timer timeout must be >= 1; got {timeout}"
@@ -265,56 +345,57 @@ class Timer(Subsystem):
         __debug__ and log("timer", f"<r>Registering timer: {name}, timeout={timeout}</>")
 
         with self._lock:
-            self._timers[name] = timeout
+            old = self._legacy_named_flags.get(name)
+            if old is not None:
+                old.cancelled = True
+            self._legacy_named_flags[name] = self.call_later(timeout, self._clear_named_flag, name)
 
-    def is_expired(self, name: str) -> bool:
+    def _clear_named_flag(self, name: str, /) -> None:
         """
-        Check if timer expired. Returns True for an unknown name
-        (a never-registered timer collapses with one that
-        counted down to zero — the consumer treats both as
-        "no longer counting"). Wrap the read in '_lock' so a
-        concurrent tick cannot observe a half-updated entry.
+        Drop the named-flag entry for 'name' when its legacy timer
+        fires. After this, 'is_expired(name)' returns True.
         """
 
         with self._lock:
-            __debug__ and log("timer", f"<r>Active timers: {self._timers}</>")
-            return not self._timers.get(name, None)
+            self._legacy_named_flags.pop(name, None)
+
+    def is_expired(self, name: str) -> bool:
+        """
+        LEGACY. True when 'name' was never registered OR its timer
+        has already fired (the flag entry was cleared). False only
+        while the named timer is still counting down.
+        """
+
+        with self._lock:
+            __debug__ and log("timer", f"<r>Active timers: {set(self._legacy_named_flags)}</>")
+            return name not in self._legacy_named_flags
 
     def unregister_timers_with_prefix(self, prefix: str, /) -> None:
         """
-        Unregister every named delay timer whose name starts with
-        'prefix'. Used by 'TcpSession._change_state' on the
-        transition to CLOSED to clean up per-session entries from
-        'self._timers' so a long-running stack handling many
-        connection churns does not slowly accumulate stale
-        entries that match no live session.
+        LEGACY. Cancel every named-flag timer whose name starts
+        with 'prefix'. Used by 'TcpSession._change_state' on the
+        CLOSED transition to drop per-session entries.
         """
 
         __debug__ and log("timer", f"<r>Unregistering timers with prefix: {prefix!r}</>")
 
         with self._lock:
-            self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
+            for name in [n for n in self._legacy_named_flags if n.startswith(prefix)]:
+                self._legacy_named_flags[name].cancelled = True
+                del self._legacy_named_flags[name]
 
     def unregister_method(self, method: Callable[..., None], /) -> None:
         """
-        Unregister every 'TimerTask' previously installed by
-        'register_method' whose stored method matches the supplied
-        bound method. Used by 'TcpSession._change_state' on the
-        transition to CLOSED to drop the per-millisecond 'tcp_fsm'
-        callback so a long-running stack does not (a) keep
-        invoking the FSM on a dead session every tick or (b) hold
-        the 'TcpSession' instance alive against GC via the bound-
-        method reference. Companion to 'unregister_timers_with_prefix'
-        which handles the named-delay-timer half of the same
-        per-session registration.
-
-        Bound methods compare equal when their underlying
-        '__self__' and '__func__' are identical, so passing
-        'session.tcp_fsm' removes exactly the registration that
-        'session.__init__' made.
+        LEGACY. Cancel every 'TimerHandle' previously installed by
+        'register_method' for the supplied bound method. Used by
+        'TcpSession._change_state' on the CLOSED transition to drop
+        the per-tick 'tcp_fsm' callback.
         """
 
         __debug__ and log("timer", f"<r>Unregistering method: {method.__name__}</>")
 
         with self._lock:
-            self._tasks = [task for task in self._tasks if task.method != method]
+            for handle in self._legacy_method_handles.pop(method, []):
+                handle.cancelled = True
+
+        self._wakeup.set()

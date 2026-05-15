@@ -1130,7 +1130,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
             session._tx.buffer.extend(b"new data tail")
 
         snd_max_pre_probe = session._snd_seq.max
-        stack.timer._timers.pop(f"{session}-tlp", None)
+        stack.timer.unregister_timers_with_prefix(f"{session}-tlp")
         session._tlp_pto_tick()
 
         self.assertIsNotNone(
@@ -1352,7 +1352,7 @@ class TestTcpRackPhase9(TcpSessionTestCase):
         # the timeout handler so we observe the §6.3 marking
         # before the subsequent FSM-tick _transmit_data
         # overwrites the first-segment entry on retransmit.
-        stack.timer._timers.pop(f"{session}-retransmit", None)
+        stack.timer.unregister_timers_with_prefix(f"{session}-retransmit")
         session._retransmit_packet_timeout()
 
         # All in-flight segments should now be marked lost.
