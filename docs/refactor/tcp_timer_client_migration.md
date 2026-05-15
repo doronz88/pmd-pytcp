@@ -368,6 +368,75 @@ window suppresses exactly as before.
 
 ## 6. File-by-file changes & test plan
 
+### 6.0 Testing discipline (MANDATORY, per-phase)
+
+This migration is overwhelmingly **behaviour-preserving
+refactor**, so the dominant discipline is not "write a
+failing test" but **"prove the safety net is strong on the
+*unchanged* code first, then require it stays green."** The
+rules below are non-negotiable; a phase commit that skips
+any of them is a blocker, not a polish item.
+
+**Rule 1 — Coverage-strength precondition (test weak ⇒ fix
+tests FIRST).** Before the refactor commit of any phase, the
+characterization net for the timers that phase touches MUST
+be audited and proven strong *against the current,
+pre-change code*:
+- Run targeted coverage on the touched source
+  (`coverage run --source=pytcp.protocols.tcp.<file> …`) and
+  enumerate, per touched timer, whether the existing tests
+  exercise: arm, re-arm (overwrite), fire, cancel,
+  fire-after-state-change, the `is_expired` conflation
+  boundary, and every `register_timer` / `is_expired`
+  call site listed in §4.1.
+- If that net is **not** strong enough to detect a
+  behavioural regression in that timer (missing edge,
+  uncovered branch, no wire-level assertion on fire ms /
+  fire effect), the **first commit of the phase is a
+  test-hardening commit** that adds those tests **against
+  the unchanged production code** and shows them green
+  there. The migration commit lands only *after* the net is
+  demonstrably strong. Weak coverage is never "discovered
+  and worked around mid-refactor" — it is closed up front,
+  on the old code, as its own reviewable commit.
+- A test-hardening commit is itself gated by §8 and the
+  §7.2 audit; its message states which timer's net it
+  strengthens and which gaps it closed.
+
+**Rule 2 — Behaviour-changing delta: tests-first failing.**
+The only genuine behavioural change in this plan is the
+`challenge_ack` `is_expired` inversion (§5.5). It follows
+`feature_implementation.md` §2 verbatim: the test is written
+**first**, run, and **verified to fail for the predicted
+reason**, then the inversion makes it green. Any other
+behavioural delta the §5.5 audit surfaces is treated
+identically.
+
+**Rule 3 — Pins exist green on the pre-change commit.** For
+every behaviour-preserving phase (1, 3, 4, 5) the relevant
+pin / characterization tests MUST be present and green on
+the commit *before* the refactor commit (i.e. landed in the
+prior phase or as the phase's own first test-hardening
+commit per Rule 1). The refactor commit's sole job is
+"still green — nothing first-written here."
+
+**Rule 4 — Phase 4 is a pure stays-identical proof.** The
+ordering pin (§6.4 Phase 3), the per-timer parity pins
+(§6.4 Phase 2), and the stat-counter snapshot baseline (§8
+gate 5) MUST all already exist and be green at the end of
+Phase 3. Phase 4 writes no new test to "prove" the flip; it
+only requires the existing nets stay byte-identical.
+
+**Rule 5 — After every phase: the full §8 gate.** No phase
+commits without `make lint` + full `make test` + §7.2 audit
++ coverage-held, all green.
+
+> Net effect: every timer is migrated only across a safety
+> net that was *already proven to catch a regression in that
+> timer on the old code*. "We think the suite covers it" is
+> not acceptable — it must be shown, per timer, before the
+> code moves.
+
 ### 6.1 `pytcp/protocols/tcp/tcp__session.py`
 
 - Add `_timer_deadlines`, `_service_handle` attributes
@@ -488,9 +557,15 @@ coverage stays 100% where it already is.
 
 ## 7. Phase plan
 
-Each phase ends `make lint && make test` clean and is an
-independent, revertible commit (or tight commit pair:
-tests-first failing, then green).
+Each phase obeys the §6.0 testing discipline: audit the
+touched timers' net first, land a test-hardening commit on
+the *unchanged* code if that net is weak (Rule 1), pins
+green on the pre-change commit (Rule 3), then the refactor
+commit, then the full §8 gate (Rule 5). Every phase ends
+`make lint && make test` clean and is an independent,
+revertible commit (a phase may be a commit pair or triple:
+optional test-hardening → optional tests-first-failing →
+refactor-green).
 
 ### Phase 0 — This plan (no code)
 Commit this document. Lock the architecture (coalesced
@@ -505,10 +580,16 @@ Add attributes + helper trio + `_SERVICED_TIMERS_BY_STATE`;
 `_cancel_all_timers` (§4.2). The 1 ms `call_periodic` still
 drives `tcp_fsm`; the per-state handlers are untouched.
 **Net wire behaviour: identical** (proven by the unchanged
-integration suite). Tests-first: Phase-1 unit tests for the
-helpers; the integration suite is the parity oracle.
-Commit: `pytcp.protocols.tcp: deadline-map timer helpers
-(Phase 1 of TCP timer-client migration)`.
+integration suite). Per §6.0: first audit the existing
+timer net (Rule 1) — land a test-hardening commit on the
+*unchanged* code for any timer whose net is weak — then add
+the Phase-1 helper unit tests, then the mechanical swap.
+The integration suite is the parity oracle; the helper unit
+tests pin the new `_timer_expired`/`_timer_armed`
+de-conflation semantics.
+Commit(s): optional `pytcp.tests…: harden <timer> net
+(Phase 1 pre-work)` then `pytcp.protocols.tcp: deadline-map
+timer helpers (Phase 1 of TCP timer-client migration)`.
 
 ### Phase 2 — Independent-timer audit & inversion
 No structural change; this phase is the §5.5 audit made
@@ -567,6 +648,12 @@ Commit: `pytcp.runtime.timer: drop the dead named-flag shim
 ## 8. Validation gates
 
 Per phase, before commit:
+0. **§6.0 Rule 1 satisfied** — the touched timers'
+   characterization net was audited and proven strong on the
+   pre-change code; if it was weak, the test-hardening
+   commit landed first (green on old code). This gate is
+   checked *before* the refactor commit is written, not
+   after.
 1. `make lint` — codespell + isort + black + flake8 + mypy
    strict + pylint.
 2. `make test` — full suite. Currently **10997 passing /
@@ -634,12 +721,24 @@ the periodic; Phases 5-6 depend on it and revert first).
 Execute the TCP timer-client migration per the plan at
 docs/refactor/tcp_timer_client_migration.md.
 
-Read the entire plan first. It is the deferred §12 follow-up
-from docs/refactor/timer_rewrite_plan.md (SHIPPED). Proceed
-phase by phase; each phase is one commit (tests-first where
-behaviour changes) and must end `make lint && make test`
-clean (currently 10997 passing / 4 skipped / 0 failures),
-§7.2 audit clean on touched test files, coverage held.
+Read the entire plan first, §6.0 especially. It is the
+deferred §12 follow-up from
+docs/refactor/timer_rewrite_plan.md (SHIPPED). Proceed phase
+by phase under the §6.0 testing discipline (NON-NEGOTIABLE):
+for each phase FIRST audit the touched timers'
+characterization net on the current code; if weak, land a
+test-hardening commit on the UNCHANGED production code
+(green there) before any refactor — never work around weak
+coverage mid-refactor. challenge_ack is the only true
+behavioural change → tests-first failing, verified to fail
+for the predicted reason, then green. Phase 4 writes no new
+test (Rule 4): the ordering pin, per-timer parity pins, and
+stat-snapshot baseline must already be green at end of
+Phase 3. Every phase ends `make lint && make test` clean
+(currently 10997 passing / 4 skipped / 0 failures), §7.2
+audit clean on touched test files, coverage held; a phase
+may be a commit pair/triple (harden → tests-first →
+refactor).
 
 - Phase 0 done (this plan, SHA <fill after Phase 0 lands>).
 - Phase 1: add _timer_deadlines / _service_handle to
