@@ -72,7 +72,7 @@ class _NeighborCacheFixture(TestCase):
         # noisy initialise log does not pollute test output.
         self._log_patch = patch("pytcp.lib.neighbor.log")
         self._log_patch.start()
-        self._subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        self._subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
         self._subsystem_log_patch.start()
 
         self._cache: NeighborCache[Ip4Address] = NeighborCache(

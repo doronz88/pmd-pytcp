@@ -53,10 +53,10 @@ from typing import Callable, override
 from net_addr import Ip4Host, MacAddress
 from pytcp.lib.address_api import ConflictEvent, Ip4AddressApi, SubscriptionHandle
 from pytcp.lib.logger import log
-from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.ip4_link_local import ip4_link_local__constants as ip4ll_const
 from pytcp.protocols.ip4_link_local.ip4_link_local__rng import candidate_from_mac
+from pytcp.runtime.subsystem import Subsystem
 
 
 class Ip4LinkLocalState(Enum):

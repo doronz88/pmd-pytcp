@@ -50,11 +50,11 @@ from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
+from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+from pytcp.runtime.rx_ring import RxRing
+from pytcp.runtime.timer import Timer
+from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket.socket_id import SocketId
-from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
-from pytcp.stack.rx_ring import RxRing
-from pytcp.stack.timer import Timer
-from pytcp.stack.tx_ring import TxRing
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, Ip6Address

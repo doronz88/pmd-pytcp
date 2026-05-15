@@ -67,7 +67,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         """
 
         self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
-        self.enterContext(patch("pytcp.lib.subsystem.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
         self._mock_time = self.enterContext(
             patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.time.monotonic"),
         )

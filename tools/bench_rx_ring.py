@@ -58,7 +58,7 @@ import threading
 import time
 from unittest.mock import patch
 
-from pytcp.stack.rx_ring import RxRing
+from pytcp.runtime.rx_ring import RxRing
 
 
 def _bench(n_frames: int, frame_size: int, prefill: int) -> None:
@@ -167,8 +167,8 @@ def main() -> int:
     # (debug) mode the patches matter so the benchmark isn't
     # dominated by f-string formatting.
     log_patches = [
-        patch("pytcp.stack.rx_ring.log"),
-        patch("pytcp.lib.subsystem.log"),
+        patch("pytcp.runtime.rx_ring.log"),
+        patch("pytcp.runtime.subsystem.log"),
     ]
     for p in log_patches:
         p.start()

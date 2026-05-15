@@ -455,7 +455,7 @@ class TestIcmp6Nd__SlaacPrefix__LazyAgeing(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=2000.0,
         ):
             self._drive_rx(
@@ -476,7 +476,7 @@ class TestIcmp6Nd__SlaacPrefix__LazyAgeing(NdTestCase):
             )
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=2000.0 + 121,
         ):
             active = self._packet_handler.get_icmp6_slaac_addresses()

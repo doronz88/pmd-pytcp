@@ -43,7 +43,7 @@ from typing import override
 
 from net_addr import MacAddress
 from net_proto.lib.inet_cksum import inet_cksum
-from pytcp.stack.packet_handler.packet_handler__icmp6__rx import (
+from pytcp.runtime.packet_handler.packet_handler__icmp6__rx import (
     _mld2_mrc_to_mrd_ms,
 )
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase

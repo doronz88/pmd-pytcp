@@ -24,7 +24,7 @@
 
 """
 This module contains the deterministic 'FakeTimer' used by TCP session
-integration tests in place of the real 'pytcp.stack.timer.Timer'.
+integration tests in place of the real 'pytcp.runtime.timer.Timer'.
 
 pytcp/tests/lib/fake_timer.py
 
@@ -62,7 +62,7 @@ class _FakeTimerTask:
 
 class FakeTimer:
     """
-    Deterministic in-memory replacement for 'pytcp.stack.timer.Timer'.
+    Deterministic in-memory replacement for 'pytcp.runtime.timer.Timer'.
 
     Mirrors only the surface 'TcpSession' and the wider stack-side TCP
     code actually call: 'register_method', 'register_timer',

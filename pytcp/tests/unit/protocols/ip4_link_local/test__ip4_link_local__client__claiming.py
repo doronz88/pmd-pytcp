@@ -63,7 +63,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         """
 
         self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
-        self.enterContext(patch("pytcp.lib.subsystem.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
         # 'time.sleep' is patched globally for the test class so
         # the rate-limit cool-down does not actually block.
         self._mock_sleep = self.enterContext(

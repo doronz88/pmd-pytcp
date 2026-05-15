@@ -380,7 +380,7 @@ class TestIcmp6Nd__DefaultRouterList__LazyAgeing(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0,
         ):
             self._drive_rx(
@@ -394,7 +394,7 @@ class TestIcmp6Nd__DefaultRouterList__LazyAgeing(NdTestCase):
             )
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0 + 61,
         ):
             active = self._packet_handler.get_icmp6_default_routers()

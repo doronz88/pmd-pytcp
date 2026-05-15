@@ -61,7 +61,7 @@ class _ArpCacheFixture(TestCase):
 
         self._log_patch = patch("pytcp.lib.neighbor.log")
         self._log_patch.start()
-        self._subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        self._subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
         self._subsystem_log_patch.start()
         self._cache = ArpCache()
 
@@ -203,7 +203,7 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
         Reference: RFC 1122 §2.3.2.2 (queued-packet semantics).
         """
 
-        from pytcp.stack.packet_handler import PacketHandlerL2
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         ip = Ip4Address("10.0.0.1")
         # 'find_entry' on miss creates the INCOMPLETE anchor and
@@ -244,7 +244,7 @@ class TestArpCacheSolicitCallback(_ArpCacheFixture):
         """
 
         from pytcp import stack
-        from pytcp.stack.packet_handler import PacketHandlerL2
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip4Address("10.0.0.1")
@@ -267,7 +267,7 @@ class TestArpCacheSolicitCallback(_ArpCacheFixture):
         Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast cache-refresh probe).
         """
 
-        from pytcp.stack.packet_handler import PacketHandlerL2
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip4Address("10.0.0.1")

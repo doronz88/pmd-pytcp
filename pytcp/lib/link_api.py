@@ -52,7 +52,7 @@ from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 
 if TYPE_CHECKING:
-    from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 
 class LinkFlag(Enum):

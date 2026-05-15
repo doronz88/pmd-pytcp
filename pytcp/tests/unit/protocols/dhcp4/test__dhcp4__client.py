@@ -38,8 +38,8 @@ from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.lib import sysctl
 from pytcp.lib.dhcp_uid import build_client_id
-from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
+from pytcp.runtime.subsystem import Subsystem
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
     autospec_dhcp4_socket,
@@ -63,7 +63,7 @@ class TestDhcp4ClientInit(TestCase):
         DHCP4 Client' to stdout under the default LOG__CHANNEL.
         """
 
-        self.enterContext(patch("pytcp.lib.subsystem.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
     def test__dhcp4_client__init_stores_mac_address(self) -> None:
         """
@@ -126,7 +126,7 @@ class _Dhcp4ClientFixture(TestCase):
         # inherits from Subsystem as of Phase 4 commit 0; the base
         # 'log("stack", "Initializing ...")' call would otherwise
         # leak to stdout under the default 'LOG__CHANNEL' set).
-        self.enterContext(patch("pytcp.lib.subsystem.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
         self.enterContext(sysctl.override("dhcp.init_delay_min_ms", 0))
         self.enterContext(sysctl.override("dhcp.init_delay_max_ms", 0))
         # Phase 8.x — disable the multi-OFFER collection window

@@ -192,7 +192,7 @@ class TestIcmp6Nd__RsBackoff__ExponentialBackoffTimings(NdTestCase):
 
         with (
             patch.object(self._packet_handler._icmp6_ra__event, "acquire", side_effect=mock_acquire),
-            patch("pytcp.stack.packet_handler.random.uniform", return_value=0.0),
+            patch("pytcp.runtime.packet_handler.random.uniform", return_value=0.0),
             sysctl_module.override("icmp6.rtr_solicitation_interval_ms", 1000),
             sysctl_module.override("icmp6.rtr_solicitation_max_rt_ms", 8000),
             sysctl_module.override("icmp6.max_rtr_solicitations", 4),
@@ -226,7 +226,7 @@ class TestIcmp6Nd__RsBackoff__ExponentialBackoffTimings(NdTestCase):
 
         with (
             patch.object(self._packet_handler._icmp6_ra__event, "acquire", side_effect=mock_acquire),
-            patch("pytcp.stack.packet_handler.random.uniform", return_value=0.0),
+            patch("pytcp.runtime.packet_handler.random.uniform", return_value=0.0),
             sysctl_module.override("icmp6.rtr_solicitation_interval_ms", 1000),
             sysctl_module.override("icmp6.rtr_solicitation_max_rt_ms", 3000),
             sysctl_module.override("icmp6.max_rtr_solicitations", 5),

@@ -36,7 +36,7 @@ ARPs in '_frames_tx'. Pins the rate-limit closed by commit
 per DEFEND_INTERVAL) at the wire level.
 
 The unit-level counterpart at
-'pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxDefendInterval'
+'pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__rx.py::TestPacketHandlerArpRxDefendInterval'
 spies on '_send_gratuitous_arp'; this file observes the actual
 defensive frames the TX path emits, validating the entire
 RX→defense→TX round-trip.

@@ -60,7 +60,7 @@ class _NdCacheFixture(TestCase):
 
         self._log_patch = patch("pytcp.lib.neighbor.log")
         self._log_patch.start()
-        self._subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        self._subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
         self._subsystem_log_patch.start()
         self._cache = NdCache()
 
@@ -203,7 +203,7 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         Reference: RFC 4861 §7.2.2 (multicast NS for INCOMPLETE).
         """
 
-        from pytcp.stack.packet_handler import PacketHandlerL2
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip6Address("2001:db8::1")
@@ -228,7 +228,7 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         Reference: RFC 4861 §7.3.3 (unicast NS for PROBE).
         """
 
-        from pytcp.stack.packet_handler import PacketHandlerL2
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip6Address("2001:db8::1")

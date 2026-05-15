@@ -219,7 +219,7 @@ ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000
 #   2 = enabled, prefer temp — RFC 6724 rule 7 makes the temp
 #       address the default outbound source. Wired through the
 #       PacketHandler '_select_ip6_source' selector at
-#       'pytcp/stack/packet_handler/packet_handler__ip6__tx.py';
+#       'pytcp/runtime/packet_handler/packet_handler__ip6__tx.py';
 #       values 0 and 1 leave rule 7 as a no-op and rule 8
 #       decides.
 ICMP6__USE_TEMPADDR = 0

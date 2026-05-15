@@ -109,7 +109,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0,
         ):
             self._drive_rx(
@@ -126,7 +126,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
             )
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0 + 60,
         ):
             state = self._packet_handler.get_icmp6_slaac_address_state(prefix=PREFIX)
@@ -147,7 +147,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0,
         ):
             self._drive_rx(
@@ -164,7 +164,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
             )
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0 + 301,
         ):
             state = self._packet_handler.get_icmp6_slaac_address_state(prefix=PREFIX)
@@ -185,7 +185,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0,
         ):
             self._drive_rx(
@@ -202,7 +202,7 @@ class TestIcmp6Nd__SlaacAddressState__StateMachine(NdTestCase):
             )
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=1000.0 + 121,
         ):
             state = self._packet_handler.get_icmp6_slaac_address_state(prefix=PREFIX)
@@ -252,7 +252,7 @@ class TestIcmp6Nd__SlaacAddressState__TwoHourRule(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=at_time,
         ):
             self._drive_rx(
@@ -283,7 +283,7 @@ class TestIcmp6Nd__SlaacAddressState__TwoHourRule(NdTestCase):
         """
 
         with patch(
-            "pytcp.stack.packet_handler.time.monotonic",
+            "pytcp.runtime.packet_handler.time.monotonic",
             return_value=at_time,
         ):
             self._drive_rx(

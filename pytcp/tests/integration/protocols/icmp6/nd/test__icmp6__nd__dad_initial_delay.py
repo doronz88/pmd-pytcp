@@ -152,7 +152,7 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
         def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pytcp.stack.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 1000):
                 with sysctl_module.override("icmp6.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
@@ -189,7 +189,7 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
         def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pytcp.stack.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
                 with sysctl_module.override("icmp6.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
@@ -214,7 +214,7 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
         def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pytcp.stack.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 200):
                 with sysctl_module.override("icmp6.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)

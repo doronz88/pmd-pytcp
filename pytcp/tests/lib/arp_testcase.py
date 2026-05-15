@@ -131,7 +131,7 @@ class ArpTestCase(NetworkTestCase):
             return self._monotonic_t
 
         self._monotonic_patch = patch(
-            "pytcp.stack.packet_handler.packet_handler__arp__rx.time.monotonic",
+            "pytcp.runtime.packet_handler.packet_handler__arp__rx.time.monotonic",
             side_effect=_read_monotonic,
         )
         self._monotonic_patch.start()
@@ -161,7 +161,7 @@ class ArpTestCase(NetworkTestCase):
                 self._dad_sleep_callbacks.pop(0)()
 
         self._sleep_patch = patch(
-            "pytcp.stack.packet_handler.time.sleep",
+            "pytcp.runtime.packet_handler.time.sleep",
             side_effect=_patched_sleep,
         )
         self._sleep_patch.start()

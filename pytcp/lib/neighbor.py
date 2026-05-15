@@ -65,7 +65,7 @@ from net_addr import Ip4Address, Ip6Address, MacAddress
 from pytcp.lib import neighbor__constants as nbr_const
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
-from pytcp.lib.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 
 class NudState(NameEnum):

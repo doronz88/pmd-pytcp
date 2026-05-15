@@ -43,7 +43,7 @@ from net_addr import Ip4Address, Ip4Host, MacAddress
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
-    from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

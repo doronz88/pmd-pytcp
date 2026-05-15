@@ -91,7 +91,7 @@ class TestIp4LinkLocalInit(TestCase):
         """
 
         self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
-        self.enterContext(patch("pytcp.lib.subsystem.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
         self._mac = MacAddress("02:00:00:00:00:07")
         self._client = Ip4LinkLocal(
             mac_address=self._mac,

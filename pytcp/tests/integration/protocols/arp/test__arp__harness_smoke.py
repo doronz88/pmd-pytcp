@@ -183,7 +183,7 @@ class TestArpHarnessSmoke(ArpTestCase):
         """
         Ensure the patched 'time.monotonic' is observed by the
         production code path that consumes it — the
-        'pytcp.stack.packet_handler.packet_handler__arp__rx' module's
+        'pytcp.runtime.packet_handler.packet_handler__arp__rx' module's
         '_maybe_send_arp_defense' helper. Without this, the
         DEFEND_INTERVAL tests would silently exercise the real
         clock and become flaky / non-deterministic.
@@ -191,7 +191,7 @@ class TestArpHarnessSmoke(ArpTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        from pytcp.stack.packet_handler import packet_handler__arp__rx as arp_rx_module
+        from pytcp.runtime.packet_handler import packet_handler__arp__rx as arp_rx_module
 
         self._set_monotonic(42.0)
         self.assertEqual(

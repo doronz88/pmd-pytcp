@@ -43,7 +43,7 @@ from pytcp.lib.address_api import (
 )
 
 if TYPE_CHECKING:
-    from pytcp.stack.packet_handler import PacketHandlerL2
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 
 class _FakePacketHandler:

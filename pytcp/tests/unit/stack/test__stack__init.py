@@ -680,7 +680,7 @@ class TestStackInitSharedPacketStats(TestCase):
         log_patch = patch("pytcp.stack.log")
         log_patch.start()
         self.addCleanup(log_patch.stop)
-        subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
         subsystem_log_patch.start()
         self.addCleanup(subsystem_log_patch.stop)
 
@@ -866,7 +866,7 @@ class TestStackInitArpCacheConfig(TestCase):
         log_patch = patch("pytcp.stack.log")
         log_patch.start()
         self.addCleanup(log_patch.stop)
-        subsystem_log_patch = patch("pytcp.lib.subsystem.log")
+        subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
         subsystem_log_patch.start()
         self.addCleanup(subsystem_log_patch.stop)
 

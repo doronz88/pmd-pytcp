@@ -1,0 +1,250 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains unit tests for the 'PacketHandlerTcpTx' mixin.
+
+pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__tcp__tx.py
+
+ver 3.0.4
+"""
+
+from unittest import TestCase
+
+from net_addr import Ip4Address, Ip6Address
+from net_proto import TcpAssembler
+from pytcp import stack
+from pytcp.lib.packet_stats import PacketStatsTx
+from pytcp.lib.tx_status import TxStatus
+from pytcp.runtime.packet_handler.packet_handler__tcp__tx import (
+    PacketHandlerTcpTx,
+)
+
+# Snapshot log channels so 'setUpModule' can silence output during this
+# module's tests and 'tearDownModule' can restore the global state.
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+
+def setUpModule() -> None:
+    """
+    Silence log output for the duration of this module's tests.
+    """
+
+    stack.LOG__CHANNEL = set()
+
+
+def tearDownModule() -> None:
+    """
+    Restore the snapshot of log channels after this module's tests finish.
+    """
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
+
+
+STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
+HOST_A__IP4 = Ip4Address("10.0.1.91")
+STACK__IP6_ADDRESS = Ip6Address("2001:db8::7")
+HOST_A__IP6 = Ip6Address("2001:db8::91")
+
+
+class _StubHandler(PacketHandlerTcpTx):
+    """
+    Minimal concrete subclass of 'PacketHandlerTcpTx' for testing.
+    """
+
+    def __init__(self) -> None:
+        self._packet_stats_tx = PacketStatsTx()
+        self.ip4_tx_calls: list[dict[str, object]] = []
+        self.ip6_tx_calls: list[dict[str, object]] = []
+
+    def _phtx_ip4(self, **kwargs: object) -> TxStatus:
+        self.ip4_tx_calls.append(kwargs)
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+    def _phtx_ip6(self, **kwargs: object) -> TxStatus:
+        self.ip6_tx_calls.append(kwargs)
+        return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+
+class TestPacketHandlerTcpTxRouting(TestCase):
+    """
+    The version-routing tests for 'PacketHandlerTcpTx._phtx_tcp'.
+    """
+
+    def test__stack__packet_handler__tcp__tx__ip4_routes_to_phtx_ip4(self) -> None:
+        """
+        Ensure a TCP segment with IPv4 src/dst is forwarded to '_phtx_ip4'.
+        """
+
+        handler = _StubHandler()
+        status = handler._phtx_tcp(
+            ip__src=STACK__IP4_ADDRESS,
+            ip__dst=HOST_A__IP4,
+            tcp__sport=12345,
+            tcp__dport=80,
+        )
+
+        self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
+        self.assertEqual(len(handler.ip4_tx_calls), 1)
+        self.assertEqual(handler.ip6_tx_calls, [])
+        self.assertEqual(handler._packet_stats_tx.tcp__send, 1)
+        self.assertEqual(handler._packet_stats_tx.tcp__pre_assemble, 1)
+        self.assertIsInstance(handler.ip4_tx_calls[0]["ip4__payload"], TcpAssembler)
+
+    def test__stack__packet_handler__tcp__tx__ip6_routes_to_phtx_ip6(self) -> None:
+        """
+        Ensure a TCP segment with IPv6 src/dst is forwarded to '_phtx_ip6'.
+        """
+
+        handler = _StubHandler()
+        status = handler._phtx_tcp(
+            ip__src=STACK__IP6_ADDRESS,
+            ip__dst=HOST_A__IP6,
+            tcp__sport=12345,
+            tcp__dport=80,
+        )
+
+        self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
+        self.assertEqual(len(handler.ip6_tx_calls), 1)
+        self.assertEqual(handler.ip4_tx_calls, [])
+        self.assertEqual(handler._packet_stats_tx.tcp__send, 1)
+
+    def test__stack__packet_handler__tcp__tx__mixed_ip_versions_raises(self) -> None:
+        """
+        Ensure a mismatched IPv4 src with IPv6 dst raises ValueError
+        rather than silently picking a layer.
+        """
+
+        handler = _StubHandler()
+        with self.assertRaises(ValueError):
+            handler._phtx_tcp(
+                ip__src=STACK__IP4_ADDRESS,
+                ip__dst=HOST_A__IP6,
+                tcp__sport=12345,
+                tcp__dport=80,
+            )
+
+
+class TestPacketHandlerTcpTxFlags(TestCase):
+    """
+    The per-flag counter tests.
+    """
+
+    def test__stack__packet_handler__tcp__tx__flag_counters_increment(self) -> None:
+        """
+        Ensure each TCP flag increments its own statistic counter.
+        """
+
+        handler = _StubHandler()
+        handler._phtx_tcp(
+            ip__src=STACK__IP4_ADDRESS,
+            ip__dst=HOST_A__IP4,
+            tcp__sport=12345,
+            tcp__dport=80,
+            tcp__flag_syn=True,
+            tcp__flag_ack=True,
+            tcp__flag_psh=True,
+            tcp__flag_rst=True,
+            tcp__flag_fin=True,
+            tcp__flag_urg=True,
+            tcp__flag_ns=True,
+            tcp__flag_cwr=True,
+            tcp__flag_ece=True,
+        )
+
+        stats = handler._packet_stats_tx
+        self.assertEqual(stats.tcp__flag_syn, 1)
+        self.assertEqual(stats.tcp__flag_ack, 1)
+        self.assertEqual(stats.tcp__flag_psh, 1)
+        self.assertEqual(stats.tcp__flag_rst, 1)
+        self.assertEqual(stats.tcp__flag_fin, 1)
+        self.assertEqual(stats.tcp__flag_urg, 1)
+        self.assertEqual(stats.tcp__flag_ns, 1)
+        self.assertEqual(stats.tcp__flag_cwr, 1)
+        self.assertEqual(stats.tcp__flag_ece, 1)
+
+
+class TestPacketHandlerTcpTxOptions(TestCase):
+    """
+    The TCP-option-set tests.
+    """
+
+    def test__stack__packet_handler__tcp__tx__mss_option_counted(self) -> None:
+        """
+        Ensure passing 'tcp__mss' emits a segment with the MSS option
+        and increments 'tcp__opt_mss'.
+        """
+
+        handler = _StubHandler()
+        handler._phtx_tcp(
+            ip__src=STACK__IP4_ADDRESS,
+            ip__dst=HOST_A__IP4,
+            tcp__sport=12345,
+            tcp__dport=80,
+            tcp__mss=1460,
+        )
+
+        self.assertEqual(handler._packet_stats_tx.tcp__opt_mss, 1)
+
+    def test__stack__packet_handler__tcp__tx__wscale_option_counted(self) -> None:
+        """
+        Ensure passing 'tcp__wscale' emits a segment with NOP+WSCALE
+        and increments both 'tcp__opt_nop' and 'tcp__opt_wscale'.
+        """
+
+        handler = _StubHandler()
+        handler._phtx_tcp(
+            ip__src=STACK__IP4_ADDRESS,
+            ip__dst=HOST_A__IP4,
+            tcp__sport=12345,
+            tcp__dport=80,
+            tcp__wscale=7,
+        )
+
+        self.assertEqual(handler._packet_stats_tx.tcp__opt_wscale, 1)
+        self.assertEqual(handler._packet_stats_tx.tcp__opt_nop, 1)
+
+
+class TestPacketHandlerTcpTxSendHelper(TestCase):
+    """
+    The public 'send_tcp_packet' helper tests.
+    """
+
+    def test__stack__packet_handler__tcp__tx__send_tcp_packet_forwards(self) -> None:
+        """
+        Ensure 'send_tcp_packet' forwards its arguments to '_phtx_tcp'.
+        """
+
+        handler = _StubHandler()
+        status = handler.send_tcp_packet(
+            ip__local_address=STACK__IP4_ADDRESS,
+            ip__remote_address=HOST_A__IP4,
+            tcp__local_port=12345,
+            tcp__remote_port=80,
+            tcp__flag_syn=True,
+        )
+
+        self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
+        self.assertEqual(handler._packet_stats_tx.tcp__flag_syn, 1)
+        self.assertEqual(len(handler.ip4_tx_calls), 1)

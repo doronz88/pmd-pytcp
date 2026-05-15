@@ -41,6 +41,7 @@ from net_addr import Ip4Address, Ip4Host, MacAddress
 
 if TYPE_CHECKING:
     from pytcp.lib.address_api import Ip4AddressApi
+
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
@@ -79,13 +80,13 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.logger import log
-from pytcp.lib.subsystem import Subsystem
 from pytcp.protocols.dhcp4 import dhcp4__constants
 from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     delete_cached_lease,
     read_cached_lease,
     write_cached_lease,
 )
+from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
 # 'secs' is a 16-bit field in the DHCP header; cap the elapsed-

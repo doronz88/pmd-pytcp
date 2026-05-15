@@ -157,7 +157,7 @@ class ArpCache(NeighborCache[Ip4Address, EthernetAssembler]):
 
         # Late-resolved import keeps this module decoupled
         # from the packet handler at module load time —
-        # 'pytcp.stack.packet_handler' is only assigned by
+        # 'pytcp.runtime.packet_handler' is only assigned by
         # 'stack.init()'.
         assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
         if cached_mac is None:

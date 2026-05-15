@@ -46,7 +46,7 @@ from pytcp.lib.link_api import LinkApi, LinkFlag, LinkStats
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 
 if TYPE_CHECKING:
-    from pytcp.stack.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 
 class _FakePacketHandlerL2:
