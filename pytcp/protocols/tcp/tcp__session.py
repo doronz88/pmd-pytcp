@@ -523,16 +523,12 @@ class TcpSession:
         # by '_reschedule_service' from Phase 4 on.
         self._service_handle: TimerHandle | None = None
 
-        # Phase 4c: the FSM timer is event-driven — no 1 ms
+        # The FSM timer is event-driven — there is no 1 ms
         # periodic. The coalesced '_service_handle' (armed by
-        # '_reschedule_service' from '_arm_timer'/'_cancel_timer'
-        # /'_kick_pump' and the 'tcp_fsm' tail) drives both
-        # logical-timer servicing and the 'tx_pump' FSM-pump
-        # (§5.6/§5.7). '_tcp_fsm_handle' stays None until Phase 5
-        # deletes the attribute; its CLOSED-teardown cancel is
-        # now a no-op ('_cancel_all_timers' releases
-        # '_service_handle').
-        self._tcp_fsm_handle: TimerHandle | None = None
+        # '_reschedule_service' from '_arm_timer' /
+        # '_cancel_timer' / '_kick_pump' and the 'tcp_fsm' tail)
+        # drives both logical-timer servicing and the 'tx_pump'
+        # FSM-pump (§5.6/§5.7).
 
     def _arm_timer(self, name: str, delay_ms: int, /) -> None:
         """
@@ -1122,22 +1118,11 @@ class TcpSession:
         # Unregister session.
         if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
-            # Cancel every per-session logical timer so nothing
-            # fires against a dead session and the deadline map is
-            # released for GC.
+            # Cancel every per-session logical timer and release
+            # the coalesced service handle so nothing fires
+            # against a dead session and it is GC-eligible (the
+            # event-driven model has no periodic to unregister).
             self._cancel_all_timers()
-            # Drop the per-millisecond 'tcp_fsm' callback that
-            # '__init__' registered via 'stack.timer.call_periodic'.
-            # Without this, the periodic entry survives forever -
-            # firing 'self.tcp_fsm(timer=True)' once per tick on a
-            # dead session (CPU drain growing linearly with
-            # dead-session count) and pinning the entire
-            # 'TcpSession' instance in memory via the bound-method
-            # reference (preventing GC). Companion to the prefix
-            # scan above which handles the named-delay-timer half
-            # of the same per-session registration.
-            if self._tcp_fsm_handle is not None:
-                stack.timer.cancel(self._tcp_fsm_handle)
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
         # RFC 1122 §4.2.3.6: arm the keep-alive idle timer on the

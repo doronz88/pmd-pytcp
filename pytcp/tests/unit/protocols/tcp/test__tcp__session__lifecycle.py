@@ -142,10 +142,6 @@ class TestTcpSessionInit(_TcpSessionFixture):
             {},
             msg="A fresh TcpSession must have an empty deadline map (nothing armed at construction).",
         )
-        self.assertIsNone(
-            session._tcp_fsm_handle,
-            msg="The legacy periodic handle attribute must be None (no periodic registered).",
-        )
 
     def test__tcp_session__init_rx_tx_buffers_empty(self) -> None:
         """
