@@ -95,8 +95,8 @@ class TestTcpSessionTimers(TestCase):
     def test__tcp__timers__expired_false_when_unarmed(self) -> None:
         """
         Ensure '_timer_expired' is False for a timer that was
-        never armed — the de-conflation of the legacy
-        'is_expired' (which returned True when unarmed).
+        never armed — an unarmed timer is not expired, a state
+        distinct from the fired state.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """

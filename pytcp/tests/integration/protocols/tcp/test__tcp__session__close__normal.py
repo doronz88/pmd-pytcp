@@ -310,8 +310,8 @@ class TestTcpClose__Normal(TcpSessionTestCase):
             msg=(
                 "First CLOSE_WAIT tick must emit exactly one bare ACK "
                 "acknowledging peer's FIN. The delayed-ACK timer is "
-                "not yet armed at this point, so 'is_expired' returns "
-                "True and the ACK fires immediately."
+                "not yet armed at this point, so the ACK is not "
+                "deferred and fires immediately."
             ),
         )
         delayed_ack = self._parse_tx(delayed_ack_tx[0])

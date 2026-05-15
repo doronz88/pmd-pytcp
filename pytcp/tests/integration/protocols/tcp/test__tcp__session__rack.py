@@ -296,9 +296,9 @@ class TestTcpRackPhase2(TcpSessionTestCase):
     def test__rack__retransmit_with_stale_rtt_skipped(self) -> None:
         """
         Ensure that a retransmitted segment whose freshly-
-        observed rtt is below '_rack_min_rtt_ms' (RFC 8985
-        §6.2 step 2 condition 2) does not poison the RACK
-        scalars - the rtt is silently discarded.
+        observed rtt is below '_rack_min_rtt_ms' does not
+        poison the RACK scalars - the rtt is silently
+        discarded.
 
         Reference: RFC 8985 §6.2 (Karn-style guard: rtt < min_rtt skip).
         """
@@ -1121,9 +1121,9 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         # synchronously: with the FSM-tick worker '_transmit_data'
         # firing every ms, the auto-transmit would naturally
         # drain the buffered tail before the TLP PTO expiry
-        # fires it as a probe. Bypass that race by popping the
-        # TLP timer (so 'is_expired' returns True) and calling
-        # the tick handler directly. The probe path's choice
+        # fires it as a probe. Bypass that race by force-expiring
+        # the TLP timer (so '_timer_expired' reports it fired) and
+        # calling the tick handler directly. The probe path's choice
         # between new-data and retransmit is then deterministic.
         with session._lock__tx_buffer:
             session._tx.buffer.extend(b"new data tail")

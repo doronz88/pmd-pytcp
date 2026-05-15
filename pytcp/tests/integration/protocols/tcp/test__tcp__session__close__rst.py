@@ -1154,12 +1154,13 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             0,
             msg=(
                 "After the session has terminated (state -> CLOSED), "
-                "all per-session entries in 'stack.timer._timers' "
-                "MUST be unregistered. Today the entries persist "
-                f"({timers_after}). On a long-running stack handling "
-                "many connection churns this accumulates as a slow "
-                "memory leak. Fix: '_change_state' on CLOSED must "
-                "pop every per-session entry."
+                "every per-session entry in the session's "
+                "'_timer_deadlines' map MUST be cleared. Today the "
+                f"entries persist ({timers_after}). On a long-running "
+                "stack handling many connection churns this "
+                "accumulates as a slow memory leak. Fix: "
+                "'_change_state' on CLOSED must pop every per-session "
+                "entry."
             ),
         )
 

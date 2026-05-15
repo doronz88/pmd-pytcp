@@ -512,10 +512,10 @@ class TcpSession:
         self._connection_error: ConnError = ConnError.NONE
 
         # Per-session logical-timer deadline map (absolute
-        # monotonic ms; None-equivalent == key absent). Replaces
-        # the legacy named-flag shim. Keyed by bare logical name
-        # ("retransmit", "time_wait", "persist", "delayed_ack",
-        # "challenge_ack", "keepalive", "tlp", "rack").
+        # monotonic ms; key absent == not armed). Keyed by bare
+        # logical name ("retransmit", "time_wait", "persist",
+        # "delayed_ack", "challenge_ack", "keepalive", "tlp",
+        # "rack").
         self._timer_deadlines: dict[str, int] = {}
 
         # Coalesced per-session service handle. Unused in Phase 1
@@ -1784,11 +1784,11 @@ class TcpSession:
 
         # RFC 6298 §5.1: every packet containing data (including a
         # retransmission) starts the retransmit timer if it is not
-        # already running. The 'is_expired' check returns True both
-        # when the timer has never been registered AND after it has
-        # expired, so this branch correctly arms a fresh timer
-        # post-§5.2-shutdown without spuriously re-arming a still-
-        # running one. Re-arming on every send would diverge from
+        # already running. '_timer_armed' is False both when the
+        # timer was never armed AND after it has fired, so this
+        # branch correctly arms a fresh timer post-§5.2-shutdown
+        # without spuriously re-arming a still-running one.
+        # Re-arming on every send would diverge from
         # §5.1's "if not running, start it" wording; the §5.3
         # restart-on-cum-ACK fires from '_process_ack_packet'
         # instead, and the timeout-driven re-arm fires from
@@ -2877,12 +2877,12 @@ class TcpSession:
         """
 
         # RFC 6298 §5: only act when the session-level retransmit
-        # timer has fired. 'is_expired' returns True both when the
-        # timer is dropped (its countdown reached zero) AND when it
-        # was never registered, so the second guard 'snd_una !=
-        # snd_max' filters out the quiescent "nothing in flight"
-        # case where 'is_expired' is True only because no timer is
-        # running.
+        # timer has fired. '_timer_expired' is True only when the
+        # timer was armed and its deadline has passed (an unarmed
+        # timer is NOT expired), so the second guard 'snd_una !=
+        # snd_max' is the genuine RFC 6298 §5 "nothing in flight"
+        # condition — do not retransmit when there is no unacked
+        # data — not a disambiguation crutch.
         if not self._timer_expired("retransmit"):
             return
         if self._snd_seq.una == self._snd_seq.max:
@@ -3350,13 +3350,13 @@ class TcpSession:
         if the probe itself is lost.
         """
 
-        # _tlp_armed gates the firing path: only when the
-        # arming logic in '_transmit_packet' actually
-        # registered a TLP timer should this tick treat an
-        # 'is_expired' result as a real timer expiration.
-        # Without this gate, 'is_expired' would return True
-        # for any session that never armed a TLP (the timer
-        # is absent from the dict), and _tlp_pto_tick would
+        # tlp_armed gates the firing path: only when the
+        # arming logic in '_transmit_packet' actually armed
+        # the TLP timer should this tick treat a
+        # '_timer_expired' result as a real timer expiration.
+        # Without this gate a session that armed a TLP, let it
+        # fire, and never re-armed would still satisfy the
+        # downstream expiry check and _tlp_pto_tick would
         # spuriously fire a retransmit on every FSM tick.
         if not self._rack_tlp.tlp_armed:
             return
@@ -4161,10 +4161,10 @@ class TcpSession:
         # immediately. Arming the timer here (rather than only inside
         # '_transmit_packet') ensures the FIRST inbound data segment
         # after the handshake is properly delayed - without this, the
-        # delayed-ACK timer would not yet be in 'stack.timer._timers'
+        # delayed-ACK timer would not yet be armed in '_timer_deadlines'
         # (the third-leg ACK was emitted from within SYN_SENT, which
-        # does not arm the timer), so 'is_expired' would return True on
-        # the very next tick and an immediate ACK would slip out.
+        # does not arm the timer), so the held ACK would not be
+        # deferred and an immediate ACK would slip out.
         if packet_rx_md.tcp__data and overlap_prefix < len(packet_rx_md.tcp__data):
             new_data = packet_rx_md.tcp__data[overlap_prefix:]
             self._enqueue_rx_buffer(new_data)
