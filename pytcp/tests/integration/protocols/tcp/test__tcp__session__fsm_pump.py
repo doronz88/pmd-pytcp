@@ -37,6 +37,8 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
+from pytcp.protocols.tcp.tcp__cwnd import initial_window
+from pytcp.protocols.tcp.tcp__rto import initial_state
 from pytcp.protocols.tcp.tcp__session import FsmState, SysCall
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -245,4 +247,124 @@ class TestTcpFsmPump(TcpSessionTestCase):
             idle_tx,
             [],
             msg="A quiescent ESTABLISHED session MUST emit nothing across a 5 s idle advance.",
+        )
+
+    def test__pump__bare_send_with_no_other_activity_transmits(self) -> None:
+        """
+        Ensure a bare 'send()' on an otherwise-quiescent
+        ESTABLISHED session results in the data being
+        transmitted on the next tick. 'TcpSession.send()' does
+        NOT route through 'tcp_fsm' (it only extends the TX
+        buffer), so the FSM pump — not the syscall path — emits
+        the segment; this pins the non-'tcp_fsm'-mutator gap
+        the Phase-4c '_kick_pump' must close.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cc.snd_ewn = PEER__WIN
+        self._advance(ms=300)
+
+        session.send(data=b"bare")
+        tx = self._advance(ms=1)
+
+        self.assertEqual(
+            len(tx),
+            1,
+            msg="A bare send() with nothing else active MUST transmit the data on the next tick.",
+        )
+        self.assertEqual(
+            self._parse_tx(tx[0]).payload,
+            b"bare",
+            msg="The pumped segment MUST carry the sent payload.",
+        )
+
+    def test__pump__send_after_idle_transmits_and_resets_rto(self) -> None:
+        """
+        Ensure a 'send()' after an idle period longer than the
+        RTO both transmits the data and resets '_rto_state' to
+        'initial_state()'. The idle-reset runs in the
+        per-segment send pipeline, so it only fires if the
+        post-idle send is actually pumped out.
+
+        Reference: RFC 6298 §5.7 (restart-after-idle).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        session._cc.snd_ewn = PEER__WIN
+
+        session.send(data=b"first")
+        self._advance(ms=1)
+        first_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=session._snd_seq.max,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=first_ack)
+
+        self._advance(ms=session._rto_state.rto_ms + 1000)
+
+        session.send(data=b"second")
+        tx = self._advance(ms=1)
+
+        self.assertEqual(
+            len(tx),
+            1,
+            msg="The post-idle send() MUST transmit the data on the next tick.",
+        )
+        self.assertEqual(
+            session._rto_state,
+            initial_state(),
+            msg=(
+                "An idle longer than rto_ms MUST reset '_rto_state' to "
+                f"initial_state() on the next send. Got {session._rto_state!r}."
+            ),
+        )
+
+    def test__pump__send_after_idle_applies_restart_window(self) -> None:
+        """
+        Ensure a 'send()' after an idle period longer than the
+        RTO applies the restart-window cwnd reduction to
+        RW = min(IW, cwnd_pre_idle). Like the idle-reset, this
+        runs in the per-segment send pipeline and only fires if
+        the post-idle send is pumped out.
+
+        Reference: RFC 5681 §4.1 (Restart Window after idle).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        mss = session._win.snd_mss
+
+        session.send(data=b"prime")
+        self._advance(ms=1)
+        prime_ack = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=session._snd_seq.max,
+            flags=("ACK",),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=prime_ack)
+
+        session._cc.cwnd = 100 * mss
+        session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
+
+        self._advance(ms=session._rto_state.rto_ms + 100)
+
+        session.send(data=b"after-idle")
+        self._advance(ms=1)
+
+        expected_rw = min(initial_window(mss), 100 * mss)
+        self.assertEqual(
+            session._cc.cwnd,
+            expected_rw,
+            msg=(
+                "After a >RTO idle, the next send() MUST reduce cwnd to "
+                f"RW = min(IW, prior) = {expected_rw}. Got {session._cc.cwnd}."
+            ),
         )
