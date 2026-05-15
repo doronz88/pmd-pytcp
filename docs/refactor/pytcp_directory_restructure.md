@@ -218,18 +218,38 @@ but **all sites migrate to the new path in the same commit**.
 
 ### 5.3 `stack/__init__.py` split
 
-Today (~751 lines) — extract into three files:
+**Revised approach** — singletons stay in `pytcp/stack/`. The
+test harness writes `stack.X = Y` directly (verified in
+`pytcp/tests/lib/{icmp,udp,tcp_session}_testcase.py`); moving
+singletons to a sibling module would break those writes
+because `import pytcp.stack as stack; stack.X = Y` writes to
+the `pytcp.stack` module, not to whatever module hosts the
+declaration. Re-import-time visibility would only get the
+*initial* value across, not subsequent mutations.
+
+Split (752 lines → 2 files):
 
 | Concern                                                | Lines (est) | New home                       |
 |--------------------------------------------------------|-------------|--------------------------------|
-| `STACK__MAC_ADDRESS`, `STACK__IP4_HOST`, `STACK__IP6_HOST`, `IP4__BROADCAST__*`, `IP6__MULTICAST__*`, `MAC__UNSPECIFIED`, `LOG__CHANNEL`, `*_SUPPORT`, etc. (fixture topology + stack-wide policy ALL_CAPS constants) | ~250 | `pytcp/runtime/singletons.py` |
-| Module-level singleton attribute declarations (`tx_ring: TxRing`, `arp_cache: ArpCache`, `nd_cache: NdCache`, `tcp_stack: TcpStack`, `pmtu_cache: dict[...]`, `sockets: dict[...]`, `icmp{4,6}_error_rate_limiter`, `packet_handler`, `timer`, `stack_initialized: bool`) | ~50 | `pytcp/runtime/singletons.py` |
-| `init(...)`, `start()`, `stop()`, `mock__init(...)`, the `LOG__CHANNEL` mutate helpers | ~350 | `pytcp/stack/lifecycle.py` |
-| Re-exports — what `pytcp.stack` exposes (`from .lifecycle import init, start, stop, mock__init` + `from . import sysctl, link, address`) and the `__all__` list | ~50 | `pytcp/stack/__init__.py` |
+| Constants (secrets, MTU, address defaults, `LOG__*`, port range, `IP*__SUPPORT`, etc.) | ~150 | stays in `pytcp/stack/__init__.py` |
+| `TunTapFlag` enum + `IFF_*` bare-alias exports + `TUNSETIFF` constant | ~30 | stays in `pytcp/stack/__init__.py` |
+| Singleton attribute declarations (`tx_ring: TxRing`, `arp_cache: ArpCache`, `nd_cache: NdCache`, `tcp_stack: TcpStack`, `pmtu_cache: dict[...]`, `sockets: dict[...]`, `icmp{4,6}_error_rate_limiter`, `packet_handler`, `timer`, `address: Ip4AddressApi`, `link: LinkApi`, `dhcp4_client`, `link_local`, `stack_initialized: bool`, `stack_running: bool`, `interface_mtu`) + `current_pmtu()` helper | ~90 | stays in `pytcp/stack/__init__.py` |
+| `initialize_interface__tap()` / `initialize_interface__tun()` (TUN/TAP fd setup helpers) | ~60 | stays in `pytcp/stack/__init__.py` |
+| `init(...)`, `start()`, `stop()`, `mock__init(...)` lifecycle functions | ~360 | **new** `pytcp/stack/lifecycle.py` |
+| Re-exports — `from pytcp.stack.lifecycle import init, start, stop, mock__init` | ~5 | added to `pytcp/stack/__init__.py` |
 
-The new `pytcp/stack/__init__.py` is a pure re-export module.
-That eliminates the 751-line file and makes the Phase-3 API
-surface match what's in CLAUDE.md's North Star table 1:1.
+The lifecycle functions in `lifecycle.py` read and write the
+singletons via `import pytcp.stack as stack; stack.X = Y` —
+the same pattern the test harness uses, so a single canonical
+"writeable" module for stack state (the `pytcp.stack`
+namespace). `runtime/` does NOT get a `singletons.py`.
+
+Result: `pytcp/stack/__init__.py` shrinks from ~752 lines to
+~415 lines (45% reduction); the gnarly 360-line lifecycle code
+moves to a dedicated file. The Phase-3 north-star table stays
+honoured — `pytcp.stack.*` is still the public namespace; the
+internal split is between `__init__.py` (state) and
+`lifecycle.py` (lifecycle methods).
 
 ### 5.4 Test layout — unit tests relocate; integration tests stay
 
@@ -441,44 +461,34 @@ into `pytcp/stack/lifecycle.py`. Shrink
 
 Steps (one commit):
 
-1. Create `pytcp/runtime/singletons.py` with all the
-   `STACK__*` / `IP*__*` / `LOG__CHANNEL` constants + the
-   `tx_ring: TxRing` / `arp_cache: ArpCache` / etc.
-   attribute declarations.
-2. Create `pytcp/stack/lifecycle.py` with `init()`, `start()`,
-   `stop()`, `mock__init()`, plus the helpers they delegate to.
-3. Reduce `pytcp/stack/__init__.py` to:
-   ```python
-   from pytcp.stack.lifecycle import init, start, stop, mock__init
-   from pytcp.stack import sysctl, link, address  # re-export
-   from pytcp.runtime.singletons import *  # re-export legacy constants
-   __all__ = ["init", "start", "stop", "mock__init", "sysctl", "link", "address",
-              "STACK__MAC_ADDRESS", "STACK__IP4_HOST", ...]
-   ```
-4. Inside `pytcp/stack/lifecycle.py`, mutate the singletons
-   in `pytcp/runtime/singletons.py` (`from pytcp.runtime import singletons`).
-5. Update test-harness imports — the harness has long
-   imported these by `from pytcp import stack` then
-   `stack.tx_ring = ...`; that pattern continues to work
-   because the re-export keeps the names visible on the
-   `pytcp.stack` module.
-6. **Split the existing `test__stack__init.py`** (§5.4.1):
+1. Create `pytcp/stack/lifecycle.py` containing `init()`,
+   `start()`, `stop()`, `mock__init()` — copied verbatim from
+   the current `stack/__init__.py`. The functions still use
+   the `global timer, tx_ring, ...` pattern, but rewritten as
+   `import pytcp.stack as _stack; _stack.timer = Timer(...)`
+   because the symbols now live in a sibling module.
+2. Update `pytcp/stack/__init__.py`:
+   - Delete the four lifecycle functions (~360 lines).
+   - Add `from pytcp.stack.lifecycle import init, start, stop, mock__init`
+     at the bottom of the file so `pytcp.stack.init` /
+     `.start` / `.stop` / `.mock__init` keep working.
+   - Constants, singleton declarations, `current_pmtu()`,
+     TunTapFlag, IFF_* aliases, and the
+     `initialize_interface__{tap,tun}()` helpers stay.
+3. **Split the existing `test__stack__init.py`** (§5.4.1):
    - Lifecycle tests (`init/start/stop/mock__init`) → new
      `pytcp/tests/unit/stack/test__stack__lifecycle.py`.
-   - Re-export surface assertions stay in the slimmed-down
-     `test__stack__init.py`.
-   - Any singleton-attribute-only tests (rare) → new
-     `pytcp/tests/unit/runtime/test__runtime__singletons.py`.
-7. `make lint && make test` — must be green.
+   - Re-export surface assertions + constant tests stay in
+     the slimmed-down `test__stack__init.py`.
+4. `make lint && make test` — must be green.
 
-Risk: the re-export needs to make every name visible
-`pytcp.stack.X` exposes today. Tests (especially
-`NetworkTestCase.setUp` snapshotting `stack.__dict__`)
-rely on these being attributes of the `pytcp.stack` module,
-not just symbols re-exported from another module. A
-`from pytcp.runtime.singletons import *` paired with a
-`__all__` covers it, but the snapshot/restore pattern needs
-re-validation in this phase.
+Risk: `lifecycle.py` mutates `pytcp.stack`'s module-level
+state via attribute assignment on the imported `_stack`
+module. Python supports this — module attribute assignment
+is identical regardless of which file does the assignment,
+as long as both files share the same `pytcp.stack` module
+object. The test harness uses the same pattern, so this is
+the canonical idiom.
 
 ### Phase 3 — Relocate Phase-3 public APIs
 

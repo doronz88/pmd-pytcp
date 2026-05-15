@@ -729,9 +729,9 @@ class TestStackInitSharedPacketStats(TestCase):
         from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 
         with (
-            patch.object(stack, "TxRing") as tx_ring_cls,
-            patch.object(stack, "RxRing") as rx_ring_cls,
-            patch.object(stack, "PacketHandlerL2") as handler_cls,
+            patch.object(stack.lifecycle, "TxRing") as tx_ring_cls,
+            patch.object(stack.lifecycle, "RxRing") as rx_ring_cls,
+            patch.object(stack.lifecycle, "PacketHandlerL2") as handler_cls,
         ):
             stack.init(
                 fd=-1,
@@ -793,9 +793,9 @@ class TestStackInitSharedPacketStats(TestCase):
         from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 
         with (
-            patch.object(stack, "TxRing") as tx_ring_cls,
-            patch.object(stack, "RxRing") as rx_ring_cls,
-            patch.object(stack, "PacketHandlerL3") as handler_cls,
+            patch.object(stack.lifecycle, "TxRing") as tx_ring_cls,
+            patch.object(stack.lifecycle, "RxRing") as rx_ring_cls,
+            patch.object(stack.lifecycle, "PacketHandlerL3") as handler_cls,
         ):
             stack.init(
                 fd=-1,
@@ -910,11 +910,11 @@ class TestStackInitArpCacheConfig(TestCase):
         """
 
         with (
-            patch.object(stack, "TxRing"),
-            patch.object(stack, "RxRing"),
-            patch.object(stack, "PacketHandlerL2"),
-            patch.object(stack, "ArpCache"),
-            patch.object(stack, "NdCache"),
+            patch.object(stack.lifecycle, "TxRing"),
+            patch.object(stack.lifecycle, "RxRing"),
+            patch.object(stack.lifecycle, "PacketHandlerL2"),
+            patch.object(stack.lifecycle, "ArpCache"),
+            patch.object(stack.lifecycle, "NdCache"),
         ):
             stack.init(
                 fd=-1,
