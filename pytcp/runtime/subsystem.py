@@ -40,7 +40,25 @@ SUBSYSTEM_SLEEP_TIME__SEC = 0.1
 
 class Subsystem(ABC):
     """
-    The user-space services and clients base class.
+    Base class for stack-internal background-thread runtime
+    components. Each subclass implements '_subsystem_loop()'
+    which the base wraps in a 'while not stop_event' loop
+    running on a dedicated worker thread spawned by 'start()'
+    and joined by 'stop()'. Used by 'TxRing', 'RxRing',
+    'Timer', and 'NeighborCache' (the IPv4 'ArpCache' and
+    IPv6 'NdCache' parents) — every long-lived kernel-side
+    runtime that needs an independent thread of execution.
+
+    This is a runtime / kernel-side primitive, NOT a Phase-3
+    public API surface. Userspace consumers MUST NOT
+    subclass it — see CLAUDE.md "no userspace reach-through
+    to stack internals". The home in 'pytcp/runtime/' is
+    structurally enforcing that boundary.
+
+    Initialisation contract — subclasses must set
+    'self._subsystem_name' BEFORE calling 'super().__init__()'
+    because the base init logs an 'Initializing <name>' line
+    on the 'stack' channel.
     """
 
     _subsystem_name: str
