@@ -1001,17 +1001,31 @@ fallout.
 
 ## 12. Out-of-scope follow-ups
 
-- **`register_timer` / `is_expired` migration to callback
+- ~~**`register_timer` / `is_expired` migration to callback
   form.** ~24 TCP session call sites. Big refactor;
-  separate plan.
-- **Coalescing.** If timer wakeups become a hot spot,
-  group nearby deadlines.
+  separate plan.~~ **DELIVERED** by
+  `docs/refactor/tcp_timer_client_migration.md` (MIGRATION
+  COMPLETE 2026-05-15): the TCP FSM is event-driven via a
+  per-session deadline map + coalesced service handle, and
+  the named-flag shim was deleted outright from `Timer` /
+  `FakeTimer`.
+- ~~**Coalescing.** If timer wakeups become a hot spot,
+  group nearby deadlines.~~ **DELIVERED** by the same
+  migration (Phase 4c-b): per-session timers collapse to a
+  single `_service_handle` re-armed to the soonest pending
+  deadline (1 ms floor) — one timer entry per session, not
+  one per logical timer.
 - **Per-task threads.** If a callback blocks the worker
-  for too long, hoist to a thread pool.
-- **`is_expired` legacy semantics drift.** The current
+  for too long, hoist to a thread pool. (Still
+  speculative — no current need.)
+- ~~**`is_expired` legacy semantics drift.** The current
   API returns `True` for an unknown name (collapses
   "never registered" with "expired"). The shim preserves
-  this. Documented in §4.4.
+  this. Documented in §4.4.~~ **RESOLVED** by the same
+  migration: the conflation no longer exists — the shim is
+  gone and the de-conflated `_timer_expired` /
+  `_timer_armed` helpers treat "never armed" and "fired"
+  as distinct states.
 - **Future Phase-2 (router) demands** — many more
   concurrent timers (per-flow PMTUD probes, NUD timers,
   route-cache GC). The heap design scales; this plan
