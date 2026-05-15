@@ -30,7 +30,7 @@ DestOpts parse to refuse pathological option lists (huge
 Pad bursts, excessive unknown options) that could be used
 to mount a resource-exhaustion attack on the parser.
 
-pytcp/lib/ip6_ext_hdr_limits.py
+pytcp/protocols/ip6/ip6__ext_hdr_limits.py
 
 ver 3.0.4
 """

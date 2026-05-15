@@ -24,9 +24,9 @@
 
 """
 This module contains tests for the IPv6 Flow Label generator
-('compute_ip6_flow_label') in 'pytcp/lib/ip6_flow_label.py'.
+('compute_ip6_flow_label') in 'pytcp/protocols/ip6/ip6__flow_label.py'.
 
-pytcp/tests/unit/lib/test__lib__ip6_flow_label.py
+pytcp/tests/unit/protocols/ip6/test__ip6__flow_label.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest.mock import patch
 
 from net_addr import Ip6Address
 from pytcp import stack
-from pytcp.lib.ip6_flow_label import compute_ip6_flow_label
+from pytcp.protocols.ip6.ip6__flow_label import compute_ip6_flow_label
 
 
 class TestIp6FlowLabel(TestCase):

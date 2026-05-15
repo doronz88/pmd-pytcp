@@ -26,7 +26,7 @@
 This module contains tests for the RFC 6724 §10.3 default
 policy-table helpers.
 
-pytcp/tests/unit/lib/test__lib__ip6_policy_table.py
+pytcp/tests/unit/protocols/ip6/test__ip6__policy_table.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip6Address
-from pytcp.lib.ip6_policy_table import (
+from pytcp.protocols.ip6.ip6__policy_table import (
     DEFAULT_POLICY_TABLE,
     PolicyEntry,
     lookup,

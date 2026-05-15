@@ -61,13 +61,13 @@ from net_proto.protocols.ip6_routing.ip6_routing__errors import (
 )
 from net_proto.protocols.ip6_routing.ip6_routing__parser import Ip6RoutingParser
 from pytcp import stack
-from pytcp.lib.ip6_ext_hdr_limits import (
-    Ip6ExtHdrCapViolation,
-    check_ext_hdr_option_caps,
-)
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
+from pytcp.protocols.ip6.ip6__ext_hdr_limits import (
+    Ip6ExtHdrCapViolation,
+    check_ext_hdr_option_caps,
+)
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 

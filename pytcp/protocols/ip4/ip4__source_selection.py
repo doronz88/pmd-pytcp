@@ -30,7 +30,7 @@ The IPv4 family has no SLAAC PREFERRED/DEPRECATED state, no
 temporary-address machinery, and no §10.3 policy table, so
 only rules 1, 2, and 8 of the §5 algorithm apply. The
 helpers exposed here mirror the IPv6 ones in
-'pytcp/lib/ip6_source_selection.py': scope extraction
+'pytcp/protocols/ip6/ip6__source_selection.py': scope extraction
 ('ip4_address_scope') and 32-bit common-prefix-length
 ('common_prefix_len'). The selector itself lives on the
 IPv4 TX mixin because it needs the runtime address book.

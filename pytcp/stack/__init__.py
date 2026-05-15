@@ -113,7 +113,7 @@ TCP__ISS_SECRET: bytes = secrets.token_bytes(16)
 # RFC 6437 §3 IPv6 Flow Label generation secret. Generated
 # once at module import via 'secrets.token_bytes(16)' so each
 # PyTCP stack process picks a fresh 128-bit keying value for
-# the per-(src, dst) flow-label hash. 'pytcp.lib.ip6_flow_label.compute_ip6_flow_label'
+# the per-(src, dst) flow-label hash. 'pytcp.protocols.ip6.ip6__flow_label.compute_ip6_flow_label'
 # reads this when the IPv6 TX path needs a flow label (and
 # the caller did not supply one explicitly). Same allocation
 # pattern as 'TCP__ISS_SECRET' / 'TCP__FASTOPEN_SECRET'; the

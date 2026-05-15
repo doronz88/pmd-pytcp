@@ -41,7 +41,7 @@ the Phase-1 (src, dst) approximation satisfies RFC 6437
 §3's per-flow stability requirement and gives uniform
 distribution via the secret-keyed hash.
 
-pytcp/lib/ip6_flow_label.py
+pytcp/protocols/ip6/ip6__flow_label.py
 
 ver 3.0.4
 """

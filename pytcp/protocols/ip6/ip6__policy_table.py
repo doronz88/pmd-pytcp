@@ -36,7 +36,7 @@ A future Phase §12c.3.b may add a sysctl-driven runtime
 override, but the default table is sufficient for the §5
 rule-6 consumer to stop being a no-op.
 
-pytcp/lib/ip6_policy_table.py
+pytcp/protocols/ip6/ip6__policy_table.py
 
 ver 3.0.4
 """

@@ -26,7 +26,7 @@
 RFC 4007 §5 / RFC 4291 §2.7 address-scope enum shared by the
 IPv4 and IPv6 source-selection helpers
 ('pytcp/protocols/ip4/ip4__source_selection.py' and
-'pytcp/lib/ip6_source_selection.py'). The numeric values are
+'pytcp/protocols/ip6/ip6__source_selection.py'). The numeric values are
 the same across families so the RFC 6724 §5 rule-2
 'same-scope' comparison stays a plain integer compare
 regardless of address family.

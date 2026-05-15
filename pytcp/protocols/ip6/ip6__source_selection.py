@@ -33,7 +33,7 @@ applying RFC 6724 §5 rules 2 and 8. The selector itself lives on
 the IPv6 TX mixin because it needs the runtime address book
 ('_ip6_host', '_icmp6_slaac_addresses', '_icmp6_temp_addresses').
 
-pytcp/lib/ip6_source_selection.py
+pytcp/protocols/ip6/ip6__source_selection.py
 
 ver 3.0.4
 """

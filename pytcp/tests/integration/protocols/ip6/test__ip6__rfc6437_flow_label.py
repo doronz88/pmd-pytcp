@@ -46,8 +46,8 @@ from typing import override
 
 from net_addr import Ip6Address
 from net_proto import Icmp6Assembler, Icmp6MessageEchoRequest
-from pytcp.lib.ip6_flow_label import compute_ip6_flow_label
 from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
+from pytcp.protocols.ip6.ip6__flow_label import compute_ip6_flow_label
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 

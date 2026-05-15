@@ -45,15 +45,15 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.ip6_policy_table import lookup as ip6_policy_lookup
-from pytcp.lib.ip6_source_selection import (
-    common_prefix_len,
-    ip6_address_scope,
-)
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddressState
+from pytcp.protocols.ip6.ip6__policy_table import lookup as ip6_policy_lookup
+from pytcp.protocols.ip6.ip6__source_selection import (
+    common_prefix_len,
+    ip6_address_scope,
+)
 
 
 class PacketHandlerIp6Tx(ABC):
@@ -161,7 +161,7 @@ class PacketHandlerIp6Tx(ABC):
 
         ip6__flow = 0
         if ip6__constants.IP6__FLOW_LABEL_GENERATION:
-            from pytcp.lib.ip6_flow_label import compute_ip6_flow_label
+            from pytcp.protocols.ip6.ip6__flow_label import compute_ip6_flow_label
 
             ip6__flow = compute_ip6_flow_label(src=ip6__src, dst=ip6__dst)
 
