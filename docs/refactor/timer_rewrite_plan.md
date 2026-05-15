@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                |
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | **PROPOSAL** — drafted 2026-05-14; not yet started                                                                                                                   |
+| Status            | **SHIPPED** 2026-05-15 — Phase 0 `c0d1366f`, Phase 1 `b8350a76`, Phase 2 `cd567d1c`, Phase 3 `07eb6a7b`, Phase 4 `77753d59`, Phase 5 (this commit)                     |
 | Plan author       | Post-restructure timer-architecture review                                                                                                                           |
 | Source motivation | Current `pytcp/runtime/timer.py` uses a 1 ms tick-and-decrement loop with O(N)-per-tick scans and ~1000 idle-wakeups/sec. Six structural issues identified in review |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                             |
@@ -1031,7 +1031,9 @@ at docs/refactor/timer_rewrite_plan.md.
 Read the entire plan first. Then proceed phase by phase:
 
 - Phase 0 is already done — the plan was committed at SHA
-  <fill in after Phase 0 lands>.
+  c0d1366f. (All phases SHIPPED 2026-05-15 — see the
+  Status row at the top of this document for per-phase
+  SHAs. This resumption prompt is retained for archaeology.)
 - Phase 1 next: rewrite pytcp/runtime/timer.py with the
   heap-based core (§5.1, §5.2) + the legacy shims (§5.5).
   Test work in Phase 1 is COMPLETELY SPECIFIED in §6a —

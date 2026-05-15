@@ -156,7 +156,13 @@ from `pytcp/runtime/subsystem.py`.
   spawned).
 - Loop cadence: `SUBSYSTEM_SLEEP_TIME__SEC = 0.1` is the
   canonical poll interval; override only if the protocol
-  demands it.
+  demands it. A subsystem MAY instead block on a
+  `threading.Event` with a computed timeout for an
+  event-driven (zero idle-CPU) loop — the `Timer`
+  subsystem does this, waking on the nearest deadline or a
+  registration signal rather than polling. Such a
+  subsystem MUST wake its event from `stop()` so teardown
+  does not block on the wait.
 
 Subsystem subclasses include the `ArpCache` / `NdCache`
 neighbor caches (`pytcp/lib/neighbor.py` + adapters), the
