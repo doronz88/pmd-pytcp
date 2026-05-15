@@ -186,32 +186,6 @@ class TestFakeTimer(TestCase):
         self._timer.advance(50)
         inner.assert_called_once_with()
 
-    def test__fake_timer__legacy_register_method_periodic_form(self) -> None:
-        """
-        Ensure 'register_method(repeat_count=-1)' fires once per
-        delay across an advance.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method, delay=10, repeat_count=-1)
-        self._timer.advance(30)
-        self.assertEqual(method.call_count, 3, msg="A 10 ms periodic must fire 3 times across 30 ms.")
-
-    def test__fake_timer__legacy_register_method_oneshot_form(self) -> None:
-        """
-        Ensure 'register_method(repeat_count=0)' fires exactly
-        once.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method, delay=10, repeat_count=0)
-        self._timer.advance(20)
-        method.assert_called_once_with()
-
     def test__fake_timer__legacy_register_timer_and_is_expired(self) -> None:
         """
         Ensure a named legacy timer reports not-expired until its
@@ -224,21 +198,6 @@ class TestFakeTimer(TestCase):
         self.assertFalse(self._timer.is_expired("x"), msg="A pending named timer must report not-expired.")
         self._timer.advance(10)
         self.assertTrue(self._timer.is_expired("x"), msg="An elapsed named timer must report expired.")
-
-    def test__fake_timer__legacy_unregister_method(self) -> None:
-        """
-        Ensure 'unregister_method' cancels every registration for
-        the method so it never fires.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method, delay=10, repeat_count=-1)
-        self._timer.register_method(method=method, delay=10, repeat_count=-1)
-        self._timer.unregister_method(method)
-        self._timer.advance(50)
-        method.assert_not_called()
 
     def test__fake_timer__now_ms_setter_rebases_pending_deadlines(self) -> None:
         """

@@ -38,12 +38,12 @@ from typing import Any
 from pytcp.runtime.timer import TimerHandle
 
 # Heap-key priority bands. Named legacy timers (register_timer)
-# clear their flag BEFORE method callbacks (register_method /
-# call_*) that share the same millisecond deadline, so a periodic
-# fsm tick observing 'is_expired' at the expiry instant sees the
-# timer already expired — byte-for-byte the behaviour of the
-# previous tick-and-decrement FakeTimer, where '_tick_timers' ran
-# ahead of '_tick_tasks' within each millisecond.
+# clear their flag BEFORE call_* method callbacks that share the
+# same millisecond deadline, so a periodic fsm tick observing
+# 'is_expired' at the expiry instant sees the timer already
+# expired — byte-for-byte the behaviour of the previous
+# tick-and-decrement FakeTimer, where '_tick_timers' ran ahead
+# of '_tick_tasks' within each millisecond.
 _PRIO__NAMED_FLAG: int = 0
 _PRIO__METHOD: int = 1
 
@@ -61,16 +61,14 @@ class FakeTimer:
     so a single 'advance' may fire a periodic several times.
 
     Exposes both the new core API ('call_later' / 'call_periodic'
-    / 'cancel') and the legacy shim ('register_method' /
-    'register_timer' / 'is_expired' / 'unregister_method' /
-    'unregister_timers_with_prefix') so existing TCP integration
-    tests run unchanged.
+    / 'cancel') and the legacy named-flag shim ('register_timer' /
+    'is_expired' / 'unregister_timers_with_prefix') so the ~24 TCP
+    named-timer consumers run unchanged.
     """
 
     _heap: list[tuple[int, int, int, TimerHandle]]
     _now_ms: int
     _seq: int
-    _legacy_method_handles: dict[Callable[..., None], list[TimerHandle]]
     _legacy_named_flags: dict[str, TimerHandle]
 
     def __init__(self) -> None:
@@ -82,7 +80,6 @@ class FakeTimer:
         self._heap = []
         self._now_ms = 0
         self._seq = 0
-        self._legacy_method_handles = {}
         self._legacy_named_flags = {}
 
     @property
@@ -233,39 +230,8 @@ class FakeTimer:
         self._now_ms = target
 
     # ----------------------------------------------------------------
-    # Legacy shim layer — mirrors 'pytcp.runtime.timer.Timer'.
+    # Legacy named-flag shim — mirrors 'pytcp.runtime.timer.Timer'.
     # ----------------------------------------------------------------
-
-    def register_method(
-        self,
-        *,
-        method: Callable[..., None],
-        args: list[Any] | None = None,
-        kwargs: dict[str, Any] | None = None,
-        delay: int = 1,
-        delay_exp: bool = False,
-        repeat_count: int = -1,
-        stop_condition: Callable[[], bool] | None = None,
-    ) -> None:
-        """
-        LEGACY. Shim over 'call_later' / 'call_periodic' mirroring
-        the production 'Timer.register_method' contract.
-        """
-
-        assert delay >= 1, f"register_method delay must be >= 1; got {delay}"
-        assert delay_exp is False, "register_method delay_exp not supported"
-        assert stop_condition is None, "register_method stop_condition not supported"
-        assert repeat_count in (-1, 0), f"register_method repeat_count must be -1 or 0; got {repeat_count}"
-
-        call_args = () if args is None else tuple(args)
-        call_kwargs = {} if kwargs is None else kwargs
-
-        if repeat_count == -1:
-            handle = self.call_periodic(delay, method, *call_args, **call_kwargs)
-        else:
-            handle = self.call_later(delay, method, *call_args, **call_kwargs)
-
-        self._legacy_method_handles.setdefault(method, []).append(handle)
 
     def register_timer(self, *, name: str, timeout: int) -> None:
         """
@@ -313,13 +279,3 @@ class FakeTimer:
         for name in [n for n in self._legacy_named_flags if n.startswith(prefix)]:
             self._legacy_named_flags[name].cancelled = True
             del self._legacy_named_flags[name]
-
-    def unregister_method(self, method: Callable[..., None], /) -> None:
-        """
-        LEGACY. Cancel every handle previously installed by
-        'register_method' for the supplied bound method. Mirrors
-        the production API.
-        """
-
-        for handle in self._legacy_method_handles.pop(method, []):
-            handle.cancelled = True

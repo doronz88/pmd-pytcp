@@ -41,9 +41,9 @@ from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession
 
 class _TcpSessionFixture(TestCase):
     """
-    Shared fixture that patches 'stack.timer.register_method' (to
-    avoid registering a real timer callback) and 'stack.interface_mtu'
-    (so the session's MSS seed resolves deterministically).
+    Shared fixture that patches 'stack.timer' (to avoid registering
+    a real timer callback) and 'stack.interface_mtu' (so the
+    session's MSS seed resolves deterministically).
     """
 
     def setUp(self) -> None:

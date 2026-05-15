@@ -94,10 +94,9 @@ class Timer(Subsystem):
     invocation happens with the lock released so a handler may
     re-enter 'call_later' / 'cancel' without deadlocking.
 
-    A legacy shim layer ('register_method', 'register_timer',
-    'is_expired', 'unregister_method',
-    'unregister_timers_with_prefix') maps the old name / flag API
-    onto the new core so existing TCP / ICMPv6 consumers do not
+    A legacy shim layer ('register_timer', 'is_expired',
+    'unregister_timers_with_prefix') maps the old named-flag API
+    onto the new core so the ~24 TCP named-timer consumers do not
     churn in the same commit.
 
     Note: 'is_expired(name)' returns True for unknown names —
@@ -111,7 +110,6 @@ class Timer(Subsystem):
     _lock: threading.RLock
     _wakeup: threading.Event
     _seq: int
-    _legacy_method_handles: dict[Callable[..., None], list[TimerHandle]]
     _legacy_named_flags: dict[str, TimerHandle]
 
     @override
@@ -126,7 +124,6 @@ class Timer(Subsystem):
         self._lock = threading.RLock()
         self._wakeup = threading.Event()
         self._seq = 0
-        self._legacy_method_handles = {}
         self._legacy_named_flags = {}
 
     @property
@@ -287,51 +284,11 @@ class Timer(Subsystem):
                 return
 
     # ----------------------------------------------------------------
-    # Legacy shim layer — maps the old name / flag API onto the new
-    # heap core. Removed in a later phase once consumers migrate.
+    # Legacy named-flag shim — maps the old register_timer /
+    # is_expired / unregister_timers_with_prefix API onto the new
+    # heap core. Stays until the ~24 TCP named-timer consumers
+    # migrate to event-driven callbacks (out-of-scope follow-up).
     # ----------------------------------------------------------------
-
-    def register_method(
-        self,
-        *,
-        method: Callable[..., None],
-        args: list[Any] | None = None,
-        kwargs: dict[str, Any] | None = None,
-        delay: int = 1,
-        delay_exp: bool = False,
-        repeat_count: int = -1,
-        stop_condition: Callable[[], bool] | None = None,
-    ) -> None:
-        """
-        LEGACY. Shim over 'call_later' / 'call_periodic'.
-
-        'repeat_count == -1' maps to 'call_periodic(period_ms=delay)';
-        'repeat_count == 0' maps to 'call_later(delay_ms=delay)'. The
-        dropped features ('delay_exp', 'stop_condition', finite
-        'repeat_count') have no production consumer and are asserted
-        out.
-        """
-
-        assert delay >= 1, f"register_method delay must be >= 1; got {delay}"
-        assert delay_exp is False, "register_method delay_exp not supported"
-        assert stop_condition is None, "register_method stop_condition not supported"
-        assert repeat_count in (-1, 0), f"register_method repeat_count must be -1 or 0; got {repeat_count}"
-
-        __debug__ and log(
-            "timer",
-            f"<r>Registering method: {method.__name__}, delay={delay}</>",
-        )
-
-        call_args = () if args is None else tuple(args)
-        call_kwargs = {} if kwargs is None else kwargs
-
-        if repeat_count == -1:
-            handle = self.call_periodic(delay, method, *call_args, **call_kwargs)
-        else:
-            handle = self.call_later(delay, method, *call_args, **call_kwargs)
-
-        with self._lock:
-            self._legacy_method_handles.setdefault(method, []).append(handle)
 
     def register_timer(self, *, name: str, timeout: int) -> None:
         """
@@ -383,19 +340,3 @@ class Timer(Subsystem):
             for name in [n for n in self._legacy_named_flags if n.startswith(prefix)]:
                 self._legacy_named_flags[name].cancelled = True
                 del self._legacy_named_flags[name]
-
-    def unregister_method(self, method: Callable[..., None], /) -> None:
-        """
-        LEGACY. Cancel every 'TimerHandle' previously installed by
-        'register_method' for the supplied bound method. Used by
-        'TcpSession._change_state' on the CLOSED transition to drop
-        the per-tick 'tcp_fsm' callback.
-        """
-
-        __debug__ and log("timer", f"<r>Unregistering method: {method.__name__}</>")
-
-        with self._lock:
-            for handle in self._legacy_method_handles.pop(method, []):
-                handle.cancelled = True
-
-        self._wakeup.set()

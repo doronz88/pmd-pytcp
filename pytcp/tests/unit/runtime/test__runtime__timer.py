@@ -634,8 +634,8 @@ class TestTimerLoopPort(_ClockControlledTimerTestCase):
 
 class TestTimerLegacyShim(_ClockControlledTimerTestCase):
     """
-    The legacy 'register_method' / 'register_timer' / 'is_expired'
-    shim-contract tests.
+    The legacy 'register_timer' / 'is_expired' /
+    'unregister_timers_with_prefix' named-flag shim-contract tests.
     """
 
     def test__timer__register_timer_stores_timeout(self) -> None:
@@ -695,37 +695,6 @@ class TestTimerLegacyShim(_ClockControlledTimerTestCase):
             msg="An elapsed timer must report expired after the loop runs.",
         )
 
-    def test__timer__register_method_appends_task(self) -> None:
-        """
-        Ensure 'register_method' records exactly one cancellation
-        handle for the registered method.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method, delay=5)
-        handles = self._timer._legacy_method_handles[method]
-        self.assertEqual(len(handles), 1, msg="register_method must record one handle.")
-        self.assertIsInstance(handles[0], TimerHandle, msg="The recorded entry must be a TimerHandle.")
-
-    def test__timer__register_method_defaults(self) -> None:
-        """
-        Ensure the 'register_method' defaults (delay=1,
-        repeat_count=-1) resolve to a 1 ms periodic handle.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method)
-        handle = self._timer._legacy_method_handles[method][0]
-        self.assertEqual(
-            handle.period_ms,
-            1,
-            msg="Default register_method must map to call_periodic(period_ms=1).",
-        )
-
     def test__timer__register_timer_timeout_zero_rejected(self) -> None:
         """
         Ensure 'register_timer(timeout=0)' raises AssertionError —
@@ -740,122 +709,6 @@ class TestTimerLegacyShim(_ClockControlledTimerTestCase):
             "timeout must be >= 1",
             str(ctx.exception),
             msg="The assertion message must name the contract violation.",
-        )
-
-    def test__timer__register_method_delay_zero_rejected(self) -> None:
-        """
-        Ensure 'register_method(delay=0)' raises AssertionError —
-        the legacy contract requires delay >= 1.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(AssertionError) as ctx:
-            self._timer.register_method(method=MagicMock(__name__="m"), delay=0)
-        self.assertIn(
-            "delay must be >= 1",
-            str(ctx.exception),
-            msg="The assertion message must name the contract violation.",
-        )
-
-    def test__timer__register_method_repeat_count_minus_one_maps_to_periodic(self) -> None:
-        """
-        Ensure 'register_method(repeat_count=-1)' delegates to
-        'call_periodic'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        with patch.object(self._timer, "call_periodic", autospec=True) as periodic:
-            self._timer.register_method(method=method, delay=5, repeat_count=-1)
-        periodic.assert_called_once_with(5, method)
-
-    def test__timer__register_method_repeat_count_zero_maps_to_call_later(self) -> None:
-        """
-        Ensure 'register_method(repeat_count=0)' delegates to
-        'call_later'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        with patch.object(self._timer, "call_later", autospec=True) as later:
-            self._timer.register_method(method=method, delay=5, repeat_count=0)
-        later.assert_called_once_with(5, method)
-
-    def test__timer__register_method_finite_repeat_rejected(self) -> None:
-        """
-        Ensure a finite 'repeat_count' is rejected — the dropped
-        feature has no production consumer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(AssertionError) as ctx:
-            self._timer.register_method(method=MagicMock(__name__="m"), repeat_count=3)
-        self.assertIn(
-            "repeat_count must be -1 or 0",
-            str(ctx.exception),
-            msg="The assertion message must name the contract violation.",
-        )
-
-    def test__timer__register_method_delay_exp_rejected(self) -> None:
-        """
-        Ensure 'delay_exp=True' is rejected — the dropped feature
-        has no production consumer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(AssertionError) as ctx:
-            self._timer.register_method(method=MagicMock(__name__="m"), delay_exp=True)
-        self.assertIn(
-            "delay_exp not supported",
-            str(ctx.exception),
-            msg="The assertion message must name the contract violation.",
-        )
-
-    def test__timer__register_method_stop_condition_rejected(self) -> None:
-        """
-        Ensure a 'stop_condition' is rejected — the dropped feature
-        has no production consumer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(AssertionError) as ctx:
-            self._timer.register_method(method=MagicMock(__name__="m"), stop_condition=lambda: True)
-        self.assertIn(
-            "stop_condition not supported",
-            str(ctx.exception),
-            msg="The assertion message must name the contract violation.",
-        )
-
-    def test__timer__unregister_method_cancels_all_handles_for_method(self) -> None:
-        """
-        Ensure 'unregister_method' cancels every handle previously
-        registered for the method and clears the bookkeeping list.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock(__name__="m")
-        self._timer.register_method(method=method)
-        self._timer.register_method(method=method)
-        self._timer.register_method(method=method)
-        handles = list(self._timer._legacy_method_handles[method])
-
-        self._timer.unregister_method(method)
-
-        self.assertTrue(
-            all(h.cancelled for h in handles),
-            msg="Every handle for the method must be cancelled.",
-        )
-        self.assertEqual(
-            self._timer._legacy_method_handles.get(method, []),
-            [],
-            msg="The per-method handle list must be cleared.",
         )
 
     def test__timer__unregister_timers_with_prefix_cancels_matching(self) -> None:

@@ -59,15 +59,15 @@ class TestFakeTimer(TestCase):
 
     def test__fake_timer__advance_fires_registered_method_at_each_delay(self) -> None:
         """
-        Ensure 'register_method' with the production default (delay=1,
-        repeat_count=-1) fires the callback once per virtual ms.
+        Ensure 'call_periodic' at a 1 ms period fires the callback
+        once per virtual ms, forwarding its kwargs verbatim.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timer = FakeTimer()
         ticks: list[dict[str, object]] = []
-        timer.register_method(method=lambda **kw: ticks.append(kw), kwargs={"timer": True})
+        timer.call_periodic(1, lambda **kw: ticks.append(kw), timer=True)
 
         timer.advance(5)
 
