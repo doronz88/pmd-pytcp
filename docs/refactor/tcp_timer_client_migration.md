@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                                 |
 |-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | **Phases 0-3 SHIPPED 2026-05-15** (Phase 0 0e0fe396 / 22b46c7c, Phase 1 5a0161f8, Phase 2 719afd7c, Phase 3 9b22bcca). **Phase 4 attempt #1 ROLLED BACK** (post-mortem `2743f936`); **REDESIGNED — §5.6 `tx_pump` one-shot. Phase 4a SHIPPED** (FSM-pump characterization pins, green on unchanged Phase-3 code); **Phase 4b (the §5.6 redesign) ready to execute.** Phases 5-6 blocked on Phase 4b. |
+| Status            | **Phases 0-3 SHIPPED 2026-05-15** (Phase 0 0e0fe396 / 22b46c7c, Phase 1 5a0161f8, Phase 2 719afd7c, Phase 3 9b22bcca). **Phase 4 attempt #1 ROLLED BACK** (post-mortem `2743f936`); **REDESIGNED — §5.6 `tx_pump`. Phase 4a SHIPPED** (`8b24ad2c`); **Phase 4b attempt #1 ROLLED BACK** — the §5.6 redesign + 3 principled refinements cut divergence 392→3 but a narrow residual remains (see §7 Phase-4b post-mortem); **redesigned again — §5.7 `_kick_pump`; Phase 4c re-planned tests-first.** Phases 5-6 blocked on Phase 4c. |
 | Plan author       | Timer-rewrite follow-up (the deliberately-deferred §12 track from `docs/refactor/timer_rewrite_plan.md`)                                                                               |
 | Source motivation | The heap-based `Timer` is event-driven, but every TCP timer still uses the polling `register_timer` / `is_expired` named-flag shim, driven by a 1 ms `call_periodic(tcp_fsm, timer=True)` tick that exists only to scan flags |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                              |
@@ -919,6 +919,138 @@ is green and committed:
 
 Rollback: 4b is the single risky independently-revertible
 commit; 4a (tests-only) and Phases 1-3 stand alone.
+
+> **POST-MORTEM — Phase 4b attempt #1 ROLLED BACK (2026-05-15).**
+> The §5.6 design was implemented and then iteratively
+> hardened by three *principled, kept* refinements that cut
+> the TCP-integration divergence **392 → 51 → 35 → 3**:
+>
+> 1. **1 ms delay floor in `_reschedule_service`** (`max(1,
+>    …)`, never 0). The old periodic never serviced a timer
+>    instantly — it ticked at 1 ms granularity. A handler may
+>    legally no-op on an expired timer without re-arming /
+>    cancelling it (harmless under the poll); the coalesced
+>    handle would then spin at delay 0 forever (busy-loop /
+>    hang — observed: the TCP suite timed out at 420 s).
+>    Flooring at 1 ms makes every service fire advance the
+>    clock ≥ 1 ms, so `advance(N)` terminates in ≤ N fires,
+>    exactly like the periodic. **Fixed the hang; 392→51.**
+> 2. **Pump on every external dispatch, not just
+>    state-change/syscall.** §5.6's completeness claim was
+>    wrong: a *packet* that doesn't change state can leave
+>    deferred `_transmit_data` work (NewReno retransmit,
+>    ACK-clocked send) that the per-state TIMER handler — not
+>    the packet handler — emits on the follow-up tick. **51→35.**
+> 3. **`tx_pump` is a pace-while-work pump, not a one-shot.**
+>    `_transmit_data` emits **one segment per tick**, so the
+>    periodic was a continuous send-pacing clock. `tx_pump`
+>    must re-arm while `_has_pump_work()` (unsent buffer /
+>    in-flight data / closing) and stop only when fully
+>    quiescent (zero-idle preserved). **35→3.**
+>
+> **Residual (3) — narrow, precisely root-caused.** One is
+> the known `close_rst` test-infra reach-through (asserts on
+> the now-always-None `_tcp_fsm_handle`; trivially re-pointed
+> at `_service_handle` / `_timer_deadlines`). The other two
+> (`test__rto__idle_longer_than_rto_resets_state_to_initial`,
+> `test__cwnd__rfc5681_restart_window_reduces_cwnd_after_idle`)
+> share **one cause**: `TcpSession.send()` (lines ~700-719)
+> does **not** route through `tcp_fsm` — it only
+> `self._tx.buffer.extend(data)`. So `_pump_tail` (which
+> lives at the `tcp_fsm` tail) is never invoked by `send()`.
+> After an idle period `send()` buffers data but arms no
+> service handle → `advance(ms=1)` fires nothing → the data
+> is never transmitted → `_phase0_pre_send_hygiene` (the RFC
+> 6298 §5.7 idle-reset / RFC 5681 §4.1 restart-window, which
+> only runs when a segment is actually emitted) never
+> executes. The periodic masked this by ticking every ms
+> regardless of whether `send()` routed through `tcp_fsm`.
+> The three refinements above are **correct and retained**;
+> the residual is solely the **non-`tcp_fsm` mutator gap**.
+>
+> Decision: roll back 4b (single revertible commit), keep
+> Phases 0-4a, re-plan a focused 4c. No code change shipped
+> (tcp__session.py reverted to Phase-3 / commit `9b22bcca`
+> content; the Phase-4a `test__tcp__session__fsm_pump.py`
+> pins stand).
+
+### 5.7 Phase-4c redesign — `_kick_pump` for non-`tcp_fsm` mutators
+
+The §5.6 design (coalesced `_service_handle` + `tx_pump`)
+**plus the three Phase-4b refinements** (delay-floor,
+pump-on-external, pace-while-work) is sound. The only gap is
+that some session entry points mutate FSM-relevant state
+**without routing through `tcp_fsm`**, so `_pump_tail` never
+runs to arm the pump. Phase-4b proved exactly one such
+entry: `TcpSession.send()`.
+
+**Mechanism.** Add a tiny `_kick_pump(self)`:
+`self._arm_timer(_PUMP, 1)` (which already calls
+`_reschedule_service`), guarded `if self._state is not
+FsmState.CLOSED`. Call it from every non-`tcp_fsm` entry
+point that can leave FSM-progression work. Phase-4c step 1
+is an **audit, tests-first**, enumerating those entries; the
+known member is `send()`. Candidate audit list (confirm each
+by code-read, not assumption): `send()`, any direct
+`_tx.buffer` mutation outside `tcp_fsm`, socket-facade
+`sendto`/`write` shims, `shutdown`. Entries that already
+route through `tcp_fsm` (`close()` → `tcp_fsm(syscall=CLOSE)`,
+CONNECT, packet RX, ICMP) are already covered by
+`_pump_tail` and need no kick.
+
+**Completeness restated.** Post-4c, every FSM progression
+originates from: a packet / syscall / ICMP dispatch (→
+`_pump_tail` via `tcp_fsm`), a logical-timer expiry (→
+coalesced `_service_handle`), a state entry (→ `_pump_tail`
+state-change branch), pace-while-work (`_has_pump_work` →
+`_pump_tail` re-arm), **or a non-`tcp_fsm` mutator (→
+`_kick_pump`)**. That set is now closed.
+
+#### Phase 4c — attempt #2 (tests-first)
+
+**Phase 4c-a — non-`tcp_fsm` mutator audit pins (tests-only,
+green on UNCHANGED Phase-3 periodic code; §6.0 Rule 1).**
+Add characterization pins that exercise the gap class on the
+periodic code (where they pass) and would fail under a
+coalesced model lacking `_kick_pump`:
+- `test__pump__send_after_idle_transmits_and_resets_rto` —
+  send + ack, idle > RTO, `send()` again, `advance(ms=1)`:
+  the data MUST be transmitted and `_rto_state` reset to
+  `initial_state()` (the exact `test__rto__idle_longer…`
+  scenario, generalised into the pump pin file).
+- `test__pump__send_after_idle_applies_restart_window` — the
+  `test__cwnd__rfc5681_restart_window…` scenario.
+- `test__pump__bare_send_with_no_other_activity_transmits` —
+  the minimal gap: handshake, (quiesce), `send()`,
+  `advance(ms=1)` → exactly one data segment out.
+Commit: `pytcp.tests.integration.tcp: non-tcp_fsm mutator
+pins (Phase 4c-a)`.
+
+**Phase 4c-b — implement §5.6 + the three Phase-4b
+refinements + §5.7 `_kick_pump`.** Re-apply the (known-good)
+4b code: `_reschedule_service` with the **1 ms floor**,
+`_pump_tail` with **external = packet|syscall|icmp** and the
+**`_has_pump_work` pace-while-work re-arm**, `tx_pump` in
+every `_SERVICED_TIMERS_BY_STATE` entry, drop the periodic;
+**add `_kick_pump` and call it from every audited non-
+`tcp_fsm` mutator (`send()` confirmed)**. Fix the
+`close_rst` test-infra reach-through (re-point at
+`_service_handle is None` / `_timer_deadlines == {}` on
+CLOSED — same pattern as the timer-rewrite reach-through
+fixes). New-mechanism unit tests in
+`test__tcp__session__timers.py` (tx_pump arm/consume/
+pace-while-work, `_kick_pump` arms on `send()`,
+delay-floor ≥ 1, zero service handle when quiescent).
+**Gate (Rule 4 / §8 gate 5): the Phase-4a + 4c-a pins, the
+Phase-2/3 pins, and the entire TCP integration suite MUST
+return to 0 failures, byte-identical; TCP suite run under a
+timeout for busy-loop.** Any systemic regression ⇒ roll
+back 4c-b only.
+Commit: `pytcp.protocols.tcp: tx_pump + _kick_pump
+event-driven service tick (Phase 4c-b — trigger flip)`.
+
+Rollback: 4c-b is the single risky revertible commit;
+4c-a (tests-only) and Phases 1-4a stand alone.
 
 ### Phase 5 — Delete the periodic + handle-registry teardown
 Remove `self._tcp_fsm_handle` (`call_periodic`) entirely;
