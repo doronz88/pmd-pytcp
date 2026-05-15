@@ -31,12 +31,13 @@ pytcp/tests/unit/protocols/tcp/test__tcp__session__timers.py
 ver 3.0.4
 """
 
+import threading
 from types import SimpleNamespace
 from typing import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from pytcp.protocols.tcp.tcp__session import TcpSession
+from pytcp.protocols.tcp.tcp__session import _PUMP, FsmState, TcpSession
 from pytcp.runtime.timer import TimerHandle
 
 
@@ -52,7 +53,11 @@ class TestTcpSessionTimers(TestCase):
         'stack.timer' with a controllable virtual clock.
         """
 
-        self._timer = SimpleNamespace(now_ms=1000, cancel=MagicMock())
+        self._timer = SimpleNamespace(
+            now_ms=1000,
+            cancel=MagicMock(),
+            call_later=MagicMock(return_value="HANDLE"),
+        )
         self._stack_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",
             self._timer,
@@ -64,6 +69,13 @@ class TestTcpSessionTimers(TestCase):
         self._session = TcpSession.__new__(TcpSession)
         self._session._timer_deadlines = {}
         self._session._service_handle = None
+        # Extra bare-session state for the §5.6/§5.7 mechanism
+        # tests (harmless for the deadline-map helper tests).
+        self._session._state = FsmState.ESTABLISHED
+        self._session._lock__fsm = threading.RLock()
+        self._session._tx = SimpleNamespace(buffer=bytearray())  # type: ignore[assignment]
+        self._session._snd_seq = SimpleNamespace(una=0, max=0)  # type: ignore[assignment]
+        self._session._closing = False
 
     def test__tcp__timers__arm_sets_absolute_deadline(self) -> None:
         """
@@ -187,7 +199,11 @@ class TestTcpSessionTimers(TestCase):
             {},
             msg="_cancel_all_timers must empty the deadline map.",
         )
-        self._timer.cancel.assert_called_once_with(handle)
+        # '_reschedule_service' (live since Phase 4c) also
+        # cancels superseded intermediate handles, so assert the
+        # contract — the final service handle was cancelled and
+        # cleared — not an exact call count.
+        self._timer.cancel.assert_any_call(handle)
         self.assertIsNone(
             self._session._service_handle,
             msg="_cancel_all_timers must clear the service handle.",
@@ -246,4 +262,148 @@ class TestTcpSessionTimers(TestCase):
         self.assertFalse(
             self._session._timer_armed("challenge_ack"),
             msg="At the rate-limit boundary the gate must read not-armed so a fresh challenge ACK is emitted.",
+        )
+
+    def test__tcp__timers__reschedule_service_floors_delay_at_one(self) -> None:
+        """
+        Ensure '_reschedule_service' never arms the service
+        handle at delay 0 — an overdue timer is scheduled at the
+        1 ms floor, reproducing the periodic's 1 ms granularity
+        and guaranteeing the coalesced handle cannot busy-loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Deadline already in the past (overdue).
+        self._session._timer_deadlines["retransmit"] = self._timer.now_ms - 50
+        self._session._reschedule_service()
+        args, _ = self._timer.call_later.call_args
+        self.assertEqual(
+            args[0],
+            1,
+            msg="An overdue serviced timer MUST be scheduled at the 1 ms floor, never 0.",
+        )
+
+    def test__tcp__timers__reschedule_service_no_handle_when_nothing_armed(self) -> None:
+        """
+        Ensure '_reschedule_service' leaves no service handle
+        when no serviced timer is armed — the zero-idle-CPU
+        property.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._session._reschedule_service()
+        self.assertIsNone(
+            self._session._service_handle,
+            msg="With nothing armed there MUST be no coalesced service handle.",
+        )
+        self._timer.call_later.assert_not_called()
+
+    def test__tcp__timers__reschedule_service_respects_state_scope(self) -> None:
+        """
+        Ensure '_reschedule_service' ignores a timer that is
+        armed but not serviced in the current state, so an
+        out-of-scope timer cannot wake the session.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # 'delayed_ack' is serviced in ESTABLISHED/CLOSE_WAIT,
+        # NOT in SYN_SENT.
+        self._session._state = FsmState.SYN_SENT
+        self._session._timer_deadlines["delayed_ack"] = self._timer.now_ms + 10
+        self._session._reschedule_service()
+        self._timer.call_later.assert_not_called()
+        self.assertIsNone(
+            self._session._service_handle,
+            msg="A timer out of the current state's scope MUST NOT arm the service handle.",
+        )
+
+    def test__tcp__timers__has_pump_work(self) -> None:
+        """
+        Ensure '_has_pump_work' is True for unsent buffered
+        data, in-flight data, or a pending close, and False when
+        the session is fully quiescent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertFalse(self._session._has_pump_work(), msg="Quiescent session MUST have no pump work.")
+        self._session._tx.buffer.extend(b"x")
+        self.assertTrue(self._session._has_pump_work(), msg="Buffered data MUST be pump work.")
+        self._session._tx.buffer.clear()
+        self._session._snd_seq.una = 5
+        self.assertTrue(self._session._has_pump_work(), msg="In-flight data MUST be pump work.")
+        self._session._snd_seq.una = 0
+        self._session._closing = True
+        self.assertTrue(self._session._has_pump_work(), msg="A pending close MUST be pump work.")
+
+    def test__tcp__timers__kick_pump_arms_tx_pump(self) -> None:
+        """
+        Ensure '_kick_pump' (the non-tcp_fsm-mutator hook used
+        by 'send()') arms the 'tx_pump' one-shot at now + 1 ms.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._session._kick_pump()
+        self.assertEqual(
+            self._session._timer_deadlines.get(_PUMP),
+            self._timer.now_ms + 1,
+            msg="_kick_pump MUST arm tx_pump at now + 1 ms.",
+        )
+
+    def test__tcp__timers__kick_pump_noop_when_closed(self) -> None:
+        """
+        Ensure '_kick_pump' is a no-op once the session is
+        CLOSED (terminal — never re-pumped).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._session._state = FsmState.CLOSED
+        self._session._kick_pump()
+        self.assertNotIn(
+            _PUMP,
+            self._session._timer_deadlines,
+            msg="_kick_pump MUST NOT arm tx_pump on a CLOSED session.",
+        )
+
+    def test__tcp__timers__pump_tail_consumes_then_conditionally_rearms(self) -> None:
+        """
+        Ensure '_pump_tail' consumes tx_pump and re-arms it iff
+        the dispatch was external, changed state, or left pump
+        work — and otherwise leaves it cancelled (zero-idle).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Quiescent timer dispatch (not external, no state
+        # change, no pump work) -> consumed, not re-armed.
+        self._session._timer_deadlines[_PUMP] = self._timer.now_ms
+        self._session._pump_tail(FsmState.ESTABLISHED, False)
+        self.assertNotIn(
+            _PUMP,
+            self._session._timer_deadlines,
+            msg="A fully quiescent dispatch MUST consume tx_pump and not re-arm it.",
+        )
+
+        # External dispatch -> re-armed at now + 1.
+        self._session._pump_tail(FsmState.ESTABLISHED, True)
+        self.assertEqual(
+            self._session._timer_deadlines.get(_PUMP),
+            self._timer.now_ms + 1,
+            msg="An external dispatch MUST re-arm tx_pump at now + 1 ms.",
+        )
+
+        # Not external, no state change, but pump work pending
+        # -> re-armed (pacing).
+        self._session._timer_deadlines.pop(_PUMP, None)
+        self._session._closing = True
+        self._session._pump_tail(FsmState.ESTABLISHED, False)
+        self.assertIn(
+            _PUMP,
+            self._session._timer_deadlines,
+            msg="Pending pump work MUST keep tx_pump re-armed (pacing).",
         )

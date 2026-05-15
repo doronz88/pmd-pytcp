@@ -63,6 +63,8 @@ class _TcpSessionSyscallFixture(TestCase):
             is_expired=MagicMock(return_value=False),
             unregister_timers_with_prefix=MagicMock(),
             cancel=MagicMock(),
+            call_later=MagicMock(),
+            now_ms=0,
         )
         self._timer_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",

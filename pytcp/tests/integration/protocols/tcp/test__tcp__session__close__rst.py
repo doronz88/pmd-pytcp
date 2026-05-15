@@ -1163,39 +1163,28 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             ),
         )
 
-    def test__close_rst__session_teardown_unregisters_tcp_fsm_callback_task(self) -> None:
+    def test__close_rst__session_teardown_releases_event_driven_timer_state(self) -> None:
         """
         Ensure that when a session terminates (state ->
-        CLOSED), the per-tick 'tcp_fsm' callback handle
-        registered via 'stack.timer.call_periodic' is
-        cancelled so the session can be garbage collected and
-        dead-session ticks stop consuming CPU.
+        CLOSED) the event-driven timer state is fully released
+        — the coalesced '_service_handle' is cancelled-and-None
+        and the '_timer_deadlines' map is empty — so no
+        callback can fire on the dead session and it is
+        GC-eligible (no dead-session ticks, no leak).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
-
-        # Sanity check: '__init__' installed a live periodic
-        # handle that fires 'session.tcp_fsm(timer=True)' on
-        # every tick.
-        self.assertIsNotNone(
-            session._tcp_fsm_handle,
-            msg=(
-                "Setup precondition: TcpSession.__init__ MUST "
-                "store the periodic tcp_fsm timer handle. Without "
-                "this precondition the test below is vacuous."
-            ),
-        )
-        assert session._tcp_fsm_handle is not None
         self.assertIs(
-            session._tcp_fsm_handle.cancelled,
-            False,
-            msg="Setup precondition: the tcp_fsm handle must be live after handshake.",
+            session.state,
+            FsmState.ESTABLISHED,
+            msg="Setup precondition: handshake must reach ESTABLISHED.",
         )
 
         # Peer sends a clean RST. State -> CLOSED via
-        # '_tcp_fsm_established's RST handler.
+        # '_tcp_fsm_established's RST handler, which runs the
+        # CLOSED teardown ('_cancel_all_timers').
         peer_rst = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -1212,23 +1201,18 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: peer's clean RST must transition session to CLOSED.",
         )
 
-        # The bug this guards against: the per-session callback
-        # handle survives the CLOSED transition. It would keep
-        # firing on every tick, hold 'session' alive against GC,
-        # and burn CPU per tick.
-        self.assertIs(
-            session._tcp_fsm_handle.cancelled,
-            True,
-            msg=(
-                "After the session has terminated (state -> "
-                "CLOSED), the periodic tcp_fsm handle that "
-                "'__init__' registered via "
-                "'stack.timer.call_periodic' MUST be cancelled "
-                "by '_change_state' on CLOSED. Otherwise the "
-                "dead-session handle fires 'tcp_fsm(timer=True)' "
-                "on every tick (burning CPU per tick per dead "
-                "session) and the bound-method reference holds "
-                "the 'TcpSession' instance alive against GC "
-                "(leaking ~several KB per session)."
-            ),
+        # Post-migration teardown contract: no per-tick periodic
+        # exists anymore; the session is driven by the coalesced
+        # '_service_handle' + the deadline map, both of which
+        # '_cancel_all_timers' must release on CLOSED. Otherwise
+        # a stale handle could fire 'tcp_fsm' on a dead session
+        # (CPU per dead session) and pin it against GC.
+        self.assertIsNone(
+            session._service_handle,
+            msg="On CLOSED the coalesced '_service_handle' MUST be cancelled and cleared to None.",
+        )
+        self.assertEqual(
+            session._timer_deadlines,
+            {},
+            msg="On CLOSED the '_timer_deadlines' map MUST be empty (every logical timer cancelled).",
         )

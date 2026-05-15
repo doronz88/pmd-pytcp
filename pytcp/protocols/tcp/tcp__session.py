@@ -113,19 +113,29 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__socket import TcpSocket
 
 
-# Which logical timers each FSM state's timer handler actually
-# services (the §4.3 ordering/scope matrix of the TCP
-# timer-client migration plan, as data). Consumed by
-# '_reschedule_service' from Phase 4 on; inert in Phase 1
-# (the 1 ms 'tcp_fsm' periodic still drives servicing).
+# Which logical timers may wake the session in each FSM state
+# (the §4.3 scope matrix as data; §5.6/§5.7). Correctness
+# rule: under-inclusion is a bug (a serviced timer that never
+# wakes the session = missed action); over-inclusion is
+# harmless (a timer not actually armed simply is not pending;
+# a timer whose handler no-ops just costs one extra wakeup, as
+# the old 1 ms poll did). Hence 'persist' is in scope for
+# EVERY state whose handler calls '_transmit_data' (which
+# holds the persist logic), and the reserved 'tx_pump'
+# FSM-pump is in scope for EVERY state. 'challenge_ack' is
+# intentionally absent — a packet-path rate-limit gate that
+# needs no wakeup.
+_PUMP: str = "tx_pump"
 _SERVICED_TIMERS_BY_STATE: dict[FsmState, frozenset[str]] = {
-    FsmState.SYN_SENT: frozenset({"retransmit"}),
-    FsmState.SYN_RCVD: frozenset({"retransmit"}),
-    FsmState.ESTABLISHED: frozenset({"retransmit", "persist", "delayed_ack", "keepalive", "rack", "tlp"}),
-    FsmState.CLOSE_WAIT: frozenset({"retransmit", "persist", "delayed_ack"}),
-    FsmState.FIN_WAIT_1: frozenset({"retransmit"}),
-    FsmState.LAST_ACK: frozenset({"retransmit"}),
-    FsmState.TIME_WAIT: frozenset({"time_wait"}),
+    FsmState.SYN_SENT: frozenset({"retransmit", "persist", _PUMP}),
+    FsmState.SYN_RCVD: frozenset({"retransmit", "persist", _PUMP}),
+    FsmState.ESTABLISHED: frozenset({"retransmit", "persist", "delayed_ack", "keepalive", "rack", "tlp", _PUMP}),
+    FsmState.CLOSE_WAIT: frozenset({"retransmit", "persist", "delayed_ack", _PUMP}),
+    FsmState.FIN_WAIT_1: frozenset({"retransmit", "persist", _PUMP}),
+    FsmState.FIN_WAIT_2: frozenset({_PUMP}),
+    FsmState.CLOSING: frozenset({_PUMP}),
+    FsmState.LAST_ACK: frozenset({"retransmit", "persist", _PUMP}),
+    FsmState.TIME_WAIT: frozenset({"time_wait", _PUMP}),
 }
 
 
@@ -513,8 +523,16 @@ class TcpSession:
         # by '_reschedule_service' from Phase 4 on.
         self._service_handle: TimerHandle | None = None
 
-        # Setup timer to execute FSM time event every millisecond.
-        self._tcp_fsm_handle: TimerHandle | None = stack.timer.call_periodic(1, self.tcp_fsm, timer=True)
+        # Phase 4c: the FSM timer is event-driven — no 1 ms
+        # periodic. The coalesced '_service_handle' (armed by
+        # '_reschedule_service' from '_arm_timer'/'_cancel_timer'
+        # /'_kick_pump' and the 'tcp_fsm' tail) drives both
+        # logical-timer servicing and the 'tx_pump' FSM-pump
+        # (§5.6/§5.7). '_tcp_fsm_handle' stays None until Phase 5
+        # deletes the attribute; its CLOSED-teardown cancel is
+        # now a no-op ('_cancel_all_timers' releases
+        # '_service_handle').
+        self._tcp_fsm_handle: TimerHandle | None = None
 
     def _arm_timer(self, name: str, delay_ms: int, /) -> None:
         """
@@ -568,10 +586,95 @@ class TcpSession:
     def _reschedule_service(self) -> None:
         """
         Re-arm the coalesced per-session service handle to the
-        soonest deadline serviced in the current state. Phase-1
-        no-op: the 1 ms 'tcp_fsm' periodic still drives servicing;
-        the real implementation lands in Phase 4 (trigger flip).
+        soonest deadline among the logical timers serviced in
+        the current state. The 1 ms periodic is gone (Phase 4c);
+        this is the sole driver of timer-tick servicing.
+        Idempotent and cheap to call repeatedly (the prior
+        handle is lazily cancelled).
         """
+
+        if self._service_handle is not None:
+            stack.timer.cancel(self._service_handle)
+            self._service_handle = None
+
+        relevant = _SERVICED_TIMERS_BY_STATE.get(self._state, frozenset())
+        pending = [deadline for name, deadline in self._timer_deadlines.items() if name in relevant]
+        if not pending:
+            return
+
+        # Floor at 1 ms, never 0. The old 1 ms periodic NEVER
+        # serviced a timer instantly — it ticked at 1 ms
+        # granularity, so a due/overdue timer was acted on at
+        # the next ms tick. Reproducing that floor (a) keeps the
+        # cadence byte-identical to the periodic and (b)
+        # guarantees every service fire advances the clock by
+        # >= 1 ms, so a handler that no-ops on an expired timer
+        # without re-arming/cancelling it (legal under the old
+        # poll) cannot spin the coalesced handle at delay 0 —
+        # 'advance(N)' terminates in <= N service fires.
+        delay_ms = max(1, min(pending) - stack.timer.now_ms)
+        self._service_handle = stack.timer.call_later(delay_ms, self.tcp_fsm, timer=True)
+
+    def _has_pump_work(self) -> bool:
+        """
+        True while the FSM still needs the 1 ms pacing pump:
+        unsent buffered data ('_transmit_data' dribbles one
+        segment per tick), in-flight data (FIN/retransmit
+        progression), or a pending close. When none hold — and
+        no logical timer is armed — the session is genuinely
+        idle and the pump stops (zero-idle-CPU). delayed-ACK /
+        keep-alive / RACK / TLP / persist / TIME_WAIT need no
+        entry here: each is a logical timer the coalesced
+        '_service_handle' already drives.
+        """
+
+        return bool(self._tx.buffer) or self._snd_seq.una != self._snd_seq.max or self._closing
+
+    def _pump_tail(self, state_at_entry: FsmState, external: bool, /) -> None:
+        """
+        Re-arm the 'tx_pump' FSM-pump (1 ms) at the 'tcp_fsm'
+        tail while the FSM still needs ticking. The old 1 ms
+        periodic was not merely an event-wake — it was a
+        continuous send-pacing clock: '_transmit_data' emits one
+        segment per tick, so a multi-segment send needs a tick
+        per segment until the buffer drains. Re-pump iff this
+        dispatch was an external stimulus (packet / syscall /
+        ICMP), changed state, OR there is still pending pacing
+        work ('_has_pump_work'). A fully quiescent TIMER
+        dispatch (no state change, not external, no pump work)
+        does NOT re-pump → zero-idle-CPU. The 1 ms delay (plus
+        the 1 ms floor in '_reschedule_service') reproduces the
+        periodic's exactly-one-tick-per-millisecond cadence, so
+        active transfer is byte-identical. CLOSED is terminal —
+        never re-pumped.
+        """
+
+        self._cancel_timer(_PUMP)
+        if self._state is FsmState.CLOSED:
+            return
+        if external or self._state is not state_at_entry or self._has_pump_work():
+            self._arm_timer(_PUMP, 1)
+
+    def _kick_pump(self) -> None:
+        """
+        Arm the 'tx_pump' FSM-pump from a NON-'tcp_fsm' mutator
+        (§5.7). 'TcpSession.send()' extends the TX buffer
+        without routing through 'tcp_fsm', so '_pump_tail' never
+        runs to pick up the buffered data; the old 1 ms periodic
+        masked this by ticking unconditionally. Audit (Phase 4c,
+        confirmed by the Phase-4b full-suite run whose only
+        residual was send()-path): the sole non-'tcp_fsm'
+        FSM-progression mutator is 'send()'; listen / connect /
+        close / shutdown route through 'tcp_fsm', and receive /
+        abort need no pump. No-op once CLOSED. Takes
+        '_lock__fsm' (the deadline map is otherwise mutated only
+        under that lock by 'tcp_fsm' on the timer-worker thread;
+        'send()' runs on the caller thread).
+        """
+
+        with self._lock__fsm:
+            if self._state is not FsmState.CLOSED:
+                self._arm_timer(_PUMP, 1)
 
     @override
     def __str__(self) -> str:
@@ -716,7 +819,12 @@ class TcpSession:
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
             with self._lock__tx_buffer:
                 self._tx.buffer.extend(data)
-                return len(data)
+            # Kick the FSM pump OUTSIDE '_lock__tx_buffer' (the
+            # 'tcp_fsm' lock order is _lock__fsm -> _lock__tx_buffer;
+            # taking _lock__fsm while holding _lock__tx_buffer here
+            # would invert it and deadlock).
+            self._kick_pump()
+            return len(data)
 
         # This error should be raised when session is locally or fully closed.
         raise TcpSessionError("TCP session not in ESTABLISHED or CLOSE_WAIT state")
@@ -4162,6 +4270,11 @@ class TcpSession:
         """
 
         with self._lock__fsm:
+            # Phase 4c: snapshot the state before any dispatch so
+            # the tail can detect a transition and arm the
+            # 'tx_pump' FSM-pump (§5.6/§5.7).
+            state_at_entry = self._state
+
             # Phase 2 of the ICMP-into-FSM refactor: 'icmp' is
             # dispatched through 'FSM_ICMP_HANDLERS' to the per-state
             # handler carrying RFC 5927 §5.2 hard-vs-soft semantics
@@ -4169,6 +4282,7 @@ class TcpSession:
             # SYN_SENT is the only state allowed to abort).
             if icmp is not None:
                 tcp_fsm_dispatch_icmp(self, icmp)
+                self._pump_tail(state_at_entry, True)
                 return
 
             # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo
@@ -4300,3 +4414,5 @@ class TcpSession:
                 tcp_fsm_dispatch_syscall(self, syscall)
             elif timer:
                 tcp_fsm_dispatch_timer(self)
+
+            self._pump_tail(state_at_entry, packet_rx_md is not None or syscall is not None)

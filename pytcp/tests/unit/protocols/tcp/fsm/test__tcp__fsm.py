@@ -65,6 +65,7 @@ class _TcpSessionFsmFixture(TestCase):
             is_expired=MagicMock(return_value=False),
             unregister_timers_with_prefix=MagicMock(),
             cancel=MagicMock(),
+            call_later=MagicMock(),
             now_ms=0,
         )
         self._timer_patch = patch(

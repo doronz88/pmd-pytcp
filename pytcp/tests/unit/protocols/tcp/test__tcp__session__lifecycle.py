@@ -58,6 +58,8 @@ class _TcpSessionFixture(TestCase):
             is_expired=lambda _: False,
             unregister_timers_with_prefix=lambda _: None,
             cancel=lambda *_: None,
+            call_later=lambda *_a, **_k: None,
+            now_ms=0,
         )
         self._timer_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",
@@ -114,41 +116,35 @@ class TestTcpSessionInit(_TcpSessionFixture):
             msg="A fresh TcpSession must start in FsmState.CLOSED.",
         )
 
-    def test__tcp_session__init_registers_timer_callback(self) -> None:
+    def test__tcp_session__init_is_event_driven_no_periodic(self) -> None:
         """
-        Ensure '__init__' registers the 'tcp_fsm' callback with
-        'stack.timer.call_periodic' at a 1 ms period so the
-        per-millisecond timer ticks drive the FSM.
+        Ensure '__init__' does NOT register a 1 ms periodic
+        (the FSM is event-driven post-migration): no
+        'call_periodic', a None coalesced service handle, and
+        an empty deadline map. The pump / logical timers are
+        armed lazily on first activity, not at construction.
 
         Reference: RFC 9293 §3.8 (TCP timers drive FSM transitions).
         """
 
-        mock_register = MagicMock()
-        self._timer.call_periodic = mock_register
+        mock_periodic = MagicMock()
+        self._timer.call_periodic = mock_periodic
 
         session = self._make_session()
 
-        mock_register.assert_called_once()
-        args, kwargs = mock_register.call_args
-        self.assertEqual(
-            args[0],
-            1,
-            msg="TcpSession must register the tcp_fsm callback at a 1 ms period.",
+        mock_periodic.assert_not_called()
+        self.assertIsNone(
+            session._service_handle,
+            msg="A fresh TcpSession must have no coalesced service handle.",
         )
         self.assertEqual(
-            args[1].__func__,
-            TcpSession.tcp_fsm,
-            msg="TcpSession must register its tcp_fsm as the timer method.",
+            session._timer_deadlines,
+            {},
+            msg="A fresh TcpSession must have an empty deadline map (nothing armed at construction).",
         )
-        self.assertIs(
-            args[1].__self__,
-            session,
-            msg="The registered timer method must be bound to the new TcpSession instance.",
-        )
-        self.assertEqual(
-            kwargs,
-            {"timer": True},
-            msg="TcpSession must register the timer callback with timer=True.",
+        self.assertIsNone(
+            session._tcp_fsm_handle,
+            msg="The legacy periodic handle attribute must be None (no periodic registered).",
         )
 
     def test__tcp_session__init_rx_tx_buffers_empty(self) -> None:
