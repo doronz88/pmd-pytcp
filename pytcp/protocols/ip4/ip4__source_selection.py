@@ -41,7 +41,7 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp.lib.ip_scope import IpScope
+from pytcp.protocols.ip.ip_scope import IpScope
 
 
 def ip4_address_scope(address: Ip4Address, /) -> IpScope:

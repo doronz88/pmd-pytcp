@@ -39,7 +39,7 @@ ver 3.0.4
 """
 
 from net_addr import Ip6Address
-from pytcp.lib.ip_scope import IpScope
+from pytcp.protocols.ip.ip_scope import IpScope
 
 
 def ip6_address_scope(address: Ip6Address, /) -> IpScope | int:

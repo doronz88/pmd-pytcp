@@ -31,7 +31,7 @@ the same across families so the RFC 6724 §5 rule-2
 'same-scope' comparison stays a plain integer compare
 regardless of address family.
 
-pytcp/lib/ip_scope.py
+pytcp/protocols/ip/ip_scope.py
 
 ver 3.0.4
 """
