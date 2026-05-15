@@ -1,0 +1,709 @@
+# TCP Timer-Client Migration — Coalesced Deadline-Driven Service Tick
+
+| Field             | Value                                                                                                                                                                                 |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Status            | **PROPOSAL** — drafted 2026-05-15; not yet started                                                                                                                                    |
+| Plan author       | Timer-rewrite follow-up (the deliberately-deferred §12 track from `docs/refactor/timer_rewrite_plan.md`)                                                                               |
+| Source motivation | The heap-based `Timer` is event-driven, but every TCP timer still uses the polling `register_timer` / `is_expired` named-flag shim, driven by a 1 ms `call_periodic(tcp_fsm, timer=True)` tick that exists only to scan flags |
+| Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                              |
+| Touch points      | `pytcp/protocols/tcp/tcp__session.py` (~30 call sites), `pytcp/protocols/tcp/fsm/tcp__fsm__*.py` (7 state timer handlers + the TIME_WAIT poll), `pytcp/tests/lib/fake_timer.py` (no API change; behaviour-parity only), TCP integration suite |
+| Risk              | **High** — wide surface, FSM thread/ordering invariants are implicit in the single locked tick, `is_expired` conflation is load-bearing at several sites, the integration suite pins exact wire timing |
+| Phases            | 0 (this plan) → 1 (deadline-map helper, still 1 ms-driven, zero behaviour change) → 2 (migrate independent timers' *checks* to the helper) → 3 (migrate the coupled retransmit/rack/tlp cluster) → 4 (flip the trigger: 1 ms periodic → coalesced `call_later`) → 5 (delete the periodic, teardown via handle registry) → 6 (docs + close-out) |
+
+This document is the implementation plan for migrating the TCP
+session's timer clients off the polling `register_timer` /
+`is_expired` / `unregister_timers_with_prefix` named-flag shim
+and onto the event-driven `pytcp.runtime.timer` core, while
+**preserving the exact wire-observable behaviour** the
+integration suite pins.
+
+It is intentionally self-contained: a fresh-context agent
+should be able to execute it end-to-end without re-deriving
+design choices. See §13 for the resumption prompt.
+
+The companion document `docs/refactor/timer_rewrite_plan.md`
+(SHIPPED 2026-05-15) delivered the heap-based scheduler and
+explicitly deferred this client migration to "its own plan"
+(that doc's §12). This is that plan.
+
+---
+
+## 1. Goal
+
+Replace the per-millisecond *poll* of named-timer flags with
+an event-driven, coalesced, per-session **service tick**:
+
+1. **No 1 ms polling.** The session arms ONE timer handle for
+   the soonest of its logical-timer deadlines. When it fires,
+   the existing ordered service sequence runs once, then the
+   handle is re-armed for the next-soonest deadline. Idle
+   sessions consume zero timer wakeups.
+2. **Ordering preserved.** The per-state handler bodies (the
+   fixed `_retransmit_packet_timeout → _transmit_data →
+   _delayed_ack → _keepalive_tick → _rack_reorder_tick →
+   _tlp_pto_tick` sequence) are unchanged. Only the *trigger*
+   and the *expiry check* change.
+3. **De-conflated timer state.** `is_expired(name)` (which
+   collapses "never armed" with "fired") is replaced by an
+   explicit per-session deadline map: `None` = not armed,
+   `now < deadline` = pending, `now >= deadline` = fired.
+4. **Same thread, same lock.** The service callback runs on
+   the Timer worker thread (exactly where `tcp_fsm(timer=True)`
+   runs today) and takes `_lock__fsm` once, exactly as the
+   current periodic tick does. No new thread, no new lock.
+5. **Teardown via handle, not prefix sweep.**
+   `unregister_timers_with_prefix(f"{self}-")` becomes
+   `stack.timer.cancel(self._service_handle)` plus clearing
+   the deadline map.
+
+## 2. Non-goals
+
+- **No change to TCP wire behaviour.** Every RTO, persist,
+  keep-alive, TIME_WAIT, delayed-ACK, TLP, RACK, challenge-ACK
+  fire time and fire count is preserved. The integration suite
+  proves this at every phase.
+- **No change to the `pytcp.runtime.timer` public API.**
+  `call_later` / `call_periodic` / `cancel` / `now_ms` are
+  used as-is. The legacy named-flag shim
+  (`register_timer` / `is_expired` /
+  `unregister_timers_with_prefix`) is *removed from the TCP
+  consumers* by this plan and then becomes dead; deleting the
+  shim itself from `Timer` / `FakeTimer` is a trivial Phase-6
+  close-out (no other consumer exists — verified §4.6).
+- **No FSM state-machine redesign.** State handlers keep
+  their structure; the per-state timer handler keeps calling
+  the same tick methods in the same order.
+- **No coalescing across sessions.** Each `TcpSession` owns
+  one service handle. Cross-session timer-wheel optimisation
+  is a separate, much later concern (out of scope, §12).
+
+## 3. Current state — issues this plan addresses
+
+1. **Polling on top of an event-driven core.** The Timer is
+   event-driven, but `tcp_fsm(timer=True)` is a
+   `call_periodic(1, …)` (see `tcp__session.py:489`) whose
+   *only* timer-related job is to call the per-state handler
+   which scans `is_expired(f"{self}-X")` for up to 6 logical
+   timers every millisecond. Every ESTABLISHED session burns
+   1000 service calls/sec almost all of which early-return.
+2. **`is_expired` conflates "never armed" with "fired".**
+   Documented at `tcp__session.py:2705-2712` (retransmit),
+   `tcp__state__rack_tlp.py:152`, `tcp__state__keepalive.py:76`.
+   Consumers bolt on a second guard (`snd_una != snd_max`,
+   etc.) to disambiguate. Some of those second guards are
+   *also* genuine RFC conditions, so they cannot be blindly
+   deleted — each must be audited (§5.5).
+3. **Ordering invariants are implicit.** Every per-state
+   timer handler runs the tick methods in a fixed order
+   (retransmit before transmit-data; RACK reorder before TLP
+   PTO). N independent `call_later` callbacks would interleave
+   by `(deadline, seq)` and silently break invariants such as
+   "a retransmit re-fills the pipe before `_transmit_data`
+   recomputes what to send this tick". The single locked tick
+   provides this ordering for free today.
+4. **State-scoped servicing is implicit.** A logical timer is
+   only serviced in the states whose `fsm__<state>__timer`
+   handler calls its tick method (e.g. TLP/RACK/keepalive only
+   in ESTABLISHED; retransmit in SYN_SENT/SYN_RCVD/ESTABLISHED/
+   CLOSE_WAIT/FIN_WAIT_1/LAST_ACK; time_wait only in
+   TIME_WAIT — see §4.3). A raw `call_later` callback fires
+   regardless of the session's current state and could act
+   after a transition that should have suppressed it.
+5. **Teardown is a string-prefix sweep.**
+   `unregister_timers_with_prefix(f"{self}-")` at
+   `tcp__session.py:940` (CLOSED) and `:1970`, plus the
+   selective `f"{self}-retransmit"` / `f"{self}-tlp"` sweeps
+   at `:3693` / `:3700`. Stringly-typed and O(all timers).
+6. **`_transmit_data()` is mis-grouped with timers.** It is
+   called in every per-state timer handler *but it is not a
+   timeout* — it is the TX self-clock (also invoked on
+   packet-RX and syscall paths: `tcp__session.py:3067`,
+   `:3239`). Naively "deleting the 1 ms periodic" would stop
+   the self-clock. Resolving how `_transmit_data` is driven
+   post-migration is the central design question (§5.4).
+
+## 4. Current callers — exhaustive inventory
+
+Grepped 2026-05-15 against `PyTCP_3_0__pre_release`.
+
+### 4.1 Logical timers (8)
+
+| Logical timer        | Name expression                    | Armed by (register_timer)                                                    | Polled by (is_expired)                          | Action on expiry |
+|----------------------|------------------------------------|------------------------------------------------------------------------------|-------------------------------------------------|------------------|
+| retransmit (RTO)     | `f"{self}-retransmit"`             | `tcp__session.py:1623`, `:2830`, `:3373`, `:3703`                            | `:1622`, `:2714`                                | `_retransmit_packet_timeout()` |
+| time_wait (2·MSL)    | `f"{session}-time_wait"`          | `fsm__fin_wait_1:137`, `fsm__fin_wait_2:113`, `fsm__closing:100`, `fsm__time_wait:155` | `fsm__time_wait:58`                  | `_change_state(CLOSED)` |
+| persist (ZWP)        | `f"{self}-persist"` (persist_timer) | `:2651`, `:2668`                                                            | `:2656`                                         | persist probe in `_transmit_data` path |
+| delayed_ack          | `f"{self}-delayed_ack"`           | `:1609`, `:2692`, `:4039`                                                   | `:2685`                                         | `_delayed_ack()` emits the held ACK |
+| challenge_ack (rate) | `f"{self}-challenge_ack"`         | `:2137`                                                                     | `:2130`                                         | pure rate-limit gate (no action; gate only) |
+| keepalive            | `f"{self}-keepalive"`             | `:2155`, `:2217`                                                            | `:2191`                                         | `_keepalive_tick()` probe / abort |
+| tlp (PTO)            | `f"{self}-tlp"`                   | `:1671`, `:3249`                                                            | `:3194`                                         | `_tlp_pto_tick()` tail-loss probe |
+| rack (reorder)       | `f"{self}-rack"` / `f"{session}-rack"` | `:3281`, `:3373` (region)                                              | `:3264`                                         | `_rack_reorder_tick()` re-runs loss detection |
+
+(Line numbers are indicative anchors as of the grep date;
+re-grep before editing — the migration itself shifts them.)
+
+### 4.2 `unregister_timers_with_prefix` (4 sites)
+
+| Site | Purpose | Replacement |
+|------|---------|-------------|
+| `tcp__session.py:940`  | CLOSED transition — cancel ALL session timers | `self._cancel_all_timers()` (§5.3) |
+| `tcp__session.py:1970` | secondary teardown path — cancel ALL | `self._cancel_all_timers()` |
+| `tcp__session.py:3693` | cum-ACK drains in-flight — cancel `-retransmit` | `self._cancel_timer("retransmit")` |
+| `tcp__session.py:3700` | same path — cancel `-tlp` | `self._cancel_timer("tlp")` |
+
+### 4.3 State-scope matrix (which handler services which timer)
+
+From `FSM_TIMER_HANDLERS` (`tcp__fsm.py:156`) and the
+per-state handler bodies:
+
+| State        | tick sequence in `fsm__<state>__timer`                                                                 |
+|--------------|--------------------------------------------------------------------------------------------------------|
+| SYN_SENT     | `_retransmit_packet_timeout` → `_transmit_data`                                                        |
+| SYN_RCVD     | `_retransmit_packet_timeout` → `_transmit_data`                                                        |
+| ESTABLISHED  | `_retransmit_packet_timeout` → `_transmit_data` → `_delayed_ack` → `_keepalive_tick` → `_rack_reorder_tick` → `_tlp_pto_tick` |
+| CLOSE_WAIT   | `_retransmit_packet_timeout` → `_transmit_data` → `_delayed_ack`                                        |
+| FIN_WAIT_1   | `_retransmit_packet_timeout` → `_transmit_data`                                                        |
+| LAST_ACK     | `_retransmit_packet_timeout` → `_transmit_data`                                                        |
+| TIME_WAIT    | `if is_expired(f"{session}-time_wait"): _change_state(CLOSED)`                                          |
+| FIN_WAIT_2 / CLOSING | no tick-method calls (state-change only, driven elsewhere)                                      |
+| CLOSED / LISTEN / SYN_RCVD(pre) | absent from `FSM_TIMER_HANDLERS` → no-op                                            |
+
+**This table is the authoritative ordering + scoping
+contract the migration must preserve.**
+
+### 4.4 `_transmit_data()` drivers (the self-clock)
+
+`_transmit_data()` is invoked from: every per-state timer
+handler (6 states, §4.3), and the packet/syscall paths
+`tcp__session.py:3067` and `:3239`. It is **periodic work,
+not a timeout** — see §5.4 for how it is driven post-migration.
+
+### 4.5 `tcp_fsm` entry / lock / thread
+
+`tcp__session.py:4095` `def tcp_fsm(...)`; takes
+`self._lock__fsm` (RLock, `:470`) at `:4106`; dispatches
+`timer` → `tcp_fsm_dispatch_timer(self)` (`:4244`) →
+`FSM_TIMER_HANDLERS[state](session)`. Invoked every 1 ms by
+`self._tcp_fsm_handle = stack.timer.call_periodic(1, self.tcp_fsm, timer=True)` (`:489`), i.e. **on the Timer worker
+thread**. Cancelled on CLOSED via
+`stack.timer.cancel(self._tcp_fsm_handle)` (`:951`).
+
+### 4.6 No non-TCP consumer of the named-flag shim
+
+Grepped: `register_timer` / `is_expired` /
+`unregister_timers_with_prefix` appear only under
+`pytcp/protocols/tcp/`. After this plan the shim is dead and
+Phase 6 deletes it from `Timer` / `FakeTimer` outright.
+
+## 5. Target architecture
+
+### 5.1 Per-session deadline map + helper trio
+
+Add to `TcpSession`:
+
+```python
+# Absolute monotonic-ms deadlines for the session's logical
+# timers. None == not armed. Keyed by the bare logical name
+# ("retransmit", "time_wait", "persist", "delayed_ack",
+# "challenge_ack", "keepalive", "tlp", "rack").
+self._timer_deadlines: dict[str, int] = {}
+
+# The single coalesced service handle (Phase 4+). Until then
+# this is None and the legacy 1 ms periodic still drives.
+self._service_handle: TimerHandle | None = None
+```
+
+Helper trio (replaces register_timer / is_expired /
+unregister_timers_with_prefix at the call sites):
+
+```python
+def _arm_timer(self, name: str, delay_ms: int, /) -> None:
+    """Arm/re-arm a logical timer 'delay_ms' from now."""
+    self._timer_deadlines[name] = stack.timer.now_ms + delay_ms
+    self._reschedule_service()          # no-op until Phase 4
+
+def _timer_expired(self, name: str, /) -> bool:
+    """
+    True iff the logical timer has fired. NOT armed -> False
+    (this is the de-conflation: 'never armed' is no longer
+    collapsed with 'fired'; callers that relied on the old
+    True-when-unarmed behaviour are audited in §5.5).
+    """
+    deadline = self._timer_deadlines.get(name)
+    return deadline is not None and stack.timer.now_ms >= deadline
+
+def _timer_armed(self, name: str, /) -> bool:
+    """True iff armed and not yet fired (the 'is it running?' query)."""
+    deadline = self._timer_deadlines.get(name)
+    return deadline is not None and stack.timer.now_ms < deadline
+
+def _cancel_timer(self, name: str, /) -> None:
+    self._timer_deadlines.pop(name, None)
+    self._reschedule_service()          # no-op until Phase 4
+
+def _cancel_all_timers(self) -> None:
+    self._timer_deadlines.clear()
+    if self._service_handle is not None:
+        stack.timer.cancel(self._service_handle)
+        self._service_handle = None
+```
+
+> **Semantics note.** The old `is_expired(name)` returned
+> `True` when *unarmed*. The new split is deliberate:
+> `_timer_expired` (fired) vs `_timer_armed` (running). Every
+> migrated call site is classified in §5.5 as needing one or
+> the other; the second-guards that existed only to undo the
+> conflation are removed, the ones that are real RFC
+> conditions are kept.
+
+### 5.2 The coalesced service tick (Phase 4 target)
+
+`_reschedule_service()` keeps exactly one `call_later`
+outstanding, at the soonest pending deadline that the
+*current state* would actually service:
+
+```python
+def _reschedule_service(self) -> None:
+    if self._service_handle is not None:
+        stack.timer.cancel(self._service_handle)
+        self._service_handle = None
+    relevant = _SERVICED_TIMERS_BY_STATE.get(self._state, frozenset())
+    pending = [d for n, d in self._timer_deadlines.items() if n in relevant]
+    if not pending:
+        return                          # nothing armed in this state
+    now = stack.timer.now_ms
+    delay = max(0, min(pending) - now)
+    self._service_handle = stack.timer.call_later(delay, self.tcp_fsm, timer=True)
+```
+
+`_SERVICED_TIMERS_BY_STATE` is the §4.3 scope matrix made
+explicit (data, not control flow). `tcp_fsm(timer=True)` is
+unchanged — it still takes `_lock__fsm` and calls the same
+per-state handler, which still runs the same ordered tick
+sequence. The *only* change inside the tick is that each
+tick method now consults `_timer_expired(...)` instead of
+`stack.timer.is_expired(f"{self}-…")`, and after the
+sequence runs the handler ends by re-arming the service
+handle (one call to `_reschedule_service()` at the tail of
+`tcp_fsm`, after dispatch, while still under the lock).
+
+Because the per-state handler runs the *whole* ordered
+sequence on every service event (just as it does on every
+1 ms tick today), and each tick method early-returns unless
+its own `_timer_expired` is true, **the observable behaviour
+is identical to the 1 ms poll** — only the wakeup cadence
+changes (soonest-deadline instead of every ms).
+
+`_transmit_data()` self-clock: see §5.4.
+
+### 5.3 Migration ordering (low-risk first)
+
+1. **time_wait** — single state (TIME_WAIT), single arm
+   sites, single poll, single action (`_change_state(CLOSED)`),
+   zero ordering coupling, no `_transmit_data` interaction.
+   The canonical pilot.
+2. **challenge_ack** — pure rate-limit gate, no action, not
+   in any per-state handler sequence (queried inline on the
+   RST/SYN challenge path). Trivial.
+3. **keepalive**, **persist**, **delayed_ack** — independent
+   of the retransmit/rack/tlp ordering cluster; each has a
+   clear single action.
+4. **retransmit + tlp + rack** — the coupled cluster. Migrate
+   together, last, with the §4.3 ordering matrix as the pinned
+   contract and the integration suite as the gate.
+
+### 5.4 `_transmit_data()` — the self-clock decision
+
+`_transmit_data()` must keep being driven. It is **not** a
+timeout; it drains the TX buffer subject to cwnd/rwnd. It is
+already event-driven on the dominant paths (ACK arrival →
+`tcp__session.py:3067`; syscall send → `:3239`; and it runs
+inside every serviced timer tick). The residual cases where
+*only* the periodic currently re-drives it:
+
+- cwnd opened by an ACK that itself triggers `_transmit_data`
+  (already covered — ACK path calls it).
+- application `send()` while cwnd-limited, then cwnd opens
+  with no further inbound segment (rare; covered by the
+  retransmit/persist timers which *are* armed in that state).
+
+**Decision: do not give `_transmit_data` its own timer.**
+Keep it in the per-state service sequence (unchanged). The
+service handle is armed whenever ANY logical timer is armed;
+in every state where the session has un-ACKed data or a
+buffered write there is always an armed retransmit or persist
+timer, so `_transmit_data` is serviced at least as often as
+it can make progress. The one explicit safety net: when
+`_transmit_data` leaves bytes buffered that it *could* send
+once cwnd/rwnd allows but no timer is armed (provably
+reachable only via the persist path), the persist timer is
+armed by the existing logic — verify via the §6 persist
+integration tests. **Phase 3 includes an explicit
+investigation task that enumerates, with an integration
+test per case, every state in which the TX buffer is
+non-empty but no logical timer is armed; if any genuine gap
+exists, arm a short "tx-drain" logical timer for that case
+rather than resurrecting the 1 ms periodic.**
+
+### 5.5 Per-site `is_expired` audit (de-conflation)
+
+Each of the 8 `is_expired` reads is classified:
+
+| Site | Old form | New form | Second-guard disposition |
+|------|----------|----------|--------------------------|
+| `:1622` retransmit (arm-gate "not already running") | `is_expired(...)` used as "no timer running" | `not self._timer_armed("retransmit")` | n/a (was using the unarmed=True conflation as the signal — now explicit) |
+| `:2714` retransmit (fire) | `if not is_expired: return` then `if snd_una==snd_max: return` | `if not self._timer_expired("retransmit"): return` | **keep** `snd_una==snd_max` guard — it is the genuine RFC 6298 §5 "nothing in flight" condition, not just disambiguation |
+| `fsm__time_wait:58` | `if is_expired(time_wait): _change_state(CLOSED)` | `if self._timer_expired("time_wait"): …` | none |
+| `:2656` persist | `elif is_expired(persist)` | `elif self._timer_expired("persist")` | audit surrounding `_persist.active` flag — keep |
+| `:2685` delayed_ack | `if is_expired(delayed_ack):` | `if self._timer_expired("delayed_ack"):` | none |
+| `:2130` challenge_ack | `if not is_expired(rate):` (rate-limit gate) | `if self._timer_armed("challenge_ack"):` (inverted: armed&unfired ⇒ within rate-limit window ⇒ suppress) | re-derive truth table carefully (§6 test) |
+| `:2191` keepalive | `if not is_expired(keepalive): return` | `if not self._timer_expired("keepalive"): return` | keep idle/probe state guards |
+| `:3194` tlp | `if not is_expired(tlp): return` | `if not self._timer_expired("tlp"): return` | keep tail-state guards |
+| `:3264` rack | `if not is_expired(rack): return` | `if not self._timer_expired("rack"): return` | keep pending-candidate guard |
+
+The `challenge_ack` inversion (`:2130`) is the single
+trickiest semantic flip and gets its own dedicated unit +
+integration test (§6) written **first**, asserting the rate
+window suppresses exactly as before.
+
+## 6. File-by-file changes & test plan
+
+### 6.1 `pytcp/protocols/tcp/tcp__session.py`
+
+- Add `_timer_deadlines`, `_service_handle` attributes
+  (declared in the class annotation block, initialised in
+  `__init__`). **Per `.claude/rules/pytcp.md` §6.1 / the
+  stack-module-state memory: these are per-session instance
+  attributes, NOT module/stack state — no harness
+  snapshot/restore needed.** Confirm `TcpSession.__init__`
+  is the only construction path.
+- Add the helper trio (§5.1) + `_reschedule_service` (§5.2)
+  + `_SERVICED_TIMERS_BY_STATE` constant (§4.3 as data).
+- Phase 1: implement helpers backed by the deadline map but
+  leave `_reschedule_service` a no-op; keep the 1 ms
+  `call_periodic`. Replace every `register_timer` with
+  `_arm_timer`, every `is_expired` with
+  `_timer_expired`/`_timer_armed` per §5.5, every
+  `unregister_timers_with_prefix` per §4.2. **Behaviour is
+  byte-identical** because the 1 ms tick still runs the same
+  sequence and `_timer_expired` against `now_ms` reproduces
+  the old countdown-to-zero semantics exactly (the heap
+  Timer's `now_ms` is the same clock the old shim decremented
+  against).
+- `__init__`: `self._tcp_fsm_handle` semantics unchanged in
+  Phases 1-3.
+- Phase 4: implement `_reschedule_service`; change
+  `__init__` to NOT `call_periodic`; arm the service handle
+  lazily (first `_arm_timer`). Add the `_reschedule_service()`
+  call at the tail of `tcp_fsm` after dispatch (still under
+  `_lock__fsm`).
+- Phase 5: `_change_state(CLOSED)` cancels via
+  `_cancel_all_timers()` (already in place from Phase 1's
+  §4.2 swap) — confirm `_tcp_fsm_handle` is gone and only
+  `_service_handle` remains.
+
+### 6.2 `pytcp/protocols/tcp/fsm/tcp__fsm__*.py`
+
+- `fsm__time_wait.py:58`: `is_expired` →
+  `session._timer_expired("time_wait")` (Phase 2 pilot).
+- All `register_timer(name=f"{session}-time_wait", …)` in
+  `fsm__fin_wait_1`, `fsm__fin_wait_2`, `fsm__closing`,
+  `fsm__time_wait` → `session._arm_timer("time_wait", …)`.
+- No state-handler *body* reordering — the §4.3 sequence is
+  the contract and stays verbatim.
+
+### 6.3 `pytcp/tests/lib/fake_timer.py`
+
+- **No API change.** FakeTimer already exposes
+  `call_later` / `cancel` / `now_ms`. The migrated session
+  uses `stack.timer.now_ms` for `_timer_expired` and
+  `call_later` for the service handle — both already
+  supported.
+- The `_PRIO__NAMED_FLAG` band becomes unused for TCP once
+  no `register_timer` remains, but the band stays (other
+  semantics depend on the ordering rule; removing it is a
+  fake_timer cleanup, not part of this plan).
+- **Parity is the gate.** After Phase 4 the session arms
+  `call_later(delay, tcp_fsm, timer=True)`; FakeTimer's
+  `advance(ms)` must fire it at the same virtual ms the old
+  1 ms-periodic-plus-flag-poll did. The exhaustive existing
+  TCP integration suite is the oracle (§8).
+
+### 6.4 Test plan
+
+The TCP integration suite under
+`pytcp/tests/integration/protocols/tcp/` is the primary
+spec-pin and **must stay 100% green at every phase**. It
+already exercises RTO, persist, keepalive, TIME_WAIT,
+delayed-ACK, TLP, RACK, challenge-ACK at wire level via
+`FakeTimer.advance(ms=N)`.
+
+New tests (added in the phase that introduces the behaviour):
+
+**Phase 1 — helper unit tests**
+(`pytcp/tests/unit/protocols/tcp/test__tcp__session__timers.py`,
+new file):
+- `test__tcp__timers__arm_sets_absolute_deadline`
+- `test__tcp__timers__expired_false_when_unarmed` (the
+  de-conflation — pins the NEW semantic)
+- `test__tcp__timers__expired_true_at_or_after_deadline`
+- `test__tcp__timers__armed_true_only_while_pending`
+- `test__tcp__timers__cancel_clears_deadline`
+- `test__tcp__timers__cancel_all_clears_map_and_handle`
+- `test__tcp__timers__rearm_overwrites_deadline`
+Each Shape-A (mock `stack.timer.now_ms`); §7.2-compliant
+docstrings (`Reference: PyTCP test infrastructure (no RFC
+clause).`).
+
+**Phase 2 — per-timer behavioural parity (integration)**
+For time_wait / challenge_ack / keepalive / persist /
+delayed_ack: a focused integration test per timer asserting
+the fire ms and fire effect are identical pre/post. The
+challenge_ack inversion gets a dedicated truth-table test
+(§5.5) written and made to pass BEFORE the inversion lands
+(tests-first per `feature_implementation.md` §2).
+
+**Phase 3 — retransmit/rack/tlp ordering pin**
+A new integration test that drives a tail-loss + reorder +
+RTO scenario and asserts the exact outbound segment
+sequence, pinning the `_retransmit → _transmit_data → …
+_rack → _tlp` ordering. This is the regression net for the
+hardest phase. Plus the `_transmit_data` no-armed-timer gap
+investigation (§5.4) lands one integration test per
+enumerated state.
+
+**Phase 4 — coalesced-trigger equivalence**
+The whole TCP integration suite is the test. Additionally:
+- `test__tcp__timers__service_armed_at_soonest_deadline`
+- `test__tcp__timers__service_rearmed_after_each_fire`
+- `test__tcp__timers__no_service_handle_when_no_timer_armed`
+  (the zero-idle-wakeup property)
+- `test__tcp__timers__service_scope_respects_state_matrix`
+  (a timer armed but not serviced in the current state does
+  NOT wake the session)
+
+**Every phase**: `make lint` clean, full `make test` clean,
+§7.2 audit clean on touched test files, per-touched-source
+coverage stays 100% where it already is.
+
+## 7. Phase plan
+
+Each phase ends `make lint && make test` clean and is an
+independent, revertible commit (or tight commit pair:
+tests-first failing, then green).
+
+### Phase 0 — This plan (no code)
+Commit this document. Lock the architecture (coalesced
+per-session service handle; deadline map; helper trio;
+preserved ordering matrix).
+
+### Phase 1 — Deadline-map helper, zero behaviour change
+Add attributes + helper trio + `_SERVICED_TIMERS_BY_STATE`;
+`_reschedule_service` is a no-op. Swap ALL `register_timer`
+→ `_arm_timer`, `is_expired` → `_timer_expired`/`_timer_armed`
+(§5.5), `unregister_timers_with_prefix` → `_cancel_timer`/
+`_cancel_all_timers` (§4.2). The 1 ms `call_periodic` still
+drives `tcp_fsm`; the per-state handlers are untouched.
+**Net wire behaviour: identical** (proven by the unchanged
+integration suite). Tests-first: Phase-1 unit tests for the
+helpers; the integration suite is the parity oracle.
+Commit: `pytcp.protocols.tcp: deadline-map timer helpers
+(Phase 1 of TCP timer-client migration)`.
+
+### Phase 2 — Independent-timer audit & inversion
+No structural change; this phase is the §5.5 audit made
+concrete: add the dedicated challenge_ack truth-table test
+and the per-timer parity integration tests for time_wait /
+challenge_ack / keepalive / persist / delayed_ack. Fix any
+parity bug the audit surfaces. (Most likely zero code change
+beyond Phase 1 — this phase exists to *prove* the
+independent timers are correct before the risky trigger
+flip.)
+Commit: `pytcp.tests.integration.tcp: per-timer parity pins
++ challenge_ack inversion test (Phase 2 …)`.
+
+### Phase 3 — Coupled cluster + `_transmit_data` gap proof
+Add the retransmit/rack/tlp ordering integration pin. Run
+the §5.4 investigation: enumerate every state with a
+non-empty TX buffer and no armed logical timer; add an
+integration test per case; if a real gap exists, add a
+"tx-drain" logical timer (rare — expected: none, because
+persist/retransmit cover it). No trigger change yet.
+Commit: `pytcp.tests.integration.tcp: retransmit/rack/tlp
+ordering pin + tx-drain gap audit (Phase 3 …)`.
+
+### Phase 4 — Flip the trigger (the risky step)
+Implement `_reschedule_service`; stop the 1 ms
+`call_periodic` in `__init__`; arm the coalesced service
+handle lazily from `_arm_timer`/`_cancel_timer` and re-arm
+at the tail of `tcp_fsm`. The per-state handlers still run
+the full ordered sequence on each service event.
+**Validation: the entire TCP integration suite must remain
+byte-identical.** Any single failure ⇒ the coalescing or
+re-arm logic diverged ⇒ pinpoint & fix or roll back Phase 4
+only (Phases 1-3 stand alone).
+Commit: `pytcp.protocols.tcp: coalesced event-driven service
+tick (Phase 4 …)`.
+
+### Phase 5 — Delete the periodic + handle-registry teardown
+Remove `self._tcp_fsm_handle` (`call_periodic`) entirely;
+only `_service_handle` remains. Confirm `_cancel_all_timers`
+on CLOSED fully tears down. Drop now-dead code.
+Commit: `pytcp.protocols.tcp: drop the 1 ms FSM periodic —
+service tick is event-driven (Phase 5 …)`.
+
+### Phase 6 — Delete the dead named-flag shim + docs
+`register_timer` / `is_expired` /
+`unregister_timers_with_prefix` now have zero consumers
+(§4.6). Delete them from `Timer` and `FakeTimer`; delete
+their shim tests; flip this doc's Status to SHIPPED with
+SHAs; update `.claude/rules/pytcp.md` if it references the
+shim; refresh the `project_timer_rewrite` memory note
+(named-flag shim no longer "deliberately retained" — now
+removed).
+Commit: `pytcp.runtime.timer: drop the dead named-flag shim
+(Phase 6 …)` + `docs: TCP timer-client migration shipped`.
+
+## 8. Validation gates
+
+Per phase, before commit:
+1. `make lint` — codespell + isort + black + flake8 + mypy
+   strict + pylint.
+2. `make test` — full suite. Currently **10997 passing /
+   4 skipped / 0 failures** post timer-rewrite. The count
+   only grows (new tests); never regresses.
+3. §7.2 docstring audit on every touched/new test file.
+4. Coverage: any source file already at 100% stays at 100%.
+5. **Phase 4 extra gate**: a diff of the TCP integration
+   suite's emitted-frame logs (or stat-counter snapshots)
+   pre/post must be empty. The suite's strict
+   `_assert_packet_stats_*(exact=True)` assertions already
+   enforce this; treat any delta as a hard stop.
+
+## 9. Risks & mitigations
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| Coalesced re-arm fires at a different ms than the old 1 ms poll | Medium-High | `_timer_expired` uses the SAME `now_ms` clock the old shim decremented; the per-state sequence is unchanged; soonest-deadline `call_later` fires at exactly the ms `is_expired` would first have returned True. Pinned by the full integration suite + Phase-4 stat-snapshot gate. |
+| Ordering invariant broken (retransmit vs transmit, rack vs tlp) | Medium | The per-state handler bodies are NOT touched — the ordered sequence runs intact on every service event. The Phase-3 ordering integration pin is the regression net. |
+| State-scope leak: timer fires after a transition that should suppress it | Medium | `_reschedule_service` filters by `_SERVICED_TIMERS_BY_STATE[self._state]`; a timer armed but not serviced in the new state does not wake the session, exactly matching the old per-state dispatch no-op. Dedicated Phase-4 test. |
+| `is_expired` de-conflation changes a load-bearing second guard | Medium | §5.5 classifies every site; genuine RFC guards (e.g. `snd_una==snd_max`) are KEPT; only pure disambiguation guards removed. challenge_ack inversion gets a tests-first truth-table. |
+| `_transmit_data` self-clock starvation | Low-Medium | §5.4 decision + Phase-3 enumerated-gap proof with an integration test per state; add a narrow tx-drain timer only if a real gap is proven (expected: none). |
+| FakeTimer fire-sequence drift | Low | No FakeTimer API change; it already supports the exact primitives; the integration suite IS the FakeTimer oracle. |
+| Hidden module/stack state added | Low | The new state is per-`TcpSession` instance state, not module/stack state — no harness snapshot/restore needed (confirm in Phase 1 review against the stack-state memory note). |
+
+## 10. Rollback
+
+Each phase is an independent commit. Phases 1-3 are pure
+refactor/parity-proof and safe to keep even if Phase 4 is
+reverted (`_reschedule_service` stays a no-op; the 1 ms
+periodic still drives). Phase 4 is the single risky,
+independently-revertible commit (`git revert <p4>` restores
+the periodic; Phases 5-6 depend on it and revert first).
+`make test` validates each revert.
+
+## 11. Estimated effort
+
+| Phase | Eng | Review | Risk |
+|-------|-----|--------|------|
+| 0 plan                         | done | — | none |
+| 1 helpers + mechanical swap    | ~6 h | ~2 h | Low |
+| 2 independent audit + inversion| ~5 h | ~2 h | Medium |
+| 3 cluster pin + gap proof      | ~6 h | ~2 h | Medium |
+| 4 trigger flip                 | ~6 h | ~3 h | High |
+| 5 delete periodic              | ~2 h | ~1 h | Low |
+| 6 delete shim + docs           | ~2 h | ~1 h | Low |
+| **Total**                      | **~27 h** | **~11 h** | **High** |
+
+## 12. Out-of-scope follow-ups
+
+- Cross-session timer-wheel / hierarchical-timing-wheel
+  coalescing (one global wheel vs one handle per session).
+  Only relevant at very high connection counts; the heap
+  scales fine for Phase-1/2 north-star targets.
+- Per-logical-timer callbacks (rejected here in favour of
+  the coalesced service tick because independent callbacks
+  lose the §4.3 ordering guarantee). Revisit only if a
+  future need for per-timer isolation appears.
+- `_transmit_data` becoming fully ACK-clocked with no timer
+  backstop — a larger TCP-pacing redesign, not this plan.
+
+## 13. Resumption prompt
+
+```
+Execute the TCP timer-client migration per the plan at
+docs/refactor/tcp_timer_client_migration.md.
+
+Read the entire plan first. It is the deferred §12 follow-up
+from docs/refactor/timer_rewrite_plan.md (SHIPPED). Proceed
+phase by phase; each phase is one commit (tests-first where
+behaviour changes) and must end `make lint && make test`
+clean (currently 10997 passing / 4 skipped / 0 failures),
+§7.2 audit clean on touched test files, coverage held.
+
+- Phase 0 done (this plan, SHA <fill after Phase 0 lands>).
+- Phase 1: add _timer_deadlines / _service_handle to
+  TcpSession + the helper trio (§5.1) + _SERVICED_TIMERS_
+  BY_STATE (§4.3 as data) + _reschedule_service as a NO-OP.
+  Mechanically swap ALL register_timer→_arm_timer,
+  is_expired→_timer_expired/_timer_armed per the §5.5 audit
+  table, unregister_timers_with_prefix per §4.2. Keep the
+  1 ms call_periodic. Behaviour MUST stay byte-identical —
+  the integration suite is the oracle. New unit file
+  test__tcp__session__timers.py (§6.4 Phase-1 list).
+- Phase 2: §5.5 audit proven — per-timer parity integration
+  tests for time_wait/challenge_ack/keepalive/persist/
+  delayed_ack; challenge_ack inversion truth-table test
+  written tests-first.
+- Phase 3: retransmit/rack/tlp ordering integration pin +
+  the §5.4 _transmit_data no-armed-timer gap enumeration
+  (one integration test per state; add a tx-drain timer
+  only if a real gap is proven).
+- Phase 4 (RISKY): implement _reschedule_service; drop the
+  1 ms call_periodic from __init__; arm the coalesced
+  service handle lazily + re-arm at the tail of tcp_fsm
+  under _lock__fsm. The ENTIRE TCP integration suite must
+  stay byte-identical (Phase-4 stat-snapshot gate §8.5).
+  Any single failure ⇒ pinpoint or revert Phase 4 only.
+- Phase 5: delete _tcp_fsm_handle / the periodic; teardown
+  via _cancel_all_timers on CLOSED only.
+- Phase 6: delete the now-dead register_timer/is_expired/
+  unregister_timers_with_prefix shim from Timer+FakeTimer
+  and their shim tests; flip this doc Status→SHIPPED with
+  SHAs; refresh .claude/rules/pytcp.md + the
+  project_timer_rewrite memory note.
+
+Locked design (do NOT re-litigate): coalesced per-session
+service handle (NOT per-timer callbacks); explicit deadline
+map keyed by bare logical name; helper trio
+_arm_timer/_timer_expired/_timer_armed/_cancel_timer/
+_cancel_all_timers; the §4.3 per-state ordered tick
+sequence is preserved verbatim; _transmit_data stays in the
+sequence (NOT given its own timer); same Timer worker
+thread + same _lock__fsm; new state is per-session instance
+state (no harness snapshot/restore). Commit-sign with
+'Co-Authored-By: Claude Opus 4.7 (1M context)
+<noreply@anthropic.com>'. Push after each green phase.
+Resume from the latest phase-N commit; pick up at N+1.
+```
+
+## 14. Cross-references
+
+- `docs/refactor/timer_rewrite_plan.md` — the SHIPPED
+  heap-scheduler rewrite; its §12 deferred this plan.
+- `pytcp/protocols/tcp/tcp__session.py` — the ~30 call
+  sites + `tcp_fsm` dispatcher (`:4095`) + `_lock__fsm`.
+- `pytcp/protocols/tcp/fsm/tcp__fsm.py` —
+  `FSM_TIMER_HANDLERS` (`:156`), `dispatch_timer` (`:212`).
+- `pytcp/protocols/tcp/fsm/tcp__fsm__*.py` — the 7 per-state
+  timer handlers (the §4.3 ordering contract).
+- `pytcp/runtime/timer.py` — `call_later` / `cancel` /
+  `now_ms`; the named-flag shim deleted in Phase 6.
+- `pytcp/tests/lib/fake_timer.py` — unchanged API; the
+  integration-parity oracle.
+- `.claude/rules/pytcp.md` §2/§6 — Subsystem + per-session
+  vs stack state; `feature_implementation.md` §2 —
+  tests-first; `unit_testing.md` §7.2 — docstring audit.
+- Project memory `project_timer_rewrite.md` — records that
+  the named-flag shim was *deliberately retained* pending
+  exactly this migration; Phase 6 updates it.
