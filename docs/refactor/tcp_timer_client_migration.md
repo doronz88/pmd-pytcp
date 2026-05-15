@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                                 |
 |-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | **PROPOSAL** — drafted 2026-05-15; not yet started                                                                                                                                    |
+| Status            | **Phases 0-3 SHIPPED 2026-05-15** (Phase 0 0e0fe396 / 22b46c7c, Phase 1 5a0161f8, Phase 2 719afd7c, Phase 3 9b22bcca). **Phase 4 ATTEMPTED & ROLLED BACK** — coalesced-only design invalidated (see §5.4 / §7 Phase 4 post-mortem); needs redesign. Phases 5-6 blocked on Phase 4. |
 | Plan author       | Timer-rewrite follow-up (the deliberately-deferred §12 track from `docs/refactor/timer_rewrite_plan.md`)                                                                               |
 | Source motivation | The heap-based `Timer` is event-driven, but every TCP timer still uses the polling `register_timer` / `is_expired` named-flag shim, driven by a 1 ms `call_periodic(tcp_fsm, timer=True)` tick that exists only to scan flags |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                              |
@@ -347,11 +347,22 @@ rather than resurrecting the 1 ms periodic.**
 
 > **SHIPPED (Phase 3):** the gap audit
 > (`test__tcp__session__timer_ordering.py::
-> TestTcpTransmitDataGapAudit`) confirmed **no genuine gap** —
-> in-flight data keeps `retransmit` armed, zero-window
-> buffered data keeps `persist` armed, including in
-> CLOSE_WAIT. **No "tx-drain" timer was added.** The
-> decision above stands as-is.
+> TestTcpTransmitDataGapAudit`) checked in-flight (`retransmit`
+> armed) / zero-window (`persist` armed) / CLOSE_WAIT.
+>
+> **⚠ SUPERSEDED by the Phase-4 attempt #1 post-mortem (see
+> §7 Phase 4).** The Phase-3 audit was **incomplete**: it
+> only covered states where data was already in flight or
+> buffered-under-zero-window. It MISSED the *just-transitioned,
+> `_transmit_data` has work, nothing armed yet* pump case —
+> archetype: active-open CONNECT does only
+> `_change_state(SYN_SENT)`; the SYN is emitted by
+> `fsm__syn_sent__timer → _transmit_data()`, which in the old
+> model only ran because the 1 ms periodic pumped it. **A
+> genuine gap therefore EXISTS** and the "Decision: do not
+> give `_transmit_data` its own timer" above does NOT hold.
+> The §5.4/§9 tx-drain/FSM-pump fallback is REQUIRED for any
+> Phase-4 redesign.
 
 ### 5.5 Per-site `is_expired` audit (de-conflation)
 
@@ -687,6 +698,59 @@ re-arm logic diverged ⇒ pinpoint & fix or roll back Phase 4
 only (Phases 1-3 stand alone).
 Commit: `pytcp.protocols.tcp: coalesced event-driven service
 tick (Phase 4 …)`.
+
+> **POST-MORTEM — Phase 4 attempt #1 ROLLED BACK (2026-05-15).**
+> Implemented exactly as specified (`_reschedule_service` per
+> §5.2, `__init__` periodic dropped, re-arm at the `tcp_fsm`
+> tail + before the icmp early-return, `_SERVICED_TIMERS_BY_STATE`
+> widened so `persist` is in scope for every `_transmit_data`
+> state). Lint clean, **no busy-loop / hang**, but the TCP
+> integration suite returned **392 failures / 5 errors** — a
+> systemic divergence, not a pinpoint bug, so per this phase's
+> own rule the code was reverted to the Phase-3 commit
+> `9b22bcca` and Phases 1-3 stand intact (suite green again).
+>
+> **Root cause: the 1 ms periodic was a load-bearing FSM
+> *pump*, not merely a timer-service poll.** Canonical proof:
+> active-open `fsm__closed__syscall` CONNECT does only
+> `_change_state(SYN_SENT)` — it does **not** emit the SYN. The
+> SYN is emitted later by `fsm__syn_sent__timer →
+> _transmit_data()`. In the old model the always-on 1 ms
+> periodic fired that handler within ~1 ms of CONNECT. In the
+> coalesced model **nothing is armed after CONNECT** (no SYN
+> sent yet ⇒ no retransmit timer), so the service handle is
+> never armed, `_advance(ms=1)` fires nothing, the SYN never
+> goes out, and every handshake stalls at SYN_SENT. More
+> broadly: many call sites and tests rely on a near-immediate
+> `tcp_fsm(timer=True)` tick to pump `_transmit_data` / FSM
+> progression even when **no logical-timer deadline is due**.
+>
+> **§5.4 conclusion "no tx-drain timer needed" is DISPROVEN.**
+> The Phase-3 gap audit was insufficient: it only checked
+> states with data already in flight (retransmit armed) or
+> zero-window (persist armed); it never covered the
+> *just-transitioned, `_transmit_data` has work, nothing armed
+> yet* pump case (CONNECT→SYN_SENT is the archetype). The
+> §5.4 / §9 "tx-drain timer" fallback is therefore **REQUIRED,
+> not optional**.
+>
+> **Corrected design direction for attempt #2 (must be
+> re-planned, tests-first, before any code):** a coalesced
+> timer handle alone is insufficient. Add an explicit
+> FSM-pump / "tx-kick": every event that in the old model
+> relied on "the next 1 ms tick" to make progress — at
+> minimum every `_change_state(...)` transition, the CONNECT
+> syscall, and a buffered `send()` that could not go out —
+> must arm a near-immediate (delay-0) service kick. The
+> enumeration of pump points is exactly the hard, error-prone
+> surface that made the 1 ms periodic exist; the redesign
+> must either (a) pin that complete set tests-first, or
+> (b) reconsider whether deleting the periodic is worth the
+> risk versus keeping a coarse self-clock (e.g. a single
+> low-frequency `call_periodic` retained purely as the
+> pump, with the coalesced handle layered on top for
+> precise timer servicing). This is a planning task, not a
+> hack-forward; Phase 4 stays BLOCKED until re-planned.
 
 ### Phase 5 — Delete the periodic + handle-registry teardown
 Remove `self._tcp_fsm_handle` (`call_periodic`) entirely;
