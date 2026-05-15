@@ -255,7 +255,7 @@ class TestDhcp4ConstantsDefaults(TestCase):
         """
         Ensure 'dhcp.duid' defaults to an empty string — the
         "auto-derive DUID-LL from MAC" signal consumed by
-        'pytcp.lib.dhcp_uid.get_duid'.
+        'pytcp.protocols.dhcp4.dhcp4__uid.get_duid'.
 
         Reference: RFC 4361 §6.1 (client MAY use an externally-configured DUID; default is derived).
         """

@@ -36,8 +36,8 @@ from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
-from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
+from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.stack import sysctl
 from pytcp.tests.lib.dhcp4_mock_server import (

@@ -29,7 +29,7 @@ client (and, eventually, by a future DHCPv6 client). The DUID is
 derived from the host MAC by default (DUID-LL form) and overridable
 via the 'dhcp.duid' sysctl for operator-managed stable identity.
 
-pytcp/lib/dhcp_uid.py
+pytcp/protocols/dhcp4/dhcp4__uid.py
 
 ver 3.0.4
 """

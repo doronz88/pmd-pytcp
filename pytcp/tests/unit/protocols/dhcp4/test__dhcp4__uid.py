@@ -24,9 +24,9 @@
 
 """
 This module contains tests for the DHCP DUID / IAID / Client
-Identifier helpers in 'pytcp/lib/dhcp_uid.py'.
+Identifier helpers in 'pytcp/protocols/dhcp4/dhcp4__uid.py'.
 
-pytcp/tests/unit/lib/test__lib__dhcp_uid.py
+pytcp/tests/unit/protocols/dhcp4/test__dhcp4__uid.py
 
 ver 3.0.4
 """
@@ -35,7 +35,7 @@ from typing import override
 from unittest import TestCase
 
 from net_addr import MacAddress
-from pytcp.lib.dhcp_uid import build_client_id, build_duid_ll, get_duid, get_iaid
+from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id, build_duid_ll, get_duid, get_iaid
 from pytcp.stack import sysctl
 
 

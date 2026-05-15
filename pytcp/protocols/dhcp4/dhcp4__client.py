@@ -78,7 +78,6 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__server_id import (
     Dhcp4OptionServerId,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
-from pytcp.lib.dhcp_uid import build_client_id
 from pytcp.lib.logger import log
 from pytcp.protocols.dhcp4 import dhcp4__constants
 from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
@@ -86,6 +85,7 @@ from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     read_cached_lease,
     write_cached_lease,
 )
+from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 

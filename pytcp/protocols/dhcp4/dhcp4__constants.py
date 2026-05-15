@@ -83,7 +83,7 @@ DHCP4__DECLINE_BACKOFF_MS = 10000
 # = hex bytes (compact "0003000102..." or colon-separated
 # "00:03:00:01:02:..."), used verbatim as the DUID
 # embedded into the Client Identifier emitted in every
-# DHCPv4 message. Consumed by 'pytcp.lib.dhcp_uid.get_duid'.
+# DHCPv4 message. Consumed by 'pytcp.protocols.dhcp4.dhcp4__uid.get_duid'.
 DHCP4__DUID: str = ""
 
 # Phase 4 commit B — boot-blocking wait. 'stack.start()' calls
