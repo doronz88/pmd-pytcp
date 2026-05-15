@@ -24,12 +24,12 @@
 
 """
 Unit tests for the embedded-header parser at
-'pytcp/runtime/packet_handler/_icmp_error_demux.py'. Pins the IP+L4
+'pytcp/protocols/icmp/icmp__error_demux.py'. Pins the IP+L4
 4-tuple extraction the upcoming ICMP demux phases rely on, plus the
 RFC 5927 §4 sequence-in-window guard substrate (the embedded TCP
 seq is exposed via 'embedded_seq').
 
-pytcp/tests/unit/runtime/packet_handler/test___icmp_error_demux.py
+pytcp/tests/unit/protocols/icmp/test__icmp__error_demux.py
 
 ver 3.0.4
 """
@@ -38,7 +38,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto import IpProto
-from pytcp.runtime.packet_handler._icmp_error_demux import (
+from pytcp.protocols.icmp.icmp__error_demux import (
     EmbeddedL4,
     parse_embedded_l4,
 )

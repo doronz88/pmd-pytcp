@@ -64,8 +64,8 @@ from pytcp.lib.dad_slot_registry import DadSignalResult
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp6.nd import nd__constants
+from pytcp.protocols.icmp.icmp__error_demux import EmbeddedL4, parse_embedded_l4
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
-from pytcp.runtime.packet_handler._icmp_error_demux import EmbeddedL4, parse_embedded_l4
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.error_queue import SoEeOrigin
 from pytcp.socket.raw__metadata import RawMetadata

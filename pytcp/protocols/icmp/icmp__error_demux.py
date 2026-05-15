@@ -30,7 +30,7 @@ message (RFC 792 §2 / RFC 4443 §3), it extracts the inner IP+L4
 error so callers can apply the RFC 5927 §4 sequence-in-window guard
 before acting on the error.
 
-pytcp/runtime/packet_handler/_icmp_error_demux.py
+pytcp/protocols/icmp/icmp__error_demux.py
 
 ver 3.0.4
 """

@@ -53,8 +53,8 @@ from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
 from pytcp.protocols.icmp4.icmp4__echo_options import echo_reply_options
+from pytcp.protocols.icmp.icmp__error_demux import EmbeddedL4, parse_embedded_l4
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
-from pytcp.runtime.packet_handler._icmp_error_demux import EmbeddedL4, parse_embedded_l4
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.error_queue import SoEeOrigin
 from pytcp.socket.raw__metadata import RawMetadata
