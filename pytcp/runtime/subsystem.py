@@ -85,6 +85,14 @@ class Subsystem(ABC):
 
         __debug__ and log("stack", f"Starting {self._subsystem_name}")
 
+        # Double-start guard. If a worker thread is already
+        # running and 'start()' is called again, the previous
+        # thread would be orphaned (its '_event__stop_subsystem'
+        # reset + lost reference). Fail loudly instead.
+        assert self._thread is None or not self._thread.is_alive(), (
+            f"{self._subsystem_name}.start() called while a worker is still running; " f"call stop() before restart."
+        )
+
         self._event__stop_subsystem.clear()
         self._thread = threading.Thread(target=self._thread__subsystem)
         self._thread.start()
@@ -99,7 +107,22 @@ class Subsystem(ABC):
 
         self._event__stop_subsystem.set()
         if self._thread is not None:
-            self._thread.join()
+            # Bound the join so a misbehaving subclass with a
+            # blocking '_subsystem_loop' cannot wedge stack
+            # teardown. The canonical loop cadence is
+            # 'SUBSYSTEM_SLEEP_TIME__SEC' (0.1 s) so a few
+            # iterations' worth is generous in normal operation.
+            # NOTE: the joined thread reference is intentionally
+            # retained on 'self._thread' so consumers can poll
+            # 'is_alive()' after stop(); restart via 'start()'
+            # is gated by the double-start assert above on the
+            # 'is_alive()' check rather than on identity.
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                __debug__ and log(
+                    "stack",
+                    f"<WARN>{self._subsystem_name} worker did not exit within 2.0 s; " f"leaving thread dangling</>",
+                )
         self._stop()
 
     def _start(self) -> None:
