@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                                 |
 |-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | **Phases 0-3 SHIPPED 2026-05-15** (Phase 0 0e0fe396 / 22b46c7c, Phase 1 5a0161f8, Phase 2 719afd7c, Phase 3 9b22bcca). **Phase 4 attempt #1 ROLLED BACK** (post-mortem `2743f936`); **REDESIGNED — §5.6 `tx_pump`. Phase 4a SHIPPED** (`8b24ad2c`); **Phase 4b attempt #1 ROLLED BACK** (392→3, narrow residual; §7 Phase-4b post-mortem); **redesigned — §5.7 `_kick_pump`. Phase 4 SHIPPED** via §5.6+§5.7: Phase 4c-a `75f1f679` (non-tcp_fsm-mutator pins), Phase 4c-b `8435a321` (trigger flip: coalesced `_service_handle` + `tx_pump` pace-while-work + 1 ms delay floor + `_kick_pump`; TCP integration byte-identical 489 OK, full suite 11027/0). **Phase 5 SHIPPED** (`d6a55490` — `_tcp_fsm_handle` periodic-handle + its no-op CLOSED-teardown deleted; behaviour-neutral). **Phase 6 SHIPPED** (this commit — named-flag shim `register_timer`/`is_expired`/`unregister_timers_with_prefix`/`pending_timers`/`_legacy_named_flags`/`_PRIO__NAMED_FLAG` deleted from `Timer`+`FakeTimer`; shim tests + vestigial SimpleNamespace fixture attrs + stale shim prose removed; lint clean, full suite 11012/0/4, §7.2 audit clean). **MIGRATION COMPLETE — the TCP FSM is fully event-driven; no polling tick, no named-flag shim.** |
+| Status            | **Phases 0-3 SHIPPED 2026-05-15** (Phase 0 0e0fe396 / 22b46c7c, Phase 1 5a0161f8, Phase 2 719afd7c, Phase 3 9b22bcca). **Phase 4 attempt #1 ROLLED BACK** (post-mortem `2743f936`); **REDESIGNED — §5.6 `tx_pump`. Phase 4a SHIPPED** (`8b24ad2c`); **Phase 4b attempt #1 ROLLED BACK** (392→3, narrow residual; §7 Phase-4b post-mortem); **redesigned — §5.7 `_kick_pump`. Phase 4 SHIPPED** via §5.6+§5.7: Phase 4c-a `75f1f679` (non-tcp_fsm-mutator pins), Phase 4c-b `8435a321` (trigger flip: coalesced `_service_handle` + `tx_pump` pace-while-work + 1 ms delay floor + `_kick_pump`; TCP integration byte-identical 489 OK, full suite 11027/0). **Phase 5 SHIPPED** (`d6a55490` — `_tcp_fsm_handle` periodic-handle + its no-op CLOSED-teardown deleted; behaviour-neutral). **Phase 6 SHIPPED** (`1962d17f` — named-flag shim `register_timer`/`is_expired`/`unregister_timers_with_prefix`/`pending_timers`/`_legacy_named_flags`/`_PRIO__NAMED_FLAG` deleted from `Timer`+`FakeTimer`; shim tests + vestigial SimpleNamespace fixture attrs + stale shim prose removed; lint clean, full suite 11012/0/4, §7.2 audit clean). **Phase 6 deferred tidy LANDED** (`4f434c8f` — comment/docstring-only: the remaining FSM-comment + test-prose mentions of the dead `is_expired`/`stack.timer._timers` API reworded to the live `_timer_expired`/`_timer_armed`/`_timer_deadlines` helpers; also fixed a pre-existing §7.2 inline-RFC violation surfaced on a touched file; behaviour-neutral, 11012/0/4). **MIGRATION COMPLETE — the TCP FSM is fully event-driven; no polling tick, no named-flag shim; zero stale shim-API references outside the two deliberate `was removed` archaeology notes in `timer.py`/`fake_timer.py`.** |
 | Plan author       | Timer-rewrite follow-up (the deliberately-deferred §12 track from `docs/refactor/timer_rewrite_plan.md`)                                                                               |
 | Source motivation | The heap-based `Timer` is event-driven, but every TCP timer still uses the polling `register_timer` / `is_expired` named-flag shim, driven by a 1 ms `call_periodic(tcp_fsm, timer=True)` tick that exists only to scan flags |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                              |
@@ -1072,6 +1072,20 @@ shim; refresh the `project_timer_rewrite` memory note
 removed).
 Commit: `pytcp.runtime.timer: drop the dead named-flag shim
 (Phase 6 …)` + `docs: TCP timer-client migration shipped`.
+
+**SHIPPED** (`1962d17f`). The shim + tests + vestigial
+fixture attrs + the direct-touch shim prose were removed in
+that commit; a comment/docstring-only follow-up
+(`4f434c8f`) then reworded the remaining FSM-comment +
+test-prose mentions of the dead `is_expired` /
+`stack.timer._timers` API in functions untouched by the
+mechanical migration to the live `_timer_expired` /
+`_timer_armed` / `_timer_deadlines` helpers (and fixed a
+pre-existing §7.2 inline-RFC violation surfaced on a touched
+file). Both are behaviour-neutral (11012/0/4). The only
+remaining shim mentions are the two deliberate "was removed"
+archaeology notes in `timer.py` / `fake_timer.py` that
+explain the retained `_PRIO__METHOD` artifact.
 
 ## 8. Validation gates
 
