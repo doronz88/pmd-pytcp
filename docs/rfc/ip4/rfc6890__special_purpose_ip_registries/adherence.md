@@ -208,7 +208,7 @@ behaviour; 192.88.99.0/24 is deprecated by RFC 7526.
   Per-branch rejection for multicast / reserved / limited-
   broadcast sources.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   ICMP Parameter Problem emission verification.
 
 **Status:** locked in.

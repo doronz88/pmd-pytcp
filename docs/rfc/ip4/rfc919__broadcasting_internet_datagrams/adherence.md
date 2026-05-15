@@ -19,8 +19,8 @@ lands).
 The audit was performed by reading the RFC text fresh and
 inspecting `net_addr/ip4_address.py`,
 `net_addr/ip4_network.py`,
-`pytcp/stack/packet_handler/packet_handler__ip4__rx.py`, and
-`pytcp/stack/packet_handler/packet_handler__ip4__tx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
+`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
 directly; no prior memory or rule-file content was reused.
 Non-normative content (§1 Introduction, §2 Why Broadcasts, §3
 History, §4 Broadcast Classes discussion, §8 Acknowledgments)
@@ -134,7 +134,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### §5 / §7 RX admission of broadcast destinations
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Covers limited-broadcast and network-broadcast destination
   admission paths.
 
@@ -151,7 +151,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### TX source-address replacement (broadcast source → primary unicast)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Matrix for src=limited-broadcast, src=network-broadcast.
 
 **Status:** locked in.
@@ -164,7 +164,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
   validator's {0, 1} acceptance, and the rejection of
   out-of-range / non-int / bool values.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast`
   Drives the gate: default-deny drops both
   255.255.255.255 and the subnet-directed broadcast with
   the new TxStatus and counter bump; override-on permits

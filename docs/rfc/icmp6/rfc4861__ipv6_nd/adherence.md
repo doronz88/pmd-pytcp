@@ -13,7 +13,7 @@ PyTCP codebase relates to each normative statement in
 RFC 4861 — the foundational IPv6 Neighbor Discovery
 specification. The audit was performed by reading the RFC
 text fresh and inspecting the implementation under
-`pytcp/stack/packet_handler/packet_handler__icmp6__{rx,tx}.py`,
+`pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`,
 `pytcp/lib/neighbor.py`, `pytcp/protocols/icmp6/nd/`, and
 `net_proto/protocols/icmp6/message/nd/` directly. No prior
 audit content was reused.
@@ -506,6 +506,6 @@ Star §Phase 2.
   are the IPv4 equivalent of ND + DAD).
 - Source: `pytcp/lib/neighbor.py` (NUD framework),
   `pytcp/protocols/icmp6/nd/nd__cache.py` (IPv6 cache
-  adapter), `pytcp/stack/packet_handler/packet_handler__icmp6__{rx,tx}.py`
+  adapter), `pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
   (ND message dispatch),
   `net_proto/protocols/icmp6/message/nd/` (wire codecs).

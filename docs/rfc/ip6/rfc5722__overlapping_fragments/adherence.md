@@ -32,7 +32,7 @@ and the v4 / v6 packet-handler unit-test level
 
 PyTCP's TX path does not generate overlapping fragments —
 the fragment-emission machinery in
-`pytcp/stack/packet_handler/packet_handler__ip6_frag__tx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py`
 walks an IPv6 datagram in 8-octet chunks with monotonically-
 increasing offsets, so the §4 producer-side MUST holds by
 construction.
@@ -165,8 +165,8 @@ The §4 clauses above are pinned by:
 | v4 handler same-fragment-twice strict drop | Same class :: `test__stack__packet_handler__ip4__rx__same_fragment_twice_drops_flow` |
 | v6 handler counter wiring | `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__rx.py::TestPacketHandlerIp6FragRx::test__stack__packet_handler__ip6_frag__rx__overlapping_fragments_drop_flow` |
 | v6 handler same-fragment-twice strict drop | Same class :: `test__stack__packet_handler__ip6_frag__rx__same_fragment_twice_drops_flow` |
-| Integration: replay-fragment in flow A drops only that flow | `pytcp/tests/integration/test__packet_handler__ip4__rx.py` (the "duplicate fragments in flow A drop flow A under RFC 5722 §3 strict reading" parametrized case) |
-| Integration v6 analog | `pytcp/tests/integration/test__packet_handler__ip6_frag__rx.py` (same case) |
+| Integration: replay-fragment in flow A drops only that flow | `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py` (the "duplicate fragments in flow A drop flow A under RFC 5722 §3 strict reading" parametrized case) |
+| Integration v6 analog | `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6_frag__rx.py` (same case) |
 
 ---
 

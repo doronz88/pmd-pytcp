@@ -164,8 +164,8 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 **Commit subject:** `icmp: route ICMP errors through tcp_fsm(icmp=...) dispatch`
 
 **Modified files:**
-- `pytcp/stack/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpMetadata(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
-- `pytcp/stack/packet_handler/packet_handler__icmp6__rx.py` — same (5 call sites)
+- `pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpMetadata(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
+- `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` — same (5 call sites)
 - `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` — rename to `test__tcp__session__icmp__dest_unreachable.py`, drive via `tcp_fsm(icmp=...)`
 - `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py` — rename to `..__icmp__time_exceeded.py`, drive via FSM
 - `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded__ip6.py` — same

@@ -45,7 +45,7 @@ What still **does not happen**:
 
 **Adherence:** **shipped** (Phases 4 + 6). The
 ICMPv6 RX handler at
-`pytcp/stack/packet_handler/packet_handler__icmp6__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
 includes `__phrx_icmp6__packet_too_big` which
 parses the embedded IPv6+L4 4-tuple via the shared
 `parse_embedded_l4` helper, demuxes to UDP via

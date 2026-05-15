@@ -123,7 +123,7 @@ if raw_cksum == 0:
 `UdpIntegrityError` so the existing
 `PacketValidationError` catches continue to drop the
 packet correctly. The UDP RX handler at
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
 catches it specifically to bump the dedicated
 `udp__ip6_zero_cksum__drop` counter — separating the
 RFC-6935 discard path from generic UDP parse failures
@@ -281,7 +281,7 @@ in May 2026:
   — companion positive-control test that the IPv4
   cksum=0 acceptance still works (RFC 768 compatibility).
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__udp__rx.py::TestPacketHandlerUdpRxIp6ZeroCksumDrop`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxIp6ZeroCksumDrop`
   — drives an Ethernet/IPv6/UDP frame with cksum=0
   through the full RX path; asserts: no TX frame
   emitted, `udp__ip6_zero_cksum__drop` counter bumps

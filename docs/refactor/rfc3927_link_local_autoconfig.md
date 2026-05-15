@@ -6,7 +6,7 @@
 | Plan author     | Audit pass (2026-05-12)                                              |
 | Source audit    | `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`                  |
 | Target branch   | `PyTCP_3_0__pre_release`                                             |
-| Touch points    | new `pytcp/protocols/ip4_link_local/`, `pytcp/lib/address_api.py` (new ACD API surface), DHCP client (migrates to new API), `packet_handler__ip4__tx.py`, `packet_handler__ethernet__tx.py`, sysctl framework, RFC 3927 / 5227 / 2131 adherence records |
+| Touch points    | new `pytcp/protocols/ip4_link_local/`, `pytcp/stack/address.py` (new ACD API surface), DHCP client (migrates to new API), `packet_handler__ip4__tx.py`, `packet_handler__ethernet__tx.py`, sysctl framework, RFC 3927 / 5227 / 2131 adherence records |
 | Coupled records | RFC 1122 §3.3.4 (multihoming — out of scope), RFC 2131 (DHCP client — coordination + migration to new API), RFC 5227 (ACD — extracted into sanctioned API), RFC 6724 (IPv4 source selection — already in place) |
 | Design option   | **Option B** — extract a Phase-3-clean ACD API on `Ip4AddressApi`; both DHCP and link-local consume it. Cleans up DHCP's existing `_arp_dad_probe_address` reach-through as a side effect. See §12.2 for the alignment rationale. |
 
@@ -72,15 +72,15 @@ The 2026-05-11 RFC 3927 audit
   Announce) is implemented as `_arp_dad_probe_address` /
   `_arp_dad_announce_address` on the packet handler and
   reused by the DHCPv4 client + static-host claim path
-  (`pytcp/stack/packet_handler/__init__.py:1776-1828`).
+  (`pytcp/runtime/packet_handler/__init__.py:1776-1828`).
 - **`DadSlotRegistry`** (`pytcp/lib/dad_slot_registry.py`)
   provides the per-candidate conflict-signal slot the probe
   loop polls.
-- **`Ip4AddressApi`** (`pytcp/lib/address_api.py`) exposes
+- **`Ip4AddressApi`** (`pytcp/stack/address.py`) exposes
   `add_host` / `remove_host` / `replace_host` as the
   kernel/userspace boundary for address installs — the
   Phase-3-clean surface link-local autoconfig writes to.
-- **`Subsystem` base class** (`pytcp/lib/subsystem.py`) and
+- **`Subsystem` base class** (`pytcp/runtime/subsystem.py`) and
   the `Dhcp4Client` reference implementation
   (`pytcp/protocols/dhcp4/dhcp4__client.py`) — the structural
   template for the new `Ip4LinkLocal` subsystem.
@@ -237,7 +237,7 @@ PyTCP equivalent is the in-process API on `Ip4AddressApi`.
 **0.5.1 New API: `claim_with_acd`**
 
 ```python
-# pytcp/lib/address_api.py
+# pytcp/stack/address.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ClaimResult:
     """
@@ -275,7 +275,7 @@ class Ip4AddressApi:
 **0.5.2 New API: `subscribe_conflicts`**
 
 ```python
-# pytcp/lib/address_api.py
+# pytcp/stack/address.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ConflictEvent:
     """
@@ -389,7 +389,7 @@ reach-through closure.
 
 **0.5.6 Migrate static-host claim path**
 
-`pytcp/stack/packet_handler/__init__.py::_create_stack_ip4_addressing`
+`pytcp/runtime/packet_handler/__init__.py::_create_stack_ip4_addressing`
 currently has:
 
 ```python
@@ -988,13 +988,13 @@ No new finalize_validator constraints — knobs are independent.
 
 | File                                                                 | Why |
 |----------------------------------------------------------------------|-----|
-| `pytcp/lib/address_api.py`                                           | Phase 0.5 — add `claim_with_acd` / `subscribe_conflicts` / `unsubscribe_conflicts` / `send_gratuitous_arp` / `abort_bound_tcp_sessions` |
-| `pytcp/stack/packet_handler/__init__.py`                             | Phase 0.5 — `_arp_dad_probe_address` / `_arp_dad_announce_address` / `_send_gratuitous_arp` become private (called from the API impl); static-host claim path migrates to `claim_with_acd` |
-| `pytcp/stack/packet_handler/packet_handler__arp__rx.py`              | Phase 0.5 — conflict-detection RX path routes events to the API's subscription registry instead of writing the `DadSlotRegistry` directly |
+| `pytcp/stack/address.py`                                           | Phase 0.5 — add `claim_with_acd` / `subscribe_conflicts` / `unsubscribe_conflicts` / `send_gratuitous_arp` / `abort_bound_tcp_sessions` |
+| `pytcp/runtime/packet_handler/__init__.py`                             | Phase 0.5 — `_arp_dad_probe_address` / `_arp_dad_announce_address` / `_send_gratuitous_arp` become private (called from the API impl); static-host claim path migrates to `claim_with_acd` |
+| `pytcp/runtime/packet_handler/packet_handler__arp__rx.py`              | Phase 0.5 — conflict-detection RX path routes events to the API's subscription registry instead of writing the `DadSlotRegistry` directly |
 | `pytcp/protocols/dhcp4/dhcp4__client.py`                             | Phase 0.5 — migrate `_arp_dad_probe_address` / `_arp_dad_announce_address` call sites to `stack.address.claim_with_acd` |
 | `pytcp/stack/__init__.py`                                            | new `link_local` singleton, init kwarg, import `ip4_link_local__constants` to populate the sysctl registry, snapshot/restore in `mock__init` |
-| `pytcp/stack/packet_handler/packet_handler__ip4__tx.py`              | Phase-0 §2.6 scope-mismatch gate |
-| `pytcp/stack/packet_handler/packet_handler__ethernet__tx.py`         | Phase-0 §2.8 link-local destination → bypass gateway lookup |
+| `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`              | Phase-0 §2.6 scope-mismatch gate |
+| `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`         | Phase-0 §2.8 link-local destination → bypass gateway lookup |
 | `pytcp/lib/tx_status.py`                                             | new `DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH` variant |
 | `pytcp/lib/packet_stats.py`                                          | new counters: `ip4__link_local_scope_mismatch__drop`, `ip4__acd_claimed`, `ip4__acd_conflict_during_probe`, `ip4__acd_defended`, `ip4_link_local__claimed`, `ip4_link_local__defended`, `ip4_link_local__reconfigured`, `ip4_link_local__conflict_during_probe` |
 | `pytcp/tests/lib/network_testcase.py`                                | snapshot `stack.link_local` + the ACD subscription registry in `setUp`; restore in `tearDown` |
@@ -1014,8 +1014,8 @@ No new finalize_validator constraints — knobs are independent.
 | `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__reconfigure_on_second_conflict.py` | integration | §2.5(a) abandon |
 | `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_fallback_trigger.py` | integration | DHCP-fail → link-local INIT |
 | `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_success_halts.py` | integration | DHCP-bind → link-local HALTED + remove |
-| `pytcp/tests/integration/test__packet_handler__ip4__tx.py` (extend)                                 | integration | Phase-0 `TestPacketHandlerIp4TxRfc3927ScopeGate` (4 cases) |
-| `pytcp/tests/integration/test__packet_handler__ethernet__tx.py` (extend)                            | integration | Phase-0 `Test*Rfc3927DstLinkLocalBypassGateway` |
+| `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py` (extend)                                 | integration | Phase-0 `TestPacketHandlerIp4TxRfc3927ScopeGate` (4 cases) |
+| `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py` (extend)                            | integration | Phase-0 `Test*Rfc3927DstLinkLocalBypassGateway` |
 
 ### Touched test files
 
@@ -1284,11 +1284,11 @@ After Phase 5:
   in the broader IPv4 audit roadmap.
 - `pytcp/protocols/dhcp4/dhcp4__client.py` — reference
   implementation of the `Subsystem`-based FSM pattern.
-- `pytcp/stack/packet_handler/__init__.py::_arp_dad_probe_address`
+- `pytcp/runtime/packet_handler/__init__.py::_arp_dad_probe_address`
   / `_arp_dad_announce_address` — the RFC 5227 probe /
   announce machinery; Phase 0.5 hides these behind
   `Ip4AddressApi.claim_with_acd`.
-- `pytcp/lib/address_api.py` — Phase-3-clean address-control
+- `pytcp/stack/address.py` — Phase-3-clean address-control
   surface; gains the ACD API in Phase 0.5.
 
 ### External library references (Linux Phase-3 analogues)

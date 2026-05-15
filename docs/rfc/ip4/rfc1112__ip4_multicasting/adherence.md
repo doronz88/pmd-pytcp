@@ -62,7 +62,7 @@ return self._address & 0xF0_00_00_00 == 0xE0_00_00_00
 
 **Adherence:** met. The all-hosts group is preconfigured in
 the stack's `_ip4_multicast` list at boot
-(`pytcp/stack/packet_handler/__init__.py`).
+(`pytcp/runtime/packet_handler/__init__.py`).
 
 ## §6.1 Sending — IP Service Interface
 
@@ -185,7 +185,7 @@ these gates.
 ### §7 RX admission of joined multicast groups
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   All-hosts (224.0.0.1) admission path.
 
 **Status:** locked in.
@@ -193,13 +193,13 @@ these gates.
 ### §6.1 Multicast outbound TTL default = 1
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
   Three cases: multicast dst + no caller TTL → TTL=1;
   multicast dst + caller-supplied TTL → caller value
   preserved; unicast dst + no caller TTL → TTL=64
   regression net.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ethernet__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
   `Ethernet/IPv4 - dst multicast address` case pins the
   full TX frame including TTL=1 in the IPv4 header byte 8.
 

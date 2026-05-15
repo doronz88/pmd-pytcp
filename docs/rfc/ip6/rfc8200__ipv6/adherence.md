@@ -23,7 +23,7 @@ deployment series tracked at `docs/refactor/ipv6_extension_headers_plan.md`.
 
 | Section | Topic                                              | Status      | Implementing commits / files |
 |---------|----------------------------------------------------|-------------|-------------------------------|
-| §4.1    | Extension-header chain order                       | shipped     | `pytcp/stack/packet_handler/packet_handler__ip6__rx.py` (`_phrx_ip6__walk_chain`) |
+| §4.1    | Extension-header chain order                       | shipped     | `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py` (`_phrx_ip6__walk_chain`) |
 | §4.2    | TLV options + action-on-unrecognized (00/01/10/11) | shipped     | `net_proto/protocols/ip6_hbh/options/ip6_hbh__options.py`, `net_proto/protocols/ip6_dest_opts/options/ip6_dest_opts__options.py` |
 | §4.3    | Hop-by-Hop Options Header                          | shipped     | `net_proto/protocols/ip6_hbh/` (full package) |
 | §4.4    | Routing Header                                     | shipped     | `net_proto/protocols/ip6_routing/` (full package) |
@@ -47,7 +47,7 @@ covered by the separate RFC 5095 audit.
 > Destination Options header (note 2), Upper-Layer header."
 
 **Adherence:** shipped. The chain walker in
-`pytcp/stack/packet_handler/packet_handler__ip6__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
 (`_phrx_ip6__walk_chain`) walks the chain in the on-the-wire
 order. Order is enforced by the §4.3 HBH-must-be-first rule
 (below); other extension headers are processed in whatever
@@ -181,7 +181,7 @@ reassembly since before the extension-header deployment.
 The Fragment header lives at `net_proto/protocols/ip6_frag/`
 and is wired through the chain walker via the re-entry
 pattern in
-`pytcp/stack/packet_handler/packet_handler__ip6_frag__rx.py`.
+`pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`.
 
 Reassembly state lives in the shared `IpFragTable` at
 `pytcp/protocols/ip/ip_frag_table.py` (shared with the IPv4

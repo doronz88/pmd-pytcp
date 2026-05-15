@@ -83,7 +83,7 @@ generate XID / TEST responses without explicit consumer).
 MAC framing; `net_proto/protocols/llc/` parses the LLC
 header; `net_proto/protocols/snap/` parses the SNAP
 extension. The runtime dispatch at
-`pytcp/stack/packet_handler/packet_handler__ethernet_802_3__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py`
 chains the three: 802.3 → LLC → (SNAP when DSAP=0xAA).
 For OUI=0x000000 (RFC 1042 canonical), the PID is
 interpreted as a standard EtherType and the frame is
@@ -296,7 +296,7 @@ consumer today.
 
 ### 802.3 + LLC + SNAP runtime dispatch
 
-- **Integration:** `pytcp/tests/integration/test__packet_handler__ethernet_802_3__llc_snap.py`
+- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet_802_3__llc_snap.py`
   (10 tests) — STP BPDU, Cisco CDP / VTP / DTP / PVST+
   / UDLD, Novell IPX over 802.2, RFC 1042 SNAP-IP4,
   RFC 1042 SNAP-ARP, Cisco-multicast-MAC filter

@@ -48,7 +48,7 @@ Phase-2 forwarding parity: the per-address state map is a
 host-local model; a router-grade build will need to
 extend it per-interface and per-prefix. Tracked under the
 broader `# Phase 2: per-interface` work item in
-`pytcp/lib/sysctl.py` rather than RFC 4429-specific.
+`pytcp/stack/sysctl.py` rather than RFC 4429-specific.
 
 ## Test coverage
 

@@ -63,8 +63,8 @@ sit under `protocols/<proto>/` mirroring the source tree:
 ```
 SOURCE                                                     TEST
 ─────────────────────────────────────────────────          ──────────────────────────────────────────────────────────────────────────
-pytcp/stack/packet_handler/packet_handler__ip6__tx.py   →  pytcp/tests/integration/test__packet_handler__ip6__tx.py
-pytcp/stack/packet_handler/packet_handler__arp__rx.py   →  pytcp/tests/integration/test__packet_handler__arp__rx.py
+pytcp/runtime/packet_handler/packet_handler__ip6__tx.py   →  pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py
+pytcp/runtime/packet_handler/packet_handler__arp__rx.py   →  pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py
 pytcp/protocols/icmp6/nd/nd__cache.py                   →  pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py
 pytcp/protocols/tcp/tcp__session.py                     →  pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py
 pytcp/socket/tcp__socket.py                             →  (driven via TcpSessionTestCase under protocols/tcp/...)
@@ -78,9 +78,9 @@ Subdirectories use PEP 420 namespace packages — **no
 
 | Source area | Test path |
 |---|---|
-| `pytcp/stack/packet_handler/<file>.py` (per-protocol RX/TX handler) | `pytcp/tests/integration/test__packet_handler__<proto>__<rx\|tx>.py` |
-| `pytcp/protocols/<proto>/<file>.py` (protocol runtime — FSM, caches) | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<scenario>.py` |
-| Cross-cutting RFC mechanism that spans handler + protocol | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<rfc-mechanism>.py` |
+| `pytcp/runtime/packet_handler/<file>.py` (per-protocol RX/TX handler) | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` |
+| `pytcp/protocols/<proto>/<file>.py` (protocol runtime — FSM, caches) | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<scenario>.py` |
+| Cross-cutting RFC mechanism that spans handler + protocol | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py` |
 | Socket-API behaviour | integration cases via `TcpSessionTestCase` under `pytcp/tests/integration/protocols/tcp/...` |
 
 The `pytcp/tests/integration/` tree mirrors the source tree
@@ -111,8 +111,8 @@ guard unless the file has a genuine circular import.
 
 | Source artefact | Test filename pattern |
 |---|---|
-| `pytcp/stack/packet_handler/packet_handler__<proto>__rx.py` | `test__packet_handler__<proto>__rx.py` |
-| `pytcp/stack/packet_handler/packet_handler__<proto>__tx.py` | `test__packet_handler__<proto>__tx.py` |
+| `pytcp/runtime/packet_handler/packet_handler__<proto>__rx.py` | `test__packet_handler__<proto>__rx.py` |
+| `pytcp/runtime/packet_handler/packet_handler__<proto>__tx.py` | `test__packet_handler__<proto>__tx.py` |
 | RFC-mechanism focus on a protocol | `test__<proto>__<rfc-mechanism>.py` (e.g. `test__icmp6__nd__optimistic_dad.py`) |
 | TCP session scenarios | `test__tcp__session__<scenario>.py` (e.g. `test__tcp__session__handshake__passive.py`) |
 | ICMP demux behaviour | `test__icmp<4\|6>__<scenario>.py` |
@@ -244,7 +244,7 @@ For new attributes on `stack`, extend the relevant harness'
 canonical example with `sockets_prior`, `tcp_stack_prior`,
 `pmtu_cache_prior`, error-rate-limiter priors).
 
-The same rule applies to `pytcp.lib.sysctl` keys — but the
+The same rule applies to `pytcp.stack.sysctl` keys — but the
 registry exposes `sysctl_module.reset_to_defaults()` as the
 canonical restore, which the harness `tearDown` should call
 for any test that overrode a sysctl.
@@ -530,7 +530,7 @@ import re, sys
 from pathlib import Path
 
 FILES = [
-    "pytcp/tests/integration/protocols/<proto>/test__<...>.py",
+    "pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
     # ... list every integration-test file you wrote or modified.
 ]
 
@@ -724,9 +724,9 @@ Same as `unit_testing.md §10`:
 When in doubt, mirror the structure of:
 
 - **Per-handler smoke (parametric, golden frames):**
-  `pytcp/tests/integration/test__packet_handler__ip6__tx.py`
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
-  `pytcp/tests/integration/test__packet_handler__arp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
 - **Mechanism-focused (probe + fluent assert):**
   `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`
   `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`

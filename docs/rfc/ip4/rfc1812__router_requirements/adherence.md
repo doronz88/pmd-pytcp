@@ -147,7 +147,7 @@ default-gateway preference, multipath, etc.) is **Phase 2**.
   `pytcp/tests/unit/protocols/icmp/test__icmp__rate_limiter.py`
   Token-bucket algorithm under sustained / burst load.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   ICMP Parameter Problem / Destination Unreachable rate-limit
   suppression paths.
 

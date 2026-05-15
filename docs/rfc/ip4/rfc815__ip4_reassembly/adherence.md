@@ -274,7 +274,7 @@ cross-references back here.
 ### §2 / §3 Reassembly happy path
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   contains a fragmentation receive matrix: two-fragment, three-
   fragment, out-of-order arrival, last-fragment-first arrival,
   full-coverage no-overlap.
@@ -284,7 +284,7 @@ cross-references back here.
 ### §6 Options preserved on reassembly
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
   Two-fragment reassembly with first fragment carrying
   [Router Alert + RR + NOP] and second carrying only the
   copy_flag=1 subset → reassembled packet preserves the
@@ -320,7 +320,7 @@ cross-references back here.
   Overlap matrix: exact-duplicate-offset, partial-overlap on
   either edge, full-containment.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies the `ip4__frag__overlap__drop` counter increments.
 
 **Status:** locked in.

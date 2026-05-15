@@ -20,7 +20,7 @@ greppable.
 
 The audit was performed by reading the RFC text fresh and
 inspecting `net_proto/protocols/ip4/options/ip4__option__router_alert.py`
-and `pytcp/stack/packet_handler/packet_handler__ip4__rx.py`
+and `pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
 directly. Non-normative sections (§1 Introduction, §2
 Terminology, §3 Security Concerns discussion, §6 Security
 Considerations boilerplate, §7-§9) are omitted.

@@ -202,7 +202,7 @@ Rules:
 ### 5.1 Cross-module visibility
 
 Each rule below is **MUST**, distilled from real refactors
-the `pytcp.lib.neighbor` / `pytcp.lib.sysctl` scaffolding
+the `pytcp.lib.neighbor` / `pytcp.stack.sysctl` scaffolding
 needed after shipping. The failure mode that motivated each
 rule is named in parentheses.
 

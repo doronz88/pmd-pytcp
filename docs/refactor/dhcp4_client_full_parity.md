@@ -191,7 +191,7 @@ class Dhcp4Lease:
 
 `Dhcp4Client.fetch()` returns `Dhcp4Lease | None`
 instead of `Ip4Host | None`. Update the one call site
-in `pytcp/stack/packet_handler/__init__.py` to read
+in `pytcp/runtime/packet_handler/__init__.py` to read
 `lease.ip4_host`.
 
 **Tests** (extend `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`):
@@ -484,7 +484,7 @@ Introduce a minimal Phase-1 address-API stub that the
 DHCP client is the first consumer of:
 
 ```python
-# pytcp/lib/address_api.py — NEW
+# pytcp/stack/address.py — NEW
 class Ip4AddressApi:
     """
     Phase-1 IPv4 address-control surface. Mirrors Linux
@@ -843,7 +843,7 @@ invocation per knob, classify as policy.
 
 ### New source files
 
-- `pytcp/lib/address_api.py` (Phase 4) —
+- `pytcp/stack/address.py` (Phase 4) —
   `Ip4AddressApi` (and `Ip6AddressApi` skeleton for
   symmetry); the Phase-3 north-star address-control
   surface. DHCP client is the first consumer; future
@@ -874,7 +874,7 @@ invocation per knob, classify as policy.
 
 - `pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
   8) — every phase.
-- `pytcp/stack/packet_handler/__init__.py` (Phase 4,
+- `pytcp/runtime/packet_handler/__init__.py` (Phase 4,
   5) — replace `_create_stack_ip4_addressing` DHCP
   block with `dhcp4_lifecycle` integration; harness
   snapshot/restore.
@@ -893,7 +893,7 @@ invocation per knob, classify as policy.
   `classless_static_routes`, etc.
 - `pytcp/protocols/arp/arp__cache.py` (Phase 6) —
   unicast ARP Request emission for DNAv4 probe.
-- `pytcp/lib/sysctl.py` registry — populated via the
+- `pytcp/stack/sysctl.py` registry — populated via the
   `sysctl_knob` skill per Phase.
 
 ### New test files

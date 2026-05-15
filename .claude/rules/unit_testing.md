@@ -664,7 +664,7 @@ from pathlib import Path
 
 FILES = [
     "pytcp/tests/unit/protocols/<proto>/test__<...>.py",
-    "pytcp/tests/integration/protocols/<proto>/test__<...>.py",
+    "pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
     # ... list every test file you wrote or modified.
 ]
 
@@ -954,7 +954,7 @@ process (clock, network, disk, environment), patch it.
 ### 10a.2 Module-level state snapshot/restore
 
 If a test mutates module-level state (e.g. attributes on
-`pytcp.stack` or `pytcp.lib.sysctl`), the fixture MUST
+`pytcp.stack` or `pytcp.stack.sysctl`), the fixture MUST
 snapshot the original state and restore it on cleanup.
 Otherwise the mutation leaks to subsequent tests and silently
 corrupts results.

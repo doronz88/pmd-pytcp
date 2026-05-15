@@ -54,7 +54,7 @@ broadcast address for a given network using "network | ~mask"
 which yields exactly `{net, subnet, -1}` for any subnet mask.
 At boot, the stack populates `_ip4_broadcast` with the
 `network.broadcast` for every owned `Ip4Host`
-(`pytcp/stack/packet_handler/__init__.py:194+`). The RX
+(`pytcp/runtime/packet_handler/__init__.py:194+`). The RX
 handler admits frames with destination matching any entry in
 `_ip4_broadcast`.
 
@@ -100,7 +100,7 @@ the all-subnets enumeration / forwarding logic is router work.
   `Ip4Network.broadcast` property test (e.g.
   `Ip4Network("10.0.0.0/24").broadcast == Ip4Address("10.0.0.255")`).
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Broadcast destination matrix exercises subnet-directed
   broadcast admission.
 
@@ -109,7 +109,7 @@ the all-subnets enumeration / forwarding logic is router work.
 ### TX-side subnet broadcast source replacement
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Verifies `_ip4_src in _ip4_broadcast` → replaced with the
   matching host's primary address per the `network.broadcast`
   lookup (`packet_handler__ip4__tx.py:310-321`).
@@ -119,7 +119,7 @@ the all-subnets enumeration / forwarding logic is router work.
 ### TX-side subnet broadcast destination gate (`ip4.allow_broadcast`)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast::test__phtx_ip4__network_broadcast_dst_default_deny__dropped`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast::test__phtx_ip4__network_broadcast_dst_default_deny__dropped`
   Drives an outbound datagram to the subnet-directed
   broadcast `10.0.1.255` and verifies the gate drops with
   `DROPPED__IP4__DST_BROADCAST_DISALLOWED`. The companion

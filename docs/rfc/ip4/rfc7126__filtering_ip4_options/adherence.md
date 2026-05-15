@@ -18,7 +18,7 @@ the LSRR/SSRR drop-by-default gate already in place.
 
 The audit was performed by reading the RFC text fresh and
 inspecting `net_proto/protocols/ip4/options/` and
-`pytcp/stack/packet_handler/packet_handler__ip4__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
 directly. Non-normative content (§1 Introduction, §2 IP Options
 background, §3 General Security Implications, §6 IANA, §7
 Security boilerplate, §8 References) is omitted.
@@ -197,7 +197,7 @@ options stream.
 ### §4.3 / §4.4 LSRR / SSRR drop-by-default
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx__source_route.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   Matrix: LSRR with gate off → drop, LSRR with gate on → accept,
   SSRR with gate off → drop, SSRR with gate on → accept. Counter
   `ip4__source_route__drop` verified.

@@ -14,7 +14,7 @@ This document records the PyTCP codebase's adherence to RFC 791
 algorithmic sections (§3.2 Fragmentation discussion). The audit
 was performed by reading the RFC text fresh and inspecting the
 codebase under `net_proto/protocols/ip4/` and
-`pytcp/stack/packet_handler/packet_handler__ip4__*.py` directly;
+`pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
 no prior memory or rule-file content was reused. Sections that
 contain no normative wire-format / algorithm content
 (§1 Introduction, §2 Overview, §3.3 Interfaces process-level
@@ -41,7 +41,7 @@ forwarding is Phase 2.
 | §3.1    | Header format / each wire field    | shipped     | `net_proto/protocols/ip4/ip4__header.py` |
 | §3.1    | Header checksum                    | shipped     | `net_proto/lib/inet_cksum.py` + `ip4__parser.py:108` / `ip4__assembler.py:118` |
 | §3.1    | Options framework + nine options   | shipped     | `net_proto/protocols/ip4/options/` (10 files) |
-| §3.2    | Fragmentation on send              | shipped     | `pytcp/stack/packet_handler/packet_handler__ip4__tx.py:179-208` |
+| §3.2    | Fragmentation on send              | shipped     | `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:179-208` |
 | §3.2    | Reassembly on receive              | shipped     | `pytcp/protocols/ip/ip_frag.py`, `ip_frag_table.py`, plus RFC 815 audit |
 | §3.2    | TTL decrement / TTL=0 drop         | partial     | RX enforces `ttl > 0`; forwarding decrement is Phase 2 |
 | Appendix B | Network byte order              | shipped     | `struct` format strings prefixed `! `                |
@@ -435,7 +435,7 @@ octet field in PyTCP wire codecs is network-order.
   Each `Ip4SanityError` branch covered with its expected
   `pointer` value.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   exercises the ICMPv4 Parameter Problem emission gates and
   rate limiter behaviour.
 
@@ -460,7 +460,7 @@ octet field in PyTCP wire codecs is network-order.
   Container composition + integrity (max length, padding,
   alignment).
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx__source_route.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   exercises the `IP4__ACCEPT_SOURCE_ROUTE` gate (LSRR / SSRR
   drop matrix with and without the override).
 
@@ -469,7 +469,7 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.2 Fragmentation on send
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   contains a fragmentation matrix (DF=0 over MTU produces
   the expected fragment chain; DF=1 over MTU drops with the
   documented counter).
@@ -491,7 +491,7 @@ octet field in PyTCP wire codecs is network-order.
   `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
   case.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   covers ICMPv4 Parameter Problem emission with `pointer=8`.
 
 **Status:** locked in.
@@ -512,11 +512,11 @@ octet field in PyTCP wire codecs is network-order.
   bit-set / clear), `TestIp4OptionsWithCopyFlag` (4 cases —
   copy_flag=True / False filter, empty input, non-mutating).
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation`
   (3 cases — mixed copy-flag fragmentation, copy_flag=0
   only, no-options regression).
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
   (2 cases — options preserved on reassembly, no-options
   regression).
 

@@ -14,8 +14,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 768. The audit was performed by reading the RFC
 text fresh and inspecting `net_proto/protocols/udp/`,
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py`,
-`pytcp/stack/packet_handler/packet_handler__udp__tx.py`,
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`,
+`pytcp/runtime/packet_handler/packet_handler__udp__tx.py`,
 and `pytcp/socket/udp__socket.py` directly. Adherence
 levels are described in plain language. Sections without
 normative content (Introduction, Protocol Application,
@@ -93,7 +93,7 @@ RFC 768 requirement).
 
 Inbound UDP datagrams with `sport=0` parse to completion
 and reach the socket-dispatch layer at
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py`,
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`,
 where they're delivered to a matching listener via the
 normal `(local_addr, local_port, remote_addr,
 remote_port=0)` 4-tuple match — the same code path that
@@ -114,7 +114,7 @@ runs to completion with `parser.sport == 0` and
 >  particular internet destination address."
 
 **Adherence:** met. The RX dispatch path at
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py:128-147`
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py:128-147`
 constructs a `UdpMetadata` keyed by
 `(ip__local_address, udp__local_port)` and walks the
 socket table for a matching listener — so the same dport
@@ -249,10 +249,10 @@ deterministically.
 
 **Adherence:** met. The IPv4 TX path populates the
 pseudo-header sum in
-`pytcp/stack/packet_handler/packet_handler__ip4__tx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
 before invoking the UDP assembler; the IPv6 TX path
 populates it in
-`pytcp/stack/packet_handler/packet_handler__ip6__tx.py`.
+`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`.
 The `pshdr_sum: int = 0` attribute on `Udp` base
 (`net_proto/protocols/udp/udp__base.py:49`) is overwritten
 per-instance. The RX side mirrors via
@@ -429,7 +429,7 @@ the natural follow-ups when a reader extends the audit.
 ### Packet handler RX (no-socket → ICMP Unreachable)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__udp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py`
   — pins the RX dispatch including socket lookup and
   the ICMP-Unreachable emission when no socket matches
   (both IPv4 and IPv6 paths). Also pins the
@@ -441,7 +441,7 @@ the natural follow-ups when a reader extends the audit.
 ### Packet handler TX
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__udp__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__tx.py`
   — pins outbound wire format across IPv4 and IPv6
   parametric cases with and without payload.
 

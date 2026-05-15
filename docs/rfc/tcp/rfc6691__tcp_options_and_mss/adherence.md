@@ -161,7 +161,7 @@ Requirement B gap. With timestamps or SACK negotiated, a
 full-MSS segment becomes `fixed_headers + options + MSS
 data`, which exceeds the link MTU by `len(options)` bytes
 and triggers IPv4 fragmentation at
-`pytcp/stack/packet_handler/packet_handler__ip4__tx.py:156-169`.
+`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:156-169`.
 PyTCP never sets the IPv4 DF bit on outbound packets (no
 `flag_df=` assignment anywhere in the TX path), so the
 "or dropped" alternative does not occur — every option-

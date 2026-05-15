@@ -100,7 +100,7 @@ a rule-based candidate sort.
 
 ### Current state
 
-`pytcp/stack/packet_handler/packet_handler__ip6__tx.py`:
+`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
 the source-validation logic lives in
 `__validate_src_ip6_address` (around line 173, ~115 lines).
 Today it does:
@@ -115,7 +115,7 @@ Today it does:
   (src=::).
 
 Verify the current line range with
-`grep -n "def __validate_src_ip6_address" pytcp/stack/packet_handler/packet_handler__ip6__tx.py`
+`grep -n "def __validate_src_ip6_address" pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
 before editing — the file has been growing.
 
 ### Target shape
@@ -209,7 +209,7 @@ Ships:
 RFC 6724 §6 covers IPv4-mapped IPv6 addresses; PyTCP's
 IPv4 path is currently a separate "first host with
 gateway" heuristic in
-`pytcp/stack/packet_handler/packet_handler__ip4__tx.py`.
+`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
 This phase aligns the IPv4 selection with the same rule
 structure.
 

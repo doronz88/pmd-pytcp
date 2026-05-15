@@ -63,7 +63,7 @@ A two-step `sync` API (`fetch()` / `release(lease)` /
 primitives for tests and operator CLI tools.
 
 A separate kernel/userspace boundary surface at
-`pytcp/lib/address_api.py` (`Ip4AddressApi`) mediates
+`pytcp/stack/address.py` (`Ip4AddressApi`) mediates
 every address mutation; the lifecycle never writes
 `_ip4_host` directly. The Phase 4.5 FSM → API mutation
 table is wired end-to-end (see the table in the Overall
@@ -104,7 +104,7 @@ Remaining items against the per-RFC adherence catalogue:
 constructed from `stack.init` only when the L2 packet
 handler's `ip4_dhcp` flag is true and no static address
 is configured. `_create_stack_ip4_addressing` at
-`pytcp/stack/packet_handler/__init__.py:1830-1880`
+`pytcp/runtime/packet_handler/__init__.py:1830-1880`
 handles statically configured candidates; the DHCPv4 path
 is owned by `stack.dhcp4_client` (a `Subsystem` that
 `stack.start()` brings up after the packet handler and
@@ -829,7 +829,7 @@ valid lease, the `_on_bound` transition
 (`dhcp4_client.py:269-284`) invokes the
 `arp_dad_announcer` callback wired by the packet handler
 to `_arp_dad_announce_address`
-(`pytcp/stack/packet_handler/__init__.py:1815-1828`),
+(`pytcp/runtime/packet_handler/__init__.py:1815-1828`),
 which emits the RFC 5227 §2.3
 ANNOUNCE_NUM=2 gratuitous ARP Announcements. The trigger
 is technically RFC 5227, not the DHCP path directly, but

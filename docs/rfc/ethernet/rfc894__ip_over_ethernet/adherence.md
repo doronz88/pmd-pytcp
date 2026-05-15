@@ -163,7 +163,7 @@ for IPv4 address resolution; no static-table mode exists.
 dynamic discovery; outbound Ethernet TX consults the
 cache via `stack.arp_cache.find_entry(...)` and triggers
 ARP requests on miss (see
-`pytcp/stack/packet_handler/packet_handler__ethernet__tx.py`).
+`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`).
 
 ---
 
@@ -174,7 +174,7 @@ ARP requests on miss (see
 > mapped to the broadcast Ethernet address (of all binary
 > ones, FF-FF-FF-FF-FF-FF hex)."
 
-**Adherence:** met. `pytcp/stack/packet_handler/
+**Adherence:** met. `pytcp/runtime/packet_handler/
 packet_handler__ethernet__tx.py:211-238` maps both the
 limited broadcast (`255.255.255.255`) and the network
 broadcast (per-subnet `network.broadcast`) to
@@ -236,7 +236,7 @@ unit-test corpus and integration tests at:
   cases.
 - **Unit:** `net_proto/tests/unit/protocols/ethernet/test__ethernet__assembler__operation.py`
   — pins frame assembly + EtherType binding from payload type.
-- **Integration:** `pytcp/tests/integration/test__packet_handler__ethernet__rx.py`
+- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__rx.py`
   + the per-protocol RX harness tests that drive Ethernet
   frames into the stack and assert delivery / dispatch.
 
@@ -244,7 +244,7 @@ unit-test corpus and integration tests at:
 
 ### Broadcast IP → MAC FF:FF:FF:FF:FF:FF mapping
 
-- **Integration:** `pytcp/tests/integration/test__packet_handler__ethernet__tx.py`
+- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
   — the limited-broadcast / network-broadcast / multicast
   resolution paths assert
   `ethernet__dst = MacAddress(0xFFFFFFFFFFFF)`.

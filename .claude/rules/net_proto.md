@@ -217,7 +217,7 @@ Every header file defines two classes in this order:
   `frozen=True` via `object.__setattr__`. The TX packet
   handlers rewrite these two fields at send time after route
   lookup (see
-  `pytcp/stack/packet_handler/packet_handler__ethernet__tx.py`),
+  `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
   so the setters are load-bearing and must remain. Every
   such setter must carry the inline comment `# Hack to
   bypass the 'frozen=True' dataclass decorator.` so the
@@ -687,7 +687,7 @@ typing anti-patterns live in
    `assemble()`.
 8. Wire the protocol into the dispatch tables
    (`net_proto/lib/enums.py`'s `from_proto`, the relevant
-   packet handler in `pytcp/stack/packet_handler/`).
+   packet handler in `pytcp/runtime/packet_handler/`).
 9. Write tests per
    [`unit_testing.md`](unit_testing.md). Do **not** skip
    the header-asserts / parser-integrity / parser-sanity /

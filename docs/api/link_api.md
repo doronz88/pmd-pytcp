@@ -3,7 +3,7 @@
 | Field           | Value                                                                                                    |
 |-----------------|----------------------------------------------------------------------------------------------------------|
 | Status          | shipped 2026-05-12 (Phases 0-5)                                                                          |
-| Module path     | `pytcp.lib.link_api` (exposed as `pytcp.stack.link`)                                                     |
+| Module path     | `pytcp.stack.link` (exposed as `pytcp.stack.link`)                                                     |
 | Linux analogue  | `ip link show` / `ip link set` / RTNETLINK `RTM_NEWLINK` / `RTM_GETLINK` / `RTM_SETLINK`                 |
 | Refactor plan   | `docs/refactor/link_api.md` (6-phase plan + §6 design decisions)                                          |
 | Memory pointer  | `reference_link_api.md`                                                                                  |

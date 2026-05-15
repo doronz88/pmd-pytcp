@@ -14,7 +14,7 @@
 
 PyTCP is **fully compliant** with RFC 7739 for the IPv6 TX
 path. The IPv6 fragmentation emit site
-(`pytcp/stack/packet_handler/packet_handler__ip6_frag__tx.py::_phtx_ip6_frag`)
+(`pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py::_phtx_ip6_frag`)
 draws a fresh 32-bit Fragment Identification per outbound
 datagram from `secrets.randbelow(2**32)` — Python's
 cryptographic-quality random source.

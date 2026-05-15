@@ -74,7 +74,7 @@ grows.
 ### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing)
 
 The ICMP RX handlers
-(`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py:147` and
+(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:147` and
 `packet_handler__icmp6__rx.py:142`) **already** demux Destination-
 Unreachable to UDP: they parse the embedded IP+UDP header out of
 the ICMP error payload, build a `UdpMetadata`, look up the
@@ -215,7 +215,7 @@ Steps:
    parsing logic currently inlined in
    `__phrx_icmp4__destination_unreachable` (lines 163-181) and
    its v6 counterpart moves to
-   `pytcp/stack/packet_handler/_icmp_error_demux.py` returning
+   `pytcp/runtime/packet_handler/_icmp_error_demux.py` returning
    `(IpProto.UDP | IpProto.TCP, four_tuple)` or `None`. Reused
    by all four error handlers (v4/v6 × Dest-Unreachable/PTB).
 

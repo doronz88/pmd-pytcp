@@ -74,7 +74,7 @@ when SPA = 0. So the simultaneous-probe case is silently missed.
 
 ### Where to add the branch
 
-`pytcp/stack/packet_handler/packet_handler__arp__rx.py` —
+`pytcp/runtime/packet_handler/packet_handler__arp__rx.py` —
 inside `__phrx_arp__request`, after the existing loop-drop and
 conflict-defend checks but before the gratuitous-Request
 branch. Pseudocode:
@@ -352,7 +352,7 @@ under the `arp.*` registry namespace and are operator-tunable
 at boot via `stack.init(sysctls={...})` or at runtime via
 `pytcp.stack.sysctl["arp.<knob>"] = N`. The runtime branches
 that consume each knob are in
-`pytcp/stack/packet_handler/packet_handler__arp__{rx,tx}.py`.
+`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`.
 
 ### Effort
 
@@ -387,7 +387,7 @@ pytcp/protocols/arp/
 ├── arp__cache.py        # ArpCache subsystem; CacheEntry, _PendingResolution
 └── arp__constants.py    # ARP__CACHE/DEFEND/REQUEST/PROBE/ANNOUNCE constants
 
-pytcp/stack/packet_handler/
+pytcp/runtime/packet_handler/
 ├── __init__.py                          # PacketHandlerL2._create_stack_ip4_addressing (DAD flow)
 ├── packet_handler__arp__rx.py           # __phrx_arp__request, __phrx_arp__reply, _maybe_send_arp_defense
 └── packet_handler__arp__tx.py           # _phtx_arp + helpers (_send_arp_probe, _send_arp_announcement, etc.)

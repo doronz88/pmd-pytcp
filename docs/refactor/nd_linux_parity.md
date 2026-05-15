@@ -1757,11 +1757,11 @@ pytcp/protocols/icmp6/
     └── (nd__router_state.py)                   # MISSING — Tier 3 §11–§14
     └── (nd__slaac.py)                          # MISSING — Tier 3 §12 / Tier 4 §17–§18
 
-pytcp/stack/packet_handler/
+pytcp/runtime/packet_handler/
 ├── packet_handler__icmp6__rx.py                # RX dispatch
 └── packet_handler__icmp6__tx.py                # TX helpers
 
-pytcp/stack/packet_handler/__init__.py
+pytcp/runtime/packet_handler/__init__.py
 └── _create_stack_ip6_addressing                # DAD + SLAAC entry point
 ```
 

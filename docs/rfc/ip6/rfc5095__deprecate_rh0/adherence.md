@@ -25,7 +25,7 @@ Implementation:
   (`_validate_integrity` raises
   `Ip6RoutingIntegrityError(pointer=2)`).
 - The chain-walker dispatch in
-  `pytcp/stack/packet_handler/packet_handler__ip6__rx.py`
+  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
   catches the integrity error, computes the absolute IPv6-
   packet pointer (40 + chain_offset + 2), and emits ICMPv6
   Param Problem code 0 via the existing

@@ -97,7 +97,7 @@ but the stack's job is to expose PMTU.
   [RFC 8201 audit](../../ip6/rfc8201__pmtud_ip6/adherence.md).
 - **DF=1 on outbound UDP IPv4:** the UDP TX path sets
   `ip4__flag_df=True` at
-  `pytcp/stack/packet_handler/packet_handler__udp__tx.py:124-132`,
+  `pytcp/runtime/packet_handler/packet_handler__udp__tx.py:124-132`,
   which forces ICMP-Frag-Needed feedback rather than
   silent in-network fragmentation.
 - **PLPMTUD (RFC 8899) for UDP:** not implemented; a

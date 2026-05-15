@@ -3,7 +3,7 @@
 | Field           | Value                                                                          |
 |-----------------|--------------------------------------------------------------------------------|
 | Status          | shipped (RFC 3927 track)                                                       |
-| Module path     | `pytcp.lib.address_api` (exposed as `pytcp.stack.address`)                     |
+| Module path     | `pytcp.stack.address` (exposed as `pytcp.stack.address`)                     |
 | Linux analogue  | `ip addr add` / `ip addr del` / RTNETLINK `RTM_NEWADDR` / `RTM_DELADDR`        |
 | Refactor plan   | `docs/refactor/rfc3927_link_local_autoconfig.md` (Phase 0.5 API extraction)   |
 
@@ -198,7 +198,7 @@ the Phase-3 "introspection is read-only" constraint.
 - Refactor plan: `docs/refactor/rfc3927_link_local_autoconfig.md`
   (Phase 0.5 extracted the ACD API from inline DHCP /
   link-local code).
-- Source: `pytcp/lib/address_api.py`.
+- Source: `pytcp/stack/address.py`.
 - Adherence: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`.
 - Per-RFC: `docs/rfc/ip4/rfc5227__address_conflict_detection/`
   (when authored).

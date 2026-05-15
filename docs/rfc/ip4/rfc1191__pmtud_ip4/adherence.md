@@ -49,9 +49,9 @@ What still **does not happen**:
 > message."
 
 **Adherence:** **shipped** (Phase 8). The TCP TX
-(`pytcp/stack/packet_handler/packet_handler__tcp__tx.py`)
+(`pytcp/runtime/packet_handler/packet_handler__tcp__tx.py`)
 and UDP TX
-(`pytcp/stack/packet_handler/packet_handler__udp__tx.py`)
+(`pytcp/runtime/packet_handler/packet_handler__udp__tx.py`)
 paths now pass `ip4__flag_df=True` to `_phtx_ip4`. ICMPv4
 TX paths and other internally-generated v4 frames keep
 `ip4__flag_df=False` so error replies preserve the
@@ -65,7 +65,7 @@ inbound DF semantics.
 > in the Next-Hop MTU field (RFC 1191 §4)."
 
 **Adherence:** **shipped**. The ICMPv4 RX handler at
-`pytcp/stack/packet_handler/packet_handler__icmp4__rx.py`
+`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
 demuxes Type 3 Code 4 (Frag-Needed) on the embedded
 4-tuple. UDP sockets see the update via
 `UdpSocket.notify_pmtu`; TCP sessions see it via
@@ -142,8 +142,8 @@ follow-up.
 
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
-| §3 outbound DF=1 on TCP segments                    | shipped — `pytcp/tests/integration/test__packet_handler__tcp__tx.py` golden frames |
-| §3 outbound DF=1 on UDP datagrams                   | shipped — `pytcp/tests/integration/test__packet_handler__udp__tx.py` golden frames |
+| §3 outbound DF=1 on TCP segments                    | shipped — `pytcp/tests/integration/protocols/<proto>/test__<proto>__tcp__tx.py` golden frames |
+| §3 outbound DF=1 on UDP datagrams                   | shipped — `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__tx.py` golden frames |
 | §4 ICMP Frag-Needed Next-Hop MTU update for UDP     | shipped — `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` |
 | §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` |
 | §6.5 retransmit walkback (snd_nxt rewind on shrink) | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtu_walkback.py` |

@@ -62,7 +62,7 @@ correctness on real networks.
 - **Inbound IPv6 packets carrying any non-Frag extension header
   are dropped with Parameter Problem code 1.** The catch-all
   unrecognized-next-header path in
-  `pytcp/stack/packet_handler/packet_handler__ip6__rx.py:151-167`
+  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
   rejects HBH (next=0), Routing (43), DestOpts (60). Linux
   freely uses these; PyTCP silently breaks interop with hosts
   that send them.
@@ -731,7 +731,7 @@ staging.
 **Subject:** `ip6/rx: chain-walk dispatch with HBH/Routing/DestOpts handlers`
 
 **Scope:**
-- Refactor `pytcp/stack/packet_handler/packet_handler__ip6__rx.py`
+- Refactor `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
   per §3.2 above. Add three new handler methods:
   - `_phrx_ip6_hbh(packet_rx)` — calls `Ip6HbhParser`, advances
     `packet_rx.frame`, sets `packet_rx.ip6_hbh`. Applies RFC
@@ -816,7 +816,7 @@ Header).
 
 **Scope:**
 - Locate the MLDv2 TX path. (Likely
-  `pytcp/stack/packet_handler/packet_handler__icmp6__tx.py`
+  `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   or a dedicated MLD subsystem at
   `pytcp/protocols/icmp6/icmp6__mld2*.py` — agent: grep for
   "mld" / "MLDv2" / "Mld2" before starting.)
@@ -960,7 +960,7 @@ Phase 9: 1 integration test file (MLDv2 outbound RA byte-exact).
   IpProto member coverage (Phase 0).
 - `pytcp/tests/unit/lib/test__lib__packet_stats.py` — bump
   `field_count` constants for the ~15 new counters (Phase 8).
-- `pytcp/tests/integration/test__packet_handler__ip6__rx.py`
+- `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__rx.py`
   — golden frame matrices may need an HBH/DestOpts/Routing
   case added; spot-check after Phase 8.
 
@@ -1156,9 +1156,9 @@ anything not covered by the plan.
   `00a0ee7b`, `388e035b`
 - Existing extension-header implementation:
   `net_proto/protocols/ip6_frag/`,
-  `pytcp/stack/packet_handler/packet_handler__ip6_frag__rx.py`
+  `pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`
 - IPv6 RX dispatch entry point:
-  `pytcp/stack/packet_handler/packet_handler__ip6__rx.py:151-167`
+  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
 - RFCs in-tree:
   - `docs/rfc/ip6/rfc8200__ipv6/rfc8200.txt`
   - `docs/rfc/ip6/rfc5095__deprecate_rh0/rfc5095.txt`

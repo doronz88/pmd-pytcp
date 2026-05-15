@@ -13,7 +13,7 @@ current PyTCP codebase relates to each normative statement
 in RFC 3810 (MLDv2 — IPv6 multicast listener-side and
 querier-side protocol). The audit was performed by reading
 the RFC text fresh and inspecting the codebase under
-`pytcp/stack/packet_handler/packet_handler__icmp6__{rx,tx}.py`
+`pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
 plus `net_proto/protocols/icmp6/` directly.
 
 MLDv2 has two roles: **listener** (every host that joins a
@@ -350,7 +350,7 @@ processing) remain Phase-2 router work.
 ### §5 Listener-side Report emission
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__icmp6__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp6__tx.py`
   — MLDv2 Report cases verify: Hop Limit = 1, source =
   link-local, destination = `ff02::16`, HBH RA-option
   carrier with value = MLD, `CHANGE_TO_EXCLUDE` record

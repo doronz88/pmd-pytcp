@@ -68,11 +68,11 @@ read each section before tackling it.
 - `pytcp/protocols/icmp6/nd/` — new files for
   `nd__router_state.py` (§11/§12 state machine), grow
   `nd__constants.py` for `accept_ra_*` knobs.
-- `pytcp/stack/packet_handler/packet_handler__icmp6__rx.py` —
+- `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` —
   `__phrx_icmp6__nd_router_advertisement` becomes the RA
   consumer hub. Currently appends to `_icmp6_ra__prefixes`;
   rewrite to use the new router-state machine.
-- `pytcp/stack/packet_handler/__init__.py` —
+- `pytcp/runtime/packet_handler/__init__.py` —
   `_icmp6_default_routers` attribute, init in setUp,
   background ageing in a Subsystem loop (consider a new
   `Icmp6NdRouterStateSubsystem` analogous to NeighborCache).

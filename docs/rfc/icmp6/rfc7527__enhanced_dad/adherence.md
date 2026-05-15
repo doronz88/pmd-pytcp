@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 7527. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/stack/packet_handler/packet_handler__icmp6__{tx,rx}.py`
+`pytcp/runtime/packet_handler/packet_handler__icmp6__{tx,rx}.py`
 plus `pytcp/lib/dad_slot_registry.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
@@ -45,7 +45,7 @@ misconfigured layer-2 device reflects the probe back.
 >  the host MUST include a Nonce option."
 
 **Adherence:** met. `_send_icmp6_nd_dad_message` at
-`pytcp/stack/packet_handler/packet_handler__icmp6__tx.py:170-194`
+`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
 accepts an `nonce: bytes | None` parameter; when supplied
 (every Phase-1 caller passes a fresh random nonce), the
 probe carries an `Icmp6NdOptionNonce(nonce=nonce)` in the
@@ -169,8 +169,8 @@ the TX-emit and the RX-receive threads.
   — parent classification (SHOULD).
 - `docs/rfc/icmp6/rfc4862__ipv6_slaac/adherence.md` —
   parent SLAAC / DAD record.
-- Source: `pytcp/stack/packet_handler/packet_handler__icmp6__tx.py:170-194`
+- Source: `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
   (`_send_icmp6_nd_dad_message`),
-  `pytcp/stack/packet_handler/packet_handler__icmp6__rx.py:874-892`
+  `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:874-892`
   (NS RX Nonce-check), `pytcp/lib/dad_slot_registry.py`
   (atomic registry).

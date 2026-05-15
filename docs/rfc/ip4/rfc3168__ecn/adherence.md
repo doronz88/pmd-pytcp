@@ -19,7 +19,7 @@ in the TCP RFC adherence records under `docs/rfc/tcp/`.
 
 The audit was performed by reading the RFC text fresh and
 inspecting `net_proto/protocols/ip4/ip4__header.py`,
-`pytcp/stack/packet_handler/packet_handler__ip4__rx.py`, and
+`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
 `pytcp/protocols/ip/ip_frag_table.py` directly. Non-normative
 content (§1 Introduction, §2 Conventions, §3 Assumptions, §4
 AQM background, §10-§22) is omitted.
@@ -66,7 +66,7 @@ preserve the bit positions
 — any of the four codepoints is accepted on receive and
 preserved on send. The TX entry point exposes
 `ip4__ecn: int = 0` as a kwarg
-(`pytcp/stack/packet_handler/packet_handler__ip4__tx.py:101`)
+(`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:101`)
 so callers can set ECT(0) or ECT(1) on outbound packets; the
 RX parser surfaces the received value as
 `packet_rx.ip4.ecn`.
@@ -190,7 +190,7 @@ full-functionality decapsulation) become relevant.
 ### §5 Default ECN=00 (Not-ECT) on send
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Default cases ship with `ecn=0`. The TCP-side ECN
   negotiation tests override to ECT(0).
 
@@ -211,7 +211,7 @@ full-functionality decapsulation) become relevant.
   propagation, ECT(0)+ECT(1)→ECT(0), CE+Not-ECT drop,
   ECT+Not-ECT drop, default ecn=0 backwards-compat.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly`
   5 wire-level cases driving two-fragment flows into
   `_phrx_ethernet` and inspecting the reassembled datagram on
   the wire: same-ECN propagates the codepoint, CE+ECT(0)

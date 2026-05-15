@@ -6,7 +6,7 @@
 | Plan author       | RFC 3927 follow-up (2026-05-12)                                                                                                                                                                                                                        |
 | Source motivation | RFC 3927 Phase 5 closure raised the question: should `stack/__init__.py`'s `packet_handler._mac_unicast` read be promoted to a public surface? Per CLAUDE.md the Link API is the canonical Phase-3 home for that read (and friends).                   |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                                                                                               |
-| Touch points      | new `pytcp/lib/link_api.py`, `pytcp/stack/__init__.py` (slot + wiring), `pytcp/stack/packet_handler/__init__.py` (back-end methods if mutation lands), `pytcp/lib/packet_stats.py` (`LinkStatsCounters` dataclass — Phase 3), test harness snapshot     |
+| Touch points      | new `pytcp/stack/link.py`, `pytcp/stack/__init__.py` (slot + wiring), `pytcp/runtime/packet_handler/__init__.py` (back-end methods if mutation lands), `pytcp/lib/packet_stats.py` (`LinkStatsCounters` dataclass — Phase 3), test harness snapshot     |
 | Linux analogue    | `ip link show` / `ip link set` / RTNETLINK `RTM_NEWLINK` / `RTM_GETLINK` / `RTM_SETLINK`                                                                                                                                                               |
 
 This document is the implementation plan for shipping the
@@ -18,7 +18,7 @@ surfaces from CLAUDE.md's Project North Star:
 | Link API (interface up/down/MTU/MAC) | Link control | `ip link` / RTNETLINK `RTM_NEWLINK` |
 
 The track is structurally similar to the existing
-`Ip4AddressApi` work: a new `pytcp/lib/link_api.py` exposing
+`Ip4AddressApi` work: a new `pytcp/stack/link.py` exposing
 read + (eventually) write surfaces; backed by `PacketHandler`
 state today; future Phase-3 swap replaces the internals with a
 real IPC channel without touching consumers.
@@ -57,9 +57,9 @@ drew for the address plane is mirrored on the link plane.
 
 ### Existing Phase-3 surfaces (precedent)
 
-- `pytcp/lib/address_api.py::Ip4AddressApi` — read + write
+- `pytcp/stack/address.py::Ip4AddressApi` — read + write
   for the address plane. Mirror this structurally.
-- `pytcp/lib/sysctl.py` — sysctl registry.
+- `pytcp/stack/sysctl.py` — sysctl registry.
 - `pytcp.socket` — BSD socket factory.
 
 ### Linux `ip link show` reference
@@ -116,7 +116,7 @@ class LinkApi:
 
 **Wire-up:**
 
-- New file `pytcp/lib/link_api.py` (~60 lines).
+- New file `pytcp/stack/link.py` (~60 lines).
 - `pytcp/stack/__init__.py` grows `link: LinkApi` module-
   level slot; constructed in `init` / `mock__init` after
   `packet_handler` is built.
@@ -177,7 +177,7 @@ def flags(self) -> frozenset[LinkFlag]:
     LOOPBACK, POINTOPOINT. Derived from interface_layer."""
 ```
 
-New `LinkFlag` enum in `pytcp/lib/link_api.py`. Values
+New `LinkFlag` enum in `pytcp/stack/link.py`. Values
 mirror Linux's `IFF_*` selection.
 
 **Implementation:**
@@ -202,7 +202,7 @@ in `ip -s link show`.
 **Properties + new dataclasses:**
 
 ```python
-# pytcp/lib/link_api.py
+# pytcp/stack/link.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class LinkStats:
     rx_bytes: int
@@ -372,14 +372,14 @@ not policy knobs. If a future consumer needs a tunable
 
 | File                              | Phase | Purpose                                                |
 |-----------------------------------|-------|--------------------------------------------------------|
-| `pytcp/lib/link_api.py`           | 0     | `LinkApi` class + `LinkFlag` enum + `LinkStats` dataclass |
+| `pytcp/stack/link.py`           | 0     | `LinkApi` class + `LinkFlag` enum + `LinkStats` dataclass |
 
 ### Touched source files
 
 | File                                              | Phases | Why                                                              |
 |---------------------------------------------------|--------|------------------------------------------------------------------|
 | `pytcp/stack/__init__.py`                         | 0-4    | `link: LinkApi` slot, `init`/`mock__init` wiring, callers migrate |
-| `pytcp/stack/packet_handler/__init__.py`          | 1, 4   | `_interface_name` attribute (Phase 1), MTU mutation (Phase 4)     |
+| `pytcp/runtime/packet_handler/__init__.py`          | 1, 4   | `_interface_name` attribute (Phase 1), MTU mutation (Phase 4)     |
 | `pytcp/lib/packet_stats.py`                       | 3      | (read-only access — no schema change)                             |
 | `pytcp/tests/lib/network_testcase.py`             | 0      | `_STACK__PATCHED_ATTRS` adds `link`                              |
 
@@ -661,7 +661,7 @@ After Phase 5:
 
 - `docs/refactor/rfc3927_link_local_autoconfig.md` —
   structural template for the phased-track pattern.
-- `pytcp/lib/address_api.py` — the sibling Phase-3 surface
+- `pytcp/stack/address.py` — the sibling Phase-3 surface
   this track mirrors structurally.
 - `pytcp/stack/__init__.py` — the kernel assembly point
   that constructs / wires both APIs.

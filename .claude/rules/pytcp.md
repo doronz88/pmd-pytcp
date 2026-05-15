@@ -53,7 +53,7 @@ walk back than a wrong "keep this static" decision.
 ### 2.1 Policy constants — qualified-module-access pattern
 
 Policy constants are registered with the central registry at
-`pytcp/lib/sysctl.py` so the operator can mutate them at
+`pytcp/stack/sysctl.py` so the operator can mutate them at
 runtime via `pytcp.stack.sysctl["arp.cache.max_age"] = 60`
 and at boot via `stack.init(arp_cache_max_age=60)`. The
 underlying ALL_CAPS module attribute remains the canonical
@@ -143,7 +143,7 @@ multi-interface support lands.
 ## 3. The `Subsystem` base class
 
 Every background service in `pytcp/` extends `Subsystem`
-from `pytcp/lib/subsystem.py`.
+from `pytcp/runtime/subsystem.py`.
 
 - Implement `_subsystem_loop()` (abstract) with the
   per-iteration work. The base class wraps it in a loop
@@ -164,7 +164,7 @@ neighbor caches (`pytcp/lib/neighbor.py` + adapters), the
 
 ## 4. Packet handlers
 
-RX / TX handlers live under `pytcp/stack/packet_handler/`,
+RX / TX handlers live under `pytcp/runtime/packet_handler/`,
 named `packet_handler__<proto>__<rx|tx>.py`.
 
 - Each file contributes methods to the `PacketHandler` class

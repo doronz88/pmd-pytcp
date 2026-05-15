@@ -20,7 +20,7 @@ work:
 
 - **§4.3.2.5 (Source Address)** — outbound ICMP errors source from
   the egress interface address. Adherence: met via
-  `pytcp/stack/packet_handler/packet_handler__udp__rx.py:197`,
+  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py:197`,
   which sets `ip4__src=packet_rx.ip4.dst` (reflection of the
   inbound destination, which is the stack's own address for
   unicast-delivered datagrams).

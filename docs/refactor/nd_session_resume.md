@@ -55,9 +55,9 @@ boot flow is sequential per-address. §20 needs that to
 become async — fairly invasive.
 
 Files involved:
-- `pytcp/stack/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
+- `pytcp/runtime/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
   `_create_stack_ip6_addressing`)
-- `pytcp/stack/packet_handler/packet_handler__icmp6__tx.py`
+- `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   (`send_icmp6_neighbor_advertisement` — Override flag handling)
 - `net_addr/ip6_host.py` or sidecar (state field)
 - `pytcp/protocols/icmp6/nd/nd__router_state.py` or

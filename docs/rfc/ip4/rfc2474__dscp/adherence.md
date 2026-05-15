@@ -148,7 +148,7 @@ behaviour is implemented.
 ### §3 Default DSCP=0 on TX absent caller override
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Default TX cases ship with `dscp=0`. A dedicated case
   pinning "no caller override → dscp == 0" is trivial.
 

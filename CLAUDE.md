@@ -34,7 +34,7 @@ Design decisions made in Phase 1 must not foreclose Phase 2. Concretely:
 Design decisions made in Phase 1 / Phase 2 must not foreclose Phase 3. Concretely:
 
 - **Every new user-observable knob lands on one of the sanctioned APIs.** Socket option, socket method, sysctl entry, or one of the link / address / route / neighbor / introspection APIs above. Never as a direct attribute on a `PacketHandler` / `TcpStack` / `NdCache` instance that consumers are expected to read or write.
-- **No "userspace" reach-through to stack internals.** Consumers MUST NOT import from `pytcp.stack.packet_handler.*`, `pytcp.protocols.tcp.tcp__session`, or any other implementation-detail module. If a piece of state needs to be visible outside the stack, expose it through `getsockopt` / `setsockopt`, a sysctl, or one of the dedicated control APIs (link / address / route / neighbor / introspection). Mark Phase-1/2 reach-throughs in tests with `# Phase 3: ...` so the cleanup path is greppable.
+- **No "userspace" reach-through to stack internals.** Consumers MUST NOT import from `pytcp.runtime.packet_handler.*`, `pytcp.protocols.tcp.tcp__session`, or any other implementation-detail module. If a piece of state needs to be visible outside the stack, expose it through `getsockopt` / `setsockopt`, a sysctl, or one of the dedicated control APIs (link / address / route / neighbor / introspection). Mark Phase-1/2 reach-throughs in tests with `# Phase 3: ...` so the cleanup path is greppable.
 - **Configuration mutations go through the API for their plane.** Address changes go through the address API, not `packet_handler._ip6_host.append(...)`. Route changes go through the route API, not `Ip4Host.gateway = ...`. Sysctl changes go through `sysctl_module.override(...)` or `pytcp.stack.sysctl["key"] = value`, not direct module-attribute assignment. Each plane's API is the boundary; the underlying attribute is implementation.
 - **State introspection is read-only and copy-by-value.** Route-table / neighbor-cache / socket-list / packet-counter accessors return immutable snapshots, never live references the caller could mutate. The Linux equivalent is `/proc/net/*` text — readable, never writable by reading.
 - **Stack lifecycle is its own API surface.** `stack.init()` / `stack.start()` / `stack.stop()` (and the `stack.mock__init()` test affordance) are the boundary; treat them like `clone(2)` / `exit(2)` rather than ordinary function calls. Adding a new stack-wide singleton means extending that boundary, not piggy-backing on import-time module state.
@@ -112,9 +112,9 @@ TAP/TUN fd
                      <── Socket send / ARP probe / ICMPv6 ND / DHCP
 ```
 
-RX and TX handlers live in `pytcp/stack/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are 20 handler files covering Ethernet, 802.3, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, and UDP — one RX file and one TX file per protocol.
+RX and TX handlers live in `pytcp/runtime/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are 20 handler files covering Ethernet, 802.3, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, and UDP — one RX file and one TX file per protocol.
 
-The stack is threaded; every subsystem extends `pytcp/lib/subsystem.py` (`Subsystem` base class) and implements `_subsystem_loop()`. Startup / shutdown use `threading.Event`.
+The stack is threaded; every subsystem extends `pytcp/runtime/subsystem.py` (`Subsystem` base class) and implements `_subsystem_loop()`. Startup / shutdown use `threading.Event`.
 
 The socket API (`pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `RawSocket` are returned by a factory `__new__` on the abstract `socket` class. TCP's FSM is a separate runtime under `pytcp/protocols/tcp/`, with `tcp__session.py` (the `TcpSession` class), `tcp__enums.py`, `tcp__constants.py`, plus a dedicated `pytcp/protocols/tcp/fsm/` subdirectory containing the dispatch table `tcp__fsm.py` and one `tcp__fsm__<state>.py` free-function module per FSM state. `pytcp/socket/tcp__socket.py` is the BSD-facade shim that delegates to `TcpSession`.
 

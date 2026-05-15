@@ -15,7 +15,7 @@ Requests for hosts on a different physical network).
 
 The audit was performed by reading the RFC text fresh and
 inspecting the codebase under `pytcp/stack/` and
-`pytcp/stack/packet_handler/packet_handler__arp__{rx,tx}.py`
+`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
 directly.
 
 Adherence levels use the canonical descriptive language:
@@ -285,7 +285,7 @@ behaviour — "PyTCP does not silently behave as a proxy-ARP
 gateway" — is locked in by:
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__arp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — case "Ethernet/ARP - request, unknown TPA on local
   network" asserts that an ARP Request whose TPA is **not**
   one of our IPs is dropped silently (no Reply emitted).
@@ -344,7 +344,7 @@ deliberate feature, the natural test matrix is:
 
 PyTCP's Phase 1 host stack does not implement proxy ARP and
 correctly does not behave as one. The two tests at
-`pytcp/tests/integration/test__packet_handler__arp__rx.py`
+`pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
 that pin "drop ARP Requests for non-local TPA" are the
 primary regression guard against any accidental proxy-like
 behaviour creeping in.

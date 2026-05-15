@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 6437. The audit was performed by reading the RFC
 text fresh and inspecting `pytcp/lib/ip6_flow_label.py`
-plus `pytcp/stack/packet_handler/packet_handler__ip6__tx.py`
+plus `pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
 directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
@@ -84,7 +84,7 @@ met by the TX-path auto-wire:
   BLAKE2s-keyed hash of `(src, dst)` with the stack-wide
   16-byte `IP6__FLOW_SECRET`, folded to 20 bits.
 - The **TX path auto-wire** is shipped at
-  `pytcp/stack/packet_handler/packet_handler__ip6__tx.py`:
+  `pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
   when `ip6.flow_label_generation` sysctl is non-zero
   (default 1), `_phtx_ip6` calls
   `compute_ip6_flow_label(src=ip6__src, dst=ip6__dst)`

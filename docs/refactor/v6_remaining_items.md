@@ -46,7 +46,7 @@ any overlap.
 1. Add a `discarded: bool = False` field to `IpFragData` in
    `pytcp/lib/ip_frag.py`, plus a `mark_discarded()` helper
    (frozen-dataclass mutation via `object.__setattr__`).
-2. In `pytcp/stack/packet_handler/packet_handler__ip6_frag__rx.py::__defragment_ip6_packet`:
+2. In `pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py::__defragment_ip6_packet`:
    - On entry, check `if flow_id in self._ip6_frag_flows
      and self._ip6_frag_flows[flow_id].discarded:` — bump
      `ip6_frag__overlap__drop` counter and return None.

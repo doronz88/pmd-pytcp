@@ -38,7 +38,7 @@ audit, commit.
   a test, the test can patch the module attribute directly
   without registering a public knob.
 - Before the registry exists — Phase 0 of the framework
-  (`pytcp/lib/sysctl.py`) must be in place. If `_register`
+  (`pytcp/stack/sysctl.py`) must be in place. If `_register`
   is not importable, the framework hasn't been built yet;
   start there instead.
 
@@ -69,7 +69,7 @@ A new knob lands as a single tests-first commit touching:
 
 ```
 pytcp/protocols/<package>/<proto>__constants.py     # registration call
-pytcp/lib/sysctl.py                                  # (if a new validator helper)
+pytcp/stack/sysctl.py                                  # (if a new validator helper)
 pytcp/stack/__init__.py                              # (if explicit kwarg)
 pytcp/tests/unit/<package>/test__<...>.py            # behavior pin
 docs/rfc/<group>/<rfcXXXX__name>/adherence.md        # Reference + status flip if RFC-driven
@@ -93,7 +93,7 @@ Stop if invariant.
 Append to the relevant `*__constants.py`:
 
 ```python
-from pytcp.lib.sysctl import _register, _is_positive_int
+from pytcp.stack.sysctl import _register, _is_positive_int
 
 ARP__CACHE__ENTRY_MAX_AGE = 3600  # existing constant stays as the default
 
@@ -115,7 +115,7 @@ dependency first.
 ### 3. Add the validator (if novel)
 
 If the validator function doesn't already exist in
-`pytcp/lib/sysctl.py`, add it next to the existing helpers:
+`pytcp/stack/sysctl.py`, add it next to the existing helpers:
 
 ```python
 def _is_positive_int(name: str) -> Callable[[Any], None]:
@@ -257,7 +257,7 @@ migration sweep). Commit message body:
 
 <one-paragraph why — Linux parity, RFC SHOULD, operator ask>.
 
-Add 'pytcp.lib.sysctl' registration for '<key>' with
+Add 'pytcp.stack.sysctl' registration for '<key>' with
 default <X> and a positive-int validator. <If kwarg:>
 Promote to explicit 'stack.init(<kwarg_name>=...)' kwarg
 since this is one of the more frequently-tuned knobs.

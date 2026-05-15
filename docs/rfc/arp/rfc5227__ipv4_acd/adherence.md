@@ -24,7 +24,7 @@ current code state without re-using prior content.
 The ACD machinery is exposed to consumers (DHCPv4 client,
 RFC 3927 link-local autoconfig client, future operator-config
 tools) via the sanctioned `Ip4AddressApi` surface in
-`pytcp/lib/address_api.py`:
+`pytcp/stack/address.py`:
 
 - `probe(*, address)` — runs the §2.1.1 probe sequence and
   returns success / conflict + peer info.
@@ -74,7 +74,7 @@ inform a normative §2 requirement, and otherwise omitted.
 
 **Adherence:** **met**. PyTCP's claim path —
 `Ip4AddressApi.claim_with_acd`
-(`pytcp/lib/address_api.py:290-313`) — runs the §2.1.1 probe
+(`pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
 sequence via `_arp_dad_probe_address` before admitting a
 candidate address to `self._ip4_host`. Same primitive backs
 the DHCPv4 DAD path
@@ -105,7 +105,7 @@ static-host configure). There is no scheduled re-probe path.
 > the address being probed."
 
 **Adherence:** **met**. `_send_arp_probe`
-(`pytcp/stack/packet_handler/packet_handler__arp__tx.py:194-218`)
+(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:194-218`)
 sets every field exactly as required:
 - `arp__oper = ArpOperation.REQUEST`
 - `arp__sha = self._mac_unicast`
@@ -122,7 +122,7 @@ sets every field exactly as required:
 > seconds apart."
 
 **Adherence:** **met**. `_arp_dad_probe_address`
-(`pytcp/stack/packet_handler/__init__.py:1796-1833`)
+(`pytcp/runtime/packet_handler/__init__.py:1796-1833`)
 implements the full sequence:
 
 1. `time.sleep(random.uniform(0, ARP__PROBE_WAIT))` at
@@ -152,7 +152,7 @@ runs through a per-candidate `DadSlotRegistry` slot
 installs a slot before the first probe, the RX path signals
 conflicts atomically via `try_signal_conflict`, and the
 post-probe check at
-`pytcp/stack/packet_handler/__init__.py:1833` returns False
+`pytcp/runtime/packet_handler/__init__.py:1833` returns False
 if any conflict was signalled during the probe + ANNOUNCE_WAIT
 window. The historical RX-vs-DAD "two unrelated sets" bug
 that prior audit text described is closed by the registry
@@ -232,7 +232,7 @@ DHCPv4 Phase 9 backlog).
 
 **Adherence:** **met**. `_arp_dad_probe_address` sleeps
 `ARP__ANNOUNCE_WAIT` seconds after the last Probe at
-`pytcp/stack/packet_handler/__init__.py:1831` before
+`pytcp/runtime/packet_handler/__init__.py:1831` before
 returning the success / conflict verdict. Late conflicting
 ARPs arriving within this window still feed the registry
 slot via the RX paths above; only after the quiet period
@@ -253,7 +253,7 @@ PyTCP uses RFC-default constants from
 `pytcp/protocols/arp/arp__constants.py`. Every timing
 constant (PROBE_WAIT, PROBE_NUM, PROBE_MIN, PROBE_MAX,
 ANNOUNCE_NUM, ANNOUNCE_INTERVAL, ANNOUNCE_WAIT,
-DEFEND_INTERVAL) is registered with `pytcp.lib.sysctl` so
+DEFEND_INTERVAL) is registered with `pytcp.stack.sysctl` so
 an operator on a fast network can shorten any of them via
 `stack.init(sysctls={"arp.probe_wait": 0, ...})` at boot or
 `pytcp.stack.sysctl["arp.probe_min"] = 0` at runtime. No
@@ -272,7 +272,7 @@ timing parameters across hosts are non-disruptive.
 > ANNOUNCE_INTERVAL seconds apart."
 
 **Adherence:** **met**. `_arp_dad_announce_address`
-(`pytcp/stack/packet_handler/__init__.py:1835-1847`) loops
+(`pytcp/runtime/packet_handler/__init__.py:1835-1847`) loops
 `ARP__ANNOUNCE_NUM` times with `time.sleep(ARP__ANNOUNCE_INTERVAL)`
 between successive sends:
 
@@ -404,7 +404,7 @@ of the previous defense.
 equals the abandoned IP — the RFC 9293 ABORT primitive
 emits RST and tears the session down. The public surface
 `Ip4AddressApi.abort_bound_tcp_sessions(address=...)` at
-`pytcp/lib/address_api.py:329-339` exposes the same
+`pytcp/stack/address.py:329-339` exposes the same
 primitive to consumers running their own abandon logic
 (e.g. DHCPDECLINE flows when they land).
 
@@ -475,7 +475,7 @@ runs the cache learn.
 ### §2.1 / §2.1.1 — ARP Probe wire format
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
   — `_send_arp_probe` case asserts the exact 28-byte ARP
   Probe wire form (`spa=0.0.0.0`, `tha=unspecified`,
   `tpa=candidate IP`, broadcast L2).
@@ -524,7 +524,7 @@ there).
 ### §2.3 — Announcement wire format
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
   — `_send_arp_announcement` case asserts the wire bytes
   (REQUEST opcode, `spa=tpa=our IP`, broadcast L2).
 
@@ -590,7 +590,7 @@ there).
 ### §2.5 — Continuing operation (Reply to Request)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__arp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — "request for stack MAC, broadcasted" and "request for
   stack MAC, unicasted" both verify a Reply is emitted
   with the correct field swap.
@@ -610,7 +610,7 @@ the §2.6 broadcast form either.
 ### §1.2.1 — Broadcast Reply handling
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__arp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — gratuitous-Reply (broadcast L2, SPA=SPA=peer-IP) case
   asserts the cache-learn path runs.
 

@@ -16,8 +16,8 @@ this record narrows to §4.1 and is the natural extension of
 [RFC 768](../rfc768__udp/adherence.md). The audit was
 performed by reading §4.1 fresh and inspecting
 `net_proto/protocols/udp/`,
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py`,
-`pytcp/stack/packet_handler/packet_handler__udp__tx.py`,
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`,
+`pytcp/runtime/packet_handler/packet_handler__udp__tx.py`,
 and `pytcp/socket/udp__socket.py` directly. Sections
 without normative content (§4.1.1 Introduction, §4.1.2
 Protocol Walk-Through — "There are no known errors in the
@@ -84,7 +84,7 @@ partial:
 >  Port Unreachable message."
 
 **Adherence:** met. The RX dispatch at
-`pytcp/stack/packet_handler/packet_handler__udp__rx.py:180-230`
+`pytcp/runtime/packet_handler/packet_handler__udp__rx.py:180-230`
 walks the socket table; on no match the path emits ICMPv4
 or ICMPv6 Destination Unreachable (code = port) subject to
 the `try_emit_icmp_error` host-requirements gate and the
@@ -114,7 +114,7 @@ through the UDP socket API in both directions:
   (`pytcp/socket/udp__metadata.py`) carries the inbound
   IPv4 options object; the UDP RX handler populates it
   from `packet_rx.ip4.options` at
-  `pytcp/stack/packet_handler/packet_handler__udp__rx.py`.
+  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py`.
   Applications retrieve the raw options block via
   `recvmsg(ancbufsize > 0)` on a socket that has
   `setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)` enabled; the
@@ -336,7 +336,7 @@ discard between two layers:
   acceptance.
 
 **Verified by**
-`pytcp/tests/integration/test__packet_handler__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+`pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
 — parametric class with three cases (IPv4 limited
 broadcast, IPv4 multicast, IPv6 multicast) asserting:
 the UDP parser never runs (`udp__pre_parse == 0`), the
@@ -354,7 +354,7 @@ socket dispatch never fires, and the
       return
   ```
 
-  See `pytcp/stack/packet_handler/packet_handler__ip4__rx.py:145-157`.
+  See `pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
   The check uses the `_ip4_broadcast` property which
   walks `_ip4_host[].network.broadcast` for every
   configured subnet. Per-subnet awareness can't live
@@ -461,7 +461,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.1 ICMP Port Unreachable on no matching socket
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__udp__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py`
   — exercises the no-socket-match path and asserts
   outbound ICMP Port Unreachable on both IPv4 and IPv6,
   including the rate-limiter suppression counters.
@@ -522,7 +522,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.6 Invalid source address dropping
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
   — parametric class with three cases (IPv4 limited
   broadcast, IPv4 multicast, IPv6 multicast) asserting
   the UDP parser never runs and the IP-layer

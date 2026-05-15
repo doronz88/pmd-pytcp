@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 9131. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/stack/packet_handler/packet_handler__icmp6__tx.py`
-plus `pytcp/stack/packet_handler/__init__.py` directly.
+`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
+plus `pytcp/runtime/packet_handler/__init__.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
 **n/a**.
@@ -55,7 +55,7 @@ track per CLAUDE.md Project North Star.
 
 **Adherence:** met.
 `send_icmp6_neighbor_advertisement_gratuitous` at
-`pytcp/stack/packet_handler/packet_handler__icmp6__tx.py:480-512`
+`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
 emits the gratuitous NA:
 
 ```python
@@ -71,7 +71,7 @@ for _ in range(nd__constants.ICMP6__GRATUITOUS_NA_COUNT):
 ```
 
 The DAD-success caller at
-`pytcp/stack/packet_handler/__init__.py:1580-1585`
+`pytcp/runtime/packet_handler/__init__.py:1580-1585`
 invokes the helper immediately after the DAD slot
 declares the address VALID:
 
@@ -208,7 +208,7 @@ lands.
   path that triggers the gratuitous NA emit.
 - IPv4 parallel: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`
   §2.3 (gratuitous ARP Announcement after DAD).
-- Source: `pytcp/stack/packet_handler/packet_handler__icmp6__tx.py:480-512`
+- Source: `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
   (`send_icmp6_neighbor_advertisement_gratuitous`),
-  `pytcp/stack/packet_handler/__init__.py:1580-1585`
+  `pytcp/runtime/packet_handler/__init__.py:1580-1585`
   (DAD-success trigger).

@@ -179,7 +179,7 @@ to 0 disables that check.
 The cap-check helper lives at
 `pytcp/lib/ip6_ext_hdr_limits.py::check_ext_hdr_option_caps`;
 the RX wiring is at
-`pytcp/stack/packet_handler/packet_handler__ip6__rx.py::_phrx_ip6_hbh`
+`pytcp/runtime/packet_handler/packet_handler__ip6__rx.py::_phrx_ip6_hbh`
 and `::_phrx_ip6_dest_opts`. A cap violation drops the
 packet silently (the §5.3 caps are resource-exhaustion
 defences; the receiver is not obliged to emit ICMPv6
@@ -244,7 +244,7 @@ clause coverage.
 implements the full RFC 4443 message set (Destination
 Unreachable, Packet Too Big, Time Exceeded, Parameter
 Problem, Echo Request/Reply). RX dispatch is in
-`pytcp/stack/packet_handler/packet_handler__icmp6__rx.py`.
+`pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`.
 RFC 4884 multi-part extension is **deferred** — no
 consumer at present.
 
@@ -275,7 +275,7 @@ single `_ip6_host` model does not yet expose.
   yet handled** — falls into `__phrx_icmp6__unknown`. A
   full Query → Report responder is a Phase-1 polish item.
   The querier role itself is Phase-2 (router-grade). See
-  `pytcp/stack/packet_handler/packet_handler__icmp6__rx.py::__phrx_icmp6__mld2_report`
+  `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py::__phrx_icmp6__mld2_report`
   (commit `3459cddf`) for the documented Phase-2 marker.
 
 ### §5.12 RFC 3168 ECN — partial
@@ -396,7 +396,7 @@ application-layer protocols outside the stack scope.
 
 **Adherence:** shipped. PyTCP runs a full IPv4 stack
 alongside IPv6 (`net_proto/protocols/ip4/`,
-`pytcp/stack/packet_handler/packet_handler__ip4__rx.py`,
+`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`,
 etc.). Tunnelling (RFC 4213) is **deferred** — PyTCP runs
 both stacks natively, not as a transition mechanism.
 

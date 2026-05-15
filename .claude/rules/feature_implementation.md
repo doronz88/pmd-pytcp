@@ -168,8 +168,8 @@ integration test before claiming done.
 | `pytcp/socket/*.py`                            | `pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
 | `pytcp/protocols/tcp/*.py`                     | `pytcp/tests/unit/protocols/tcp/...` (unit) **and** `pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
 | `pytcp/protocols/icmp6/nd/*.py`                | `pytcp/tests/unit/protocols/icmp6/nd/...` (unit) **and** `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py` (integration) |
-| `pytcp/stack/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `pytcp/tests/integration/test__packet_handler__<proto>__<rx\|tx>.py` (per-handler smoke)              |
-| Cross-cutting RFC mechanism                    | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<rfc-mechanism>.py`                                          |
+| `pytcp/runtime/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` (per-handler smoke)              |
+| Cross-cutting RFC mechanism                    | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py`                                          |
 
 The full per-aspect splits for `net_proto` per-protocol
 files (header / parser / assembler / options) live in

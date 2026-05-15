@@ -13,7 +13,7 @@ This document records the PyTCP codebase's adherence to RFC 1122
 **§3 (Internet Layer)** clause by clause. The audit was performed
 by reading the RFC text fresh and inspecting the codebase under
 `net_proto/protocols/ip4/` and
-`pytcp/stack/packet_handler/packet_handler__ip4__*.py` directly;
+`pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
 no prior memory or rule-file content was reused.
 
 Scope:
@@ -307,7 +307,7 @@ Timestamp slots (that's router-side behaviour).
 naturally — on-link destinations resolve via ARP directly;
 off-link destinations with no gateway end up at the
 `DROPPED__ETHERNET__DST_NO_GATEWAY_IP4` exit
-(`pytcp/stack/packet_handler/packet_handler__ethernet__tx.py`).
+(`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`).
 The stack starts up and operates on a single subnet without a
 gateway entry.
 
@@ -478,7 +478,7 @@ transient network condition.
   `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
   Each branch exercised with the expected `pointer` value.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with the documented
   rate-limit / DHCP-mode gates.
 
@@ -487,7 +487,7 @@ transient network condition.
 ### §3.2.1.3 Destination filtering (own / broadcast / multicast)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Covers the three accept paths + the dst-unknown drop.
 
 **Status:** locked in.
@@ -495,7 +495,7 @@ transient network condition.
 ### §3.2.1.3 TX source-address validation + replacement (multicast / broadcast / unspec)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Matrix of src=owned, src=multicast (replaced), src=limited-
   broadcast (replaced), src=network-broadcast (replaced),
   src=unspec+DHCP (passthrough), src=unspec+other (selector or
@@ -527,10 +527,10 @@ transient network condition.
   range-and-type rejections (TTL=0, overflow > 255, non-int),
   and that `sysctl.set` updates the backing module attribute.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with `pointer=8`.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl`
   Drives the sysctl override and verifies the wire TTL of an
   outbound unicast datagram reflects the live value; verifies
   multicast destinations stay at TTL=1 regardless of the
@@ -543,7 +543,7 @@ transient network condition.
 - **Unit:** one file per option in
   `net_proto/tests/unit/protocols/ip4/options/`.
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx__source_route.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   Drives the `IP4__ACCEPT_SOURCE_ROUTE` matrix.
 
 **Status:** locked in.
@@ -551,7 +551,7 @@ transient network condition.
 ### §3.3.1 Routing (default-gateway path)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Covers off-link sends through the gateway lookup.
 
 **Status:** locked in for the single-gateway path. Phase-2 route
@@ -560,7 +560,7 @@ cache is `n/a (gap not closed; add test with fix)`.
 ### §3.3.3 Fragmentation on send (no overlap)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Fragmentation matrix asserts that fragment offsets cover the
   payload without overlap and that the last fragment carries
   MF=0.
@@ -570,7 +570,7 @@ cache is `n/a (gap not closed; add test with fix)`.
 ### §3.3.6 Broadcasts (TX replacement, RX acceptance)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   + `..__rx.py` cover broadcast send / receive.
 
 **Status:** locked in.
@@ -578,7 +578,7 @@ cache is `n/a (gap not closed; add test with fix)`.
 ### §3.3.7 IP multicasting (reception)
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__rx.py`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies the all-hosts 224.0.0.1 RX path.
 
 **Status:** locked in.

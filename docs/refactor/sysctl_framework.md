@@ -85,7 +85,7 @@ inline `const`, it is invariant.
 
 ## §2 Registry shape
 
-Single file: `pytcp/lib/sysctl.py`. Exposes:
+Single file: `pytcp/stack/sysctl.py`. Exposes:
 
 ```python
 # Public API
@@ -164,7 +164,7 @@ pick a sensible dotted name that mirrors the package layout
 
 `stack.init(arp_cache_max_age=60, ...)` continues to be the
 boot-time configuration surface. Internally it routes each
-kwarg through `pytcp.lib.sysctl.set("arp.cache.max_age", 60)`
+kwarg through `pytcp.stack.sysctl.set("arp.cache.max_age", 60)`
 — same validator path as the runtime mutation. Default `None`
 on the kwarg means "leave the registry default in place."
 
@@ -263,11 +263,11 @@ Tests that mutate a knob can use either:
 
 ```python
 # Direct registry write (runtime-mutation style)
-pytcp.lib.sysctl.set("arp.cache.max_age", 60)
+pytcp.stack.sysctl.set("arp.cache.max_age", 60)
 try:
     ...
 finally:
-    pytcp.lib.sysctl.set("arp.cache.max_age", default)
+    pytcp.stack.sysctl.set("arp.cache.max_age", default)
 ```
 
 or:
@@ -287,7 +287,7 @@ observe the live runtime behaviour against a tuned knob.
 A test-only context manager is convenient:
 
 ```python
-from pytcp.lib.sysctl import override
+from pytcp.stack.sysctl import override
 
 with override("arp.cache.max_age", 60):
     self._cache._subsystem_loop()
@@ -310,7 +310,7 @@ the slow drift of pure-lazy migration.
 
 ### Phase 0 — Build registry ✅ shipped `8eb94ccb`
 
-Write `pytcp/lib/sysctl.py` with:
+Write `pytcp/stack/sysctl.py` with:
 - `_register`, `get`, `set`, `list_keys`, `describe`,
   `snapshot`, `reset_to_defaults`, `override` (cm).
 - `_SysctlRegistry` class (the dict-like sugar; binds
@@ -421,7 +421,7 @@ lands. Until then, all sysctls are global. Mark with
 ## §9 Anti-patterns
 
 - **Reaching into `arp__constants` from `init()` directly.**
-  Always go through `pytcp.lib.sysctl.set(...)`. The direct
+  Always go through `pytcp.stack.sysctl.set(...)`. The direct
   `setattr(arp__constants, "X", value)` form bypasses the
   validator — same bug class as bypassing
   `__post_init__`-style validation.
@@ -465,7 +465,7 @@ plan with §0 motivation, §1 classification rule, §2-§7 design,
   4. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` §6.1 (sysctl pattern)
   5. .claude/skills/sysctl_knob/SKILL.md (workflow for adding
      a knob)
-  6. The current state of pytcp/lib/sysctl.py if it exists,
+  6. The current state of pytcp/stack/sysctl.py if it exists,
      plus pytcp/protocols/arp/arp__constants.py.
 
 After reading, confirm:

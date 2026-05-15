@@ -3,7 +3,7 @@
 | Field           | Value                                                        |
 |-----------------|--------------------------------------------------------------|
 | Status          | shipped                                                      |
-| Module path     | `pytcp.lib.sysctl` (exposed as `pytcp.stack.sysctl`)         |
+| Module path     | `pytcp.stack.sysctl` (exposed as `pytcp.stack.sysctl`)         |
 | Linux analogue  | `/proc/sys/net/` namespace; `sysctl net.ipv4.X`              |
 | Refactor doc    | `docs/refactor/sysctl_framework.md`                          |
 | Workflow skill  | `.claude/skills/sysctl_knob/SKILL.md` (adding a new knob)   |
@@ -44,7 +44,7 @@ follows the workflow at
 ## Public surface
 
 ```python
-import pytcp.lib.sysctl as sysctl
+import pytcp.stack.sysctl as sysctl
 # Or equivalently:
 from pytcp.stack import sysctl
 ```
@@ -102,7 +102,7 @@ on every `set()`) and the registry supports cross-knob
 bag application). Validators raise `ValueError` on bad
 input; the registry preserves the prior value.
 
-Common shipped validators in `pytcp.lib.sysctl`:
+Common shipped validators in `pytcp.stack.sysctl`:
 
 - `is_positive_int(name)` — int > 0.
 - `is_non_negative_int(name)` — int >= 0.
@@ -193,4 +193,4 @@ shape:
 
 - Framework design: `docs/refactor/sysctl_framework.md`.
 - Per-knob workflow: `.claude/skills/sysctl_knob/SKILL.md`.
-- Source: `pytcp/lib/sysctl.py`.
+- Source: `pytcp/stack/sysctl.py`.

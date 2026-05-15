@@ -67,7 +67,7 @@ router — could trigger atomic-fragment generation. PyTCP's
 TX path follows RFC 8021 (which the RFC 8504 §5.1 cross-
 reference makes a MUST NOT): atomic fragments are simply not
 created. The fragment-emission path
-`pytcp/stack/packet_handler/packet_handler__ip6_frag__tx.py`
+`pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py`
 only produces multi-fragment datagrams, and PMTU < 1280 is
 clamped to 1280 at the IPv6 minimum-MTU floor.
 

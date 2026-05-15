@@ -114,7 +114,7 @@ option list isn't exposed via the UDP socket API.
 
 1. Extend `pytcp/socket/udp__metadata.py::UdpMetadata` with
    an `ip_options: tuple[Ip4Option, ...] | None` field.
-2. Populate it in `pytcp/stack/packet_handler/packet_handler__udp__rx.py`
+2. Populate it in `pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
    from `packet_rx.ip4.options` (IPv6 has no IP-options
    surface — leave `None`).
 3. Add a `recvmsg()` method to `UdpSocket` that returns
@@ -128,7 +128,7 @@ option list isn't exposed via the UDP socket API.
    `_phtx_udp(..., ip__options=...)`.
 5. The IPv4 TX path needs to accept and emit the operator-
    supplied options. Touches
-   `pytcp/stack/packet_handler/packet_handler__ip4__tx.py`.
+   `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
 6. Tests:
    - Unit: `setsockopt(IP_OPTIONS, bytes)` + `getsockopt`
      round-trip.
@@ -159,7 +159,7 @@ exists.
 
 **Status:** closed. Shipped as the directed-broadcast
 martian-source filter at
-`pytcp/stack/packet_handler/packet_handler__ip4__rx.py:145-157`.
+`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
 Pinned by
 `pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py`
 (three tests: local-subnet directed broadcast dropped,
@@ -613,7 +613,7 @@ Items #2 and #3 each stand alone.
 - IPv4 parser sanity checks (the §4.1.3.6 ground-truth):
   `net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`.
 - UDP RX dispatcher (where most items integrate):
-  `pytcp/stack/packet_handler/packet_handler__udp__rx.py::_phrx_udp`.
+  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py::_phrx_udp`.
 - Existing UdpMetadata surface (what #1 / #4 / #5 extend):
   `pytcp/socket/udp__metadata.py`.
 - Linux socket-option numeric values reference:

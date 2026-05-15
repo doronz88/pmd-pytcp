@@ -26,7 +26,7 @@ the RFC 5227 probe / announce / defense audit lives at
 
 The audit was performed by reading the RFC text fresh and
 inspecting the codebase under `pytcp/stack/arp_cache.py` and
-`pytcp/stack/packet_handler/packet_handler__arp__{rx,tx}.py`
+`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
 directly. Adherence levels use the canonical descriptive
 language: **met**, **not met**, **partial**, **not implemented**,
 **vacuous**.
@@ -160,7 +160,7 @@ the existing entry with a fresh `CacheEntry(...)` whose
 `__update_arp_cache` helper in the RX handler runs this
 path on every RFC-826-compliant ARP packet (Request **or**
 Reply) whose SPA falls in our subnet
-(`pytcp/stack/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
+(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
 which is the "regardless of target address" requirement
 satisfied.
 
@@ -175,7 +175,7 @@ now sends the poll as a **unicast** ARP Request via
 `stack.packet_handler.send_arp_unicast_request(arp__tpa=...,
 ethernet__dst=cached_mac)`
 (`pytcp/protocols/arp/arp__cache.py` refresh branch →
-`pytcp/stack/packet_handler/packet_handler__arp__tx.py::send_arp_unicast_request`).
+`pytcp/runtime/packet_handler/packet_handler__arp__tx.py::send_arp_unicast_request`).
 RFC 1122 §2.3.2.1 IMPLEMENTATION (2) calls for the
 "point-to-point" form so that only the actual cached
 neighbour wakes up to reply rather than every host on the
@@ -195,7 +195,7 @@ unicast wire-form half is met.
 > cache entry."
 
 **Adherence:** **not implemented**. The TX ring
-(`pytcp/stack/tx_ring.py`) does report `os.writev` errors
+(`pytcp/runtime/tx_ring.py`) does report `os.writev` errors
 via `tx_ring__os_error__drop` on the shared
 `PacketStatsTx` (post the recent rings refactor), but
 there is no plumbing back from "writev failed for a packet

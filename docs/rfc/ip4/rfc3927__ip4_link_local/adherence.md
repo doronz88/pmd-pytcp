@@ -282,7 +282,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.6 TX-side scope-mismatch gate
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
   Five cases: link-local src + global dst → drop with new
   TxStatus + counter bump; symmetric global src + link-
   local dst → same drop; link-local src + link-local dst →
@@ -350,7 +350,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.6 TX-side scope-mismatch gate
 
 - **Integration:**
-  `pytcp/tests/integration/test__packet_handler__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
   Five cases: link-local src + global dst → drop with new
   TxStatus + counter bump; symmetric global src + link-
   local dst → same drop; link-local src + link-local dst →
