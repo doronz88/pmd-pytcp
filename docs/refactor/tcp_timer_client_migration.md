@@ -527,10 +527,39 @@ clause).`).
 **Phase 2 — per-timer behavioural parity (integration)**
 For time_wait / challenge_ack / keepalive / persist /
 delayed_ack: a focused integration test per timer asserting
-the fire ms and fire effect are identical pre/post. The
-challenge_ack inversion gets a dedicated truth-table test
-(§5.5) written and made to pass BEFORE the inversion lands
-(tests-first per `feature_implementation.md` §2).
+the fire ms and fire effect are identical pre/post.
+
+SHIPPED outcome (audit-in-lockstep): the §6.0 Rule-1 audit
+found that four of the five independent timers **already
+have crisp deadline-exact boundary pins** in their dedicated
+files — these ARE the per-timer parity pins and Phase 4's
+Rule-4 precondition points at them directly:
+
+| Timer | Existing deadline-exact pin |
+|-------|------------------------------|
+| time_wait | `test__tcp__session__close__time_wait.py:158` (advance `TIME_WAIT_DELAY-1` no-fire, then fire) |
+| delayed_ack | `test__tcp__session__data_transfer__recv.py:148/162` (advance `DELAYED_ACK_DELAY//2` held, then `DELAYED_ACK_DELAY` flush) |
+| keepalive | `test__tcp__session__keepalive.py:178/189` (advance `IDLE-1` no-probe, then probe) |
+| persist | `test__tcp__session__data_transfer__send.py:385` (cross persist-timeout boundary, exactly one probe) |
+
+Duplicating these would be redundant and brittle (the
+project north star explicitly resists dedicated sweeps), so
+Phase 2 added new coverage **only** for the one genuinely
+thin net: challenge_ack. The challenge_ack gate (§5.5) gets
+its dedicated truth-table — a unit gate truth-table in
+`test__tcp__session__timers.py`
+(`test__tcp__timers__challenge_ack_gate_truth_table`) plus
+an integration file
+`test__tcp__session__challenge_ack_window.py` (3 tests:
+unarmed→emit/within-window→suppress, re-emit after window,
+exact `CHALLENGE_ACK_RATE_LIMIT_MS-1` vs boundary). The
+challenge_ack swap already landed behaviour-preservingly in
+Phase 1 (same truth set as `not is_expired`); these tests
+pin it explicitly and pass on the existing code (a
+characterization pin per §6.0 Rule 3, not a
+tests-first-failing case — there is no behavioural delta to
+fail against, the burst pin `blind_attacks.py:553` already
+proved Phase-1 parity). Phase 2 made **zero code changes**.
 
 **Phase 3 — retransmit/rack/tlp ordering pin**
 A new integration test that drives a tail-loss + reorder +

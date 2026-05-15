@@ -209,3 +209,41 @@ class TestTcpSessionTimers(TestCase):
             1150,
             msg="Re-arm must overwrite the deadline with the fresh now_ms + delay_ms.",
         )
+
+    def test__tcp__timers__challenge_ack_gate_truth_table(self) -> None:
+        """
+        Ensure the challenge-ACK gate decision the
+        '_send_challenge_ack' path makes is exactly
+        'not _timer_armed("challenge_ack")': emit when unarmed,
+        suppress while armed-and-unfired, emit again once the
+        rate-limit window has elapsed (then re-arm).
+
+        Reference: RFC 5961 §3 (challenge-ACK rate-limit gate).
+        """
+
+        # Unarmed -> the gate would emit (not armed).
+        self.assertFalse(
+            self._session._timer_armed("challenge_ack"),
+            msg="Unarmed gate must read not-armed so the first challenge ACK is emitted.",
+        )
+
+        # Emit path arms the window.
+        self._session._arm_timer("challenge_ack", 1000)
+        self.assertTrue(
+            self._session._timer_armed("challenge_ack"),
+            msg="Within the rate-limit window the gate must read armed so further ACKs are suppressed.",
+        )
+
+        # One ms before the window elapses -> still suppressed.
+        self._timer.now_ms = 1999
+        self.assertTrue(
+            self._session._timer_armed("challenge_ack"),
+            msg="One ms before the window elapses the gate must still read armed.",
+        )
+
+        # At the window boundary -> the gate re-opens (emit again).
+        self._timer.now_ms = 2000
+        self.assertFalse(
+            self._session._timer_armed("challenge_ack"),
+            msg="At the rate-limit boundary the gate must read not-armed so a fresh challenge ACK is emitted.",
+        )
