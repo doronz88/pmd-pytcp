@@ -35,8 +35,8 @@ from typing import override
 from unittest import TestCase
 
 from net_addr import MacAddress
-from pytcp.lib import sysctl
 from pytcp.lib.dhcp_uid import build_client_id, build_duid_ll, get_duid, get_iaid
+from pytcp.stack import sysctl
 
 
 class TestBuildDuidLl(TestCase):

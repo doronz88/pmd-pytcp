@@ -48,7 +48,7 @@ ver 3.0.4
 from unittest.mock import patch
 
 from net_proto import EthernetParser, EtherType, Icmp6NdMessageRouterSolicitation, Icmp6Parser, Ip6Parser, PacketRx
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 

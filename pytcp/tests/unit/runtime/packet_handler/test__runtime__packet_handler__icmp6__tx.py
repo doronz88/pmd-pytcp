@@ -405,7 +405,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
         back to the registered default.
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         sysctl_module.reset_to_defaults()
 
@@ -469,7 +469,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
         Reference: PyTCP sysctl framework (operator-tunable count).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("icmp6.gratuitous_na_count", 3):
             self._handler.send_icmp6_neighbor_advertisement_gratuitous(
@@ -493,7 +493,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
         Reference: PyTCP sysctl framework (zero-count kill switch).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("icmp6.gratuitous_na_count", 0):
             self._handler.send_icmp6_neighbor_advertisement_gratuitous(

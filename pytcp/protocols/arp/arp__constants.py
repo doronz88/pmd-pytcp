@@ -149,7 +149,7 @@ ARP__FILTER = 0
 # legacy cache-aging knobs ('arp.cache.max_age',
 # 'arp.cache.refresh_time') are gone — the NUD migration
 # (Phase 2) replaces them with the 'neighbor.*' namespace.
-from pytcp.lib.sysctl import get, is_positive_int, register, register_finalize_validator  # noqa: E402
+from pytcp.stack.sysctl import get, is_positive_int, register, register_finalize_validator  # noqa: E402
 
 register(
     key="arp.defend_interval",

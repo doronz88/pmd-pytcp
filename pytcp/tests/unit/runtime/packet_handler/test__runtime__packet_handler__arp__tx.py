@@ -467,7 +467,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         leaks into a subsequent test's baseline.
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         sysctl_module.reset_to_defaults()
 
@@ -504,7 +504,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 in-subnet).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
@@ -527,7 +527,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 fall back to mode 2 when no match).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("172.16.0.1"))
@@ -550,7 +550,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 2 best-local-address).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.announce", 2):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
@@ -572,7 +572,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 1 in-subnet).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.announce", 1):
             self._handler.send_arp_unicast_request(

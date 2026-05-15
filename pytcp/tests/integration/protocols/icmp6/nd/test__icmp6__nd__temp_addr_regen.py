@@ -48,8 +48,8 @@ ver 3.0.4
 import time
 
 from net_addr import Ip6Address, Ip6Network
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6TempAddress
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 PREFIX_A = Ip6Network("2001:db8:0:1::/64")

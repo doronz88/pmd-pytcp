@@ -1099,7 +1099,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         leak into subsequent tests' baselines.
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         sysctl_module.reset_to_defaults()
         super().tearDown()
@@ -1140,7 +1140,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_accept (mode 1: admit off-subnet).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.accept", 1):
             frame = _arp_frame(
@@ -1199,7 +1199,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2: sender-subnet-match).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.ignore", 2):
             frame = _arp_frame(
@@ -1231,7 +1231,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2: on-subnet sender admitted).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.ignore", 2):
             frame = _arp_frame(
@@ -1263,7 +1263,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 kill-switch).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.ignore", 8):
             frame = _arp_frame(
@@ -1300,7 +1300,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 2 affects reply path only).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.ignore", 2), sysctl_module.override("arp.accept", 1):
             frame = _arp_frame(
@@ -1334,7 +1334,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 affects reply path only).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("arp.ignore", 8):
             frame = _arp_frame(

@@ -60,8 +60,8 @@ from net_proto import (
     Ip6Parser,
     PacketRx,
 )
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import HOST_A__MAC_ADDRESS
 

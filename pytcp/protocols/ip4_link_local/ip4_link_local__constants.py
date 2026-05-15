@@ -25,7 +25,7 @@
 """
 This module contains the RFC 3927 IPv4 Link-Local autoconfig
 runtime configuration constants — RFC 3927 §9 retry-loop
-timing knobs registered as 'pytcp.lib.sysctl' sysctls so the
+timing knobs registered as 'pytcp.stack.sysctl' sysctls so the
 operator can tune them at boot or runtime.
 
 Phase 4 (DHCP coordination) will add
@@ -70,7 +70,7 @@ IP4_LINK_LOCAL__DHCP_FALLBACK_TIMEOUT_MS: int = 0
 # userspace daemons), tunable at boot via
 # 'stack.init(sysctls={"ip4_link_local.X": N})' or at runtime
 # via 'pytcp.stack.sysctl["ip4_link_local.X"] = N'.
-from pytcp.lib.sysctl import is_non_negative_int, is_positive_int, register  # noqa: E402
+from pytcp.stack.sysctl import is_non_negative_int, is_positive_int, register  # noqa: E402
 
 register(
     key="ip4_link_local.max_conflicts",

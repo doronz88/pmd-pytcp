@@ -758,7 +758,7 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
 
         super().setUp()
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         sysctl_module.set("ip4.allow_broadcast", 1)
         self.addCleanup(sysctl_module.reset_to_defaults)

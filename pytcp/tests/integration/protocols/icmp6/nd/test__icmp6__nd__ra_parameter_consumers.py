@@ -54,7 +54,7 @@ from net_proto import Ip6Parser, RawAssembler
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from pytcp import stack
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,

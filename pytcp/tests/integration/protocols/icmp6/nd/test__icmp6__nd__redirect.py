@@ -37,7 +37,7 @@ ver 3.0.4
 """
 
 from net_addr import Ip6Address, MacAddress
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,

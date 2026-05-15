@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Callable, override
 from net_addr import Ip4Address, Ip4Host, MacAddress
 
 if TYPE_CHECKING:
-    from pytcp.lib.address_api import Ip4AddressApi
+    from pytcp.stack.address import Ip4AddressApi
 
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
@@ -783,7 +783,7 @@ class Dhcp4Client(Subsystem):
             # second budget regardless of how the operator has
             # tuned the standard retransmission budget.
             attempts_prior = dhcp4__constants.DHCP4__RETRANS_MAX_ATTEMPTS
-            from pytcp.lib import sysctl as sysctl_module
+            from pytcp.stack import sysctl as sysctl_module
 
             with sysctl_module.override(
                 "dhcp.retrans_max_attempts",

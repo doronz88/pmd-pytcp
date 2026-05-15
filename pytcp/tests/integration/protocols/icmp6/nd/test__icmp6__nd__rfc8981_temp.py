@@ -53,8 +53,8 @@ import time
 
 from net_addr import Ip6Address, Ip6Network, MacAddress
 from net_proto import Icmp6NdOptionPi
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.icmp6.nd import nd__constants
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
     STACK__IP6_HOST,

@@ -41,9 +41,7 @@ from enum import IntFlag
 from typing import TYPE_CHECKING, Any
 
 from net_addr import MacAddress
-from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.link_api import LinkApi
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
@@ -55,6 +53,8 @@ from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket.socket_id import SocketId
+from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.link import LinkApi
 
 if TYPE_CHECKING:
     from net_addr import Ip4Address, Ip6Address

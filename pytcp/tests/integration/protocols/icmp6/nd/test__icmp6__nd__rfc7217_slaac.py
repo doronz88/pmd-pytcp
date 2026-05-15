@@ -42,7 +42,7 @@ ver 3.0.4
 """
 
 from net_addr import Ip6Host, Ip6Network
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 

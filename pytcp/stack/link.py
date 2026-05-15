@@ -38,7 +38,7 @@ introspection (Phase 3), and mutation via 'set_mtu' /
 'set_mac_address' (Phase 4). See
 'docs/refactor/link_api.md' for the full plan.
 
-pytcp/lib/link_api.py
+pytcp/stack/link.py
 
 ver 3.0.4
 """

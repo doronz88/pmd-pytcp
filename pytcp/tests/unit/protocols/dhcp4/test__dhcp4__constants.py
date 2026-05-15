@@ -34,8 +34,8 @@ ver 3.0.4
 from typing import override
 from unittest import TestCase
 
-from pytcp.lib import sysctl
 from pytcp.protocols.dhcp4 import dhcp4__constants
+from pytcp.stack import sysctl
 
 
 class TestDhcp4ConstantsDefaults(TestCase):

@@ -33,7 +33,6 @@ ver 3.0.4
 
 from unittest import TestCase
 
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE,
     ARP__ANNOUNCE_INTERVAL,
@@ -46,6 +45,7 @@ from pytcp.protocols.arp.arp__constants import (
     ARP__PROBE_NUM,
     ARP__PROBE_WAIT,
 )
+from pytcp.stack import sysctl as sysctl_module
 
 
 class TestArpConstants(TestCase):

@@ -34,8 +34,8 @@ ver 3.0.4
 from typing import override
 from unittest import TestCase
 
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.ip4 import ip4__constants as ip4_const
+from pytcp.stack import sysctl as sysctl_module
 
 
 class TestIp4Constants(TestCase):

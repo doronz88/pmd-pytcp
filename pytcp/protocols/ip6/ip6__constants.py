@@ -99,7 +99,7 @@ IP6__EXT_HDR_MAX_UNKNOWN_OPTIONS: int = 2
 # it on links where downstream forwarding plane treats
 # flow=0 as a special-case (older middleboxes, RFC 6437
 # §6.1 ECMP/LAG opting-out).
-from pytcp.lib.sysctl import is_non_negative_int, register  # noqa: E402
+from pytcp.stack.sysctl import is_non_negative_int, register  # noqa: E402
 
 register(
     key="ip6.flow_label_generation",

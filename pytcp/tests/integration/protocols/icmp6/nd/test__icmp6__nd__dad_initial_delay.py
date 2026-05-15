@@ -50,7 +50,7 @@ from typing import Any
 from unittest.mock import patch
 
 from net_addr import Ip6Address
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 _CANDIDATE = Ip6Address("2001:db8:0:1::5")

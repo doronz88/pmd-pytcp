@@ -26,7 +26,7 @@
 This module contains the DHCPv4 client runtime-tunable policy
 constants governing RFC 2131 §4.1 retransmission backoff and the
 RFC 2131 §3.1 step 4 bounded NAK-restart loop. Every constant
-below is registered as a 'pytcp.lib.sysctl' knob so operators
+below is registered as a 'pytcp.stack.sysctl' knob so operators
 can tune it via 'stack.init(sysctls={...})' at boot or
 'pytcp.stack.sysctl["dhcp...."]' at runtime.
 
@@ -184,7 +184,7 @@ DHCP4__OFFER_COLLECTION_MS = 3000
 
 from typing import Callable  # noqa: E402
 
-from pytcp.lib.sysctl import (  # noqa: E402
+from pytcp.stack.sysctl import (  # noqa: E402
     get,
     is_float_in_range,
     is_non_negative_int,

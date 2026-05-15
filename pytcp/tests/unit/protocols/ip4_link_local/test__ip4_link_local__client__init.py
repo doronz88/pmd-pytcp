@@ -38,11 +38,11 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import MacAddress
-from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
+from pytcp.stack.address import Ip4AddressApi
 
 
 def _make_address_api_mock() -> Ip4AddressApi:

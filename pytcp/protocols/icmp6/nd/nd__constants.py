@@ -41,7 +41,7 @@ ver 3.0.4
 
 from typing import Any
 
-from pytcp.lib.sysctl import register
+from pytcp.stack.sysctl import register
 
 # Linux net.ipv6.conf.<iface>.accept_redirects policy. Controls
 # whether inbound RFC 4861 §8 Redirect messages are processed

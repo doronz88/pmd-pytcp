@@ -1542,7 +1542,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
         Reference: RFC 1122 §3.2.1.7 (MUST be configurable).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("ip4.default_ttl", 32):
             self._packet_handler._phtx_ip4(
@@ -1595,7 +1595,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
         Reference: RFC 1112 §6.1 (multicast TTL default = 1, independent of unicast default).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("ip4.default_ttl", 200):
             self._packet_handler._phtx_ip4(
@@ -1669,7 +1669,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
         Reference: RFC 919 §1 (broadcast emission permitted under explicit policy).
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         with sysctl_module.override("ip4.allow_broadcast", 1):
             tx_status = self._packet_handler._phtx_ip4(

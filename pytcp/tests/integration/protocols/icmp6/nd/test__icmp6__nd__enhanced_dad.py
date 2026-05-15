@@ -46,7 +46,7 @@ from typing import Any, cast
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import Icmp6NdMessageNeighborSolicitation
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 CANDIDATE = Ip6Address("2001:db8:0:1::5")

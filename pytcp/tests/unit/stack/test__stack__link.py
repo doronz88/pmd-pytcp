@@ -30,7 +30,7 @@ read-only minimum surface — 'mac_address', 'mtu', and
 'packet_handler._mac_unicast' reach-through used by the
 DHCPv4 and RFC 3927 link-local construction call sites.
 
-pytcp/tests/unit/lib/test__lib__link_api.py
+pytcp/tests/unit/stack/test__stack__link.py
 
 ver 3.0.4
 """
@@ -42,8 +42,8 @@ from unittest.mock import patch
 from net_addr import MacAddress
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.link_api import LinkApi, LinkFlag, LinkStats
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
+from pytcp.stack.link import LinkApi, LinkFlag, LinkStats
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3

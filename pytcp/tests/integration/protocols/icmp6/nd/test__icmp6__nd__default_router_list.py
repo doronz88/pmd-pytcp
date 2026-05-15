@@ -48,7 +48,7 @@ from net_proto import (
     Icmp6NdMessageRouterAdvertisement,
     Icmp6NdOptions,
 )
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
     STACK__IP6_HOST,

@@ -43,9 +43,9 @@ from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, MacAddress
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.lib.neighbor import NudState
 from pytcp.protocols.arp.arp__cache import ArpCache
+from pytcp.stack import sysctl as sysctl_module
 
 
 class _ArpCacheFixture(TestCase):

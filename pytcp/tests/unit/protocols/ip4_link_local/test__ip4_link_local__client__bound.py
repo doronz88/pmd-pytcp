@@ -38,16 +38,16 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
-from pytcp.lib.address_api import (
-    ClaimResult,
-    ConflictEvent,
-    Ip4AddressApi,
-    SubscriptionHandle,
-)
 from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
+)
+from pytcp.stack.address import (
+    ClaimResult,
+    ConflictEvent,
+    Ip4AddressApi,
+    SubscriptionHandle,
 )
 
 

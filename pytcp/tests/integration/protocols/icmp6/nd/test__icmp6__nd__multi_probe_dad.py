@@ -49,7 +49,7 @@ from net_proto import (
     Ip6Parser,
     PacketRx,
 )
-from pytcp.lib import sysctl as sysctl_module
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 

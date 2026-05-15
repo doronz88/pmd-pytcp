@@ -93,7 +93,7 @@ def _is_ip4_allow_broadcast(value: object) -> None:
 # Sysctl registration. The IPv4 policy knobs are tuned by the
 # operator via 'stack.init(sysctls={"ip4.X": N})' at boot or
 # 'pytcp.stack.sysctl["ip4.X"] = N' at runtime.
-from pytcp.lib.sysctl import register  # noqa: E402
+from pytcp.stack.sysctl import register  # noqa: E402
 
 register(
     key="ip4.default_ttl",

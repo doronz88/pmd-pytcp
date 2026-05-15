@@ -43,11 +43,11 @@ ver 3.0.4
 import time
 
 from net_addr import Ip6Address, Ip6Host, Ip6Network
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6SlaacAddress,
     Icmp6TempAddress,
 )
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 # Two stable SLAAC hosts on adjacent /64s plus a temporary

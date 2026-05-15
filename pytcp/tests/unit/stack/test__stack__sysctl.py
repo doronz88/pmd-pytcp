@@ -23,11 +23,11 @@
 
 
 """
-This module contains tests for the 'pytcp.lib.sysctl'
+This module contains tests for the 'pytcp.stack.sysctl'
 runtime-tunable knob registry — Phase 0 of the framework
 plan at 'docs/refactor/sysctl_framework.md'.
 
-pytcp/tests/unit/lib/test__lib__sysctl.py
+pytcp/tests/unit/stack/test__stack__sysctl.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ import sys
 import types
 from unittest import TestCase
 
-from pytcp.lib import sysctl
+from pytcp.stack import sysctl
 
 
 def _build_carrier_module(name: str, **attrs: object) -> types.ModuleType:
@@ -498,7 +498,7 @@ class TestSysctlCrossKnobValidation(_SysctlFixtureBase):
 class TestSysctlDictLikeAccess(_SysctlFixtureBase):
     """
     The dict-like '__getitem__' / '__setitem__' / '__contains__'
-    tests on the public 'pytcp.lib.sysctl.sysctl' singleton.
+    tests on the public 'pytcp.stack.sysctl.sysctl' singleton.
     """
 
     def test__lib__sysctl__dict_like_setitem_writes_through(self) -> None:

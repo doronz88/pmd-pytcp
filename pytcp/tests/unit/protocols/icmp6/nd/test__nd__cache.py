@@ -42,9 +42,9 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip6Address, MacAddress
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.lib.neighbor import NudState
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+from pytcp.stack import sysctl as sysctl_module
 
 
 class _NdCacheFixture(TestCase):

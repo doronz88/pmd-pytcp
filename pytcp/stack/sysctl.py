@@ -33,7 +33,7 @@ kwargs at boot.
 Design + classification rules: docs/refactor/sysctl_framework.md
 Workflow for adding a knob: .claude/skills/sysctl_knob/SKILL.md
 
-pytcp/lib/sysctl.py
+pytcp/stack/sysctl.py
 
 ver 3.0.4
 """
@@ -219,7 +219,7 @@ def override(key: str, value: Any) -> Generator[None, None, None]:
 class _SysctlRegistry:
     """
     Dict-like facade over the registry, exposed as the
-    'pytcp.lib.sysctl.sysctl' singleton. Forwards subscript
+    'pytcp.stack.sysctl.sysctl' singleton. Forwards subscript
     access to the module-level 'get' / 'set' functions.
     """
 

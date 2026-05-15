@@ -41,8 +41,8 @@ from net_addr import Ip4Address, MacAddress
 # registrations land before the tests construct caches /
 # patch values.
 from pytcp.lib import neighbor__constants  # noqa: F401
-from pytcp.lib import sysctl as sysctl_module
 from pytcp.lib.neighbor import NeighborCache, NeighborEntry, NudState
+from pytcp.stack import sysctl as sysctl_module
 
 # Test addresses — using IPv4 since the FSM is identical
 # across IPv4/IPv6 and Ip4Address keeps fixtures concise.

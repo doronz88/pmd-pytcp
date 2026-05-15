@@ -26,7 +26,7 @@
 This module contains tests for the IPv4 address-control API
 ('Ip4AddressApi') in 'pytcp/lib/address_api.py'.
 
-pytcp/tests/unit/lib/test__lib__address_api.py
+pytcp/tests/unit/stack/test__stack__address.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip4Host, MacAddress
-from pytcp.lib.address_api import (
+from pytcp.stack.address import (
     ConflictEvent,
     Ip4AddressApi,
     ProbeResult,
@@ -102,7 +102,7 @@ class TestIp4AddressApiAddHost(TestCase):
         packet handler for the API to mutate.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -160,7 +160,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
         handler pre-populated with a single host.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._target_host = Ip4Host("10.0.0.5/24")
         self._other_host = Ip4Host("10.0.0.6/24")
@@ -255,7 +255,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
         that the test will swap out.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._old_host = Ip4Host("10.0.0.5/24")
         self._packet_handler._ip4_host = [self._old_host]
@@ -336,7 +336,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         so the snapshot test has something to read.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._packet_handler._ip4_host = [Ip4Host("10.0.0.5/24"), Ip4Host("10.0.0.6/24")]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
@@ -463,7 +463,7 @@ class TestIp4AddressApiProbe(TestCase):
         packet handler the API will delegate to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -533,7 +533,7 @@ class TestIp4AddressApiAnnounce(TestCase):
         packet handler the API delegates to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -572,7 +572,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         packet handler the API delegates to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -666,7 +666,7 @@ class TestIp4AddressApiSendGratuitousArp(TestCase):
         packet handler the API delegates to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -705,7 +705,7 @@ class TestIp4AddressApiSubscribeConflicts(TestCase):
         packet handler the API delegates to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -840,7 +840,7 @@ class TestIp4AddressApiAbortBoundTcpSessionsPublic(TestCase):
         packet handler the API delegates to.
         """
 
-        self.enterContext(patch("pytcp.lib.address_api.log"))
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 

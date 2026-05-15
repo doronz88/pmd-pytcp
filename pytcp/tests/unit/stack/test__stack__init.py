@@ -893,7 +893,7 @@ class TestStackInitArpCacheConfig(TestCase):
         Restore module-level singletons and sysctl defaults.
         """
 
-        from pytcp.lib import sysctl as sysctl_module
+        from pytcp.stack import sysctl as sysctl_module
 
         sysctl_module.reset_to_defaults()
         for name, value in self._snapshot.items():

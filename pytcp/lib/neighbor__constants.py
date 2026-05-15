@@ -41,7 +41,7 @@ ver 3.0.4
 
 from typing import Any, Callable
 
-from pytcp.lib.sysctl import get, is_positive_int, register, register_finalize_validator
+from pytcp.stack.sysctl import get, is_positive_int, register, register_finalize_validator
 
 # RFC 4861 §10 / Linux net.ipv4.neigh.default.* defaults,
 # scaled to seconds.

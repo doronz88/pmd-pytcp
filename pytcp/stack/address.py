@@ -30,7 +30,7 @@ add / remove / replace addresses on the stack. The Linux
 equivalents are 'RTM_NEWADDR' / 'RTM_DELADDR' (rtnetlink) and
 'net/ipv4/devinet.c'.
 
-pytcp/lib/address_api.py
+pytcp/stack/address.py
 
 ver 3.0.4
 """

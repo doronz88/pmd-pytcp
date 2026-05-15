@@ -45,9 +45,7 @@ from __future__ import annotations
 from typing import Any
 
 from net_addr import Ip4Host, Ip6Host, MacAddress
-from pytcp.lib.address_api import Ip4AddressApi
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.link_api import LinkApi
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
@@ -56,6 +54,8 @@ from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
+from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.link import LinkApi
 
 
 def mock__init(
@@ -179,7 +179,6 @@ def init(
     # triggers their module-level 'register' calls so the
     # registry is populated before we set anything.
     from pytcp.lib import neighbor__constants  # noqa: F401  pylint: disable=unused-import
-    from pytcp.lib import sysctl as sysctl_module
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.icmp6.nd import nd__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.ip4 import ip4__constants  # noqa: F401  pylint: disable=unused-import
@@ -187,6 +186,7 @@ def init(
         ip4_link_local__constants,
     )
     from pytcp.protocols.ip6 import ip6__constants  # noqa: F401  pylint: disable=unused-import
+    from pytcp.stack import sysctl as sysctl_module
 
     if sysctls is not None:
         for key, value in sysctls.items():
@@ -417,6 +417,6 @@ def stop() -> None:
     # so a follow-up 'stack.init()' (typical in long-running test
     # harnesses) starts from a clean baseline rather than
     # inheriting overrides from the prior run.
-    from pytcp.lib import sysctl as sysctl_module
+    from pytcp.stack import sysctl as sysctl_module
 
     sysctl_module.reset_to_defaults()

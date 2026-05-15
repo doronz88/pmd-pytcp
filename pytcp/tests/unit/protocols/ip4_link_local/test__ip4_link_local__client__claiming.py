@@ -39,13 +39,13 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
-from pytcp.lib import sysctl as sysctl_module
-from pytcp.lib.address_api import ClaimResult, Ip4AddressApi
 from pytcp.protocols.ip4_link_local import ip4_link_local__constants as ip4ll_const
 from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
+from pytcp.stack import sysctl as sysctl_module
+from pytcp.stack.address import ClaimResult, Ip4AddressApi
 
 
 class TestIp4LinkLocalClaiming(TestCase):
