@@ -153,7 +153,7 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
         *,
         name: str,
         solicit_callback: SolicitCallback[A],
-        flush_callback: FlushCallback | None = None,
+        flush_callback: FlushCallback[P] | None = None,
     ) -> None:
         """
         Initialise the cache with the protocol-specific TX
