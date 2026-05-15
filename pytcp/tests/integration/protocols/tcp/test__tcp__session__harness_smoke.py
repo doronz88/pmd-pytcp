@@ -47,7 +47,7 @@ class TestFakeTimer(TestCase):
 
     def test__fake_timer__starts_at_zero(self) -> None:
         """
-        Ensure 'FakeTimer.now_ms' starts at 0 with no pending timers.
+        Ensure 'FakeTimer.now_ms' starts at 0.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -55,7 +55,6 @@ class TestFakeTimer(TestCase):
         timer = FakeTimer()
 
         self.assertEqual(timer.now_ms, 0, msg="FakeTimer must initialize 'now_ms' to 0.")
-        self.assertEqual(timer.pending_timers, {}, msg="FakeTimer must initialize with no pending timers.")
 
     def test__fake_timer__advance_fires_registered_method_at_each_delay(self) -> None:
         """
@@ -77,35 +76,6 @@ class TestFakeTimer(TestCase):
             msg="FakeTimer must forward the registered kwargs verbatim on every fire.",
         )
         self.assertEqual(timer.now_ms, 5, msg="FakeTimer.advance(5) must advance the virtual clock by 5 ms.")
-
-    def test__fake_timer__register_timer_expires_after_timeout(self) -> None:
-        """
-        Ensure a named timer is reported as not expired until exactly
-        'timeout' ms have elapsed, then is reported expired thereafter.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        timer = FakeTimer()
-        timer.register_timer(name="alpha", timeout=3)
-
-        self.assertFalse(timer.is_expired("alpha"), msg="A freshly registered timer must not be expired.")
-        timer.advance(2)
-        self.assertFalse(timer.is_expired("alpha"), msg="Timer must remain unexpired before its timeout.")
-        timer.advance(1)
-        self.assertTrue(timer.is_expired("alpha"), msg="Timer must be reported expired once its timeout has elapsed.")
-
-    def test__fake_timer__is_expired_for_unknown_name_returns_true(self) -> None:
-        """
-        Ensure 'is_expired' returns True for any name that was never
-        registered, matching production 'Timer.is_expired' semantics.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        timer = FakeTimer()
-
-        self.assertTrue(timer.is_expired("unregistered"), msg="Unknown timer name must be reported expired.")
 
     def test__fake_timer__rejects_negative_advance(self) -> None:
         """

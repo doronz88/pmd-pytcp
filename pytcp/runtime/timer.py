@@ -94,14 +94,11 @@ class Timer(Subsystem):
     invocation happens with the lock released so a handler may
     re-enter 'call_later' / 'cancel' without deadlocking.
 
-    A legacy shim layer ('register_timer', 'is_expired',
-    'unregister_timers_with_prefix') maps the old named-flag API
-    onto the new core so the ~24 TCP named-timer consumers do not
-    churn in the same commit.
-
-    Note: 'is_expired(name)' returns True for unknown names —
-    a never-registered named timer collapses with one that has
-    already fired.
+    The public API is 'call_later' / 'call_periodic' / 'cancel'
+    / 'now_ms'. (The legacy named-flag shim — 'register_timer' /
+    'is_expired' / 'unregister_timers_with_prefix' — was removed
+    once the TCP timer-client migration retired its last
+    consumer; the FSM is now event-driven.)
     """
 
     _subsystem_name = "Timer"
@@ -110,7 +107,6 @@ class Timer(Subsystem):
     _lock: threading.RLock
     _wakeup: threading.Event
     _seq: int
-    _legacy_named_flags: dict[str, TimerHandle]
 
     @override
     def __init__(self) -> None:
@@ -124,7 +120,6 @@ class Timer(Subsystem):
         self._lock = threading.RLock()
         self._wakeup = threading.Event()
         self._seq = 0
-        self._legacy_named_flags = {}
 
     @property
     def now_ms(self) -> int:
@@ -282,61 +277,3 @@ class Timer(Subsystem):
 
             if self._event__stop_subsystem.is_set():
                 return
-
-    # ----------------------------------------------------------------
-    # Legacy named-flag shim — maps the old register_timer /
-    # is_expired / unregister_timers_with_prefix API onto the new
-    # heap core. Stays until the ~24 TCP named-timer consumers
-    # migrate to event-driven callbacks (out-of-scope follow-up).
-    # ----------------------------------------------------------------
-
-    def register_timer(self, *, name: str, timeout: int) -> None:
-        """
-        LEGACY. Shim over 'call_later' that clears a named flag
-        instead of invoking a consumer method. Re-registering an
-        existing name cancels the prior entry first.
-        """
-
-        assert timeout >= 1, f"register_timer timeout must be >= 1; got {timeout}"
-
-        __debug__ and log("timer", f"<r>Registering timer: {name}, timeout={timeout}</>")
-
-        with self._lock:
-            old = self._legacy_named_flags.get(name)
-            if old is not None:
-                old.cancelled = True
-            self._legacy_named_flags[name] = self.call_later(timeout, self._clear_named_flag, name)
-
-    def _clear_named_flag(self, name: str, /) -> None:
-        """
-        Drop the named-flag entry for 'name' when its legacy timer
-        fires. After this, 'is_expired(name)' returns True.
-        """
-
-        with self._lock:
-            self._legacy_named_flags.pop(name, None)
-
-    def is_expired(self, name: str) -> bool:
-        """
-        LEGACY. True when 'name' was never registered OR its timer
-        has already fired (the flag entry was cleared). False only
-        while the named timer is still counting down.
-        """
-
-        with self._lock:
-            __debug__ and log("timer", f"<r>Active timers: {set(self._legacy_named_flags)}</>")
-            return name not in self._legacy_named_flags
-
-    def unregister_timers_with_prefix(self, prefix: str, /) -> None:
-        """
-        LEGACY. Cancel every named-flag timer whose name starts
-        with 'prefix'. Used by 'TcpSession._change_state' on the
-        CLOSED transition to drop per-session entries.
-        """
-
-        __debug__ and log("timer", f"<r>Unregistering timers with prefix: {prefix!r}</>")
-
-        with self._lock:
-            for name in [n for n in self._legacy_named_flags if n.startswith(prefix)]:
-                self._legacy_named_flags[name].cancelled = True
-                del self._legacy_named_flags[name]

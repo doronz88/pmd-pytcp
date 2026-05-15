@@ -53,13 +53,12 @@ class TestFakeTimer(TestCase):
     def test__fake_timer__now_ms_starts_at_zero(self) -> None:
         """
         Ensure a new 'FakeTimer' starts with its virtual clock at
-        zero and no pending timers.
+        zero.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._timer.now_ms, 0, msg="now_ms must start at 0.")
-        self.assertEqual(self._timer.pending_timers, {}, msg="No timers must be pending initially.")
 
     def test__fake_timer__advance_increments_now_ms(self) -> None:
         """
@@ -186,19 +185,6 @@ class TestFakeTimer(TestCase):
         self._timer.advance(50)
         inner.assert_called_once_with()
 
-    def test__fake_timer__legacy_register_timer_and_is_expired(self) -> None:
-        """
-        Ensure a named legacy timer reports not-expired until its
-        timeout elapses, then expired.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.register_timer(name="x", timeout=10)
-        self.assertFalse(self._timer.is_expired("x"), msg="A pending named timer must report not-expired.")
-        self._timer.advance(10)
-        self.assertTrue(self._timer.is_expired("x"), msg="An elapsed named timer must report expired.")
-
     def test__fake_timer__now_ms_setter_rebases_pending_deadlines(self) -> None:
         """
         Ensure jumping the clock via the 'now_ms' setter shifts
@@ -221,42 +207,3 @@ class TestFakeTimer(TestCase):
             0xFFFF_FFFF + 50,
             msg="The clock must end at the rebased deadline window.",
         )
-
-    def test__fake_timer__register_timer_reregister_cancels_old(self) -> None:
-        """
-        Ensure re-registering an existing named timer cancels the
-        prior handle so a stale entry cannot clear the flag early.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.register_timer(name="x", timeout=10)
-        old = self._timer._legacy_named_flags["x"]
-        self._timer.register_timer(name="x", timeout=100)
-        self.assertIs(old.cancelled, True, msg="The superseded handle must be cancelled.")
-        self._timer.advance(10)
-        self.assertFalse(
-            self._timer.is_expired("x"),
-            msg="The re-armed 100 ms timer must still be pending at +10 ms.",
-        )
-
-    def test__fake_timer__legacy_unregister_timers_with_prefix(self) -> None:
-        """
-        Ensure 'unregister_timers_with_prefix' expires matching
-        named timers while leaving non-matching ones to run to
-        their own deadlines.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.register_timer(name="s1-a", timeout=10)
-        self._timer.register_timer(name="s1-b", timeout=10)
-        self._timer.register_timer(name="other", timeout=10)
-
-        self._timer.unregister_timers_with_prefix("s1-")
-
-        self.assertTrue(self._timer.is_expired("s1-a"), msg="Matching timer s1-a must report expired.")
-        self.assertTrue(self._timer.is_expired("s1-b"), msg="Matching timer s1-b must report expired.")
-        self.assertFalse(self._timer.is_expired("other"), msg="Non-matching timer must still be pending.")
-        self._timer.advance(10)
-        self.assertTrue(self._timer.is_expired("other"), msg="The non-matching timer must expire on its own deadline.")

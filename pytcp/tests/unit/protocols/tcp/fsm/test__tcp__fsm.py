@@ -56,14 +56,11 @@ class _TcpSessionFsmFixture(TestCase):
     def setUp(self) -> None:
         """
         Install per-test stack patches and expose the timer mock on
-        'self' so individual tests can observe 'register_timer' calls.
+        'self' so individual tests can observe scheduler calls.
         """
 
         self._timer = SimpleNamespace(
             call_periodic=MagicMock(),
-            register_timer=MagicMock(),
-            is_expired=MagicMock(return_value=False),
-            unregister_timers_with_prefix=MagicMock(),
             cancel=MagicMock(),
             call_later=MagicMock(),
             now_ms=0,

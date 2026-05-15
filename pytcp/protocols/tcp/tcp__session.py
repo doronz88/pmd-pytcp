@@ -542,9 +542,10 @@ class TcpSession:
     def _timer_expired(self, name: str, /) -> bool:
         """
         Return True iff the named logical timer is armed and its
-        deadline has passed. An unarmed timer is NOT expired —
-        this de-conflates the legacy 'is_expired', which collapsed
-        'never armed' with 'fired'.
+        deadline has passed. An unarmed timer is NOT expired:
+        'never armed' and 'fired' are distinct states (see
+        '_timer_armed' for the complementary 'still running?'
+        query).
         """
 
         deadline = self._timer_deadlines.get(name)
@@ -570,8 +571,8 @@ class TcpSession:
     def _cancel_all_timers(self) -> None:
         """
         Cancel every logical timer for this session and release
-        the coalesced service handle. Replaces the legacy
-        'unregister_timers_with_prefix(f"{self}-")' teardown sweep.
+        the coalesced service handle. The session-teardown sweep
+        that drops all of this session's armed timers in one call.
         """
 
         self._timer_deadlines.clear()

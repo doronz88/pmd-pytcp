@@ -37,14 +37,11 @@ from typing import Any
 
 from pytcp.runtime.timer import TimerHandle
 
-# Heap-key priority bands. Named legacy timers (register_timer)
-# clear their flag BEFORE call_* method callbacks that share the
-# same millisecond deadline, so a periodic fsm tick observing
-# 'is_expired' at the expiry instant sees the timer already
-# expired — byte-for-byte the behaviour of the previous
-# tick-and-decrement FakeTimer, where '_tick_timers' ran ahead
-# of '_tick_tasks' within each millisecond.
-_PRIO__NAMED_FLAG: int = 0
+# Heap-key priority band. Retained as a fixed middle tuple
+# element so the heap key '(deadline_ms, prio, seq)' stays
+# byte-identical to the production 'Timer' key shape; every
+# entry uses the same value (the named-flag-clear ordering band
+# went away with the legacy shim).
 _PRIO__METHOD: int = 1
 
 
@@ -60,16 +57,15 @@ class FakeTimer:
     window, in deadline order, re-arming periodics interval-based
     so a single 'advance' may fire a periodic several times.
 
-    Exposes both the new core API ('call_later' / 'call_periodic'
-    / 'cancel') and the legacy named-flag shim ('register_timer' /
-    'is_expired' / 'unregister_timers_with_prefix') so the ~24 TCP
-    named-timer consumers run unchanged.
+    Exposes the new core API ('call_later' / 'call_periodic' /
+    'cancel' / 'now_ms'); the legacy named-flag shim was removed
+    with its production counterpart once the TCP timer-client
+    migration retired its last consumer.
     """
 
     _heap: list[tuple[int, int, int, TimerHandle]]
     _now_ms: int
     _seq: int
-    _legacy_named_flags: dict[str, TimerHandle]
 
     def __init__(self) -> None:
         """
@@ -80,7 +76,6 @@ class FakeTimer:
         self._heap = []
         self._now_ms = 0
         self._seq = 0
-        self._legacy_named_flags = {}
 
     @property
     def now_ms(self) -> int:
@@ -111,15 +106,6 @@ class FakeTimer:
             heapq.heapify(rebased)
             self._heap = rebased
         self._now_ms = value
-
-    @property
-    def pending_timers(self) -> dict[str, int]:
-        """
-        Get a snapshot of every live named legacy timer mapped to
-        its remaining milliseconds ('deadline_ms - now_ms').
-        """
-
-        return {name: handle.deadline_ms - self._now_ms for name, handle in self._legacy_named_flags.items()}
 
     def _next_seq(self) -> int:
         """
@@ -228,54 +214,3 @@ class FakeTimer:
             handle.method(*handle.args, **handle.kwargs)
 
         self._now_ms = target
-
-    # ----------------------------------------------------------------
-    # Legacy named-flag shim — mirrors 'pytcp.runtime.timer.Timer'.
-    # ----------------------------------------------------------------
-
-    def register_timer(self, *, name: str, timeout: int) -> None:
-        """
-        LEGACY. Shim over a named-flag one-shot mirroring the
-        production 'Timer.register_timer' contract.
-        """
-
-        assert timeout >= 1, f"register_timer timeout must be >= 1; got {timeout}"
-
-        old = self._legacy_named_flags.get(name)
-        if old is not None:
-            old.cancelled = True
-        self._legacy_named_flags[name] = self._schedule(
-            timeout,
-            self._clear_named_flag,
-            _PRIO__NAMED_FLAG,
-            None,
-            (name,),
-            {},
-        )
-
-    def _clear_named_flag(self, name: str, /) -> None:
-        """
-        Drop the named-flag entry for 'name' when its legacy timer
-        fires so 'is_expired' starts returning True.
-        """
-
-        self._legacy_named_flags.pop(name, None)
-
-    def is_expired(self, name: str) -> bool:
-        """
-        LEGACY. True when 'name' was never registered OR its timer
-        has already fired. Matches production
-        'Timer.is_expired'.
-        """
-
-        return name not in self._legacy_named_flags
-
-    def unregister_timers_with_prefix(self, prefix: str, /) -> None:
-        """
-        LEGACY. Cancel every named-flag timer whose name starts
-        with 'prefix'. Mirrors the production API.
-        """
-
-        for name in [n for n in self._legacy_named_flags if n.startswith(prefix)]:
-            self._legacy_named_flags[name].cancelled = True
-            del self._legacy_named_flags[name]

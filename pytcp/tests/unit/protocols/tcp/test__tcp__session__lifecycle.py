@@ -54,9 +54,6 @@ class _TcpSessionFixture(TestCase):
 
         self._timer = SimpleNamespace(
             call_periodic=lambda *_a, **_k: None,
-            register_timer=lambda **_: None,
-            is_expired=lambda _: False,
-            unregister_timers_with_prefix=lambda _: None,
             cancel=lambda *_: None,
             call_later=lambda *_a, **_k: None,
             now_ms=0,

@@ -59,9 +59,6 @@ class _TcpSessionSyscallFixture(TestCase):
 
         self._timer = SimpleNamespace(
             call_periodic=MagicMock(),
-            register_timer=MagicMock(),
-            is_expired=MagicMock(return_value=False),
-            unregister_timers_with_prefix=MagicMock(),
             cancel=MagicMock(),
             call_later=MagicMock(),
             now_ms=0,
