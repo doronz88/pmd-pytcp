@@ -23,11 +23,11 @@
 
 
 """
-This module contains class supporting timer that is used by other stack components.
+This module contains the stack-wide millisecond-resolution timer.
 
 pytcp/runtime/timer.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 import threading
@@ -37,10 +37,23 @@ from typing import Any, Callable, override
 from pytcp.lib.logger import log
 from pytcp.runtime.subsystem import Subsystem
 
+# Millisecond timer-tick cadence — the worker thread sleeps this
+# long between iterations of '_subsystem_loop'. Subclasses of
+# 'Subsystem' would normally use 'SUBSYSTEM_SLEEP_TIME__SEC'
+# (0.1 s); Timer needs sub-second resolution because every
+# countdown unit ('delay' in 'register_method' /  'timeout' in
+# 'register_timer') is in milliseconds, and the per-tick
+# decrement is what makes a 'delay=1000' register fire at ~1 s.
+TIMER_TICK__SEC: float = 0.001
+
 
 class TimerTask:
     """
-    Timer task support class.
+    A registered method scheduled by 'Timer.register_method'.
+    Counts down 'delay' ticks (1 ms each per 'TIMER_TICK__SEC')
+    before invoking the bound method; optionally repeats with
+    a linear or exponential backoff and an early-exit
+    'stop_condition' predicate.
     """
 
     _method: Callable[..., None]
@@ -65,9 +78,13 @@ class TimerTask:
         stop_condition: Callable[[], bool] | None,
     ) -> None:
         """
-        Class constructor, repeat_count = -1 means infinite, delay_exp means
-        to raise delay time exponentially after each method execution.
+        Class constructor. 'delay' must be >= 1 (countdown is in
+        milliseconds; delay=0 has no defensible semantics).
+        'repeat_count = -1' means infinite; 'delay_exp' multiplies
+        the delay by 2**iteration after each method execution.
         """
+
+        assert delay >= 1, f"TimerTask delay must be >= 1; got {delay}"
 
         self._method = method
         self._args = args
@@ -80,9 +97,20 @@ class TimerTask:
         self._delay_exp_factor = 0
 
     @property
+    def method(self) -> Callable[..., None]:
+        """
+        Getter for the registered method. Consumed by
+        'Timer.unregister_method' which matches by method
+        equality (bound methods compare equal when their
+        '__self__' and '__func__' are identical).
+        """
+
+        return self._method
+
+    @property
     def remaining_delay(self) -> int:
         """
-        Geter for the '_remaining_delay' attribute.
+        Getter for the '_remaining_delay' attribute.
         """
 
         return self._remaining_delay
@@ -105,22 +133,41 @@ class TimerTask:
 
         if self._repeat_count:
             self._remaining_delay = self._delay * (1 << self._delay_exp_factor) if self._delay_exp else self._delay
-            self._delay_exp_factor += 1
+            if self._delay_exp:
+                self._delay_exp_factor += 1
             if self._repeat_count > 0:
                 self._repeat_count -= 1
 
 
 class Timer(Subsystem):
     """
-    Support for stack timer.
+    Stack-wide millisecond-resolution timer Subsystem. Holds two
+    parallel registries:
+
+    - '_tasks' — list of 'TimerTask' entries registered via
+      'register_method'. Each entry's countdown decrements once
+      per tick; when it reaches zero the bound method runs.
+    - '_timers' — dict of named delay timers registered via
+      'register_timer'. Each entry's timeout decrements once per
+      tick; consumers poll via 'is_expired(name)'.
+
+    The worker thread (inherited from 'Subsystem') runs
+    '_subsystem_loop' at ~1 ms cadence ('TIMER_TICK__SEC').
+    External callers register / unregister from arbitrary stack
+    threads; '_lock' (RLock) guards every read / write of both
+    registries so concurrent register-during-tick races cannot
+    drop entries.
+
+    Note: 'is_expired(name)' returns True for unknown names —
+    a never-registered timer is treated as already-expired,
+    same as one that counted down to zero.
     """
 
     _subsystem_name = "Timer"
 
     _tasks: list[TimerTask]
     _timers: dict[str, int]
-
-    _event__stop_subsystem: threading.Event
+    _lock: threading.RLock
 
     @override
     def __init__(self) -> None:
@@ -132,6 +179,7 @@ class Timer(Subsystem):
 
         self._tasks = []
         self._timers = {}
+        self._lock = threading.RLock()
 
     @property
     def now_ms(self) -> int:
@@ -154,22 +202,24 @@ class Timer(Subsystem):
         Execute registered methods on every timer tick.
         """
 
-        # Timer has 1ms resolution
-        time.sleep(0.001)
+        time.sleep(TIMER_TICK__SEC)
 
-        # Adjust registered timers
-        for name in self._timers:
-            self._timers[name] -= 1
+        with self._lock:
+            # Adjust registered timers
+            for name in self._timers:
+                self._timers[name] -= 1
 
-        # Cleanup expired timers
-        self._timers = {name: timeout for name, timeout in self._timers.items() if timeout}
+            # Cleanup expired timers
+            self._timers = {name: timeout for name, timeout in self._timers.items() if timeout}
 
-        # Tick registered methods
-        for task in self._tasks:
-            task.tick()
+            # Tick registered methods. RLock allows a method's
+            # body to call back into register_method /
+            # unregister_method without deadlocking.
+            for task in self._tasks:
+                task.tick()
 
-        # Cleanup expired methods
-        self._tasks = [task for task in self._tasks if task.remaining_delay]
+            # Cleanup expired methods
+            self._tasks = [task for task in self._tasks if task.remaining_delay]
 
     def register_method(
         self,
@@ -191,35 +241,44 @@ class Timer(Subsystem):
             f"<r>Registering method: {method.__name__}, delay={delay}</>",
         )
 
-        self._tasks.append(
-            TimerTask(
-                method=method,
-                args=[] if args is None else args,
-                kwargs={} if kwargs is None else kwargs,
-                delay=delay,
-                delay_exp=delay_exp,
-                repeat_count=repeat_count,
-                stop_condition=stop_condition,
-            )
+        task = TimerTask(
+            method=method,
+            args=[] if args is None else args,
+            kwargs={} if kwargs is None else kwargs,
+            delay=delay,
+            delay_exp=delay_exp,
+            repeat_count=repeat_count,
+            stop_condition=stop_condition,
         )
+        with self._lock:
+            self._tasks.append(task)
 
     def register_timer(self, *, name: str, timeout: int) -> None:
         """
-        Register delay timer.
+        Register delay timer. 'timeout' must be >= 1 (countdown
+        is in milliseconds; timeout=0 would expire on the very
+        next tick which the existing call sites never want).
         """
+
+        assert timeout >= 1, f"register_timer timeout must be >= 1; got {timeout}"
 
         __debug__ and log("timer", f"<r>Registering timer: {name}, timeout={timeout}</>")
 
-        self._timers[name] = timeout
+        with self._lock:
+            self._timers[name] = timeout
 
     def is_expired(self, name: str) -> bool:
         """
-        Check if timer expired.
+        Check if timer expired. Returns True for an unknown name
+        (a never-registered timer collapses with one that
+        counted down to zero — the consumer treats both as
+        "no longer counting"). Wrap the read in '_lock' so a
+        concurrent tick cannot observe a half-updated entry.
         """
 
-        __debug__ and log("timer", f"<r>Active timers: {self._timers}</>")
-
-        return not self._timers.get(name, None)
+        with self._lock:
+            __debug__ and log("timer", f"<r>Active timers: {self._timers}</>")
+            return not self._timers.get(name, None)
 
     def unregister_timers_with_prefix(self, prefix: str, /) -> None:
         """
@@ -233,7 +292,8 @@ class Timer(Subsystem):
 
         __debug__ and log("timer", f"<r>Unregistering timers with prefix: {prefix!r}</>")
 
-        self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
+        with self._lock:
+            self._timers = {name: timeout for name, timeout in self._timers.items() if not name.startswith(prefix)}
 
     def unregister_method(self, method: Callable[..., None], /) -> None:
         """
@@ -256,4 +316,5 @@ class Timer(Subsystem):
 
         __debug__ and log("timer", f"<r>Unregistering method: {method.__name__}</>")
 
-        self._tasks = [task for task in self._tasks if task._method != method]
+        with self._lock:
+            self._tasks = [task for task in self._tasks if task.method != method]
