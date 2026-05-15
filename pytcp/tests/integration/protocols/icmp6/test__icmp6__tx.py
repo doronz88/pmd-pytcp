@@ -29,7 +29,7 @@
 """
 Fluent integration tests for the IPv6/ICMPv6 TX path. Mirrors every
 parametrized + standalone case in
-'pytcp/tests/integration/test__packet_handler__icmp6__tx.py' onto
+'pytcp/tests/integration/packet_handler/test__packet_handler__icmp6__tx.py' onto
 the 'IcmpTestCase' harness.
 
 pytcp/tests/integration/protocols/icmp6/test__icmp6__tx.py

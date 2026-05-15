@@ -29,7 +29,7 @@
 """
 Fluent integration tests for the IPv4/ICMPv4 TX path. Mirrors the
 parametrized cases in
-'pytcp/tests/integration/test__packet_handler__icmp4__tx.py' onto
+'pytcp/tests/integration/packet_handler/test__packet_handler__icmp4__tx.py' onto
 the 'IcmpTestCase' harness.
 
 pytcp/tests/integration/protocols/icmp4/test__icmp4__tx.py

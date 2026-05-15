@@ -29,7 +29,7 @@
 """
 This module contains unit tests for the Packet Handler IPv4 TX operations.
 
-pytcp/tests/integration/test__packet_handler__ip4__tx.py
+pytcp/tests/integration/packet_handler/test__packet_handler__ip4__tx.py
 
 ver 3.0.4
 """

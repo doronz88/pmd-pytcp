@@ -25,7 +25,7 @@
 """
 Fluent integration tests for the IPv4/ICMPv4 RX path. Mirrors the
 parametrized cases in
-'pytcp/tests/integration/test__packet_handler__icmp4__rx.py' onto
+'pytcp/tests/integration/packet_handler/test__packet_handler__icmp4__rx.py' onto
 the 'IcmpTestCase' harness so subsequent ICMP-related work has a
 maintainable behaviour-pin and so the legacy byte-equality matrix
 can be retired once parity is proven through Phase 8.

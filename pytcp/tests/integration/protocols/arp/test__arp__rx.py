@@ -29,7 +29,7 @@
 """
 Integration tests for the Packet Handler ARP RX operations,
 migrated to 'ArpTestCase'. The legacy fixture-style copy is
-preserved at 'pytcp/tests/integration/test__packet_handler__arp__rx.py'
+preserved at 'pytcp/tests/integration/packet_handler/test__packet_handler__arp__rx.py'
 for reference; this file is the canonical migration target.
 
 pytcp/tests/integration/protocols/arp/test__arp__rx.py

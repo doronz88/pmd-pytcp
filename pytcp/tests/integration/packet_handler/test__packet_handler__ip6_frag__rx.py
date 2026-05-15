@@ -29,7 +29,7 @@
 """
 This module contains unit tests for the Packet Handler IPv6 Frag RX operations.
 
-pytcp/tests/integration/test__packet_handler__ip6_frag__rx.py
+pytcp/tests/integration/packet_handler/test__packet_handler__ip6_frag__rx.py
 
 ver 3.0.4
 """

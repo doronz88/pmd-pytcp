@@ -29,7 +29,7 @@
 """
 This module contains integration tests for the Packet Handler UDP TX operations.
 
-pytcp/tests/integration/test__packet_handler__udp__tx.py
+pytcp/tests/integration/packet_handler/test__packet_handler__udp__tx.py
 
 ver 3.0.4
 """

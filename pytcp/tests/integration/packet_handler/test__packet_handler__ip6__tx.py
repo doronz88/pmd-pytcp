@@ -29,7 +29,7 @@
 """
 This module contains integration tests for the Packet Handler IPv6 TX operations.
 
-pytcp/tests/integration/test__packet_handler__ip6__tx.py
+pytcp/tests/integration/packet_handler/test__packet_handler__ip6__tx.py
 
 ver 3.0.4
 """
