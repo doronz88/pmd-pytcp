@@ -35,7 +35,7 @@ Novell IPX) into the stack and asserts the per-protocol
 counter increments fire so log analysis can identify the
 management traffic on the wire.
 
-pytcp/tests/integration/test__packet_handler__ethernet_802_3__llc_snap.py
+pytcp/tests/integration/protocols/ethernet_802_3/test__ethernet_802_3__llc_snap.py
 
 ver 3.0.4
 """
