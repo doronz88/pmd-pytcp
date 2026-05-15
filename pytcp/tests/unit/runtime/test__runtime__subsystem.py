@@ -124,6 +124,8 @@ class TestSubsystemModuleConstants(TestCase):
         """
         Ensure 'SUBSYSTEM_SLEEP_TIME__SEC' is a positive float so
         subsystems that use it as the poll cadence never busy-spin.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -142,6 +144,8 @@ class TestSubsystemModuleConstants(TestCase):
         Ensure the canonical poll cadence of 0.1 second is preserved;
         changing it would measurably shift every subsystem's latency and
         must be an intentional, reviewed change.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -160,6 +164,8 @@ class TestSubsystemAbstractContract(TestCase):
         """
         Ensure 'Subsystem' is abstract — instantiating it without
         overriding '_subsystem_loop' must raise 'TypeError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -170,6 +176,8 @@ class TestSubsystemAbstractContract(TestCase):
         Ensure the abstract '_subsystem_loop' stub body itself raises
         'NotImplementedError' so a subclass that calls 'super()' into
         the default receives the canonical failure.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log"):
@@ -188,6 +196,8 @@ class TestSubsystemInit(TestCase):
         """
         Ensure '__init__' creates a fresh 'threading.Event' for the stop
         signal and that it starts cleared (subsystem is not yet stopping).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log"):
@@ -207,6 +217,8 @@ class TestSubsystemInit(TestCase):
         """
         Ensure '__init__' emits an 'Initializing <name>' log line on the
         'stack' channel when no 'info' argument is provided.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log") as mock_log:
@@ -221,6 +233,8 @@ class TestSubsystemInit(TestCase):
         """
         Ensure '__init__' appends a bracketed info tag to the
         'Initializing ...' log line when the caller supplies one.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log") as mock_log:
@@ -269,6 +283,8 @@ class TestSubsystemLifecycle(TestCase):
         Ensure 'start()' clears the stop event, launches a worker thread
         that drives '_subsystem_loop()' at least once, and invokes the
         optional '_start()' hook synchronously after thread spawn.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         subsystem = _TestSubsystem()
@@ -292,6 +308,8 @@ class TestSubsystemLifecycle(TestCase):
         Ensure 'stop()' sets the stop event (terminating the loop) and
         invokes the optional '_stop()' hook. A join after stop must
         complete promptly so the thread exits cleanly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         subsystem = _TestSubsystem()
@@ -318,6 +336,8 @@ class TestSubsystemLifecycle(TestCase):
         Ensure the worker thread observes the stop event and exits the
         loop. Tracked by joining every currently-alive non-main thread
         (besides threading internals) after 'stop()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         subsystem = _TestSubsystem()
@@ -363,6 +383,8 @@ class TestSubsystemDefaultHooks(TestCase):
         Ensure the base-class '_start' hook is a no-op that raises
         nothing when invoked. Guards the contract that concrete
         subclasses can skip overriding it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log"):
@@ -377,6 +399,8 @@ class TestSubsystemDefaultHooks(TestCase):
         """
         Ensure the base-class '_stop' hook is a no-op that raises
         nothing when invoked.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log"):
@@ -399,6 +423,8 @@ class TestSubsystemThreadEarlyExit(TestCase):
         stop event is already set, logs 'Started' / 'Stopped' markers,
         and never invokes '_subsystem_loop'. Exercises the loop-condition
         false branch directly without relying on thread scheduling.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.runtime.subsystem.log"):
@@ -423,4 +449,89 @@ class TestSubsystemThreadEarlyExit(TestCase):
             "Stopped test-subsystem",
             logged_messages,
             msg="The worker must emit the 'Stopped' marker after the loop exits.",
+        )
+
+
+class TestSubsystemStartStopEdgeCases(TestCase):
+    """
+    Edge cases on the 'Subsystem.start()' / 'Subsystem.stop()'
+    safety guards added by the 'safety guards on start() / stop()'
+    commit (double-start prevention, stop-before-start no-op).
+    """
+
+    def test__subsystem__stop_before_start_is_safe(self) -> None:
+        """
+        Ensure 'stop()' is a safe no-op (no exception, no thread
+        access) when called on a subsystem that has never been
+        started. The 'self._thread is not None' guard in stop()
+        protects the join; the optional '_stop' hook still
+        fires.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log"):
+            subsystem = _TestSubsystem()
+
+        subsystem.stop()
+
+        self.assertTrue(
+            subsystem._event__stop_subsystem.is_set(),
+            msg="Subsystem.stop() must set the stop event even without prior start().",
+        )
+        self.assertTrue(
+            subsystem.stop_hook_called,
+            msg="Subsystem.stop() must invoke the '_stop' hook even without prior start().",
+        )
+        self.assertIsNone(
+            subsystem._thread,
+            msg="No worker thread should be created when stop() is called without start().",
+        )
+
+    def test__subsystem__double_start_asserts(self) -> None:
+        """
+        Ensure 'start()' raises AssertionError when called while a
+        worker thread is already alive. Prevents the orphan-worker
+        bug where the previous thread would lose its stop signal
+        (cleared by the second start()) and run indefinitely.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.stack.LOG__OUTPUT", io.StringIO()):
+            subsystem = _TestSubsystem()
+            subsystem.start()
+            try:
+                self.assertTrue(
+                    subsystem._loop_event.wait(timeout=2.0),
+                    msg="Precondition: worker thread must be running before the double-start attempt.",
+                )
+
+                with self.assertRaises(AssertionError) as ctx:
+                    subsystem.start()
+
+                self.assertIn(
+                    "while a worker is still running",
+                    str(ctx.exception),
+                    msg="Double-start assert must name the contract violation.",
+                )
+            finally:
+                subsystem.stop()
+
+    def test__subsystem__init_empty_info_string_omits_bracket(self) -> None:
+        """
+        Ensure an empty 'info' string is treated as 'no info' —
+        the bracket suffix is omitted from the 'Initializing X'
+        log line because the 'if info' falsy guard catches the
+        empty case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log") as mock_log:
+            _TestSubsystem(info="")
+
+        mock_log.assert_called_once_with(
+            "stack",
+            "Initializing test-subsystem",
         )
