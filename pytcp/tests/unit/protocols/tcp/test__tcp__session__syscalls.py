@@ -58,11 +58,11 @@ class _TcpSessionSyscallFixture(TestCase):
         """
 
         self._timer = SimpleNamespace(
-            register_method=MagicMock(),
+            call_periodic=MagicMock(),
             register_timer=MagicMock(),
             is_expired=MagicMock(return_value=False),
             unregister_timers_with_prefix=MagicMock(),
-            unregister_method=MagicMock(),
+            cancel=MagicMock(),
         )
         self._timer_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",

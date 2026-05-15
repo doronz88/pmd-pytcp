@@ -1162,36 +1162,32 @@ class TestTcpClose__Rst(TcpSessionTestCase):
     def test__close_rst__session_teardown_unregisters_tcp_fsm_callback_task(self) -> None:
         """
         Ensure that when a session terminates (state ->
-        CLOSED), the per-tick 'tcp_fsm' callback registered
-        via 'register_method' is cancelled and dropped from
-        the timer's bookkeeping so the session can be garbage
-        collected and dead-session ticks stop consuming CPU.
+        CLOSED), the per-tick 'tcp_fsm' callback handle
+        registered via 'stack.timer.call_periodic' is
+        cancelled so the session can be garbage collected and
+        dead-session ticks stop consuming CPU.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Sanity check: the timer holds exactly one live handle
-        # bound to this session. The handle fires
-        # 'session.tcp_fsm(timer=True)' on every tick and was
-        # added by 'TcpSession.__init__'.
-        session_tasks_before = [
-            handle
-            for method, handles in self._timer._legacy_method_handles.items()
-            if getattr(method, "__self__", None) is session
-            for handle in handles
-            if not handle.cancelled
-        ]
-        self.assertEqual(
-            len(session_tasks_before),
-            1,
+        # Sanity check: '__init__' installed a live periodic
+        # handle that fires 'session.tcp_fsm(timer=True)' on
+        # every tick.
+        self.assertIsNotNone(
+            session._tcp_fsm_handle,
             msg=(
-                "Setup precondition: 'stack.timer._tasks' MUST "
-                "contain exactly one task bound to the session "
-                "after handshake. Without this precondition the "
-                "test below is vacuous."
+                "Setup precondition: TcpSession.__init__ MUST "
+                "store the periodic tcp_fsm timer handle. Without "
+                "this precondition the test below is vacuous."
             ),
+        )
+        assert session._tcp_fsm_handle is not None
+        self.assertIs(
+            session._tcp_fsm_handle.cancelled,
+            False,
+            msg="Setup precondition: the tcp_fsm handle must be live after handshake.",
         )
 
         # Peer sends a clean RST. State -> CLOSED via
@@ -1212,33 +1208,23 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: peer's clean RST must transition session to CLOSED.",
         )
 
-        # The bug: the per-session callback handle survives the
-        # CLOSED transition. It keeps firing on every tick,
-        # holds 'session' alive against GC, and burns CPU per
-        # tick.
-        session_tasks_after = [
-            handle
-            for method, handles in self._timer._legacy_method_handles.items()
-            if getattr(method, "__self__", None) is session
-            for handle in handles
-            if not handle.cancelled
-        ]
-        self.assertEqual(
-            len(session_tasks_after),
-            0,
+        # The bug this guards against: the per-session callback
+        # handle survives the CLOSED transition. It would keep
+        # firing on every tick, hold 'session' alive against GC,
+        # and burn CPU per tick.
+        self.assertIs(
+            session._tcp_fsm_handle.cancelled,
+            True,
             msg=(
                 "After the session has terminated (state -> "
-                "CLOSED), the 'TimerTask' that '__init__' "
-                "registered for the session's 'tcp_fsm' callback "
-                "MUST be removed from 'stack.timer._tasks'. "
-                f"Today the task survives ({session_tasks_after}). "
-                "On a long-running stack the dead-session task "
-                "fires 'tcp_fsm(timer=True)' on every tick "
-                "(burning CPU per tick per dead session) and the "
-                "bound-method reference holds the 'TcpSession' "
-                "instance alive against GC (leaking ~several KB "
-                "per session). Fix: add an 'unregister_method' "
-                "helper to 'Timer' / 'FakeTimer' and call it "
-                "from '_change_state' on CLOSED."
+                "CLOSED), the periodic tcp_fsm handle that "
+                "'__init__' registered via "
+                "'stack.timer.call_periodic' MUST be cancelled "
+                "by '_change_state' on CLOSED. Otherwise the "
+                "dead-session handle fires 'tcp_fsm(timer=True)' "
+                "on every tick (burning CPU per tick per dead "
+                "session) and the bound-method reference holds "
+                "the 'TcpSession' instance alive against GC "
+                "(leaking ~several KB per session)."
             ),
         )

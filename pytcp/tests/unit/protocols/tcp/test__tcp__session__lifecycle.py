@@ -53,11 +53,11 @@ class _TcpSessionFixture(TestCase):
         """
 
         self._timer = SimpleNamespace(
-            register_method=lambda **_: None,
+            call_periodic=lambda *_a, **_k: None,
             register_timer=lambda **_: None,
             is_expired=lambda _: False,
             unregister_timers_with_prefix=lambda _: None,
-            unregister_method=lambda _: None,
+            cancel=lambda *_: None,
         )
         self._timer_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",
@@ -117,33 +117,38 @@ class TestTcpSessionInit(_TcpSessionFixture):
     def test__tcp_session__init_registers_timer_callback(self) -> None:
         """
         Ensure '__init__' registers the 'tcp_fsm' callback with
-        'stack.timer.register_method' so the per-millisecond timer
-        ticks drive the FSM.
+        'stack.timer.call_periodic' at a 1 ms period so the
+        per-millisecond timer ticks drive the FSM.
 
         Reference: RFC 9293 §3.8 (TCP timers drive FSM transitions).
         """
 
         mock_register = MagicMock()
-        self._timer.register_method = mock_register
+        self._timer.call_periodic = mock_register
 
         session = self._make_session()
 
         mock_register.assert_called_once()
-        _, kwargs = mock_register.call_args
+        args, kwargs = mock_register.call_args
         self.assertEqual(
-            kwargs["method"].__func__,
+            args[0],
+            1,
+            msg="TcpSession must register the tcp_fsm callback at a 1 ms period.",
+        )
+        self.assertEqual(
+            args[1].__func__,
             TcpSession.tcp_fsm,
             msg="TcpSession must register its tcp_fsm as the timer method.",
         )
         self.assertIs(
-            kwargs["method"].__self__,
+            args[1].__self__,
             session,
             msg="The registered timer method must be bound to the new TcpSession instance.",
         )
         self.assertEqual(
-            kwargs["kwargs"],
+            kwargs,
             {"timer": True},
-            msg="TcpSession must register the timer callback with {'timer': True}.",
+            msg="TcpSession must register the timer callback with timer=True.",
         )
 
     def test__tcp_session__init_rx_tx_buffers_empty(self) -> None:

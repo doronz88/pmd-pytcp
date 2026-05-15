@@ -60,11 +60,11 @@ class _TcpSessionFsmFixture(TestCase):
         """
 
         self._timer = SimpleNamespace(
-            register_method=MagicMock(),
+            call_periodic=MagicMock(),
             register_timer=MagicMock(),
             is_expired=MagicMock(return_value=False),
             unregister_timers_with_prefix=MagicMock(),
-            unregister_method=MagicMock(),
+            cancel=MagicMock(),
             now_ms=0,
         )
         self._timer_patch = patch(

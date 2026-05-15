@@ -104,6 +104,7 @@ from pytcp.protocols.tcp.tcp__rack import (
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
+from pytcp.runtime.timer import TimerHandle
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -485,7 +486,7 @@ class TcpSession:
         self._connection_error: ConnError = ConnError.NONE
 
         # Setup timer to execute FSM time event every millisecond.
-        stack.timer.register_method(method=self.tcp_fsm, kwargs={"timer": True})
+        self._tcp_fsm_handle: TimerHandle | None = stack.timer.call_periodic(1, self.tcp_fsm, timer=True)
 
     @override
     def __str__(self) -> str:
@@ -938,8 +939,8 @@ class TcpSession:
             # uniformly without per-suffix bookkeeping.
             stack.timer.unregister_timers_with_prefix(f"{self}-")
             # Drop the per-millisecond 'tcp_fsm' callback that
-            # '__init__' registered via 'stack.timer.register_method'.
-            # Without this, the 'TimerTask' survives forever -
+            # '__init__' registered via 'stack.timer.call_periodic'.
+            # Without this, the periodic entry survives forever -
             # firing 'self.tcp_fsm(timer=True)' once per tick on a
             # dead session (CPU drain growing linearly with
             # dead-session count) and pinning the entire
@@ -947,7 +948,8 @@ class TcpSession:
             # reference (preventing GC). Companion to the prefix
             # scan above which handles the named-delay-timer half
             # of the same per-session registration.
-            stack.timer.unregister_method(self.tcp_fsm)
+            if self._tcp_fsm_handle is not None:
+                stack.timer.cancel(self._tcp_fsm_handle)
             __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
         # RFC 1122 §4.2.3.6: arm the keep-alive idle timer on the

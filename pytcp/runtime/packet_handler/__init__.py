@@ -75,6 +75,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.subsystem import Subsystem
+from pytcp.runtime.timer import TimerHandle
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
 from .packet_handler__arp__tx import PacketHandlerArpTx
@@ -1248,6 +1249,7 @@ class PacketHandlerL2(
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
     _mld2_query__pending_response_at_ms: int | None
+    _mld2_query__handle: TimerHandle | None
 
     @override
     def __init__(
@@ -1352,6 +1354,7 @@ class PacketHandlerL2(
         # time is later than the existing pending entry is
         # absorbed without rescheduling.
         self._mld2_query__pending_response_at_ms: int | None = None
+        self._mld2_query__handle: TimerHandle | None = None
 
         # RFC 4861 §6.3.4 default-router list — entries learned
         # from inbound RAs, indexed implicitly by RA source link-

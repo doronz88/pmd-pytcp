@@ -117,6 +117,7 @@ class PacketHandlerIcmp6Rx(ABC):
         from pytcp.lib.dad_slot_registry import DadSlotRegistry
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
+        from pytcp.runtime.timer import TimerHandle
 
         _packet_stats_rx: PacketStatsRx
         _mac_unicast: MacAddress
@@ -124,6 +125,7 @@ class PacketHandlerIcmp6Rx(ABC):
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
         _mld2_query__pending_response_at_ms: int | None
+        _mld2_query__handle: TimerHandle | None
 
         # pylint: disable=unused-argument
 
@@ -1268,15 +1270,12 @@ class PacketHandlerIcmp6Rx(ABC):
 
         if pending is not None:
             # Newer Query supersedes: cancel the old timer.
-            stack.timer.unregister_method(self._mld2_query__deferred_send)
+            if self._mld2_query__handle is not None:
+                stack.timer.cancel(self._mld2_query__handle)
             self._packet_stats_rx.icmp6__mld2_query__superseded += 1
 
         self._mld2_query__pending_response_at_ms = response_at
-        stack.timer.register_method(
-            method=self._mld2_query__deferred_send,
-            delay=delay_ms,
-            repeat_count=0,
-        )
+        self._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
         self._packet_stats_rx.icmp6__mld2_query__scheduled += 1
 
     def _mld2_query__pick_response_delay_ms(self, mrd_ms: int) -> int:
@@ -1296,6 +1295,7 @@ class PacketHandlerIcmp6Rx(ABC):
         """
 
         self._mld2_query__pending_response_at_ms = None
+        self._mld2_query__handle = None
         self._mld2_query__send_now()
 
     def _mld2_query__send_now(self) -> None:
