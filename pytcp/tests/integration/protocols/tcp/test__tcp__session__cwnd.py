@@ -1166,7 +1166,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         # Force the retransmit timer to expire so RTO fires
         # while still in recovery. The RTO handler runs §3.1
         # ssthresh halving + cwnd=LW reset.
-        stack.timer.register_timer(name=f"{session}-retransmit", timeout=0)
+        stack.timer.unregister_timers_with_prefix(f"{session}-retransmit")
         self._advance(ms=1)
 
         self.assertEqual(

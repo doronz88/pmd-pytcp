@@ -1743,7 +1743,7 @@ class TestTcpTimestampsClockWrap32Bit(TcpSessionTestCase):
         # Set the FakeTimer's now_ms to one tick above UINT32_MAX
         # so the active-open SYN's TSval crosses the wrap boundary.
         UINT32_MAX = 0xFFFF_FFFF
-        self._timer._now_ms = UINT32_MAX + 1
+        self._timer.now_ms = UINT32_MAX + 1
 
         session = self._make_active_session(iss=LOCAL__ISS)
         session.tcp_fsm(syscall=SysCall.CONNECT)
@@ -1809,7 +1809,7 @@ class TestTcpTimestampsClockWrap32Bit(TcpSessionTestCase):
 
         # Cross the 32-bit wrap boundary mid-session.
         UINT32_MAX = 0xFFFF_FFFF
-        self._timer._now_ms = UINT32_MAX
+        self._timer.now_ms = UINT32_MAX
 
         session.send(data=b"x")
         tx = self._advance(ms=1)

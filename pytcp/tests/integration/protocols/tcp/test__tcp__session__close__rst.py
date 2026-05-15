@@ -1163,8 +1163,8 @@ class TestTcpClose__Rst(TcpSessionTestCase):
         """
         Ensure that when a session terminates (state ->
         CLOSED), the per-tick 'tcp_fsm' callback registered
-        via 'register_method' is removed from
-        'stack.timer._tasks' so the session can be garbage
+        via 'register_method' is cancelled and dropped from
+        the timer's bookkeeping so the session can be garbage
         collected and dead-session ticks stop consuming CPU.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -1172,12 +1172,16 @@ class TestTcpClose__Rst(TcpSessionTestCase):
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
 
-        # Sanity check: 'stack.timer._tasks' contains exactly one
-        # task bound to this session. The task fires
+        # Sanity check: the timer holds exactly one live handle
+        # bound to this session. The handle fires
         # 'session.tcp_fsm(timer=True)' on every tick and was
         # added by 'TcpSession.__init__'.
         session_tasks_before = [
-            task for task in self._timer._tasks if getattr(task.method, "__self__", None) is session
+            handle
+            for method, handles in self._timer._legacy_method_handles.items()
+            if getattr(method, "__self__", None) is session
+            for handle in handles
+            if not handle.cancelled
         ]
         self.assertEqual(
             len(session_tasks_before),
@@ -1208,11 +1212,17 @@ class TestTcpClose__Rst(TcpSessionTestCase):
             msg="Setup precondition: peer's clean RST must transition session to CLOSED.",
         )
 
-        # The bug: the per-session 'TimerTask' survives the
+        # The bug: the per-session callback handle survives the
         # CLOSED transition. It keeps firing on every tick,
         # holds 'session' alive against GC, and burns CPU per
         # tick.
-        session_tasks_after = [task for task in self._timer._tasks if getattr(task.method, "__self__", None) is session]
+        session_tasks_after = [
+            handle
+            for method, handles in self._timer._legacy_method_handles.items()
+            if getattr(method, "__self__", None) is session
+            for handle in handles
+            if not handle.cancelled
+        ]
         self.assertEqual(
             len(session_tasks_after),
             0,
