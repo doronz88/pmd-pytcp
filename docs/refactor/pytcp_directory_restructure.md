@@ -2,7 +2,7 @@
 
 | Field             | Value                                                                                                                                                                |
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Status            | **PROPOSAL** — drafted 2026-05-14; not yet started                                                                                                                   |
+| Status            | **Shipped** 2026-05-14 — Phases 0-5 complete on `PyTCP_3_0__pre_release`; commits 2ed1b058 (Phase 0 plan), 0a99cca8 (Phase 1 runtime/), 111343f3 (Phase 2 lifecycle), bbe8f662 (Phase 3 APIs), 77b0be41 (Phase 5 docs sweep). Phase 4 (lib/ audit) was a zero-move no-op. |
 | Plan author       | Session-internal audit follow-up                                                                                                                                     |
 | Source motivation | `pytcp/stack/__init__.py` is 751 lines and conflates Phase-3 public APIs with internal RX/TX rings, packet-handler dispatch, and timer machinery                     |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                             |
