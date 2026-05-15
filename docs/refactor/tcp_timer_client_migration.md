@@ -345,6 +345,14 @@ non-empty but no logical timer is armed; if any genuine gap
 exists, arm a short "tx-drain" logical timer for that case
 rather than resurrecting the 1 ms periodic.**
 
+> **SHIPPED (Phase 3):** the gap audit
+> (`test__tcp__session__timer_ordering.py::
+> TestTcpTransmitDataGapAudit`) confirmed **no genuine gap** —
+> in-flight data keeps `retransmit` armed, zero-window
+> buffered data keeps `persist` armed, including in
+> CLOSE_WAIT. **No "tx-drain" timer was added.** The
+> decision above stands as-is.
+
 ### 5.5 Per-site `is_expired` audit (de-conflation)
 
 Each of the 8 `is_expired` reads is classified:
@@ -562,13 +570,38 @@ fail against, the burst pin `blind_attacks.py:553` already
 proved Phase-1 parity). Phase 2 made **zero code changes**.
 
 **Phase 3 — retransmit/rack/tlp ordering pin**
-A new integration test that drives a tail-loss + reorder +
-RTO scenario and asserts the exact outbound segment
-sequence, pinning the `_retransmit → _transmit_data → …
-_rack → _tlp` ordering. This is the regression net for the
-hardest phase. Plus the `_transmit_data` no-armed-timer gap
-investigation (§5.4) lands one integration test per
-enumerated state.
+A new integration test pins the `_retransmit → _transmit_data
+→ _delayed_ack → _keepalive → _rack → _tlp` ordering. This is
+the regression net for the hardest phase. Plus the
+`_transmit_data` no-armed-timer gap investigation (§5.4)
+lands one integration test per enumerated state.
+
+SHIPPED outcome (audit-in-lockstep): the ordering pin landed
+as `test__tcp__session__timer_ordering.py::
+TestTcpTimerHandlerOrdering::
+test__timer_ordering__established_tick_runs_canonical_sequence`.
+Rather than a brittle wire-sequence scenario, it wraps the
+six tick methods with order-recorders and drives one
+ESTABLISHED service, asserting the recorded order equals the
+§4.3 contract `_ESTABLISHED_TICK_ORDER`. This pins the exact
+invariant Phase 4 must preserve — Phase 4 changes only the
+trigger, never the handler body, so "the handler runs the
+full ordered sequence per service event" is the precise
+property at risk, and this test asserts it literally
+(robust, not scenario-dependent). It is the Phase-4 Rule-4
+regression net.
+
+The §5.4 gap audit landed as
+`TestTcpTransmitDataGapAudit` (3 tests): in-flight data →
+`_timer_armed("retransmit")`; zero-window buffered data →
+`_timer_armed("persist")`; CLOSE_WAIT in-flight →
+`_timer_armed("retransmit")`. **Conclusion: no genuine gap
+exists — retransmit (in-flight) and persist (zero-window)
+cover every state in which the TX buffer is non-empty, so
+the Phase-4 coalesced service handle is always armed when
+`_transmit_data` has work. No "tx-drain" logical timer is
+needed** (§5.4's expected outcome confirmed). Phase 3 made
+zero code changes.
 
 **Phase 4 — coalesced-trigger equivalence**
 The whole TCP integration suite is the test. Additionally:
