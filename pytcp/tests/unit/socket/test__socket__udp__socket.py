@@ -118,7 +118,7 @@ class _UdpSocketTestCase(TestCase):
         # is_address_in_use reads stack.sockets directly, so mirror the
         # patch on that module as well.
         self._helper_sockets_patch = patch(
-            "pytcp.lib.ip_helper.stack.sockets",
+            "pytcp.socket.socket__bind_helpers.stack.sockets",
             self._sockets,
         )
         self._helper_sockets_patch.start()

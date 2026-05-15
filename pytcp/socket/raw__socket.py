@@ -44,7 +44,6 @@ from net_addr import (
     Ip6AddressFormatError,
 )
 from pytcp import stack
-from pytcp.lib.ip_helper import pick_local_ip_address
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
@@ -57,6 +56,7 @@ from pytcp.socket import (
     gaierror,
     socket,
 )
+from pytcp.socket.socket__bind_helpers import pick_local_ip_address
 
 if TYPE_CHECKING:
     from pytcp.socket.raw__metadata import RawMetadata

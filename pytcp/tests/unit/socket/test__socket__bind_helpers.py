@@ -25,7 +25,7 @@
 """
 This module contains tests for the IP helper functions.
 
-pytcp/tests/unit/lib/test__lib__ip_helper.py
+pytcp/tests/unit/socket/test__socket__bind_helpers.py
 
 ver 3.0.4
 """
@@ -44,7 +44,8 @@ from net_addr import (
     Ip6Network,
     IpVersion,
 )
-from pytcp.lib.ip_helper import (
+from pytcp.socket import AddressFamily, SocketType
+from pytcp.socket.socket__bind_helpers import (
     ip_version,
     is_address_in_use,
     pick_local_ip4_address,
@@ -54,7 +55,6 @@ from pytcp.lib.ip_helper import (
     pick_local_port_for,
     str_to_ip,
 )
-from pytcp.socket import AddressFamily, SocketType
 
 
 @parameterized_class(
@@ -183,7 +183,7 @@ class TestPickLocalIp6Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip6_host=[local_host])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2001:db8::5"))
 
         self.assertEqual(
@@ -211,7 +211,7 @@ class TestPickLocalIp6Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip6_host=[no_gw, with_gw])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
 
         self.assertEqual(
@@ -234,7 +234,7 @@ class TestPickLocalIp6Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip6_host=[orphan])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
 
         self.assertEqual(
@@ -262,7 +262,7 @@ class TestPickLocalIp4Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip4_host=[local_host])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
@@ -290,7 +290,7 @@ class TestPickLocalIp4Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip4_host=[no_gw, with_gw])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
 
         self.assertEqual(
@@ -313,7 +313,7 @@ class TestPickLocalIp4Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip4_host=[orphan])
 
-        with patch("pytcp.lib.ip_helper.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
 
         self.assertEqual(
@@ -340,8 +340,8 @@ class TestPickLocalIpAddressDispatch(TestCase):
         remote = Ip6Address("2001:db8::1")
 
         with (
-            patch("pytcp.lib.ip_helper.pick_local_ip6_address", return_value=expected) as mock_ip6,
-            patch("pytcp.lib.ip_helper.pick_local_ip4_address") as mock_ip4,
+            patch("pytcp.socket.socket__bind_helpers.pick_local_ip6_address", return_value=expected) as mock_ip6,
+            patch("pytcp.socket.socket__bind_helpers.pick_local_ip4_address") as mock_ip4,
         ):
             result = pick_local_ip_address(remote_ip_address=remote)
 
@@ -363,8 +363,8 @@ class TestPickLocalIpAddressDispatch(TestCase):
         remote = Ip4Address("8.8.8.8")
 
         with (
-            patch("pytcp.lib.ip_helper.pick_local_ip4_address", return_value=expected) as mock_ip4,
-            patch("pytcp.lib.ip_helper.pick_local_ip6_address") as mock_ip6,
+            patch("pytcp.socket.socket__bind_helpers.pick_local_ip4_address", return_value=expected) as mock_ip4,
+            patch("pytcp.socket.socket__bind_helpers.pick_local_ip6_address") as mock_ip6,
         ):
             result = pick_local_ip_address(remote_ip_address=remote)
 
@@ -390,8 +390,8 @@ class TestPickLocalPort(TestCase):
         """
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(10000, 10004, 2)),
-            patch("pytcp.lib.ip_helper.stack.sockets", {}),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10004, 2)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
         ):
             port = pick_local_port()
 
@@ -414,8 +414,8 @@ class TestPickLocalPort(TestCase):
         }
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
-            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
         ):
             port = pick_local_port()
 
@@ -442,9 +442,9 @@ class TestPickLocalPort(TestCase):
         sockets = {"s1": SimpleNamespace(local_port=10002)}
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006)),
-            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
-            patch("pytcp.lib.ip_helper.secrets.choice", return_value=10005) as mock_choice,
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
+            patch("pytcp.socket.socket__bind_helpers.secrets.choice", return_value=10005) as mock_choice,
         ):
             port = pick_local_port()
 
@@ -474,8 +474,8 @@ class TestPickLocalPort(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(10000, 10006, 2)}
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
-            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
         ):
             with self.assertRaises(OSError) as context:
                 pick_local_port()
@@ -504,9 +504,9 @@ class TestPickLocalPortFor(TestCase):
         """
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
-            patch("pytcp.lib.ip_helper.stack.sockets", {}),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
             port_a = pick_local_port_for(
                 local_ip=Ip4Address("10.0.0.1"),
@@ -537,9 +537,9 @@ class TestPickLocalPortFor(TestCase):
         """
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
-            patch("pytcp.lib.ip_helper.stack.sockets", {}),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
             port_to_server_a = pick_local_port_for(
                 local_ip=Ip4Address("10.0.0.1"),
@@ -573,9 +573,9 @@ class TestPickLocalPortFor(TestCase):
         remote_port = 443
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
-            patch("pytcp.lib.ip_helper.stack.sockets", {}),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
             port_secret_zero = pick_local_port_for(
                 local_ip=local_ip,
@@ -584,9 +584,9 @@ class TestPickLocalPortFor(TestCase):
             )
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
-            patch("pytcp.lib.ip_helper.stack.sockets", {}),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\xff" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\xff" * 16),
         ):
             port_secret_ones = pick_local_port_for(
                 local_ip=local_ip,
@@ -615,9 +615,9 @@ class TestPickLocalPortFor(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in used_ports}
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
-            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
             port = pick_local_port_for(
                 local_ip=Ip4Address("10.0.0.1"),
@@ -649,9 +649,9 @@ class TestPickLocalPortFor(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(40000, 40010)}
 
         with (
-            patch("pytcp.lib.ip_helper.stack.EPHEMERAL_PORT_RANGE", range(40000, 40010)),
-            patch("pytcp.lib.ip_helper.stack.sockets", sockets),
-            patch("pytcp.lib.ip_helper.stack.TCP__PORT_SECRET", b"\x00" * 16),
+            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 40010)),
+            patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
+            patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
             with self.assertRaises(OSError) as context:
                 pick_local_port_for(
@@ -705,7 +705,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=8080,
@@ -732,7 +732,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=8080,
@@ -759,7 +759,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address(),
                 local_port=8080,
@@ -785,7 +785,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=9090,
@@ -811,7 +811,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=8080,
@@ -837,7 +837,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=8080,
@@ -864,7 +864,7 @@ class TestIsAddressInUse(TestCase):
             local_port=8080,
         )
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {"s1": opened}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.2"),
                 local_port=8080,
@@ -882,7 +882,7 @@ class TestIsAddressInUse(TestCase):
         Ensure a completely empty socket table always resolves to free.
         """
 
-        with patch("pytcp.lib.ip_helper.stack.sockets", {}):
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}):
             result = is_address_in_use(
                 local_ip_address=Ip4Address("10.0.0.1"),
                 local_port=8080,

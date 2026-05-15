@@ -12,7 +12,7 @@
 This is the **TCP-side** RFC 6056 audit. The picker
 itself is a cross-protocol primitive — one
 implementation at
-`pytcp/lib/ip_helper.py:140-152::pick_local_port` serves
+`pytcp/socket/socket__bind_helpers.py:140-152::pick_local_port` serves
 both `pytcp/socket/tcp__socket.py` and
 `pytcp/socket/udp__socket.py`. This record therefore
 **inherits the implementation findings from the UDP-side
@@ -105,7 +105,7 @@ destination AND the per-stack secret. Two consequences:
 
 **Adherence:** met. PyTCP ships
 `pick_local_port_for(*, local_ip, remote_ip, remote_port)`
-at `pytcp/lib/ip_helper.py`:
+at `pytcp/socket/socket__bind_helpers.py`:
 
 ```python
 def pick_local_port_for(
@@ -141,7 +141,7 @@ allocation pattern as `TCP__ISS_SECRET` /
 `TCP__FASTOPEN_SECRET` / `IP6__FLOW_SECRET`.
 
 The unit tests at
-`pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPortFor`
+`pytcp/tests/unit/socket/test__socket__bind_helpers.py::TestPickLocalPortFor`
 pin the three RFC-relevant properties:
 
 - **Deterministic for same inputs** (same offset for the
@@ -246,7 +246,7 @@ When Algorithm 3 lands, the natural test is:
 ### §3.3.3 Algorithm 3 — per-destination isolation
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPortFor`
+  `pytcp/tests/unit/socket/test__socket__bind_helpers.py::TestPickLocalPortFor`
   — 5 tests: same inputs + secret → same port;
   different `remote_ip` → different ports; different
   secret → different ports; skips ports in use (linear
@@ -316,7 +316,7 @@ a conformance impact.
 - **RFC 6528 ISS hashing (template for Algorithm 3 secret-key handling):** [`../rfc6528__iss_hash/adherence.md`](../rfc6528__iss_hash/adherence.md)
 - **RFC 5961 blind-attack hardening (companion security audit):** [`../rfc5961__blind_attack_hardening/adherence.md`](../rfc5961__blind_attack_hardening/adherence.md)
 - **RFC 9293 TCP base spec (`bind()` / `connect()` user/TCP interface):** [`../rfc9293__tcp/adherence.md`](../rfc9293__tcp/adherence.md)
-- Shared picker: `pytcp/lib/ip_helper.py:140-152::pick_local_port`
+- Shared picker: `pytcp/socket/socket__bind_helpers.py:140-152::pick_local_port`
 - Ephemeral range constant: `pytcp/stack/__init__.py:175::EPHEMERAL_PORT_RANGE`
 - Secret-key pattern: `pytcp/stack/__init__.py` (`TCP__ISS_SECRET`, `TCP__FASTOPEN_SECRET`, `IP6__FLOW_SECRET`)
 - Socket-API parity: `docs/refactor/socket_linux_parity_audit.md`

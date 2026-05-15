@@ -272,7 +272,7 @@ on port 0." The SHOULD NOT is honoured.
 >  technique."
 
 **Adherence:** met (Phase-1 fix). PyTCP's
-`pick_local_port()` at `pytcp/lib/ip_helper.py:140-163`
+`pick_local_port()` at `pytcp/socket/socket__bind_helpers.py:140-163`
 draws from a Linux-parity ephemeral range
 (`range(32768, 61000)` — 28,232 ports) via
 `secrets.choice`, satisfying both RFC 6056 §3.1 (CSPRNG

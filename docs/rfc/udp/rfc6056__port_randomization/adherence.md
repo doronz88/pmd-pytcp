@@ -12,7 +12,7 @@
 RFC 6056 applies to **both TCP and UDP** ephemeral
 source-port selection. In PyTCP the implementation is
 shared: a single helper `pick_local_port` at
-`pytcp/lib/ip_helper.py:140-152` services both
+`pytcp/socket/socket__bind_helpers.py:140-152` services both
 `pytcp/socket/udp__socket.py` and
 `pytcp/socket/tcp__socket.py`. This audit lives under
 `docs/rfc/udp/` because the UDP audit campaign surfaced
@@ -56,7 +56,7 @@ Ephemeral Ports — background, §5 Security boilerplate,
 >  attacked."
 
 **Adherence:** met. `pick_local_port` at
-`pytcp/lib/ip_helper.py:140-163`:
+`pytcp/socket/socket__bind_helpers.py:140-163`:
 
 ```python
 def pick_local_port() -> int:
@@ -265,7 +265,7 @@ RFC 6056 §3.5 recommends for TCP.
 ### §3.1 Obfuscation of port selection
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__ip_helper.py::TestPickLocalPort::test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`
+  `pytcp/tests/unit/socket/test__socket__bind_helpers.py::TestPickLocalPort::test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`
   — patches `secrets.choice` and asserts the picker
   delegates final selection to it, invoking it with the
   full unused-port pool from `EPHEMERAL_PORT_RANGE`.

@@ -98,7 +98,7 @@ class _TcpSocketTestCase(TestCase):
         self._sockets_patch.start()
 
         self._helper_sockets_patch = patch(
-            "pytcp.lib.ip_helper.stack.sockets",
+            "pytcp.socket.socket__bind_helpers.stack.sockets",
             self._sockets,
         )
         self._helper_sockets_patch.start()

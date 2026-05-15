@@ -25,7 +25,7 @@
 """
 This module contains helper functions for IP-related operations.
 
-pytcp/lib/ip_helper.py
+pytcp/socket/socket__bind_helpers.py
 
 ver 3.0.4
 """

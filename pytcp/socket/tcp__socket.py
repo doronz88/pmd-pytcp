@@ -46,12 +46,6 @@ from net_addr import (
 )
 from net_proto.lib.proto_enum import ProtoEnum
 from pytcp import stack
-from pytcp.lib.ip_helper import (
-    is_address_in_use,
-    pick_local_ip_address,
-    pick_local_port,
-    pick_local_port_for,
-)
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession, TcpSessionError
@@ -82,6 +76,12 @@ from pytcp.socket.error_queue import (
     SoEeOrigin,
     build_icmp_error_entry,
     pack_sock_extended_err,
+)
+from pytcp.socket.socket__bind_helpers import (
+    is_address_in_use,
+    pick_local_ip_address,
+    pick_local_port,
+    pick_local_port_for,
 )
 from pytcp.socket.tcp__status import TcpStatus
 

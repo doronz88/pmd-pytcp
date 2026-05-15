@@ -130,7 +130,7 @@ IP6__FLOW_SECRET: bytes = secrets.token_bytes(16)
 TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
 
 # RFC 6056 §3.3.3 Algorithm 3 port-selection secret. Used
-# by 'pytcp.lib.ip_helper.pick_local_port_for' to compute
+# by 'pytcp.socket.socket__bind_helpers.pick_local_port_for' to compute
 # a per-(local_ip, remote_ip, remote_port) BLAKE2s-keyed
 # offset into 'EPHEMERAL_PORT_RANGE' so the source port
 # for a TCP connect() is unpredictable to an off-path
