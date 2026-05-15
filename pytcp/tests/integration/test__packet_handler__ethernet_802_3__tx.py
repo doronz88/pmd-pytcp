@@ -41,11 +41,11 @@ from parameterized import parameterized_class  # type: ignore
 from net_proto import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.tests.lib.ethernet_802_3_testcase import Ethernet8023TestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__MAC_ADDRESS,
     MAC__UNSPECIFIED,
     STACK__MAC_ADDRESS,
-    NetworkTestCase,
 )
 
 
@@ -152,7 +152,7 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerEthernet8023Tx(NetworkTestCase):
+class TestPacketHandlerEthernet8023Tx(Ethernet8023TestCase):
     """
     Test the Packet Handler Ethernet 802.3 TX operations.
     """

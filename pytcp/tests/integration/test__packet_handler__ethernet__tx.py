@@ -42,6 +42,7 @@ from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host
 from net_proto import Ip4Assembler, Ip4FragAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.tests.lib.ethernet_testcase import EthernetTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__IP6_ADDRESS,
@@ -59,7 +60,6 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP6_GATEWAY,
     STACK__IP6_HOST,
     STACK__MAC_ADDRESS,
-    NetworkTestCase,
 )
 
 # Due to heavy dependency of IPv4/IPv6 protocols on Ethernet mechanisms
@@ -727,7 +727,7 @@ _IP6__FOREIGN_SRC = Ip6Address("2001:db8:99::1")
         },
     ]
 )
-class TestPacketHandlerEthernetTx(NetworkTestCase):
+class TestPacketHandlerEthernetTx(EthernetTestCase):
     """
     Test the Packet Handler Ethernet TX operations.
     """

@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ethernet_testcase import EthernetTestCase
 
 
 @parameterized_class(
@@ -148,7 +148,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerEthernetRx(NetworkTestCase):
+class TestPacketHandlerEthernetRx(EthernetTestCase):
     """
     Test the Packet Handler Ethernet RX operations.
     """
@@ -189,7 +189,7 @@ class TestPacketHandlerEthernetRx(NetworkTestCase):
         )
 
 
-class TestPacketHandlerEthernetRxNoIp4Support(NetworkTestCase):
+class TestPacketHandlerEthernetRxNoIp4Support(EthernetTestCase):
     """
     Test the Packet Handler Ethernet RX dispatch when IPv4 protocol
     support is disabled — ARP and IPv4 frames must fall into the
@@ -243,7 +243,7 @@ class TestPacketHandlerEthernetRxNoIp4Support(NetworkTestCase):
         )
 
 
-class TestPacketHandlerEthernetRxNoIp6Support(NetworkTestCase):
+class TestPacketHandlerEthernetRxNoIp6Support(EthernetTestCase):
     """
     Test the Packet Handler Ethernet RX dispatch when IPv6 protocol
     support is disabled — IPv6 frames must fall into the

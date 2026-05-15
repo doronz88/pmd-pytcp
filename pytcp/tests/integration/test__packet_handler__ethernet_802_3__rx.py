@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ethernet_802_3_testcase import Ethernet8023TestCase
 
 
 @parameterized_class(
@@ -163,7 +163,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerEthernet8023Rx(NetworkTestCase):
+class TestPacketHandlerEthernet8023Rx(Ethernet8023TestCase):
     """
     Test the Packet Handler Ethernet 802.3 RX operations.
     """
