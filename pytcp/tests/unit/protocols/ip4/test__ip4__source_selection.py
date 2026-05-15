@@ -26,7 +26,7 @@
 This module contains tests for the RFC 6724 §6 IPv4 source-
 address-selection helpers.
 
-pytcp/tests/unit/lib/test__lib__ip4_source_selection.py
+pytcp/tests/unit/protocols/ip4/test__ip4__source_selection.py
 
 ver 3.0.4
 """
@@ -36,7 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_addr import Ip4Address
-from pytcp.lib.ip4_source_selection import (
+from pytcp.protocols.ip4.ip4__source_selection import (
     common_prefix_len,
     ip4_address_scope,
 )

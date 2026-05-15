@@ -48,13 +48,13 @@ from net_proto import (
 )
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.lib.ip4_source_selection import (
-    common_prefix_len,
-    ip4_address_scope,
-)
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip4 import ip4__constants as ip4_const
+from pytcp.protocols.ip4.ip4__source_selection import (
+    common_prefix_len,
+    ip4_address_scope,
+)
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 

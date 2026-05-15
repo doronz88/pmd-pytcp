@@ -35,7 +35,7 @@ helpers exposed here mirror the IPv6 ones in
 ('common_prefix_len'). The selector itself lives on the
 IPv4 TX mixin because it needs the runtime address book.
 
-pytcp/lib/ip4_source_selection.py
+pytcp/protocols/ip4/ip4__source_selection.py
 
 ver 3.0.4
 """
