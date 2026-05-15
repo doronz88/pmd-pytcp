@@ -46,6 +46,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure each 'tick()' call decrements '_remaining_delay' by 1
         until it reaches zero — the countdown drives method execution.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -69,6 +71,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure the registered method fires exactly when the countdown
         hits zero, with the stored args and kwargs forwarded verbatim.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -88,6 +92,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure the method does not fire while '_remaining_delay' is
         still non-zero after decrement — only the final tick triggers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -107,6 +113,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure a 'stop_condition' that returns True zeros the remaining
         delay and prevents the method from ever firing.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -132,6 +140,8 @@ class TestTimerTaskTick(TestCase):
         Ensure 'repeat_count=-1' (infinite) causes '_remaining_delay'
         to reset to the original delay after each firing, letting the
         method run indefinitely.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -161,6 +171,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure a finite 'repeat_count' decreases each time the method
         fires so the task eventually stops re-arming itself.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -186,6 +198,8 @@ class TestTimerTaskTick(TestCase):
         """
         Ensure 'delay_exp=True' doubles the remaining delay after each
         firing — the exponential-backoff schedule used by retransmits.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock()
@@ -236,6 +250,8 @@ class TestTimerRegisterTimer(TestCase):
         """
         Ensure 'register_timer()' stores the caller-supplied timeout
         keyed by name in the internal '_timers' dict.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._timer.register_timer(name="t1", timeout=10)
@@ -249,6 +265,8 @@ class TestTimerRegisterTimer(TestCase):
         """
         Ensure 'is_expired()' returns True for a timer that was never
         registered — the absence case is canonical "expired".
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -260,6 +278,8 @@ class TestTimerRegisterTimer(TestCase):
         """
         Ensure 'is_expired()' returns False while the timer still has
         a positive timeout.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._timer.register_timer(name="t1", timeout=5)
@@ -272,6 +292,8 @@ class TestTimerRegisterTimer(TestCase):
         """
         Ensure 'is_expired()' returns True once the timeout has been
         zeroed (simulating countdown completion).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._timer.register_timer(name="t1", timeout=1)
@@ -310,6 +332,8 @@ class TestTimerRegisterMethod(TestCase):
         """
         Ensure 'register_method()' appends a new 'TimerTask' to the
         internal '_tasks' list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock(__name__="m")
@@ -329,6 +353,8 @@ class TestTimerRegisterMethod(TestCase):
         """
         Ensure the default 'args' / 'kwargs' arguments materialize as
         empty list / empty dict inside the stored 'TimerTask'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock(__name__="m")
@@ -370,6 +396,8 @@ class TestTimerSubsystemLoop(TestCase):
         """
         Ensure each loop iteration decrements every registered timer
         by 1.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._timer.register_timer(name="t1", timeout=3)
@@ -384,6 +412,8 @@ class TestTimerSubsystemLoop(TestCase):
         """
         Ensure timers whose timeout reaches 0 are removed from the
         '_timers' dict on the iteration that zeros them.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._timer.register_timer(name="t1", timeout=1)
@@ -398,6 +428,8 @@ class TestTimerSubsystemLoop(TestCase):
         """
         Ensure each loop iteration calls 'tick()' on every registered
         task.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock(__name__="m")
@@ -409,6 +441,8 @@ class TestTimerSubsystemLoop(TestCase):
         """
         Ensure non-repeating tasks are removed from '_tasks' once they
         have fired (remaining_delay is 0 and no repeat cycle).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         method = MagicMock(__name__="m")
@@ -419,3 +453,320 @@ class TestTimerSubsystemLoop(TestCase):
             [],
             msg="_subsystem_loop must purge tasks that have fired and are not repeating.",
         )
+
+
+class TestTimerNowMs(TestCase):
+    """
+    The 'Timer.now_ms' property tests.
+    """
+
+    def test__timer__now_ms_returns_int(self) -> None:
+        """
+        Ensure 'now_ms' returns an int (milliseconds since the
+        monotonic-clock epoch), the type the RFC 6298 RTO
+        sampling code in 'TcpSession' expects.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log"):
+            timer = Timer()
+
+        self.assertIsInstance(
+            timer.now_ms,
+            int,
+            msg="Timer.now_ms must return an int (milliseconds).",
+        )
+
+    def test__timer__now_ms_is_monotonic(self) -> None:
+        """
+        Ensure two successive 'now_ms' reads return values that
+        never decrease — backed by 'time.monotonic_ns()' so the
+        property is wall-clock-adjustment safe.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log"):
+            timer = Timer()
+
+        t0 = timer.now_ms
+        t1 = timer.now_ms
+        self.assertGreaterEqual(
+            t1,
+            t0,
+            msg=f"Timer.now_ms must be monotonic; got t0={t0}, t1={t1}.",
+        )
+
+    def test__timer__now_ms_uses_monotonic_ns(self) -> None:
+        """
+        Ensure 'now_ms' divides 'time.monotonic_ns()' by 1_000_000
+        — the documented backing primitive. Pinned via patching
+        so a future regression that switched to 'time.time_ns()'
+        (wall-clock, jump-prone) is caught.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log"):
+            timer = Timer()
+
+        with patch("pytcp.runtime.timer.time.monotonic_ns", return_value=42_123_456_789):
+            self.assertEqual(
+                timer.now_ms,
+                42_123,
+                msg="now_ms must divide monotonic_ns() by 1_000_000.",
+            )
+
+
+class TestTimerUnregister(TestCase):
+    """
+    The 'Timer.unregister_timers_with_prefix' / 'Timer.unregister_method' tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build a Timer in mocked-log mode so registration log lines
+        do not leak to stderr.
+        """
+
+        self._log_patch = patch("pytcp.runtime.subsystem.log")
+        self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
+        self._timer_log_patch = patch("pytcp.runtime.timer.log")
+        self._timer_log_patch.start()
+        self.addCleanup(self._timer_log_patch.stop)
+
+        self._timer = Timer()
+
+    def test__timer__unregister_timers_with_prefix_drops_matching(self) -> None:
+        """
+        Ensure 'unregister_timers_with_prefix' removes every
+        named delay timer whose name starts with the prefix,
+        leaving all other entries intact.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._timer.register_timer(name="session-1-time_wait", timeout=100)
+        self._timer.register_timer(name="session-1-delayed_ack", timeout=50)
+        self._timer.register_timer(name="session-2-time_wait", timeout=200)
+        self._timer.register_timer(name="rate_limit", timeout=1000)
+
+        self._timer.unregister_timers_with_prefix("session-1-")
+
+        self.assertEqual(
+            set(self._timer._timers.keys()),
+            {"session-2-time_wait", "rate_limit"},
+            msg="Only timers prefixed with 'session-1-' must be dropped.",
+        )
+
+    def test__timer__unregister_timers_with_prefix_empty_match(self) -> None:
+        """
+        Ensure 'unregister_timers_with_prefix' is a no-op when no
+        registered name matches — does not raise, does not affect
+        other entries.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._timer.register_timer(name="rate_limit", timeout=1000)
+
+        self._timer.unregister_timers_with_prefix("session-")
+
+        self.assertEqual(
+            set(self._timer._timers.keys()),
+            {"rate_limit"},
+            msg="No-match prefix must leave the registry unchanged.",
+        )
+
+    def test__timer__unregister_method_drops_matching(self) -> None:
+        """
+        Ensure 'unregister_method' removes every 'TimerTask'
+        whose stored method equals the supplied callable. Other
+        registered tasks survive.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        method_a = MagicMock()
+        method_b = MagicMock()
+        method_a.__name__ = "method_a"
+        method_b.__name__ = "method_b"
+
+        self._timer.register_method(method=method_a, delay=10)
+        self._timer.register_method(method=method_a, delay=20)
+        self._timer.register_method(method=method_b, delay=30)
+
+        self._timer.unregister_method(method_a)
+
+        self.assertEqual(
+            len(self._timer._tasks),
+            1,
+            msg="Both method_a registrations must be dropped, method_b retained.",
+        )
+        self.assertIs(
+            self._timer._tasks[0].method,
+            method_b,
+            msg="The surviving task must be the one registered with method_b.",
+        )
+
+    def test__timer__unregister_method_no_match(self) -> None:
+        """
+        Ensure 'unregister_method' is a no-op when no task's
+        method matches — does not raise, does not affect other
+        entries.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        method = MagicMock()
+        method.__name__ = "method"
+        other = MagicMock()
+        other.__name__ = "other"
+
+        self._timer.register_method(method=method, delay=10)
+
+        self._timer.unregister_method(other)
+
+        self.assertEqual(
+            len(self._timer._tasks),
+            1,
+            msg="No-match unregister must leave the registry unchanged.",
+        )
+
+
+class TestTimerAsserts(TestCase):
+    """
+    The 'TimerTask' / 'Timer.register_timer' input-assertion tests.
+    """
+
+    def test__timer__task_delay_zero_rejected(self) -> None:
+        """
+        Ensure 'TimerTask(delay=0, ...)' raises AssertionError.
+        delay=0 has no defensible semantics (the legacy tick
+        decrement-before-check would make the method never fire),
+        and no production caller uses it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError) as ctx:
+            TimerTask(
+                method=MagicMock(),
+                args=[],
+                kwargs={},
+                delay=0,
+                delay_exp=False,
+                repeat_count=0,
+                stop_condition=None,
+            )
+
+        self.assertIn(
+            "delay must be >= 1",
+            str(ctx.exception),
+            msg="The assertion message must name the contract violation.",
+        )
+
+    def test__timer__task_delay_negative_rejected(self) -> None:
+        """
+        Ensure 'TimerTask(delay=-1, ...)' raises AssertionError
+        — same contract as delay=0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            TimerTask(
+                method=MagicMock(),
+                args=[],
+                kwargs={},
+                delay=-1,
+                delay_exp=False,
+                repeat_count=0,
+                stop_condition=None,
+            )
+
+    def test__timer__register_timer_timeout_zero_rejected(self) -> None:
+        """
+        Ensure 'register_timer(timeout=0)' raises AssertionError.
+        timeout=0 would expire the timer on the very next tick
+        which no production caller wants.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.runtime.subsystem.log"), patch("pytcp.runtime.timer.log"):
+            timer = Timer()
+
+        with self.assertRaises(AssertionError) as ctx:
+            timer.register_timer(name="any", timeout=0)
+
+        self.assertIn(
+            "timeout must be >= 1",
+            str(ctx.exception),
+            msg="The assertion message must name the contract violation.",
+        )
+
+
+class TestTimerTaskExponentialFactor(TestCase):
+    """
+    The '_delay_exp_factor' increment-gating tests (factor must
+    increment only when 'delay_exp=True').
+    """
+
+    def test__timer__non_exp_task_does_not_grow_factor(self) -> None:
+        """
+        Ensure a 'TimerTask' with 'delay_exp=False' never
+        increments '_delay_exp_factor' across multiple
+        execution cycles. Guards against the pre-fix behaviour
+        where the factor grew unboundedly even for tasks that
+        never read it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        task = TimerTask(
+            method=MagicMock(),
+            args=[],
+            kwargs={},
+            delay=1,
+            delay_exp=False,
+            repeat_count=3,
+            stop_condition=None,
+        )
+
+        for _ in range(3):
+            task.tick()  # decrement to 0 + execute + reset
+
+        self.assertEqual(
+            task._delay_exp_factor,
+            0,
+            msg="delay_exp=False tasks must keep _delay_exp_factor at 0.",
+        )
+
+    def test__timer__exp_task_grows_factor_each_iteration(self) -> None:
+        """
+        Ensure a 'TimerTask' with 'delay_exp=True' increments
+        '_delay_exp_factor' on every reset, producing the
+        2**iteration backoff pattern in '_remaining_delay'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        task = TimerTask(
+            method=MagicMock(),
+            args=[],
+            kwargs={},
+            delay=1,
+            delay_exp=True,
+            repeat_count=3,
+            stop_condition=None,
+        )
+
+        task.tick()  # 1 → 0 → execute, factor: 0 → 1
+        self.assertEqual(task._delay_exp_factor, 1)
+
+        task.tick()  # 2 → 1 (after reset to 1*2=2 then -1)
+        task.tick()  # 1 → 0 → execute, factor: 1 → 2
+        self.assertEqual(task._delay_exp_factor, 2)
