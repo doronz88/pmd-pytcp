@@ -29,7 +29,7 @@ the sanctioned 'Ip4AddressApi.claim_with_acd' surface, plus
 the retry / rate-limit loop pinned by §9 MAX_CONFLICTS /
 RATE_LIMIT_INTERVAL.
 
-pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__claiming.py
+pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py
 
 ver 3.0.4
 """
@@ -39,8 +39,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
-from pytcp.protocols.ip4_link_local import ip4_link_local__constants as ip4ll_const
-from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
+from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
+from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
@@ -62,12 +62,12 @@ class TestIp4LinkLocalClaiming(TestCase):
         Silence the subsystem's '<stack>' log.
         """
 
-        self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
+        self.enterContext(patch("pytcp.protocols.ip4.link_local.link_local__client.log"))
         self.enterContext(patch("pytcp.runtime.subsystem.log"))
         # 'time.sleep' is patched globally for the test class so
         # the rate-limit cool-down does not actually block.
         self._mock_sleep = self.enterContext(
-            patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.time.sleep"),
+            patch("pytcp.protocols.ip4.link_local.link_local__client.time.sleep"),
         )
 
         self._mac = MacAddress("02:00:00:00:00:07")

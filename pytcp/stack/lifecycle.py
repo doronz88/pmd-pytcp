@@ -182,8 +182,8 @@ def init(
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.icmp6.nd import nd__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.ip4 import ip4__constants  # noqa: F401  pylint: disable=unused-import
-    from pytcp.protocols.ip4_link_local import (  # noqa: F401  pylint: disable=unused-import
-        ip4_link_local__constants,
+    from pytcp.protocols.ip4.link_local import (  # noqa: F401  pylint: disable=unused-import
+        link_local__constants,
     )
     from pytcp.protocols.ip6 import ip6__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.stack import sysctl as sysctl_module
@@ -317,7 +317,7 @@ def init(
         def _is_dhcp_bound() -> bool:
             return _stack.dhcp4_client is not None and _stack.dhcp4_client.state is Dhcp4State.BOUND
 
-        from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal as _Ip4LinkLocal
+        from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal as _Ip4LinkLocal
 
         _stack.link_local = _Ip4LinkLocal(
             mac_address=ll_mac,

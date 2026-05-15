@@ -59,7 +59,7 @@ from pytcp.stack.link import LinkApi
 if TYPE_CHECKING:
     from net_addr import Ip4Address, Ip6Address
     from pytcp.lib.plpmtud import PmtuSearch
-    from pytcp.protocols.ip4_link_local.ip4_link_local__client import Ip4LinkLocal
+    from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal
     from pytcp.socket import socket
 
 

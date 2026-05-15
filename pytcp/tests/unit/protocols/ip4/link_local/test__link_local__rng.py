@@ -25,9 +25,9 @@
 """
 Unit tests for the RFC 3927 §2.1 MAC-seeded link-local
 candidate generator at
-'pytcp/protocols/ip4_link_local/ip4_link_local__rng.py'.
+'pytcp/protocols/ip4/link_local/link_local__rng.py'.
 
-pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__rng.py
+pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py
 
 ver 3.0.4
 """
@@ -35,7 +35,7 @@ ver 3.0.4
 from unittest import TestCase
 
 from net_addr import Ip4Address, MacAddress
-from pytcp.protocols.ip4_link_local.ip4_link_local__rng import (
+from pytcp.protocols.ip4.link_local.link_local__rng import (
     RANGE_FIRST,
     RANGE_LAST,
     candidate_from_mac,

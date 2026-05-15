@@ -32,7 +32,7 @@ Phase 4 (DHCP coordination) will add
 'ip4_link_local.dhcp_fallback_timeout_ms'; Phase 6 (optional
 persistence) will add 'ip4_link_local.cache_path'.
 
-pytcp/protocols/ip4_link_local/ip4_link_local__constants.py
+pytcp/protocols/ip4/link_local/link_local__constants.py
 
 ver 3.0.4
 """

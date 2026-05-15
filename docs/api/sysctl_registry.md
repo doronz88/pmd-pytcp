@@ -166,7 +166,7 @@ shape:
 | `neighbor.*`          | `pytcp.lib.neighbor__constants`                                    |
 | `nd.*`                | `pytcp.protocols.icmp6.nd.nd__constants`                           |
 | `ip4.*`               | `pytcp.protocols.ip4.ip4__constants`                               |
-| `ip4_link_local.*`    | `pytcp.protocols.ip4_link_local.ip4_link_local__constants`         |
+| `ip4_link_local.*`    | `pytcp.protocols.ip4.link_local.link_local__constants`         |
 | `tcp.*`               | `pytcp.protocols.tcp.tcp__constants`                               |
 | `icmp4.*` / `icmp6.*` | `pytcp.protocols.icmp[46].icmp[46]__constants`                     |
 | `udp.*`               | `pytcp.protocols.udp.udp__constants`                               |

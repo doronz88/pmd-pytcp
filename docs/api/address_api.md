@@ -24,7 +24,7 @@ materialises.
 Per CLAUDE.md Phase-3: **the surface IS the Phase-3
 seam**. The DHCPv4 client (`pytcp/protocols/dhcp4/`)
 and the RFC 3927 link-local autoconfig client
-(`pytcp/protocols/ip4_link_local/`) consume the API
+(`pytcp/protocols/ip4/link_local/`) consume the API
 without reaching into `packet_handler._ip4_host`.
 
 ## Address-list management
@@ -168,7 +168,7 @@ the Phase-3 "introspection is read-only" constraint.
 - `pytcp/protocols/dhcp4/dhcp4__client.py` — DHCP DAD via
   `address.probe(address=...)`; gratuitous announce via
   `address.announce(address=...)` at BOUND.
-- `pytcp/protocols/ip4_link_local/ip4_link_local__client.py`
+- `pytcp/protocols/ip4/link_local/link_local__client.py`
   — RFC 3927 §2.1.1 probe + §2.4 announce + §2.5 defend /
   abandon via the conflict-subscription surface.
 - `pytcp/stack/__init__.py::init` — constructs the

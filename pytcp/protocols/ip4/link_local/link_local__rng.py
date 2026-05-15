@@ -41,7 +41,7 @@ choice between the two is cosmetic — both satisfy the RFC's
 avahi-autoipd's choice for clarity (4-line implementation,
 no module-level state).
 
-pytcp/protocols/ip4_link_local/ip4_link_local__rng.py
+pytcp/protocols/ip4/link_local/link_local__rng.py
 
 ver 3.0.4
 """

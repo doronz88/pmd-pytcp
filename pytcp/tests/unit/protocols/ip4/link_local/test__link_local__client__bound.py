@@ -28,7 +28,7 @@ defence logic — RFC 3927 §2.5 defend / abandon decision
 tree wired via the address API's 'subscribe_conflicts'
 callback.
 
-pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__bound.py
+pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py
 
 ver 3.0.4
 """
@@ -39,7 +39,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
 from pytcp.protocols.arp import arp__constants
-from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
+from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
@@ -66,10 +66,10 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         can assert on unsubscribe behaviour during abandon.
         """
 
-        self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
+        self.enterContext(patch("pytcp.protocols.ip4.link_local.link_local__client.log"))
         self.enterContext(patch("pytcp.runtime.subsystem.log"))
         self._mock_time = self.enterContext(
-            patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.time.monotonic"),
+            patch("pytcp.protocols.ip4.link_local.link_local__client.time.monotonic"),
         )
         self._mock_time.return_value = 100.0
 

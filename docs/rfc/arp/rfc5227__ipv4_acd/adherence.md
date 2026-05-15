@@ -82,7 +82,7 @@ the DHCPv4 DAD path
 `arp_dad_verifier` callback wired in
 `pytcp/stack/__init__.py:476`) and the RFC 3927 link-local
 candidate-probe loop
-(`pytcp/protocols/ip4_link_local/ip4_link_local__client.py`).
+(`pytcp/protocols/ip4/link_local/link_local__client.py`).
 
 > "A host MUST NOT perform this check periodically as a
 > matter of course."
@@ -210,11 +210,11 @@ counters are bumped on each drop.
 **Adherence:** **met (in the RFC 3927 link-local
 subsystem)**. The MAX_CONFLICTS / RATE_LIMIT_INTERVAL gate
 is enforced in the link-local candidate-rotation loop
-(`pytcp/protocols/ip4_link_local/ip4_link_local__client.py:242-249`):
+(`pytcp/protocols/ip4/link_local/link_local__client.py:242-249`):
 after `MAX_CONFLICTS` conflicts within a tracking window,
 the subsystem inserts a `RATE_LIMIT_INTERVAL` sleep before
 the next probe attempt. The constants live in
-`pytcp/protocols/ip4_link_local/ip4_link_local__constants.py:45,51`
+`pytcp/protocols/ip4/link_local/link_local__constants.py:45,51`
 and are sysctl-registered at `:75-90`
 (`ip4_link_local.max_conflicts` default 10;
 `ip4_link_local.rate_limit_interval_s` default 60).
@@ -513,7 +513,7 @@ runs the cache learn.
 ### §2.1.1 — MAX_CONFLICTS / RATE_LIMIT_INTERVAL
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
+  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
   — drives `MAX_CONFLICTS` conflicts in succession, asserts
   the next probe is gated by a `RATE_LIMIT_INTERVAL` sleep.
 

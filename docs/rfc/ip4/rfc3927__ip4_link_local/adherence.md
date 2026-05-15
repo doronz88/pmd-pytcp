@@ -31,7 +31,7 @@ Security, §5 Acknowledgements) is omitted.
 
 PyTCP **met (Phase 1 complete)**: the RFC 3927 IPv4 link-local
 autoconfig client ships as a `Subsystem` in
-`pytcp/protocols/ip4_link_local/`. Operators opt in via
+`pytcp/protocols/ip4/link_local/`. Operators opt in via
 `stack.init(ip4_link_local=True)` and tune the DHCP-fallback
 window via the `ip4_link_local.dhcp_fallback_timeout_ms`
 sysctl. The §2.1 MAC-seeded RNG, §2.2 ARP probe, §2.4 ARP
@@ -43,7 +43,7 @@ on the TX path closes the §2.7 / §2.8 host-side cases.
 | Section | Topic                                                       | Status |
 |---------|-------------------------------------------------------------|--------|
 | §1.9    | When to configure a Link-Local address (after DHCP fails)   | met (`_reconcile_with_dhcp` fallback timer) |
-| §2.1    | Random address selection from 169.254.1.0 - 169.254.254.255 | met (`ip4_link_local__rng.candidate_from_mac`) |
+| §2.1    | Random address selection from 169.254.1.0 - 169.254.254.255 | met (`link_local__rng.candidate_from_mac`) |
 | §2.2    | Claim via ARP Probe                                         | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.1.1) |
 | §2.4    | Announce via gratuitous ARP                                 | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.3) |
 | §2.5    | Conflict detection / defense                                | met (`_on_bound_conflict` defend/abandon decision tree) |
@@ -90,7 +90,7 @@ to the fallback policy.
 > 169.254.1.0 to 169.254.254.255 inclusive."
 
 **Adherence:** met.
-`pytcp/protocols/ip4_link_local/ip4_link_local__rng.py::candidate_from_mac`
+`pytcp/protocols/ip4/link_local/link_local__rng.py::candidate_from_mac`
 implements a MAC-seeded Linear Congruential Generator that
 maps any (MAC, attempt) pair to a uniformly-distributed
 address in `169.254.1.0..169.254.254.255` (65024 addresses).
@@ -295,7 +295,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.1 MAC-seeded candidate generator
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__rng.py`
+  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`
   Seven cases: same-MAC determinism, different-MAC
   divergence, attempt-counter rolls the sequence, every
   candidate in [169.254.1.0, 169.254.254.255], reserved
@@ -307,7 +307,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.2 / §2.4 ARP Probe + Announce via the ACD API
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__claiming.py`
+  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py`
   Six FSM cases: clean claim → BOUND with candidate
   installed; conflict → INIT + counter bump + candidate
   cleared; retry picks a different candidate via attempt-
@@ -322,7 +322,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.5 Defend / abandon decision
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__bound.py`
+  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py`
   Five cases: BOUND transition subscribes for conflicts;
   first conflict in window → defend (single gratuitous
   ARP); second conflict in window → abandon (abort TCP,
@@ -336,7 +336,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §1.9 / §2.11 DHCPv4 coordination
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__dhcp.py`
+  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__dhcp.py`
   Ten cases: feature disabled (timeout=0) → eager INIT;
   feature enabled + DHCP getter → initial HALTED; DHCP-bind
   while BOUND → release + halt; DHCP-unbound continuously
@@ -380,7 +380,7 @@ RFC 3927 track was adding a read-only `state` property on
 | Aspect                                              | Status |
 |-----------------------------------------------------|--------|
 | §1.9 Link-local fallback when DHCP fails            | met (fallback timer in `_reconcile_with_dhcp`) |
-| §2.1 Random address selection from 169.254.1-254/24 | met (MAC-seeded LCG in `ip4_link_local__rng`) |
+| §2.1 Random address selection from 169.254.1-254/24 | met (MAC-seeded LCG in `link_local__rng`) |
 | §2.2 ARP Probe                                      | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.1.1) |
 | §2.4 ARP Announce                                   | met (`Ip4AddressApi.claim_with_acd` → RFC 5227 §2.3) |
 | §2.5 Conflict detection / defense                   | met (`_on_bound_conflict` decision tree) |
@@ -391,7 +391,7 @@ RFC 3927 track was adding a read-only `state` property on
 PyTCP **fully implements** the RFC 3927 IPv4 link-local
 autoconfig mechanism for the host-stack case (Phase 1 of the
 project north-star). The implementation lives in
-`pytcp/protocols/ip4_link_local/` as a `Subsystem` instantiated
+`pytcp/protocols/ip4/link_local/` as a `Subsystem` instantiated
 by `stack.init(ip4_link_local=True)`. Operators opt in via the
 `ip4_link_local` boot kwarg and tune the DHCP-fallback window
 via `ip4_link_local.dhcp_fallback_timeout_ms`. The Linux

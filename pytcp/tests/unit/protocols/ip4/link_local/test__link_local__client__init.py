@@ -28,7 +28,7 @@ RFC 3927 IPv4 link-local autoconfig FSM. Phase 1 covers the
 INIT state (candidate selection); Phase 2 will cover the
 CLAIMING state.
 
-pytcp/tests/unit/protocols/ip4_link_local/test__ip4_link_local__client__init.py
+pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__init.py
 
 ver 3.0.4
 """
@@ -38,7 +38,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import MacAddress
-from pytcp.protocols.ip4_link_local.ip4_link_local__client import (
+from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
@@ -90,7 +90,7 @@ class TestIp4LinkLocalInit(TestCase):
         output isn't speckled with stack-init traces.
         """
 
-        self.enterContext(patch("pytcp.protocols.ip4_link_local.ip4_link_local__client.log"))
+        self.enterContext(patch("pytcp.protocols.ip4.link_local.link_local__client.log"))
         self.enterContext(patch("pytcp.runtime.subsystem.log"))
         self._mac = MacAddress("02:00:00:00:00:07")
         self._client = Ip4LinkLocal(
