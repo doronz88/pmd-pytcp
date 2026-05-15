@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -97,7 +96,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
             # If our FIN is now acked, enter TIME_WAIT.
             if ge32(session._snd_seq.una, session._snd_seq.fin):
                 session._change_state(FsmState.TIME_WAIT)
-                stack.timer.register_timer(name=f"{session}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
+                session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
             return
         # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
         # data we have never sent (ack > SND.MAX) MUST elicit

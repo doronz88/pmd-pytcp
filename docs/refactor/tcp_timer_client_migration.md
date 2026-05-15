@@ -355,7 +355,7 @@ Each of the 8 `is_expired` reads is classified:
 | `:2714` retransmit (fire) | `if not is_expired: return` then `if snd_una==snd_max: return` | `if not self._timer_expired("retransmit"): return` | **keep** `snd_una==snd_max` guard — it is the genuine RFC 6298 §5 "nothing in flight" condition, not just disambiguation |
 | `fsm__time_wait:58` | `if is_expired(time_wait): _change_state(CLOSED)` | `if self._timer_expired("time_wait"): …` | none |
 | `:2656` persist | `elif is_expired(persist)` | `elif self._timer_expired("persist")` | audit surrounding `_persist.active` flag — keep |
-| `:2685` delayed_ack | `if is_expired(delayed_ack):` | `if self._timer_expired("delayed_ack"):` | none |
+| `:2685` delayed_ack | `if is_expired(delayed_ack):` | `if not self._timer_armed("delayed_ack"):` | **corrected in Phase 1**: the original audit said `_timer_expired`/none; the integration oracle (`test__close_passive__peer_fin_first_walks_through_close_wait_last_ack_closed`) proved the unarmed→flush behaviour is load-bearing — a tick with no delayed-ACK window in progress must flush the held ACK immediately, so this is `not _timer_armed` (fired OR never-armed), not `_timer_expired` |
 | `:2130` challenge_ack | `if not is_expired(rate):` (rate-limit gate) | `if self._timer_armed("challenge_ack"):` (inverted: armed&unfired ⇒ within rate-limit window ⇒ suppress) | re-derive truth table carefully (§6 test) |
 | `:2191` keepalive | `if not is_expired(keepalive): return` | `if not self._timer_expired("keepalive"): return` | keep idle/probe state guards |
 | `:3194` tlp | `if not is_expired(tlp): return` | `if not self._timer_expired("tlp"): return` | keep tail-state guards |

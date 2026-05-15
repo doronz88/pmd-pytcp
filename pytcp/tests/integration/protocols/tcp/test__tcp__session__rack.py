@@ -64,7 +64,6 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__rack import RackSegment
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
@@ -816,11 +815,11 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         )
         self.assertIn(
             f"{session}-rack",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "RACK reorder timer MUST be armed when a 'sent before' "
                 "segment is within the reordering window. Got pending: "
-                f"{sorted(self._timer.pending_timers)!r}."
+                f"{sorted(self._pending_session_timers(session))!r}."
             ),
         )
 
@@ -864,7 +863,7 @@ class TestTcpRackPhase5(TcpSessionTestCase):
 
         self.assertIn(
             f"{session}-rack",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg="Setup invariant: RACK reorder timer must be armed.",
         )
 
@@ -933,10 +932,10 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
 
         self.assertIn(
             f"{session}-tlp",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "TLP PTO timer MUST be armed after a data send. Got "
-                f"pending: {sorted(self._timer.pending_timers)!r}."
+                f"pending: {sorted(self._pending_session_timers(session))!r}."
             ),
         )
 
@@ -959,7 +958,7 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
         session.send(data=b"x" * (3 * PEER__MSS))
         self._advance(ms=1)
 
-        pending = self._timer.pending_timers.get(f"{session}-tlp")
+        pending = self._pending_session_timers(session).get(f"{session}-tlp")
         self.assertIsNotNone(pending, msg="Setup invariant: TLP timer must be armed.")
         assert pending is not None
         # 2 * SRTT = 200 ms; +max_ack_delay only on 1-segment FlightSize.
@@ -993,7 +992,7 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
         self._advance(ms=1)
         self.assertIn(
             f"{session}-tlp",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg="Setup invariant: TLP timer must be armed after send.",
         )
 
@@ -1009,10 +1008,10 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
 
         self.assertNotIn(
             f"{session}-tlp",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "TLP PTO timer MUST be cancelled when cum-ACK drains "
-                f"all in-flight. Got pending: {sorted(self._timer.pending_timers)!r}."
+                f"all in-flight. Got pending: {sorted(self._pending_session_timers(session))!r}."
             ),
         )
 
@@ -1130,7 +1129,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
             session._tx.buffer.extend(b"new data tail")
 
         snd_max_pre_probe = session._snd_seq.max
-        stack.timer.unregister_timers_with_prefix(f"{session}-tlp")
+        self._expire_timer(session, "tlp")
         session._tlp_pto_tick()
 
         self.assertIsNotNone(
@@ -1179,10 +1178,10 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         )
         self.assertIn(
             f"{session}-retransmit",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "TLP probe emission MUST re-arm the f'{session}-retransmit' "
-                f"timer. Got pending: {sorted(self._timer.pending_timers)!r}."
+                f"timer. Got pending: {sorted(self._pending_session_timers(session))!r}."
             ),
         )
 
@@ -1329,10 +1328,10 @@ class TestTcpRackPhase9(TcpSessionTestCase):
 
     def test__rack__rto_marks_all_in_flight_segments_lost(self) -> None:
         """
-        Ensure that when the RTO timer expires per RFC 8985
-        §6.3, all in-flight segments are marked lost
-        (xmit_ts -> INFINITE_TS, lost = True) so subsequent
-        retransmit walking treats them as the loss set.
+        Ensure that when the RTO timer expires, all in-flight
+        segments are marked lost (xmit_ts -> INFINITE_TS,
+        lost = True) so subsequent retransmit walking treats
+        them as the loss set.
 
         Reference: RFC 8985 §6.3 (RTO marks all in-flight as lost).
         """
@@ -1352,7 +1351,7 @@ class TestTcpRackPhase9(TcpSessionTestCase):
         # the timeout handler so we observe the §6.3 marking
         # before the subsequent FSM-tick _transmit_data
         # overwrites the first-segment entry on retransmit.
-        stack.timer.unregister_timers_with_prefix(f"{session}-retransmit")
+        self._expire_timer(session, "retransmit")
         session._retransmit_packet_timeout()
 
         # All in-flight segments should now be marked lost.
@@ -1372,10 +1371,9 @@ class TestTcpRackPhase9(TcpSessionTestCase):
 
     def test__rack_tlp_rto__timers_are_mutually_exclusive(self) -> None:
         """
-        Ensure that RFC 8985 §8 timer arbitration holds: at
-        most ONE of {RACK reorder timer, TLP PTO, RTO} is
-        registered at any moment. The arbitration prevents
-        spurious double-fires.
+        Ensure timer arbitration holds: at most ONE of {RACK
+        reorder timer, TLP PTO, RTO} is armed at any moment.
+        The arbitration prevents spurious double-fires.
 
         Reference: RFC 8985 §8 (mutual-exclusion of recovery timers).
         """
@@ -1388,7 +1386,7 @@ class TestTcpRackPhase9(TcpSessionTestCase):
         # Walk through several states and assert that no more
         # than one of the three named timers is registered.
         for label in ("post-send",):
-            timers = self._timer.pending_timers
+            timers = self._pending_session_timers(session)
             recovery_timer_keys = {
                 f"{session}-rack",
                 f"{session}-tlp",

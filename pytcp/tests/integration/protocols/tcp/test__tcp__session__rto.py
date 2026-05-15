@@ -545,16 +545,16 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         session_retransmit_timer = f"{session}-retransmit"
         self.assertIn(
             session_retransmit_timer,
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "A data send while no retransmit timer is "
                 f"running MUST arm '{session_retransmit_timer}'. "
                 f"Got pending timers: "
-                f"{sorted(self._timer.pending_timers)!r}."
+                f"{sorted(self._pending_session_timers(session))!r}."
             ),
         )
         self.assertEqual(
-            self._timer.pending_timers[session_retransmit_timer],
+            self._pending_session_timers(session)[session_retransmit_timer],
             session._rto_state.rto_ms,
             msg=(
                 "The session-level retransmit timer MUST be "
@@ -564,7 +564,9 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
             ),
         )
 
-        legacy_per_seq_keys = [k for k in self._timer.pending_timers if k.startswith(f"{session}-retransmit_seq-")]
+        legacy_per_seq_keys = [
+            k for k in self._pending_session_timers(session) if k.startswith(f"{session}-retransmit_seq-")
+        ]
         self.assertEqual(
             legacy_per_seq_keys,
             [],
@@ -600,7 +602,7 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_ack)
 
-        retransmit_keys = [k for k in self._timer.pending_timers if "retransmit" in k]
+        retransmit_keys = [k for k in self._pending_session_timers(session) if "retransmit" in k]
         self.assertEqual(
             retransmit_keys,
             [],
@@ -673,16 +675,16 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         session_retransmit_timer = f"{session}-retransmit"
         self.assertIn(
             session_retransmit_timer,
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "After back_off, the retransmit timer MUST "
                 "be re-armed with the new rto_ms. Got "
                 "pending timers: "
-                f"{sorted(self._timer.pending_timers)!r}."
+                f"{sorted(self._pending_session_timers(session))!r}."
             ),
         )
         self.assertEqual(
-            self._timer.pending_timers[session_retransmit_timer],
+            self._pending_session_timers(session)[session_retransmit_timer],
             session._rto_state.rto_ms,
             msg=(
                 "The re-armed timer's timeout MUST equal "

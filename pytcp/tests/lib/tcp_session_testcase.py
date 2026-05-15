@@ -427,6 +427,30 @@ class TcpSessionTestCase(NetworkTestCase):
         self._timer.advance(ms)
         return list(self._frames_tx[before:])
 
+    def _pending_session_timers(self, session: TcpSession, /) -> dict[str, int]:
+        """
+        Reconstruct the legacy '{f"{session}-<name>": remaining_ms}'
+        view from the session's deadline map (the post-migration
+        source of truth). Mirrors the old FakeTimer.pending_timers
+        semantics: a logical timer is "pending" while it is armed
+        and has not yet fired.
+        """
+
+        now = self._timer.now_ms
+        return {
+            f"{session}-{name}": deadline - now for name, deadline in session._timer_deadlines.items() if deadline > now
+        }
+
+    def _expire_timer(self, session: TcpSession, name: str, /) -> None:
+        """
+        Force the named logical timer to read as expired on the
+        next service tick (replaces the old test idiom of
+        'stack.timer.unregister_timers_with_prefix(...)' to make
+        'is_expired' return True).
+        """
+
+        session._timer_deadlines[name] = self._timer.now_ms
+
     def _parse_tx(self, frame: bytes, /) -> TcpProbe:
         """
         Parse a TX frame back into a 'TcpProbe' covering the IP and

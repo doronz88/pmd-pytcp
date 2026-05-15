@@ -57,7 +57,6 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__enums import CcMode
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
@@ -1166,7 +1165,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         # Force the retransmit timer to expire so RTO fires
         # while still in recovery. The RTO handler runs §3.1
         # ssthresh halving + cwnd=LW reset.
-        stack.timer.unregister_timers_with_prefix(f"{session}-retransmit")
+        self._expire_timer(session, "retransmit")
         self._advance(ms=1)
 
         self.assertEqual(

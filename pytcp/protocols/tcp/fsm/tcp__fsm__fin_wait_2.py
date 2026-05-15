@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -110,7 +109,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             # Change state to TIME_WAIT.
             session._change_state(FsmState.TIME_WAIT)
             # Initialize TIME_WAIT delay
-            stack.timer.register_timer(name=f"{session}-time_wait", timeout=tcp__constants.TIME_WAIT_DELAY)
+            session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
             return
 
     # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4

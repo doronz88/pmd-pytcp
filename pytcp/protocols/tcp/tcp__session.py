@@ -113,6 +113,22 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__socket import TcpSocket
 
 
+# Which logical timers each FSM state's timer handler actually
+# services (the §4.3 ordering/scope matrix of the TCP
+# timer-client migration plan, as data). Consumed by
+# '_reschedule_service' from Phase 4 on; inert in Phase 1
+# (the 1 ms 'tcp_fsm' periodic still drives servicing).
+_SERVICED_TIMERS_BY_STATE: dict[FsmState, frozenset[str]] = {
+    FsmState.SYN_SENT: frozenset({"retransmit"}),
+    FsmState.SYN_RCVD: frozenset({"retransmit"}),
+    FsmState.ESTABLISHED: frozenset({"retransmit", "persist", "delayed_ack", "keepalive", "rack", "tlp"}),
+    FsmState.CLOSE_WAIT: frozenset({"retransmit", "persist", "delayed_ack"}),
+    FsmState.FIN_WAIT_1: frozenset({"retransmit"}),
+    FsmState.LAST_ACK: frozenset({"retransmit"}),
+    FsmState.TIME_WAIT: frozenset({"time_wait"}),
+}
+
+
 class TcpSession:
     """
     The TCP session.
@@ -485,8 +501,77 @@ class TcpSession:
         # Used to report cause of connection failure.
         self._connection_error: ConnError = ConnError.NONE
 
+        # Per-session logical-timer deadline map (absolute
+        # monotonic ms; None-equivalent == key absent). Replaces
+        # the legacy named-flag shim. Keyed by bare logical name
+        # ("retransmit", "time_wait", "persist", "delayed_ack",
+        # "challenge_ack", "keepalive", "tlp", "rack").
+        self._timer_deadlines: dict[str, int] = {}
+
+        # Coalesced per-session service handle. Unused in Phase 1
+        # (the 1 ms periodic below still drives servicing); armed
+        # by '_reschedule_service' from Phase 4 on.
+        self._service_handle: TimerHandle | None = None
+
         # Setup timer to execute FSM time event every millisecond.
         self._tcp_fsm_handle: TimerHandle | None = stack.timer.call_periodic(1, self.tcp_fsm, timer=True)
+
+    def _arm_timer(self, name: str, delay_ms: int, /) -> None:
+        """
+        Arm or re-arm the named logical timer to fire 'delay_ms'
+        milliseconds from now.
+        """
+
+        self._timer_deadlines[name] = stack.timer.now_ms + delay_ms
+        self._reschedule_service()
+
+    def _timer_expired(self, name: str, /) -> bool:
+        """
+        Return True iff the named logical timer is armed and its
+        deadline has passed. An unarmed timer is NOT expired —
+        this de-conflates the legacy 'is_expired', which collapsed
+        'never armed' with 'fired'.
+        """
+
+        deadline = self._timer_deadlines.get(name)
+        return deadline is not None and stack.timer.now_ms >= deadline
+
+    def _timer_armed(self, name: str, /) -> bool:
+        """
+        Return True iff the named logical timer is armed and has
+        not yet fired (the 'is it still running?' query).
+        """
+
+        deadline = self._timer_deadlines.get(name)
+        return deadline is not None and stack.timer.now_ms < deadline
+
+    def _cancel_timer(self, name: str, /) -> None:
+        """
+        Cancel the named logical timer if armed.
+        """
+
+        self._timer_deadlines.pop(name, None)
+        self._reschedule_service()
+
+    def _cancel_all_timers(self) -> None:
+        """
+        Cancel every logical timer for this session and release
+        the coalesced service handle. Replaces the legacy
+        'unregister_timers_with_prefix(f"{self}-")' teardown sweep.
+        """
+
+        self._timer_deadlines.clear()
+        if self._service_handle is not None:
+            stack.timer.cancel(self._service_handle)
+            self._service_handle = None
+
+    def _reschedule_service(self) -> None:
+        """
+        Re-arm the coalesced per-session service handle to the
+        soonest deadline serviced in the current state. Phase-1
+        no-op: the 1 ms 'tcp_fsm' periodic still drives servicing;
+        the real implementation lands in Phase 4 (trigger flip).
+        """
 
     @override
     def __str__(self) -> str:
@@ -929,15 +1014,10 @@ class TcpSession:
         # Unregister session.
         if self._state is FsmState.CLOSED:
             stack.sockets.pop(self._socket.socket_id)
-            # Clean up per-session entries in 'stack.timer._timers'
-            # so they do not accumulate as stale entries after the
-            # session is gone. Timer keys all start with 'str(self)-'
-            # (e.g. '<session>-delayed_ack',
-            # '<session>-retransmit',
-            # '<session>-time_wait', '<session>-persist',
-            # '<session>-challenge_ack'); the prefix scan pops them
-            # uniformly without per-suffix bookkeeping.
-            stack.timer.unregister_timers_with_prefix(f"{self}-")
+            # Cancel every per-session logical timer so nothing
+            # fires against a dead session and the deadline map is
+            # released for GC.
+            self._cancel_all_timers()
             # Drop the per-millisecond 'tcp_fsm' callback that
             # '__init__' registered via 'stack.timer.call_periodic'.
             # Without this, the periodic entry survives forever -
@@ -1606,7 +1686,7 @@ class TcpSession:
 
         # If in ESTABLISHED state then reset ACK delay timer.
         if self._state is FsmState.ESTABLISHED:
-            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
+            self._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
 
         # RFC 6298 §5.1: every packet containing data (including a
         # retransmission) starts the retransmit timer if it is not
@@ -1619,11 +1699,8 @@ class TcpSession:
         # restart-on-cum-ACK fires from '_process_ack_packet'
         # instead, and the timeout-driven re-arm fires from
         # '_retransmit_packet_timeout' after 'back_off'.
-        if (data or flag_syn or flag_fin) and stack.timer.is_expired(f"{self}-retransmit"):
-            stack.timer.register_timer(
-                name=f"{self}-retransmit",
-                timeout=self._rto_state.rto_ms,
-            )
+        if (data or flag_syn or flag_fin) and not self._timer_armed("retransmit"):
+            self._arm_timer("retransmit", self._rto_state.rto_ms)
 
         # RFC 8985 §7.2 Tail Loss Probe scheduling. Arm the
         # 'f"{self}-tlp"' timer on every outbound data segment
@@ -1668,7 +1745,7 @@ class TcpSession:
                 now_ms=stack.timer.now_ms,
             )
             if pto_ms > 0:
-                stack.timer.register_timer(name=f"{self}-tlp", timeout=pto_ms)
+                self._arm_timer("tlp", pto_ms)
                 self._rack_tlp.tlp_armed = True
 
     def _build_sack_blocks(self) -> list[tuple[int, int]]:
@@ -1963,11 +2040,10 @@ class TcpSession:
         against the stale state of the prior connection.
         """
 
-        # Cancel every per-session timer the prior incarnation may
-        # have armed. The prefix matches every timer keyed on
-        # 'f"{self}-..."' (TIME-WAIT, retransmit, delayed-ACK,
-        # persist, keep-alive idle/probe, challenge-ACK rate limit).
-        stack.timer.unregister_timers_with_prefix(f"{self}-")
+        # Cancel every per-session logical timer the prior
+        # incarnation may have armed (TIME-WAIT, retransmit,
+        # delayed-ACK, persist, keep-alive, challenge-ACK).
+        self._cancel_all_timers()
 
         # Fresh ISS for the new incarnation. The 4-tuple is
         # unchanged but the time-driven 'M' clock advance in
@@ -2119,22 +2195,20 @@ class TcpSession:
         sacrificed in favour of the global rate-limit invariant
         which RFC 5961 mandates as a SHOULD-level requirement.
 
-        Implementation: a per-session 'stack.timer' entry named
-        '<session>-challenge_ack' acts as the sliding-window
-        gate. 'is_expired' returns True when the entry has fired
-        or was never registered - either way we are outside the
-        rate-limit window and may emit; otherwise we suppress.
+        Implementation: a per-session 'challenge_ack' logical
+        timer acts as the sliding-window gate. While it is armed
+        and unfired we are inside the rate-limit window and
+        suppress; otherwise we emit and (re-)arm it.
         """
 
-        rate_limit_timer = f"{self}-challenge_ack"
-        if not stack.timer.is_expired(rate_limit_timer):
+        if self._timer_armed("challenge_ack"):
             __debug__ and log(
                 "tcp-ss",
                 f"[{self}] - Challenge ACK suppressed by RFC 5961 §3 rate limit",
             )
             return
         self._transmit_packet(flag_ack=True)
-        stack.timer.register_timer(name=rate_limit_timer, timeout=tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
+        self._arm_timer("challenge_ack", tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
 
     def _keepalive_arm_idle(self) -> None:
         """
@@ -2152,9 +2226,9 @@ class TcpSession:
         if not self._keepalive.enabled:
             return
         self._keepalive.reset_for_idle()
-        stack.timer.register_timer(
-            name=f"{self}-keepalive",
-            timeout=self._keepalive.idle_timeout(default=tcp__constants.KEEPALIVE_IDLE_TIME),
+        self._arm_timer(
+            "keepalive",
+            self._keepalive.idle_timeout(default=tcp__constants.KEEPALIVE_IDLE_TIME),
         )
 
     def _keepalive_tick(self) -> None:
@@ -2188,7 +2262,7 @@ class TcpSession:
         if not self._keepalive.active:
             self._keepalive_arm_idle()
             return
-        if not stack.timer.is_expired(f"{self}-keepalive"):
+        if not self._timer_expired("keepalive"):
             return
         max_count = self._keepalive.max_probes(default=tcp__constants.KEEPALIVE_PROBE_MAX_COUNT)
         if self._keepalive.probes_unacked >= max_count:
@@ -2214,9 +2288,9 @@ class TcpSession:
             tcp__win=self._rcv_wnd >> self._win.rcv_wsc,
         )
         self._keepalive.probes_unacked += 1
-        stack.timer.register_timer(
-            name=f"{self}-keepalive",
-            timeout=self._keepalive.interval_timeout(default=tcp__constants.KEEPALIVE_PROBE_INTERVAL),
+        self._arm_timer(
+            "keepalive",
+            self._keepalive.interval_timeout(default=tcp__constants.KEEPALIVE_PROBE_INTERVAL),
         )
         __debug__ and log(
             "tcp-ss",
@@ -2644,16 +2718,15 @@ class TcpSession:
                     # probing mandatory because without it the
                     # connection would stall indefinitely whenever the
                     # peer temporarily closed its window.
-                    persist_timer = f"{self}-persist"
                     if not self._persist.active:
                         self._persist.active = True
                         self._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
-                        stack.timer.register_timer(name=persist_timer, timeout=self._persist.timeout)
+                        self._arm_timer("persist", self._persist.timeout)
                         __debug__ and log(
                             "tcp-ss",
                             f"[{self}] - Persist: zero-window, armed timer " f"with timeout {self._persist.timeout} ms",
                         )
-                    elif stack.timer.is_expired(persist_timer):
+                    elif self._timer_expired("persist"):
                         with self._lock__tx_buffer:
                             probe_data = bytes(self._tx.buffer[self._tx_buffer_nxt : self._tx_buffer_nxt + 1])
                         __debug__ and log(
@@ -2665,7 +2738,7 @@ class TcpSession:
                         # it for Nagle so subsequent partials defer.
                         self._snd_seq.sml = self._snd_seq.nxt
                         self._persist.timeout = min(self._persist.timeout * 2, tcp__constants.PERSIST_TIMEOUT_MAX)
-                        stack.timer.register_timer(name=persist_timer, timeout=self._persist.timeout)
+                        self._arm_timer("persist", self._persist.timeout)
                 return
 
         # Check if we need to (re)transmit final FIN packet.
@@ -2682,14 +2755,19 @@ class TcpSession:
         Run Delayed ACK mechanism.
         """
 
-        if stack.timer.is_expired(f"{self}-delayed_ack"):
+        # NB: "not armed" (never started OR already fired), NOT
+        # "_timer_expired" — the §5.5 audit row for this site was
+        # wrong: the unarmed-flush behaviour is load-bearing. A
+        # CLOSE_WAIT/ESTABLISHED tick with no delayed-ACK window
+        # in progress must flush the held ACK immediately.
+        if not self._timer_armed("delayed_ack"):
             if gt32(self._rcv_seq.nxt, self._rcv_seq.una):
                 self._transmit_packet(flag_ack=True)
                 __debug__ and log(
                     "tcp-ss",
                     f"[{self}] - Sent out delayed ACK ({self._rcv_seq.nxt})",
                 )
-            stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
+            self._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
 
     def _retransmit_packet_timeout(self) -> None:
         """
@@ -2711,7 +2789,7 @@ class TcpSession:
         # snd_max' filters out the quiescent "nothing in flight"
         # case where 'is_expired' is True only because no timer is
         # running.
-        if not stack.timer.is_expired(f"{self}-retransmit"):
+        if not self._timer_expired("retransmit"):
             return
         if self._snd_seq.una == self._snd_seq.max:
             return
@@ -2827,10 +2905,7 @@ class TcpSession:
                 # negative-response cache so future active-
                 # opens to the same peer skip TFO entirely.
                 stack.tcp_stack.fastopen_negative.add(self._remote_ip_address)
-        stack.timer.register_timer(
-            name=f"{self}-retransmit",
-            timeout=self._rto_state.rto_ms,
-        )
+        self._arm_timer("retransmit", self._rto_state.rto_ms)
         __debug__ and log(
             "tcp-ss",
             f"[{self}] - RFC 6298 §5.5 back-off: rto_ms -> "
@@ -3191,7 +3266,7 @@ class TcpSession:
         # spuriously fire a retransmit on every FSM tick.
         if not self._rack_tlp.tlp_armed:
             return
-        if not stack.timer.is_expired(f"{self}-tlp"):
+        if not self._timer_expired("tlp"):
             return
         if self._snd_seq.una == self._snd_seq.max:
             # Nothing in flight - no tail to probe.
@@ -3246,10 +3321,7 @@ class TcpSession:
 
         # RFC 8985 §7.3: re-arm the RTO timer after probe so
         # the connection retains its timeout fallback.
-        stack.timer.register_timer(
-            name=f"{self}-retransmit",
-            timeout=self._rto_state.rto_ms,
-        )
+        self._arm_timer("retransmit", self._rto_state.rto_ms)
 
     def _rack_reorder_tick(self) -> None:
         """
@@ -3261,7 +3333,7 @@ class TcpSession:
         if more candidates exist.
         """
 
-        if not stack.timer.is_expired(f"{self}-rack"):
+        if not self._timer_expired("rack"):
             return
         if self._rack_tlp.rack_xmit_ts == 0:
             return
@@ -3278,10 +3350,7 @@ class TcpSession:
             now_ms=stack.timer.now_ms,
         )
         if rack_timeout_ms > 0:
-            stack.timer.register_timer(
-                name=f"{self}-rack",
-                timeout=rack_timeout_ms,
-            )
+            self._arm_timer("rack", rack_timeout_ms)
 
     def _rack_process_ack(self, packet_rx_md: TcpMetadata) -> None:
         """
@@ -3370,10 +3439,7 @@ class TcpSession:
             # re-run the loss-detection check and mark the
             # segment lost once the window has elapsed.
             if rack_timeout_ms > 0:
-                stack.timer.register_timer(
-                    name=f"{self}-rack",
-                    timeout=rack_timeout_ms,
-                )
+                self._arm_timer("rack", rack_timeout_ms)
 
     def _confirm_neighbor_reachability(self) -> None:
         """
@@ -3650,12 +3716,7 @@ class TcpSession:
         # abort counter and manage the retransmit timer:
         # turn it off iff every in-flight byte is now
         # acked (§5.2), else restart it with the current
-        # 'rto_ms' (§5.3). 'unregister_timers_with_prefix'
-        # with the full timer name as prefix is the
-        # canonical "stop this timer" idiom in the
-        # codebase; it incidentally drops any legacy
-        # 'f"{self}-retransmit_seq-X"' keys too, though
-        # Phase 3 no longer creates those.
+        # 'rto_ms' (§5.3) — see the cancel/arm below.
         self._retransmit_count = 0
         # RFC 8985 §7.4 TLP loss-detection on inbound ACK.
         # Apply BEFORE the cum-ACK drain hook so a Case-3
@@ -3690,20 +3751,17 @@ class TcpSession:
                 f"CC: ssthresh={self._cc.ssthresh} cwnd={self._cc.cwnd}",
             )
         if self._snd_seq.una == self._snd_seq.max:
-            stack.timer.unregister_timers_with_prefix(f"{self}-retransmit")
+            self._cancel_timer("retransmit")
             # RFC 8985 §7.2 TLP cancellation: when a
             # cum-ACK drains all in-flight bytes, there is
             # no tail to probe. Cancel the TLP timer so a
             # late expiry does not fire a stale probe.
             # Also clear the once-per-tail state so the
             # next tail can fire its own probe.
-            stack.timer.unregister_timers_with_prefix(f"{self}-tlp")
+            self._cancel_timer("tlp")
             self._rack_tlp.cancel_tlp()
         else:
-            stack.timer.register_timer(
-                name=f"{self}-retransmit",
-                timeout=self._rto_state.rto_ms,
-            )
+            self._arm_timer("retransmit", self._rto_state.rto_ms)
         self._phase2_frto_spurious_detect()
 
     def _phase2_frto_spurious_detect(self) -> None:
@@ -4036,7 +4094,7 @@ class TcpSession:
                 # First pending segment: ensure the delayed-ACK timer is
                 # armed so the timer-driven '_delayed_ack' will fire the
                 # ACK after tcp__constants.DELAYED_ACK_DELAY rather than immediately.
-                stack.timer.register_timer(name=f"{self}-delayed_ack", timeout=tcp__constants.DELAYED_ACK_DELAY)
+                self._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
         # Purge acked data from TX buffer.
         with self._lock__tx_buffer:
             self._tx.drain(bytes_count=self._tx_buffer_una)

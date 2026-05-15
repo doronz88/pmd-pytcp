@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -55,7 +54,7 @@ def fsm__time_wait__timer(session: TcpSession) -> None:
     timer expires, transition to CLOSED.
     """
 
-    if stack.timer.is_expired(f"{session}-time_wait"):
+    if session._timer_expired("time_wait"):
         session._change_state(FsmState.CLOSED)
 
 
@@ -152,10 +151,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     # already accepted (RCV.NXT - 1).
     if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_seq.nxt:
         session._transmit_packet(flag_ack=True)
-        stack.timer.register_timer(
-            name=f"{session}-time_wait",
-            timeout=tcp__constants.TIME_WAIT_DELAY,
-        )
+        session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
         __debug__ and log(
             "tcp-ss",
             f"[{session}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",

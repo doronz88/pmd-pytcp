@@ -254,7 +254,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
         )
         self.assertIn(
             f"{session}-retransmit",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "Pre-ACK precondition: the session-level retransmit "
                 "timer must be re-armed (via 'back_off') after the "
@@ -290,7 +290,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
 
         self.assertNotIn(
             f"{session}-retransmit",
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "RFC 6298 §5.2: a cum-ACK that drains all in-flight "
                 "bytes MUST turn off the session-level retransmit "

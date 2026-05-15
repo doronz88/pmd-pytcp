@@ -1761,10 +1761,10 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
         time_wait_timer_name = f"{session}-time_wait"
         self.assertIn(
             time_wait_timer_name,
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg="Setup invariant: TIME_WAIT timer MUST be registered.",
         )
-        timer_remaining_pre = self._timer.pending_timers[time_wait_timer_name]
+        timer_remaining_pre = self._pending_session_timers(session)[time_wait_timer_name]
 
         session.close()
         idempotent_tx = self._advance(ms=1)
@@ -1780,14 +1780,14 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
         )
         self.assertIn(
             time_wait_timer_name,
-            self._timer.pending_timers,
+            self._pending_session_timers(session),
             msg=(
                 "Idempotent close() MUST NOT cancel the "
                 "TIME_WAIT timer. The 2*MSL delay must run "
                 "to natural expiry."
             ),
         )
-        timer_remaining_post = self._timer.pending_timers[time_wait_timer_name]
+        timer_remaining_post = self._pending_session_timers(session)[time_wait_timer_name]
         # The advance(ms=1) above should have decremented the
         # timer by 1 ms; if close() cancelled-and-rearmed it,
         # the value would jump to TIME_WAIT_DELAY (much

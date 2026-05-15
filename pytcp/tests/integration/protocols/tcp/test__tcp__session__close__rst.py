@@ -1111,7 +1111,9 @@ class TestTcpClose__Rst(TcpSessionTestCase):
         self._drive_rx(frame=peer_data)
 
         session_prefix = f"{session}"
-        timers_before = {name: ms for name, ms in self._timer.pending_timers.items() if name.startswith(session_prefix)}
+        timers_before = {
+            name: ms for name, ms in self._pending_session_timers(session).items() if name.startswith(session_prefix)
+        }
         self.assertGreater(
             len(timers_before),
             0,
@@ -1144,7 +1146,9 @@ class TestTcpClose__Rst(TcpSessionTestCase):
 
         # The bug: per-session timer entries survive the session's
         # CLOSED transition.
-        timers_after = {name: ms for name, ms in self._timer.pending_timers.items() if name.startswith(session_prefix)}
+        timers_after = {
+            name: ms for name, ms in self._pending_session_timers(session).items() if name.startswith(session_prefix)
+        }
         self.assertEqual(
             len(timers_after),
             0,

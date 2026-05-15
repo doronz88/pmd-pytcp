@@ -72,9 +72,9 @@ class KeepaliveState:
 
     # Lazy-arm gate. False on a fresh session and on transitions
     # out of synchronized state; flipped True by the first
-    # arm_idle() so the per-tick service knows whether the timer
-    # was registered (distinct from 'stack.timer.is_expired'
-    # which conflates 'expired' with 'never registered').
+    # arm_idle() so the per-tick service knows whether keep-alive
+    # idling has begun (an orthogonal concern from whether the
+    # 'keepalive' logical timer is currently armed/expired).
     active: bool = False
 
     def reset_for_idle(self) -> None:

@@ -56,7 +56,6 @@ ver 3.0.4
 """
 
 from net_addr import Ip4Address
-from pytcp import stack
 from pytcp.protocols.tcp.tcp__session import (
     FsmState,
     SysCall,
@@ -1019,7 +1018,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
         # the timer at that interval. The next probe must fire
         # at exactly PERSIST_TIMEOUT_MAX, NOT 2 * PERSIST_TIMEOUT_MAX.
         session._persist.timeout = tcp__constants.PERSIST_TIMEOUT_MAX
-        stack.timer.register_timer(name=f"{session}-persist", timeout=tcp__constants.PERSIST_TIMEOUT_MAX)
+        session._arm_timer("persist", tcp__constants.PERSIST_TIMEOUT_MAX)
 
         early_tx = self._advance(ms=tcp__constants.PERSIST_TIMEOUT_MAX - 100)
         early_probes = [self._parse_tx(f) for f in early_tx if self._parse_tx(f).payload]

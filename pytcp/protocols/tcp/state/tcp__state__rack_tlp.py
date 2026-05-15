@@ -149,8 +149,8 @@ class RackTlpState:
     # 'tlp_max_ack_delay_ms' is the receiver's delayed-ACK
     # upper bound used by the §7.2 PTO inflation path.
     # 'tlp_armed' gates _tlp_pto_tick firing on actual arming
-    # (distinct from 'stack.timer.is_expired' which conflates
-    # 'expired' with 'never registered').
+    # (an orthogonal concern from whether the 'tlp' logical
+    # timer is currently armed/expired).
     tlp_is_retrans: bool = False
     tlp_end_seq: Seq32 | None = None
     tlp_max_ack_delay_ms: int = TLP__MAX_ACK_DELAY_MS_DEFAULT
