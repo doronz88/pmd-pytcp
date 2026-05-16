@@ -16,15 +16,26 @@
 #   sudo tools/capture.sh <scenario>
 #
 # Scenarios:
-#   boot   - full startup: IPv6 LLA/SLAAC DAD, MLDv2, RS/RA, IPv4 ACD
-#   arp    - RFC 5227 ARP Probe / Announcement
-#   icmp   - host pings the stack (ARP resolution + ICMP Echo)
-#   tcp    - TCP echo, client sends 'malpi' (the ASCII monkeys)
-#   udp    - UDP echo, client sends 'malpi' (the ASCII monkeys)
+#   boot     - full startup: IPv6 LLA/SLAAC DAD, MLDv2, RS/RA, IPv4 ACD
+#   arp      - RFC 5227 ARP Probe / Announcement
+#   icmp     - host pings the stack (ARP resolution + ICMP Echo)
+#   tcp      - TCP echo, client sends 'malpi' (the ASCII monkeys)
+#   udp      - UDP echo, client sends 'malpi' (the ASCII monkeys)
+#   icmp6    - host pings the stack over IPv6 (ND resolution + Echo)
+#   tcp6     - TCP echo over IPv6
+#   udp6     - UDP echo over IPv6
+#   frag-rx  - host sends an oversized ping; the stack reassembles
+#              the inbound IPv4 fragments and replies (fragmented)
+#   dhcp     - DHCPv4 client lease (DISCOVER/OFFER/REQUEST/ACK)
+#
+# The IPv6 scenarios add a ULA peer address to the auto-detected
+# host interface (removed on exit). The dhcp scenario REQUIRES a
+# reachable DHCPv4 server on the bridge; the others do not.
 #
 # Environment overrides:
 #   IFACE (tap7)  IP4 (192.168.1.77/24)  GW4 (192.168.1.1)
 #   PORT (7)      PEER (192.168.1.10 - the host side, for icmp)
+#   IP6 (fd00:1::77/64)  GW6 ()  PEER6 (fd00:1::1 - host side, v6)
 #
 set -euo pipefail
 
@@ -34,6 +45,10 @@ GW4="${GW4:-192.168.1.1}"
 PORT="${PORT:-7}"
 PEER="${PEER:-}"
 IP4_ADDR="${IP4%%/*}"
+IP6="${IP6:-fd00:1::77/64}"
+GW6="${GW6:-}"
+PEER6="${PEER6:-fd00:1::1}"
+IP6_ADDR="${IP6%%/*}"
 
 # Readiness waits. A static address is not owned until RFC 5227 ACD
 # (and any IPv6 SLAAC) completes, then the service rebinds on its
@@ -51,6 +66,8 @@ LOG="$TMP/stack.log"
 OUT="$TMP/client.out"
 SVC_PID=""
 CAP_PID=""
+HOST_IF=""
+HOST_V6_ADDED=""
 
 cleanup() {
     [ -n "$SVC_PID" ] && kill -INT "$SVC_PID" 2>/dev/null || true
@@ -58,6 +75,9 @@ cleanup() {
     [ -n "$SVC_PID" ] && kill -9 "$SVC_PID" 2>/dev/null || true
     [ -n "$CAP_PID" ] && { kill -TERM "$CAP_PID" 2>/dev/null; sleep 1; kill -9 "$CAP_PID" 2>/dev/null; } || true
     pkill -9 -f 'examples\.' 2>/dev/null || true
+    # Remove the temporary IPv6 peer address we added to the host
+    # interface for the v6 scenarios (only if we added it).
+    [ -n "$HOST_V6_ADDED" ] && ip -6 addr del "${PEER6}/64" dev "$HOST_IF" 2>/dev/null || true
     rm -rf "$TMP"
 }
 trap cleanup EXIT INT TERM
@@ -129,6 +149,21 @@ wire() { # tshark args
         out="$(tshark -r "$PCAP" 2>&1 || true)"
     fi
     [ -n "$out" ] && echo "$out" || echo "(no packets captured)"
+}
+
+# Auto-detect the host-side interface (the one carrying the host's
+# own non-loopback IPv4) and add a ULA peer address so the host can
+# reach the stack's static IPv6 over the bridge. Reversed on exit.
+add_host_v6() {
+    HOST_IF="$(ip -4 -o addr show 2>/dev/null \
+        | awk '$2!="lo"{print $2; exit}')"
+    [ -n "$HOST_IF" ] || die "could not determine host interface for the IPv6 peer"
+    if ! ip -6 -o addr show dev "$HOST_IF" 2>/dev/null | grep -q "$PEER6"; then
+        ip -6 addr add "${PEER6}/64" dev "$HOST_IF" \
+            && HOST_V6_ADDED=1
+        # Give DAD on the freshly added host address time to settle.
+        sleep 2
+    fi
 }
 
 scenario="${1:-}"
@@ -219,6 +254,85 @@ tcp | udp)
         -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 \
         -e ip.id -e ip.flags.mf -e ip.frag_offset \
         -e tcp.flags.str -e _ws.col.Info
+    ;;
+icmp6)
+    add_host_v6
+    start_capture "ip6 or arp"
+    start_example examples.stack --stack-interface "$IFACE" \
+        --stack-ip6-address "$IP6" --stack-no-ip4
+    wait_for "Successfully claimed IPv6 address ${IP6_ADDR}" "$CLAIM_TIMEOUT"
+    sleep 1
+    ping -6 -c 3 -W 1 "$IP6_ADDR" >"$OUT" 2>&1 || true
+    sleep 1
+    stop_example
+    echo "=== host ping6 (${PEER6} -> ${IP6_ADDR}) ==="
+    tail -2 "$OUT"
+    # ICMPv6 ND resolution + Echo. ND uses link-local / multicast
+    # endpoints; ipv6.src/ipv6.dst fill the standard src → dst
+    # column, blank (—) for those named in the summary.
+    wire -Y "ipv6.addr==${IP6_ADDR} || icmpv6" -T fields \
+        -e frame.time_relative -e _ws.col.Protocol \
+        -e ipv6.src -e ipv6.dst -e _ws.col.Info
+    ;;
+tcp6 | udp6)
+    add_host_v6
+    if [ "$scenario" = tcp6 ]; then
+        mod=examples.service__tcp_echo
+    else
+        mod=examples.service__udp_echo
+    fi
+    start_capture "ip6 or arp"
+    start_example "$mod" --local-port "$PORT" --stack-interface "$IFACE" \
+        --stack-ip6-address "$IP6" --stack-no-ip4
+    wait_for "Socket created, bound to ${IP6_ADDR}, port ${PORT}" "$BIND_TIMEOUT"
+    [ "$scenario" = tcp6 ] && wait_for "Socket set to listening mode" 10
+    sleep 1
+    if [ "$scenario" = tcp6 ]; then
+        printf 'malpi\nquit\n' | timeout 12 nc -6 -w8 "$IP6_ADDR" "$PORT" >"$OUT" 2>&1 || true
+    else
+        printf 'malpi\n' | timeout 12 nc -6 -u -w8 "$IP6_ADDR" "$PORT" >"$OUT" 2>&1 || true
+    fi
+    sleep 2
+    stop_example
+    echo "=== client output (banner + echoed 'malpi' monkeys) ==="
+    cat "$OUT"
+    log_highlights 'Starting the service|Socket created, bound|bind\(\) call failed|listening mode|Inbound connection|Received [0-9]+ bytes|Sent [0-9]+ bytes|DROPPED__|Failed to send|Unable to sent' 20
+    wire -Y "ipv6.addr==${IP6_ADDR} || icmpv6" -T fields \
+        -e frame.time_relative -e _ws.col.Protocol \
+        -e ipv6.src -e ipv6.dst -e tcp.flags.str -e _ws.col.Info
+    ;;
+frag-rx)
+    start_capture "arp or icmp"
+    start_example examples.stack --stack-interface "$IFACE" \
+        --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
+    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" "$CLAIM_TIMEOUT"
+    sleep 1
+    # 4000-byte payload: the host fragments the Echo Request into
+    # multiple IPv4 fragments; the stack reassembles, then itself
+    # fragments the 4000-byte Echo Reply.
+    ping -c 2 -s 4000 -W 1 "$IP4_ADDR" >"$OUT" 2>&1 || true
+    sleep 1
+    stop_example
+    echo "=== host ping -s 4000 (-> ${IP4_ADDR}) ==="
+    tail -2 "$OUT"
+    wire -Y 'arp || icmp' -T fields \
+        -e frame.time_relative -e ip.src -e ip.dst \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 \
+        -e ip.id -e ip.flags.mf -e ip.frag_offset -e _ws.col.Info
+    ;;
+dhcp)
+    # No --stack-ip4-address ⇒ stack.init() runs the DHCPv4
+    # client (ip4_dhcp defaults True when no static IPv4).
+    # REQUIRES a reachable DHCPv4 server on the bridge.
+    start_capture "arp or port 67 or port 68"
+    start_example examples.stack --stack-interface "$IFACE" --stack-no-ip6
+    wait_for "Successfully claimed IPv4 address" "$CLAIM_TIMEOUT"
+    sleep 1
+    stop_example
+    log_highlights 'Found cached lease|DHCP|Initial desync|Successfully claimed IPv4|Sent out ARP Announcement' 20
+    wire -Y 'dhcp || bootp || arp' -T fields \
+        -e frame.time_relative -e _ws.col.Protocol -e ip.src -e ip.dst \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 -e _ws.col.Info
     ;;
 *)
     grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'
