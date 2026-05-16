@@ -130,20 +130,11 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
         click.option("--bind-timeout", envvar="BIND_TIMEOUT", type=int, default=90, show_default=True),
         click.option("--raw", is_flag=True, default=False, help="Dump the full unfiltered tshark summary."),
         click.option("--keep", is_flag=True, default=False, help="Keep the pcap and print its path."),
-        # tc netem impairment on the host-side interface (reversed
-        # on exit). Exercises the real stack under loss / latency /
-        # reordering without a packet crafter.
-        click.option("--loss", type=float, default=None, help="netem packet loss %% on the host iface."),
-        click.option("--delay-ms", type=float, default=None, help="netem one-way delay (ms)."),
-        click.option("--reorder", type=float, default=None, help="netem reorder %% (implies a small delay)."),
-        click.option("--duplicate", type=float, default=None, help="netem duplicate %%."),
-        click.option("--corrupt", type=float, default=None, help="netem corrupt %%."),
-        # e2e assertions: every pattern must match the captured
-        # stack log / wire decode / client output, else exit 1.
-        click.option("--expect-log", multiple=True, help="Regex that MUST match the stack log (repeatable)."),
-        click.option("--expect-wire", multiple=True, help="Regex that MUST match the wire decode (repeatable)."),
-        click.option("--expect-client", multiple=True, help="Regex that MUST match client output (repeatable)."),
     ]
+    # Note: the tc netem impairment (--loss/--delay-ms/...) and the
+    # e2e expectation assertions (--expect-*) are run-wide concerns
+    # and live as GLOBAL group options (see tools/capture/__main__);
+    # make_config() merges them from the click context.
     for option in reversed(options):
         func = option(func)
     return func
@@ -151,10 +142,14 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
 
 def make_config(**kwargs: Any) -> Config:
     """
-    Build a Config from the common click option values, ignoring
-    any scenario-specific extras the callback also received.
+    Build a Config from the per-scenario common options merged
+    with the run-wide global options (impairment / expectations)
+    stashed on the click context by the top-level group.
     """
 
+    ctx = click.get_current_context(silent=True)
+    run_options: dict[str, Any] = dict(ctx.obj) if ctx is not None and ctx.obj else {}
+    kwargs = {**kwargs, **run_options}
     fields = {
         "iface",
         "ip4",

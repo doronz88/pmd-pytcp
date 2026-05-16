@@ -31,6 +31,8 @@ tools/capture/__main__.py
 ver 3.0.4
 """
 
+from typing import Any
+
 import click
 
 from tools.capture.scenarios import COMMANDS
@@ -44,13 +46,31 @@ from tools.capture.scenarios import COMMANDS
         "drives the exchange, captures the wire with tshark, and "
         "prints a README-ready transcript. Run as root with the "
         "TAP/bridge set up (make tap7 && make bridge) and the venv "
-        "built (make venv)."
+        "built (make venv). The impairment / assertion options are "
+        "global — pass them before the scenario, e.g. "
+        "`capture --loss 15 ip4-tcp-monkeys`."
     ),
 )
-def cli() -> None:
+# Run-wide concerns (apply to every scenario): tc netem impairment
+# on the host interface and the e2e expectation assertions. Global
+# group options, so they come BEFORE the scenario name.
+@click.option("--loss", type=float, default=None, help="netem packet loss %% on the host iface.")
+@click.option("--delay-ms", type=float, default=None, help="netem one-way delay (ms).")
+@click.option("--reorder", type=float, default=None, help="netem reorder %% (implies a small delay).")
+@click.option("--duplicate", type=float, default=None, help="netem duplicate %%.")
+@click.option("--corrupt", type=float, default=None, help="netem corrupt %%.")
+@click.option("--expect-log", multiple=True, help="Regex that MUST match the stack log (repeatable).")
+@click.option("--expect-wire", multiple=True, help="Regex that MUST match the wire decode (repeatable).")
+@click.option("--expect-client", multiple=True, help="Regex that MUST match client output (repeatable).")
+@click.pass_context
+def cli(ctx: click.Context, **run_options: Any) -> None:
     """
     PyTCP capture tool command group.
     """
+
+    # Stash the run-wide options so every scenario's make_config()
+    # can merge them in regardless of which subcommand ran.
+    ctx.obj = run_options
 
 
 for _command in COMMANDS:
