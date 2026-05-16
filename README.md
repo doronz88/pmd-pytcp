@@ -255,23 +255,25 @@ ARP Announcement  Opcode: request   Sender IP: 192.168.1.77   Target IP: 192.168
 
 #### ARP resolution and ICMP Echo
 
-A host on the segment pings the stack. It resolves the stack's MAC
-via ARP, then the stack answers ICMP Echo:
+A host on the segment pings the stack. Having learned the stack's MAC
+from its ARP Announcement, the host sends the Echo Request directly;
+the stack then resolves the *host's* MAC via ARP before replying:
 
-Wire capture (`tshark -i tap7`):
+Wire capture (`tshark -i tap7`, rebased to the first Echo Request):
 
 ```text
-11.83  ARP   Who has 192.168.1.77? Tell 192.168.1.10
-11.83  ARP   192.168.1.77 is at 02:00:00:77:77:77
-11.83  ICMP  Echo (ping) request   id=0x626b, seq=1, ttl=64
-11.83  ICMP  Echo (ping) reply     id=0x626b, seq=1, ttl=64
-12.83  ICMP  Echo (ping) request   id=0x626b, seq=2, ttl=64
-12.83  ICMP  Echo (ping) reply     id=0x626b, seq=2, ttl=64
-13.88  ICMP  Echo (ping) request   id=0x626b, seq=3, ttl=64
-13.88  ICMP  Echo (ping) reply     id=0x626b, seq=3, ttl=64
+0.000  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=1, ttl=64
+0.001  ARP   Who has 192.168.1.10? Tell 192.168.1.77
+0.001  ARP   192.168.1.10 is at a2:4b:a1:00:92:56
+0.001  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=1, ttl=64
+1.001  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=2, ttl=64
+1.002  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=2, ttl=64
+2.046  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=3, ttl=64
+2.047  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=3, ttl=64
 ```
 
-From the pinging host: `3 packets transmitted, 3 received, 0% packet loss, rtt avg ~1.0 ms`.
+From the pinging host:
+`3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.807/1.017/1.405/0.274 ms`.
 
 #### Monkeys over TCP
 
