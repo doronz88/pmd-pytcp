@@ -383,6 +383,37 @@ active close — FIN, peer ACK, peer FIN, FIN ACK — a complete TCP
 connection opened, used, and gracefully torn down entirely by
 pure-Python code.
 
+#### Monkeys over TCP — over IPv6
+
+The same demo, unchanged, over IPv6 (the service bound to a ULA;
+the host resolves it with ICMPv6 Neighbor Discovery instead of
+ARP). The IPv6 MSS is 1440 (vs 1460 on IPv4 — the 20-byte-larger
+fixed header). Same handshake, echo, and RFC 9293 §3.6 graceful
+close:
+
+```text
+0.000  ICMPv6  fd00:1::1 → ff02::1:ff00:77   Neighbor Solicitation for fd00:1::77   (from a2:4b:a1:00:92:56)
+0.001  ICMPv6  fd00:1::77 → fd00:1::1         Neighbor Advertisement — fd00:1::77 is at 02:00:00:77:77:77
+0.001  TCP     fd00:1::1 → fd00:1::77         [SYN]       Seq=0 MSS=1440 SACK_PERM WS=1024 TSopt
+0.003  TCP     fd00:1::77 → fd00:1::1         [SYN,ACK]   Seq=0 Ack=1 MSS=1440 SACK_PERM WS=128 TSopt
+0.003  TCP     fd00:1::1 → fd00:1::77         [ACK]       Seq=1 Ack=1
+0.003  TCP     fd00:1::1 → fd00:1::77         [PSH,ACK]   len 6      "malpi\n"  (request)
+0.006  TCP     fd00:1::77 → fd00:1::1         [ACK]       len 1428   banner + monkeys, segment 1 (full MSS)
+0.006  TCP     fd00:1::1 → fd00:1::77         [ACK]       Ack=1429
+0.008  TCP     fd00:1::77 → fd00:1::1         [PSH,ACK]   len 166    monkeys, segment 2
+0.008  TCP     fd00:1::1 → fd00:1::77         [ACK]       Ack=1595
+2.999  TCP     fd00:1::1 → fd00:1::77         [PSH,ACK]   len 5      "quit\n"  (request)
+3.001  TCP     fd00:1::77 → fd00:1::1         [PSH,ACK]   len 35     "SERVICE CLOSING" banner
+3.001  TCP     fd00:1::1 → fd00:1::77         [ACK]       Ack=1630
+3.005  TCP     fd00:1::77 → fd00:1::1         [FIN,ACK]              PyTCP active close
+3.045  TCP     fd00:1::1 → fd00:1::77         [ACK]       Ack=1631   peer acks the FIN
+6.001  TCP     fd00:1::1 → fd00:1::77         [FIN,ACK]              peer closes its half
+6.002  TCP     fd00:1::77 → fd00:1::1         [ACK]       Ack=13     connection fully closed (no RST)
+```
+
+(`tshark` labels the port-7 data segments "ECHO" — a heuristic;
+they are plain TCP.)
+
 #### Monkeys over UDP — IPv4 fragmentation
 
 The same ASCII monkeys, echoed over the UDP service. The reply
