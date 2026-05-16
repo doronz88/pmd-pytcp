@@ -543,3 +543,49 @@ Stack log:
 0024.89 | DHCP4 | RX - DHCPv4 Reply ... [message_type ACK, lease_time 3600 ...]
 0032.14 | DHCP4 | Lease acquired: 192.168.1.145/24 (lease_time=3600s, server=192.168.1.1)
 ```
+
+#### TCP under packet loss — retransmission & recovery
+
+Every example above runs on a clean bridge, so the loss-recovery
+machinery never fires. Driven through a `tc netem loss 20%`
+qdisc, the same TCP monkeys exchange has segments dropped in both
+directions — and the stack recovers: it retransmits its own
+segments on RTO, the peer SACKs the holes, and the connection
+still completes and closes cleanly (no RST). One representative
+run (loss is random — every run drops different packets; the
+invariant is that it *completes*), rebased to the SYN:
+
+```text
+0.000  TCP  192.168.1.10 → 192.168.1.77   [SYN]                 Seq=0 MSS=1460 SACK_PERM WS=1024
+0.003  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]             Seq=0 Ack=1
+0.003  TCP  192.168.1.10 → 192.168.1.77   [ACK]
+0.006  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]             open banner, Len 33
+0.035  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]             [TCP Retransmission] Seq=1 Len 33  (banner drop → RTO resend)
+0.035  TCP  192.168.1.10 → 192.168.1.77   [ACK]                 [Previous segment not captured] SACK SLE=1 SRE=34
+0.036  TCP  192.168.1.77 → 192.168.1.10   [ACK]                 [TCP Dup ACK]
+0.208  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]             [TCP Retransmission] "malpi\n" request resent
+0.211  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]             monkeys, segment 1
+0.279  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]             [TCP Retransmission] Seq=1482 Len 113  monkeys seg 2 resent
+0.279  TCP  192.168.1.10 → 192.168.1.77   [ACK]                 SACK SLE=1482 SRE=1595
+3.210  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]             "quit\n" request
+4.001  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]             [TCP Retransmission] "SERVICE CLOSING" banner resent
+4.004  TCP  192.168.1.77 → 192.168.1.10   [FIN,ACK]             PyTCP active close
+4.044  TCP  192.168.1.10 → 192.168.1.77   [ACK]                 peer acks the FIN
+6.000  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]             peer closes its half
+6.001  TCP  192.168.1.77 → 192.168.1.10   [ACK]                 connection fully closed (no RST)
+```
+
+Reproduce and assert it survives the loss (exits non-zero if the
+connection does not complete):
+
+```bash
+sudo make capture SCENARIO=ip4-tcp-monkeys \
+  CAPTURE_ARGS='--loss 20 --expect-wire "\[FIN, ACK\]"'
+# … → [PASS] wire: /\[FIN, ACK\]/ , exit 0
+```
+
+`--loss` (and `--delay-ms` / `--reorder` / `--duplicate` /
+`--corrupt`) plus the `--expect-log` / `--expect-wire` /
+`--expect-client` assertions are global options on every
+scenario, so any capture can be turned into a loss / latency
+e2e check.
