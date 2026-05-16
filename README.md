@@ -31,10 +31,6 @@ Contributions are welcome.
 
 ### Features
 
-Highlights per protocol, with the governing RFC(s) in parentheses.
-Conformance is tracked through per-RFC adherence audits under
-`docs/rfc/`; some areas are still in progress.
-
 #### Stack & sockets (engineering, non-RFC)
 
  - Zero-copy packet parser and assembler (buffer-protocol / memoryview based).
