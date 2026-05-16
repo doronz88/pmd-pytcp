@@ -117,105 +117,116 @@ stack.stop()
 
 ### Features
 
-#### Already implemented:
+PyTCP tracks RFC conformance through per-RFC adherence audits under
+`docs/rfc/`. The list below summarises those audits per protocol.
+**Full** = substantially implemented and conformant for a host stack;
+**Partial** = implemented with documented gaps; items still on the
+roadmap (host-stack gaps, or Phase-2 router-grade scope) are noted at
+the end of each protocol.
 
- - Stack - *Fast Packet Parser using 'zero copy' approach.*
- - Stack - *Fast Packet Assembler using 'zero copy' approach.*
- - Stack - *MAC address manipulation library - Compatible with buffer protocol (Memoryview).*
- - Stack - *IPv4 address manipulation library - Compatible with buffer protocol (Memoryview) and not dependent on Python standard library.*
- - Stack - *IPv6 address manipulation library - Compatible with buffer protocol (Memoryview) and not dependent on Python standard library.*
- - Stack - *Importable as a zero-runtime-dependency library (stdlib only), split into three independent packages: net_addr, net_proto, pytcp.*
- - Stack - *Event-driven millisecond-resolution timer (heap-based deadline scheduler, no polling tick).*
- - Stack - *Runtime-tunable sysctl registry mirroring the Linux /proc/sys/net/ surface (boot-time and live overrides).*
- - Stack - *Link control API (ip-link-style): per-interface MAC / MTU / state / counters.*
- - Stack - *Per-protocol packet-flow stat counters for diagnostics and packet-flow tracing in tests.*
- - Stack - *TX-path feedback mechanism so send failures are reported back to sockets.*
- - Stack - *Homegrown high-performance logger (no third-party logging dependency).*
- - Code - *Native 'unittest' test suite (zero non-stdlib runtime deps); ~11,000 unit + integration tests; per-RFC adherence audits under docs/rfc/.*
- - Ethernet protocol - *Ethernet II frames (RFC 894) and IEEE 802.3 frames with LLC + SNAP encapsulation (RFC 1042).*
- - Ethernet protocol - *Unicast, IPv4 multicast, IPv6 multicast and broadcast addressing.*
- - ARP protocol - *Replies, queries, ARP cache mechanism (RFC 826).*
- - ARP protocol - *ARP Probe/Announcement IPv4 Address Conflict Detection (RFC 5227).*
- - IPv4 protocol - *Default routing, the stack can talk to hosts over the Internet using IPv4 protocol.*
- - IPv4 protocol - *Automatic IPv4 address configuration using the DHCPv4 client (RFC 2131/2132).*
- - IPv4 protocol - *IPv4 link-local autoconfiguration (RFC 3927).*
- - IPv4 protocol - *Inbound packet defragmentation, robust mechanism able to handle out-of-order and overlapping data fragments.*
- - IPv4 protocol - *Outbound packet fragmentation.*
- - IPv4 protocol - *IPv4 options parsed as typed objects; Path MTU Discovery (RFC 1191).*
- - IPv4 protocol -  *Multiple stack's IPv4 addresses supported, each of them acts as it was assigned to separate VRF* 
- - ICMPv4 protocol - *Echo-request, echo-reply, and the destination-unreachable / time-exceeded / parameter-problem error family with RFC 1122 generation gates and error rate-limiting.*
- - IPv6 protocol - *Default routing, the stack can talk to hosts over the Internet using IPv6 protocol.*
- - IPv6 protocol - *Automatic link-local address configuration using EUI64 and Duplicate Address Detection.*
- - IPv6 protocol - *SLAAC global address configuration via Router Advertisement (RFC 4862).*
- - IPv6 protocol - *RFC 7217 stable opaque interface identifiers and RFC 8981 temporary (privacy) addresses with lifetime management.*
- - IPv6 protocol - *RFC 6724 default source / destination address selection.*
- - IPv6 protocol - *Default-router selection with RFC 4191 preferences, RFC 4311 / RFC 8028 first-hop selection.*
- - IPv6 protocol - *Automatic assignment of Solicited Node Multicast addresses.*
- - IPv6 protocol - *Automatic assignment of IPv6 multicast MAC addresses.*
- - IPv6 protocol - *Typed extension-header chain parsing; Path MTU Discovery (RFC 8201).*
- - IPv6 protocol - *Inbound packet defragmentation (out-of-order / overlapping / atomic-fragment handling) and outbound fragmentation.*
- - ICMPv6 protocol - *Echo-request, echo-reply, and the destination-unreachable / time-exceeded / parameter-problem / packet-too-big error family (RFC 4443).*
- - ICMPv6 protocol - *Neighbor Discovery (NS/NA/RS/RA) with RFC 4861 Hop-Limit acceptance gates and a Neighbor cache.*
- - ICMPv6 protocol - *Optimistic DAD (RFC 4429), Enhanced DAD (RFC 7527), Gratuitous Neighbor Advertisement (RFC 9131).*
- - ICMPv6 protocol - *ND Redirect message processing (RFC 4861 §8).*
- - ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) - messages needed by the host (RFC 3810).*
- - UDP protocol - *Full support, including IPv6 zero-checksum datagrams (RFC 6935).*
- - UDP sockets - *Berkeley-sockets-style API; optional connect(); IP_RECVERR / MSG_ERRQUEUE error queue.*
- - UDP services - *The Echo, Discard, and Daytime services implemented for testing purposes (in 'examples').*
- - TCP protocol - *Full RFC 9293 Finite State Machine; the stack can exchange bulk data with other hosts over TCP.*
- - TCP protocol - *Options: MSS, Window Scale, SACK-Permitted/SACK, Timestamps; PAWS (RFC 7323), RFC 6691 MSS handling.*
- - TCP protocol - *Congestion control: NewReno (RFC 5681/6582) and CUBIC (RFC 9438), PRR (RFC 6937), HyStart++ (RFC 9406), ABE (RFC 8511).*
- - TCP protocol - *Loss recovery: fast retransmit/recovery, SACK-based recovery (RFC 6675), RACK-TLP (RFC 8985), F-RTO (RFC 5682), limited/early transmit.*
- - TCP protocol - *RFC 6298 RTO computation with Karn's algorithm and binary backoff; SYN/FIN retransmission.*
- - TCP protocol - *Hardening: RFC 5961 blind-attack mitigations, RFC 5927 ICMP-attack guard, RFC 6528 ISS, RFC 6056 port randomisation, RFC 1337 / RFC 6191 TIME-WAIT handling.*
- - TCP protocol - *TCP Fast Open (RFC 7413), AccECN (RFC 9768), keep-alive, zero-window probing / persist timer, SWS avoidance, Nagle.*
- - TCP/UDP - *Datagram Packetization Layer Path MTU Discovery (RFC 8899 / RFC 4821).*
- - TCP sockets - *Berkeley-sockets-style API: fileno()/eventfd + selectors integration, blocking/non-blocking modes, errno-mapped OSError, getaddrinfo family, common setsockopt options.*
- - RAW sockets - *RAW IP socket support with explicit protocol selection.*
+#### Stack & sockets (engineering, non-RFC)
 
-#### To be implemented:
+ - Zero-copy packet parser and assembler (buffer-protocol / memoryview based).
+ - `net_addr` value-type libraries for MAC / IPv4 / IPv6 addresses, networks, hosts and masks - no Python standard-library dependency.
+ - Importable as a zero-runtime-dependency library (stdlib only), split into three independent packages: `net_addr`, `net_proto`, `pytcp`.
+ - Event-driven millisecond-resolution timer (heap-based deadline scheduler, no polling tick).
+ - Runtime-tunable sysctl registry mirroring the Linux `/proc/sys/net/` surface (boot-time and live overrides).
+ - Link control API (ip-link-style): per-interface MAC / MTU / state / counters.
+ - Per-protocol packet-flow stat counters; TX-path feedback so send failures reach sockets.
+ - Homegrown high-performance logger (no third-party logging dependency).
+ - Berkeley-sockets-style API for TCP / UDP / RAW: `fileno()`/eventfd + `selectors` integration, blocking & non-blocking modes, errno-mapped `OSError`, `getaddrinfo` family, common `setsockopt` options, `IP_RECVERR`/`MSG_ERRQUEUE` error queue.
+ - Native `unittest` suite (~11,000 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
 
- - [x] Ethernet II - *Ensure the minimum value for the 'type' field is 0x600, part of integrity checks*
- - [ ] Protocols - *Refactor integrity and sanity messages to be more consistent and provide more detail on the issue, eg. length of the bad packet, etc.*
- - [ ] IPv4/TCP/ICMPv6 - *Reconsider mechanism of adding options after creating initial options object.*
- - [x] ICMPv4 - *Add proper assert messages.*
- - [x] ICMPv6 - *Add proper assert messages.*
- - [x] ICMPv4 - *Refactor unit tests to test assembling and parsing on packet vs message classes.*
- - [x] ICMPv6 - *Refactor unit tests to test assembling and parsing on packet vs message classes.*
+#### Ethernet
 
- - [x] ICMPv6 - *MLDv2 support reworked into the standard FPA/FPP six-file layout with full unit coverage.*
- - [x] Testing - *Refactor packet flow tests (tests/packet_flow_*.py) to use the same format and dir as FPA tests based on test_frames.*
- - [x] Testing - *Create FPA unit tests for MLDv2 Report (len, str, assemble).*
- - [ ] IPv4 - *Reimplement packet defragmentation to store whole packets in flow DB instead of making copies of the IP header and data.*
- - [x] Stack - *Implement RAW socket support - to be used by example, ICMP-Echo client.*
- - [x] Code - *Migrate the test suite to native 'unittest' (replacing the Testslide framework) and broaden coverage.*
- - [x] Code - *Rewrite DHCPv4 protocol support to use standard FPA/FPP approach instead of legacy code.*
- - [ ] Stack - *Get back to implementing the stack debugging console so certain information about stack components can be displayed on demand by sending commands. e.g., 'show icmpv6 nd cache', 'show ipv6 route', etc... it should also let you run interactive commands like ping or stack's UDP/TCP echo clients.*
- - [ ] QUIC protocol - *Research and plan for the implementation. This depends on the ability to create a lab environment for it.*
- - [ ] IPv6 protocol - *Redesign the RA PI option handling and ND prefix auto-configuration to use A and L flags properly. Some research is also needed when a different than /64 prefix is advertised.*
- - [ ] IPv6 protocol - *Implement remaining extension headers.*
- - [ ] IPv6 protocol - *Validate and possibly reimplement certain IPv6 mechanisms/processes according to RFC rules.*
- - [x] IPv6 protocol - *Investigate Hop-by-Hop Options header and its relation to MLD2 Report message, implement if needed for MLD2 to work properly.*
- - [x] ICMPv6 protocol - *Implement ND Redirect message.*
- - [x] ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) - stack responds to MLD queries with a scheduled MLDv2 Report.*
- - [x] TCP protocol - *Proper handling of RST packets in various states (RFC 5961 blind-attack hardening).*
- - [ ] TCP protocol - *Need to rework the CLOSE syscall mechanism so the FIN flag can be set on the last data packet instead of being carried in a separate one.*
- - [x] TCP protocol - *ACK packet retransmission in case we got FIN retransmission in TIME_WAIT state (RFC 1337 Hazard #1).*
- - [x] TCP protocol - *implement proper response to packets containing old SEQ and/or ACK numbers (RFC 5961 acceptability checks).*
- - [ ] IPv6/IPv4 protocols - *proper routing mechanism, route tables, etc...*
- - [ ] IPv6/IPv4 protocols - *ability of stack to act as a router*
- - [x] ARP cache - *implement proper FSM (RFC 4861-style NUD: INCOMPLETE/REACHABLE/STALE/DELAY/PROBE/FAILED).*
- - [x] ICMPv6 ND cache - *implement proper FSM (RFC 4861-style NUD: INCOMPLETE/REACHABLE/STALE/DELAY/PROBE/FAILED).*
- - [x] Logging - *Replace Loguru with a homegrown logger to improve performance and flexibility.*
- - [x] Stack - *Convert the PyTCP stack to a library so external applications can easily import it.*
- - [x] Stack - *Packet flow counters to help gather packet statistics and let packet flow trace for unit testing.*
- - [x] Stack - *Implement feedback mechanism for TX path so packet sending failures can be communicated to sockets.*
- - [x] IPv6 protocol - *Ability to route traffic to external destinations via default gateway.*
- - [x] TCP protocol - *Ensure that event communication from TCP session to socket works properly (e.g., connection reset by peer).*
- - [x] IPv4 protocol - *Improvement of the IP defragmentation mechanism is needed, out of order fragment handling and purging of orphaned fragments.*
- - [x] UDP protocol - *Need UDP Echo client and mechanism to report receiving ICMP Port Unreachable message to UDP socket.*
- - [x] UDP sockets - *Overhaul is needed to make the 'end user' interface match Berkeley sockets more closely so 3rd party applications can use it without porting.*
- - [x] TCP sockets - *Overhaul is needed to make the 'end user' interface match Berkeley sockets more closely so 3rd party applications can use it without porting.*
+ - **RFC 894** IP over Ethernet (Ethernet II) - *Full* - framing, EtherType demux, ARP, broadcast/multicast mapping.
+ - **RFC 1042** IP over IEEE 802 (LLC + SNAP) - *Partial* - inbound 802.3/LLC/SNAP demux; outbound is Ethernet II only.
+
+#### ARP
+
+ - **RFC 826** Address Resolution Protocol - *Partial* - resolution + cache faithful; drop-on-miss packet not saved.
+ - **RFC 1122** Host Requirements (ARP) - *Partial* - core met; flood-prevention / packet-save not implemented.
+ - **RFC 5227** IPv4 Address Conflict Detection - *Full* - ARP Probe / Announcement / defence.
+ - **RFC 5494** ARP IANA considerations - *Full* - reserved/experimental codepoints rejected.
+ - *Roadmap:* RFC 1027 Proxy ARP (Phase-2 router).
+
+#### IPv4
+
+ - **RFC 791** Internet Protocol v4 - *Partial* - host wire format / options met; forwarding (TTL-decrement, source-route) is Phase-2.
+ - **RFC 815** Datagram reassembly - *Full* - sorted-offset reassembly, overlap rejection, lazy reaper.
+ - **RFC 3168** ECN - *Full*. **RFC 3927** IPv4 link-local autoconfiguration - *Full*. **RFC 6814** deprecated IPv4 options (never originated) - *Full*.
+ - **RFC 919 / 922** broadcasting - *Partial* (host-side). **RFC 1112** IP multicasting - *Partial* (send/receive; no IGMP). **RFC 1122** Host Requirements (IPv4) - *Partial*.
+ - **RFC 1918** private addresses, **RFC 2474** DSCP, **RFC 6398** Router Alert, **RFC 6864** IPv4 ID field, **RFC 6890** special-purpose registries, **RFC 7126** IP-option filtering - *Partial* (host-side; QoS/forwarding scope deferred).
+ - Multiple stack IPv4 addresses supported; outbound fragmentation.
+ - *Roadmap:* RFC 1191 IPv4 Path MTU Discovery (not implemented); RFC 1812 router requirements (Phase-2).
+
+#### ICMPv4
+
+ - **RFC 792** ICMPv4 - *Partial* - echo / unreachable / time-exceeded / parameter-problem with RFC 1122 generation gates + rate-limiting; Redirect (type 5) not implemented.
+ - **RFC 1122** Host Requirements (ICMP) - *Partial* - inbound Redirect processing not implemented.
+ - **RFC 6633** deprecate Source Quench - *Full*. **RFC 6918** deprecate obsolete ICMP types - *Full* (compliant by structural absence).
+ - *Roadmap:* RFC 1812 router ICMP, RFC 4884 extended multi-part ICMP.
+
+#### IPv6
+
+ - **RFC 8200** IPv6 + extension headers - *Full* - all §4 extension headers, TLV options, chain ordering.
+ - **RFC 4193** unique local addresses, **RFC 8190** special-purpose registries - *Full*.
+ - **RFC 5095** RH0 deprecation, **RFC 5722** overlapping-fragment handling, **RFC 6946** atomic fragments, **RFC 7739** fragment-ID randomisation - *Full*.
+ - **RFC 6437** flow label (keyed-hash, sysctl-toggle) - *Full*.
+ - **RFC 6724** default address selection - *Partial* - source-selection rules shipped; destination-address selection deferred.
+ - **RFC 8201** Path MTU Discovery for IPv6 - *Partial* - PTB demuxed & cached; no MTU aging / probe walk-back.
+ - **RFC 8504** IPv6 node requirements - *Partial* - core host requirements met.
+ - Inbound defragmentation + outbound fragmentation; Solicited-Node multicast & IPv6 multicast-MAC auto-assignment.
+
+#### ICMPv6 / Neighbor Discovery
+
+ - **RFC 4443** ICMPv6 - *Full* - echo + destination-unreachable / time-exceeded / parameter-problem / packet-too-big.
+ - **RFC 4862** Stateless Address Autoconfiguration - *Full* - link-local, DAD, RA prefix, 2-hour rule, lifetime sweep.
+ - **RFC 7217** stable opaque IIDs (default-on), **RFC 4429** Optimistic DAD, **RFC 7527** Enhanced DAD, **RFC 9131** Gratuitous NA, **RFC 6980** ND-no-fragmentation - *Full*.
+ - **RFC 7559** RS retransmission backoff, **RFC 4311** host-to-router load sharing - *Full*.
+ - **RFC 4861** Neighbor Discovery - *Partial* - host NS/NA/RS/RA + NUD cache + inbound Redirect processing; Redirect generation (router) is Phase-2.
+ - **RFC 3810** MLDv2 - *Partial* - listener role (responds to queries with a scheduled Report); querier role is Phase-2.
+ - **RFC 8981** temporary (privacy) addresses - *Partial* - random IID + per-prefix claim; regeneration cadence deferred.
+ - *Roadmap:* RFC 4191 default-router preferences / more-specific routes, RFC 8028 multihomed first-hop selection, RFC 8106 RA DNS options. (RFC 4941 superseded by 7217/8981; RFC 5175 RA-flags option has no consumer.)
+
+#### UDP
+
+ - **RFC 768** UDP - *Full*. **RFC 1122** Host Requirements (UDP) - *Full*.
+ - **RFC 6935** UDP zero-checksum over IPv6 - *Full*.
+ - **RFC 6056** transport-port randomisation - *Partial* - Algorithms 1 & 2.
+ - **RFC 8085** UDP usage guidelines - *Partial* - UDP-path PLPMTUD not implemented.
+ - UDP Echo / Discard / Daytime example services.
+
+#### TCP
+
+ - **RFC 9293** TCP - *Full* - complete wire format + Finite State Machine; bulk data transfer.
+ - **RFC 1122** Host Requirements (TCP), **RFC 6093** urgent mechanism - *Full*.
+ - *Congestion control:* **RFC 5681** Reno, **RFC 6582** NewReno, **RFC 9438** CUBIC, **RFC 9406** HyStart++, **RFC 8511** ABE, **RFC 6928** IW10 - *Full*.
+ - *Loss recovery:* **RFC 2018** SACK, **RFC 2883** D-SACK, **RFC 3042** Limited Transmit, **RFC 6675** SACK-based recovery, **RFC 6937** PRR, **RFC 8985** RACK-TLP, **RFC 5682** F-RTO - *Full*.
+ - *Timers:* **RFC 6298** RTO computation (Karn + backoff), **RFC 8961** time-based loss-detection requirements - *Full*.
+ - *Options:* **RFC 7323** Timestamps / Window Scale / PAWS, **RFC 6691** MSS, **RFC 7413** TCP Fast Open - *Full*.
+ - *ECN:* **RFC 3168** ECN, **RFC 9768** AccECN - *Full*; **RFC 8311** ECN relaxation - *Partial*.
+ - *Hardening:* **RFC 5961** blind in-window attacks, **RFC 5927** ICMP-against-TCP, **RFC 6056** port randomisation, **RFC 6528** hash-based ISS, **RFC 1337** / **RFC 6191** TIME-WAIT - *Full*.
+ - Keep-alive, zero-window probing / persist timer, SWS avoidance, Nagle.
+ - *Partial:* RFC 3522 Eifel detection, RFC 4821 PLPMTUD, RFC 8899 DPLPMTUD.
+ - *Roadmap:* RFC 4015 Eifel response, RFC 5562 ECN-setup SYN, RFC 5827 Early Retransmit, RFC 5925/5926 TCP-AO, RFC 7661 CWV, RFC 8257 DCTCP, RFC 8684 MPTCP, RFC 9331 L4S.
+
+#### DHCPv4 (client)
+
+ - **RFC 2131** DHCP - *Full* - client FSM, lease, RENEW / REBIND / DECLINE (no DHCPINFORM).
+ - **RFC 1542** BOOTP clarifications - *Full*. **RFC 4436** DNAv4 detect-network-attachment - *Full*. **RFC 6842** client-ID echo - *Full*.
+ - **RFC 951** BOOTP, **RFC 2132** DHCP options, **RFC 4361** node-specific client-ID/DUID - *Partial*.
+ - *Roadmap:* RFC 3203 FORCERENEW, RFC 3442 classless static route (opt 121), RFC 4702 client FQDN (opt 81), RFC 8910 captive-portal (opt 114).
+
+#### General roadmap (non-RFC / cross-cutting)
+
+ - [ ] Stack debugging console (`show icmpv6 nd cache`, `show ipv6 route`, interactive ping / echo clients).
+ - [ ] QUIC protocol - research and lab environment.
+ - [ ] IPv4 defragmentation - store whole packets in the flow DB instead of header/data copies.
+ - [ ] TCP CLOSE - set FIN on the last data segment instead of a separate segment.
+ - [ ] IPv6 RA PI option - full A/L flag handling and non-/64 advertised prefixes.
+ - [ ] Refactor integrity/sanity error messages for more consistent detail.
+ - [ ] Phase-2 router grade: IPv4/IPv6 forwarding plane, route tables, router role.
 
 ---
 
