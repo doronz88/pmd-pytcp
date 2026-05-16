@@ -27,7 +27,7 @@ This package contains classes used to represent network addresses.
 
 net_addr/__init__.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr.click_types import (

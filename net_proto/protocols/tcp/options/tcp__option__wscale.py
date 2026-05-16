@@ -27,7 +27,7 @@ This module contains the TCP Wscale (Window Scale) option support code.
 
 net_proto/protocols/tcp/options/tcp__option__wscale.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import struct

@@ -27,7 +27,7 @@ This module contains the base class for servers and clients used in examples.
 
 examples/lib/subsystem.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import threading

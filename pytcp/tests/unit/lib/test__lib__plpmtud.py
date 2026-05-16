@@ -38,7 +38,7 @@ consume ('next_probe_size', 'on_probe_ack', 'on_probe_loss',
 
 pytcp/tests/unit/lib/test__lib__plpmtud.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

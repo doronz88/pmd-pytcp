@@ -27,7 +27,7 @@ This module contains the interface class for the TCP Parser -> TCP Socket commun
 
 pytcp/socket/tcp__metadata.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

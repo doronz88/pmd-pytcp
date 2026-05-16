@@ -32,7 +32,7 @@ per RFC 9293 §3.9.1 + POSIX shutdown semantics.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__shutdown_api.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address

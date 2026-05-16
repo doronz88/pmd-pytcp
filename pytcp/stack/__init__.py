@@ -27,7 +27,7 @@ This package contains the stack components and global structures.
 
 pytcp/stack/__init__.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ IFF_TAP = TunTapFlag.IFF_TAP
 IFF_NO_PI = TunTapFlag.IFF_NO_PI
 
 # PyTCP code metadata.
-PYTCP_VERSION = "ver 3.0.4"
+PYTCP_VERSION = "ver 3.0.5"
 GITHUB_REPO = "https://github.com/ccie18643/PyTCP"
 
 # RFC 6528 §3 Initial Sequence Number secret. Generated once at

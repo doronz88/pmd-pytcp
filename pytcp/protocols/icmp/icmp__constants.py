@@ -27,7 +27,7 @@ This module contains the ICMP runtime support constants common to v4 and v6.
 
 pytcp/protocols/icmp/icmp__constants.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 # Maximum sustained rate at which the stack will originate ICMP error

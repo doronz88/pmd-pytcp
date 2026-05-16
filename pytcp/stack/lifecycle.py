@@ -37,7 +37,7 @@ the test harness uses for snapshot/restore.
 
 pytcp/stack/lifecycle.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

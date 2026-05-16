@@ -27,7 +27,7 @@ This module contains the IPv6 packet assembler.
 
 net_proto/protocols/ip6/ip6__assembler.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import override

@@ -27,7 +27,7 @@ This package contains classes representing network protocols.
 
 net_proto/__init__.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_proto.lib.enums import EtherType, IpProto

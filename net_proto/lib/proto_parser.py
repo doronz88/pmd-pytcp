@@ -27,7 +27,7 @@ This module contains the base class for all protocol parser classes.
 
 net_proto/lib/proto_parser.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import abstractmethod

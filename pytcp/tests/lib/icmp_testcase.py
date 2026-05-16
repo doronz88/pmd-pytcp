@@ -36,7 +36,7 @@ hand-built golden buffers.
 
 pytcp/tests/lib/icmp_testcase.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

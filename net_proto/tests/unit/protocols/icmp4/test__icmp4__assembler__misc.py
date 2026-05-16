@@ -27,7 +27,7 @@ Module contains tests for the ICMPv4 packet assembler miscellaneous functions.
 
 net_proto/tests/unit/protocols/icmp4/test__icmp4__assembler__misc.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

@@ -34,7 +34,7 @@ the 'IcmpTestCase' harness.
 
 pytcp/tests/integration/protocols/icmp4/test__icmp4__tx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import MacAddress

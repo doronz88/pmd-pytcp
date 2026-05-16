@@ -27,7 +27,7 @@ This module contains packet handler for the inbound TCP packets.
 
 pytcp/subsystems/packet_handler/packet_handler__tcp__rx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import ABC

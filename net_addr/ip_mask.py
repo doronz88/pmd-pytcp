@@ -27,7 +27,7 @@ This module contains IP mask base class.
 
 net_addr/ip_mask.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import ABC, abstractmethod

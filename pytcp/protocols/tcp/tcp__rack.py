@@ -42,7 +42,7 @@ for the per-clause spec audit):
 
 pytcp/protocols/tcp/tcp__rack.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

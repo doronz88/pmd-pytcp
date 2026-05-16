@@ -29,7 +29,7 @@ This module contains the TCP FSM SYN_RCVD state handler.
 
 pytcp/protocols/tcp/fsm/tcp__fsm__syn_rcvd.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

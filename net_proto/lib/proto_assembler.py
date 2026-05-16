@@ -27,7 +27,7 @@ This module contains the base class for all protocol assembler classes.
 
 net_proto/lib/proto_assembler.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import abstractmethod

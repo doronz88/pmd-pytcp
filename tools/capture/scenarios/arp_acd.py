@@ -28,7 +28,7 @@ Conflict Detection — three ARP Probes then two Announcements.
 
 tools/capture/scenarios/arp_acd.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import time

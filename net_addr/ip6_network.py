@@ -27,7 +27,7 @@ This module contains IPv6 network support class.
 
 net_addr/ip6_network.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Self, override

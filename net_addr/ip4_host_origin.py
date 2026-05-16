@@ -27,7 +27,7 @@ This module contains IPv4 host origin enum.
 
 net_addr/ip4_host_origin.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from enum import auto

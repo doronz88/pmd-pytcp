@@ -28,7 +28,7 @@ sanity checks.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__neighbor_solicitation__parser__sanity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from types import SimpleNamespace

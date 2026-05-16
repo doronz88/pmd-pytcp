@@ -27,7 +27,7 @@ This module contains tests for the TCP header fields asserts.
 
 net_proto/tests/unit/protocols/tcp/test__tcp__header__asserts.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

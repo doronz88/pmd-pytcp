@@ -27,7 +27,7 @@ This module contains IP host base class.
 
 net_addr/ip_host.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import ABC, abstractmethod

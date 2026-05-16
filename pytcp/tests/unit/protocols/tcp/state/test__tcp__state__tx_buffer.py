@@ -27,7 +27,7 @@ Unit tests for TxBufferState.
 
 pytcp/tests/unit/protocols/tcp/state/test__tcp__state__tx_buffer.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

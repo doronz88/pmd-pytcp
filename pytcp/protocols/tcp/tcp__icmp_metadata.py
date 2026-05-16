@@ -33,7 +33,7 @@ so the file lives next to the FSM under 'pytcp/protocols/tcp/'.
 
 pytcp/protocols/tcp/tcp__icmp_metadata.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

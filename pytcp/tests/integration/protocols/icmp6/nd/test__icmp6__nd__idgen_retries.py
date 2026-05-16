@@ -45,7 +45,7 @@ returns a fresh random IID).
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__idgen_retries.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import threading

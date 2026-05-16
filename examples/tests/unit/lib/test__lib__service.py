@@ -27,7 +27,7 @@ This module contains tests for the example 'Service' socket-acquire retry.
 
 examples/tests/unit/lib/test__lib__service.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import threading

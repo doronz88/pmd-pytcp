@@ -27,7 +27,7 @@ This module contains the IPv4 protocol error classes.
 
 net_proto/protocols/ip4/ip4__errors.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import override

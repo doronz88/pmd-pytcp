@@ -38,7 +38,7 @@ rule-6 consumer to stop being a no-op.
 
 pytcp/protocols/ip6/ip6__policy_table.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

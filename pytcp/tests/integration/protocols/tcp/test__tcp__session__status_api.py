@@ -37,7 +37,7 @@ Reference RFC:
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__status_api.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address

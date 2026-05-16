@@ -27,7 +27,7 @@ This module contains the base class for the protocol headers.
 
 net_proto/lib/proto_struct.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import ABC, abstractmethod

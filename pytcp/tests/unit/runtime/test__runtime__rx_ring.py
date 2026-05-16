@@ -27,7 +27,7 @@ This module contains tests for the 'RxRing' subsystem.
 
 pytcp/tests/unit/runtime/test__runtime__rx_ring.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import os

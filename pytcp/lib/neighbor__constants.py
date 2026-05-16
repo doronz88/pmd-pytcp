@@ -36,7 +36,7 @@ and the 'time.monotonic()' arithmetic in the cache loop.
 
 pytcp/lib/neighbor__constants.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any, Callable

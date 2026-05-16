@@ -42,7 +42,7 @@ exiting early on the first RA receipt.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest.mock import patch

@@ -27,7 +27,7 @@ This module contains unit tests for the 'PacketHandlerEthernet8023Rx' mixin.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet_802_3__rx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

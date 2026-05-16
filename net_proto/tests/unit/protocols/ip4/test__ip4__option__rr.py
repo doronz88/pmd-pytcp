@@ -27,7 +27,7 @@ Module contains tests for the IPv4 Record Route option code.
 
 net_proto/tests/unit/protocols/ip4/test__ip4__option__rr.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

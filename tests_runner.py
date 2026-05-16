@@ -37,7 +37,7 @@ on a TTY check plus the 'NO_COLOR' environment variable.
 
 tests_runner.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import os

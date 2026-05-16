@@ -27,7 +27,7 @@ Module contains tests for the TCP options support code.
 
 net_proto/tests/unit/protocols/tcp/test__tcp__options.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

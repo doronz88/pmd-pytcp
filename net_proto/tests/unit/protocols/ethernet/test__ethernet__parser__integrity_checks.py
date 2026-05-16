@@ -31,7 +31,7 @@ frame must produce an EthernetIntegrityError before parsing begins.
 
 net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__integrity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

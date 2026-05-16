@@ -27,7 +27,7 @@ This module contains IPv4 address support class.
 
 net_addr/ip4_address.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

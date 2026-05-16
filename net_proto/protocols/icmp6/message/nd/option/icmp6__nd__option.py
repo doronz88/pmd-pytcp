@@ -27,7 +27,7 @@ This module contains the ICMPv6 ND option base class.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

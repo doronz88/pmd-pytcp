@@ -43,7 +43,7 @@ RX→defense→TX round-trip.
 
 pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address, Ip4Host, MacAddress

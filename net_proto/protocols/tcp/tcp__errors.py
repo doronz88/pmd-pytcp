@@ -27,7 +27,7 @@ This module contains the TCP protocol error classes.
 
 net_proto/protocols/tcp/tcp__errors.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import override

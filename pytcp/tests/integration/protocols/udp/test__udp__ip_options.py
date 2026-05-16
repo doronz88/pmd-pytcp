@@ -43,7 +43,7 @@ PyTCP's surface:
 
 pytcp/tests/integration/protocols/udp/test__udp__ip_options.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address, Ip6Address, IpVersion, MacAddress

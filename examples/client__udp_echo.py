@@ -31,7 +31,7 @@ the responses.
 
 examples/client__udp_echo.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import threading

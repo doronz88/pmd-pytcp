@@ -27,7 +27,7 @@ Operation unit tests for the SNAP packet parser.
 
 net_proto/tests/unit/protocols/snap/test__snap__parser__operation.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

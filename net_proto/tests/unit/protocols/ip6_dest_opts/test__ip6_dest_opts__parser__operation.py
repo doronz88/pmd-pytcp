@@ -27,7 +27,7 @@ This module contains the IPv6 Dest Opts parser happy-path operation tests.
 
 net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__parser__operation.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

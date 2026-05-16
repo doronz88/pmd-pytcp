@@ -27,7 +27,7 @@ This module contains the ICMPv4 message base class.
 
 net_proto/protocols/icmp4/message/icmp4__message.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import abstractmethod

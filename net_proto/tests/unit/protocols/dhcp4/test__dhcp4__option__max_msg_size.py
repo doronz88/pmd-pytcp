@@ -28,7 +28,7 @@ option (RFC 2132 §9.10) wire-format codec.
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__max_msg_size.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

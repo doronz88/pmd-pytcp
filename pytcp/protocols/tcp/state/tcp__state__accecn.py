@@ -41,7 +41,7 @@ counters wrap on every inbound segment.
 
 pytcp/protocols/tcp/state/tcp__state__accecn.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import dataclass

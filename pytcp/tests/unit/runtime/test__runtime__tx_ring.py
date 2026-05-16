@@ -27,7 +27,7 @@ This module contains tests for the 'TxRing' subsystem.
 
 pytcp/tests/unit/runtime/test__runtime__tx_ring.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import os

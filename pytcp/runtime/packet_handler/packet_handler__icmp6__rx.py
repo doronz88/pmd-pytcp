@@ -27,7 +27,7 @@ This module contains packet handler for the inbound ICMPv6 packets.
 
 pytcp/subsystems/packet_handler/packet_handler__icmp6__rx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import random

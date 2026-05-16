@@ -27,7 +27,7 @@ This module contains the unknown DHCPv4 option support code.
 
 net_proto/protocols/dhcp4/options/dhcp4__option__unknown.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import struct

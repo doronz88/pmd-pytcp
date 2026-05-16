@@ -32,7 +32,7 @@ can be retired once parity is proven through Phase 8.
 
 pytcp/tests/integration/protocols/icmp4/test__icmp4__rx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address, MacAddress

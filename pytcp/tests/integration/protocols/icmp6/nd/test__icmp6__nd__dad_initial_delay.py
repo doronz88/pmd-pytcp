@@ -43,7 +43,7 @@ environments).
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_initial_delay.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

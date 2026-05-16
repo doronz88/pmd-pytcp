@@ -27,7 +27,7 @@ Module contains tests for the DHCPv4 Host Name option code.
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__host_name.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from dataclasses import FrozenInstanceError

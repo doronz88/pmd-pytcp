@@ -27,7 +27,7 @@ This module contains the IPv4 packet parser.
 
 net_proto/protocols/ip4/ip4__parser.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import override

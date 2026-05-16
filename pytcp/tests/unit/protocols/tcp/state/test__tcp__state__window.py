@@ -27,7 +27,7 @@ Unit tests for WindowState.
 
 pytcp/tests/unit/protocols/tcp/state/test__tcp__state__window.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

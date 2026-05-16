@@ -27,7 +27,7 @@ This module contains IPv4 network support class.
 
 net_addr/ip4_network.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Self, override

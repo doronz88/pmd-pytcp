@@ -27,7 +27,7 @@ This module contains error classes for the NetAddr library.
 
 net_addr/errors.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 

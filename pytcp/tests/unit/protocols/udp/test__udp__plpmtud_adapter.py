@@ -45,7 +45,7 @@ Exercises:
 
 pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

@@ -38,7 +38,7 @@ networks — the modern Linux 'addr_gen_mode = 2' equivalent.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip6Host, Ip6Network

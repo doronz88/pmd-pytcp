@@ -50,7 +50,7 @@ Extends 'NetworkTestCase' with ARP-aware helpers:
 
 pytcp/tests/lib/arp_testcase.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

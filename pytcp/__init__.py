@@ -27,7 +27,7 @@ This package contains the user facing interface of PyTCP stack.
 
 pytcp/__init__.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from pytcp import socket, stack

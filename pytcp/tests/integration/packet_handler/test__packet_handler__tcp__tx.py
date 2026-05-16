@@ -31,7 +31,7 @@ This module contains integration tests for the Packet Handler TCP TX operations.
 
 pytcp/tests/integration/packet_handler/test__packet_handler__tcp__tx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

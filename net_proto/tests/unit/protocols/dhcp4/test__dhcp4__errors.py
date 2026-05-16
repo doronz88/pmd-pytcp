@@ -27,7 +27,7 @@ Module contains tests for the DHCPv4 protocol error classes.
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__errors.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

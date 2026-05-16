@@ -27,7 +27,7 @@ This module contains tests for the IPv6 Frag packet sanity checks.
 
 net_proto/tests/unit/protocols/ip6_frag/test__ip6_frag__parser__sanity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from types import SimpleNamespace

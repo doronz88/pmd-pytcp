@@ -27,7 +27,7 @@ This module contains the ICMPv4 Echo Reply message support class.
 
 net_proto/protocols/icmp4/message/icmp4__message__echo_reply.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import struct

@@ -27,7 +27,7 @@ This module contains the IPv6 Routing parser integrity-check tests.
 
 net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__integrity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

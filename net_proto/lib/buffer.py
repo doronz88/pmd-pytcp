@@ -27,7 +27,7 @@ This module contains the Buffer type alias.
 
 net_proto/lib/buffer.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 type Buffer = bytes | bytearray | memoryview

@@ -33,7 +33,7 @@ regress the no-error path silently).
 
 net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__parser__sanity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

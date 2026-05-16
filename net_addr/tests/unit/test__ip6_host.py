@@ -27,7 +27,7 @@ This module contains tests for the NetAddr package IPv6 host support class.
 
 net_addr/tests/unit/test__ip6_host.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import time

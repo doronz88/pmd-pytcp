@@ -32,7 +32,7 @@ EthernetSanityError after header parsing.
 
 net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__sanity_checks.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

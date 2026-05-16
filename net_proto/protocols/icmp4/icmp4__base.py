@@ -27,7 +27,7 @@ This module contains the ICMPv4 protocol base class.
 
 net_proto/protocols/icmp4/icmp4__base.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import override

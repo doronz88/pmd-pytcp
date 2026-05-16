@@ -27,7 +27,7 @@ This module contains the ICMPv6 unknown message support class.
 
 net_proto/protocols/icmp6/message/icmp6__message__unknown.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 import struct

@@ -28,7 +28,7 @@ asserts.
 
 net_proto/tests/unit/protocols/icmp4/test__icmp4__message__echo_request__asserts.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any

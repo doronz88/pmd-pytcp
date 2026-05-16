@@ -32,7 +32,7 @@ before (including the Echo Reply LSRR/SSRR reversal path).
 
 pytcp/tests/integration/packet_handler/test__packet_handler__ip4__rx__source_route.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_addr import Ip4Address, MacAddress

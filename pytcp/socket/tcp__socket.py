@@ -27,7 +27,7 @@ This module contains the BSD-like TCP socket interface for the stack.
 
 pytcp/socket/tcp__socket.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from __future__ import annotations

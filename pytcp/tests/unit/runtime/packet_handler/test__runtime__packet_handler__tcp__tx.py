@@ -27,7 +27,7 @@ This module contains unit tests for the 'PacketHandlerTcpTx' mixin.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__tcp__tx.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from unittest import TestCase

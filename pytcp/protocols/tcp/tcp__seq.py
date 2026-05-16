@@ -28,7 +28,7 @@ and acknowledgement numbers, per RFC 9293 §3.4.
 
 pytcp/protocols/tcp/tcp__seq.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from net_proto.lib.int_checks import UINT_32__MAX, is_uint32

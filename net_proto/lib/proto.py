@@ -27,7 +27,7 @@ This module contains the base class for all protocol classes.
 
 net_proto/lib/proto.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from abc import ABC, abstractmethod

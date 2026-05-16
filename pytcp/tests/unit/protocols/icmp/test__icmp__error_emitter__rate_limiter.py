@@ -27,7 +27,7 @@ This module contains tests for the ICMP outbound-error rate limiter.
 
 pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__rate_limiter.py
 
-ver 3.0.4
+ver 3.0.5
 """
 
 from typing import Any
