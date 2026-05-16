@@ -271,3 +271,39 @@ Wire capture (`tshark -i tap7`):
 ```
 
 From the pinging host: `3 packets transmitted, 3 received, 0% packet loss, rtt avg ~1.0 ms`.
+
+#### Monkeys over TCP
+
+PyTCP ships a matching TCP echo client and service
+(`examples/client__tcp_echo.py` / `examples/service__tcp_echo.py`).
+As a quick end-to-end check the client streams two ASCII-art
+"monkeys" as the payload and the service echoes them back over the
+TCP connection — the original "two monkeys delivered via TCP" demo,
+now reproducible as plain text. Connecting to the service returns
+its banner, then the monkeys make the full round trip through the
+stack's TCP path intact:
+
+```text
+$ nc 192.168.1.77 7
+***CLIENT OPEN / SERVICE OPEN***
+                                       ______AAAA_______________AAAA______
+                                             VVVV               VVVV
+                                             (__)               (__)
+                                              \ \               / /
+               .="=.                           \ \              / /
+             _/.-.-.\_    _                     > \   .="=.   / <
+            ( ( o o ) )   ))                     > \ /     \ / <
+             |/  "  \|   //                       > \\_o_o_// <
+              \'---'/   //                         > ( (_) ) <
+              /`---`\  ((                           >|     |<
+             / /_,_\ \  \\                         / |\___/| \
+             \_\_'__/ \  ))                        / \_____/ \
+             /`  /`~\  |//                         /         \
+            /   /    \  /                           /   o   \
+        ,--`,--'\/\    /                             ) ___ (
+         '-- "--'  '--'                             / /   \ \
+                                                   ( /     \ )
+                                                   ><       ><
+                                                  ///\     /\\\
+                                                  '''       '''
+```
