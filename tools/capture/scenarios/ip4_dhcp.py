@@ -58,7 +58,14 @@ def command(**kwargs: Any) -> None:
             cfg.iface,
             "--stack-no-ip6",
         )
-        harness.wait_for("Successfully claimed IPv4 address", cfg.claim_timeout)
+        # The DHCPv4 client logs 'Lease acquired' on BOUND; the
+        # ARP-ACD path additionally logs 'Successfully claimed
+        # IPv4 address' once the leased host is announced. Accept
+        # either as the readiness signal.
+        harness.wait_for(
+            r"Lease acquired|Successfully claimed IPv4 address",
+            cfg.claim_timeout,
+        )
         time.sleep(1)
         harness.stop_example()
         harness.log_highlights(

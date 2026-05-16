@@ -511,3 +511,35 @@ From the pinging host:
 `1 packets transmitted, 1 received, 0% packet loss; rtt min/avg/max/mdev = 2.048/2.048/2.048/0.000 ms`
 (`4008 bytes from 192.168.1.77` — the full 4000-byte payload made
 the round trip, reassembled on both ends).
+
+#### DHCPv4 client lease
+
+With no static IPv4 configured, the stack runs its DHCPv4 client:
+the full DORA exchange (Discover → Offer → Request → ACK), and
+then — because the address is unverified — RFC 5227 Address
+Conflict Detection on the *DHCP-assigned* address before it is
+used. A randomized RFC 2131 initial-desync delay (~6.8 s here)
+precedes the first Discover:
+
+```text
+0.000   DHCP  0.0.0.0 → 255.255.255.255       DHCP Discover   xid 0x3207aee
+0.000   DHCP  192.168.1.1 → 255.255.255.255   DHCP Offer      xid 0x3207aee   (offers 192.168.1.145)
+3.002   DHCP  0.0.0.0 → 255.255.255.255       DHCP Request    xid 0x3207aee   (requesting 192.168.1.145)
+3.002   DHCP  192.168.1.1 → 255.255.255.255   DHCP ACK        xid 0x3207aee   (lease 3600 s)
+3.810   ARP   0.0.0.0 → 192.168.1.145         ARP Probe — Who has 192.168.1.145?   (RFC 5227 ACD on the leased address)
+5.599   ARP   0.0.0.0 → 192.168.1.145         ARP Probe — Who has 192.168.1.145?
+6.891   ARP   0.0.0.0 → 192.168.1.145         ARP Probe — Who has 192.168.1.145?
+10.252  ARP   192.168.1.145 → 192.168.1.145   ARP Announcement for 192.168.1.145
+12.252  ARP   192.168.1.145 → 192.168.1.145   ARP Announcement for 192.168.1.145
+```
+
+Stack log:
+
+```text
+0015.05 | DHCP4 | Initial desync delay: 6.83s
+0021.89 | DHCP4 | TX - DHCPv4 Request ... [message_type Discover ...]
+0021.89 | DHCP4 | RX - DHCPv4 Reply ... yiaddr 192.168.1.145 ... [message_type Offer, server_id 192.168.1.1 ...]
+0024.89 | DHCP4 | TX - DHCPv4 Request ... [message_type Request, server_id 192.168.1.1, req_ip_addr 192.168.1.145 ...]
+0024.89 | DHCP4 | RX - DHCPv4 Reply ... [message_type ACK, lease_time 3600 ...]
+0032.14 | DHCP4 | Lease acquired: 192.168.1.145/24 (lease_time=3600s, server=192.168.1.1)
+```
