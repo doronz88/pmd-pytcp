@@ -252,10 +252,10 @@ Wire capture (`tshark -i tap7 -f arp`):
 
 ```text
 0.00   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
-1.47   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
-3.37   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
-6.63   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
-8.63   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
+1.83   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
+3.38   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
+6.44   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
+8.45   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
 ```
 
 Probe vs. Announcement, decoded (`tshark -V`):
