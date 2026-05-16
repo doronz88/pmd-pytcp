@@ -85,6 +85,14 @@ class Config:
     bind_timeout: int
     raw: bool
     keep: bool
+    loss: float | None
+    delay_ms: float | None
+    reorder: float | None
+    duplicate: float | None
+    corrupt: float | None
+    expect_log: tuple[str, ...]
+    expect_wire: tuple[str, ...]
+    expect_client: tuple[str, ...]
 
     @property
     def ip4_addr(self) -> str:
@@ -122,6 +130,19 @@ def common_options(func: Callable[..., Any]) -> Callable[..., Any]:
         click.option("--bind-timeout", envvar="BIND_TIMEOUT", type=int, default=90, show_default=True),
         click.option("--raw", is_flag=True, default=False, help="Dump the full unfiltered tshark summary."),
         click.option("--keep", is_flag=True, default=False, help="Keep the pcap and print its path."),
+        # tc netem impairment on the host-side interface (reversed
+        # on exit). Exercises the real stack under loss / latency /
+        # reordering without a packet crafter.
+        click.option("--loss", type=float, default=None, help="netem packet loss %% on the host iface."),
+        click.option("--delay-ms", type=float, default=None, help="netem one-way delay (ms)."),
+        click.option("--reorder", type=float, default=None, help="netem reorder %% (implies a small delay)."),
+        click.option("--duplicate", type=float, default=None, help="netem duplicate %%."),
+        click.option("--corrupt", type=float, default=None, help="netem corrupt %%."),
+        # e2e assertions: every pattern must match the captured
+        # stack log / wire decode / client output, else exit 1.
+        click.option("--expect-log", multiple=True, help="Regex that MUST match the stack log (repeatable)."),
+        click.option("--expect-wire", multiple=True, help="Regex that MUST match the wire decode (repeatable)."),
+        click.option("--expect-client", multiple=True, help="Regex that MUST match client output (repeatable)."),
     ]
     for option in reversed(options):
         func = option(func)
@@ -147,6 +168,14 @@ def make_config(**kwargs: Any) -> Config:
         "bind_timeout",
         "raw",
         "keep",
+        "loss",
+        "delay_ms",
+        "reorder",
+        "duplicate",
+        "corrupt",
+        "expect_log",
+        "expect_wire",
+        "expect_client",
     }
     return Config(**{key: value for key, value in kwargs.items() if key in fields})
 
@@ -172,6 +201,10 @@ class Harness:
         self._cap: subprocess.Popen[bytes] | None = None
         self._host_if: str | None = None
         self._host_v6_added = False
+        self._netem_if: str | None = None
+        # Captured transcript text, keyed by section, for the
+        # --expect-* assertions evaluated on context exit.
+        self._captured: dict[str, str] = {"log": "", "wire": "", "client": ""}
 
     # -- lifecycle --------------------------------------------------
 
@@ -188,11 +221,15 @@ class Harness:
             raise CaptureError("venv python not found (run: make venv)")
         if subprocess.run(["ip", "link", "show", self._cfg.iface], capture_output=True).returncode != 0:
             raise CaptureError(f"interface {self._cfg.iface} missing (run: make tap7)")
+        self._apply_netem()
         return self
 
-    def __exit__(self, *_: object) -> None:
+    def __exit__(self, exc_type: object, *_: object) -> None:
         """
-        Tear down every subprocess and the temp workspace.
+        Tear down every subprocess and the temp workspace, then —
+        if the scenario body did not raise — evaluate the
+        --expect-* assertions (universal across all scenarios; no
+        per-scenario wiring needed).
         """
 
         self._kill(self._svc, signal.SIGINT, hard_after=1.0)
@@ -203,11 +240,18 @@ class Harness:
                 ["ip", "-6", "addr", "del", f"{self._cfg.peer6}/64", "dev", self._host_if],
                 capture_output=True,
             )
+        if self._netem_if is not None:
+            subprocess.run(
+                ["tc", "qdisc", "del", "dev", self._netem_if, "root"],
+                capture_output=True,
+            )
         if self._cfg.keep:
             keep = Path(tempfile.gettempdir()) / self._pcap.name
             shutil.copy2(self._pcap, keep)
             click.echo(f"\n[kept pcap: {keep}]")
         shutil.rmtree(self._tmp, ignore_errors=True)
+        if exc_type is None:
+            self.check_or_exit()
 
     @staticmethod
     def _kill(proc: subprocess.Popen[bytes] | None, sig: int, /, *, hard_after: float) -> None:
@@ -222,6 +266,60 @@ class Harness:
             proc.wait(timeout=hard_after)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+    def _host_iface(self) -> str:
+        """
+        Auto-detect the host-side interface (the one carrying the
+        host's own non-loopback IPv4); cached after first lookup.
+        """
+
+        if self._host_if is not None:
+            return self._host_if
+        probe = subprocess.run(
+            ["ip", "-4", "-o", "addr", "show"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        for line in probe.splitlines():
+            parts = line.split()
+            if len(parts) > 1 and parts[1] != "lo":
+                self._host_if = parts[1]
+                return self._host_if
+        raise CaptureError("could not determine the host-side interface")
+
+    def _apply_netem(self) -> None:
+        """
+        Install a tc netem qdisc on the host interface if any
+        impairment option was given; reversed on context exit.
+        """
+
+        cfg = self._cfg
+        spec: list[str] = []
+        if cfg.delay_ms is not None or cfg.reorder is not None:
+            # netem reorder requires a (non-zero) delay to act on.
+            spec += ["delay", f"{cfg.delay_ms if cfg.delay_ms is not None else 10}ms"]
+        if cfg.reorder is not None:
+            spec += ["reorder", f"{cfg.reorder}%"]
+        if cfg.loss is not None:
+            spec += ["loss", f"{cfg.loss}%"]
+        if cfg.duplicate is not None:
+            spec += ["duplicate", f"{cfg.duplicate}%"]
+        if cfg.corrupt is not None:
+            spec += ["corrupt", f"{cfg.corrupt}%"]
+        if not spec:
+            return
+        if shutil.which("tc") is None:
+            raise CaptureError("tc not installed (iproute2) — needed for --loss/--delay/...")
+        iface = self._host_iface()
+        result = subprocess.run(
+            ["tc", "qdisc", "add", "dev", iface, "root", "netem", *spec],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise CaptureError(f"failed to apply netem on {iface}: {result.stderr.strip()}")
+        self._netem_if = iface
+        click.echo(f"=== netem on {iface}: {' '.join(spec)} ===")
 
     # -- subprocess control ----------------------------------------
 
@@ -295,6 +393,10 @@ class Harness:
                 shown += 1
                 if shown >= max_lines:
                     break
+        # Expectations evaluate against the FULL log, not just the
+        # highlighted subset, so an --expect-log can assert on any
+        # line the stack emitted.
+        self._captured["log"] = self._log.read_text(errors="replace")
 
     def print_client_output(self, header: str, /) -> None:
         """
@@ -303,7 +405,9 @@ class Harness:
 
         click.echo(f"=== {header} ===")
         if self._out.exists():
-            click.echo(self._out.read_text(errors="replace").rstrip("\n"))
+            text = self._out.read_text(errors="replace")
+            self._captured["client"] = text
+            click.echo(text.rstrip("\n"))
 
     def wire(self, *tshark_args: str) -> None:
         """
@@ -323,6 +427,7 @@ class Harness:
                 capture_output=True,
                 text=True,
             ).stdout.strip()
+        self._captured["wire"] = out
         click.echo(out or "(no packets captured)")
 
     # -- drivers ----------------------------------------------------
@@ -334,26 +439,15 @@ class Harness:
         context exit.
         """
 
-        probe = subprocess.run(
-            ["ip", "-4", "-o", "addr", "show"],
-            capture_output=True,
-            text=True,
-        ).stdout
-        for line in probe.splitlines():
-            parts = line.split()
-            if len(parts) > 1 and parts[1] != "lo":
-                self._host_if = parts[1]
-                break
-        if self._host_if is None:
-            raise CaptureError("could not determine host interface for the IPv6 peer")
+        iface = self._host_iface()
         existing = subprocess.run(
-            ["ip", "-6", "-o", "addr", "show", "dev", self._host_if],
+            ["ip", "-6", "-o", "addr", "show", "dev", iface],
             capture_output=True,
             text=True,
         ).stdout
         if self._cfg.peer6 not in existing:
             subprocess.run(
-                ["ip", "-6", "addr", "add", f"{self._cfg.peer6}/64", "dev", self._host_if],
+                ["ip", "-6", "addr", "add", f"{self._cfg.peer6}/64", "dev", iface],
                 check=True,
             )
             self._host_v6_added = True
@@ -435,3 +529,31 @@ class Harness:
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             data = proc.communicate(input=stdin)[0]
         self._out.write_bytes(data or b"")
+
+    # -- assertions -------------------------------------------------
+
+    def check_or_exit(self) -> None:
+        """
+        Evaluate the --expect-log / --expect-wire / --expect-client
+        regexes against the captured transcript. Print one PASS/FAIL
+        line per expectation and raise SystemExit(1) if any failed.
+        A run with no expectations is a no-op (pure capture mode).
+        """
+
+        checks: list[tuple[str, str]] = (
+            [("log", pattern) for pattern in self._cfg.expect_log]
+            + [("wire", pattern) for pattern in self._cfg.expect_wire]
+            + [("client", pattern) for pattern in self._cfg.expect_client]
+        )
+        if not checks:
+            return
+        click.echo()
+        click.echo("=== expectations ===")
+        failed = False
+        for section, pattern in checks:
+            ok = re.search(pattern, self._captured.get(section, "")) is not None
+            click.echo(f"[{'PASS' if ok else 'FAIL'}] {section}: /{pattern}/")
+            if not ok:
+                failed = True
+        if failed:
+            raise SystemExit(1)
