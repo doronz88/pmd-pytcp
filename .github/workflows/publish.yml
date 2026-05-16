@@ -7,6 +7,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Trusted Publishing (OIDC) — no API token. Requires a
+    # matching PyPI "trusted publisher" registered for this repo
+    # + workflow, and id-token: write so GitHub can mint the OIDC
+    # token pypi.org verifies.
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +31,3 @@ jobs:
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN__PYTCP }}
