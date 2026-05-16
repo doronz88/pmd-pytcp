@@ -75,9 +75,13 @@ test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_proto/tests/unit' -name 'test__*.py')
 
+test__examples__unit: venv
+	@echo '<<< UNITTEST EXAMPLES UNIT'
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'examples/tests/unit' -name 'test__*.py')
+
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
 
 validate: lint test
 

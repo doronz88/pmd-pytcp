@@ -52,7 +52,7 @@ class TcpService(Service):
         Service thread.
         """
 
-        if listening_socket := self._get_service_socket():
+        if listening_socket := self._acquire_service_socket():
             listening_socket.listen()
             self._log("Socket set to listening mode.")
 

@@ -48,5 +48,5 @@ class UdpService(Service):
         Service thread.
         """
 
-        if listening_socket := self._get_service_socket():
+        if listening_socket := self._acquire_service_socket():
             self._service(socket=listening_socket)

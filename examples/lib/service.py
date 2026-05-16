@@ -38,6 +38,12 @@ from examples.lib.subsystem import Subsystem
 from net_addr import IpAddress
 from pytcp.socket import socket
 
+# Delay between failed service-socket bind attempts. A static
+# local address is not owned by the stack until RFC 5227 ACD (or
+# DHCP / SLAAC) completes a few seconds after start, so the bind
+# must be retried rather than attempted once.
+SERVICE_SOCKET_RETRY__SEC: float = 0.5
+
 
 class Service(Subsystem):
     """
@@ -92,6 +98,23 @@ class Service(Subsystem):
             return None
 
         return service_socket
+
+    def _acquire_service_socket(self) -> socket | None:
+        """
+        Create and bind the service socket, retrying until the
+        bind succeeds or the subsystem is stopped. The configured
+        local address is not owned by the stack until RFC 5227 ACD
+        (or DHCP / SLAAC) completes after start, so a single bind
+        attempt at startup would race that and the service would
+        never come up.
+        """
+
+        while not self._event__stop_subsystem.is_set():
+            if service_socket := self._get_service_socket():
+                return service_socket
+            self._event__stop_subsystem.wait(timeout=SERVICE_SOCKET_RETRY__SEC)
+
+        return None
 
     @abstractmethod
     def _thread__service(self) -> None:
