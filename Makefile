@@ -10,6 +10,12 @@ NET_PROTO_FILES := $(shell find ${NET_PROTO_PATH} -name '*.py')
 EXAMPLES_FILES := $(shell find ${EXAMPLES_PATH} -name '*.py')
 ROOT_FILES := tests_runner.py
 
+# Every linted file in one list (codespell / isort / black / flake8
+# all accept many paths at once), plus the packages mypy checks in
+# '-p' package mode.
+LINT_FILES := $(PYTCP_FILES) $(NET_ADDR_FILES) $(NET_PROTO_FILES) $(EXAMPLES_FILES) $(ROOT_FILES)
+MYPY_PACKAGES := $(PYTCP_PATH) $(NET_ADDR_PATH) $(NET_PROTO_PATH) $(EXAMPLES_PATH)
+
 $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 	@python3.14 -m venv $(VENV)
 	@echo "export PYTHONPATH=$(ROOT_PATH)" >> venv/bin/activate
@@ -43,35 +49,16 @@ clean:
 
 lint: venv
 	@echo '<<< CODESPELL'
-	@./$(VENV)/bin/codespell --write-changes ${PYTCP_FILES}
-	@./$(VENV)/bin/codespell --write-changes ${NET_ADDR_FILES}
-	@./$(VENV)/bin/codespell --write-changes ${NET_PROTO_FILES}
-	@./$(VENV)/bin/codespell --write-changes ${EXAMPLES_FILES}
-	@./$(VENV)/bin/codespell --write-changes ${ROOT_FILES}
+	@./$(VENV)/bin/codespell --write-changes $(LINT_FILES)
 	@echo '<<< ISORT'
-	@./$(VENV)/bin/isort ${PYTCP_FILES}
-	@./$(VENV)/bin/isort ${NET_ADDR_FILES}
-	@./$(VENV)/bin/isort ${NET_PROTO_FILES}
-	@./$(VENV)/bin/isort ${EXAMPLES_FILES}
-	@./$(VENV)/bin/isort ${ROOT_FILES}
+	@./$(VENV)/bin/isort $(LINT_FILES)
 	@echo '<<< BLACK'
-	@./$(VENV)/bin/black ${PYTCP_FILES}
-	@./$(VENV)/bin/black ${NET_ADDR_FILES}
-	@./$(VENV)/bin/black ${NET_PROTO_FILES}
-	@./$(VENV)/bin/black ${EXAMPLES_FILES}
-	@./$(VENV)/bin/black ${ROOT_FILES}
+	@./$(VENV)/bin/black $(LINT_FILES)
 	@echo '<<< FLAKE8'
-	@./$(VENV)/bin/flake8 ${PYTCP_FILES}
-	@./$(VENV)/bin/flake8 ${NET_ADDR_FILES}
-	@./$(VENV)/bin/flake8 ${NET_PROTO_FILES}
-	@./$(VENV)/bin/flake8 ${EXAMPLES_FILES}
-	@./$(VENV)/bin/flake8 ${ROOT_FILES}
+	@./$(VENV)/bin/flake8 $(LINT_FILES)
 	@echo '<<< MYPY'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${PYTCP_PATH}
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${NET_ADDR_PATH}
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${NET_PROTO_PATH}
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p ${EXAMPLES_PATH}
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy ${ROOT_FILES}
+	@for pkg in $(MYPY_PACKAGES); do PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy -p $$pkg || exit 1; done
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/mypy $(ROOT_FILES)
 
 test__pytcp__integration: venv
 	@echo '<<< UNITTEST PYTCP INTEGRATION'
@@ -181,4 +168,9 @@ remove_interfaces:
 	@ip tuntap del name tap7 mode tap
 	@ip tuntap del name tap9 mode tap
 
-.PHONY: all venv run clean lint bridge tun3 tun5 tap7 tap9
+.PHONY: venv run run_tun capture clean lint \
+	test test__pytcp__integration test__net_addr__unit \
+	test__net_proto__unit test__examples__unit validate \
+	bench__rx_ring profile__rx_ring benchmark \
+	bridge install package dist pypi \
+	tun3 tun5 tap7 tap9 add_interfaces remove_interfaces
