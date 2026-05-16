@@ -185,14 +185,15 @@ tcp | udp)
     [ "$scenario" = tcp ] && wait_for "Socket set to listening mode" 10
     sleep 1
     if [ "$scenario" = tcp ]; then
-        printf 'malpi\nquit\n' | timeout 8 nc -w5 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
+        printf 'malpi\nquit\n' | timeout 12 nc -w8 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
     else
-        printf 'malpi\n' | timeout 8 nc -u -w3 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
+        printf 'malpi\n' | timeout 12 nc -u -w8 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
     fi
     sleep 2
     stop_example
     echo "=== client output (banner + echoed 'malpi' monkeys) ==="
     cat "$OUT"
+    log_highlights 'Starting the service|Socket created, bound|bind\(\) call failed|listening mode|Inbound connection|Received [0-9]+ bytes|Sent [0-9]+ bytes|DROPPED__|Failed to send|Unable to sent' 20
     # TCP payload length is 'tcp.len'; UDP's is 'udp.length'.
     if [ "$scenario" = tcp ]; then
         len_field=tcp.len
