@@ -46,7 +46,7 @@ pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py
 ver 3.0.5
 """
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import ArpOperation
 from pytcp.tests.lib.arp_testcase import (
     HOST_A__MAC_ADDRESS,
@@ -57,7 +57,7 @@ from pytcp.tests.lib.arp_testcase import (
 )
 
 # Second stack-owned IP used by the per-IP independence test.
-_STACK_IP4_HOST_2 = Ip4Host("10.0.1.8/24")
+_STACK_IP4_HOST_2 = Ip4IfAddr("10.0.1.8/24")
 _PEER_B_MAC = MacAddress("02:00:00:00:00:93")
 
 

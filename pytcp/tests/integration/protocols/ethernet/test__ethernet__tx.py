@@ -38,7 +38,7 @@ from typing import Any, Literal
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
 from net_proto import Ip4Assembler, Ip4FragAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -744,7 +744,7 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
 
     def setUp(self) -> None:
         """
-        Build fresh per-test 'Ip4Host' and 'Ip6Host' instances so gateway
+        Build fresh per-test 'Ip4IfAddr' and 'Ip6IfAddr' instances so gateway
         mutations do not leak into the module-level 'STACK__IP*_HOST'
         objects shared across tests. Configure each host's gateway per
         '_gateway_state' and install the pair on the packet handler.
@@ -763,8 +763,8 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
         sysctl_module.set("ip4.allow_broadcast", 1)
         self.addCleanup(sysctl_module.reset_to_defaults)
 
-        ip4_host = Ip4Host("10.0.1.7/24")
-        ip6_host = Ip6Host("2001:db8:0:1::7/64")
+        ip4_host = Ip4IfAddr("10.0.1.7/24")
+        ip6_host = Ip6IfAddr("2001:db8:0:1::7/64")
 
         match self._gateway_state:
             case "set":

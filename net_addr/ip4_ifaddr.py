@@ -25,7 +25,7 @@
 """
 This module contains IPv4 host support class.
 
-net_addr/ip4_host.py
+net_addr/ip4_ifaddr.py
 
 ver 3.0.5
 """
@@ -35,20 +35,20 @@ from typing import Self, override
 
 from net_addr.errors import (
     Ip4AddressFormatError,
-    Ip4HostFormatError,
-    Ip4HostGatewayError,
-    Ip4HostSanityError,
+    Ip4IfAddrFormatError,
+    Ip4IfAddrGatewayError,
+    Ip4IfAddrSanityError,
     Ip4MaskFormatError,
 )
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_host_origin import Ip4HostOrigin
+from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
-from net_addr.ip_host import IpHost
+from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_version import IpVersion
 
 
-class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
+class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
     """
     IPv4 host support class.
     """
@@ -57,7 +57,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
 
     _version: IpVersion = IpVersion.IP4
     _gateway: Ip4Address | None
-    _origin: Ip4HostOrigin
+    _origin: Ip4IfAddrSource
     _expiration_time: int
 
     def __init__(
@@ -66,14 +66,14 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
         /,
         *,
         gateway: Ip4Address | None = None,
-        origin: Ip4HostOrigin | None = None,
+        origin: Ip4IfAddrSource | None = None,
         expiration_time: int | None = None,
     ) -> None:
         """
         Initialize the IPv4 host object.
         """
 
-        if isinstance(host, Ip4Host):
+        if isinstance(host, Ip4IfAddr):
             assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
             assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
             assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
@@ -85,10 +85,10 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             return
 
         self._gateway = gateway
-        self._origin = origin or Ip4HostOrigin.UNKNOWN
+        self._origin = origin or Ip4IfAddrSource.UNKNOWN
         self._expiration_time = expiration_time or 0
 
-        if self._origin == Ip4HostOrigin.DHCP:
+        if self._origin == Ip4IfAddrSource.DHCP:
             assert self._expiration_time >= int(time.time())
         else:
             assert self._expiration_time == 0
@@ -103,7 +103,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             else:
                 self._network = Ip4Network((tuple_address, network_or_mask))
             if self._address not in self._network:
-                raise Ip4HostSanityError(host)
+                raise Ip4IfAddrSanityError(host)
             self._validate_gateway(gateway)
             return
 
@@ -117,7 +117,7 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
                 pass
 
-        raise Ip4HostFormatError(host)
+        raise Ip4IfAddrFormatError(host)
 
     @override
     def _validate_gateway(self, address: Ip4Address | None, /) -> None:
@@ -131,4 +131,4 @@ class Ip4Host(IpHost[Ip4Address, Ip4Network, Ip4HostOrigin]):
             or address == self._network.broadcast
             or address == self._address
         ):
-            raise Ip4HostGatewayError(address)
+            raise Ip4IfAddrGatewayError(address)

@@ -25,7 +25,7 @@
 """
 This module contains tests for the NetAddr package IPv4 host support class.
 
-net_addr/tests/unit/test__ip4_host.py
+net_addr/tests/unit/test__ip4_ifaddr.py
 
 ver 3.0.5
 """
@@ -38,14 +38,14 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import (
     Ip4Address,
-    Ip4Host,
-    Ip4HostFormatError,
-    Ip4HostGatewayError,
-    Ip4HostOrigin,
-    Ip4HostSanityError,
+    Ip4IfAddr,
+    Ip4IfAddrFormatError,
+    Ip4IfAddrGatewayError,
+    Ip4IfAddrSanityError,
+    Ip4IfAddrSource,
     Ip4Mask,
     Ip4Network,
-    Ip6Host,
+    Ip6IfAddr,
     IpVersion,
 )
 
@@ -61,38 +61,38 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.DHCP,
+                "origin": Ip4IfAddrSource.DHCP,
                 "expiration_time": IP4_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
-                "__repr__": "Ip4Host('192.168.1.100/24')",
+                "__repr__": "Ip4IfAddr('192.168.1.100/24')",
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.DHCP,
+                "origin": Ip4IfAddrSource.DHCP,
                 "expiration_time": IP4_ADDRESS_EXPIRATION_TIME,
             },
         },
         {
-            "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4Host)",
+            "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4IfAddr)",
             "_args": [
-                Ip4Host("192.168.1.100/24"),
+                Ip4IfAddr("192.168.1.100/24"),
             ],
             "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
-                "__repr__": "Ip4Host('192.168.1.100/24')",
+                "__repr__": "Ip4IfAddr('192.168.1.100/24')",
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": None,
-                "origin": Ip4HostOrigin.UNKNOWN,
+                "origin": Ip4IfAddrSource.UNKNOWN,
                 "expiration_time": 0,
             },
         },
@@ -103,18 +103,18 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
-                "__repr__": "Ip4Host('192.168.1.100/24')",
+                "__repr__": "Ip4IfAddr('192.168.1.100/24')",
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
                 "expiration_time": 0,
             },
         },
@@ -125,18 +125,18 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
-                "__repr__": "Ip4Host('192.168.1.100/24')",
+                "__repr__": "Ip4IfAddr('192.168.1.100/24')",
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
                 "expiration_time": 0,
             },
         },
@@ -148,14 +148,14 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             "_kwargs": {},
             "_results": {
                 "__str__": "10.0.0.1/8",
-                "__repr__": "Ip4Host('10.0.0.1/8')",
+                "__repr__": "Ip4IfAddr('10.0.0.1/8')",
                 "version": IpVersion.IP4,
                 "is_ip6": False,
                 "is_ip4": True,
                 "address": Ip4Address("10.0.0.1"),
                 "network": Ip4Network("10.0.0.0/8"),
                 "gateway": None,
-                "origin": Ip4HostOrigin.UNKNOWN,
+                "origin": Ip4IfAddrSource.UNKNOWN,
                 "expiration_time": 0,
             },
         },
@@ -176,7 +176,7 @@ class TestNetAddrIp4Host(TestCase):
         Initialize the IPv4 host object with testcase arguments.
         """
 
-        self._ip4_host = Ip4Host(*self._args, **self._kwargs)
+        self._ip4_host = Ip4IfAddr(*self._args, **self._kwargs)
 
     def test__net_addr__ip4_host__str(self) -> None:
         """
@@ -205,44 +205,44 @@ class TestNetAddrIp4Host(TestCase):
 
         self.assertTrue(
             self._ip4_host == self._ip4_host,
-            msg="An Ip4Host instance must compare equal to itself.",
+            msg="An Ip4IfAddr instance must compare equal to itself.",
         )
 
         self.assertTrue(
-            self._ip4_host == Ip4Host(str(self._ip4_host)),
-            msg="Ip4Host must compare equal to one reconstructed from its string representation.",
+            self._ip4_host == Ip4IfAddr(str(self._ip4_host)),
+            msg="Ip4IfAddr must compare equal to one reconstructed from its string representation.",
         )
 
         self.assertFalse(
             self._ip4_host == "not an IPv4 host",
-            msg="Ip4Host must not compare equal to a foreign string value.",
+            msg="Ip4IfAddr must not compare equal to a foreign string value.",
         )
 
         self.assertFalse(
             self._ip4_host == None,  # noqa: E711
-            msg="Ip4Host must not compare equal to None.",
+            msg="Ip4IfAddr must not compare equal to None.",
         )
 
         self.assertFalse(
             self._ip4_host
-            == Ip4Host(
+            == Ip4IfAddr(
                 (
                     Ip4Address((int(self._ip4_host.address) ^ 0x01) & 0xFF_FF_FF_FF),
                     self._ip4_host.network,
                 ),
             ),
-            msg="Ip4Host instances with different addresses must not compare equal.",
+            msg="Ip4IfAddr instances with different addresses must not compare equal.",
         )
 
         self.assertFalse(
             self._ip4_host
-            == Ip4Host(
+            == Ip4IfAddr(
                 (
                     self._ip4_host.address,
                     Ip4Mask(f"/{(len(self._ip4_host.network.mask) + 1) % 33}"),
                 ),
             ),
-            msg="Ip4Host instances with different networks must not compare equal.",
+            msg="Ip4IfAddr instances with different networks must not compare equal.",
         )
 
     def test__net_addr__ip4_host__version(self) -> None:
@@ -337,34 +337,34 @@ class TestNetAddrIp4HostSemantics(TestCase):
         gateway, origin, and expiration_time.
         """
 
-        plain = Ip4Host("192.168.1.100/24")
-        decorated = Ip4Host(
+        plain = Ip4IfAddr("192.168.1.100/24")
+        decorated = Ip4IfAddr(
             "192.168.1.100/24",
             gateway=Ip4Address("192.168.1.1"),
-            origin=Ip4HostOrigin.DHCP,
+            origin=Ip4IfAddrSource.DHCP,
             expiration_time=IP4_ADDRESS_EXPIRATION_TIME,
         )
 
         self.assertEqual(
             plain,
             decorated,
-            msg="Ip4Host equality must ignore gateway, origin, and expiration_time.",
+            msg="Ip4IfAddr equality must ignore gateway, origin, and expiration_time.",
         )
         self.assertEqual(
             hash(plain),
             hash(decorated),
-            msg="Equal Ip4Host values must hash to the same value regardless of metadata.",
+            msg="Equal Ip4IfAddr values must hash to the same value regardless of metadata.",
         )
 
     def test__net_addr__ip4_host__eq__cross_version(self) -> None:
         """
-        Ensure '__eq__()' returns False when compared to an Ip6Host.
+        Ensure '__eq__()' returns False when compared to an Ip6IfAddr.
         """
 
         self.assertNotEqual(
-            Ip4Host("192.168.1.100/24"),
-            Ip6Host("2001:db8::c0a8:164/64"),
-            msg="Ip4Host must not compare equal to an Ip6Host.",
+            Ip4IfAddr("192.168.1.100/24"),
+            Ip6IfAddr("2001:db8::c0a8:164/64"),
+            msg="Ip4IfAddr must not compare equal to an Ip6IfAddr.",
         )
 
     def test__net_addr__ip4_host__eq__foreign_types(self) -> None:
@@ -373,23 +373,23 @@ class TestNetAddrIp4HostSemantics(TestCase):
         including its own component pieces.
         """
 
-        host = Ip4Host("192.168.1.100/24")
+        host = Ip4IfAddr("192.168.1.100/24")
 
         self.assertFalse(
             host == "192.168.1.100/24",
-            msg="Ip4Host must not compare equal to its string representation.",
+            msg="Ip4IfAddr must not compare equal to its string representation.",
         )
         self.assertFalse(
             host == host.address,
-            msg="Ip4Host must not compare equal to its Ip4Address component.",
+            msg="Ip4IfAddr must not compare equal to its Ip4Address component.",
         )
         self.assertFalse(
             host == host.network,
-            msg="Ip4Host must not compare equal to its Ip4Network component.",
+            msg="Ip4IfAddr must not compare equal to its Ip4Network component.",
         )
         self.assertFalse(
             host == 0,
-            msg="Ip4Host must not compare equal to an integer.",
+            msg="Ip4IfAddr must not compare equal to an integer.",
         )
 
     def test__net_addr__ip4_host__ne(self) -> None:
@@ -397,18 +397,18 @@ class TestNetAddrIp4HostSemantics(TestCase):
         Ensure the IPv4 host '__ne__()' method returns a correct value.
         """
 
-        host = Ip4Host("192.168.1.100/24")
+        host = Ip4IfAddr("192.168.1.100/24")
         self.assertTrue(
-            host != Ip4Host("192.168.1.101/24"),
-            msg="Ip4Host instances with different addresses must be unequal.",
+            host != Ip4IfAddr("192.168.1.101/24"),
+            msg="Ip4IfAddr instances with different addresses must be unequal.",
         )
         self.assertFalse(
-            host != Ip4Host("192.168.1.100/24"),
-            msg="Ip4Host instances with the same address and network must not be unequal.",
+            host != Ip4IfAddr("192.168.1.100/24"),
+            msg="Ip4IfAddr instances with the same address and network must not be unequal.",
         )
         self.assertTrue(
             host != "192.168.1.100/24",
-            msg="Ip4Host must be unequal to its string representation.",
+            msg="Ip4IfAddr must be unequal to its string representation.",
         )
 
     def test__net_addr__ip4_host__hash__distinct_instances(self) -> None:
@@ -416,17 +416,17 @@ class TestNetAddrIp4HostSemantics(TestCase):
         Ensure two independently constructed equal hosts hash identically.
         """
 
-        a = Ip4Host("192.168.1.100/24")
-        b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+        a = Ip4IfAddr("192.168.1.100/24")
+        b = Ip4IfAddr((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
         self.assertEqual(
             a,
             b,
-            msg="Ip4Host built from string and from (address, mask) tuple must compare equal.",
+            msg="Ip4IfAddr built from string and from (address, mask) tuple must compare equal.",
         )
         self.assertEqual(
             hash(a),
             hash(b),
-            msg="Equal Ip4Host values must hash to the same value across constructor forms.",
+            msg="Equal Ip4IfAddr values must hash to the same value across constructor forms.",
         )
 
     def test__net_addr__ip4_host__usable_in_set(self) -> None:
@@ -435,24 +435,24 @@ class TestNetAddrIp4HostSemantics(TestCase):
         in a set.
         """
 
-        a = Ip4Host("192.168.1.100/24")
-        b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
-        c = Ip4Host("192.168.1.101/24")
+        a = Ip4IfAddr("192.168.1.100/24")
+        b = Ip4IfAddr((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+        c = Ip4IfAddr("192.168.1.101/24")
 
         self.assertEqual(
             len({a, b}),
             1,
-            msg="Two equal Ip4Host values must collapse into one set element.",
+            msg="Two equal Ip4IfAddr values must collapse into one set element.",
         )
         self.assertEqual(
             len({a, b, c}),
             2,
-            msg="Distinct Ip4Host values must occupy distinct set elements.",
+            msg="Distinct Ip4IfAddr values must occupy distinct set elements.",
         )
         self.assertIn(
             a,
             {b},
-            msg="Set membership lookup must treat equal Ip4Host values as the same key.",
+            msg="Set membership lookup must treat equal Ip4IfAddr values as the same key.",
         )
 
     def test__net_addr__ip4_host__usable_in_dict(self) -> None:
@@ -461,81 +461,81 @@ class TestNetAddrIp4HostSemantics(TestCase):
         of which constructor form was used to build the key.
         """
 
-        a = Ip4Host("192.168.1.100/24")
-        b = Ip4Host((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
+        a = Ip4IfAddr("192.168.1.100/24")
+        b = Ip4IfAddr((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
 
         mapping = {a: "value"}
 
         self.assertEqual(
             mapping[b],
             "value",
-            msg="Ip4Host must behave consistently as a dict key across input forms.",
+            msg="Ip4IfAddr must behave consistently as a dict key across input forms.",
         )
 
     def test__net_addr__ip4_host__roundtrip__str(self) -> None:
         """
-        Ensure 'Ip4Host(str(x))' yields a host equal to 'x' (metadata-free).
+        Ensure 'Ip4IfAddr(str(x))' yields a host equal to 'x' (metadata-free).
         """
 
         for spec in ("0.0.0.0/0", "10.0.0.1/8", "192.168.1.100/24", "255.255.255.254/31"):
             with self.subTest(spec=spec):
-                host = Ip4Host(spec)
+                host = Ip4IfAddr(spec)
                 self.assertEqual(
-                    Ip4Host(str(host)),
+                    Ip4IfAddr(str(host)),
                     host,
                     msg=f"Roundtrip through str() must preserve host {spec!r}.",
                 )
 
     def test__net_addr__ip4_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip4Host preserves gateway, origin, and expiration_time.
+        Ensure copying an Ip4IfAddr preserves gateway, origin, and expiration_time.
         """
 
-        source = Ip4Host(
+        source = Ip4IfAddr(
             "192.168.1.100/24",
             gateway=Ip4Address("192.168.1.1"),
-            origin=Ip4HostOrigin.DHCP,
+            origin=Ip4IfAddrSource.DHCP,
             expiration_time=IP4_ADDRESS_EXPIRATION_TIME,
         )
-        clone = Ip4Host(source)
+        clone = Ip4IfAddr(source)
 
         self.assertEqual(
             clone.address,
             source.address,
-            msg="Copying an Ip4Host must preserve its address.",
+            msg="Copying an Ip4IfAddr must preserve its address.",
         )
         self.assertEqual(
             clone.network,
             source.network,
-            msg="Copying an Ip4Host must preserve its network.",
+            msg="Copying an Ip4IfAddr must preserve its network.",
         )
         self.assertEqual(
             clone.gateway,
             source.gateway,
-            msg="Copying an Ip4Host must preserve its gateway.",
+            msg="Copying an Ip4IfAddr must preserve its gateway.",
         )
         self.assertEqual(
             clone.origin,
             source.origin,
-            msg="Copying an Ip4Host must preserve its origin.",
+            msg="Copying an Ip4IfAddr must preserve its origin.",
         )
         self.assertEqual(
             clone.expiration_time,
             source.expiration_time,
-            msg="Copying an Ip4Host must preserve its expiration_time.",
+            msg="Copying an Ip4IfAddr must preserve its expiration_time.",
         )
 
 
 @parameterized_class(
     [
         {
-            "_description": "Test Ip4HostSanityError: address not in network.",
+            "_description": "Test Ip4IfAddrSanityError: address not in network.",
             "_args": [
                 (Ip4Address("192.168.1.100"), Ip4Network("192.168.2.0/24")),
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip4HostSanityError,
+                "error": Ip4IfAddrSanityError,
                 "error_message": (
                     "The IPv4 address doesn't belong to the provided network: "
                     "(Ip4Address('192.168.1.100'), Ip4Network('192.168.2.0/24'))"
@@ -543,51 +543,51 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
         },
         {
-            "_description": "Test Ip4HostFormatError: invalid input type.",
+            "_description": "Test Ip4IfAddrFormatError: invalid input type.",
             "_args": [
                 12345,
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip4HostFormatError,
+                "error": Ip4IfAddrFormatError,
                 "error_message": "The IPv4 host format is invalid: 12345",
             },
         },
         {
-            "_description": "Test Ip4HostFormatError: invalid string format.",
+            "_description": "Test Ip4IfAddrFormatError: invalid string format.",
             "_args": [
                 "not-a-host",
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip4HostFormatError,
+                "error": Ip4IfAddrFormatError,
                 "error_message": "The IPv4 host format is invalid: 'not-a-host'",
             },
         },
         {
-            "_description": "Test Ip4HostFormatError: string with extra slash.",
+            "_description": "Test Ip4IfAddrFormatError: string with extra slash.",
             "_args": [
                 "192.168.1.0/24/extra",
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip4HostFormatError,
+                "error": Ip4IfAddrFormatError,
                 "error_message": "The IPv4 host format is invalid: '192.168.1.0/24/extra'",
             },
         },
         {
-            "_description": "Test Ip4HostFormatError: None input.",
+            "_description": "Test Ip4IfAddrFormatError: None input.",
             "_args": [
                 None,
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip4HostFormatError,
+                "error": Ip4IfAddrFormatError,
                 "error_message": "The IPv4 host format is invalid: None",
             },
         },
         {
-            "_description": "Test Ip4HostGatewayError: gateway not in network.",
+            "_description": "Test Ip4IfAddrGatewayError: gateway not in network.",
             "_args": [
                 "192.168.1.100/24",
             ],
@@ -595,12 +595,12 @@ class TestNetAddrIp4HostSemantics(TestCase):
                 "gateway": Ip4Address("10.0.0.1"),
             },
             "_results": {
-                "error": Ip4HostGatewayError,
+                "error": Ip4IfAddrGatewayError,
                 "error_message": "The IPv4 host gateway is invalid: Ip4Address('10.0.0.1')",
             },
         },
         {
-            "_description": "Test Ip4HostGatewayError: gateway equals network address.",
+            "_description": "Test Ip4IfAddrGatewayError: gateway equals network address.",
             "_args": [
                 "192.168.1.100/24",
             ],
@@ -608,12 +608,12 @@ class TestNetAddrIp4HostSemantics(TestCase):
                 "gateway": Ip4Address("192.168.1.0"),
             },
             "_results": {
-                "error": Ip4HostGatewayError,
+                "error": Ip4IfAddrGatewayError,
                 "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.0')",
             },
         },
         {
-            "_description": "Test Ip4HostGatewayError: gateway equals broadcast address.",
+            "_description": "Test Ip4IfAddrGatewayError: gateway equals broadcast address.",
             "_args": [
                 "192.168.1.100/24",
             ],
@@ -621,12 +621,12 @@ class TestNetAddrIp4HostSemantics(TestCase):
                 "gateway": Ip4Address("192.168.1.255"),
             },
             "_results": {
-                "error": Ip4HostGatewayError,
+                "error": Ip4IfAddrGatewayError,
                 "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.255')",
             },
         },
         {
-            "_description": "Test Ip4HostGatewayError: gateway equals host address.",
+            "_description": "Test Ip4IfAddrGatewayError: gateway equals host address.",
             "_args": [
                 "192.168.1.100/24",
             ],
@@ -634,7 +634,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
                 "gateway": Ip4Address("192.168.1.100"),
             },
             "_results": {
-                "error": Ip4HostGatewayError,
+                "error": Ip4IfAddrGatewayError,
                 "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.100')",
             },
         },
@@ -656,7 +656,7 @@ class TestNetAddrIp4HostErrors(TestCase):
         """
 
         with self.assertRaises(self._results["error"]) as error:
-            Ip4Host(*self._args, **self._kwargs)
+            Ip4IfAddr(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -671,14 +671,14 @@ class TestNetAddrIp4HostErrors(TestCase):
             "_description": "AssertionError: DHCP origin requires expiration_time.",
             "_args": ["192.168.1.100/24"],
             "_kwargs": {
-                "origin": Ip4HostOrigin.DHCP,
+                "origin": Ip4IfAddrSource.DHCP,
             },
         },
         {
             "_description": "AssertionError: non-DHCP origin with expiration_time set.",
             "_args": ["192.168.1.100/24"],
             "_kwargs": {
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
                 "expiration_time": 9999999999,
             },
         },
@@ -686,7 +686,7 @@ class TestNetAddrIp4HostErrors(TestCase):
             "_description": "AssertionError: DHCP origin with expiration_time in the past.",
             "_args": ["192.168.1.100/24"],
             "_kwargs": {
-                "origin": Ip4HostOrigin.DHCP,
+                "origin": Ip4IfAddrSource.DHCP,
                 "expiration_time": 1,
             },
         },
@@ -694,27 +694,27 @@ class TestNetAddrIp4HostErrors(TestCase):
             "_description": "AssertionError: DHCP origin with negative expiration_time.",
             "_args": ["192.168.1.100/24"],
             "_kwargs": {
-                "origin": Ip4HostOrigin.DHCP,
+                "origin": Ip4IfAddrSource.DHCP,
                 "expiration_time": -1,
             },
         },
         {
-            "_description": "AssertionError: copying Ip4Host with gateway set.",
-            "_args": [Ip4Host("192.168.1.100/24")],
+            "_description": "AssertionError: copying Ip4IfAddr with gateway set.",
+            "_args": [Ip4IfAddr("192.168.1.100/24")],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
             },
         },
         {
-            "_description": "AssertionError: copying Ip4Host with origin set.",
-            "_args": [Ip4Host("192.168.1.100/24")],
+            "_description": "AssertionError: copying Ip4IfAddr with origin set.",
+            "_args": [Ip4IfAddr("192.168.1.100/24")],
             "_kwargs": {
-                "origin": Ip4HostOrigin.STATIC,
+                "origin": Ip4IfAddrSource.STATIC,
             },
         },
         {
-            "_description": "AssertionError: copying Ip4Host with expiration_time set.",
-            "_args": [Ip4Host("192.168.1.100/24")],
+            "_description": "AssertionError: copying Ip4IfAddr with expiration_time set.",
+            "_args": [Ip4IfAddr("192.168.1.100/24")],
             "_kwargs": {
                 "expiration_time": 9999999999,
             },
@@ -739,7 +739,7 @@ class TestNetAddrIp4HostAssertionErrors(TestCase):
             AssertionError,
             msg=f"Expected AssertionError for case: {self._description}.",
         ):
-            Ip4Host(*self._args, **self._kwargs)
+            Ip4IfAddr(*self._args, **self._kwargs)
 
 
 class TestNetAddrIp4HostSetters(TestCase):
@@ -752,17 +752,17 @@ class TestNetAddrIp4HostSetters(TestCase):
         Initialize a base IPv4 host for setter tests.
         """
 
-        self._ip4_host = Ip4Host("192.168.1.100/24", origin=Ip4HostOrigin.STATIC)
+        self._ip4_host = Ip4IfAddr("192.168.1.100/24", origin=Ip4IfAddrSource.STATIC)
 
     def test__net_addr__ip4_host__origin_setter(self) -> None:
         """
         Ensure the IPv4 host 'origin' setter stores the new value.
         """
 
-        self._ip4_host.origin = Ip4HostOrigin.UNKNOWN
+        self._ip4_host.origin = Ip4IfAddrSource.UNKNOWN
         self.assertEqual(
             self._ip4_host.origin,
-            Ip4HostOrigin.UNKNOWN,
+            Ip4IfAddrSource.UNKNOWN,
             msg="The 'origin' setter must store the assigned value.",
         )
 
@@ -808,7 +808,7 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip4HostGatewayError,
+            Ip4IfAddrGatewayError,
             msg="The 'gateway' setter must reject an address outside the host's network.",
         ):
             self._ip4_host.gateway = Ip4Address("10.0.0.1")
@@ -819,7 +819,7 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip4HostGatewayError,
+            Ip4IfAddrGatewayError,
             msg="The 'gateway' setter must reject the network address.",
         ):
             self._ip4_host.gateway = Ip4Address("192.168.1.0")
@@ -830,7 +830,7 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip4HostGatewayError,
+            Ip4IfAddrGatewayError,
             msg="The 'gateway' setter must reject the broadcast address.",
         ):
             self._ip4_host.gateway = Ip4Address("192.168.1.255")
@@ -841,7 +841,7 @@ class TestNetAddrIp4HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip4HostGatewayError,
+            Ip4IfAddrGatewayError,
             msg="The 'gateway' setter must reject the host's own address.",
         ):
             self._ip4_host.gateway = Ip4Address("192.168.1.100")

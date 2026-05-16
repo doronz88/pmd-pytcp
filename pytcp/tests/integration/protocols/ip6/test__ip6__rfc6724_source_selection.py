@@ -42,7 +42,7 @@ ver 3.0.5
 
 import time
 
-from net_addr import Ip6Address, Ip6Host, Ip6Network
+from net_addr import Ip6Address, Ip6IfAddr, Ip6Network
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
 from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
@@ -51,10 +51,10 @@ from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 # host autoconfigures; the three global hosts let us exercise
 # rule-2 scope matching, rule-3 deprecated-avoidance, and rule-8
 # longest-match in isolation.
-_HOST_LINK_LOCAL = Ip6Host("fe80::7/64")
-_HOST_PREFIX_A = Ip6Host("2001:db8:0:1::7/64")
-_HOST_PREFIX_B = Ip6Host("2001:db8:0:2::7/64")
-_HOST_PREFIX_C = Ip6Host("2001:db8:0:3::7/64")
+_HOST_LINK_LOCAL = Ip6IfAddr("fe80::7/64")
+_HOST_PREFIX_A = Ip6IfAddr("2001:db8:0:1::7/64")
+_HOST_PREFIX_B = Ip6IfAddr("2001:db8:0:2::7/64")
+_HOST_PREFIX_C = Ip6IfAddr("2001:db8:0:3::7/64")
 
 # Destinations used to exercise individual rules.
 _DST_LINK_LOCAL = Ip6Address("fe80::91")

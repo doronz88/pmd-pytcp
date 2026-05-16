@@ -40,7 +40,7 @@ ver 3.0.5
 from dataclasses import dataclass
 from typing import Any
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import (
     EthernetAssembler,
     Ip4Assembler,
@@ -101,7 +101,7 @@ class Ip4TestCase(NetworkTestCase):
     '_select_ip4_source'.
     """
 
-    def _set_ip4_hosts(self, *hosts: Ip4Host) -> None:
+    def _set_ip4_hosts(self, *hosts: Ip4IfAddr) -> None:
         """
         Replace the stack's '_ip4_host' list with the given
         hosts. Used by source-selection tests that exercise

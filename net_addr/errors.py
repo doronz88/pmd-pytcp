@@ -55,19 +55,19 @@ class IpNetworkFormatError(NetAddrError):
     """
 
 
-class IpHostFormatError(NetAddrError):
+class IfAddrFormatError(NetAddrError):
     """
     Base class for all IP host format exceptions.
     """
 
 
-class IpHostGatewayError(NetAddrError):
+class IfAddrGatewayError(NetAddrError):
     """
     Base class for all IP host gateway exceptions.
     """
 
 
-class IpHostSanityError(NetAddrError):
+class IfAddrSanityError(NetAddrError):
     """
     Base class for all IP host sanity exceptions.
     """
@@ -100,7 +100,7 @@ class Ip4NetworkFormatError(IpNetworkFormatError):
         super().__init__(f"The IPv4 network format is invalid: {value!r}")
 
 
-class Ip4HostFormatError(IpHostFormatError):
+class Ip4IfAddrFormatError(IfAddrFormatError):
     """
     Exception raised when IPv4 host format is invalid.
     """
@@ -109,7 +109,7 @@ class Ip4HostFormatError(IpHostFormatError):
         super().__init__(f"The IPv4 host format is invalid: {value!r}")
 
 
-class Ip4HostSanityError(IpHostSanityError):
+class Ip4IfAddrSanityError(IfAddrSanityError):
     """
     Exception raised when IPv4 host doesn't belong to provided network.
     """
@@ -118,7 +118,7 @@ class Ip4HostSanityError(IpHostSanityError):
         super().__init__(f"The IPv4 address doesn't belong to the provided network: {value!r}")
 
 
-class Ip4HostGatewayError(IpHostGatewayError):
+class Ip4IfAddrGatewayError(IfAddrGatewayError):
     """
     Exception raised when IPv4 host gateway is invalid.
     """
@@ -154,7 +154,7 @@ class Ip6NetworkFormatError(IpNetworkFormatError):
         super().__init__(f"The IPv6 network format is invalid: {value!r}")
 
 
-class Ip6HostFormatError(IpHostFormatError):
+class Ip6IfAddrFormatError(IfAddrFormatError):
     """
     Exception raised when IPv6 host format is invalid.
     """
@@ -163,7 +163,7 @@ class Ip6HostFormatError(IpHostFormatError):
         super().__init__(f"The IPv6 host format is invalid: {value!r}")
 
 
-class Ip6HostSanityError(IpHostSanityError):
+class Ip6IfAddrSanityError(IfAddrSanityError):
     """
     Exception raised when IPv6 host doesn't belong to provided network.
     """
@@ -172,7 +172,7 @@ class Ip6HostSanityError(IpHostSanityError):
         super().__init__(f"The IPv6 address doesn't belong to the provided network: {value!r}")
 
 
-class Ip6HostGatewayError(IpHostGatewayError):
+class Ip6IfAddrGatewayError(IfAddrGatewayError):
     """
     Exception raised when IPv6 host gateway is invalid.
     """

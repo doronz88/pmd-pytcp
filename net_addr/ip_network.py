@@ -85,13 +85,13 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         Check if the IP network contains the IP address or host.
         """
 
-        from net_addr.ip4_host import Ip4Host
-        from net_addr.ip6_host import Ip6Host
+        from net_addr.ip4_ifaddr import Ip4IfAddr
+        from net_addr.ip6_ifaddr import Ip6IfAddr
 
         if isinstance(other, (Ip6Address, Ip4Address)):
             return self.version == other.version and int(self.address) <= int(other) <= int(self.last)
 
-        if isinstance(other, (Ip4Host, Ip6Host)):
+        if isinstance(other, (Ip4IfAddr, Ip6IfAddr)):
             return self.version == other.version and int(self.address) <= int(other.address) <= int(self.last)
 
         return False

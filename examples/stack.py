@@ -41,14 +41,14 @@ import click
 from examples.lib.subsystem import Subsystem
 from net_addr import (
     ClickTypeIp4Address,
-    ClickTypeIp4Host,
+    ClickTypeIp4IfAddr,
     ClickTypeIp6Address,
-    ClickTypeIp6Host,
+    ClickTypeIp6IfAddr,
     ClickTypeMacAddress,
     Ip4Address,
-    Ip4Host,
+    Ip4IfAddr,
     Ip6Address,
-    Ip6Host,
+    Ip6IfAddr,
     MacAddress,
 )
 from pytcp import stack
@@ -125,7 +125,7 @@ def _print_stats_delta(prev: dict[str, int], now: dict[str, int], interval: int)
 @click.option(
     "--stack-ip6-address",
     "stack__ip6_host",
-    type=ClickTypeIp6Host(),
+    type=ClickTypeIp6IfAddr(),
     default=None,
     help="IPv6 address/mask to be assigned to the stack interface.",
 )
@@ -146,7 +146,7 @@ def _print_stats_delta(prev: dict[str, int], now: dict[str, int], interval: int)
 @click.option(
     "--stack-ip4-address",
     "stack__ip4_host",
-    type=ClickTypeIp4Host(),
+    type=ClickTypeIp4IfAddr(),
     default=None,
     help="IPv4 address/mask to be assigned to the stack interface.",
 )
@@ -164,10 +164,10 @@ def cli(
     stack__interface: str,
     stack__mac_address: MacAddress | None,
     stack__ip6_support: bool,
-    stack__ip6_host: Ip6Host | None,
+    stack__ip6_host: Ip6IfAddr | None,
     stack__ip6_gateway: Ip6Address | None,
     stack__ip4_support: bool,
-    stack__ip4_host: Ip4Host | None,
+    stack__ip4_host: Ip4IfAddr | None,
     stack__ip4_gateway: Ip4Address | None,
     subsystems: list[Subsystem] | None = None,
 ) -> None:

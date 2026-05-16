@@ -35,22 +35,22 @@ from unittest import TestCase
 from click import BadParameter
 
 from net_addr.click_types import (
+    ClickTypeIfAddr,
     ClickTypeIp4Address,
-    ClickTypeIp4Host,
+    ClickTypeIp4IfAddr,
     ClickTypeIp4Network,
     ClickTypeIp6Address,
-    ClickTypeIp6Host,
+    ClickTypeIp6IfAddr,
     ClickTypeIp6Network,
     ClickTypeIpAddress,
-    ClickTypeIpHost,
     ClickTypeIpNetwork,
     ClickTypeMacAddress,
 )
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_host import Ip4Host
+from net_addr.ip4_ifaddr import Ip4IfAddr
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_host import Ip6Host
+from net_addr.ip6_ifaddr import Ip6IfAddr
 from net_addr.ip6_network import Ip6Network
 from net_addr.mac_address import MacAddress
 
@@ -329,11 +329,11 @@ class TestClickTypeIp4Network(TestCase):
 
 class TestClickTypeIpHost(TestCase):
     """
-    The ClickTypeIpHost (IPv6 or IPv4) tests.
+    The ClickTypeIfAddr (IPv6 or IPv4) tests.
     """
 
     def setUp(self) -> None:
-        self._param = ClickTypeIpHost()
+        self._param = ClickTypeIfAddr()
 
     def test__click_types__ip_host__name(self) -> None:
         """
@@ -344,12 +344,12 @@ class TestClickTypeIpHost(TestCase):
 
     def test__click_types__ip_host__valid_ip6(self) -> None:
         """
-        Ensure a valid IPv6 host is parsed into an 'Ip6Host'.
+        Ensure a valid IPv6 host is parsed into an 'Ip6IfAddr'.
         """
 
         result = self._param.convert("2001:db8::1/64", None, None)
 
-        self.assertIsInstance(result, Ip6Host)
+        self.assertIsInstance(result, Ip6IfAddr)
         self.assertEqual(str(result), "2001:db8::1/64")
 
     def test__click_types__ip_host__valid_ip4_fallback(self) -> None:
@@ -359,7 +359,7 @@ class TestClickTypeIpHost(TestCase):
 
         result = self._param.convert("192.0.2.1/24", None, None)
 
-        self.assertIsInstance(result, Ip4Host)
+        self.assertIsInstance(result, Ip4IfAddr)
         self.assertEqual(str(result), "192.0.2.1/24")
 
     def test__click_types__ip_host__invalid_raises_bad_parameter(self) -> None:
@@ -375,11 +375,11 @@ class TestClickTypeIpHost(TestCase):
 
 class TestClickTypeIp6Host(TestCase):
     """
-    The ClickTypeIp6Host (IPv6 only) tests.
+    The ClickTypeIp6IfAddr (IPv6 only) tests.
     """
 
     def setUp(self) -> None:
-        self._param = ClickTypeIp6Host()
+        self._param = ClickTypeIp6IfAddr()
 
     def test__click_types__ip6_host__name(self) -> None:
         """
@@ -390,12 +390,12 @@ class TestClickTypeIp6Host(TestCase):
 
     def test__click_types__ip6_host__valid(self) -> None:
         """
-        Ensure a valid IPv6 host is parsed into an 'Ip6Host'.
+        Ensure a valid IPv6 host is parsed into an 'Ip6IfAddr'.
         """
 
         result = self._param.convert("2001:db8::1/64", None, None)
 
-        self.assertIsInstance(result, Ip6Host)
+        self.assertIsInstance(result, Ip6IfAddr)
         self.assertEqual(str(result), "2001:db8::1/64")
 
     def test__click_types__ip6_host__invalid_raises_bad_parameter(self) -> None:
@@ -411,11 +411,11 @@ class TestClickTypeIp6Host(TestCase):
 
 class TestClickTypeIp4Host(TestCase):
     """
-    The ClickTypeIp4Host (IPv4 only) tests.
+    The ClickTypeIp4IfAddr (IPv4 only) tests.
     """
 
     def setUp(self) -> None:
-        self._param = ClickTypeIp4Host()
+        self._param = ClickTypeIp4IfAddr()
 
     def test__click_types__ip4_host__name(self) -> None:
         """
@@ -426,12 +426,12 @@ class TestClickTypeIp4Host(TestCase):
 
     def test__click_types__ip4_host__valid(self) -> None:
         """
-        Ensure a valid IPv4 host is parsed into an 'Ip4Host'.
+        Ensure a valid IPv4 host is parsed into an 'Ip4IfAddr'.
         """
 
         result = self._param.convert("192.0.2.1/24", None, None)
 
-        self.assertIsInstance(result, Ip4Host)
+        self.assertIsInstance(result, Ip4IfAddr)
         self.assertEqual(str(result), "192.0.2.1/24")
 
     def test__click_types__ip4_host__invalid_raises_bad_parameter(self) -> None:

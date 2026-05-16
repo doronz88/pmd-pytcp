@@ -32,7 +32,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
-from net_addr import Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import (
     Icmp6Assembler,
     Icmp6DestinationUnreachableCode,
@@ -69,7 +69,7 @@ def tearDownModule() -> None:
     stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
-STACK__IP6_HOST = Ip6Host("2001:db8:0:1::7/64")
+STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 STACK__IP6_ADDRESS = STACK__IP6_HOST.address
 STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")

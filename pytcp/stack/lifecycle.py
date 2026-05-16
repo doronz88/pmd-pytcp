@@ -44,7 +44,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from net_addr import Ip4Host, Ip6Host, MacAddress
+from net_addr import Ip4IfAddr, Ip6IfAddr, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
@@ -138,11 +138,11 @@ def init(
     mac_address: MacAddress | None = None,
     interface_name: str | None = None,
     ip4_support: bool = True,
-    ip4_host: Ip4Host | None = None,
+    ip4_host: Ip4IfAddr | None = None,
     ip4_dhcp: bool | None = None,
     ip4_link_local: bool = False,
     ip6_support: bool = True,
-    ip6_host: Ip6Host | None = None,
+    ip6_host: Ip6IfAddr | None = None,
     ip6_gua_autoconfig: bool | None = None,
     ip6_lla_autoconfig: bool = True,
     sysctls: dict[str, Any] | None = None,
@@ -161,11 +161,11 @@ def init(
     # resolution into the body so each invocation sees the
     # current values.
     if ip4_host is None and _stack.IP4_ADDRESS is not None:
-        ip4_host = Ip4Host(_stack.IP4_ADDRESS, gateway=_stack.IP4_GATEWAY)
+        ip4_host = Ip4IfAddr(_stack.IP4_ADDRESS, gateway=_stack.IP4_GATEWAY)
     if ip4_dhcp is None:
         ip4_dhcp = _stack.IP4_ADDRESS is None
     if ip6_host is None and _stack.IP6_ADDRESS is not None:
-        ip6_host = Ip6Host(_stack.IP6_ADDRESS, gateway=_stack.IP6_GATEWAY)
+        ip6_host = Ip6IfAddr(_stack.IP6_ADDRESS, gateway=_stack.IP6_GATEWAY)
     if ip6_gua_autoconfig is None:
         ip6_gua_autoconfig = _stack.IP6_ADDRESS is None
 

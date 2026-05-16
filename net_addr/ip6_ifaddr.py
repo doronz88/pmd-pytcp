@@ -25,7 +25,7 @@
 """
 This module contains IPv6 host support class.
 
-net_addr/ip6_host.py
+net_addr/ip6_ifaddr.py
 
 ver 3.0.5
 """
@@ -37,16 +37,16 @@ from typing import Self, override
 
 from net_addr.errors import (
     Ip6AddressFormatError,
-    Ip6HostFormatError,
-    Ip6HostGatewayError,
-    Ip6HostSanityError,
+    Ip6IfAddrFormatError,
+    Ip6IfAddrGatewayError,
+    Ip6IfAddrSanityError,
     Ip6MaskFormatError,
 )
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_host_origin import Ip6HostOrigin
+from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
-from net_addr.ip_host import IpHost
+from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MacAddress
 
@@ -77,7 +77,7 @@ def _is_reserved_iid(iid: int) -> bool:
     return _RESERVED_SUBNET_ANYCAST_LO <= iid <= _RESERVED_SUBNET_ANYCAST_HI
 
 
-class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
+class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
     """
     IPv6 host support class.
     """
@@ -86,7 +86,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
 
     _version: IpVersion = IpVersion.IP6
     _gateway: Ip6Address | None
-    _origin: Ip6HostOrigin
+    _origin: Ip6IfAddrSource
     _expiration_time: int
 
     def __init__(
@@ -95,14 +95,14 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
         /,
         *,
         gateway: Ip6Address | None = None,
-        origin: Ip6HostOrigin | None = None,
+        origin: Ip6IfAddrSource | None = None,
         expiration_time: int | None = None,
     ) -> None:
         """
         Initialize the IPv6 host object.
         """
 
-        if isinstance(host, Ip6Host):
+        if isinstance(host, Ip6IfAddr):
             assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
             assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
             assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
@@ -114,10 +114,10 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             return
 
         self._gateway = gateway
-        self._origin = origin or Ip6HostOrigin.UNKNOWN
+        self._origin = origin or Ip6IfAddrSource.UNKNOWN
         self._expiration_time = expiration_time or 0
 
-        if self._origin in {Ip6HostOrigin.AUTOCONFIG, Ip6HostOrigin.DHCP}:
+        if self._origin in {Ip6IfAddrSource.AUTOCONFIG, Ip6IfAddrSource.DHCP}:
             assert self._expiration_time >= int(time.time())
         else:
             assert self._expiration_time == 0
@@ -130,7 +130,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             else:
                 self._network = Ip6Network((tuple_address, network_or_mask))
             if self._address not in self._network:
-                raise Ip6HostSanityError(host)
+                raise Ip6IfAddrSanityError(host)
             self._validate_gateway(gateway)
             return
 
@@ -144,7 +144,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
                 pass
 
-        raise Ip6HostFormatError(host)
+        raise Ip6IfAddrFormatError(host)
 
     @override
     def _validate_gateway(self, address: Ip6Address | None, /) -> None:
@@ -158,7 +158,7 @@ class Ip6Host(IpHost[Ip6Address, Ip6Network, Ip6HostOrigin]):
             or address == self._network.address
             or address == self._address
         ):
-            raise Ip6HostGatewayError(address)
+            raise Ip6IfAddrGatewayError(address)
 
     @classmethod
     def from_eui64(cls, *, mac_address: MacAddress, ip6_network: Ip6Network) -> Self:

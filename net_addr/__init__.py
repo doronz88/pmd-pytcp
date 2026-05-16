@@ -31,99 +31,99 @@ ver 3.0.5
 """
 
 from net_addr.click_types import (
+    ClickTypeIfAddr,
     ClickTypeIp4Address,
-    ClickTypeIp4Host,
+    ClickTypeIp4IfAddr,
     ClickTypeIp4Network,
     ClickTypeIp6Address,
-    ClickTypeIp6Host,
+    ClickTypeIp6IfAddr,
     ClickTypeIp6Network,
     ClickTypeIpAddress,
-    ClickTypeIpHost,
     ClickTypeIpNetwork,
     ClickTypeMacAddress,
 )
 from net_addr.errors import (
+    IfAddrFormatError,
+    IfAddrGatewayError,
+    IfAddrSanityError,
     Ip4AddressFormatError,
-    Ip4HostFormatError,
-    Ip4HostGatewayError,
-    Ip4HostSanityError,
+    Ip4IfAddrFormatError,
+    Ip4IfAddrGatewayError,
+    Ip4IfAddrSanityError,
     Ip4MaskFormatError,
     Ip4NetworkFormatError,
     Ip6AddressFormatError,
-    Ip6HostFormatError,
-    Ip6HostGatewayError,
-    Ip6HostSanityError,
+    Ip6IfAddrFormatError,
+    Ip6IfAddrGatewayError,
+    Ip6IfAddrSanityError,
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
     IpAddressFormatError,
-    IpHostFormatError,
-    IpHostGatewayError,
-    IpHostSanityError,
     IpMaskFormatError,
     IpNetworkFormatError,
     MacAddressFormatError,
     NetAddrError,
 )
 from net_addr.ip4_address import IP4__ADDRESS_LEN, Ip4Address
-from net_addr.ip4_host import Ip4Host
-from net_addr.ip4_host_origin import Ip4HostOrigin
+from net_addr.ip4_ifaddr import Ip4IfAddr
+from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import IP6__ADDRESS_LEN, Ip6Address
-from net_addr.ip6_host import Ip6Host
-from net_addr.ip6_host_origin import Ip6HostOrigin
+from net_addr.ip6_ifaddr import Ip6IfAddr
+from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
 from net_addr.ip_address import IpAddress
-from net_addr.ip_host import IpHost
-from net_addr.ip_host_origin import IpHostOrigin
+from net_addr.ip_ifaddr import IfAddr
+from net_addr.ip_ifaddr_source import IfAddrSource
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MAC__ADDRESS_LEN, MacAddress
 
 __all__ = [
+    "ClickTypeIfAddr",
     "ClickTypeIp4Address",
-    "ClickTypeIp4Host",
+    "ClickTypeIp4IfAddr",
     "ClickTypeIp4Network",
     "ClickTypeIp6Address",
-    "ClickTypeIp6Host",
+    "ClickTypeIp6IfAddr",
     "ClickTypeIp6Network",
     "ClickTypeIpAddress",
-    "ClickTypeIpHost",
     "ClickTypeIpNetwork",
     "ClickTypeMacAddress",
     "IP4__ADDRESS_LEN",
     "IP6__ADDRESS_LEN",
+    "IfAddr",
+    "IfAddrFormatError",
+    "IfAddrGatewayError",
+    "IfAddrSanityError",
+    "IfAddrSource",
     "Ip4Address",
     "Ip4AddressFormatError",
-    "Ip4Host",
-    "Ip4HostFormatError",
-    "Ip4HostGatewayError",
-    "Ip4HostOrigin",
-    "Ip4HostSanityError",
+    "Ip4IfAddr",
+    "Ip4IfAddrFormatError",
+    "Ip4IfAddrGatewayError",
+    "Ip4IfAddrSanityError",
+    "Ip4IfAddrSource",
     "Ip4Mask",
     "Ip4MaskFormatError",
     "Ip4Network",
     "Ip4NetworkFormatError",
     "Ip6Address",
     "Ip6AddressFormatError",
-    "Ip6Host",
-    "Ip6HostFormatError",
-    "Ip6HostGatewayError",
-    "Ip6HostOrigin",
-    "Ip6HostSanityError",
+    "Ip6IfAddr",
+    "Ip6IfAddrFormatError",
+    "Ip6IfAddrGatewayError",
+    "Ip6IfAddrSanityError",
+    "Ip6IfAddrSource",
     "Ip6Mask",
     "Ip6MaskFormatError",
     "Ip6Network",
     "Ip6NetworkFormatError",
     "IpAddress",
     "IpAddressFormatError",
-    "IpHost",
-    "IpHostFormatError",
-    "IpHostGatewayError",
-    "IpHostOrigin",
-    "IpHostSanityError",
     "IpMask",
     "IpMaskFormatError",
     "IpNetwork",

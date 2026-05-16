@@ -51,7 +51,7 @@ ver 3.0.5
 import threading
 from unittest.mock import patch
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
@@ -142,13 +142,13 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
 
         # Address sequence: original ip6_host fails, regen #1
         # fails, regen #2 succeeds.
-        original = Ip6Host("2001:db8:0:1::a/64")
-        regen1 = Ip6Host("2001:db8:0:1::b/64")
-        regen2 = Ip6Host("2001:db8:0:1::c/64")
-        regen_calls: list[Ip6Host] = [regen1, regen2]
+        original = Ip6IfAddr("2001:db8:0:1::a/64")
+        regen1 = Ip6IfAddr("2001:db8:0:1::b/64")
+        regen2 = Ip6IfAddr("2001:db8:0:1::c/64")
+        regen_calls: list[Ip6IfAddr] = [regen1, regen2]
         regen_idx = [0]
 
-        def _regenerate() -> Ip6Host:
+        def _regenerate() -> Ip6IfAddr:
             host = regen_calls[regen_idx[0]]
             regen_idx[0] += 1
             return host
@@ -195,11 +195,11 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         Reference: RFC 7217 §6 (IDGEN_RETRIES bound).
         """
 
-        original = Ip6Host("2001:db8:0:1::a/64")
-        regen_calls = [Ip6Host(f"2001:db8:0:1::{n:x}/64") for n in range(0xB, 0xB + 10)]
+        original = Ip6IfAddr("2001:db8:0:1::a/64")
+        regen_calls = [Ip6IfAddr(f"2001:db8:0:1::{n:x}/64") for n in range(0xB, 0xB + 10)]
         regen_idx = [0]
 
-        def _regenerate() -> Ip6Host:
+        def _regenerate() -> Ip6IfAddr:
             host = regen_calls[regen_idx[0]]
             regen_idx[0] += 1
             return host
@@ -241,7 +241,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        original = Ip6Host("2001:db8:0:1::a/64")
+        original = Ip6IfAddr("2001:db8:0:1::a/64")
         attempted: list[Ip6Address] = []
 
         def _mock_dad(*, ip6_unicast_candidate: Ip6Address) -> bool:
@@ -267,16 +267,16 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        original = Ip6Host("2001:db8:0:1::a/64")
+        original = Ip6IfAddr("2001:db8:0:1::a/64")
         attempted: list[Ip6Address] = []
 
         def _mock_dad(*, ip6_unicast_candidate: Ip6Address) -> bool:
             attempted.append(ip6_unicast_candidate)
             return False
 
-        regen_calls = [Ip6Host("2001:db8:0:1::b/64")]
+        regen_calls = [Ip6IfAddr("2001:db8:0:1::b/64")]
 
-        def _regenerate() -> Ip6Host:
+        def _regenerate() -> Ip6IfAddr:
             return regen_calls[0]
 
         with sysctl_module.override("icmp6.idgen_retries", 0):
@@ -320,12 +320,12 @@ class TestIcmp6Nd__IdgenRetries__AcceptDadCompose(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        original = Ip6Host("2001:db8:0:1::a/64")
-        regen_calls = [Ip6Host(f"2001:db8:0:1::{n:x}/64") for n in range(0xB, 0xB + 10)]
+        original = Ip6IfAddr("2001:db8:0:1::a/64")
+        regen_calls = [Ip6IfAddr(f"2001:db8:0:1::{n:x}/64") for n in range(0xB, 0xB + 10)]
         regen_idx = [0]
         ip6_support_during_retry: list[bool] = []
 
-        def _regenerate() -> Ip6Host:
+        def _regenerate() -> Ip6IfAddr:
             ip6_support_during_retry.append(self._packet_handler._ip6_support)
             host = regen_calls[regen_idx[0]]
             regen_idx[0] += 1

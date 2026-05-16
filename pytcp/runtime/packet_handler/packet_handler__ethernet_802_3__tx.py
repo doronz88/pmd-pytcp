@@ -46,7 +46,7 @@ class PacketHandlerEthernet8023Tx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_addr import Ip4Host, Ip6Host
+        from net_addr import Ip4IfAddr, Ip6IfAddr
         from net_proto import Ethernet8023Payload
         from pytcp.lib.packet_stats import PacketStatsTx
 

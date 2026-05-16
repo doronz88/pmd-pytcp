@@ -34,7 +34,7 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import ArpAssembler, ArpOperation
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
@@ -66,10 +66,10 @@ def tearDownModule() -> None:
 
 
 STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
-STACK__IP4_HOST = Ip4Host("10.0.1.7/24")
+STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
 STACK__IP4_ADDRESS = STACK__IP4_HOST.address
 
-STACK__IP4_HOST__CANDIDATE = Ip4Host("10.0.1.5/24")
+STACK__IP4_HOST__CANDIDATE = Ip4IfAddr("10.0.1.5/24")
 STACK__IP4_ADDRESS__CANDIDATE = STACK__IP4_HOST__CANDIDATE.address
 
 HOST_A__MAC = MacAddress("02:00:00:00:00:91")
@@ -820,7 +820,7 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
 
 
 HOST_C__MAC = MacAddress("02:00:00:00:00:93")
-STACK__IP4_HOST_2 = Ip4Host("10.0.1.8/24")
+STACK__IP4_HOST_2 = Ip4IfAddr("10.0.1.8/24")
 STACK__IP4_ADDRESS_2 = STACK__IP4_HOST_2.address
 
 

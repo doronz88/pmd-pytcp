@@ -52,14 +52,14 @@ class PacketHandlerEthernetTx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_addr import Ip4Host, Ip6Host
+        from net_addr import Ip4IfAddr, Ip6IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
-        _ip6_host: list[Ip6Host]
-        _ip4_host: list[Ip4Host]
+        _ip6_host: list[Ip6IfAddr]
+        _ip4_host: list[Ip4IfAddr]
 
     def _phtx_ethernet(
         self,

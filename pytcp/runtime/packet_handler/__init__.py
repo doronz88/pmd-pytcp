@@ -42,9 +42,9 @@ from typing import TYPE_CHECKING, override
 
 from net_addr import (
     Ip4Address,
-    Ip4Host,
+    Ip4IfAddr,
     Ip6Address,
-    Ip6Host,
+    Ip6IfAddr,
     Ip6Mask,
     Ip6Network,
     MacAddress,
@@ -118,10 +118,10 @@ class PacketHandler(Subsystem, ABC):
     _interface_name: str | None
     _ip6_support: bool
     _ip4_support: bool
-    _ip6_host_candidate: list[Ip6Host]
-    _ip4_host_candidate: list[Ip4Host]
-    _ip6_host: list[Ip6Host]
-    _ip4_host: list[Ip4Host]
+    _ip6_host_candidate: list[Ip6IfAddr]
+    _ip4_host_candidate: list[Ip4IfAddr]
+    _ip6_host: list[Ip6IfAddr]
+    _ip4_host: list[Ip4IfAddr]
     _ip6_multicast: list[Ip6Address]
     _ip4_multicast: list[Ip4Address]
     _ip6_id: int
@@ -146,8 +146,8 @@ class PacketHandler(Subsystem, ABC):
         ip6_support: bool,
         ip4_support: bool,
         interface_name: str | None = None,
-        ip6_host: Ip6Host | None = None,
-        ip4_host: Ip4Host | None = None,
+        ip6_host: Ip6IfAddr | None = None,
+        ip4_host: Ip4IfAddr | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
         link_stats: LinkStatsCounters | None = None,
@@ -336,7 +336,7 @@ class PacketHandler(Subsystem, ABC):
             daemon=True,
         ).start()
 
-    def _assign_ip6_host(self, /, ip6_host: Ip6Host) -> None:
+    def _assign_ip6_host(self, /, ip6_host: Ip6IfAddr) -> None:
         """
         Assign IPv6 host unicast  address to the list stack listens on.
         """
@@ -347,7 +347,7 @@ class PacketHandler(Subsystem, ABC):
 
         self._assign_ip6_multicast(ip6_host.address.solicited_node_multicast)
 
-    def _remove_ip6_host(self, /, ip6_host: Ip6Host) -> None:
+    def _remove_ip6_host(self, /, ip6_host: Ip6IfAddr) -> None:
         """
         Remove IPv6 host unicast address from the list stack listens on.
         """
@@ -362,8 +362,8 @@ class PacketHandler(Subsystem, ABC):
     def _claim_ip6_address_async(
         self,
         *,
-        ip6_host: Ip6Host,
-        regenerate: Callable[[], Ip6Host] | None = None,
+        ip6_host: Ip6IfAddr,
+        regenerate: Callable[[], Ip6IfAddr] | None = None,
     ) -> threading.Thread:
         """
         Claim 'ip6_host' on a daemon worker thread (DAD on L2,
@@ -395,7 +395,7 @@ class PacketHandler(Subsystem, ABC):
 
         raise NotImplementedError
 
-    def _assign_ip4_host(self, /, ip4_host: Ip4Host) -> None:
+    def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
         Assign IPv6 host unicast  address to the list stack listens on.
         """
@@ -404,7 +404,7 @@ class PacketHandler(Subsystem, ABC):
 
         __debug__ and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
 
-    def _remove_ip4_host(self, /, ip4_host: Ip4Host) -> None:
+    def _remove_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
         Remove IPv4 host unicast address from the list stack listens on.
         """
@@ -472,7 +472,7 @@ class PacketHandler(Subsystem, ABC):
         return self._packet_stats_tx
 
     @property
-    def ip6_host(self) -> list[Ip6Host]:
+    def ip6_host(self) -> list[Ip6IfAddr]:
         """
         Get the list of stack's IPv4 host addresses.
         """
@@ -488,7 +488,7 @@ class PacketHandler(Subsystem, ABC):
         return self._ip6_unicast
 
     @property
-    def ip4_host(self) -> list[Ip4Host]:
+    def ip4_host(self) -> list[Ip4IfAddr]:
         """
         Get the list of stack's IPv4 host addresses.
         """
@@ -652,7 +652,7 @@ class PacketHandler(Subsystem, ABC):
         # refresh ('existing is not None') no claim is needed
         # — the stable address is already in '_ip6_host'.
         if existing is None and self._ip6_addressing_complete:
-            ip6_host = Ip6Host((address, Ip6Mask("/64")))
+            ip6_host = Ip6IfAddr((address, Ip6Mask("/64")))
             ip6_host.gateway = router_address
             self._claim_ip6_address_async(
                 ip6_host=ip6_host,
@@ -693,7 +693,7 @@ class PacketHandler(Subsystem, ABC):
           'valid_until' deadlines but preserve the address
           (regeneration is §18c, not §18b).
         - New entry: generate a random IID via
-          'Ip6Host.from_rfc8981_temp', spawn an async DAD
+          'Ip6IfAddr.from_rfc8981_temp', spawn an async DAD
           claim via '_claim_ip6_address_async', and append
           to '_icmp6_temp_addresses'.
 
@@ -745,7 +745,7 @@ class PacketHandler(Subsystem, ABC):
 
         # New entry — generate random IID, spawn DAD claim.
         try:
-            temp_host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+            temp_host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
         except RuntimeError:
             # Reserved-IID retry exhaustion (broken random
             # source). Skip the temp address; the stable SLAAC
@@ -769,8 +769,8 @@ class PacketHandler(Subsystem, ABC):
         # call to 'from_rfc8981_temp' yields a different IID
         # (no 'dad_counter' is needed; the random generator is
         # stateless).
-        def _regenerate() -> Ip6Host:
-            host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+        def _regenerate() -> Ip6IfAddr:
+            host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
             host.gateway = router_address
             return host
 
@@ -886,7 +886,7 @@ class PacketHandler(Subsystem, ABC):
 
             # Mint a fresh random IID for the same prefix.
             try:
-                temp_host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+                temp_host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
             except RuntimeError:
                 continue
             temp_host.gateway = newest.router_address
@@ -911,8 +911,8 @@ class PacketHandler(Subsystem, ABC):
 
             # RFC 8981 §3.3.3 regen via §20.3 retry: each retry
             # mints a fresh random IID.
-            def _regenerate(p: Ip6Network = prefix, ra: Ip6Address = newest.router_address) -> Ip6Host:
-                host = Ip6Host.from_rfc8981_temp(ip6_network=p)
+            def _regenerate(p: Ip6Network = prefix, ra: Ip6Address = newest.router_address) -> Ip6IfAddr:
+                host = Ip6IfAddr.from_rfc8981_temp(ip6_network=p)
                 host.gateway = ra
                 return host
 
@@ -1136,7 +1136,7 @@ class PacketHandler(Subsystem, ABC):
 
         return self._icmp6_ra_parameters
 
-    def _derive_ip6_host(self, *, ip6_network: Ip6Network) -> Ip6Host:
+    def _derive_ip6_host(self, *, ip6_network: Ip6Network) -> Ip6IfAddr:
         """
         Derive the host's IPv6 address for 'ip6_network' using
         either RFC 7217 stable opaque IIDs (default; modern
@@ -1149,12 +1149,12 @@ class PacketHandler(Subsystem, ABC):
         """
 
         if nd__constants.ICMP6__USE_RFC7217:
-            return Ip6Host.from_rfc7217(
+            return Ip6IfAddr.from_rfc7217(
                 ip6_network=ip6_network,
                 mac_address=self._mac_unicast,
                 secret_key=self._icmp6_slaac__secret_key,
             )
-        return Ip6Host.from_eui64(
+        return Ip6IfAddr.from_eui64(
             mac_address=self._mac_unicast,
             ip6_network=ip6_network,
         )
@@ -1164,7 +1164,7 @@ class PacketHandler(Subsystem, ABC):
         *,
         ip6_network: Ip6Network,
         gateway: Ip6Address | None,
-    ) -> Callable[[], Ip6Host] | None:
+    ) -> Callable[[], Ip6IfAddr] | None:
         """
         Build a DAD-failure regenerator for an RFC 7217 stable
         opaque IID address (RFC 7217 §6 retry on collision).
@@ -1180,9 +1180,9 @@ class PacketHandler(Subsystem, ABC):
 
         counter = [0]
 
-        def _regenerate() -> Ip6Host:
+        def _regenerate() -> Ip6IfAddr:
             counter[0] += 1
-            host = Ip6Host.from_rfc7217(
+            host = Ip6IfAddr.from_rfc7217(
                 ip6_network=ip6_network,
                 mac_address=self._mac_unicast,
                 secret_key=self._icmp6_slaac__secret_key,
@@ -1259,10 +1259,10 @@ class PacketHandlerL2(
         interface_mtu: int,
         interface_name: str | None = None,
         ip4_support: bool = True,
-        ip4_host: Ip4Host | None = None,
+        ip4_host: Ip4IfAddr | None = None,
         ip4_dhcp: bool = True,
         ip6_support: bool = True,
-        ip6_host: Ip6Host | None = None,
+        ip6_host: Ip6IfAddr | None = None,
         ip6_lla_autoconfig: bool = True,
         ip6_gua_autoconfig: bool = True,
         packet_stats_rx: PacketStatsRx | None = None,
@@ -1375,7 +1375,7 @@ class PacketHandlerL2(
         # RFC 8981 SLAAC temporary-address table — populated
         # alongside '_icmp6_slaac_addresses' when
         # 'icmp6.use_tempaddr' is non-zero. Each entry mints a
-        # random-IID address via 'Ip6Host.from_rfc8981_temp' and
+        # random-IID address via 'Ip6IfAddr.from_rfc8981_temp' and
         # claims it via the §20.1 async DAD worker. Lifetimes
         # are clamped to TEMP_*_LIFETIME at creation. Lazy-aged
         # like '_icmp6_slaac_addresses'.
@@ -1609,7 +1609,7 @@ class PacketHandlerL2(
             self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
         return not conflict
 
-    def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6Host) -> bool:
+    def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6IfAddr) -> bool:
         """
         Claim 'ip6_host' using RFC 4429 §3 Optimistic DAD: the
         address is installed into '_ip6_host' as OPTIMISTIC
@@ -1635,8 +1635,8 @@ class PacketHandlerL2(
     def _claim_ip6_address_async(
         self,
         *,
-        ip6_host: Ip6Host,
-        regenerate: Callable[[], Ip6Host] | None = None,
+        ip6_host: Ip6IfAddr,
+        regenerate: Callable[[], Ip6IfAddr] | None = None,
     ) -> threading.Thread:
         """
         Spawn a daemon worker thread that runs the DAD claim for
@@ -1663,7 +1663,7 @@ class PacketHandlerL2(
         accept_dad=2 fail-hard hook (§20.4) fires.
         """
 
-        def _attempt_claim(candidate: Ip6Host) -> bool:
+        def _attempt_claim(candidate: Ip6IfAddr) -> bool:
             if nd__constants.ICMP6__OPTIMISTIC_DAD == 1:
                 return self._claim_ip6_address_optimistic(ip6_host=candidate)
             ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=candidate.address)
@@ -1738,9 +1738,9 @@ class PacketHandlerL2(
         """
 
         def _claim_ip6_address(
-            ip6_host: Ip6Host,
+            ip6_host: Ip6IfAddr,
             *,
-            regenerate: Callable[[], Ip6Host] | None = None,
+            regenerate: Callable[[], Ip6IfAddr] | None = None,
         ) -> None:
             thread = self._claim_ip6_address_async(ip6_host=ip6_host, regenerate=regenerate)
             if nd__constants.ICMP6__OPTIMISTIC_DAD == 0:
@@ -2032,8 +2032,8 @@ class PacketHandlerL3(
     def _claim_ip6_address_async(
         self,
         *,
-        ip6_host: Ip6Host,
-        regenerate: Callable[[], Ip6Host] | None = None,
+        ip6_host: Ip6IfAddr,
+        regenerate: Callable[[], Ip6IfAddr] | None = None,
     ) -> threading.Thread:
         """
         L3 has no DAD — claims complete synchronously via

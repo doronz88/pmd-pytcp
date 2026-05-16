@@ -50,7 +50,7 @@ ver 3.0.5
 
 import time
 
-from net_addr import Ip6Address, Ip6Host, Ip6Network, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, Ip6Network, MacAddress
 from net_proto import Icmp6NdOptionPi
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
 from pytcp.stack import sysctl as sysctl_module
@@ -335,7 +335,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         expired_addr = "2001:db8:0:1::dead"
         expired = self._make_slaac(address=expired_addr, prefix=PREFIX_A, offset_valid=-1.0)
         self._packet_handler._icmp6_slaac_addresses = [expired]
-        self._packet_handler._ip6_host.append(Ip6Host(f"{expired_addr}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{expired_addr}/64"))
 
         self.assertIn(
             Ip6Address(expired_addr),
@@ -362,7 +362,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         active_addr = "2001:db8:0:1::cafe"
         active = self._make_slaac(address=active_addr, prefix=PREFIX_A, offset_valid=86400)
         self._packet_handler._icmp6_slaac_addresses = [active]
-        self._packet_handler._ip6_host.append(Ip6Host(f"{active_addr}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{active_addr}/64"))
 
         self._packet_handler._icmp6_sweep_slaac_addresses()
 
@@ -389,7 +389,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         # Address present in _ip6_host but NOT in the
         # SLAAC table.
         statically_configured = "2001:db8:0:9::1"
-        self._packet_handler._ip6_host.append(Ip6Host(f"{statically_configured}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{statically_configured}/64"))
 
         # An expired SLAAC entry references a different
         # address.

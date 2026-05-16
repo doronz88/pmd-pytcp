@@ -98,7 +98,7 @@ _DHCP_SERVER_IP: Ip4Address = STACK__IP4_GATEWAY
 _DHCP_SERVER_MAC: MacAddress = STACK__IP4_GATEWAY_MAC_ADDRESS
 
 # Owned-host address ('NetworkTestCase' pre-populates the stack
-# with this Ip4Host on the packet handler). We pretend the lease
+# with this Ip4IfAddr on the packet handler). We pretend the lease
 # was issued for this address so the RENEW reply lands unicast at
 # the owned IP and the REBIND reply lands broadcast.
 _STACK_IP: Ip4Address = STACK__IP4_HOST.address

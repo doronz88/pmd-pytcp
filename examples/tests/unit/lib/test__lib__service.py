@@ -39,7 +39,7 @@ from examples.lib import service as service_module
 from examples.lib.service import Service
 from examples.lib.tcp_service import TcpService
 from examples.lib.udp_service import UdpService
-from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
 from pytcp.socket import socket
 
 
@@ -282,7 +282,7 @@ class TestBuildEchoServices(TestCase):
             _EchoStub,
             local_port=7,
             ip4_support=True,
-            ip4_host=Ip4Host("192.0.2.5/24"),
+            ip4_host=Ip4IfAddr("192.0.2.5/24"),
             ip6_support=False,
             ip6_host=None,
         )
@@ -312,7 +312,7 @@ class TestBuildEchoServices(TestCase):
             ip4_support=False,
             ip4_host=None,
             ip6_support=True,
-            ip6_host=Ip6Host("2001:db8::5/64"),
+            ip6_host=Ip6IfAddr("2001:db8::5/64"),
         )
 
         self.assertEqual(
@@ -338,9 +338,9 @@ class TestBuildEchoServices(TestCase):
             _EchoStub,
             local_port=7,
             ip4_support=True,
-            ip4_host=Ip4Host("192.0.2.5/24"),
+            ip4_host=Ip4IfAddr("192.0.2.5/24"),
             ip6_support=True,
-            ip6_host=Ip6Host("2001:db8::5/64"),
+            ip6_host=Ip6IfAddr("2001:db8::5/64"),
         )
 
         self.assertEqual(

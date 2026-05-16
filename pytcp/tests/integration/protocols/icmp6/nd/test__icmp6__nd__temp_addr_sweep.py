@@ -49,7 +49,7 @@ ver 3.0.5
 
 import time
 
-from net_addr import Ip6Address, Ip6Host, Ip6Network
+from net_addr import Ip6Address, Ip6IfAddr, Ip6Network
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6TempAddress
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
@@ -191,7 +191,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         # Insert into both tables so the sweep can find &
         # remove from each.
         self._packet_handler._icmp6_temp_addresses = [expired]
-        self._packet_handler._ip6_host.append(Ip6Host(f"{expired_addr}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{expired_addr}/64"))
 
         self.assertIn(
             Ip6Address(expired_addr),
@@ -218,7 +218,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         active_addr = "2001:db8:0:1::cafe"
         active = self._make_temp(address=active_addr, prefix=PREFIX_A, offset_valid=86400)
         self._packet_handler._icmp6_temp_addresses = [active]
-        self._packet_handler._ip6_host.append(Ip6Host(f"{active_addr}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{active_addr}/64"))
 
         self._packet_handler._icmp6_sweep_temp_addresses()
 
@@ -272,7 +272,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         # Stable address present in _ip6_host but NOT in
         # the temp table.
         stable_addr = "2001:db8:0:9::1"
-        self._packet_handler._ip6_host.append(Ip6Host(f"{stable_addr}/64"))
+        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{stable_addr}/64"))
 
         # An expired temp tracks a DIFFERENT address.
         expired = self._make_temp(address="2001:db8:0:1::dead", prefix=PREFIX_A, offset_valid=-1.0)

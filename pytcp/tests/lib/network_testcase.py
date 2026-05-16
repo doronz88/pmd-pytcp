@@ -38,7 +38,7 @@ from typing import cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
-from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
@@ -77,16 +77,16 @@ from pytcp.runtime.tx_ring import TxRing
 #
 
 # Set the PyTCP stack candidate addressing for DAD tests.
-STACK__IP4_HOST__CANDIDATE = Ip4Host("10.0.1.5/24")
-STACK__IP6_HOST__CANDIDATE = Ip6Host("2001:db8:0:1::5/64")
+STACK__IP4_HOST__CANDIDATE = Ip4IfAddr("10.0.1.5/24")
+STACK__IP6_HOST__CANDIDATE = Ip6IfAddr("2001:db8:0:1::5/64")
 
 # Set the PyTCP stack addressing.
 STACK__MAC_ADDRESS = MacAddress("02:00:00:00:00:07")
-STACK__IP4_HOST = Ip4Host("10.0.1.7/24")
+STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
 STACK__IP4_GATEWAY = Ip4Address("10.0.1.1")
 STACK__IP4_HOST.gateway = STACK__IP4_GATEWAY
 STACK__IP4_GATEWAY_MAC_ADDRESS = MacAddress("02:00:00:00:00:01")
-STACK__IP6_HOST = Ip6Host("2001:db8:0:1::7/64")
+STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 STACK__IP6_GATEWAY = Ip6Address("fe80::1")
 STACK__IP6_HOST.gateway = STACK__IP6_GATEWAY
 STACK__IP6_GATEWAY_MAC_ADDRESS = MacAddress("02:00:00:00:00:01")

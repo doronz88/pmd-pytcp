@@ -37,7 +37,7 @@ pytcp/tests/integration/protocols/ip4/test__ip4__harness_smoke.py
 ver 3.0.5
 """
 
-from net_addr import Ip4Address, Ip4Host
+from net_addr import Ip4Address, Ip4IfAddr
 from net_proto import Icmp4Assembler, Icmp4MessageEchoRequest, IpProto
 from net_proto.lib.enums import EtherType
 from net_proto.lib.packet_rx import PacketRx
@@ -169,8 +169,8 @@ class TestIp4HarnessSmoke(Ip4TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        a = Ip4Host("192.0.2.10/24")
-        b = Ip4Host("198.51.100.20/24")
+        a = Ip4IfAddr("192.0.2.10/24")
+        b = Ip4IfAddr("198.51.100.20/24")
 
         self._set_ip4_hosts(a, b)
 

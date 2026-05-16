@@ -37,10 +37,10 @@ from parameterized import parameterized_class  # type: ignore
 
 from net_addr import (
     Ip4Address,
-    Ip4Host,
+    Ip4IfAddr,
     Ip4Network,
     Ip6Address,
-    Ip6Host,
+    Ip6IfAddr,
     Ip6Mask,
     Ip6Network,
     Ip6NetworkFormatError,
@@ -320,15 +320,15 @@ class TestNetAddrIp6Network(TestCase):
             "_result": False,
         },
         {
-            "_description": "Ip6Host inside network",
+            "_description": "Ip6IfAddr inside network",
             "_network": "2001:db8::/64",
-            "_object": Ip6Host("2001:db8::50/64"),
+            "_object": Ip6IfAddr("2001:db8::50/64"),
             "_result": True,
         },
         {
-            "_description": "Ip6Host outside network",
+            "_description": "Ip6IfAddr outside network",
             "_network": "2001:db8::/64",
-            "_object": Ip6Host("2001:db9::50/64"),
+            "_object": Ip6IfAddr("2001:db9::50/64"),
             "_result": False,
         },
         {
@@ -344,9 +344,9 @@ class TestNetAddrIp6Network(TestCase):
             "_result": False,
         },
         {
-            "_description": "Ip4Host cross-version returns False",
+            "_description": "Ip4IfAddr cross-version returns False",
             "_network": "2001:db8::/64",
-            "_object": Ip4Host("192.168.1.1/24"),
+            "_object": Ip4IfAddr("192.168.1.1/24"),
             "_result": False,
         },
         {
@@ -519,8 +519,8 @@ class TestNetAddrIp6NetworkEquality(TestCase):
             msg="Ip6Network must not compare equal to its Ip6Mask component.",
         )
         self.assertFalse(
-            network == Ip6Host("2001:db8::1/64"),
-            msg="Ip6Network must not compare equal to an Ip6Host.",
+            network == Ip6IfAddr("2001:db8::1/64"),
+            msg="Ip6Network must not compare equal to an Ip6IfAddr.",
         )
         self.assertFalse(
             network == 0x20010DB8_00000000_00000000_00000000,

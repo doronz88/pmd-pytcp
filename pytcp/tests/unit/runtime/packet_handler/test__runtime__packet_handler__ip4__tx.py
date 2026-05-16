@@ -33,7 +33,7 @@ ver 3.0.5
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host
+from net_addr import Ip4Address, Ip4IfAddr
 from net_proto import Ip4Assembler, Ip4FragAssembler, IpProto, RawAssembler, UdpAssembler
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -64,7 +64,7 @@ def tearDownModule() -> None:
     stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
-STACK__IP4_HOST = Ip4Host("10.0.1.7/24")
+STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
 STACK__IP4_HOST.gateway = Ip4Address("10.0.1.1")
 STACK__IP4_ADDRESS = STACK__IP4_HOST.address
 STACK__IP4_MULTICAST = Ip4Address("224.0.0.1")
@@ -85,7 +85,7 @@ class _StubHandler(PacketHandlerIp4Tx):
         ip4_support: bool = True,
         interface_layer: InterfaceLayer = InterfaceLayer.L2,
         interface_mtu: int = 1500,
-        ip4_hosts: list[Ip4Host] | None = None,
+        ip4_hosts: list[Ip4IfAddr] | None = None,
     ) -> None:
         """
         Initialize the stub handler and record every _phtx_ethernet call.

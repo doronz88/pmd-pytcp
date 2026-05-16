@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from pytcp.stack.address import (
     ConflictEvent,
     Ip4AddressApi,
@@ -56,7 +56,7 @@ class _FakePacketHandler:
     """
 
     def __init__(self) -> None:
-        self._ip4_host: list[Ip4Host] = []
+        self._ip4_host: list[Ip4IfAddr] = []
         # The new ACD API methods on 'Ip4AddressApi' delegate to
         # these helpers. Tests configure 'probe_result' and
         # 'announce_calls' to drive / observe behaviour.
@@ -91,7 +91,7 @@ class _FakeRegistry:
 
 class TestIp4AddressApiAddHost(TestCase):
     """
-    'Ip4AddressApi.add_host' installs an Ip4Host on the stack's
+    'Ip4AddressApi.add_host' installs an Ip4IfAddr on the stack's
     address list.
     """
 
@@ -108,20 +108,20 @@ class TestIp4AddressApiAddHost(TestCase):
 
     def test__ip4_address_api__add_host_appends_to_packet_handler_list(self) -> None:
         """
-        Ensure 'add_host' appends the supplied 'Ip4Host' to the
+        Ensure 'add_host' appends the supplied 'Ip4IfAddr' to the
         packet handler's '_ip4_host' list.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        host = Ip4Host("10.0.0.5/24")
+        host = Ip4IfAddr("10.0.0.5/24")
 
         self._api.add_host(ip4_host=host)
 
         self.assertEqual(
             self._packet_handler._ip4_host,
             [host],
-            msg="add_host must append the supplied Ip4Host to the packet handler list.",
+            msg="add_host must append the supplied Ip4IfAddr to the packet handler list.",
         )
 
     def test__ip4_address_api__add_host_preserves_existing_hosts(self) -> None:
@@ -133,10 +133,10 @@ class TestIp4AddressApiAddHost(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        existing = Ip4Host("10.0.0.4/24")
+        existing = Ip4IfAddr("10.0.0.4/24")
         self._packet_handler._ip4_host.append(existing)
 
-        new = Ip4Host("10.0.0.5/24")
+        new = Ip4IfAddr("10.0.0.5/24")
         self._api.add_host(ip4_host=new)
 
         self.assertEqual(
@@ -162,14 +162,14 @@ class TestIp4AddressApiRemoveHost(TestCase):
 
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
-        self._target_host = Ip4Host("10.0.0.5/24")
-        self._other_host = Ip4Host("10.0.0.6/24")
+        self._target_host = Ip4IfAddr("10.0.0.5/24")
+        self._other_host = Ip4IfAddr("10.0.0.6/24")
         self._packet_handler._ip4_host = [self._target_host, self._other_host]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__remove_host_drops_matching_address(self) -> None:
         """
-        Ensure 'remove_host' filters out every Ip4Host whose
+        Ensure 'remove_host' filters out every Ip4IfAddr whose
         '.address' equals the supplied 'ip4_address' and leaves
         other hosts intact.
 
@@ -245,7 +245,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
 class TestIp4AddressApiReplaceHost(TestCase):
     """
     'Ip4AddressApi.replace_host' atomically swaps an old address
-    for a new Ip4Host — RTM_NEWADDR-before-RTM_DELADDR ordering.
+    for a new Ip4IfAddr — RTM_NEWADDR-before-RTM_DELADDR ordering.
     """
 
     @override
@@ -257,7 +257,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
 
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
-        self._old_host = Ip4Host("10.0.0.5/24")
+        self._old_host = Ip4IfAddr("10.0.0.5/24")
         self._packet_handler._ip4_host = [self._old_host]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
@@ -271,7 +271,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        new_host = Ip4Host("10.0.0.7/24")
+        new_host = Ip4IfAddr("10.0.0.7/24")
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
             self._api.replace_host(
@@ -296,8 +296,8 @@ class TestIp4AddressApiReplaceHost(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        new_host = Ip4Host("10.0.0.7/24")
-        snapshot_at_abort: list[Ip4Host] = []
+        new_host = Ip4IfAddr("10.0.0.7/24")
+        snapshot_at_abort: list[Ip4IfAddr] = []
 
         def _snapshot(_: Ip4Address) -> None:
             snapshot_at_abort.extend(self._packet_handler._ip4_host)
@@ -338,7 +338,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
 
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
-        self._packet_handler._ip4_host = [Ip4Host("10.0.0.5/24"), Ip4Host("10.0.0.6/24")]
+        self._packet_handler._ip4_host = [Ip4IfAddr("10.0.0.5/24"), Ip4IfAddr("10.0.0.6/24")]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__list_returns_tuple_copy(self) -> None:
@@ -585,7 +585,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         Reference: RFC 5227 §2.1.1 + §2.3 (probe-then-announce on success).
         """
 
-        host = Ip4Host("169.254.42.42/16")
+        host = Ip4IfAddr("169.254.42.42/16")
         self._packet_handler.probe_result = True
 
         result = self._api.claim_with_acd(ip4_host=host)
@@ -624,7 +624,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         Reference: RFC 5227 §2.1.1 (conflict during probe must prevent claim).
         """
 
-        host = Ip4Host("169.254.42.42/16")
+        host = Ip4IfAddr("169.254.42.42/16")
         peer_mac = MacAddress("02:00:00:00:00:99")
         self._packet_handler.probe_result = False
         self._packet_handler.probe_peer_mac = peer_mac

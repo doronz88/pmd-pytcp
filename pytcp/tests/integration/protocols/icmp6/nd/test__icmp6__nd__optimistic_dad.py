@@ -51,7 +51,7 @@ ver 3.0.5
 
 import threading
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from net_proto import (
     EthernetParser,
     EtherType,
@@ -65,7 +65,7 @@ from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import HOST_A__MAC_ADDRESS
 
-_CANDIDATE_HOST = Ip6Host("2001:db8:0:1::5/64")
+_CANDIDATE_HOST = Ip6IfAddr("2001:db8:0:1::5/64")
 _CANDIDATE = _CANDIDATE_HOST.address
 
 

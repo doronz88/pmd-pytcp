@@ -33,7 +33,7 @@ ver 3.0.5
 from abc import ABC
 from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import ArpAssembler, ArpOperation, Tracker
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -52,7 +52,7 @@ class PacketHandlerArpTx(ABC):
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip4_support: bool
-        _ip4_host: list[Ip4Host]
+        _ip4_host: list[Ip4IfAddr]
 
         # pylint: disable=unused-argument
 

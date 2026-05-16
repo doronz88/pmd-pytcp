@@ -42,7 +42,7 @@ ver 3.0.5
 
 import time
 
-from net_addr import Ip6Address, Ip6Host, Ip6Network
+from net_addr import Ip6Address, Ip6IfAddr, Ip6Network
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6SlaacAddress,
     Icmp6TempAddress,
@@ -54,10 +54,10 @@ from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 # address derived from each prefix. The temp addresses have
 # obviously different IIDs from the stable addresses so the
 # selector outcome is unambiguously visible in the assertion.
-_HOST_STABLE_A = Ip6Host("2001:db8:0:1::7/64")
-_HOST_STABLE_B = Ip6Host("2001:db8:0:2::7/64")
-_HOST_TEMP_A = Ip6Host("2001:db8:0:1::abcd:1/64")
-_HOST_TEMP_B = Ip6Host("2001:db8:0:2::abcd:2/64")
+_HOST_STABLE_A = Ip6IfAddr("2001:db8:0:1::7/64")
+_HOST_STABLE_B = Ip6IfAddr("2001:db8:0:2::7/64")
+_HOST_TEMP_A = Ip6IfAddr("2001:db8:0:1::abcd:1/64")
+_HOST_TEMP_B = Ip6IfAddr("2001:db8:0:2::abcd:2/64")
 
 _PREFIX_A = Ip6Network("2001:db8:0:1::/64")
 _PREFIX_B = Ip6Network("2001:db8:0:2::/64")
@@ -67,7 +67,7 @@ _DST_IN_A = Ip6Address("2001:db8:0:1::99")
 _DST_IN_B = Ip6Address("2001:db8:0:2::99")
 
 
-def _slaac(host: Ip6Host, prefix: Ip6Network, *, deprecated: bool = False) -> Icmp6SlaacAddress:
+def _slaac(host: Ip6IfAddr, prefix: Ip6Network, *, deprecated: bool = False) -> Icmp6SlaacAddress:
     """
     Build an 'Icmp6SlaacAddress' record placing the host in either
     the PREFERRED or DEPRECATED state at 'time.monotonic()' now.
@@ -83,7 +83,7 @@ def _slaac(host: Ip6Host, prefix: Ip6Network, *, deprecated: bool = False) -> Ic
     )
 
 
-def _temp(host: Ip6Host, prefix: Ip6Network, *, deprecated: bool = False) -> Icmp6TempAddress:
+def _temp(host: Ip6IfAddr, prefix: Ip6Network, *, deprecated: bool = False) -> Icmp6TempAddress:
     """
     Build an 'Icmp6TempAddress' record. RFC 8981 temp addresses
     use the same PREFERRED/DEPRECATED semantics as their stable

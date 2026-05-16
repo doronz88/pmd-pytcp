@@ -86,7 +86,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress, MacAddressFormatError
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress, MacAddressFormatError
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
@@ -268,7 +268,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         )
         return None
 
-    ip4_host = Ip4Host((address, mask))
+    ip4_host = Ip4IfAddr((address, mask))
     if gateway is not None:
         ip4_host.gateway = gateway
 

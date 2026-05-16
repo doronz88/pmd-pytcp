@@ -25,7 +25,7 @@
 """
 This module contains IP host base class.
 
-net_addr/ip_host.py
+net_addr/ip_ifaddr.py
 
 ver 3.0.5
 """
@@ -36,17 +36,17 @@ from typing import override
 from net_addr.base import Base
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_host_origin import Ip4HostOrigin
+from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_host_origin import Ip6HostOrigin
+from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_network import Ip6Network
 
 
-class IpHost[
+class IfAddr[
     A: (Ip6Address, Ip4Address),
     N: (Ip6Network, Ip4Network),
-    O: (Ip6HostOrigin, Ip4HostOrigin),
+    O: (Ip6IfAddrSource, Ip4IfAddrSource),
 ](Base, Ip, ABC):
     """
     IP host support base class.

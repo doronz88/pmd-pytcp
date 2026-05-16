@@ -39,10 +39,10 @@ from click.core import Context, Parameter
 
 from net_addr.errors import NetAddrError
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_host import Ip4Host
+from net_addr.ip4_ifaddr import Ip4IfAddr
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_host import Ip6Host
+from net_addr.ip6_ifaddr import Ip6IfAddr
 from net_addr.ip6_network import Ip6Network
 from net_addr.mac_address import MacAddress
 
@@ -264,7 +264,7 @@ class ClickTypeIp4Network(ParamType):
             )
 
 
-class ClickTypeIpHost(ParamType):
+class ClickTypeIfAddr(ParamType):
     """
     Custom Click type for handling IP host argument.
     """
@@ -277,17 +277,17 @@ class ClickTypeIpHost(ParamType):
         value: str,
         param: Parameter | None,
         ctx: Context | None,
-    ) -> Ip6Host | Ip4Host:
+    ) -> Ip6IfAddr | Ip4IfAddr:
         """
-        Convert IP host string to Ip6Host or Ip4Host object.
+        Convert IP host string to Ip6IfAddr or Ip4IfAddr object.
         """
 
         try:
-            return Ip6Host(value)
+            return Ip6IfAddr(value)
 
         except NetAddrError:
             try:
-                return Ip4Host(value)
+                return Ip4IfAddr(value)
 
             except NetAddrError:
                 self.fail(
@@ -300,7 +300,7 @@ class ClickTypeIpHost(ParamType):
                 )
 
 
-class ClickTypeIp6Host(ParamType):
+class ClickTypeIp6IfAddr(ParamType):
     """
     Custom Click type for handling IPv6 host argument.
     """
@@ -313,13 +313,13 @@ class ClickTypeIp6Host(ParamType):
         value: str,
         param: Parameter | None,
         ctx: Context | None,
-    ) -> Ip6Host:
+    ) -> Ip6IfAddr:
         """
-        Convert IPv6 host string to Ip6Host object.
+        Convert IPv6 host string to Ip6IfAddr object.
         """
 
         try:
-            return Ip6Host(value)
+            return Ip6IfAddr(value)
 
         except NetAddrError:
             self.fail(
@@ -329,7 +329,7 @@ class ClickTypeIp6Host(ParamType):
             )
 
 
-class ClickTypeIp4Host(ParamType):
+class ClickTypeIp4IfAddr(ParamType):
     """
     Custom Click type for handling IPv4 host argument.
     """
@@ -342,13 +342,13 @@ class ClickTypeIp4Host(ParamType):
         value: str,
         param: Parameter | None,
         ctx: Context | None,
-    ) -> Ip4Host:
+    ) -> Ip4IfAddr:
         """
-        Convert IPv4 host string to Ip4Host object.
+        Convert IPv4 host string to Ip4IfAddr object.
         """
 
         try:
-            return Ip4Host(value)
+            return Ip4IfAddr(value)
 
         except NetAddrError:
             self.fail(

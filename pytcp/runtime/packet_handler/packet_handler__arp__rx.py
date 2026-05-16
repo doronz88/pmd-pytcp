@@ -48,15 +48,15 @@ class PacketHandlerArpRx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_addr import Ip4Address, Ip4Host, MacAddress
+        from net_addr import Ip4Address, Ip4IfAddr, MacAddress
         from net_proto import Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
 
         _mac_unicast: MacAddress
-        _ip4_host: list[Ip4Host]
+        _ip4_host: list[Ip4IfAddr]
         _packet_stats_rx: PacketStatsRx
-        _ip4_host_candidate: list[Ip4Host]
+        _ip4_host_candidate: list[Ip4IfAddr]
         _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
         _arp_defend__last_emitted: dict[Ip4Address, float]
         _arp_defend__last_conflict_at: dict[Ip4Address, float]

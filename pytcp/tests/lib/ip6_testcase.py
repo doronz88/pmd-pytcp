@@ -40,7 +40,7 @@ ver 3.0.5
 from dataclasses import dataclass
 from typing import Any
 
-from net_addr import Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import (
     EthernetAssembler,
     Ip6Assembler,
@@ -104,7 +104,7 @@ class Ip6TestCase(NetworkTestCase):
     drops, raw-frame TX assertions).
     """
 
-    def _set_ip6_hosts(self, *hosts: Ip6Host) -> None:
+    def _set_ip6_hosts(self, *hosts: Ip6IfAddr) -> None:
         """
         Replace the stack's '_ip6_host' list with the given
         hosts. Used by source-selection tests that exercise

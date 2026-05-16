@@ -31,7 +31,7 @@ Integration tests for the RFC 8981 SLAAC temporary-address
 integration — nd_linux_parity §18b.
 
 The host's PI-admit path now mints a per-prefix temporary
-address (random IID via 'Ip6Host.from_rfc8981_temp') in
+address (random IID via 'Ip6IfAddr.from_rfc8981_temp') in
 addition to the stable RFC 7217 / EUI-64 address whenever
 'icmp6.use_tempaddr' is non-zero. Lifetimes are clamped to
 TEMP_PREFERRED_LIFETIME / TEMP_VALID_LIFETIME (RFC 8981 §3.4).

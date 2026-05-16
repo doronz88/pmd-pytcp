@@ -32,7 +32,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import ArpAssembler, ArpOperation
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
@@ -81,7 +81,7 @@ class _StubHandler(PacketHandlerArpTx):
         *,
         ip4_support: bool = True,
         ip4_unicast: list[Ip4Address] | None = None,
-        ip4_host: list[Ip4Host] | None = None,
+        ip4_host: list[Ip4IfAddr] | None = None,
     ) -> None:
         """
         Initialize the stub handler and record every _phtx_ethernet call.
@@ -91,11 +91,11 @@ class _StubHandler(PacketHandlerArpTx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_support = ip4_support
         if ip4_host is not None:
-            self._ip4_host: list[Ip4Host] = list(ip4_host)
+            self._ip4_host: list[Ip4IfAddr] = list(ip4_host)
             self._ip4_unicast_list = [host.address for host in self._ip4_host]
         else:
             self._ip4_unicast_list = list(ip4_unicast) if ip4_unicast is not None else [STACK__IP4_ADDRESS]
-            self._ip4_host = [Ip4Host(f"{addr}/24") for addr in self._ip4_unicast_list]
+            self._ip4_host = [Ip4IfAddr(f"{addr}/24") for addr in self._ip4_unicast_list]
 
         # Spy: record every call to _phtx_ethernet.
         self.ethernet_tx_calls: list[dict[str, object]] = []
@@ -456,8 +456,8 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         self._handler = _StubHandler(
             ip4_host=[
-                Ip4Host("10.0.1.7/24"),
-                Ip4Host("192.168.5.20/24"),
+                Ip4IfAddr("10.0.1.7/24"),
+                Ip4IfAddr("192.168.5.20/24"),
             ],
         )
 

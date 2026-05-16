@@ -1800,10 +1800,10 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
         """
 
         super().setUp()
-        from net_addr import Ip4Host
+        from net_addr import Ip4IfAddr
         from pytcp import stack
 
-        self._packet_handler._ip4_host.append(Ip4Host("169.254.42.42/16"))
+        self._packet_handler._ip4_host.append(Ip4IfAddr("169.254.42.42/16"))
 
         # 'stack.arp_cache' is autospec'd from 'ArpCache' so
         # mypy sees the real method type — but at runtime each

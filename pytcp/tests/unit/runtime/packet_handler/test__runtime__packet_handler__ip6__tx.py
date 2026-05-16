@@ -33,7 +33,7 @@ ver 3.0.5
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from net_proto import Ip6Assembler, IpProto, RawAssembler
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -64,7 +64,7 @@ def tearDownModule() -> None:
     stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
-STACK__IP6_HOST = Ip6Host("2001:db8:0:1::7/64")
+STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 STACK__IP6_HOST.gateway = Ip6Address("fe80::1")
 STACK__IP6_ADDRESS = STACK__IP6_HOST.address
 STACK__IP6_MULTICAST = Ip6Address("ff02::1")
@@ -83,7 +83,7 @@ class _StubHandler(PacketHandlerIp6Tx):
         ip6_support: bool = True,
         interface_layer: InterfaceLayer = InterfaceLayer.L2,
         interface_mtu: int = 1500,
-        ip6_hosts: list[Ip6Host] | None = None,
+        ip6_hosts: list[Ip6IfAddr] | None = None,
     ) -> None:
         self._packet_stats_tx = PacketStatsTx()
         self._ip6_support = ip6_support

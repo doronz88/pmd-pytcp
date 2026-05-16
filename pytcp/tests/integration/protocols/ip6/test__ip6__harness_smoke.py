@@ -37,7 +37,7 @@ pytcp/tests/integration/protocols/ip6/test__ip6__harness_smoke.py
 ver 3.0.5
 """
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from net_proto import Icmp6Assembler, Icmp6MessageEchoRequest, IpProto
 from net_proto.lib.enums import EtherType
 from net_proto.lib.packet_rx import PacketRx
@@ -168,8 +168,8 @@ class TestIp6HarnessSmoke(Ip6TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        a = Ip6Host("2001:db8:1::10/64")
-        b = Ip6Host("2001:db8:2::20/64")
+        a = Ip6IfAddr("2001:db8:1::10/64")
+        b = Ip6IfAddr("2001:db8:2::20/64")
 
         self._set_ip6_hosts(a, b)
 

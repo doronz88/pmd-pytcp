@@ -52,12 +52,12 @@ ver 3.0.5
 import threading
 import time
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
 _CANDIDATE = Ip6Address("2001:db8:0:1::5")
-_CANDIDATE_HOST = Ip6Host("2001:db8:0:1::5/64")
+_CANDIDATE_HOST = Ip6IfAddr("2001:db8:0:1::5/64")
 
 
 class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):

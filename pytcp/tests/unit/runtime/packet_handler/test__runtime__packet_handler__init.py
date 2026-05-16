@@ -33,7 +33,7 @@ ver 3.0.5
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -60,8 +60,8 @@ def tearDownModule() -> None:
 
 
 STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
-STACK__IP4_HOST = Ip4Host("10.0.1.7/24")
-STACK__IP6_HOST = Ip6Host("2001:db8:0:1::7/64")
+STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
+STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 
 
 def _build_l2_handler() -> PacketHandlerL2:

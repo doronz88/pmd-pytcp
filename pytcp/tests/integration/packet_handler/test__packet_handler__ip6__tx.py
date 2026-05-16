@@ -571,9 +571,9 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
         """
 
         super().setUp()
-        from net_addr import Ip6Host
+        from net_addr import Ip6IfAddr
 
-        link_local_host = Ip6Host("fe80::7/64")
+        link_local_host = Ip6IfAddr("fe80::7/64")
         self._packet_handler._ip6_host.append(link_local_host)
 
     def test__phtx_ip6__link_local_src_global_dst__drops_scope_mismatch(self) -> None:

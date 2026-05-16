@@ -50,7 +50,7 @@ import time
 from enum import Enum
 from typing import Callable, override
 
-from net_addr import Ip4Host, MacAddress
+from net_addr import Ip4IfAddr, MacAddress
 from pytcp.lib.logger import log
 from pytcp.protocols.arp import arp__constants
 from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
@@ -121,7 +121,7 @@ class Ip4LinkLocal(Subsystem):
         self._mac_address: MacAddress = mac_address
         self._address_api: Ip4AddressApi = address_api
         self._is_dhcp_bound: Callable[[], bool] | None = is_dhcp_bound
-        self._candidate: Ip4Host | None = None
+        self._candidate: Ip4IfAddr | None = None
         self._conflict_count: int = 0
         # RFC 3927 §2.5(b) DEFEND_INTERVAL bookkeeping. Holds the
         # monotonic timestamps of recent defensive ARPs; the §2.5
@@ -185,7 +185,7 @@ class Ip4LinkLocal(Subsystem):
         )
         # The /16 mask is RFC-pinned: every 169.254 address is
         # on a single logical link.
-        self._candidate = Ip4Host(f"{candidate_address}/16")
+        self._candidate = Ip4IfAddr(f"{candidate_address}/16")
         __debug__ and log(
             "stack",
             f"<lg>Link-Local</>: candidate {self._candidate.address} " f"(attempt={self._conflict_count})",

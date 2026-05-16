@@ -23,17 +23,24 @@
 
 
 """
-This module contains IP host origin base enum.
+This module contains IPv6 host origin enum.
 
-net_addr/ip_host_origin.py
+net_addr/ip6_ifaddr_source.py
 
 ver 3.0.5
 """
 
-from enum import Enum
+from enum import auto
+
+from net_addr.ip_ifaddr_source import IfAddrSource
 
 
-class IpHostOrigin(Enum):
+class Ip6IfAddrSource(IfAddrSource):
     """
-    IP host address origin enum.
+    IPv6 host origin enumeration.
     """
+
+    STATIC = auto()
+    AUTOCONFIG = auto()
+    DHCP = auto()
+    UNKNOWN = auto()

@@ -41,15 +41,15 @@ pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py
 ver 3.0.5
 """
 
-from net_addr import Ip4Address, Ip4Host
+from net_addr import Ip4Address, Ip4IfAddr
 from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 
 # Stack-host fixtures used as candidate sources. Three hosts
 # in distinct /24s plus a link-local IPv4 in 169.254.0.0/16.
-_HOST_LINK_LOCAL = Ip4Host("169.254.0.7/16")
-_HOST_PREFIX_A = Ip4Host("10.0.1.7/24")
-_HOST_PREFIX_B = Ip4Host("10.0.2.7/24")
-_HOST_PREFIX_C = Ip4Host("192.168.1.7/24")
+_HOST_LINK_LOCAL = Ip4IfAddr("169.254.0.7/16")
+_HOST_PREFIX_A = Ip4IfAddr("10.0.1.7/24")
+_HOST_PREFIX_B = Ip4IfAddr("10.0.2.7/24")
+_HOST_PREFIX_C = Ip4IfAddr("192.168.1.7/24")
 
 _DST_LINK_LOCAL = Ip4Address("169.254.5.5")
 _DST_IN_PREFIX_A = Ip4Address("10.0.1.91")
@@ -246,7 +246,7 @@ class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
         # Both candidates are in the same prefix as dst, so
         # rule 8 ties; rule 1's short-circuit on dst itself
         # is what makes the test pin the rule order.
-        sibling = Ip4Host("10.0.1.91/24")  # same address as _DST_IN_PREFIX_A
+        sibling = Ip4IfAddr("10.0.1.91/24")  # same address as _DST_IN_PREFIX_A
         self._packet_handler._ip4_host = [_HOST_PREFIX_A, sibling]
 
         result = self._packet_handler._select_ip4_source(ip4__dst=_DST_IN_PREFIX_A)

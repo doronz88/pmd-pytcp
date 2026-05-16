@@ -59,7 +59,7 @@ import threading
 import time
 from typing import cast
 
-from net_addr import Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
@@ -67,7 +67,7 @@ from pytcp.tests.lib.network_testcase import HOST_A__MAC_ADDRESS
 
 _CANDIDATE_A = Ip6Address("2001:db8:0:1::5")
 _CANDIDATE_B = Ip6Address("2001:db8:0:1::6")
-_CANDIDATE_HOST = Ip6Host("2001:db8:0:1::5/64")
+_CANDIDATE_HOST = Ip6IfAddr("2001:db8:0:1::5/64")
 
 
 def _join_candidate_multicast(handler: object, *, address: Ip6Address) -> None:

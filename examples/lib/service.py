@@ -36,7 +36,7 @@ from collections.abc import Callable
 from typing import override
 
 from examples.lib.subsystem import Subsystem
-from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, IpAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, IpAddress
 from pytcp.socket import socket
 
 # Delay between failed service-socket bind attempts. A static
@@ -139,9 +139,9 @@ def build_echo_services(
     *,
     local_port: int,
     ip4_support: bool,
-    ip4_host: Ip4Host | None,
+    ip4_host: Ip4IfAddr | None,
     ip6_support: bool,
-    ip6_host: Ip6Host | None,
+    ip6_host: Ip6IfAddr | None,
 ) -> list[Service]:
     """
     Build echo-service subsystems only for the enabled address

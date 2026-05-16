@@ -41,7 +41,7 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py
 ver 3.0.5
 """
 
-from net_addr import Ip6Host, Ip6Network
+from net_addr import Ip6IfAddr, Ip6Network
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 
@@ -64,7 +64,7 @@ class TestIcmp6Nd__Rfc7217Slaac__DefaultUsesRfc7217(NdTestCase):
     def test__icmp6__nd__rfc7217__default_derives_opaque_iid(self) -> None:
         """
         Ensure '_derive_ip6_host' with the default sysctl value
-        produces an address matching 'Ip6Host.from_rfc7217' and
+        produces an address matching 'Ip6IfAddr.from_rfc7217' and
         NOT the EUI-64 form.
 
         Reference: RFC 7217 §5 (Algorithm Specification).
@@ -76,14 +76,14 @@ class TestIcmp6Nd__Rfc7217Slaac__DefaultUsesRfc7217(NdTestCase):
         # Compute the EUI-64 form that the host WOULD have used
         # under the legacy default — derived address must NOT
         # equal it.
-        eui64 = Ip6Host.from_eui64(
+        eui64 = Ip6IfAddr.from_eui64(
             mac_address=self._packet_handler._mac_unicast,
             ip6_network=prefix,
         )
 
         # And it MUST equal the RFC 7217 form computed against
         # the host's secret_key.
-        rfc7217 = Ip6Host.from_rfc7217(
+        rfc7217 = Ip6IfAddr.from_rfc7217(
             ip6_network=prefix,
             mac_address=self._packet_handler._mac_unicast,
             secret_key=self._packet_handler._icmp6_slaac__secret_key,
@@ -131,7 +131,7 @@ class TestIcmp6Nd__Rfc7217Slaac__SysctlZeroFallsBackToEui64(NdTestCase):
         with sysctl_module.override("icmp6.use_rfc7217", 0):
             derived = self._packet_handler._derive_ip6_host(ip6_network=prefix)
 
-        eui64 = Ip6Host.from_eui64(
+        eui64 = Ip6IfAddr.from_eui64(
             mac_address=self._packet_handler._mac_unicast,
             ip6_network=prefix,
         )

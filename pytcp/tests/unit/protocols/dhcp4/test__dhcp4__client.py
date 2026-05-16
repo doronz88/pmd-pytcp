@@ -34,7 +34,7 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
@@ -171,8 +171,8 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         assert result is not None
         self.assertIsInstance(
             result.ip4_host,
-            Ip4Host,
-            msg="Dhcp4Lease.ip4_host must be an Ip4Host.",
+            Ip4IfAddr,
+            msg="Dhcp4Lease.ip4_host must be an Ip4IfAddr.",
         )
         self.assertEqual(
             result.ip4_host.address,
@@ -1758,7 +1758,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
     def test__dhcp4_client__bound_transition_invokes_address_api_add_host(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition calls
-        'address_api.add_host' with the leased Ip4Host — the
+        'address_api.add_host' with the leased Ip4IfAddr — the
         kernel/userspace boundary surface installs the address
         on the stack.
 
@@ -1945,7 +1945,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         """
 
         return Dhcp4Lease(
-            ip4_host=Ip4Host("10.0.0.100/24"),
+            ip4_host=Ip4IfAddr("10.0.0.100/24"),
             lease_time__sec=lease_time__sec,
             server_id=Ip4Address("10.0.0.254"),
             acquired_at_monotonic=acquired_at,
@@ -2198,7 +2198,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         """
 
         return Dhcp4Lease(
-            ip4_host=Ip4Host(ip),
+            ip4_host=Ip4IfAddr(ip),
             lease_time__sec=3600,
             server_id=Ip4Address(server_id),
             acquired_at_monotonic=0.0,
@@ -2423,7 +2423,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self.assertEqual(
             kwargs["new_host"].address,
             Ip4Address("10.0.0.101"),
-            msg="replace_host must be called with the new lease's Ip4Host.",
+            msg="replace_host must be called with the new lease's Ip4IfAddr.",
         )
         self.assertTrue(
             kwargs["abort_bound_sessions"],
@@ -2475,7 +2475,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         Defaults match a typical residential DHCP scenario.
         """
 
-        ip4_host = Ip4Host((Ip4Address(address), Ip4Mask("255.255.255.0")))
+        ip4_host = Ip4IfAddr((Ip4Address(address), Ip4Mask("255.255.255.0")))
         ip4_host.gateway = Ip4Address("192.168.1.1")
         return Dhcp4Lease(
             ip4_host=ip4_host,
@@ -2760,7 +2760,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         the configuration under which DNAv4 can engage.
         """
 
-        ip4_host = Ip4Host((Ip4Address("192.168.1.145"), Ip4Mask("255.255.255.0")))
+        ip4_host = Ip4IfAddr((Ip4Address("192.168.1.145"), Ip4Mask("255.255.255.0")))
         ip4_host.gateway = self._GATEWAY_IP
         return Dhcp4Lease(
             ip4_host=ip4_host,
@@ -3333,7 +3333,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         # Build a lease with override T1=1200 on a 3600 s lease.
         client._lease = Dhcp4Lease(
-            ip4_host=Ip4Host("192.168.1.145/24"),
+            ip4_host=Ip4IfAddr("192.168.1.145/24"),
             lease_time__sec=3600,
             server_id=Ip4Address("192.168.1.1"),
             acquired_at_monotonic=100.0,
@@ -3357,7 +3357,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         client._lease = Dhcp4Lease(
-            ip4_host=Ip4Host("192.168.1.145/24"),
+            ip4_host=Ip4IfAddr("192.168.1.145/24"),
             lease_time__sec=3600,
             server_id=Ip4Address("192.168.1.1"),
             acquired_at_monotonic=100.0,

@@ -40,7 +40,7 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import patch
 
-from net_addr import Ip4Address, Ip4Host, Ip4Mask, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Lease
 from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     delete_cached_lease,
@@ -66,7 +66,7 @@ def _make_lease(
     Defaults match a typical residential DHCP scenario.
     """
 
-    ip4_host = Ip4Host((Ip4Address(address), Ip4Mask(mask)))
+    ip4_host = Ip4IfAddr((Ip4Address(address), Ip4Mask(mask)))
     if gateway is not None:
         ip4_host.gateway = Ip4Address(gateway)
     return Dhcp4Lease(
@@ -153,7 +153,7 @@ class TestDhcp4LeaseCacheRoundTrip(_CacheFixture):
         """
         Ensure a lease with no gateway round-trips cleanly — the
         cache must serialise 'gateway: null' and the reader must
-        construct an Ip4Host whose 'gateway' attribute is None.
+        construct an Ip4IfAddr whose 'gateway' attribute is None.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """

@@ -39,7 +39,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, cast
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
@@ -154,7 +154,7 @@ class Ip4AddressApi:
         self._packet_handler = packet_handler
         self._subscriptions = _Subscriptions()
 
-    def add_host(self, *, ip4_host: Ip4Host) -> None:
+    def add_host(self, *, ip4_host: Ip4IfAddr) -> None:
         """
         Install 'ip4_host' on the stack's IPv4 address list —
         Linux 'RTM_NEWADDR' / 'ip addr add' equivalent.
@@ -172,7 +172,7 @@ class Ip4AddressApi:
         abort_bound_sessions: bool = True,
     ) -> None:
         """
-        Remove every 'Ip4Host' whose '.address' equals
+        Remove every 'Ip4IfAddr' whose '.address' equals
         'ip4_address' from the stack's IPv4 address list —
         Linux 'RTM_DELADDR' / 'ip addr del' equivalent.
 
@@ -202,12 +202,12 @@ class Ip4AddressApi:
         self,
         *,
         old_address: Ip4Address,
-        new_host: Ip4Host,
+        new_host: Ip4IfAddr,
         abort_bound_sessions: bool = True,
     ) -> None:
         """
         Atomic-ish swap: install 'new_host' BEFORE removing the
-        Ip4Host(es) keyed by 'old_address'. The transient overlap
+        Ip4IfAddr(es) keyed by 'old_address'. The transient overlap
         parallels Linux's 'RTM_NEWADDR' → 'RTM_DELADDR' ordering
         (RTNETLINK guarantees the kernel processes them in the
         order received; a brief window with both addresses present
@@ -225,7 +225,7 @@ class Ip4AddressApi:
             abort_bound_sessions=abort_bound_sessions,
         )
 
-    def list_ip4_hosts(self) -> tuple[Ip4Host, ...]:
+    def list_ip4_hosts(self) -> tuple[Ip4IfAddr, ...]:
         """
         Return a read-only copy-by-value snapshot of the stack's
         IPv4 host list. Linux equivalent: reading
@@ -287,7 +287,7 @@ class Ip4AddressApi:
         handler = cast("PacketHandlerL2", self._packet_handler)
         handler._arp_dad_announce_address(address)
 
-    def claim_with_acd(self, *, ip4_host: Ip4Host) -> ClaimResult:
+    def claim_with_acd(self, *, ip4_host: Ip4IfAddr) -> ClaimResult:
         """
         Composite claim — probe + announce + install in one
         synchronous call. On clean probe: announce burst fires,

@@ -62,7 +62,7 @@ class PacketHandlerIp6Tx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_addr import Ip6Host
+        from net_addr import Ip6IfAddr
         from net_proto import EthernetPayload, Ip6Payload, Tracker
         from pytcp.lib.packet_stats import PacketStatsTx
         from pytcp.protocols.icmp6.nd.nd__router_state import (
@@ -72,7 +72,7 @@ class PacketHandlerIp6Tx(ABC):
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip6_host: list[Ip6Host]
+        _ip6_host: list[Ip6IfAddr]
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int

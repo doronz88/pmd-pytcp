@@ -25,7 +25,7 @@
 """
 This module contains tests for the NetAddr package IPv6 host support class.
 
-net_addr/tests/unit/test__ip6_host.py
+net_addr/tests/unit/test__ip6_ifaddr.py
 
 ver 3.0.5
 """
@@ -37,13 +37,13 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_addr import (
-    Ip4Host,
+    Ip4IfAddr,
     Ip6Address,
-    Ip6Host,
-    Ip6HostFormatError,
-    Ip6HostGatewayError,
-    Ip6HostOrigin,
-    Ip6HostSanityError,
+    Ip6IfAddr,
+    Ip6IfAddrFormatError,
+    Ip6IfAddrGatewayError,
+    Ip6IfAddrSanityError,
+    Ip6IfAddrSource,
     Ip6Mask,
     Ip6Network,
     IpVersion,
@@ -62,38 +62,38 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.AUTOCONFIG,
+                "origin": Ip6IfAddrSource.AUTOCONFIG,
                 "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
-                "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
+                "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.AUTOCONFIG,
+                "origin": Ip6IfAddrSource.AUTOCONFIG,
                 "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
         },
         {
-            "_description": "Test the IPv6 host: 2001:b:c:d:1:2:3:4/64 (Ip6Host)",
+            "_description": "Test the IPv6 host: 2001:b:c:d:1:2:3:4/64 (Ip6IfAddr)",
             "_args": [
-                Ip6Host("2001:b:c:d:1:2:3:4/64"),
+                Ip6IfAddr("2001:b:c:d:1:2:3:4/64"),
             ],
             "_kwargs": {},
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
-                "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
+                "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": None,
-                "origin": Ip6HostOrigin.UNKNOWN,
+                "origin": Ip6IfAddrSource.UNKNOWN,
                 "expiration_time": 0,
             },
         },
@@ -104,19 +104,19 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.DHCP,
+                "origin": Ip6IfAddrSource.DHCP,
                 "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
-                "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
+                "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.DHCP,
+                "origin": Ip6IfAddrSource.DHCP,
                 "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
         },
@@ -130,18 +130,18 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.STATIC,
+                "origin": Ip6IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
-                "__repr__": "Ip6Host('2001:b:c:d:1:2:3:4/64')",
+                "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
                 "version": IpVersion.IP6,
                 "is_ip6": True,
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6HostOrigin.STATIC,
+                "origin": Ip6IfAddrSource.STATIC,
                 "expiration_time": 0,
             },
         },
@@ -162,7 +162,7 @@ class TestNetAddrIp6Host(TestCase):
         Initialize the IPv6 host object with testcase arguments.
         """
 
-        self._ip6_host = Ip6Host(*self._args, **self._kwargs)
+        self._ip6_host = Ip6IfAddr(*self._args, **self._kwargs)
 
     def test__net_addr__ip6_host__str(self) -> None:
         """
@@ -191,33 +191,33 @@ class TestNetAddrIp6Host(TestCase):
 
         self.assertTrue(
             self._ip6_host == self._ip6_host,
-            msg="An Ip6Host instance must compare equal to itself.",
+            msg="An Ip6IfAddr instance must compare equal to itself.",
         )
 
         self.assertTrue(
-            self._ip6_host == Ip6Host(str(self._ip6_host)),
-            msg="Ip6Host must compare equal to one reconstructed from its string representation.",
+            self._ip6_host == Ip6IfAddr(str(self._ip6_host)),
+            msg="Ip6IfAddr must compare equal to one reconstructed from its string representation.",
         )
 
         self.assertFalse(
             self._ip6_host == "not an IPv6 host",
-            msg="Ip6Host must not compare equal to a foreign string value.",
+            msg="Ip6IfAddr must not compare equal to a foreign string value.",
         )
 
         self.assertFalse(
             self._ip6_host == None,  # noqa: E711
-            msg="Ip6Host must not compare equal to None.",
+            msg="Ip6IfAddr must not compare equal to None.",
         )
 
         self.assertFalse(
             self._ip6_host
-            == Ip6Host(
+            == Ip6IfAddr(
                 (
                     Ip6Address((int(self._ip6_host.address) ^ 0x01) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
                     self._ip6_host.network,
                 ),
             ),
-            msg="Ip6Host instances with different addresses must not compare equal.",
+            msg="Ip6IfAddr instances with different addresses must not compare equal.",
         )
 
     def test__net_addr__ip6_host__version(self) -> None:
@@ -317,34 +317,34 @@ class TestNetAddrIp6HostSemantics(TestCase):
         gateway, origin, and expiration_time.
         """
 
-        plain = Ip6Host("2001:db8::1/64")
-        decorated = Ip6Host(
+        plain = Ip6IfAddr("2001:db8::1/64")
+        decorated = Ip6IfAddr(
             "2001:db8::1/64",
             gateway=Ip6Address("2001:db8::ffff"),
-            origin=Ip6HostOrigin.DHCP,
+            origin=Ip6IfAddrSource.DHCP,
             expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
         )
 
         self.assertEqual(
             plain,
             decorated,
-            msg="Ip6Host equality must ignore gateway, origin, and expiration_time.",
+            msg="Ip6IfAddr equality must ignore gateway, origin, and expiration_time.",
         )
         self.assertEqual(
             hash(plain),
             hash(decorated),
-            msg="Equal Ip6Host values must hash to the same value regardless of metadata.",
+            msg="Equal Ip6IfAddr values must hash to the same value regardless of metadata.",
         )
 
     def test__net_addr__ip6_host__eq__cross_version(self) -> None:
         """
-        Ensure '__eq__()' returns False when compared to an Ip4Host.
+        Ensure '__eq__()' returns False when compared to an Ip4IfAddr.
         """
 
         self.assertNotEqual(
-            Ip6Host("2001:db8::c0a8:164/64"),
-            Ip4Host("192.168.1.100/24"),
-            msg="Ip6Host must not compare equal to an Ip4Host.",
+            Ip6IfAddr("2001:db8::c0a8:164/64"),
+            Ip4IfAddr("192.168.1.100/24"),
+            msg="Ip6IfAddr must not compare equal to an Ip4IfAddr.",
         )
 
     def test__net_addr__ip6_host__eq__foreign_types(self) -> None:
@@ -353,23 +353,23 @@ class TestNetAddrIp6HostSemantics(TestCase):
         including its own component pieces.
         """
 
-        host = Ip6Host("2001:db8::1/64")
+        host = Ip6IfAddr("2001:db8::1/64")
 
         self.assertFalse(
             host == "2001:db8::1/64",
-            msg="Ip6Host must not compare equal to its string representation.",
+            msg="Ip6IfAddr must not compare equal to its string representation.",
         )
         self.assertFalse(
             host == host.address,
-            msg="Ip6Host must not compare equal to its Ip6Address component.",
+            msg="Ip6IfAddr must not compare equal to its Ip6Address component.",
         )
         self.assertFalse(
             host == host.network,
-            msg="Ip6Host must not compare equal to its Ip6Network component.",
+            msg="Ip6IfAddr must not compare equal to its Ip6Network component.",
         )
         self.assertFalse(
             host == 0,
-            msg="Ip6Host must not compare equal to an integer.",
+            msg="Ip6IfAddr must not compare equal to an integer.",
         )
 
     def test__net_addr__ip6_host__ne(self) -> None:
@@ -377,18 +377,18 @@ class TestNetAddrIp6HostSemantics(TestCase):
         Ensure the IPv6 host '__ne__()' method returns a correct value.
         """
 
-        host = Ip6Host("2001:db8::1/64")
+        host = Ip6IfAddr("2001:db8::1/64")
         self.assertTrue(
-            host != Ip6Host("2001:db8::2/64"),
-            msg="Ip6Host instances with different addresses must be unequal.",
+            host != Ip6IfAddr("2001:db8::2/64"),
+            msg="Ip6IfAddr instances with different addresses must be unequal.",
         )
         self.assertFalse(
-            host != Ip6Host("2001:db8::1/64"),
-            msg="Ip6Host instances with the same address and network must not be unequal.",
+            host != Ip6IfAddr("2001:db8::1/64"),
+            msg="Ip6IfAddr instances with the same address and network must not be unequal.",
         )
         self.assertTrue(
             host != "2001:db8::1/64",
-            msg="Ip6Host must be unequal to its string representation.",
+            msg="Ip6IfAddr must be unequal to its string representation.",
         )
 
     def test__net_addr__ip6_host__hash__distinct_instances(self) -> None:
@@ -396,17 +396,17 @@ class TestNetAddrIp6HostSemantics(TestCase):
         Ensure two independently constructed equal hosts hash identically.
         """
 
-        a = Ip6Host("2001:db8::1/64")
-        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+        a = Ip6IfAddr("2001:db8::1/64")
+        b = Ip6IfAddr((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
         self.assertEqual(
             a,
             b,
-            msg="Ip6Host built from string and (address, mask) tuple must compare equal.",
+            msg="Ip6IfAddr built from string and (address, mask) tuple must compare equal.",
         )
         self.assertEqual(
             hash(a),
             hash(b),
-            msg="Equal Ip6Host values must hash to the same value across constructor forms.",
+            msg="Equal Ip6IfAddr values must hash to the same value across constructor forms.",
         )
 
     def test__net_addr__ip6_host__usable_in_set(self) -> None:
@@ -415,24 +415,24 @@ class TestNetAddrIp6HostSemantics(TestCase):
         in a set.
         """
 
-        a = Ip6Host("2001:db8::1/64")
-        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
-        c = Ip6Host("2001:db8::2/64")
+        a = Ip6IfAddr("2001:db8::1/64")
+        b = Ip6IfAddr((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+        c = Ip6IfAddr("2001:db8::2/64")
 
         self.assertEqual(
             len({a, b}),
             1,
-            msg="Two equal Ip6Host values must collapse into one set element.",
+            msg="Two equal Ip6IfAddr values must collapse into one set element.",
         )
         self.assertEqual(
             len({a, b, c}),
             2,
-            msg="Distinct Ip6Host values must occupy distinct set elements.",
+            msg="Distinct Ip6IfAddr values must occupy distinct set elements.",
         )
         self.assertIn(
             a,
             {b},
-            msg="Set membership lookup must treat equal Ip6Host values as the same key.",
+            msg="Set membership lookup must treat equal Ip6IfAddr values as the same key.",
         )
 
     def test__net_addr__ip6_host__usable_in_dict(self) -> None:
@@ -441,68 +441,68 @@ class TestNetAddrIp6HostSemantics(TestCase):
         of which constructor form was used to build the key.
         """
 
-        a = Ip6Host("2001:db8::1/64")
-        b = Ip6Host((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
+        a = Ip6IfAddr("2001:db8::1/64")
+        b = Ip6IfAddr((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
 
         mapping = {a: "value"}
 
         self.assertEqual(
             mapping[b],
             "value",
-            msg="Ip6Host must behave consistently as a dict key across input forms.",
+            msg="Ip6IfAddr must behave consistently as a dict key across input forms.",
         )
 
     def test__net_addr__ip6_host__roundtrip__str(self) -> None:
         """
-        Ensure 'Ip6Host(str(x))' yields a host equal to 'x' (metadata-free).
+        Ensure 'Ip6IfAddr(str(x))' yields a host equal to 'x' (metadata-free).
         """
 
         for spec in ("::/0", "::1/128", "2001:db8::1/64", "fe80::1/10", "ff02::1/128"):
             with self.subTest(spec=spec):
-                host = Ip6Host(spec)
+                host = Ip6IfAddr(spec)
                 self.assertEqual(
-                    Ip6Host(str(host)),
+                    Ip6IfAddr(str(host)),
                     host,
                     msg=f"Roundtrip through str() must preserve host {spec!r}.",
                 )
 
     def test__net_addr__ip6_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip6Host preserves gateway, origin, and expiration_time.
+        Ensure copying an Ip6IfAddr preserves gateway, origin, and expiration_time.
         """
 
-        source = Ip6Host(
+        source = Ip6IfAddr(
             "2001:db8::1/64",
             gateway=Ip6Address("fe80::1"),
-            origin=Ip6HostOrigin.DHCP,
+            origin=Ip6IfAddrSource.DHCP,
             expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
         )
-        clone = Ip6Host(source)
+        clone = Ip6IfAddr(source)
 
         self.assertEqual(
             clone.address,
             source.address,
-            msg="Copying an Ip6Host must preserve its address.",
+            msg="Copying an Ip6IfAddr must preserve its address.",
         )
         self.assertEqual(
             clone.network,
             source.network,
-            msg="Copying an Ip6Host must preserve its network.",
+            msg="Copying an Ip6IfAddr must preserve its network.",
         )
         self.assertEqual(
             clone.gateway,
             source.gateway,
-            msg="Copying an Ip6Host must preserve its gateway.",
+            msg="Copying an Ip6IfAddr must preserve its gateway.",
         )
         self.assertEqual(
             clone.origin,
             source.origin,
-            msg="Copying an Ip6Host must preserve its origin.",
+            msg="Copying an Ip6IfAddr must preserve its origin.",
         )
         self.assertEqual(
             clone.expiration_time,
             source.expiration_time,
-            msg="Copying an Ip6Host must preserve its expiration_time.",
+            msg="Copying an Ip6IfAddr must preserve its expiration_time.",
         )
 
 
@@ -516,7 +516,7 @@ class TestNetAddrIp6HostFromEui64(TestCase):
         Ensure 'from_eui64()' builds a /64 host from a MAC and network.
         """
 
-        host = Ip6Host.from_eui64(
+        host = Ip6IfAddr.from_eui64(
             mac_address=MacAddress("02:00:00:11:22:33"),
             ip6_network=Ip6Network("2001:db8::/64"),
         )
@@ -541,7 +541,7 @@ class TestNetAddrIp6HostFromEui64(TestCase):
             AssertionError,
             msg="from_eui64() must reject a network whose mask is not /64.",
         ):
-            Ip6Host.from_eui64(
+            Ip6IfAddr.from_eui64(
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 ip6_network=Ip6Network("2001:db8::/48"),
             )
@@ -561,12 +561,12 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §5 (Algorithm Specification).
         """
 
-        host_a = Ip6Host.from_rfc7217(
+        host_a = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
         )
-        host_b = Ip6Host.from_rfc7217(
+        host_b = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -587,12 +587,12 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §3 (design goals).
         """
 
-        host_a = Ip6Host.from_rfc7217(
+        host_a = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8:0:1::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
         )
-        host_b = Ip6Host.from_rfc7217(
+        host_b = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8:0:2::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -615,12 +615,12 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §5 (Net_Iface in PRF input).
         """
 
-        host_a = Ip6Host.from_rfc7217(
+        host_a = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
         )
-        host_b = Ip6Host.from_rfc7217(
+        host_b = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:aa:bb:cc"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -639,12 +639,12 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §5 (secret_key in PRF input).
         """
 
-        host_a = Ip6Host.from_rfc7217(
+        host_a = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"first-128-bit-secret-key-bytes--",
         )
-        host_b = Ip6Host.from_rfc7217(
+        host_b = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"second-128-bit-secret-key-bytes-",
@@ -665,13 +665,13 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §5 (DAD_Counter input + §6 conflict resolution).
         """
 
-        host_0 = Ip6Host.from_rfc7217(
+        host_0 = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
             dad_counter=0,
         )
-        host_1 = Ip6Host.from_rfc7217(
+        host_1 = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -692,7 +692,7 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
         Reference: RFC 7217 §5 (PRF output replaces IID, prefix preserved).
         """
 
-        host = Ip6Host.from_rfc7217(
+        host = Ip6IfAddr.from_rfc7217(
             ip6_network=Ip6Network("2001:db8:cafe::/64"),
             mac_address=MacAddress("02:00:00:11:22:33"),
             secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -722,7 +722,7 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
             AssertionError,
             msg="from_rfc7217() must reject a network whose mask is not /64.",
         ):
-            Ip6Host.from_rfc7217(
+            Ip6IfAddr.from_rfc7217(
                 ip6_network=Ip6Network("2001:db8::/48"),
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 secret_key=b"a-fixed-128-bit-secret-key-bytes",
@@ -740,7 +740,7 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
             AssertionError,
             msg="from_rfc7217() must reject a secret_key < 16 bytes (128 bits).",
         ):
-            Ip6Host.from_rfc7217(
+            Ip6IfAddr.from_rfc7217(
                 ip6_network=Ip6Network("2001:db8::/64"),
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 secret_key=b"too-short",
@@ -762,7 +762,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
         """
 
         prefix = Ip6Network("2001:db8:cafe::/64")
-        host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+        host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
         self.assertEqual(
             host.network,
@@ -785,8 +785,8 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
         """
 
         prefix = Ip6Network("2001:db8::/64")
-        host_a = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
-        host_b = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+        host_a = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
+        host_b = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
         self.assertNotEqual(
             host_a.address,
@@ -806,7 +806,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             AssertionError,
             msg="from_rfc8981_temp() must reject a network whose mask is not /64.",
         ):
-            Ip6Host.from_rfc8981_temp(ip6_network=Ip6Network("2001:db8::/48"))
+            Ip6IfAddr.from_rfc8981_temp(ip6_network=Ip6Network("2001:db8::/48"))
 
     def test__net_addr__ip6_host__from_rfc8981_temp__avoids_reserved_iid(self) -> None:
         """
@@ -831,10 +831,10 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             (0x1234567890ABCDEF).to_bytes(8, "big"),  # Acceptable random value.
         ]
         with patch(
-            "net_addr.ip6_host.secrets.token_bytes",
+            "net_addr.ip6_ifaddr.secrets.token_bytes",
             side_effect=reserved_iids,
         ):
-            host = Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+            host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
         self.assertEqual(
             int(host.address) & ((1 << 64) - 1),
@@ -860,14 +860,14 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
         # Every draw returns a reserved IID; the generator
         # should give up.
         with patch(
-            "net_addr.ip6_host.secrets.token_bytes",
+            "net_addr.ip6_ifaddr.secrets.token_bytes",
             return_value=(0).to_bytes(8, "big"),
         ):
             with self.assertRaises(
                 RuntimeError,
                 msg="Exhausting reserved-IID retries must raise RuntimeError.",
             ):
-                Ip6Host.from_rfc8981_temp(ip6_network=prefix)
+                Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
 
 @parameterized_class(
@@ -879,7 +879,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             ],
             "_kwargs": {},
             "_results": {
-                "error": Ip6HostSanityError,
+                "error": Ip6IfAddrSanityError,
                 "error_message": (
                     "The IPv6 address doesn't belong to the provided network: "
                     "(Ip6Address('a::1:2:3:4'), Ip6Network('b::/64'))"
@@ -887,56 +887,56 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             },
         },
         {
-            "_description": "Test Ip6HostFormatError: invalid input type.",
+            "_description": "Test Ip6IfAddrFormatError: invalid input type.",
             "_args": [12345],
             "_kwargs": {},
             "_results": {
-                "error": Ip6HostFormatError,
+                "error": Ip6IfAddrFormatError,
                 "error_message": "The IPv6 host format is invalid: 12345",
             },
         },
         {
-            "_description": "Test Ip6HostFormatError: invalid string.",
+            "_description": "Test Ip6IfAddrFormatError: invalid string.",
             "_args": ["not-a-host"],
             "_kwargs": {},
             "_results": {
-                "error": Ip6HostFormatError,
+                "error": Ip6IfAddrFormatError,
                 "error_message": "The IPv6 host format is invalid: 'not-a-host'",
             },
         },
         {
-            "_description": "Test Ip6HostFormatError: None input.",
+            "_description": "Test Ip6IfAddrFormatError: None input.",
             "_args": [None],
             "_kwargs": {},
             "_results": {
-                "error": Ip6HostFormatError,
+                "error": Ip6IfAddrFormatError,
                 "error_message": "The IPv6 host format is invalid: None",
             },
         },
         {
-            "_description": "Test Ip6HostGatewayError: gateway equals network address.",
+            "_description": "Test Ip6IfAddrGatewayError: gateway equals network address.",
             "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
             "_kwargs": {"gateway": Ip6Address("2001:db8::")},
             "_results": {
-                "error": Ip6HostGatewayError,
+                "error": Ip6IfAddrGatewayError,
                 "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::')",
             },
         },
         {
-            "_description": "Test Ip6HostGatewayError: gateway equals host address.",
+            "_description": "Test Ip6IfAddrGatewayError: gateway equals host address.",
             "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
             "_kwargs": {"gateway": Ip6Address("2001:db8::1")},
             "_results": {
-                "error": Ip6HostGatewayError,
+                "error": Ip6IfAddrGatewayError,
                 "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::1')",
             },
         },
         {
-            "_description": "Test Ip6HostGatewayError: gateway is neither global nor link-local.",
+            "_description": "Test Ip6IfAddrGatewayError: gateway is neither global nor link-local.",
             "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
             "_kwargs": {"gateway": Ip6Address("fc00::1")},
             "_results": {
-                "error": Ip6HostGatewayError,
+                "error": Ip6IfAddrGatewayError,
                 "error_message": "The IPv6 host gateway is invalid: Ip6Address('fc00::1')",
             },
         },
@@ -958,7 +958,7 @@ class TestNetAddrIp6HostErrors(TestCase):
         """
 
         with self.assertRaises(self._results["error"]) as error:
-            Ip6Host(*self._args, **self._kwargs)
+            Ip6IfAddr(*self._args, **self._kwargs)
 
         self.assertEqual(
             str(error.exception),
@@ -972,18 +972,18 @@ class TestNetAddrIp6HostErrors(TestCase):
         {
             "_description": "AssertionError: DHCP origin requires expiration_time.",
             "_args": ["2001:db8::1/64"],
-            "_kwargs": {"origin": Ip6HostOrigin.DHCP},
+            "_kwargs": {"origin": Ip6IfAddrSource.DHCP},
         },
         {
             "_description": "AssertionError: AUTOCONFIG origin requires expiration_time.",
             "_args": ["2001:db8::1/64"],
-            "_kwargs": {"origin": Ip6HostOrigin.AUTOCONFIG},
+            "_kwargs": {"origin": Ip6IfAddrSource.AUTOCONFIG},
         },
         {
             "_description": "AssertionError: STATIC origin with expiration_time set.",
             "_args": ["2001:db8::1/64"],
             "_kwargs": {
-                "origin": Ip6HostOrigin.STATIC,
+                "origin": Ip6IfAddrSource.STATIC,
                 "expiration_time": 9999999999,
             },
         },
@@ -991,23 +991,23 @@ class TestNetAddrIp6HostErrors(TestCase):
             "_description": "AssertionError: DHCP origin with expiration_time in the past.",
             "_args": ["2001:db8::1/64"],
             "_kwargs": {
-                "origin": Ip6HostOrigin.DHCP,
+                "origin": Ip6IfAddrSource.DHCP,
                 "expiration_time": 1,
             },
         },
         {
-            "_description": "AssertionError: copying Ip6Host with gateway set.",
-            "_args": [Ip6Host("2001:db8::1/64")],
+            "_description": "AssertionError: copying Ip6IfAddr with gateway set.",
+            "_args": [Ip6IfAddr("2001:db8::1/64")],
             "_kwargs": {"gateway": Ip6Address("fe80::1")},
         },
         {
-            "_description": "AssertionError: copying Ip6Host with origin set.",
-            "_args": [Ip6Host("2001:db8::1/64")],
-            "_kwargs": {"origin": Ip6HostOrigin.STATIC},
+            "_description": "AssertionError: copying Ip6IfAddr with origin set.",
+            "_args": [Ip6IfAddr("2001:db8::1/64")],
+            "_kwargs": {"origin": Ip6IfAddrSource.STATIC},
         },
         {
-            "_description": "AssertionError: copying Ip6Host with expiration_time set.",
-            "_args": [Ip6Host("2001:db8::1/64")],
+            "_description": "AssertionError: copying Ip6IfAddr with expiration_time set.",
+            "_args": [Ip6IfAddr("2001:db8::1/64")],
             "_kwargs": {"expiration_time": 9999999999},
         },
     ]
@@ -1030,7 +1030,7 @@ class TestNetAddrIp6HostAssertionErrors(TestCase):
             AssertionError,
             msg=f"Expected AssertionError for case: {self._description}.",
         ):
-            Ip6Host(*self._args, **self._kwargs)
+            Ip6IfAddr(*self._args, **self._kwargs)
 
 
 class TestNetAddrIp6HostSetters(TestCase):
@@ -1043,17 +1043,17 @@ class TestNetAddrIp6HostSetters(TestCase):
         Initialize a base IPv6 host for setter tests.
         """
 
-        self._ip6_host = Ip6Host("2001:db8::1/64", origin=Ip6HostOrigin.STATIC)
+        self._ip6_host = Ip6IfAddr("2001:db8::1/64", origin=Ip6IfAddrSource.STATIC)
 
     def test__net_addr__ip6_host__origin_setter(self) -> None:
         """
         Ensure the IPv6 host 'origin' setter stores the new value.
         """
 
-        self._ip6_host.origin = Ip6HostOrigin.UNKNOWN
+        self._ip6_host.origin = Ip6IfAddrSource.UNKNOWN
         self.assertEqual(
             self._ip6_host.origin,
-            Ip6HostOrigin.UNKNOWN,
+            Ip6IfAddrSource.UNKNOWN,
             msg="The 'origin' setter must store the assigned value.",
         )
 
@@ -1112,7 +1112,7 @@ class TestNetAddrIp6HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip6HostGatewayError,
+            Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject a non-global, non-link-local address.",
         ):
             self._ip6_host.gateway = Ip6Address("fc00::1")
@@ -1123,7 +1123,7 @@ class TestNetAddrIp6HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip6HostGatewayError,
+            Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject the network address.",
         ):
             self._ip6_host.gateway = Ip6Address("2001:db8::")
@@ -1134,7 +1134,7 @@ class TestNetAddrIp6HostSetters(TestCase):
         """
 
         with self.assertRaises(
-            Ip6HostGatewayError,
+            Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject the host's own address.",
         ):
             self._ip6_host.gateway = Ip6Address("2001:db8::1")

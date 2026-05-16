@@ -34,7 +34,7 @@ import struct
 from abc import ABC
 from typing import TYPE_CHECKING
 
-from net_addr import Ip6Address, Ip6Host, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import (
     Icmp6Assembler,
     Icmp6DestinationUnreachableCode,
@@ -81,7 +81,7 @@ class PacketHandlerIcmp6Tx(ABC):
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip6_multicast: list[Ip6Address]
-        _ip6_host: list[Ip6Host]
+        _ip6_host: list[Ip6IfAddr]
         _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
 
         # pylint: disable=unused-argument

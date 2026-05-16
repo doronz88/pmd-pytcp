@@ -44,7 +44,7 @@ pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_6
 ver 3.0.5
 """
 
-from net_addr import Ip6Address, Ip6Host
+from net_addr import Ip6Address, Ip6IfAddr
 from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 
@@ -73,8 +73,8 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         Reference: RFC 6724 §10.3 (Default policy table).
         """
 
-        host_label_1_far = Ip6Host("2400::7/64")
-        host_label_2_close = Ip6Host("2002:cb00::7/64")
+        host_label_1_far = Ip6IfAddr("2400::7/64")
+        host_label_2_close = Ip6IfAddr("2002:cb00::7/64")
         self._packet_handler._ip6_host = [host_label_1_far, host_label_2_close]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
@@ -107,8 +107,8 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         Reference: RFC 6724 §5 rule 6 (Prefer matching label).
         """
 
-        host_ula = Ip6Host("fc00:1::7/64")
-        host_6to4 = Ip6Host("2002:0::7/64")
+        host_ula = Ip6IfAddr("fc00:1::7/64")
+        host_6to4 = Ip6IfAddr("2002:0::7/64")
         self._packet_handler._ip6_host = [host_ula, host_6to4]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
@@ -133,8 +133,8 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         Reference: RFC 4193 §1 (ULA scope and prefix fc00::/7).
         """
 
-        host_gua = Ip6Host("2620:0:1::7/64")
-        host_ula = Ip6Host("fd00:1::7/64")
+        host_gua = Ip6IfAddr("2620:0:1::7/64")
+        host_ula = Ip6IfAddr("fd00:1::7/64")
         self._packet_handler._ip6_host = [host_gua, host_ula]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
@@ -159,8 +159,8 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         Reference: RFC 6724 §5 (rule order; rule 8 as final tiebreak).
         """
 
-        host_6to4 = Ip6Host("2002:c612::7/64")
-        host_ula = Ip6Host("fd00:1::7/64")
+        host_6to4 = Ip6IfAddr("2002:c612::7/64")
+        host_ula = Ip6IfAddr("fd00:1::7/64")
         self._packet_handler._ip6_host = [host_6to4, host_ula]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
@@ -195,8 +195,8 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         from net_addr import Ip6Network
         from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddress
 
-        host_matching_dep = Ip6Host("2002:dead::7/64")  # label 2, will be DEPRECATED
-        host_non_matching_pref = Ip6Host("2620:0:1::7/64")  # label 1, PREFERRED
+        host_matching_dep = Ip6IfAddr("2002:dead::7/64")  # label 2, will be DEPRECATED
+        host_non_matching_pref = Ip6IfAddr("2620:0:1::7/64")  # label 1, PREFERRED
         self._packet_handler._ip6_host = [host_matching_dep, host_non_matching_pref]
 
         now = time.monotonic()

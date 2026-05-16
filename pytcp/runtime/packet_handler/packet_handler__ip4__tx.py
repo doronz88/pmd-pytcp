@@ -64,13 +64,13 @@ class PacketHandlerIp4Tx(ABC):
     """
 
     if TYPE_CHECKING:
-        from net_addr import Ip4Host
+        from net_addr import Ip4IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip4_host: list[Ip4Host]
+        _ip4_host: list[Ip4IfAddr]
         _ip4_multicast: list[Ip4Address]
         _ip4_id: int
         _ip4_support: bool

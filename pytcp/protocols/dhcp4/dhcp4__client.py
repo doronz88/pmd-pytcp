@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, override
 
-from net_addr import Ip4Address, Ip4Host, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 
 if TYPE_CHECKING:
     from pytcp.stack.address import Ip4AddressApi
@@ -139,7 +139,7 @@ class Dhcp4Lease:
     option or when the cached lease pre-dates this field.
     """
 
-    ip4_host: Ip4Host
+    ip4_host: Ip4IfAddr
     lease_time__sec: int
     server_id: Ip4Address
     acquired_at_monotonic: float
@@ -212,7 +212,7 @@ class Dhcp4Client(Subsystem):
         boundary surface (Phase-3 north-star); on BOUND transition
         (daemon mode only) the lifecycle calls
         'address_api.add_host(...)' to install the leased
-        Ip4Host on the stack's address list. Sync 'fetch()' does
+        Ip4IfAddr on the stack's address list. Sync 'fetch()' does
         not touch the API — the caller owns the returned lease.
         """
 
@@ -335,7 +335,7 @@ class Dhcp4Client(Subsystem):
 
     def _on_bound(self, lease: Dhcp4Lease, /) -> None:
         """
-        Transition to BOUND: install the lease's Ip4Host via the
+        Transition to BOUND: install the lease's Ip4IfAddr via the
         address API, emit RFC 5227 §2.3 gratuitous ARP
         Announcements via the announcer callback, persist the
         lease to disk for the next boot's INIT-REBOOT fast-path
@@ -597,7 +597,7 @@ class Dhcp4Client(Subsystem):
                 "<WARN>RENEW/REBIND ACK missing mandatory option; ignoring</>",
             )
             return None
-        ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
+        ip4_host = Ip4IfAddr((result.yiaddr, result.subnet_mask))
         if result.router:
             ip4_host.gateway = result.router[0]
         t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
@@ -681,7 +681,7 @@ class Dhcp4Client(Subsystem):
     def _reset_to_init(self, *, remove_lease_host: bool) -> None:
         """
         Return the FSM to INIT after a NAK or lease-loss event.
-        Optionally remove the leased Ip4Host via the address API
+        Optionally remove the leased Ip4IfAddr via the address API
         (NAK case: the lease is invalid, abort sessions per the
         'dhcp.abort_sessions_on_lease_change' sysctl). Clears
         '_event__bound' so a subsequent 'start_and_wait_for_bind'
@@ -831,7 +831,7 @@ class Dhcp4Client(Subsystem):
             self._reset_to_init(remove_lease_host=True)
             return
 
-        ip4_host = Ip4Host((result.yiaddr, result.subnet_mask))
+        ip4_host = Ip4IfAddr((result.yiaddr, result.subnet_mask))
         if result.router:
             ip4_host.gateway = result.router[0]
         t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
@@ -1262,7 +1262,7 @@ class Dhcp4Client(Subsystem):
             )
             return None
 
-        ip4_host = Ip4Host((ack.yiaddr, ack.subnet_mask))
+        ip4_host = Ip4IfAddr((ack.yiaddr, ack.subnet_mask))
         if ack.router:
             ip4_host.gateway = ack.router[0]
 
