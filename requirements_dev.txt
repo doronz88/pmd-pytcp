@@ -5,7 +5,6 @@ flake8-pyproject
 codespell
 isort
 pylint
-pyre-check
 build
 twine
 ipython

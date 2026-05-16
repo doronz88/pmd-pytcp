@@ -1,48 +1,37 @@
 name: CI
+
 on: [pull_request, push]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.14"]
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        if [ -f requirements_dev.txt ]; then pip install -r requirements_dev.txt; fi
-    - name: Check spelling
-      run: |
-        codespell --ignore-words-list="ect,ether,nd,tha" --quiet-level=2 $(find pytcp -name '*.py')
-        codespell --ignore-words-list="ect,ether,nd,tha" --quiet-level=2 $(find examples -name '*.py')
-        codespell --ignore-words-list="ect,ether,nd,tha" --quiet-level=2 $(find tests -name '*.py')
-    - name: Sort includes
-      run: |
-        isort -c --line-length 80 --profile black $(find pytcp -name '*.py')
-        isort -c --line-length 80 --profile black $(find examples -name '*.py')
-        isort -c --line-length 80 --profile black $(find tests -name '*.py')
-    - name: Format code
-      run: |
-        black --check $(find pytcp -name '*.py')
-        black --check $(find examples -name '*.py')
-        black --check $(find tests -name '*.py')
-    - name: Lint
-      run: |
-        flake8 $(find pytcp -name '*.py')
-        flake8 $(find examples -name '*.py')
-        flake8 $(find tests -name '*.py')
-    - name: Type check
-      run: |
-        mypy -p pytcp
-        mypy -p examples
-        mypy -p tests
-    - name: Test unit
-      run: testslide $(find 'tests/unit' -name '*.py')
-    - name: Test integration
-      run: testslide $(find 'tests/integration' -name '*.py')
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Single source of truth: CI runs the exact same gate as
+      # `make validate` does locally, so the two can never drift.
+      - name: Build venv + install deps
+        run: make venv
+
+      - name: Lint (codespell + isort + black + flake8 + mypy)
+        run: make lint
+
+      # `make lint` applies formatting in place; in CI any change
+      # it makes is a failure (the author should have run it).
+      - name: Fail on lint-induced changes
+        run: git diff --exit-code
+
+      - name: Test (full unittest suite)
+        run: make test
