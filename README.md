@@ -29,90 +29,6 @@ Contributions are welcome.
 ---
 
 
-### Principle of operation and the test setup
-
-The PyTCP stack depends on the Linux TAP interface. The TAP interface is a virtual interface that,
-on the network end, can be 'plugged' into existing virtual network infrastructure via either Linux
-bridge or Open vSwitch. On the internal end, the TAP interface can be used like any other NIC by
-programmatically sending and receiving packets to/from it.
-
-If you wish to test the PyTCP stack in your local network, I'd suggest creating the following network
-setup that will allow you to connect both the Linux kernel (essentially your Linux OS) and the
-PyTCP stack to your local network at the same time.
-
-```console
-<INTERNET> <---> [ROUTER] <---> (eth0)-[Linux bridge]-(br0) <---> [Linux TCP/IP stack]
-                                            |
-                                            |--(tap7) <---> [PyTCP TCP/IP stack]
-```
-
-After the example program (either client or service) starts the stack, it can communicate with it
-via simplified BSD Sockets like API interface. There is also the possibility of sending packets
-directly by calling one of the ```_*_phtx()``` methods from ```PacketHandler``` class.
-
----
-
-
-### Clonning PyTCP from the GitHub repository
-
-In most cases, PyTCP should be cloned directly from the [GitHub repository](http://github.com/ccie18643/PyTCP),
-as this type of installation provides full development and testing environment.
-
-```shell
-git clone http://github.com/ccie18643/PyTCP
-```
-
-After cloning, we can run one of the included examples:
- - Go to the stack root directory (it is called 'PyTCP').
- - Run the ```sudo make bridge``` command to create the 'br0' bridge if needed.
- - Run the ```sudo make tap``` command to create the tap7 interface and assign it to the 'br0' bridge.
- - Run the ```make``` command to create the proper virtual environment for development and testing.
- - Run ```. venv/bin/activate``` command to activate the virtual environment.
- - Execute any example, e.g., ```example/run_stack.py```.
- - Hit Ctrl-C to stop it.
-
-To fine-tune various stack operational parameters, please edit the ```pytcp/config.py``` file accordingly.
-
----
-
-
-### Installing PyTCP from the PyPi repository
-
-PyTCP can also be installed as a regular module from the [PyPi repository](http://pypi.org/project/PyTCP/).
-
-```console
-python -m pip install PyTCP
-```
-
-After installation, please ensure the TAP interface is operational and added to the bridge.
-
-```console
-sudo ip tuntap add name tap7 mode tap
-sudo ip link set dev tap7 up
-sudo brctl addbr br0
-sudo brctl addif br0 tap7
-```
-
-The PyTCP stack can be imported and started using the following code. It starts the stack
-subsystems and autoconfigures both the IPv4 and IPv6 protocol addresses using DHCPv4 and IPv6 SLAAC,
-respectively.
-
-```python
-from pytcp import TcpIpStack
-stack = TcpIpStack(interface="tap7")
-stack.start()
-```
-
-The stack subsystems run in their own threads. After starting, the stack gives control back to
-the user code and can be stopped using the following call.
-
-```python
-stack.stop()
-```
-
----
-
-
 ### Features
 
 PyTCP tracks RFC conformance through per-RFC adherence audits under
@@ -225,6 +141,90 @@ the end of each protocol.
  - [ ] IPv6 RA PI option - full A/L flag handling and non-/64 advertised prefixes.
  - [ ] Refactor integrity/sanity error messages for more consistent detail.
  - [ ] Phase-2 router grade: IPv4/IPv6 forwarding plane, route tables, router role.
+
+---
+
+
+### Principle of operation and the test setup
+
+The PyTCP stack depends on the Linux TAP interface. The TAP interface is a virtual interface that,
+on the network end, can be 'plugged' into existing virtual network infrastructure via either Linux
+bridge or Open vSwitch. On the internal end, the TAP interface can be used like any other NIC by
+programmatically sending and receiving packets to/from it.
+
+If you wish to test the PyTCP stack in your local network, I'd suggest creating the following network
+setup that will allow you to connect both the Linux kernel (essentially your Linux OS) and the
+PyTCP stack to your local network at the same time.
+
+```console
+<INTERNET> <---> [ROUTER] <---> (eth0)-[Linux bridge]-(br0) <---> [Linux TCP/IP stack]
+                                            |
+                                            |--(tap7) <---> [PyTCP TCP/IP stack]
+```
+
+After the example program (either client or service) starts the stack, it can communicate with it
+via simplified BSD Sockets like API interface. There is also the possibility of sending packets
+directly by calling one of the ```_*_phtx()``` methods from ```PacketHandler``` class.
+
+---
+
+
+### Clonning PyTCP from the GitHub repository
+
+In most cases, PyTCP should be cloned directly from the [GitHub repository](http://github.com/ccie18643/PyTCP),
+as this type of installation provides full development and testing environment.
+
+```shell
+git clone http://github.com/ccie18643/PyTCP
+```
+
+After cloning, we can run one of the included examples:
+ - Go to the stack root directory (it is called 'PyTCP').
+ - Run the ```sudo make bridge``` command to create the 'br0' bridge if needed.
+ - Run the ```sudo make tap``` command to create the tap7 interface and assign it to the 'br0' bridge.
+ - Run the ```make``` command to create the proper virtual environment for development and testing.
+ - Run ```. venv/bin/activate``` command to activate the virtual environment.
+ - Execute any example, e.g., ```example/run_stack.py```.
+ - Hit Ctrl-C to stop it.
+
+To fine-tune various stack operational parameters, please edit the ```pytcp/config.py``` file accordingly.
+
+---
+
+
+### Installing PyTCP from the PyPi repository
+
+PyTCP can also be installed as a regular module from the [PyPi repository](http://pypi.org/project/PyTCP/).
+
+```console
+python -m pip install PyTCP
+```
+
+After installation, please ensure the TAP interface is operational and added to the bridge.
+
+```console
+sudo ip tuntap add name tap7 mode tap
+sudo ip link set dev tap7 up
+sudo brctl addbr br0
+sudo brctl addif br0 tap7
+```
+
+The PyTCP stack can be imported and started using the following code. It starts the stack
+subsystems and autoconfigures both the IPv4 and IPv6 protocol addresses using DHCPv4 and IPv6 SLAAC,
+respectively.
+
+```python
+from pytcp import TcpIpStack
+stack = TcpIpStack(interface="tap7")
+stack.start()
+```
+
+The stack subsystems run in their own threads. After starting, the stack gives control back to
+the user code and can be stopped using the following call.
+
+```python
+stack.stop()
+```
 
 ---
 
