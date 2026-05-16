@@ -103,7 +103,7 @@ class Dhcp4Options(ProtoOptions):
     """
 
     @property
-    def client_id(self) -> bytes | None:
+    def client_id(self) -> Buffer | None:
         """
         Get the value of the DHCP Client Identifier option if present.
         """
@@ -359,7 +359,7 @@ class Dhcp4OptionsProperties(ABC):
     _options: Dhcp4Options
 
     @property
-    def client_id(self) -> bytes | None:
+    def client_id(self) -> Buffer | None:
         """
         Get the value of the DHCP Client Identifier option if present.
         """

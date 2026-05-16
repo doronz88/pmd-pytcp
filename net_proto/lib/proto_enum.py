@@ -34,6 +34,8 @@ from typing import TYPE_CHECKING, Self
 
 from aenum import extend_enum  # type: ignore[import-untyped]
 
+from net_proto.lib.buffer import Buffer
+
 if TYPE_CHECKING:
     from enum import Enum
 else:
@@ -78,7 +80,7 @@ class ProtoEnum(Enum):
         return cls(value)
 
     @classmethod
-    def _from_bytes(cls, data: bytes, /, size: int) -> Self:
+    def _from_bytes(cls, data: Buffer, /, size: int) -> Self:
         """
         Extract the enum value from the provided bytes.
         """
@@ -115,7 +117,7 @@ class ProtoEnumByte(ProtoEnum):
         return int(self).to_bytes(1)
 
     @classmethod
-    def from_bytes(cls, data: bytes, /) -> Self:
+    def from_bytes(cls, data: Buffer, /) -> Self:
         """
         Extract the enum value from the provided bytes.
         """
@@ -136,7 +138,7 @@ class ProtoEnumWord(ProtoEnum):
         return int(self).to_bytes(2)
 
     @classmethod
-    def from_bytes(cls, data: bytes, /) -> Self:
+    def from_bytes(cls, data: Buffer, /) -> Self:
         """
         Extract the enum value from the provided bytes.
         """

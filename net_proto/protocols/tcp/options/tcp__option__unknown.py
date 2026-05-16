@@ -61,7 +61,7 @@ class TcpOptionUnknown(TcpOption):
         init=False,
     )
 
-    data: bytes
+    data: Buffer
 
     @override
     def __post_init__(self) -> None:

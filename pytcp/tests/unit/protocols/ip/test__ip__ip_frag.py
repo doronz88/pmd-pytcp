@@ -36,6 +36,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import IpProto
+from net_proto.lib.buffer import Buffer
 from pytcp.protocols.ip.ip_frag import (
     ECN__CE,
     ECN__ECT_0,
@@ -313,7 +314,7 @@ class TestIpFragDataConstruction(TestCase):
         """
 
         self._header = b"\x45\x00\x00\x14"
-        self._payload: dict[int, bytes] = {0: b"AAAA", 8: b"BBBB"}
+        self._payload: dict[int, Buffer] = {0: b"AAAA", 8: b"BBBB"}
 
         self._frag = IpFragData(header=self._header, payload=self._payload)
 

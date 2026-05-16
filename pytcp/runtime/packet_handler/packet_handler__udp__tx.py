@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import Tracker, UdpAssembler
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -89,7 +90,7 @@ class PacketHandlerUdpTx(ABC):
         ip__dst: Ip6Address | Ip4Address,
         udp__sport: int,
         udp__dport: int,
-        udp__payload: bytes = bytes(),
+        udp__payload: Buffer = bytes(),
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
@@ -161,7 +162,7 @@ class PacketHandlerUdpTx(ABC):
         ip__remote_address: Ip6Address | Ip4Address,
         udp__local_port: int,
         udp__remote_port: int,
-        udp__payload: bytes = bytes(),
+        udp__payload: Buffer = bytes(),
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,

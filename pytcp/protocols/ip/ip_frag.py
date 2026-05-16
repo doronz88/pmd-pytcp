@@ -75,9 +75,9 @@ class IpFragData:
     """
 
     timestamp: float = field(repr=False, init=False, default_factory=time.time)
-    header: bytes
+    header: Buffer
     last: bool = field(repr=False, init=False, default=False)
-    payload: dict[int, bytes]
+    payload: dict[int, Buffer]
     # Per-offset ECN codepoint observed on each fragment. Keyed by
     # the same offset as 'payload'. Aggregated at reassembly time
     # per RFC 3168 §5.3.

@@ -61,7 +61,7 @@ class Ip4OptionUnknown(Ip4Option):
         init=False,
     )
 
-    data: bytes
+    data: Buffer
 
     @override
     def __post_init__(self) -> None:

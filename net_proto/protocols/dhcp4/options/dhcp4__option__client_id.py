@@ -68,7 +68,7 @@ class Dhcp4OptionClientId(Dhcp4Option):
         init=False,
     )
 
-    client_id: bytes
+    client_id: Buffer
 
     @override
     def __post_init__(self) -> None:

@@ -45,6 +45,7 @@ from net_proto import (
     PacketValidationError,
     UdpParser,
 )
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.udp.udp__errors import UdpZeroCksumIp6Error
 from pytcp import stack
 from pytcp.lib.logger import log
@@ -76,7 +77,7 @@ class PacketHandlerUdpRx(ABC):
             ip__dst: Ip6Address | Ip4Address,
             udp__sport: int,
             udp__dport: int,
-            udp__payload: bytes = bytes(),
+            udp__payload: Buffer = bytes(),
             udp__no_cksum: bool = False,
             ip__ttl: int | None = None,
             ip__ecn: int = 0,
