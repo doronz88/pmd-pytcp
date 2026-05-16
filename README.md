@@ -207,7 +207,26 @@ the ARP-payload **sender → target**. `—` marks IPv6 ND/MLD frames
 whose link-local/multicast endpoints are named in the summary
 instead (the `boot` capture did not record them as columns).
 
+Every example is produced by the bundled `tools/capture` runner
+and is reproducible. With the TAP/bridge up and the venv built —
+
+```bash
+sudo make tap7 && sudo make bridge && make venv
+```
+
+— run any example with the exact command listed under it (loss is
+random, so a `--loss` run differs every time; everything else is
+deterministic). The general form is
+`sudo PYTHONPATH=. venv/bin/python -m tools.capture [GLOBAL OPTS] <scenario>`;
+`python -m tools.capture --help` lists every scenario and option.
+
 #### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
+
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture boot
+```
 
 On start the stack autoconfigures itself: it derives an IPv6
 link-local address and runs Duplicate Address Detection, reports its
@@ -244,6 +263,12 @@ ND/MLD endpoints are now real columns, not `—`):
 
 #### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
 
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture arp-acd
+```
+
 The stack defends each configured IPv4 address: it sends three ARP
 **Probes** (sender `0.0.0.0`), and if no host objects, claims the
 address with two ARP **Announcements** (sender = target).
@@ -267,6 +292,12 @@ ARP Announcement  Opcode: request   Sender IP: 192.168.1.77   Target IP: 192.168
 
 #### ARP resolution and ICMP Echo
 
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip4-icmp-echo
+```
+
 A host on the segment pings the stack. Having learned the stack's MAC
 from its ARP Announcement, the host sends the Echo Request directly;
 the stack then resolves the *host's* MAC via ARP before replying:
@@ -288,6 +319,12 @@ From the pinging host:
 `3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.693/0.873/1.185/0.221 ms`.
 
 #### ICMPv6 Echo over IPv6 (Neighbor Discovery + ping6)
+
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip6-icmp-echo
+```
 
 The IPv6 counterpart: a host on a ULA pings the stack's IPv6
 address. The host sends the Echo Request directly; the stack
@@ -316,6 +353,12 @@ From the pinging host:
 `3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.680/0.882/1.276/0.278 ms`.
 
 #### Monkeys over TCP
+
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip4-tcp-monkeys
+```
 
 PyTCP ships a matching TCP echo client and service
 (`examples/client__tcp_echo.py` / `examples/service__tcp_echo.py`).
@@ -386,6 +429,12 @@ pure-Python code.
 
 #### Monkeys over TCP — over IPv6
 
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip6-tcp-monkeys
+```
+
 The same demo, unchanged, over IPv6 (the service bound to a ULA;
 the host resolves it with ICMPv6 Neighbor Discovery instead of
 ARP). The IPv6 MSS is 1440 (vs 1460 on IPv4 — the 20-byte-larger
@@ -416,6 +465,12 @@ close:
 they are plain TCP.)
 
 #### Monkeys over UDP — IPv4 fragmentation
+
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip4-udp-monkeys
+```
 
 The same ASCII monkeys, echoed over the UDP service. The reply
 (~1.5 KB) exceeds the 1500-byte link MTU, so the stack
@@ -468,6 +523,12 @@ single-slot queue.
 
 #### Monkeys over UDP — over IPv6
 
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip6-udp-monkeys
+```
+
 The same oversized echo over IPv6. IPv6 fragments differently from
 IPv4: the base header is never modified — the source inserts a
 **Fragment extension header** (RFC 8200 §4.5), and only the source
@@ -489,6 +550,12 @@ over the 1500-byte link MTU, so the stack splits it across the two
 fragments above.)
 
 #### Inbound IPv4 reassembly (oversized ping)
+
+**Reproduce:**
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip4-icmp-frag-rx --count 1
+```
 
 The receive-side counterpart of the fragmentation demos. The host
 sends a 4000-byte `ping`, which its kernel splits into three IPv4
@@ -513,6 +580,12 @@ From the pinging host:
 the round trip, reassembled on both ends).
 
 #### DHCPv4 client lease
+
+**Reproduce** (needs a DHCPv4 server reachable on the bridge):
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture ip4-dhcp
+```
 
 With no static IPv4 configured, the stack runs its DHCPv4 client:
 the full DORA exchange (Discover → Offer → Request → ACK), and
@@ -546,6 +619,15 @@ Stack log:
 
 #### TCP under packet loss — retransmission & recovery
 
+**Reproduce** (asserts the connection still completes — exits
+non-zero if it does not):
+
+```bash
+sudo PYTHONPATH=. venv/bin/python -m tools.capture \
+  --loss 20 --expect-wire '\[FIN, ACK\]' ip4-tcp-monkeys
+# … → [PASS] wire: /\[FIN, ACK\]/ , exit 0
+```
+
 Every example above runs on a clean bridge, so the loss-recovery
 machinery never fires. Driven through a `tc netem loss 20%`
 qdisc, the same TCP monkeys exchange has segments dropped in both
@@ -575,17 +657,8 @@ invariant is that it *completes*), rebased to the SYN:
 6.001  TCP  192.168.1.77 → 192.168.1.10   [ACK]                 connection fully closed (no RST)
 ```
 
-Reproduce and assert it survives the loss (exits non-zero if the
-connection does not complete):
-
-```bash
-sudo make capture SCENARIO=ip4-tcp-monkeys \
-  CAPTURE_ARGS='--loss 20 --expect-wire "\[FIN, ACK\]"'
-# … → [PASS] wire: /\[FIN, ACK\]/ , exit 0
-```
-
 `--loss` (and `--delay-ms` / `--reorder` / `--duplicate` /
 `--corrupt`) plus the `--expect-log` / `--expect-wire` /
-`--expect-client` assertions are global options on every
-scenario, so any capture can be turned into a loss / latency
-e2e check.
+`--expect-client` assertions are global options that go before
+*any* scenario, so any capture can be turned into a loss /
+latency e2e check.
