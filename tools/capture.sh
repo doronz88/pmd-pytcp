@@ -56,7 +56,7 @@ cleanup() {
     [ -n "$SVC_PID" ] && kill -INT "$SVC_PID" 2>/dev/null || true
     sleep 1
     [ -n "$SVC_PID" ] && kill -9 "$SVC_PID" 2>/dev/null || true
-    [ -n "$CAP_PID" ] && kill -9 "$CAP_PID" 2>/dev/null || true
+    [ -n "$CAP_PID" ] && { kill -TERM "$CAP_PID" 2>/dev/null; sleep 1; kill -9 "$CAP_PID" 2>/dev/null; } || true
     pkill -9 -f 'examples\.' 2>/dev/null || true
     rm -rf "$TMP"
 }
@@ -84,8 +84,11 @@ wait_for() {
 }
 
 start_capture() { # <bpf-filter>
-    tcpdump -i "$IFACE" -w "$PCAP" "$1" >/dev/null 2>&1 &
+    # -U: write each packet to the savefile as it is captured, so
+    # the pcap is complete even if tcpdump is stopped abruptly.
+    tcpdump -i "$IFACE" -U -w "$PCAP" "$1" >/dev/null 2>&1 &
     CAP_PID=$!
+    disown "$CAP_PID" 2>/dev/null || true
     sleep 1
 }
 
@@ -93,6 +96,7 @@ start_example() { # <module> [args...]
     # shellcheck disable=SC2068
     PYTHONPATH="$ROOT" "$PY" -u -m "$@" >"$LOG" 2>&1 &
     SVC_PID=$!
+    disown "$SVC_PID" 2>/dev/null || true
 }
 
 stop_example() {
@@ -100,9 +104,11 @@ stop_example() {
     sleep 2
     kill -9 "$SVC_PID" 2>/dev/null || true
     SVC_PID=""
+    # SIGTERM (not KILL) so tcpdump flushes and closes the pcap.
+    kill -TERM "$CAP_PID" 2>/dev/null || true
+    sleep 1
     kill -9 "$CAP_PID" 2>/dev/null || true
     CAP_PID=""
-    sleep 1
 }
 
 log_highlights() { # <grep-pattern> [max-lines]
