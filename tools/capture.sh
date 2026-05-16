@@ -120,7 +120,15 @@ log_highlights() { # <grep-pattern> [max-lines]
 wire() { # tshark args
     echo
     echo "=== wire capture ($IFACE) ==="
-    tshark -r "$PCAP" "$@" 2>/dev/null || true
+    local out
+    out="$(tshark -r "$PCAP" "$@" 2>/dev/null || true)"
+    if [ -z "$out" ]; then
+        # Field/filter mismatch or empty pcap - fall back to the
+        # default packet summary so the block is never silently
+        # blank, and surface tshark's own error.
+        out="$(tshark -r "$PCAP" 2>&1 || true)"
+    fi
+    [ -n "$out" ] && echo "$out" || echo "(no packets captured)"
 }
 
 scenario="${1:-}"
@@ -183,9 +191,15 @@ tcp | udp)
     stop_example
     echo "=== client output (banner + echoed 'malpi' monkeys) ==="
     cat "$OUT"
+    # TCP payload length is 'tcp.len'; UDP's is 'udp.length'.
+    if [ "$scenario" = tcp ]; then
+        len_field=tcp.len
+    else
+        len_field=udp.length
+    fi
     wire -Y "${scenario}.port==${PORT} || arp" -T fields \
         -e frame.time_relative -e ip.src -e ip.dst \
-        -e tcp.flags.str -e "${scenario}.length" -e _ws.col.Info
+        -e tcp.flags.str -e "$len_field" -e _ws.col.Info
     ;;
 *)
     grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'
