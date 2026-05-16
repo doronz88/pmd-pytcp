@@ -290,22 +290,22 @@ From the pinging host:
 #### ICMPv6 Echo over IPv6 (Neighbor Discovery + ping6)
 
 The IPv6 counterpart: a host on a ULA pings the stack's IPv6
-address. The host first resolves the stack with ICMPv6 Neighbor
-Discovery (Neighbor Solicitation → Neighbor Advertisement), then
-the ICMPv6 Echo round-trips:
+address. The host sends the Echo Request directly; the stack
+resolves the *host* with ICMPv6 Neighbor Discovery (Neighbor
+Solicitation → Neighbor Advertisement) before replying:
 
-Wire capture (`tshark -i tap7`, rebased to the host's Neighbor
-Solicitation; unrelated LAN router/host traffic filtered out):
+Wire capture (`tshark -i tap7`, rebased to the first Echo
+Request; unrelated LAN router/host traffic filtered out):
 
 ```text
-0.000  ICMPv6  fd00:1::1 → ff02::1:ff00:77   Neighbor Solicitation for fd00:1::77   (from a2:4b:a1:00:92:56)
-0.001  ICMPv6  fd00:1::77 → fd00:1::1        Neighbor Advertisement — fd00:1::77 is at 02:00:00:77:77:77
-0.001  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626d, seq=1, hlim=64
-0.001  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626d, seq=1, hlim=255
-1.002  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626d, seq=2, hlim=64
-1.003  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626d, seq=2, hlim=255
-2.025  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626d, seq=3, hlim=64
-2.026  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626d, seq=3, hlim=255
+0.000  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626f, seq=1, hlim=64
+0.001  ICMPv6  fd00:1::77 → ff02::1:ff00:1   Neighbor Solicitation for fd00:1::1   (from 02:00:00:77:77:77)
+0.001  ICMPv6  fd00:1::1 → fd00:1::77        Neighbor Advertisement — fd00:1::1 is at a2:4b:a1:00:92:56
+0.001  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626f, seq=1, hlim=255
+1.001  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626f, seq=2, hlim=64
+1.002  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626f, seq=2, hlim=255
+2.044  ICMPv6  fd00:1::1 → fd00:1::77        Echo (ping) request   id=0x626f, seq=3, hlim=64
+2.045  ICMPv6  fd00:1::77 → fd00:1::1        Echo (ping) reply     id=0x626f, seq=3, hlim=255
 ```
 
 (`tshark`'s heuristic dissector tags the Echo payload as
@@ -313,7 +313,7 @@ Solicitation; unrelated LAN router/host traffic filtered out):
 ICMPv6 Echo.)
 
 From the pinging host:
-`3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.696/0.974/1.505/0.375 ms`.
+`3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.680/0.882/1.276/0.278 ms`.
 
 #### Monkeys over TCP
 
