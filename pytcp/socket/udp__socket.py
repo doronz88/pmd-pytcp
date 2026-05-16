@@ -85,6 +85,25 @@ from pytcp.socket.socket__bind_helpers import (
 if TYPE_CHECKING:
     from pytcp.socket.udp__metadata import UdpMetadata
 
+# TxStatus values that mean the datagram was accepted by the
+# stack: either placed on a TX ring, or queued pending ARP/ND
+# resolution (the RFC 1122 §2.3.2.2 per-neighbour queue delivers
+# it once the Reply arrives). 'send'/'sendto' report the full
+# byte count for any of these, matching Linux — which returns
+# success the moment the datagram is accepted, regardless of
+# neighbour-resolution state.
+_TX_ACCEPTED: frozenset[TxStatus] = frozenset(
+    {
+        TxStatus.PASSED__ETHERNET__TO_TX_RING,
+        TxStatus.PASSED__IP4__TO_TX_RING,
+        TxStatus.PASSED__IP6__TO_TX_RING,
+        TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
+        TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
+        TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
+        TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
+    }
+)
+
 
 class UdpSocket(socket):
     """
@@ -422,7 +441,7 @@ class UdpSocket(socket):
             ip4__options=self._effective_ip4_options(),
         )
 
-        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
+        sent_data_len = len(data) if tx_status in _TX_ACCEPTED else 0
 
         __debug__ and log(
             "socket",
@@ -468,7 +487,7 @@ class UdpSocket(socket):
             ip4__options=self._effective_ip4_options(),
         )
 
-        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
+        sent_data_len = len(data) if tx_status in _TX_ACCEPTED else 0
 
         __debug__ and log(
             "socket",

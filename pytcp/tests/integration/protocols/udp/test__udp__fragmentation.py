@@ -39,6 +39,7 @@ from pytcp.tests.lib.udp_testcase import UdpTestCase
 
 _STACK_IP4 = Ip4Address("10.0.1.7")
 _HOST_A_IP4 = Ip4Address("10.0.1.91")
+_HOST_B_IP4 = Ip4Address("10.0.1.92")  # on-link, ARP cache miss
 _LOCAL_PORT = 4444
 _REMOTE_PORT = 5555
 
@@ -111,4 +112,43 @@ class TestUdpIp4Fragmentation(UdpTestCase):
             len(payload) + 8,
             msg="The fragments must together carry exactly the original "
             "UDP datagram (payload + 8-byte UDP header), losing no bytes.",
+        )
+
+
+class TestUdpSendtoArpQueued(UdpTestCase):
+    """
+    'sendto' reports success when the datagram is queued
+    pending ARP resolution (not just when it hits the wire).
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Bind an IPv4 UdpSocket on the canonical fixture address.
+        """
+
+        super().setUp()
+        self._socket = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=_STACK_IP4,
+            local_port=_LOCAL_PORT,
+        )
+
+    def test__udp__sendto_reports_success_when_arp_queued(self) -> None:
+        """
+        Ensure 'sendto' to a destination whose MAC is not yet
+        resolved returns the full payload length — the datagram
+        is accepted into the per-neighbour pending queue and
+        delivered on ARP resolution, so the caller must see
+        success, not a zero (failed) return.
+
+        Reference: RFC 1122 §2.3.2.2 (save unresolved packets, transmit on resolution).
+        """
+
+        sent = self._socket.sendto(b"hello", (str(_HOST_B_IP4), _REMOTE_PORT))
+
+        self.assertEqual(
+            sent,
+            len(b"hello"),
+            msg="sendto() must report the full length once the datagram is " "accepted (queued pending ARP), not 0.",
         )
