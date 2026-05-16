@@ -176,7 +176,10 @@ tcp | udp)
     else
         mod=examples.service__udp_echo
     fi
-    start_capture "(${scenario} port ${PORT}) or arp"
+    # Capture by host (not 'udp port N'): a BPF transport-port
+    # filter only matches the FIRST IPv4 fragment, so non-first
+    # fragments of a fragmented UDP datagram would be invisible.
+    start_capture "arp or host ${IP4_ADDR}"
     start_example "$mod" --local-port "$PORT" --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
     wait_for "Socket created, bound to ${IP4_ADDR}, port ${PORT}" "$BIND_TIMEOUT"
@@ -194,15 +197,13 @@ tcp | udp)
     echo "=== client output (banner + echoed 'malpi' monkeys) ==="
     cat "$OUT"
     log_highlights 'Starting the service|Socket created, bound|bind\(\) call failed|listening mode|Inbound connection|Received [0-9]+ bytes|Sent [0-9]+ bytes|DROPPED__|Failed to send|Unable to sent' 20
-    # TCP payload length is 'tcp.len'; UDP's is 'udp.length'.
-    if [ "$scenario" = tcp ]; then
-        len_field=tcp.len
-    else
-        len_field=udp.length
-    fi
-    wire -Y "${scenario}.port==${PORT} || arp" -T fields \
+    # Decode ARP + every IPv4 packet to/from the stack,
+    # exposing the fragmentation fields (id / MF / offset) so a
+    # fragmented UDP datagram is visible fragment-by-fragment.
+    wire -Y "arp || ip.addr==${IP4_ADDR}" -T fields \
         -e frame.time_relative -e ip.src -e ip.dst \
-        -e tcp.flags.str -e "$len_field" -e _ws.col.Info
+        -e ip.id -e ip.flags.mf -e ip.frag_offset \
+        -e tcp.flags.str -e _ws.col.Info
     ;;
 *)
     grep -E '^#( |$)' "$0" | sed 's/^# \{0,1\}//'
