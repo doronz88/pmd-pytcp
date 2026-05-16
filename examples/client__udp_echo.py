@@ -103,7 +103,10 @@ class UdpEchoClient(Client):
                     f"Sent {len(message_payload)} bytes of data to "
                     f"{self._remote_ip_address}, port {self._remote_port}."
                 )
-                message_count = min(message_count, message_count - 1)
+                # A negative count (default -1) means "unlimited":
+                # it stays truthy under decrement so the loop runs
+                # until stopped; a positive count counts down to 0.
+                message_count -= 1
 
                 if self._event__stop_subsystem.wait(timeout=self._message_delay):
                     break
@@ -185,7 +188,7 @@ def cli(
     **kwargs: Any,
 ) -> None:
     """
-    Start ICMP Echo client.
+    Start UDP Echo client.
     """
 
     ctx.invoke(

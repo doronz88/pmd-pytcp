@@ -39,6 +39,7 @@ from examples.lib import service as service_module
 from examples.lib.service import Service
 from examples.lib.tcp_service import TcpService
 from examples.lib.udp_service import UdpService
+from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host
 from pytcp.socket import socket
 
 
@@ -230,3 +231,159 @@ class TestServiceThreadUsesRetry(TestCase):
             svc._thread__service()
 
         acquire.assert_called_once_with()
+
+
+class _EchoStub(Service):
+    """
+    Minimal echo-style service that records its constructor args.
+    """
+
+    _subsystem_name = "Echo Stub"
+    _service_name = "Stub"
+    _protocol_name = "TCP"
+
+    def __init__(self, *, local_ip_address: object, local_port: int) -> None:
+        """
+        Record the bind target and port, then init the subsystem.
+        """
+
+        self._local_ip_address = local_ip_address  # type: ignore[assignment]
+        self._local_port = local_port
+        super().__init__()
+
+    @override
+    def _thread__service(self) -> None:
+        """
+        No-op service thread.
+        """
+
+    @override
+    def _service(self, *, socket: socket) -> None:
+        """
+        No-op service handler.
+        """
+
+
+class TestBuildEchoServices(TestCase):
+    """
+    The 'build_echo_services' family-gated construction tests.
+    """
+
+    def test__lib__service__build_skips_disabled_ipv6(self) -> None:
+        """
+        Ensure no IPv6 service is constructed when IPv6 support is
+        disabled, so the retrying acquire helper cannot spin forever
+        on an address family the stack will never own.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        services = service_module.build_echo_services(
+            _EchoStub,
+            local_port=7,
+            ip4_support=True,
+            ip4_host=Ip4Host("192.0.2.5/24"),
+            ip6_support=False,
+            ip6_host=None,
+        )
+
+        self.assertEqual(
+            len(services),
+            1,
+            msg="Only the IPv4 service must be built when IPv6 is off.",
+        )
+        self.assertEqual(
+            services[0]._local_ip_address,
+            Ip4Address("192.0.2.5"),
+            msg="The single service must bind the configured IPv4 host.",
+        )
+
+    def test__lib__service__build_skips_disabled_ipv4(self) -> None:
+        """
+        Ensure no IPv4 service is constructed when IPv4 support is
+        disabled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        services = service_module.build_echo_services(
+            _EchoStub,
+            local_port=7,
+            ip4_support=False,
+            ip4_host=None,
+            ip6_support=True,
+            ip6_host=Ip6Host("2001:db8::5/64"),
+        )
+
+        self.assertEqual(
+            len(services),
+            1,
+            msg="Only the IPv6 service must be built when IPv4 is off.",
+        )
+        self.assertEqual(
+            services[0]._local_ip_address,
+            Ip6Address("2001:db8::5"),
+            msg="The single service must bind the configured IPv6 host.",
+        )
+
+    def test__lib__service__build_both_families(self) -> None:
+        """
+        Ensure both services are built (IPv6 first, IPv4 second)
+        when both families are enabled with configured hosts.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        services = service_module.build_echo_services(
+            _EchoStub,
+            local_port=7,
+            ip4_support=True,
+            ip4_host=Ip4Host("192.0.2.5/24"),
+            ip6_support=True,
+            ip6_host=Ip6Host("2001:db8::5/64"),
+        )
+
+        self.assertEqual(
+            len(services),
+            2,
+            msg="Both families enabled must build two services.",
+        )
+        self.assertEqual(
+            services[0]._local_ip_address,
+            Ip6Address("2001:db8::5"),
+            msg="IPv6 service must come first.",
+        )
+        self.assertEqual(
+            services[1]._local_ip_address,
+            Ip4Address("192.0.2.5"),
+            msg="IPv4 service must come second.",
+        )
+
+    def test__lib__service__build_wildcard_when_host_unset(self) -> None:
+        """
+        Ensure an enabled family with no static host binds the
+        unspecified (wildcard) address, the intended behaviour for
+        the DHCPv4 / SLAAC case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        services = service_module.build_echo_services(
+            _EchoStub,
+            local_port=7,
+            ip4_support=True,
+            ip4_host=None,
+            ip6_support=True,
+            ip6_host=None,
+        )
+
+        self.assertEqual(
+            services[0]._local_ip_address,
+            Ip6Address(),
+            msg="No IPv6 host must fall back to the wildcard address.",
+        )
+        self.assertEqual(
+            services[1]._local_ip_address,
+            Ip4Address(),
+            msg="No IPv4 host must fall back to the wildcard address.",
+        )

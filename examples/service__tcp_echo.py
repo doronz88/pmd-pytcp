@@ -38,13 +38,10 @@ from typing import Any, override
 import click
 
 from examples.lib.malpi import malpa, malpi, malpka
+from examples.lib.service import build_echo_services
 from examples.lib.tcp_service import TcpService
 from examples.stack import cli as stack_cli
-from net_addr import (
-    Ip4Address,
-    Ip6Address,
-    IpAddress,
-)
+from net_addr import IpAddress
 from pytcp.socket import socket
 
 
@@ -131,21 +128,19 @@ def cli(
     **kwargs: Any,
 ) -> None:
     """
-    Start ICMP Echo service.
+    Start TCP Echo service.
     """
 
     ctx.invoke(
         stack_cli,
-        subsystems=[
-            TcpEchoService(
-                local_ip_address=(kwargs["stack__ip6_host"].address if kwargs["stack__ip6_host"] else Ip6Address()),
-                local_port=local_port,
-            ),
-            TcpEchoService(
-                local_ip_address=(kwargs["stack__ip4_host"].address if kwargs["stack__ip4_host"] else Ip4Address()),
-                local_port=local_port,
-            ),
-        ],
+        subsystems=build_echo_services(
+            TcpEchoService,
+            local_port=local_port,
+            ip4_support=kwargs["stack__ip4_support"],
+            ip4_host=kwargs["stack__ip4_host"],
+            ip6_support=kwargs["stack__ip6_support"],
+            ip6_host=kwargs["stack__ip6_host"],
+        ),
         **kwargs,
     )
 

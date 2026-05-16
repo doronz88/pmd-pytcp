@@ -32,10 +32,11 @@ ver 3.0.4
 
 import threading
 from abc import abstractmethod
+from collections.abc import Callable
 from typing import override
 
 from examples.lib.subsystem import Subsystem
-from net_addr import IpAddress
+from net_addr import Ip4Address, Ip4Host, Ip6Address, Ip6Host, IpAddress
 from pytcp.socket import socket
 
 # Delay between failed service-socket bind attempts. A static
@@ -131,3 +132,42 @@ class Service(Subsystem):
         """
 
         raise NotImplementedError
+
+
+def build_echo_services(
+    service_cls: Callable[..., Service],
+    *,
+    local_port: int,
+    ip4_support: bool,
+    ip4_host: Ip4Host | None,
+    ip6_support: bool,
+    ip6_host: Ip6Host | None,
+) -> list[Service]:
+    """
+    Build echo-service subsystems only for the enabled address
+    families (IPv6 first, IPv4 second). A family with no static
+    host binds the unspecified (wildcard) address - the intended
+    DHCPv4 / SLAAC behaviour. Skipping a disabled family avoids a
+    subsystem that could never bind and would otherwise retry
+    forever.
+    """
+
+    services: list[Service] = []
+
+    if ip6_support:
+        services.append(
+            service_cls(
+                local_ip_address=ip6_host.address if ip6_host else Ip6Address(),
+                local_port=local_port,
+            )
+        )
+
+    if ip4_support:
+        services.append(
+            service_cls(
+                local_ip_address=ip4_host.address if ip4_host else Ip4Address(),
+                local_port=local_port,
+            )
+        )
+
+    return services

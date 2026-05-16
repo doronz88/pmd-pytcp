@@ -164,7 +164,10 @@ class IcmpEchoClient(Client):
                     f"id {identifier}, "
                     f"seq {self._message_count - message_count + 1}."
                 )
-                message_count = min(message_count, message_count - 1)
+                # A negative count (default -1) means "unlimited":
+                # it stays truthy under decrement so the loop runs
+                # until stopped; a positive count counts down to 0.
+                message_count -= 1
 
                 if self._event__stop_subsystem.wait(timeout=self._message_delay):
                     break
