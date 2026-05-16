@@ -59,7 +59,7 @@ Files involved:
   `_create_stack_ip6_addressing`)
 - `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   (`send_icmp6_neighbor_advertisement` — Override flag handling)
-- `net_addr/ip6_host.py` or sidecar (state field)
+- `net_addr/ip6_ifaddr.py` or sidecar (state field)
 - `pytcp/protocols/icmp6/nd/nd__router_state.py` or
   `nd__constants.py` (sysctl `icmp6.optimistic_dad`)
 
@@ -79,7 +79,7 @@ needs to be created).
 Per-prefix temp-address table parallel to
 `_icmp6_slaac_addresses`. When a PI is admitted AND
 `icmp6.use_tempaddr` is non-zero, generate a temp address
-via `Ip6Host.from_rfc8981_temp(...)`, claim it via DAD,
+via `Ip6IfAddr.from_rfc8981_temp(...)`, claim it via DAD,
 insert into `_ip6_host`. RFC 8981 §3.4 lifetime clamps
 (TEMP_PREFERRED_LIFETIME default 1 day, TEMP_VALID_LIFETIME
 default 7 days). ~150 lines.

@@ -181,7 +181,7 @@ in PyTCP's host-stack model:
   would be the DHCP-fallback case which uses
   `dst=255.255.255.255`, not 169.254.
 - If both src and dst are link-local (after autoconfig
-  ships), the host has an `Ip4Host("169.254.x.y/16")`
+  ships), the host has an `Ip4IfAddr("169.254.x.y/16")`
   configured. The Ethernet TX path's gateway branch
   triggers only when `ip4_dst not in ip4_host.network`;
   with the 169.254/16 host installed, any 169.254 dst IS
@@ -257,7 +257,7 @@ class ClaimResult:
 
 
 class Ip4AddressApi:
-    def claim_with_acd(self, *, ip4_host: Ip4Host) -> ClaimResult:
+    def claim_with_acd(self, *, ip4_host: Ip4IfAddr) -> ClaimResult:
         """
         Synchronously claim an IPv4 host: run the RFC 5227
         §2.1.1 ARP Probe sequence; if no conflict is observed,
@@ -527,7 +527,7 @@ class Ip4LinkLocal(Subsystem):
         super().__init__(name="IPv4 Link-Local Autoconfig")
         self._mac = mac_address
         self._state: Ip4LinkLocalState = Ip4LinkLocalState.INIT
-        self._candidate: Ip4Host | None = None
+        self._candidate: Ip4IfAddr | None = None
         self._conflict_count: int = 0
         self._defend_history: list[float] = []
         self._cached_candidate: Ip4Address | None = None  # Phase 1.5

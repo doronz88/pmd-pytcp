@@ -44,12 +44,12 @@ Three rules govern every API module:
    never writable by reading.
 3. **Mutation goes through the right plane.** Address changes go
    through `pytcp.stack.address`, never `packet_handler._ip6_host.append(...)`.
-   Route changes through `pytcp.stack.route`, never `Ip4Host.gateway = ...`.
+   Route changes through `pytcp.stack.route`, never `Ip4IfAddr.gateway = ...`.
    Each plane's API is the boundary; the underlying attribute is
    implementation detail.
 
 Reach-throughs in tests / examples / internal callers (the DHCP4
-client mutates `Ip4Host.gateway` directly today, for example) are
+client mutates `Ip4IfAddr.gateway` directly today, for example) are
 **Phase-3 violations cleaned on touch**, per the
 `feature_implementation.md` modernisation-on-touch rule. The
 phase that touches a violating call site fixes it in the same
@@ -104,7 +104,7 @@ commit; no separate sweep.
   extend `NetworkTestCase` directly.
 
 Current Phase-3 violations to inventory in Phase 0 (non-exhaustive):
-- `pytcp/lib/dhcp4_client.py` mutates `Ip4Host.gateway` directly
+- `pytcp/lib/dhcp4_client.py` mutates `Ip4IfAddr.gateway` directly
 - Several examples import from `pytcp.runtime.packet_handler.*`
 - `TcpSessionTestCase` reaches into `_packet_handler._ip6_host` for
   fixture setup
@@ -655,9 +655,9 @@ surfaces backed by per-Interface state.
   `arp_cache` / `nd_cache` aliases deleted.
 - **`pytcp/stack/address/__init__.py` — Address API.** Public
   functions:
-  - `add_ip4(*, ifname: str, host: Ip4Host) -> None`
+  - `add_ip4(*, ifname: str, host: Ip4IfAddr) -> None`
   - `remove_ip4(*, ifname: str, address: Ip4Address) -> None`
-  - `add_ip6(*, ifname: str, host: Ip6Host) -> None`
+  - `add_ip6(*, ifname: str, host: Ip6IfAddr) -> None`
   - `remove_ip6(*, ifname: str, address: Ip6Address) -> None`
   - `flush(*, ifname: str, family: AddressFamily) -> None`
   - `list_ip4(*, ifname: str) -> tuple[Ip4HostSnapshot, ...]`
@@ -672,7 +672,7 @@ surfaces backed by per-Interface state.
   - `list_nd(*, ifname: str) -> tuple[NeighborSnapshot, ...]`
 
 **Phase-3 reach-through cleanup (on-touch).**
-- DHCP4 client's `Ip4Host.gateway = ...` mutation migrates to
+- DHCP4 client's `Ip4IfAddr.gateway = ...` mutation migrates to
   `pytcp.stack.address.add_ip4(...)` + `pytcp.stack.route.add(...)`
   (the route part is a forward reference to Phase 9's Route API,
   which is already specified). Cleaned in this commit using a
@@ -780,7 +780,7 @@ marked `# Phase 2: forwarding path`.
 - DHCP4 client's gateway-install path (started in Phase 8)
   completes — `pytcp.stack.route.add(prefix=Ip4Network("0.0.0.0/0"),
   gateway=...)`.
-- `Ip4Host.gateway` attribute and `Ip6Host.gateway` attribute are
+- `Ip4IfAddr.gateway` attribute and `Ip6IfAddr.gateway` attribute are
   marked `# Phase 3: implementation detail of the address store;
   not the consumer-facing route`. They stay for now (still used
   internally by route insertion), but consumer code never reads
@@ -970,5 +970,5 @@ named for the audit trail:
   — IPv6 RX path where the `forward_or_deliver` seam lands in
   Phase 9; the most spec-loaded file outside the god-class.
 - `/root/PyTCP/pytcp/lib/dhcp4_client.py` — canonical Phase-3
-  reach-through (mutates `Ip4Host.gateway` directly); migrates
+  reach-through (mutates `Ip4IfAddr.gateway` directly); migrates
   through Phase 8 (Address API) + Phase 9 (Route API).

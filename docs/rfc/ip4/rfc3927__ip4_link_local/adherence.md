@@ -213,7 +213,7 @@ reach `_phtx_ethernet` with a link-local destination are:
 
 1. **Link-local-to-link-local sends** — both src and dst are
    in 169.254/16. When a link-local source is owned the
-   host has an `Ip4Host("169.254.x.y/16")` configured, so
+   host has an `Ip4IfAddr("169.254.x.y/16")` configured, so
    the link-local destination IS in the host's network and
    the Ethernet-layer gateway path is naturally skipped
    (the `ip4_dst not in ip4_host.network` branch fails).

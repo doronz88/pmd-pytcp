@@ -234,7 +234,7 @@ class PacketHandlerIp6Tx(ABC):
     if TYPE_CHECKING:
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip6_host: list[Ip6Host]
+        _ip6_host: list[Ip6IfAddr]
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int
@@ -501,7 +501,7 @@ class Ip6Header(ProtoStruct):
         fields = struct.unpack(IP6__HEADER__STRUCT, buffer)
         return cls(**dict(zip(_FIELD_NAMES, fields)))
 
-class Ip6Host:
+class Ip6IfAddr:
     def with_gateway(self, gateway: Ip6Address) -> Self:
         return type(self)(self._network, self._address, gateway=gateway)
 ```
@@ -863,19 +863,19 @@ narrow from, declare its return type as `TypeGuard[T]`
 from typing import TypeGuard, TypeIs
 
 # TypeGuard — narrows the positive branch only
-def is_ipv4_host(host: object) -> TypeGuard[Ip4Host]:
-    return isinstance(host, Ip4Host)
+def is_ipv4_host(host: object) -> TypeGuard[Ip4IfAddr]:
+    return isinstance(host, Ip4IfAddr)
 
 # TypeIs — narrows BOTH branches (3.13+ preferred)
-def is_ipv4_host_v2(host: object) -> TypeIs[Ip4Host]:
-    return isinstance(host, Ip4Host)
+def is_ipv4_host_v2(host: object) -> TypeIs[Ip4IfAddr]:
+    return isinstance(host, Ip4IfAddr)
 
-def process(host: Ip4Host | Ip6Host) -> None:
+def process(host: Ip4IfAddr | Ip6IfAddr) -> None:
     if is_ipv4_host_v2(host):
-        # mypy: host is Ip4Host
+        # mypy: host is Ip4IfAddr
         ...
     else:
-        # mypy: host is Ip6Host (TypeIs narrows the else branch too)
+        # mypy: host is Ip6IfAddr (TypeIs narrows the else branch too)
         ...
 ```
 
@@ -1199,7 +1199,7 @@ same commit:
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming).
 - [`net_addr.md`](net_addr.md) — value-type ABC chain and
-  PEP 695 generics on `IpNetwork[A, M]` / `IpHost[A, N, O]`;
+  PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N, O]`;
   `typing.Self` for self-returning factory methods.
 - [`net_proto.md`](net_proto.md) —
   the dataclass shape (`frozen=True, kw_only=True,

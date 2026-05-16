@@ -183,14 +183,14 @@ unused. Plumb it into the returned object:
 ```python
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Dhcp4Lease:
-    ip4_host: Ip4Host
+    ip4_host: Ip4IfAddr
     lease_time__sec: int         # 0xffffffff = infinity
     server_id: Ip4Address
     acquired_at_monotonic: float
 ```
 
 `Dhcp4Client.fetch()` returns `Dhcp4Lease | None`
-instead of `Ip4Host | None`. Update the one call site
+instead of `Ip4IfAddr | None`. Update the one call site
 in `pytcp/runtime/packet_handler/__init__.py` to read
 `lease.ip4_host`.
 
@@ -502,8 +502,8 @@ class Ip4AddressApi:
     def add_host(
         self,
         *,
-        ip4_host: Ip4Host,
-        origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+        ip4_host: Ip4IfAddr,
+        origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None: ...
 
     def remove_host(
@@ -524,8 +524,8 @@ class Ip4AddressApi:
         self,
         *,
         old_address: Ip4Address,
-        new_host: Ip4Host,
-        new_origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+        new_host: Ip4IfAddr,
+        new_origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None:
         """
         Atomic swap. Install `new` BEFORE removing `old` so
@@ -534,7 +534,7 @@ class Ip4AddressApi:
         once `new` is bound (RFC 5227 §2.4 final SHOULD).
         """
 
-    def list_ip4_hosts(self) -> tuple[Ip4Host, ...]:
+    def list_ip4_hosts(self) -> tuple[Ip4IfAddr, ...]:
         """Read-only copy-by-value snapshot — Linux
         equivalent is `/proc/net/route` + `ip addr show`."""
 ```
@@ -614,7 +614,7 @@ Document the choice with an inline comment at the
 **Route-table cleanup deferred to Phase 7.**
 
 Phase 4 only handles the single-gateway case via
-`Ip4Host.gateway`, which is auto-cleared when the
+`Ip4IfAddr.gateway`, which is auto-cleared when the
 host is removed. Routes from DHCP option 3 (single
 default gateway) ride along with the host.
 
@@ -731,7 +731,7 @@ disable).
 ### Phase 7 — Classless Static Routes (RFC 3442) (1-2 commits; ~6 hours)
 
 **Prerequisite:** A routing-table API. Currently
-PyTCP's `Ip4Host` carries a single gateway field; a
+PyTCP's `Ip4IfAddr` carries a single gateway field; a
 real routing table is needed for multiple routes.
 
 **7.1 Wire codec** — `Dhcp4OptionClasslessStaticRoute`
@@ -961,7 +961,7 @@ relevant phase.
    DHCP-only for Phase 4 and broaden later? User
    decision.
 6. **Routing-table API scope.** Phase 4 uses the
-   single-gateway `Ip4Host.gateway` field (option 3).
+   single-gateway `Ip4IfAddr.gateway` field (option 3).
    Phase 7 (RFC 3442) requires N independent routes
    per lease — necessitates an `Ip4RouteApi` mirroring
    `RTM_NEWROUTE` / `RTM_DELROUTE`. Should `Ip4RouteApi`
@@ -1133,7 +1133,7 @@ cutover.
 |--------------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------|
 | DHCP code lives in       | Userspace daemon (`dhcpcd`, `dhclient`, `systemd-networkd`)                              | Same Python process as the TCP/IP stack                         | Logically userspace (DHCP becomes a consumer of the kernel-equivalent address API) |
 | Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_host(...)` / `.remove_host(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
-| Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4Host.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
+| Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4IfAddr.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
 | TCP-session on removed IP| Kernel silently lets RTO accumulate; no proactive RST                                    | Active abort via `_abandon_ipv4_address` (RFC 5227 §2.4 final SHOULD) | Same — Linux-deviation deliberate                          |
 | Lease persistence        | `/var/lib/dhcp/dhcpcd.lease` (per-interface)                                             | `dhcp.lease_cache_path` sysctl (Phase 5)                        | Same                                                        |
 | DUID storage             | `/var/lib/dhcp/dhcpcd.duid`                                                              | `dhcp.duid` sysctl (Phase 3)                                    | Same                                                        |

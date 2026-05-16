@@ -31,13 +31,13 @@ without reaching into `packet_handler._ip4_host`.
 
 ```python
 from pytcp.stack import address
-from net_addr import Ip4Host
+from net_addr import Ip4IfAddr
 
 # Install — Linux 'ip addr add 10.0.0.5/24 dev eth0'.
-address.add_host(ip4_host=Ip4Host("10.0.0.5/24"))
+address.add_host(ip4_host=Ip4IfAddr("10.0.0.5/24"))
 
 # List — Linux 'ip addr show' / '/proc/net/route' equivalent.
-hosts = address.list_ip4_hosts()         # tuple[Ip4Host, ...]; copy-by-value snapshot
+hosts = address.list_ip4_hosts()         # tuple[Ip4IfAddr, ...]; copy-by-value snapshot
 
 # Remove — Linux 'ip addr del'.
 address.remove_host(ip4_address=Ip4Address("10.0.0.5"))
@@ -45,7 +45,7 @@ address.remove_host(ip4_address=Ip4Address("10.0.0.5"))
 # Replace — atomic-ish swap (new added before old removed).
 address.replace_host(
     old_address=Ip4Address("10.0.0.5"),
-    new_host=Ip4Host("10.0.0.6/24"),
+    new_host=Ip4IfAddr("10.0.0.6/24"),
 )
 ```
 
@@ -72,7 +72,7 @@ and RFC 3927 link-local (per-candidate Probe + Announce).
 ### Probe → Announce → Install (composite)
 
 ```python
-result = address.claim_with_acd(ip4_host=Ip4Host("169.254.5.7/16"))
+result = address.claim_with_acd(ip4_host=Ip4IfAddr("169.254.5.7/16"))
 if result.success:
     # Probe was clean, announce burst fired, host is installed.
     print(f"Claimed {result.address}")

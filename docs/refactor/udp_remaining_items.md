@@ -197,7 +197,7 @@ Two design options:
 
 **Option A** — IP-layer filter in `packet_handler__ip4__rx.py`,
 walking the configured `_ip4_host[]` and checking
-`packet_rx.ip4.src` against each `Ip4Host.network.broadcast`.
+`packet_rx.ip4.src` against each `Ip4IfAddr.network.broadcast`.
 Cleanest; matches Linux's `ip_route_input_slow` placement.
 
 **Option B** — UDP-layer filter alongside `is_unspecified`.

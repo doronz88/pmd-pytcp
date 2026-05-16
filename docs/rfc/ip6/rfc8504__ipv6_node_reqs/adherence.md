@@ -298,13 +298,13 @@ API. Phase-1 polish.
 model with /64 subnet boundary. RFC 7371 multicast flag
 updates: covered by the multicast scope/transient flag
 handling in `Ip6Address`. RFC 7421 /64 boundary: enforced
-by the host-derivation (`Ip6Host.from_eui64`) and SLAAC
+by the host-derivation (`Ip6IfAddr.from_eui64`) and SLAAC
 paths.
 
 ### §6.2 Host Address Availability — shipped
 
 **Adherence:** shipped. PyTCP supports multiple addresses
-per host (`_ip6_host` is a `list[Ip6Host]`). Per-host
+per host (`_ip6_host` is a `list[Ip6IfAddr]`). Per-host
 prefix delegation (RFC 8273) is **deferred**.
 
 ### §6.3 RFC 4862 SLAAC — partial

@@ -79,7 +79,7 @@ posture:
   by DHCP (RFC 2131). PyTCP uses DHCP for host configuration;
   Information Request never arose as a need.
 - **§2.4/§2.5 Address Mask Req/Reply (Types 17/18)**: superseded
-  by DHCP. PyTCP receives subnet masks via the `Ip4Host`
+  by DHCP. PyTCP receives subnet masks via the `Ip4IfAddr`
   configuration mechanism and DHCP option 1, never via ICMPv4.
 - **§2.6 Traceroute (Type 30)**: relies on the Traceroute IPv4
   option (Type 82), which was itself obsoleted by RFC 6814.

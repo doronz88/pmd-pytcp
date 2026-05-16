@@ -29,13 +29,13 @@ in [`net_proto.md`](net_proto.md) and
 
 - Address classes: `Ip4Address`, `Ip6Address`, `MacAddress`.
 - Network classes: `Ip4Network`, `Ip6Network`.
-- Host classes: `Ip4Host`, `Ip6Host` (address + network +
+- Host classes: `Ip4IfAddr`, `Ip6IfAddr` (address + network +
   optional gateway / origin / expiration metadata).
 - Mask classes: `Ip4Mask`, `Ip6Mask`.
-- Enumerations: `IpVersion`, `Ip4HostOrigin`,
-  `Ip6HostOrigin`.
+- Enumerations: `IpVersion`, `Ip4IfAddrSource`,
+  `Ip6IfAddrSource`.
 - ABC base classes: `Base`, `Address`, `IpAddress`,
-  `IpNetwork`, `IpHost`, `IpMask`, `IpHostOrigin`.
+  `IpNetwork`, `IfAddr`, `IpMask`, `IfAddrSource`.
 - `click_types.py` — `click`-typed wrappers for CLI argument
   parsing.
 - Error classes — format / sanity / assertion errors for
@@ -58,7 +58,7 @@ parsing, stop — that's `net_proto/` (per
 `net_addr/` is the **only** PyTCP subpackage that may import
 `click` at runtime. `click` is used by `net_addr/click_types.py`
 to expose Click-compatible argument types for CLI consumers
-(`ClickTypeIp4Address`, `ClickTypeIp6Host`, etc.). The CLI
+(`ClickTypeIp4Address`, `ClickTypeIp6IfAddr`, etc.). The CLI
 helpers are opt-in — importing `net_addr.Ip4Address` does
 not pull in `click`; only consumers that need the Click
 types import from `net_addr.click_types`.
@@ -84,9 +84,9 @@ Base                                (net_addr/base.py)
 ├── IpNetwork[A, M]                 (net_addr/ip_network.py — abstract, generic)
 │   ├── Ip4Network                  (net_addr/ip4_network.py)
 │   └── Ip6Network                  (net_addr/ip6_network.py)
-├── IpHost[A, N, O]                 (net_addr/ip_host.py — abstract, generic)
-│   ├── Ip4Host                     (net_addr/ip4_host.py)
-│   └── Ip6Host                     (net_addr/ip6_host.py)
+├── IfAddr[A, N, O]                 (net_addr/ip_ifaddr.py — abstract, generic)
+│   ├── Ip4IfAddr                     (net_addr/ip4_ifaddr.py)
+│   └── Ip6IfAddr                     (net_addr/ip6_ifaddr.py)
 └── IpMask                          (net_addr/ip_mask.py — abstract)
     ├── Ip4Mask                     (net_addr/ip4_mask.py)
     └── Ip6Mask                     (net_addr/ip6_mask.py)
@@ -97,7 +97,7 @@ When adding a new value-type concept:
 1. Identify where it sits in the hierarchy. If it's a
    v4/v6-parallel pair, both branches need a sibling class.
 2. Lift shared behaviour into the ABC and the
-   `IpNetwork[A, M]` / `IpHost[A, N, O]` PEP 695 generics.
+   `IpNetwork[A, M]` / `IfAddr[A, N, O]` PEP 695 generics.
    See [`typing.md`](typing.md) §9 for generic syntax.
 3. The concrete subclass overrides type-version-specific
    methods (`__init__` accepting v4-shaped vs v6-shaped
@@ -151,7 +151,7 @@ Every concrete class declares `__slots__`. The base
 descendants declare additional slots for their own fields:
 
 ```python
-class IpHost[A, N, O](Address, ABC):
+class IfAddr[A, N, O](Address, ABC):
     __slots__ = ("_network", "_gateway", "_origin", "_expiration_time")
     _network: N
     _gateway: A | None
@@ -236,10 +236,10 @@ forbids it. The two valid mutation patterns:
 
 - **Construct a fresh instance** with the new value:
   `host.address = new_address` is forbidden; instead
-  `Ip4Host(other, gateway=new_gateway)` (the copy
+  `Ip4IfAddr(other, gateway=new_gateway)` (the copy
   constructor form — see §4.2) produces a new host with
   the override.
-- **Class-side state on `Ip4Host`** (the `gateway`,
+- **Class-side state on `Ip4IfAddr`** (the `gateway`,
   `origin`, `expiration_time` extras) is the historical
   exception: these were carved out as mutable for the
   packet-handler RX path before the value-type contract
@@ -345,7 +345,7 @@ and masks. The differences:
 - `Ip4Network` / `Ip6Network` accept additional input
   forms: `(Ip4Address, Ip4Mask)`, `(Ip4Address, Ip4Network)`,
   and the canonical string form `"10.0.0.0/24"`.
-- `IpHost[A, N, O]` is generic over address, network, and
+- `IfAddr[A, N, O]` is generic over address, network, and
   host-origin enum.
 - Host classes have the known carve-out for mutable
   `gateway` / `origin` / `expiration_time` fields (§4.3) —
@@ -364,7 +364,7 @@ type:
 
 - Subclasses `click.ParamType`.
 - Names follow the `ClickType<ValueType>` pattern —
-  `ClickTypeIp4Address`, `ClickTypeIp6Host`,
+  `ClickTypeIp4Address`, `ClickTypeIp6IfAddr`,
   `ClickTypeMacAddress`.
 - Implements `convert(value, param, ctx)` to call the
   underlying value-type constructor and translate format
@@ -420,15 +420,15 @@ Each value type lives in its own module:
 | `ip_network.py` | `IpNetwork[A, M]` generic ABC |
 | `ip4_network.py` | `Ip4Network` concrete class |
 | `ip6_network.py` | `Ip6Network` concrete class |
-| `ip_host.py` | `IpHost[A, N, O]` generic ABC |
-| `ip4_host.py` | `Ip4Host` concrete class |
-| `ip6_host.py` | `Ip6Host` concrete class |
+| `ip_host.py` | `IfAddr[A, N, O]` generic ABC |
+| `ip4_host.py` | `Ip4IfAddr` concrete class |
+| `ip6_host.py` | `Ip6IfAddr` concrete class |
 | `ip_mask.py` | `IpMask` ABC |
 | `ip4_mask.py` | `Ip4Mask` concrete class |
 | `ip6_mask.py` | `Ip6Mask` concrete class |
-| `ip_host_origin.py` | `IpHostOrigin` enum base |
-| `ip4_host_origin.py` | `Ip4HostOrigin` enum |
-| `ip6_host_origin.py` | `Ip6HostOrigin` enum |
+| `ip_host_origin.py` | `IfAddrSource` enum base |
+| `ip4_host_origin.py` | `Ip4IfAddrSource` enum |
+| `ip6_host_origin.py` | `Ip6IfAddrSource` enum |
 | `ip_version.py` | `IpVersion` enum (`IP4` / `IP6`) |
 | `errors.py` | Error class hierarchy for every value type |
 | `click_types.py` | Click `ParamType` subclasses |
@@ -461,7 +461,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   output). Drop one, and the type stops being
   interchangeable across PyTCP's data path.
 - **Keyword arguments on a value-type `__init__`** (except
-  for `Ip4Host` / `Ip6Host`'s `gateway` / `origin` /
+  for `Ip4IfAddr` / `Ip6IfAddr`'s `gateway` / `origin` /
   `expiration_time` carve-outs in §4.3). The single
   positional-only `address: Self | str | bytes | ... | None`
   is the contract.
@@ -500,7 +500,7 @@ When in doubt, mirror the structure of:
   family. Same value-type shape as v4.
 - `net_addr/mac_address.py` — non-IP address type. Shows
   how the pattern generalises beyond IPv4 / IPv6.
-- `net_addr/ip4_host.py` — host class with the known
+- `net_addr/ip4_ifaddr.py` — host class with the known
   carve-out for mutable gateway / origin / expiration_time
   via `__slots__` + setters.
 - `net_addr/click_types.py` — every Click `ParamType`
@@ -527,7 +527,7 @@ file.
 - [`python_features.md`](python_features.md) — modern
   Python features (PEP 604 / 585 / 695) used by `net_addr/`.
 - [`typing.md`](typing.md) — annotation discipline; `Self`,
-  PEP 695 generics on `IpNetwork[A, M]` / `IpHost[A, N, O]`,
+  PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N, O]`,
   ABC + `@override` patterns.
 - [`unit_testing.md`](unit_testing.md) §3 — the
   `net_addr/tests/unit/` test layout and the value-type

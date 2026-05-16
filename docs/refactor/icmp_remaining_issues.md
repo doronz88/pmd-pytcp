@@ -112,7 +112,7 @@ RFC 1122 §3.2.2.2 — host accepts a Redirect to update routing
 to use a different first-hop gateway for some destination.
 
 **Why skipped:** Architectural blocker. PyTCP has a
-single-gateway routing model (`Ip4Host.gateway` is one address
+single-gateway routing model (`Ip4IfAddr.gateway` is one address
 per host); acting on a Redirect requires per-destination route
 overrides that PyTCP doesn't have. Implementing the feature
 means the routing-table refactor (~1500 LOC) plus the

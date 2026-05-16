@@ -57,11 +57,11 @@ Companion documents:
 | **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_host` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
 | **§20.1 async per-address DAD refactor** | Replaced the singleton `_icmp6_nd_dad__event` / `_ip6_unicast_candidate` / `_tlla` / `_nonces` model with per-address dicts; new `_claim_ip6_address_async(ip6_host, regenerate=)` spawns a daemon worker thread per claim. RX dispatches by inbound NS/NA `target_address`. Boot loop `.join()`s under `optimistic_dad=0`, fires-and-forgets under `=1`. Unblocks runtime PI claim and §18b/c | RFC 4861 §7.2.2; RFC 4862 §5.4.3 case (b) |
 | **§20.2 random initial probe delay** | `_perform_ip6_nd_dad` sleeps `random.uniform(0, max_delay_ms/1000.0)` before the first probe. Sysctl `icmp6.max_rtr_solicitation_delay_ms` default 1000 (RFC 4861 §10); 0 disables | RFC 4862 §5.4.2; RFC 4861 §10 |
-| **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6Host]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
+| **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6IfAddr]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
 | **§20.4 `accept_dad` modes 0/1/2** | Sysctl `icmp6.accept_dad` tristate. `=0` short-circuits DAD (state→VALID immediately); `=1` standard; `=2` fail-hard (DAD failure flips `_ip6_support = False`) | Linux `accept_dad` parity |
 | **§21 Enhanced DAD with Nonce option** | `Icmp6NdOptionNonce` (type 14) on outbound DAD probes per `icmp6.enhanced_dad`; loop-hairpin RX detection drops echoed probes silently; sysctl default 1 | RFC 7527 §4.1, §4.2 |
-| **§17 RFC 7217 stable opaque IID** | `Ip6Host.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
-| **§18a RFC 8981 random IID generator** | `Ip6Host.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
+| **§17 RFC 7217 stable opaque IID** | `Ip6IfAddr.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
+| **§18a RFC 8981 random IID generator** | `Ip6IfAddr.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
 | **§18b RFC 8981 SLAAC integration** | Per-prefix `_icmp6_temp_addresses` table + `_update_icmp6_temp_address` mutator + lifetime clamps to TEMP_*_LIFETIME; sysctl `icmp6.use_tempaddr` tristate; per-PI claim spawns DAD worker via §20.1 helper | RFC 8981 §3.3, §3.4, §3.8 |
 | **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_host`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
 | **§18c.2 RFC 8981 regen-before-expiry** | Same sweep mints fresh random IID for each prefix whose newest entry crosses `preferred_until - REGEN_ADVANCE`; multiple temps per prefix coexist during overlap; sysctl `icmp6.regen_advance_s` default 5 (§3.8) | RFC 8981 §3.4, §3.8 |
@@ -71,7 +71,7 @@ Companion documents:
 | **§24 host-to-router load sharing** | `get_icmp6_default_router_for_destination(destination)` per-destination deterministic hash across the highest-preference router equivalence class; preserves RFC 4191 preference precedence | RFC 4311 §3 |
 | **§25 RA Flags Extension option** | `Icmp6NdOptionRaFlags` (type 26) wire format with first-byte boolean fields (TBD by future RFCs); parser admits length ≥ 1 (RFC 5175 §4 forward-compat); assembler emits length=1 | RFC 5175 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
-| EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
+| EUI-64 SLAAC IID derivation | `Ip6IfAddr.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
 | MLDv2 listener role + Router-Alert-wrapped Reports | `_send_icmp6_multicast_listener_report` | 3810 §5 |
 | RA prefix harvesting for SLAAC | A-flag + link-local + lifetime checks; address derived via EUI-64 + DAD-claimed | 4862 §5.5.3 |
@@ -495,7 +495,7 @@ Non-zero `valid_lifetime` installs / refreshes the entry (deduping
 on `prefix`); zero `valid_lifetime` removes a matching entry — the
 `(e)(6)(a)` "advertised lifetime overwrites address valid lifetime"
 rule collapses to removal at value 0. Address derivation is EUI-64
-(`Ip6Host.from_eui64(mac, prefix)`); RFC 7217 / 8981 alternates
+(`Ip6IfAddr.from_eui64(mac, prefix)`); RFC 7217 / 8981 alternates
 land in Tier 4. Public lazy-aged accessor
 `get_icmp6_slaac_addresses()` filters out entries whose `valid_until`
 deadline has passed.
@@ -844,9 +844,9 @@ cryptographic algorithm by default, mirroring Linux's modern
 
 ### Implementation
 
-* `Ip6Host.from_rfc7217(*, ip6_network, mac_address, secret_key,
+* `Ip6IfAddr.from_rfc7217(*, ip6_network, mac_address, secret_key,
   dad_counter=0, network_id=b"")` classmethod at
-  `net_addr/ip6_host.py`. PRF = SHA-256; IID = least-significant
+  `net_addr/ip6_ifaddr.py`. PRF = SHA-256; IID = least-significant
   64 bits of the digest. Constructor rejects `secret_key < 16
   bytes` per RFC 7217 §5's 128-bit minimum.
 * `_icmp6_slaac__secret_key: bytes` on `PacketHandler` —
@@ -861,7 +861,7 @@ cryptographic algorithm by default, mirroring Linux's modern
 
 ### Tests
 
-Wire-format tests at `net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc7217`
+Wire-format tests at `net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc7217`
 cover the algorithm (deterministic, prefix-varying, MAC-varying,
 secret-varying, DAD-counter-varying, /64-mask requirement,
 secret-key length floor).
@@ -892,8 +892,8 @@ Linux: `net.ipv6.conf.<iface>.addr_gen_mode = 2`.
 
 ### §18a (shipped) — Random IID generator ✓
 
-`Ip6Host.from_rfc8981_temp(*, ip6_network)` at
-`net_addr/ip6_host.py`. Each call produces a fresh 64-bit
+`Ip6IfAddr.from_rfc8981_temp(*, ip6_network)` at
+`net_addr/ip6_ifaddr.py`. Each call produces a fresh 64-bit
 random IID via `secrets.token_bytes(8)`, regenerates if the
 draw lands in the RFC 5453 reserved range (Subnet-Router
 Anycast IID==0 or 0xfdff_ffff_ffff_ff80..ffff Reserved
@@ -916,7 +916,7 @@ RA RX path immediately after the stable
 `_update_icmp6_slaac_address` call. Sysctl-gated by
 `icmp6.use_tempaddr` (default 0 — Linux parity). On a
 new prefix the mutator generates a random IID via
-`Ip6Host.from_rfc8981_temp`, spawns an async DAD claim
+`Ip6IfAddr.from_rfc8981_temp`, spawns an async DAD claim
 through the §20.1 `_claim_ip6_address_async` helper
 (non-blocking from the RX path), and tracks the entry.
 On an existing prefix it refreshes deadlines but
@@ -1020,7 +1020,7 @@ selection.
 
 ### Tests
 
-`net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc8981Temp`:
+`net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc8981Temp`:
 - Output keeps source /64 prefix.
 - Two consecutive calls yield different IIDs.
 - /64 mask required.
@@ -1064,7 +1064,7 @@ IID and retries up to `icmp6.idgen_retries` times before
 giving up — RFC 7217 §6 (stable opaque IIDs) and RFC
 8981 §3.3.3 (temporary addresses) both mandate this. The
 `_claim_ip6_address_async` helper grew an optional
-`regenerate: Callable[[], Ip6Host] | None` kwarg; on DAD
+`regenerate: Callable[[], Ip6IfAddr] | None` kwarg; on DAD
 failure the worker calls it to mint a fresh candidate and
 runs another full DAD cycle.
 
@@ -1084,7 +1084,7 @@ runs another full DAD cycle.
   failures.
 * New helper `_make_rfc7217_regenerator(*, ip6_network,
   gateway)` returns a closure that re-derives via
-  `Ip6Host.from_rfc7217(..., dad_counter=N)` with the
+  `Ip6IfAddr.from_rfc7217(..., dad_counter=N)` with the
   counter incremented per call; returns `None` when
   EUI-64 is active (deterministic, retry doesn't help).
 * Boot-loop callers (link-local autoconfig + RA-driven
@@ -1092,7 +1092,7 @@ runs another full DAD cycle.
   candidates pass `None` — the operator picked the
   exact address; we cannot substitute.
 * §18b temp-address mutator passes an RFC 8981
-  regenerator that calls `Ip6Host.from_rfc8981_temp`
+  regenerator that calls `Ip6IfAddr.from_rfc8981_temp`
   fresh on each retry (random IID, no counter needed).
 * L3 stub accepts the kwarg for signature parity but
   ignores it (no DAD on L3, no retry needed).

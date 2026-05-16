@@ -12,13 +12,13 @@ This document records the PyTCP codebase's adherence to RFC 922
 clause by clause. RFC 922 extends RFC 919 to subnetted networks
 — it defines the {net, subnet, -1} subnet-directed broadcast
 and the {net, -1, -1} all-subnets broadcast forms. PyTCP
-implements the subnet-directed form via the per-`Ip4Host`
+implements the subnet-directed form via the per-`Ip4IfAddr`
 network-broadcast machinery; the all-subnets form is
 operationally deprecated and not implemented.
 
 The audit was performed by reading the RFC text fresh and
 inspecting `net_addr/ip4_network.py`,
-`net_addr/ip4_host.py`, and the IPv4 packet handlers directly;
+`net_addr/ip4_ifaddr.py`, and the IPv4 packet handlers directly;
 no prior memory or rule-file content was reused. Non-normative
 content (§1 Introduction, §2 Why Subnets, §3 Architecture, §8
 Acknowledgments) is omitted.
@@ -53,7 +53,7 @@ modern posture (no all-subnets handling).
 broadcast address for a given network using "network | ~mask"
 which yields exactly `{net, subnet, -1}` for any subnet mask.
 At boot, the stack populates `_ip4_broadcast` with the
-`network.broadcast` for every owned `Ip4Host`
+`network.broadcast` for every owned `Ip4IfAddr`
 (`pytcp/runtime/packet_handler/__init__.py:194+`). The RX
 handler admits frames with destination matching any entry in
 `_ip4_broadcast`.

@@ -196,13 +196,13 @@ fetches classless routes by default. Fix sketch:
    when both are present; install each parsed route
    into the routing table (Phase 1 needs a routing
    API; today PyTCP only models a single default
-   gateway on the `Ip4Host` object).
+   gateway on the `Ip4IfAddr` object).
 5. Test the codec against the RFC's "examples" table
    and add an integration test against a server that
    sends both option 3 and option 121.
 
 This is meaningful work because routing-table support
 itself is Phase-2 territory in PyTCP (the Phase-1
-`Ip4Host` model has a single gateway field). The full
+`Ip4IfAddr` model has a single gateway field). The full
 RFC 3442 fix is coupled to introducing a real routing
 table.

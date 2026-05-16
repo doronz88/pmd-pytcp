@@ -13,7 +13,7 @@ PyTCP codebase relates to each normative statement in
 RFC 4862. The audit was performed by reading the RFC text
 fresh and inspecting `pytcp/runtime/packet_handler/__init__.py`,
 `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`,
-`pytcp/protocols/icmp6/nd/`, and `net_addr/ip6_host.py`
+`pytcp/protocols/icmp6/nd/`, and `net_addr/ip6_ifaddr.py`
 directly. No prior audit content was reused.
 
 Sections without normative content — §1 Introduction, §2
@@ -145,11 +145,11 @@ without a separate timer.
 **Adherence:** met. Two IID derivation paths shipped:
 
 - **EUI-64** (RFC 4291 Appendix A — pre-RFC-7217 default):
-  `Ip6Host.from_eui64` at `net_addr/ip6_host.py:164-180`
+  `Ip6IfAddr.from_eui64` at `net_addr/ip6_ifaddr.py:164-180`
   flips the universal/local bit and constructs the
   `fe80::EUI-64` form.
-- **RFC 7217** (default in modern PyTCP): `Ip6Host.from_rfc7217`
-  at `net_addr/ip6_host.py:223-282` derives a stable
+- **RFC 7217** (default in modern PyTCP): `Ip6IfAddr.from_rfc7217`
+  at `net_addr/ip6_ifaddr.py:223-282` derives a stable
   opaque IID via secret-keyed hash; the address is stable
   per `(prefix, interface, secret)` triple but unlinkable
   across networks.
@@ -471,5 +471,5 @@ not a gap against RFC 4862's MUSTs.
   (SLAAC orchestration; ~lines 578-1693),
   `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:741-808`
   (RA RX), `pytcp/lib/dad_slot_registry.py` (atomic DAD
-  signalling), `net_addr/ip6_host.py:164-282`
+  signalling), `net_addr/ip6_ifaddr.py:164-282`
   (IID derivation).

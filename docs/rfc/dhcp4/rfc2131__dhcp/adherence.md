@@ -1008,7 +1008,7 @@ construction.
 'now ≥ _lease_expiry_deadline' on each iteration; on
 match, it calls
 '_halt_ipv4_and_reset_to_init()' → which removes the
-expired Ip4Host via
+expired Ip4IfAddr via
 'address_api.remove_host(ip4_address=..., abort_bound_sessions=True)'
 (actively aborting any TCP sessions bound to the
 expired address — RFC 5227 §2.4-final SHOULD; cleaner

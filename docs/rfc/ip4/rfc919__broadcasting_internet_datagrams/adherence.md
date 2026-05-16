@@ -35,7 +35,7 @@ PyTCP **meets** the host-side broadcast rules from RFC 919:
 - The limited-broadcast address `255.255.255.255` is
   recognised on receive and rejected as a source address.
 - Network-broadcast `{net, -1}` addresses are recognised
-  per-`Ip4Host` and admitted on receive.
+  per-`Ip4IfAddr` and admitted on receive.
 - TX-side source replacement honours the host-stack policy
   (replace bcast/mcast source with primary unicast).
 
@@ -64,7 +64,7 @@ The §6 gateway broadcast-forwarding rules are Phase 2.
 against the union of `_ip4_unicast ∪ _ip4_multicast ∪
 _ip4_broadcast` — admitting any of the three. The
 `_ip4_broadcast` set is populated at boot from each
-`Ip4Host.network.broadcast` (`Ip4Network.broadcast` is the
+`Ip4IfAddr.network.broadcast` (`Ip4Network.broadcast` is the
 {net, subnet, -1} address) plus the limited broadcast
 `255.255.255.255`.
 

@@ -274,7 +274,7 @@ class Ip6Header(ProtoStruct):
 
 ```python
 # Good — fluent setters returning the same subclass
-class Ip6Host:
+class Ip6IfAddr:
     def with_gateway(self, gateway: Ip6Address) -> Self:
         return type(self)(self._network, self._address, gateway=gateway)
 ```

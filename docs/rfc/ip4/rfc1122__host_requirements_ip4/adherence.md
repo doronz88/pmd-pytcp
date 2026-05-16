@@ -316,7 +316,7 @@ gateway entry.
 > mappings to next-hop gateways."
 
 **Adherence:** partial — Phase 1 simplification. PyTCP uses a
-flat "single gateway per Ip4Host" model (`Ip4Host.gateway`
+flat "single gateway per Ip4IfAddr" model (`Ip4IfAddr.gateway`
 attribute) rather than a route cache. For Phase 1 host stacks
 with a single uplink this is sufficient (Linux operates this
 way by default with `ip route show default` showing a single
@@ -331,7 +331,7 @@ to the forwarding plane. The fix point is a new
 > gateways. The IP layer MUST support multiple default gateways."
 
 **Adherence:** not met — Phase 1 simplification. PyTCP supports
-exactly one gateway per `Ip4Host`. Multiple default gateways
+exactly one gateway per `Ip4IfAddr`. Multiple default gateways
 (equal-cost or scored) is Phase-2 work. Marked here so the
 upgrade path is greppable.
 
@@ -377,7 +377,7 @@ interfaces and a route-cache / source-selection layer that
 threads through them. The §6724 source-selection logic
 (`packet_handler__ip4__tx.py:372-416`) is structured to be
 multihoming-aware (it scans `_ip4_host` which is already a
-`list[Ip4Host]`), but the rest of the stack assumes a single
+`list[Ip4IfAddr]`), but the rest of the stack assumes a single
 `_interface_mtu`, single `_mac_unicast`, etc.
 
 **`# Phase 2:`** Multihoming is on the project north-star
@@ -408,7 +408,7 @@ receive (§3.2.1.3 above) and replaced on send
 > ... MUST be received as a broadcast."
 
 **Adherence:** met. The `_ip4_broadcast` set populated at
-`stack.init()` time from each `Ip4Host.network.broadcast`
+`stack.init()` time from each `Ip4IfAddr.network.broadcast`
 includes both subnet and (where applicable) network
 broadcasts. RX handler checks against this set
 (`packet_handler__ip4__rx.py:149-153`).
