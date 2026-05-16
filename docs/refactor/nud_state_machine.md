@@ -332,7 +332,7 @@ to NUD is procedural rather than structural:
      existing connections"). This is the substantial bit
      that gates #9 on having NUD's FAILED concept available
      as the "this address is dead" semantic.
-  2. Removes the address from `self._ip4_host`.
+  2. Removes the address from `self._ip4_ifaddr`.
   3. Logs an operator-visible warning.
 
 The TcpSession ABORT plumbing benefits from the FAILED

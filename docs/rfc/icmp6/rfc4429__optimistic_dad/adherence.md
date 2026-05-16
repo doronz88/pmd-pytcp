@@ -16,7 +16,7 @@ path. The behaviour is gated by the
 `net.ipv6.conf.<iface>.optimistic_dad`), default `0` to
 match the Linux host default. When the sysctl is set to
 `1` the host installs the candidate address into its
-`_ip6_host` list as `OPTIMISTIC` *before* the DAD probe
+`_ip6_ifaddr` list as `OPTIMISTIC` *before* the DAD probe
 sequence begins; the address is usable as outbound source
 for the duration of the probe loop. Neighbor
 Advertisements emitted while the address is `OPTIMISTIC`
@@ -25,11 +25,11 @@ not overwrite an existing cache entry on the basis of an
 unverified address. On DAD success the per-address state
 transitions to `VALID` and the Override-flag suppression
 no longer applies; on collision the address is removed
-from `_ip6_host` and the per-address state cleared.
+from `_ip6_ifaddr` and the per-address state cleared.
 
 When `icmp6.optimistic_dad = 0` (the default) PyTCP
 retains the strict RFC 4862 §5.4 lifecycle: the address
-stays out of `_ip6_host` until DAD passes, and only then
+stays out of `_ip6_ifaddr` until DAD passes, and only then
 is the state recorded as `VALID`.
 
 Per-RFC mechanism inventory:
@@ -62,7 +62,7 @@ broader `# Phase 2: per-interface` work item in
     state transitions (`TENTATIVE → VALID` on success,
     cleared on conflict) when sysctl is off
   - `TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim` —
-    §3.3 pre-claim: address is in `_ip6_host` and
+    §3.3 pre-claim: address is in `_ip6_ifaddr` and
     `OPTIMISTIC` during the wait, transitions to `VALID`
     on success, removed on collision
   - `TestIcmp6Nd__OptimisticDad__NaOverrideFlag` — §3.3

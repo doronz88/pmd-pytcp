@@ -25,7 +25,7 @@ Per CLAUDE.md Phase-3: **the surface IS the Phase-3
 seam**. The DHCPv4 client (`pytcp/protocols/dhcp4/`)
 and the RFC 3927 link-local autoconfig client
 (`pytcp/protocols/ip4/link_local/`) consume the API
-without reaching into `packet_handler._ip4_host`.
+without reaching into `packet_handler._ip4_ifaddr`.
 
 ## Address-list management
 
@@ -180,7 +180,7 @@ the Phase-3 "introspection is read-only" constraint.
 - **IPv6 address control** — a unified `AddressApi` or
   parallel `Ip6AddressApi` is planned but not yet
   consumer-driven. SLAAC currently mutates
-  `packet_handler._ip6_host` directly via the ND track's
+  `packet_handler._ip6_ifaddr` directly via the ND track's
   internal helpers; promoting that to a sanctioned API
   surface is a follow-up.
 - **`ip addr show eth0` per-interface filter** — Phase-1

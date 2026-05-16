@@ -48,13 +48,13 @@ Companion documents:
 | **§9 partial — `icmp6.dad_transmits` + `icmp6.retrans_timer_ms` sysctls** | First two timing knobs in the `icmp6.*` namespace beyond `accept_redirects` and `gratuitous_na_count`; further RFC 4861 §10 knobs (`reachable_time_ms`, `max_rtr_solicitations`, `accept_ra_*`) land with their consumers per "no API surface without consumer" rule | RFC 4861 §10 |
 | **§11 default-router list with Router Lifetime** | `Icmp6DefaultRouter(address, lifetime, expires_at)` dataclass + per-RA `_update_icmp6_default_router` mutator + lazy-aged `get_icmp6_default_routers()` accessor; `icmp6.accept_ra_defrtr` sysctl gates the path; new RX counters `update_router` / `remove_router` / `defrtr__drop`. Prf field deferred to §14 | RFC 4861 §6.3.4 |
 | **§12a SLAAC per-address lifetime tracking** | `Icmp6SlaacAddress(address, prefix, preferred_until, valid_until)` dataclass + per-PI `_update_icmp6_slaac_address` mutator + lazy-aged `get_icmp6_slaac_addresses()` accessor; EUI-64 address derivation; `icmp6.accept_ra_pinfo` sysctl gates the path; new RX counters `pi__update_address` / `pi__remove_address` / `pi__pinfo_disabled__drop` | RFC 4862 §5.5.3 |
-| **§12a.runtime SLAAC stable-address runtime claim + sweep** | `_ip6_addressing_complete` flag flips True at the end of `_create_stack_ip6_addressing`; PI admission for a new prefix AFTER the boot window spawns `_claim_ip6_address_async` for the stable address (RFC 7217 regen wired); periodic `_icmp6_sweep_slaac_addresses` removes expired entries from both `_icmp6_slaac_addresses` and `_ip6_host`. Closes the asymmetry where temp addresses had full lifecycle but stable addresses were boot-only | RFC 4862 §5.5.3 (e)(4) + (e)(7) |
+| **§12a.runtime SLAAC stable-address runtime claim + sweep** | `_ip6_addressing_complete` flag flips True at the end of `_create_stack_ip6_addressing`; PI admission for a new prefix AFTER the boot window spawns `_claim_ip6_address_async` for the stable address (RFC 7217 regen wired); periodic `_icmp6_sweep_slaac_addresses` removes expired entries from both `_icmp6_slaac_addresses` and `_ip6_ifaddr`. Closes the asymmetry where temp addresses had full lifecycle but stable addresses were boot-only | RFC 4862 §5.5.3 (e)(4) + (e)(7) |
 | **§12b SLAAC per-address state machine + 2-hour rule** | `Icmp6SlaacAddressState` enum (`PREFERRED`/`DEPRECATED`) computed lazily from `time.monotonic()`; `get_icmp6_slaac_address_state(prefix=...)` accessor; (e)(6) 2-hour rule clamps refresh on existing entries (cases a/b/c); new RX counter `pi__2hour_rule_ignored__drop`. RFC 6724 source-address-selection consumer deferred to §12c | RFC 4862 §5.5.3 (e)(6), §5.5.4 |
 | **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
 | **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
 | **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
-| **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_host` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
+| **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_ifaddr` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
 | **§20.1 async per-address DAD refactor** | Replaced the singleton `_icmp6_nd_dad__event` / `_ip6_unicast_candidate` / `_tlla` / `_nonces` model with per-address dicts; new `_claim_ip6_address_async(ip6_host, regenerate=)` spawns a daemon worker thread per claim. RX dispatches by inbound NS/NA `target_address`. Boot loop `.join()`s under `optimistic_dad=0`, fires-and-forgets under `=1`. Unblocks runtime PI claim and §18b/c | RFC 4861 §7.2.2; RFC 4862 §5.4.3 case (b) |
 | **§20.2 random initial probe delay** | `_perform_ip6_nd_dad` sleeps `random.uniform(0, max_delay_ms/1000.0)` before the first probe. Sysctl `icmp6.max_rtr_solicitation_delay_ms` default 1000 (RFC 4861 §10); 0 disables | RFC 4862 §5.4.2; RFC 4861 §10 |
 | **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6IfAddr]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
@@ -63,7 +63,7 @@ Companion documents:
 | **§17 RFC 7217 stable opaque IID** | `Ip6IfAddr.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
 | **§18a RFC 8981 random IID generator** | `Ip6IfAddr.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
 | **§18b RFC 8981 SLAAC integration** | Per-prefix `_icmp6_temp_addresses` table + `_update_icmp6_temp_address` mutator + lifetime clamps to TEMP_*_LIFETIME; sysctl `icmp6.use_tempaddr` tristate; per-PI claim spawns DAD worker via §20.1 helper | RFC 8981 §3.3, §3.4, §3.8 |
-| **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_host`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
+| **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_ifaddr`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
 | **§18c.2 RFC 8981 regen-before-expiry** | Same sweep mints fresh random IID for each prefix whose newest entry crosses `preferred_until - REGEN_ADVANCE`; multiple temps per prefix coexist during overlap; sysctl `icmp6.regen_advance_s` default 5 (§3.8) | RFC 8981 §3.4, §3.8 |
 | **§19 RFC 4941 deferred (superseded by RFC 8981)** | Marked superseded; §18 ships the modern replacement | RFC 4941 (obsolete) |
 | **§22 RS exponential backoff** | `_send_icmp6_nd_router_solicitations_with_backoff` does RFC 7559 §2 truncated binary backoff with ±10% jitter; sysctls `icmp6.rtr_solicitation_interval_ms` (IRT default 4000), `icmp6.rtr_solicitation_max_rt_ms` (MRT default 3 600 000), `icmp6.max_rtr_solicitations` (default 3, 0=kill switch) | RFC 7559 §2 |
@@ -949,20 +949,20 @@ Four new knobs, Linux-parity defaults:
 
 The PacketHandler subsystem loop now runs a periodic
 sweep that removes temp addresses past their `valid_until`
-deadline from BOTH `_icmp6_temp_addresses` AND `_ip6_host`
+deadline from BOTH `_icmp6_temp_addresses` AND `_ip6_ifaddr`
 (the hot list the RX dispatch and TX source-address
 selection walk directly). Sweep cadence is gated by the
 new `icmp6.temp_addr_sweep_interval_s` sysctl (default 60
 seconds). The lazy accessor `get_icmp6_temp_addresses()`
 already filtered expired entries at read time, but
-`_ip6_host` was never pruned — leaving the host
+`_ip6_ifaddr` was never pruned — leaving the host
 sourcing/receiving on addresses past their valid lifetime.
 
 Implementation:
 
 * New `_icmp6_sweep_temp_addresses()` method on
   `PacketHandler` base. Best-effort removal: the address
-  may already be absent from `_ip6_host` (manual operator
+  may already be absent from `_ip6_ifaddr` (manual operator
   action) and the solicited-node multicast may already be
   unjoined; both are tolerated.
 * `_maybe_run_periodic_tasks()` helper rate-limits sweep
@@ -977,10 +977,10 @@ Tests
   negatives, booleans.
 - Sweep removes expired entries from
   `_icmp6_temp_addresses`.
-- Sweep removes expired entries from `_ip6_host`.
+- Sweep removes expired entries from `_ip6_ifaddr`.
 - Sweep preserves non-expired entries.
 - Sweep is no-op when no entries are expired.
-- Sweep does not touch non-temp `_ip6_host` entries
+- Sweep does not touch non-temp `_ip6_ifaddr` entries
   (e.g. stable SLAAC).
 
 ### §18c.2 (shipped) — Regeneration subsystem ✓
@@ -1372,7 +1372,7 @@ RFC 4861 §7.2.2 (NS RX dispatch); RFC 4862 §5.4.3 case (b)
 **Shipped.** PyTCP supports RFC 4429 Optimistic DAD on the
 address-claim path, gated by the `icmp6.optimistic_dad`
 sysctl (default 0, Linux parity). When the sysctl is 1
-the candidate address is installed into `_ip6_host` as
+the candidate address is installed into `_ip6_ifaddr` as
 OPTIMISTIC *before* the DAD probe sequence begins; the
 address is usable as outbound source for the duration of
 the wait. NAs emitted while the address is OPTIMISTIC
@@ -1380,7 +1380,7 @@ clear the Override (O) flag per §3.3 step 5 so peers do
 not overwrite an existing cache entry on the basis of an
 unverified address. On DAD success the per-address state
 transitions to VALID; on collision the address is removed
-from `_ip6_host` and the per-address state cleared.
+from `_ip6_ifaddr` and the per-address state cleared.
 
 ### Implementation
 
@@ -1403,7 +1403,7 @@ from `_ip6_host` and the per-address state cleared.
   the DAD function, avoiding a duplicate entry.
 * New `_claim_ip6_address_optimistic(ip6_host=)` helper:
   marks the address `OPTIMISTIC`, calls `_assign_ip6_host`
-  to install it into `_ip6_host`, then runs DAD; on
+  to install it into `_ip6_ifaddr`, then runs DAD; on
   collision rolls back via `_remove_ip6_host`.
 * `_create_stack_ip6_addressing` dispatches to the
   optimistic wrapper when `icmp6.optimistic_dad == 1`,
@@ -1431,7 +1431,7 @@ arguments.
   addresses.
 - Synchronous-DAD state lifecycle: state goes
   `TENTATIVE → VALID` on success; cleared on collision.
-- Optimistic-DAD pre-claim: address is in `_ip6_host` and
+- Optimistic-DAD pre-claim: address is in `_ip6_ifaddr` and
   `OPTIMISTIC` *during* the DAD wait; transitions to
   `VALID` on success; removed on collision.
 - NA Override-flag clearing: differential test driving a

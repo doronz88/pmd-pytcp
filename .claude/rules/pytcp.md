@@ -280,7 +280,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
 - **Configuration mutations as direct attribute writes.**
   Per the Phase-3 design implications, address / route /
   neighbor / sysctl changes go through their respective
-  APIs, never as `_ip6_host.append(...)` or
+  APIs, never as `_ip6_ifaddr.append(...)` or
   `Ip4IfAddr.gateway = ...` or
   `stack.foo = ...`. The API is the boundary; the
   attribute is implementation.

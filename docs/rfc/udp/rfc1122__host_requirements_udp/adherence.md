@@ -71,7 +71,7 @@ partial:
 | §4.1.3.5 | Application can specify local IP / wildcard   | met (`bind()`)                             |
 | §4.1.3.5 | Application notified of local IP used         | met (`getsockname()`)                      |
 | §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified filtered at UDP layer) |
-| §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_host` / `_ip6_host`) |
+| §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_ifaddr` / `_ip6_ifaddr`) |
 | §4.1.4   | Application MUST set TTL, TOS, IP options     | met for TTL + TOS; not implemented for IP options |
 | §4.1.4   | Pass received TOS up to application (MAY)     | met (recvmsg IP_TOS cmsg gated by IP_RECVTOS) |
 
@@ -277,7 +277,7 @@ specific-destination address to the application.
 address or the wildcard (`0.0.0.0` / `::`). When the
 local address is unspecified, `pick_local_ip_address`
 (imported at `udp__socket.py:49`) picks an appropriate
-source from the host's `_ip4_host` / `_ip6_host` list
+source from the host's `_ip4_ifaddr` / `_ip6_ifaddr` list
 using the matching destination-prefix rule (RFC 6724-
 inspired for v6; RFC 1122 §3.3.4.3 for v4).
 
@@ -356,7 +356,7 @@ socket dispatch never fires, and the
 
   See `pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
   The check uses the `_ip4_broadcast` property which
-  walks `_ip4_host[].network.broadcast` for every
+  walks `_ip4_ifaddr[].network.broadcast` for every
   configured subnet. Per-subnet awareness can't live
   in the parser (parsers are stateless) so the check
   lives in the handler.

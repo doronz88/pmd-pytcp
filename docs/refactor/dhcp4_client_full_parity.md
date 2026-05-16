@@ -307,7 +307,7 @@ The existing `_create_stack_ip4_addressing` becomes:
 ```python
 if lease := Dhcp4Client(mac_address=self._mac_unicast).fetch():
     # ARP DAD already passed (Dhcp4Client did it)
-    self._ip4_host_candidate.append(lease.ip4_host)
+    self._ip4_ifaddr_candidate.append(lease.ip4_host)
 ```
 
 The current top-level RFC 5227 DAD loop at
@@ -473,12 +473,12 @@ def _stop(self) -> None:
 **4.5 Stack integration via the address API (Phase-3 seam)**
 
 The `Dhcp4Lifecycle` subsystem must NOT mutate
-`packet_handler._ip4_host` directly — that would be a
+`packet_handler._ip4_ifaddr` directly — that would be a
 Phase-3 boundary violation (per `CLAUDE.md` Phase-3
 design implications: "Configuration mutations go
 through the API for their plane. Address changes go
 through the address API, not
-`packet_handler._ip6_host.append(...)`").
+`packet_handler._ip6_ifaddr.append(...)`").
 
 Introduce a minimal Phase-1 address-API stub that the
 DHCP client is the first consumer of:
@@ -496,7 +496,7 @@ class Ip4AddressApi:
 
     Consumer code (DHCP client, future operator-config
     surfaces) imports this — never reaches into
-    `packet_handler._ip4_host` directly.
+    `packet_handler._ip4_ifaddr` directly.
     """
 
     def add_host(
@@ -551,7 +551,7 @@ when `ip4_dhcp=True`:
 `dhcp4_lifecycle.start_and_wait_for_bind(timeout=N)`.
 
 Phase-1 implementation of `Ip4AddressApi` is a thin
-wrapper around `packet_handler._ip4_host.append(...)`
+wrapper around `packet_handler._ip4_ifaddr.append(...)`
 / `_abandon_ipv4_address(...)`. Phase-3 swap replaces
 the wrapper internals with RTNETLINK-equivalent
 message bus routing; **consumer code does not change**.
@@ -626,15 +626,15 @@ dhcpcd's per-lease route-tracking list.
 
 **Tests for 4.5:**
 
-- Same-IP RENEW ACK → `_ip4_host` unchanged, no
+- Same-IP RENEW ACK → `_ip4_ifaddr` unchanged, no
   abort.
-- Different-IP after NAK → `_ip4_host` swap atomic
+- Different-IP after NAK → `_ip4_ifaddr` swap atomic
   (assert both never co-exist outside the
   `replace_host` window).
 - TCP session bound to the old IP after swap → asserted
   aborted (RST emitted, session removed from
   `stack.sockets`).
-- Lease expiry → `_ip4_host` empty + IPv4 disabled +
+- Lease expiry → `_ip4_ifaddr` empty + IPv4 disabled +
   abort happened.
 - `stack.stop()` while BOUND → DHCPRELEASE on wire,
   THEN `remove_host` + abort.
@@ -857,7 +857,7 @@ invocation per knob, classify as policy.
 - `pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
   `Dhcp4Lifecycle(Subsystem)` FSM. Consumes
   `stack.address` exclusively; never touches
-  `_ip4_host` directly.
+  `_ip4_ifaddr` directly.
 - `pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
 - `pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
   serialised lease cache.
@@ -1155,7 +1155,7 @@ Concretely:
   `stack.route` (Phase 7), `stack.sockets` (already
   Phase-3-clean), `sysctl_module`.
 - `Dhcp4Lifecycle` does NOT import
-  `packet_handler._ip4_host`, `_arp_defend__*`,
+  `packet_handler._ip4_ifaddr`, `_arp_defend__*`,
   `_abandon_ipv4_address`, or any other
   packet-handler private state. **If it needs
   something, that thing becomes part of the

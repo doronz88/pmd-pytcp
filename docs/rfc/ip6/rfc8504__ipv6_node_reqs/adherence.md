@@ -258,7 +258,7 @@ more-specific routes are tracked as a future Phase-1 item.
 
 **Adherence:** deferred. Multihoming-aware first-hop
 selection requires per-prefix gateway state that PyTCP's
-single `_ip6_host` model does not yet expose.
+single `_ip6_ifaddr` model does not yet expose.
 
 ### §5.11 RFC 3810 MLDv2 — partial
 
@@ -304,7 +304,7 @@ paths.
 ### §6.2 Host Address Availability — shipped
 
 **Adherence:** shipped. PyTCP supports multiple addresses
-per host (`_ip6_host` is a `list[Ip6IfAddr]`). Per-host
+per host (`_ip6_ifaddr` is a `list[Ip6IfAddr]`). Per-host
 prefix delegation (RFC 8273) is **deferred**.
 
 ### §6.3 RFC 4862 SLAAC — partial

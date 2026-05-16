@@ -125,7 +125,7 @@ adds additional unlinkability for outbound flows once
   RA via the RX path with sysctl=1 creates one stable
   + one temp entry; sysctl=0 creates only the stable
   entry; the DAD worker installs the temp address into
-  `_ip6_host` after passing.
+  `_ip6_ifaddr` after passing.
 
 ## Cross-references
 

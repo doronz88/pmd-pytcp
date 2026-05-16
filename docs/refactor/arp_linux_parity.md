@@ -69,7 +69,7 @@ at the same time as us. The peer's frame has:
 
 PyTCP's existing probe-conflict detection branches at
 `packet_handler__arp__rx.py:202,292,320` only fire when
-`arp.spa in self._ip4_host_candidate` — that condition is FALSE
+`arp.spa in self._ip4_ifaddr_candidate` — that condition is FALSE
 when SPA = 0. So the simultaneous-probe case is silently missed.
 
 ### Where to add the branch
@@ -84,7 +84,7 @@ branch. Pseudocode:
 # (their SPA = 0, TPA = our candidate, SHA != our MAC).
 if (
     packet_rx.arp.spa.is_unspecified
-    and packet_rx.arp.tpa in {c.address for c in self._ip4_host_candidate}
+    and packet_rx.arp.tpa in {c.address for c in self._ip4_ifaddr_candidate}
     and packet_rx.arp.sha != self._mac_unicast
 ):
     self._packet_stats_rx.arp__op_request__simultaneous_probe += 1
@@ -166,7 +166,7 @@ last-conflict timestamps; a second conflict within
 `DEFEND_INTERVAL` of the previous triggers
 `_abandon_ipv4_address` which (a) ABORTs every TcpSession
 bound to the address (`RFC 5227 §2.4-final` SHOULD), (b)
-removes the address from `_ip4_host`, and (c) increments the
+removes the address from `_ip4_ifaddr`, and (c) increments the
 new `arp__conflict__abandon` PacketStatsRx counter.
 
 Adherence reference: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`

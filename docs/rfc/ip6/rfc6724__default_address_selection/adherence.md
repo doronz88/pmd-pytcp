@@ -15,7 +15,7 @@ algorithm on every outbound IPv6 packet whose source is
 unspecified (`::`). The selector is `_select_ip6_source` on
 the IPv6 TX mixin
 (`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`); it
-enumerates candidate sources from `_ip6_host`, applies a
+enumerates candidate sources from `_ip6_ifaddr`, applies a
 lexicographic sort encoded with rules 1, 2, 3, 6, 7, and 8,
 and returns the winner. The pure helpers — RFC 4007/4291
 scope extraction and the §2.2 CommonPrefixLen — live in

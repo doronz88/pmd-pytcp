@@ -139,7 +139,7 @@ the architectural argument).
 Standalone closure of the RFC 3927 §2.6 source/destination
 scope-mismatch rule the adherence record flagged as a gap.
 Lands before the autoconfig subsystem so the gate is in
-place when link-local autoconfig populates `_ip4_host` with
+place when link-local autoconfig populates `_ip4_ifaddr` with
 a 169.254/16 entry. Zero practical impact today (no caller
 generates a 169.254 source), which is why it shipped as a
 gap in the IPv4 audit pass — closing it is a low-risk prep
@@ -393,9 +393,9 @@ reach-through closure.
 currently has:
 
 ```python
-for ip4_host in list(self._ip4_host_candidate):
+for ip4_host in list(self._ip4_ifaddr_candidate):
     verified = self._arp_dad_probe_address(ip4_host.address)
-    self._ip4_host_candidate.remove(ip4_host)
+    self._ip4_ifaddr_candidate.remove(ip4_host)
     if verified:
         stack.address.add_host(ip4_host=ip4_host)
         self._arp_dad_announce_address(ip4_host.address)
@@ -404,9 +404,9 @@ for ip4_host in list(self._ip4_host_candidate):
 Becomes:
 
 ```python
-for ip4_host in list(self._ip4_host_candidate):
+for ip4_host in list(self._ip4_ifaddr_candidate):
     result = stack.address.claim_with_acd(ip4_host=ip4_host)
-    self._ip4_host_candidate.remove(ip4_host)
+    self._ip4_ifaddr_candidate.remove(ip4_host)
     if result.success:
         # claim_with_acd already installed + announced
         log_success
@@ -1344,7 +1344,7 @@ Per CLAUDE.md Phase-3 design implications:
 - **Address mutations go through the API** —
   `Ip4LinkLocal` (and DHCP after the Phase 0.5 migration)
   calls only `stack.address.*` methods. No subsystem
-  reaches into `packet_handler._ip4_host` /
+  reaches into `packet_handler._ip4_ifaddr` /
   `_arp_dad_probe_address` / `_send_gratuitous_arp` after
   Phase 0.5.
 - **Sysctls are the operator-facing dial** — every tunable

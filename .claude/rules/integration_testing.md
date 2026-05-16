@@ -181,7 +181,7 @@ guarantees the following invariants. **Do not bypass them.**
 ### 5.1 What `NetworkTestCase.setUp` gives you
 
 - `self._packet_handler: PacketHandlerL2` — a real packet
-  handler whose `_ip4_host` / `_ip6_host` / `_mac_unicast` /
+  handler whose `_ip4_ifaddr` / `_ip6_ifaddr` / `_mac_unicast` /
   `_ip4_multicast` / `_ip6_multicast` are pre-populated to
   the canonical fixture topology (see the ASCII diagrams at
   the top of `network_testcase.py`):

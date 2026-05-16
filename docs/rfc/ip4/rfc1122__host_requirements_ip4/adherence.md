@@ -376,7 +376,7 @@ multihoming requirements (3.3.4.2 (a)-(j)) presume multiple
 interfaces and a route-cache / source-selection layer that
 threads through them. The §6724 source-selection logic
 (`packet_handler__ip4__tx.py:372-416`) is structured to be
-multihoming-aware (it scans `_ip4_host` which is already a
+multihoming-aware (it scans `_ip4_ifaddr` which is already a
 `list[Ip4IfAddr]`), but the rest of the stack assumes a single
 `_interface_mtu`, single `_mac_unicast`, etc.
 

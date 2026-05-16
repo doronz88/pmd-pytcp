@@ -324,7 +324,7 @@ def set_mac_address(self, *, mac_address: MacAddress) -> None:
      "down first").
   2. Validate MAC (not multicast bit; not zero).
   3. Update `packet_handler._mac_unicast`.
-  4. Mark every `_ip4_host` and `_ip6_host` for re-announce
+  4. Mark every `_ip4_ifaddr` and `_ip6_ifaddr` for re-announce
      at next start.
 
 **Tests-first:**
@@ -546,9 +546,9 @@ Implementation in Phase 4 covers:
    -node multicast is derived from IPv6 address and is
    unaffected).
 4. Schedule gratuitous announce for every owned host:
-   - RFC 5227 §3 gratuitous ARP for each `_ip4_host`.
+   - RFC 5227 §3 gratuitous ARP for each `_ip4_ifaddr`.
    - RFC 4861 §7.2.6 unsolicited Neighbor Advertisement for
-     each `_ip6_host`.
+     each `_ip6_ifaddr`.
    Reuse `Ip4AddressApi.send_gratuitous_arp` from the RFC
    3927 track.
 5. Tests: validation matrix + RX-filter assertion + wire-

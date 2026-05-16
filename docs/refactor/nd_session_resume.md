@@ -80,7 +80,7 @@ Per-prefix temp-address table parallel to
 `_icmp6_slaac_addresses`. When a PI is admitted AND
 `icmp6.use_tempaddr` is non-zero, generate a temp address
 via `Ip6IfAddr.from_rfc8981_temp(...)`, claim it via DAD,
-insert into `_ip6_host`. RFC 8981 §3.4 lifetime clamps
+insert into `_ip6_ifaddr`. RFC 8981 §3.4 lifetime clamps
 (TEMP_PREFERRED_LIFETIME default 1 day, TEMP_VALID_LIFETIME
 default 7 days). ~150 lines.
 

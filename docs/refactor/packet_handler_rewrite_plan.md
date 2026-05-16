@@ -43,7 +43,7 @@ Three rules govern every API module:
    state. Linux equivalent: reading `/proc/net/*` is text — readable,
    never writable by reading.
 3. **Mutation goes through the right plane.** Address changes go
-   through `pytcp.stack.address`, never `packet_handler._ip6_host.append(...)`.
+   through `pytcp.stack.address`, never `packet_handler._ip6_ifaddr.append(...)`.
    Route changes through `pytcp.stack.route`, never `Ip4IfAddr.gateway = ...`.
    Each plane's API is the boundary; the underlying attribute is
    implementation detail.
@@ -106,7 +106,7 @@ commit; no separate sweep.
 Current Phase-3 violations to inventory in Phase 0 (non-exhaustive):
 - `pytcp/lib/dhcp4_client.py` mutates `Ip4IfAddr.gateway` directly
 - Several examples import from `pytcp.runtime.packet_handler.*`
-- `TcpSessionTestCase` reaches into `_packet_handler._ip6_host` for
+- `TcpSessionTestCase` reaches into `_packet_handler._ip6_ifaddr` for
   fixture setup
 - `NetworkTestCase` reads / writes module-level singletons directly
 
@@ -429,7 +429,7 @@ state objects.
     re-snapshot rather than cache.
 
 **Phase-3 reach-through cleanup (on-touch).**
-- Test fixtures that read `_packet_handler._ip6_host`,
+- Test fixtures that read `_packet_handler._ip6_ifaddr`,
   `_icmp6_default_routers`, etc. for assertions migrate to
   `pytcp.stack.introspection.*` calls in the same commit.
 - DHCP4 client reads of stack state migrate (writes deferred to
@@ -678,7 +678,7 @@ surfaces backed by per-Interface state.
   which is already specified). Cleaned in this commit using a
   thin shim if Phase 9 has not landed yet.
 - `stack.mock__init` callers in tests migrate to per-API calls.
-- Examples that touch `_ip6_host`, `_ip4_host`, etc. directly
+- Examples that touch `_ip6_ifaddr`, `_ip4_ifaddr`, etc. directly
   migrate to the Address API.
 
 **Tests.** All prior phases + legacy stay green. New:

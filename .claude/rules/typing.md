@@ -234,7 +234,7 @@ class PacketHandlerIp6Tx(ABC):
     if TYPE_CHECKING:
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip6_host: list[Ip6IfAddr]
+        _ip6_ifaddr: list[Ip6IfAddr]
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int

@@ -65,7 +65,7 @@ primitives for tests and operator CLI tools.
 A separate kernel/userspace boundary surface at
 `pytcp/stack/address.py` (`Ip4AddressApi`) mediates
 every address mutation; the lifecycle never writes
-`_ip4_host` directly. The Phase 4.5 FSM → API mutation
+`_ip4_ifaddr` directly. The Phase 4.5 FSM → API mutation
 table is wired end-to-end (see the table in the Overall
 assessment section).
 

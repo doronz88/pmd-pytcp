@@ -21,11 +21,11 @@ Neighbor-Discovery concern.
 ND parity is **substantially complete** in terms of address
 lifecycle:
 
-- `_ip6_host` is fully dynamic — stable SLAAC addresses are
+- `_ip6_ifaddr` is fully dynamic — stable SLAAC addresses are
   claimed at boot AND on post-boot PI admission (§12a.runtime);
   RFC 8981 temp addresses are minted per-PI (§18b), regenerated
   before preferred-lifetime expiry (§18c.2), and swept from both
-  the tracking table and `_ip6_host` at valid-lifetime expiry
+  the tracking table and `_ip6_ifaddr` at valid-lifetime expiry
   (§18c.1, §12a.runtime).
 - DAD is async and per-address (§20.1); failures retry with
   `dad_counter` increment up to `icmp6.idgen_retries` (§20.3);
@@ -122,12 +122,12 @@ before editing — the file has been growing.
 
 Extract a new `_select_ip6_source(*, ip6__dst) -> Ip6Address |
 None` method on the TX mixin. It enumerates candidate sources
-from `_ip6_host`, applies RFC 6724 §5 rules in order, and
+from `_ip6_ifaddr`, applies RFC 6724 §5 rules in order, and
 returns the winner.
 
 ```python
 def _select_ip6_source(self, *, ip6__dst: Ip6Address) -> Ip6Address | None:
-    candidates: list[Ip6Address] = [h.address for h in self._ip6_host]
+    candidates: list[Ip6Address] = [h.address for h in self._ip6_ifaddr]
 
     # Rule 1 — prefer same address.
     if ip6__dst in candidates:

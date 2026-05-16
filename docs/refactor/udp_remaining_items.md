@@ -196,7 +196,7 @@ property.
 Two design options:
 
 **Option A** — IP-layer filter in `packet_handler__ip4__rx.py`,
-walking the configured `_ip4_host[]` and checking
+walking the configured `_ip4_ifaddr[]` and checking
 `packet_rx.ip4.src` against each `Ip4IfAddr.network.broadcast`.
 Cleanest; matches Linux's `ip_route_input_slow` placement.
 
@@ -210,7 +210,7 @@ concept; closes the gap for every transport in one place.
 ```python
 # packet_handler__ip4__rx.py — after the existing
 # dst-acceptance check
-if any(packet_rx.ip4.src == host.network.broadcast for host in self._ip4_host):
+if any(packet_rx.ip4.src == host.network.broadcast for host in self._ip4_ifaddr):
     self._packet_stats_rx.ip4__directed_broadcast_src__drop += 1
     __debug__ and log(...)
     return

@@ -76,7 +76,7 @@ inform a normative §2 requirement, and otherwise omitted.
 `Ip4AddressApi.claim_with_acd`
 (`pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
 sequence via `_arp_dad_probe_address` before admitting a
-candidate address to `self._ip4_host`. Same primitive backs
+candidate address to `self._ip4_ifaddr`. Same primitive backs
 the DHCPv4 DAD path
 (`pytcp/protocols/dhcp4/dhcp4__client.py` via the
 `arp_dad_verifier` callback wired in
@@ -368,7 +368,7 @@ branch at `packet_handler__arp__rx.py:119-123` calls
 
 1. ABORTs every `TcpSession` bound to the address (RFC 9293
    §3.10.7.4 SysCall.ABORT path; emits RST).
-2. Removes the address from `self._ip4_host`.
+2. Removes the address from `self._ip4_ifaddr`.
 3. Fires the conflict-subscription callback (carries the
    abandoned-address signal to the consumer).
 
@@ -418,7 +418,7 @@ primitive to consumers running their own abandon logic
 > the ARP specification [RFC826]."
 
 **Adherence:** **met**. The Reply path runs unconditionally
-once the candidate has been admitted to `self._ip4_host`:
+once the candidate has been admitted to `self._ip4_ifaddr`:
 `packet_handler__arp__rx.py:378-386` calls
 `_send_arp_reply(...)` for any Request whose TPA matches our
 IP.
@@ -568,7 +568,7 @@ there).
 - **Integration:**
   `pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__SecondConflictAbandons`
   — asserts the second conflict within `DEFEND_INTERVAL`
-  drops the address from `_ip4_host` and ABORTs bound
+  drops the address from `_ip4_ifaddr` and ABORTs bound
   sessions.
 
 **Status:** locked in.
