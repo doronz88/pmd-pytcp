@@ -14,19 +14,15 @@
 
 <br>
 
-PyTCP is a fully functional TCP/IP stack written in Python. It supports TCP stream-based transport with reliable packet delivery based on a sliding window mechanism and basic congestion control. It also supports IPv6/ICMPv6 protocols with SLAAC address configuration. It operates as a user space program attached to the Linux TAP interface. It has implemented simple routing and can send and receive traffic over a local network and the Internet. 
+**PyTCP is a complete, RFC-grounded TCP/IP stack written in pure Python — every layer, from the raw Ethernet frame up to the socket API, is real code you can read.**
 
-Version 2.7, unlike its predecessors, contains the PyTCP stack code in the form of a library so that it can be easily imported and used by external code. This should make the user experience smoother and eventually provide the full ability to replace the standard Linux stack calls (e.g., socket library) with the PyTCP calls in any 3rd party application.
+It is not a wrapper around the operating system. PyTCP runs entirely in user space, attached to a Linux TAP/TUN interface, and builds the network from the ground up: Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 with extension headers and fragmentation, ICMPv4/ICMPv6, IPv6 Neighbor Discovery and SLAAC, a DHCPv4 client, UDP, and a full RFC 9293 TCP — complete finite state machine, modern congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and the security hardening real networks demand. It talks to other hosts across the local segment and the open Internet.
 
-This project initially started as a purely educational effort aimed at improving my Python skills and refreshing my network knowledge as part of the preparation for the Network Engineer role at Facebook. Since then, it has become more like a 'pet project' which
-I dedicate some of my time on a somewhat irregular basis. However, a couple of updates are usually added to it every month or two.
+Conformance is treated as a first-class deliverable, not an afterthought. Behaviour is pinned by roughly eleven thousand unit and integration tests and tracked against more than a hundred per-RFC adherence audits living alongside the code, so "implemented" always means *implemented to the spec, and proven so*.
 
-I welcome any contributions and help from anyone interested in network programming. Any input is appreciated. Also, remember that some stack features may be implemented only partially (as needed for stack operation). They may be implemented in a sub-optimal fashion or not 100% RFC-compliant way (due to lack of time), or they may contain bug(s) that
-I still need to fix.
+The whole stack ships as a zero-runtime-dependency library — three clean packages, standard library only — exposing a Berkeley-sockets-style API. Drop it into an application in place of the standard socket layer and the bytes on the wire are entirely yours.
 
-Please feel free to check my two other related projects:
- - [RusTCP](http://github.com/ccie18643/RusTCP) - Attempt to rewrite some of PyTCP functionality in Rust and use it to create IPv6/SRv6 lab router.
- - [SeaTCP](http://github.com/ccie18643/SeaTCP) - Attempt to create low latency stack using C and Assembly languages.
+Contributions are welcome. If you care about how networks actually work down at the packet level, this is a good place to dig in.
 
 ---
 
