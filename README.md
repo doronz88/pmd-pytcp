@@ -307,3 +307,28 @@ $ nc 192.168.1.77 7
                                                   ///\     /\\\
                                                   '''       '''
 ```
+
+On the wire (`tshark -i tap7`; `.10` = peer running `nc`, `.77` =
+the stack on port 7) — the full RFC 9293 exchange:
+
+```text
+44.934  .10 → .77   [SYN]       MSS=1460 SACK_PERM WS=1024 TSopt
+44.937  .77 → ARP   Who has 192.168.1.10? Tell 192.168.1.77
+44.937  ARP → .77   192.168.1.10 is at a2:4b:a1:00:92:56
+44.937  .77 → .10   [SYN,ACK]   MSS=1460 SACK_PERM WS=128 TSopt
+44.937  .10 → .77   [ACK]
+44.937  .10 → .77   [PSH,ACK]   len 11     "malpi\nquit\n"  (request)
+44.941  .77 → .10   [ACK]       len 1448   monkeys, segment 1 (full MSS)
+44.941  .10 → .77   [ACK]       ack 1449
+44.943  .77 → .10   [PSH,ACK]   len 146    monkeys, segment 2
+44.943  .10 → .77   [ACK]       ack 1595
+49.948  .10 → .77   [FIN,ACK]              peer closes (nc idle timeout)
+49.951  .77 → .10   [PSH,ACK]   len 37     service "CLOSING" banner
+49.951  .10 → .77   [RST]                  peer already gone
+```
+
+The stack negotiates MSS / SACK-permitted / window-scale /
+timestamps on the handshake, resolves the peer's MAC via ARP
+mid-handshake, segments the echoed monkeys to the MSS, and tracks
+the peer's cumulative ACKs — a complete TCP connection driven
+entirely by pure-Python code.
