@@ -358,21 +358,21 @@ RFC 9293 exchange, handshake through graceful close:
 
 ```text
 0.000  TCP  192.168.1.10 → 192.168.1.77   [SYN]       Seq=0 MSS=1460 SACK_PERM WS=1024 TSopt
-0.003  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
-0.003  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
-0.003  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   Seq=0 Ack=1 MSS=1460 SACK_PERM WS=128 TSopt
-0.003  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Seq=1 Ack=1
-0.003  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 6      "malpi\n"  (request)
-0.007  TCP  192.168.1.77 → 192.168.1.10   [ACK]       len 1448   banner + monkeys, segment 1 (full MSS)
-0.007  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1449
-0.009  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 146    monkeys, segment 2
-0.009  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1595
+0.002  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+0.002  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
+0.002  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   Seq=0 Ack=1 MSS=1460 SACK_PERM WS=128 TSopt
+0.002  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Seq=1 Ack=1
+0.002  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 6      "malpi\n"  (request)
+0.005  TCP  192.168.1.77 → 192.168.1.10   [ACK]       len 1448   banner + monkeys, segment 1 (full MSS)
+0.005  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1449
+0.007  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 146    monkeys, segment 2
+0.007  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1595
 2.999  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 5      "quit\n"  (request)
-3.001  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 35     "SERVICE CLOSING" banner
-3.001  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1630
+3.000  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 35     "SERVICE CLOSING" banner
+3.000  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1630
 3.003  TCP  192.168.1.77 → 192.168.1.10   [FIN,ACK]              PyTCP active close
-3.043  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1631   peer acks the FIN
-6.001  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]              peer closes its half
+3.044  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1631   peer acks the FIN
+6.000  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]              peer closes its half
 6.001  TCP  192.168.1.77 → 192.168.1.10   [ACK]       Ack=13     connection fully closed (no RST)
 ```
 
