@@ -196,6 +196,16 @@ interface bridged to a LAN — PyTCP's own log plus a `tshark` wire
 capture. RFC back-off delays (RFC 5227 ACD, RFC 4862 DAD) are
 visible in the timestamps.
 
+Every wire block uses the same columns:
+
+```text
+time(s)   PROTO   src → dst   summary
+```
+
+`—` in the `src → dst` column marks frames with no IPv4/IPv6 layer
+(ARP), or IPv6 ND/MLD frames whose source/destination are
+link-local/multicast and are named in the summary instead.
+
 #### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
 
 On start the stack autoconfigures itself: it derives an IPv6
@@ -220,14 +230,14 @@ Stack log:
 Wire capture (`tshark -i tap7`):
 
 ```text
-0.39  ICMPv6  Neighbor Solicitation for fe80::d559:3d07:bd31:f1d1   (link-local DAD)
-0.62  ARP     Who has 192.168.1.77?  (ARP Probe)
-1.39  ICMPv6  Multicast Listener Report Message v2
-1.39  ICMPv6  Router Solicitation from 02:00:00:77:77:77
-2.03  ICMPv6  Neighbor Solicitation for 2603:808c:2800:4301:d9fd:d546:1fd:4484   (SLAAC GUA DAD)
-6.39  ICMPv6  Neighbor Advertisement fe80::d559:3d07:bd31:f1d1 (sol) is at 02:00:00:77:77:77
-7.08  ARP     ARP Announcement for 192.168.1.77
-9.08  ARP     ARP Announcement for 192.168.1.77
+0.39   ICMPv6  —   Neighbor Solicitation for fe80::d559:3d07:bd31:f1d1   (link-local DAD)
+0.62   ARP     —   Who has 192.168.1.77?   (ARP Probe)
+1.39   ICMPv6  —   Multicast Listener Report Message v2
+1.39   ICMPv6  —   Router Solicitation from 02:00:00:77:77:77
+2.03   ICMPv6  —   Neighbor Solicitation for 2603:808c:2800:4301:d9fd:d546:1fd:4484   (SLAAC GUA DAD)
+6.39   ICMPv6  —   Neighbor Advertisement fe80::d559:3d07:bd31:f1d1 (sol) is at 02:00:00:77:77:77
+7.08   ARP     —   ARP Announcement for 192.168.1.77
+9.08   ARP     —   ARP Announcement for 192.168.1.77
 ```
 
 #### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
@@ -239,11 +249,11 @@ address with two ARP **Announcements** (sender = target).
 Wire capture (`tshark -i tap7 -f arp`):
 
 ```text
-0.00  Who has 192.168.1.77?  (ARP Probe)
-1.47  Who has 192.168.1.77?  (ARP Probe)
-3.37  Who has 192.168.1.77?  (ARP Probe)
-6.63  ARP Announcement for 192.168.1.77
-8.63  ARP Announcement for 192.168.1.77
+0.00   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
+1.47   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
+3.37   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
+6.63   ARP   —   ARP Announcement for 192.168.1.77   (sender = target)
+8.63   ARP   —   ARP Announcement for 192.168.1.77   (sender = target)
 ```
 
 Probe vs. Announcement, decoded (`tshark -V`):
@@ -262,14 +272,14 @@ the stack then resolves the *host's* MAC via ARP before replying:
 Wire capture (`tshark -i tap7`, rebased to the first Echo Request):
 
 ```text
-0.000  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=1, ttl=64
-0.001  ARP   Who has 192.168.1.10? Tell 192.168.1.77
-0.001  ARP   192.168.1.10 is at a2:4b:a1:00:92:56
-0.001  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=1, ttl=64
-1.001  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=2, ttl=64
-1.002  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=2, ttl=64
-2.046  ICMP  192.168.1.10 -> 192.168.1.77  Echo (ping) request  id=0x626c, seq=3, ttl=64
-2.047  ICMP  192.168.1.77 -> 192.168.1.10  Echo (ping) reply    id=0x626c, seq=3, ttl=64
+0.000  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=1, ttl=64
+0.001  ARP   —                             Who has 192.168.1.10? Tell 192.168.1.77
+0.001  ARP   —                             192.168.1.10 is at a2:4b:a1:00:92:56
+0.001  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=1, ttl=64
+1.001  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=2, ttl=64
+1.002  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=2, ttl=64
+2.046  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=3, ttl=64
+2.047  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=3, ttl=64
 ```
 
 From the pinging host:
@@ -311,23 +321,22 @@ $ nc 192.168.1.77 7
                                                   '''       '''
 ```
 
-On the wire (`tshark -i tap7`; `.10` = peer running `nc`, `.77` =
-the stack on port 7) — the full RFC 9293 exchange:
+On the wire (`tshark -i tap7`) — the full RFC 9293 exchange:
 
 ```text
-44.934  .10 → .77   [SYN]       MSS=1460 SACK_PERM WS=1024 TSopt
-44.937  .77 → ARP   Who has 192.168.1.10? Tell 192.168.1.77
-44.937  ARP → .77   192.168.1.10 is at a2:4b:a1:00:92:56
-44.937  .77 → .10   [SYN,ACK]   MSS=1460 SACK_PERM WS=128 TSopt
-44.937  .10 → .77   [ACK]
-44.937  .10 → .77   [PSH,ACK]   len 11     "malpi\nquit\n"  (request)
-44.941  .77 → .10   [ACK]       len 1448   monkeys, segment 1 (full MSS)
-44.941  .10 → .77   [ACK]       ack 1449
-44.943  .77 → .10   [PSH,ACK]   len 146    monkeys, segment 2
-44.943  .10 → .77   [ACK]       ack 1595
-49.948  .10 → .77   [FIN,ACK]              peer closes (nc idle timeout)
-49.951  .77 → .10   [PSH,ACK]   len 37     service "CLOSING" banner
-49.951  .10 → .77   [RST]                  peer already gone
+44.934  TCP  192.168.1.10 → 192.168.1.77   [SYN]       MSS=1460 SACK_PERM WS=1024 TSopt
+44.937  ARP  —                             Who has 192.168.1.10? Tell 192.168.1.77
+44.937  ARP  —                             192.168.1.10 is at a2:4b:a1:00:92:56
+44.937  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   MSS=1460 SACK_PERM WS=128 TSopt
+44.937  TCP  192.168.1.10 → 192.168.1.77   [ACK]
+44.937  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 11     "malpi\nquit\n"  (request)
+44.941  TCP  192.168.1.77 → 192.168.1.10   [ACK]       len 1448   monkeys, segment 1 (full MSS)
+44.941  TCP  192.168.1.10 → 192.168.1.77   [ACK]       ack 1449
+44.943  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 146    monkeys, segment 2
+44.943  TCP  192.168.1.10 → 192.168.1.77   [ACK]       ack 1595
+49.948  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]              peer closes (nc idle timeout)
+49.951  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 37     service "CLOSING" banner
+49.951  TCP  192.168.1.10 → 192.168.1.77   [RST]                  peer already gone
 ```
 
 The stack negotiates MSS / SACK-permitted / window-scale /
@@ -367,15 +376,15 @@ $ printf 'malpi\n' | nc -u 192.168.1.77 7
                                                   '''       '''
 ```
 
-On the wire (`tshark -i tap7`; `.10` = peer, `.77` = the stack;
-columns: time, src, dst, IP-id, MF, frag-offset):
+On the wire (`tshark -i tap7`; the summary carries the IPv4
+fragmentation fields — IP-id, MF, frag-offset):
 
 ```text
-38.987  .10 → .77   id=0x2361 MF=0 off=0      UDP "malpi\n" request (14 B)
-38.988  .77 → ARP   Who has 192.168.1.10? Tell 192.168.1.77
-38.988  ARP → .77   192.168.1.10 is at a2:4b:a1:00:92:56
-38.988  .77 → .10   id=0x0001 MF=1 off=0      fragment 1 — UDP header + first 1480 B
-38.988  .77 → .10   id=0x0001 MF=0 off=185    fragment 2 — final 89 B (offset 185×8 = 1480)
+38.987  UDP  192.168.1.10 → 192.168.1.77   id=0x2361 MF=0 off=0     UDP "malpi\n" request (14 B)
+38.988  ARP  —                             Who has 192.168.1.10? Tell 192.168.1.77
+38.988  ARP  —                             192.168.1.10 is at a2:4b:a1:00:92:56
+38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=0     fragment 1 — UDP header + first 1480 B
+38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=0 off=185   fragment 2 — final 89 B (offset 185×8 = 1480)
 ```
 
 The oversized UDP datagram is split into two IPv4 fragments sharing
