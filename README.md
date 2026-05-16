@@ -207,26 +207,27 @@ RFC 5227 conflict detection for its IPv4 address.
 Stack log:
 
 ```text
-0000.05 | STACK | ICMPv6 ND DAD - Starting process for fe80::a06d:d753:a569:69d0
-0001.73 | STACK | ICMPv6 ND DAD - No duplicate address detected for fe80::a06d:d753:a569:69d0
-0001.73 | STACK | Successfully claimed IPv6 address fe80::a06d:d753:a569:69d0/64
-0001.73 | STACK | Sent out ICMPv6 ND Router Solicitation
-0001.74 | STACK | ICMPv6 ND DAD - Starting process for 2603:808c:2800:4301:e0a:2ecb:f952:77b5
-0003.36 | STACK | Successfully claimed IPv6 address 2603:808c:2800:4301:e0a:2ecb:f952:77b5/64
-0008.03 | STACK | Sent out ARP Announcement for 192.168.1.77
-0010.03 | STACK | Successfully claimed IPv4 address 192.168.1.77
+0000.05 | STACK | ICMPv6 ND DAD - Starting process for fe80::d559:3d07:bd31:f1d1
+0001.44 | STACK | ICMPv6 ND DAD - No duplicate address detected for fe80::d559:3d07:bd31:f1d1
+0001.45 | STACK | Successfully claimed IPv6 address fe80::d559:3d07:bd31:f1d1/64
+0001.45 | STACK | Sent out ICMPv6 ND Router Solicitation
+0001.45 | STACK | ICMPv6 ND DAD - Starting process for 2603:808c:2800:4301:d9fd:d546:1fd:4484
+0003.08 | STACK | Successfully claimed IPv6 address 2603:808c:2800:4301:d9fd:d546:1fd:4484/64
+0007.13 | STACK | Sent out ARP Announcement for 192.168.1.77
+0009.13 | STACK | Successfully claimed IPv4 address 192.168.1.77
 ```
 
 Wire capture (`tshark -i tap7`):
 
 ```text
- 0.68  ICMPv6  Neighbor Solicitation for fe80::a06d:d753:a569:69d0   (link-local DAD)
- 1.68  ICMPv6  Multicast Listener Report Message v2
- 1.68  ICMPv6  Router Solicitation from 02:00:00:77:77:77
- 2.30  ICMPv6  Neighbor Solicitation for 2603:808c:2800:4301:e0a:2ecb:f952:77b5   (SLAAC GUA DAD)
- 6.69  ICMPv6  Neighbor Advertisement fe80::a06d:d753:a569:69d0 (sol) is at 02:00:00:77:77:77
- 7.98  ARP     ARP Announcement for 192.168.1.77
-14.82  DHCP    DHCP Discover - Transaction ID 0x10f4f19d
+0.39  ICMPv6  Neighbor Solicitation for fe80::d559:3d07:bd31:f1d1   (link-local DAD)
+0.62  ARP     Who has 192.168.1.77?  (ARP Probe)
+1.39  ICMPv6  Multicast Listener Report Message v2
+1.39  ICMPv6  Router Solicitation from 02:00:00:77:77:77
+2.03  ICMPv6  Neighbor Solicitation for 2603:808c:2800:4301:d9fd:d546:1fd:4484   (SLAAC GUA DAD)
+6.39  ICMPv6  Neighbor Advertisement fe80::d559:3d07:bd31:f1d1 (sol) is at 02:00:00:77:77:77
+7.08  ARP     ARP Announcement for 192.168.1.77
+9.08  ARP     ARP Announcement for 192.168.1.77
 ```
 
 #### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
