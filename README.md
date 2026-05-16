@@ -465,3 +465,25 @@ until the ARP reply resolves the peer's MAC (RFC 1122 §2.3.2.2),
 then both fragments are flushed in order — a fragmented datagram
 delivered to a cold neighbour, lost by neither the DF bit nor a
 single-slot queue.
+
+#### Monkeys over UDP — over IPv6
+
+The same oversized echo over IPv6. IPv6 fragments differently from
+IPv4: the base header is never modified — the source inserts a
+**Fragment extension header** (RFC 8200 §4.5), and only the source
+may fragment. The stack resolves the peer via ICMPv6 Neighbor
+Discovery (NS → NA), then emits the ~1.5 KB reply as two IPv6
+fragments sharing one identification:
+
+```text
+0.000  UDP     fd00:1::1 → fd00:1::77        "malpi\n" request
+0.001  ICMPv6  fd00:1::77 → ff02::1:ff00:1   Neighbor Solicitation for fd00:1::1   (from 02:00:00:77:77:77)
+0.001  ICMPv6  fd00:1::1 → fd00:1::77        Neighbor Advertisement — fd00:1::1 is at a2:4b:a1:00:92:56
+0.002  IPv6    fd00:1::77 → fd00:1::1        Fragment header: off=0 more=1 ident=0xc6713a45 next=UDP  (fragment 1)
+0.002  UDP     fd00:1::77 → fd00:1::1        final fragment — reassembles to the 1569-byte datagram
+```
+
+(`tshark` labels the port-7 datagrams "ECHO" — a heuristic; they
+are plain UDP. The 1561-byte reply + 8-byte UDP header = 1569 B,
+over the 1500-byte link MTU, so the stack splits it across the two
+fragments above.)
