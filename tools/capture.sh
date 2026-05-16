@@ -180,7 +180,9 @@ tcp | udp)
     start_example "$mod" --local-port "$PORT" --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
     wait_for "Socket created, bound to ${IP4_ADDR}, port ${PORT}" "$BIND_TIMEOUT"
-    wait_for "Socket set to listening mode" 10
+    # Only TCP transitions to listening; a bound UDP socket is
+    # immediately ready to recvfrom (no listen()).
+    [ "$scenario" = tcp ] && wait_for "Socket set to listening mode" 10
     sleep 1
     if [ "$scenario" = tcp ]; then
         printf 'malpi\nquit\n' | timeout 8 nc -w5 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
