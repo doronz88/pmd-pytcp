@@ -132,16 +132,6 @@ the end of each protocol.
  - **RFC 951** BOOTP, **RFC 2132** DHCP options, **RFC 4361** node-specific client-ID/DUID - *Partial*.
  - *Roadmap:* RFC 3203 FORCERENEW, RFC 3442 classless static route (opt 121), RFC 4702 client FQDN (opt 81), RFC 8910 captive-portal (opt 114).
 
-#### General roadmap (non-RFC / cross-cutting)
-
- - [ ] Stack debugging console (`show icmpv6 nd cache`, `show ipv6 route`, interactive ping / echo clients).
- - [ ] QUIC protocol - research and lab environment.
- - [ ] IPv4 defragmentation - store whole packets in the flow DB instead of header/data copies.
- - [ ] TCP CLOSE - set FIN on the last data segment instead of a separate segment.
- - [ ] IPv6 RA PI option - full A/L flag handling and non-/64 advertised prefixes.
- - [ ] Refactor integrity/sanity error messages for more consistent detail.
- - [ ] Phase-2 router grade: IPv4/IPv6 forwarding plane, route tables, router role.
-
 ---
 
 
