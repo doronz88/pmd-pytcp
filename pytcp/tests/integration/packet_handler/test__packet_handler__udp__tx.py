@@ -87,7 +87,7 @@ from pytcp.tests.lib.network_testcase import (
                 # Summary: Minimal UDP datagram with no payload transmitted from the stack
                 #          host to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
-                b"\x00\x1c\x00\x00\x40\x00\x40\x11\x24\x70\x0a\x00\x01\x07\x0a\x00"
+                b"\x00\x1c\x00\x00\x00\x00\x40\x11\x64\x70\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x00\x08\xdd\xc4"
             ],
             "_expected__tx_status": TxStatus.PASSED__ETHERNET__TO_TX_RING,
@@ -140,7 +140,7 @@ from pytcp.tests.lib.network_testcase import (
                 # Summary: Large IPv4 UDP payload example, carrying the generated raw data
                 #          towards host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
-                b"\x03\x6e\x00\x00\x40\x00\x40\x11\x21\x1e\x0a\x00\x01\x07\x0a\x00"
+                b"\x03\x6e\x00\x00\x00\x00\x40\x11\x61\x1e\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x03\xe8\x07\xd0\x03\x5a\xf5\x3e\x30\x31\x32\x33\x34\x35"
                 b"\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33\x34"
                 b"\x35\x36\x37\x38\x39\x30\x41\x42\x43\x44\x45\x46\x30\x31\x32\x33"
@@ -377,6 +377,8 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
         """
         Ensure the Packet Handler UDP TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -435,6 +437,8 @@ class TestPacketHandlerUdpTxErrors(NetworkTestCase):
         """
         Ensure '_phtx_udp' raises the expected exception for invalid
         IP address version combinations.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(type(self._expected__error)) as error:
@@ -460,6 +464,8 @@ class TestPacketHandlerUdpTxSendUdpPacket(NetworkTestCase):
         / 'udp__remote_port' → 'udp__sport' / 'udp__dport') and forwards
         to '_phtx_udp', producing the same frame and stats as a direct
         '_phtx_udp' call would.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tx_status = self._packet_handler.send_udp_packet(

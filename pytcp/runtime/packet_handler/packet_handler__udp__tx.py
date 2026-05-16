@@ -129,15 +129,17 @@ class PacketHandlerUdpTx(ABC):
                 return self._phtx_ip6(**ip6_kwargs)
             case False, False, True, True:
                 self._packet_stats_tx.udp__send += 1
-                # RFC 1191 §3 / RFC 8201 §4: outbound UDP datagrams
-                # set DF=1 by default so PMTUD signals reach the
-                # sender. UDP applications that want in-network
-                # fragmentation can disable IP_PMTUDISC at the
-                # socket layer (deferred to a follow-up commit).
+                # RFC 791 §2.3 / RFC 1122 §3.3.3: an outbound UDP
+                # datagram larger than the link MTU is fragmented,
+                # not dropped, so DF=0 by default. This matches
+                # Linux, whose default UDP socket (no IP_MTU_DISCOVER
+                # set) fragments rather than path-MTU-discovers.
+                # Phase 3: per-socket DF / PMTUD opt-in lands when
+                # setsockopt(IP_MTU_DISCOVER) is wired through.
                 ip4_kwargs: dict[str, Any] = {
                     "ip4__src": cast(Ip4Address, ip__src),
                     "ip4__dst": cast(Ip4Address, ip__dst),
-                    "ip4__flag_df": True,
+                    "ip4__flag_df": False,
                     "ip4__payload": udp_packet_tx,
                     "ip4__ecn": ip__ecn,
                 }

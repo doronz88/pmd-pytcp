@@ -279,7 +279,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #
                 # Summary: UDP echo reply mirroring the original payload back to host A.
                 b"\x02\x00\x00\x00\x00\x91\x02\x00\x00\x00\x00\x07\x08\x00\x45\x00"
-                b"\x00\x27\x00\x00\x40\x00\x40\x11\x24\x65\x0a\x00\x01\x07\x0a\x00"
+                b"\x00\x27\x00\x00\x00\x00\x40\x11\x64\x65\x0a\x00\x01\x07\x0a\x00"
                 b"\x01\x5b\x00\x07\x15\x97\x00\x13\x81\x3f\x54\x6f\x6d\x20\x54\x69"
                 b"\x74\x20\x54\x6f\x74",
             ],
@@ -451,6 +451,8 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
         """
         Ensure the Packet Handler processes the received UDP
         frames as expected for each parametrized case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for frame_rx in self._frames_rx:
@@ -499,6 +501,8 @@ class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
         Ensure a UDP packet to port 7 with 'UDP__ECHO_NATIVE' disabled
         falls through to the no-socket-match branch and replies with
         ICMPv4 Port Unreachable.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         # Ethernet II: dst=02:00:00:00:00:07 (us), src=02:00:00:00:00:91
