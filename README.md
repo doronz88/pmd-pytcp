@@ -191,24 +191,49 @@ calling ```stack.init(...)```, and driving the stack — see
 
 ### Examples
 
-#### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
+All output below is captured from a live stack on a Linux `tap7`
+interface bridged to a LAN — PyTCP's own log plus a `tshark` wire
+capture. RFC back-off delays (RFC 5227 ACD, RFC 4862 DAD) are
+visible in the timestamps.
 
-On startup the stack defends each configured IPv4 address: it sends three ARP **Probes**
-(sender `0.0.0.0`), and if no host objects, claims the address with two ARP
-**Announcements** (sender = target).
+#### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
+
+On start the stack autoconfigures itself: it derives an IPv6
+link-local address and runs Duplicate Address Detection, reports its
+multicast groups via MLDv2, solicits routers, builds a global
+address from the Router Advertisement and DADs that too, then runs
+RFC 5227 conflict detection for its IPv4 address.
 
 Stack log:
 
 ```text
-0000.29 | ARP   | TX - ARP Request 0.0.0.0 / 02:00:00:77:77:77 > 192.168.9.7 / 00:00:00:00:00:00
-0000.29 | STACK | Sent out ARP Probe for 192.168.9.7
-0002.20 | STACK | Sent out ARP Probe for 192.168.9.7
-0004.11 | STACK | Sent out ARP Probe for 192.168.9.7
-0007.65 | ARP   | TX - ARP Request 192.168.9.7 / 02:00:00:77:77:77 > 192.168.9.7 / 00:00:00:00:00:00
-0007.65 | STACK | Sent out ARP Announcement for 192.168.9.7
-0009.65 | STACK | Sent out ARP Announcement for 192.168.9.7
-0009.65 | STACK | Successfully claimed IPv4 address 192.168.9.7
+0000.05 | STACK | ICMPv6 ND DAD - Starting process for fe80::a06d:d753:a569:69d0
+0001.73 | STACK | ICMPv6 ND DAD - No duplicate address detected for fe80::a06d:d753:a569:69d0
+0001.73 | STACK | Successfully claimed IPv6 address fe80::a06d:d753:a569:69d0/64
+0001.73 | STACK | Sent out ICMPv6 ND Router Solicitation
+0001.74 | STACK | ICMPv6 ND DAD - Starting process for 2603:808c:2800:4301:e0a:2ecb:f952:77b5
+0003.36 | STACK | Successfully claimed IPv6 address 2603:808c:2800:4301:e0a:2ecb:f952:77b5/64
+0008.03 | STACK | Sent out ARP Announcement for 192.168.1.77
+0010.03 | STACK | Successfully claimed IPv4 address 192.168.1.77
 ```
+
+Wire capture (`tshark -i tap7`):
+
+```text
+ 0.68  ICMPv6  Neighbor Solicitation for fe80::a06d:d753:a569:69d0   (link-local DAD)
+ 1.68  ICMPv6  Multicast Listener Report Message v2
+ 1.68  ICMPv6  Router Solicitation from 02:00:00:77:77:77
+ 2.30  ICMPv6  Neighbor Solicitation for 2603:808c:2800:4301:e0a:2ecb:f952:77b5   (SLAAC GUA DAD)
+ 6.69  ICMPv6  Neighbor Advertisement fe80::a06d:d753:a569:69d0 (sol) is at 02:00:00:77:77:77
+ 7.98  ARP     ARP Announcement for 192.168.1.77
+14.82  DHCP    DHCP Discover - Transaction ID 0x10f4f19d
+```
+
+#### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
+
+The stack defends each configured IPv4 address: it sends three ARP
+**Probes** (sender `0.0.0.0`), and if no host objects, claims the
+address with two ARP **Announcements** (sender = target).
 
 Wire capture (`tshark -i tap7 -f arp`):
 
@@ -227,139 +252,22 @@ ARP Probe         Opcode: request   Sender IP: 0.0.0.0       Target IP: 192.168.
 ARP Announcement  Opcode: request   Sender IP: 192.168.9.7   Target IP: 192.168.9.7
 ```
 
-<br>
+#### ARP resolution and ICMP Echo
 
-#### Several ping packets and two monkeys were delivered via TCP over the IPv6 protocol.
+A host on the segment pings the stack. It resolves the stack's MAC
+via ARP, then the stack answers ICMP Echo:
 
-![Sample PyTCP log output](docs/images/malpi_00.png)
-![Sample PyTCP log output](docs/images/malpi_01.png)
-![Sample PyTCP log output](docs/images/malpi_02.png)
-![Sample PyTCP log output](docs/images/malpi_03.png)
-![Sample PyTCP log output](docs/images/malpi_04.png)
-![Sample PyTCP log output](docs/images/malpi_05.png)
-![Sample PyTCP log output](docs/images/malpi_06.png)
-![Sample PyTCP log output](docs/images/malpi_07.png)
-![Sample PyTCP log output](docs/images/malpi_08.png)
-![Sample PyTCP log output](docs/images/malpi_09.png)
-![Sample PyTCP log output](docs/images/malpi_10.png)
+Wire capture (`tshark -i tap7`):
 
-<br>
+```text
+11.83  ARP   Who has 192.168.1.77? Tell 192.168.1.10
+11.83  ARP   192.168.1.77 is at 02:00:00:77:77:77
+11.83  ICMP  Echo (ping) request   id=0x626b, seq=1, ttl=64
+11.83  ICMP  Echo (ping) reply     id=0x626b, seq=1, ttl=64
+12.83  ICMP  Echo (ping) request   id=0x626b, seq=2, ttl=64
+12.83  ICMP  Echo (ping) reply     id=0x626b, seq=2, ttl=64
+13.88  ICMP  Echo (ping) request   id=0x626b, seq=3, ttl=64
+13.88  ICMP  Echo (ping) reply     id=0x626b, seq=3, ttl=64
+```
 
-#### IPv6 Neighbor Discovery / Duplicate Address Detection / Address Auto Configuration.
- - Stack tries to auto-configure its link-local address. It generates it as a EUI64 address. As part of the DAD process, it joins the appropriate solicited-node multicast group and sends neighbor solicitation for its generated address.
- - Stack doesn't receive any Neighbor Advertisement for the address it generated, so it assigns it to its interface.
- - Stack tries to assign a preconfigured static address. As part of the DAD process, it joins the appropriate solicited-node multicast group and sends neighbor solicitation for the static address.
- - Another host with the same address already assigned replies with a Neighbor Advertisement message. This tells the stack that another host has already assigned the address it is trying to assign, so the stack cannot use it.
- - Stack sends a Router Solicitation message to check if there are any global prefixes it should use.
- - Router responds with Router Advertisement containing additional prefix.
- - Stack tries to assign an address generated based on the received prefix and EUI64 host portion. As part of the DAD process, it joins the appropriate solicited-node multicast group and sends neighbor solicitation for the static address.
- - Stack doesn't receive any Neighbor Advertisement for the address it generated, so it assigns it to its interface.
- - After all the addresses are assigned, stack sends out one more Multicast Listener report listing all the multicast addresses it wants to listen to.
-
-![Sample PyTCP log output](docs/images/ipv6_nd_dad_01.png)
-![Sample PyTCP log output](docs/images/ipv6_nd_dad_02.png)
-![Sample PyTCP log output](docs/images/ipv6_nd_dad_03.png)
-![Sample PyTCP log output](docs/images/ipv6_nd_dad_04.png)
-![Sample PyTCP log output](docs/images/ipv6_nd_dad_05.png)
-
-<br>
-
-#### TCP Fast Retransmit in action after lost TX packet.
- - Outgoing packet is 'lost' due to simulated packet loss mechanism.
- - Peer notices the inconsistency in packet SEQ numbers and sends out a 'fast retransmit request'.
- - Stack receives the request and retransmits the lost packet.
-
-![Sample PyTCP log output](docs/images/tcp_tx_fst_ret_01.png)
-![Sample PyTCP log output](docs/images/tcp_tx_fst_ret_02.png)
-![Sample PyTCP log output](docs/images/tcp_tx_fst_ret_03.png)
-![Sample PyTCP log output](docs/images/tcp_tx_fst_ret_04.png)
-
-<br>
-
-#### Out-of-order queue in action during RX packet loss event
- - Incoming packet is 'lost' due to simulated packet loss mechanism.
- - Stack notices an inconsistency in the inbound packet's SEQ number and sends a 'fast retransmit' request.
- - Before the peer receives the request, it sends multiple packets with higher SEQ than the stack expects. Stack queues all those packets.
- - Peer retransmits the lost packet.
- - Stack receives the lost packet, pulls all the packets stored in the out-of-order queue, and processes them.
- - Stacks sends out ACK packet to acknowledge the latest packets pulled from the queue.
-
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_01.png)
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_02.png)
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_03.png)
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_04.png)
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_05.png)
-![Sample PyTCP log output](docs/images/tcp_ooo_ret_06.png)
-
-<br>
-
-#### TCP Finite State Machine - stack is running TCP Echo service.
- - Peer opens the connection.
- - Peer sends data.
- - Stack echoes the data back.
- - Peer closes the connection.
-
-![Sample PyTCP log output](docs/images/tcp_fsm_srv_01.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_srv_02.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_srv_03.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_srv_04.png)
-
-<br>
-
-#### TCP Finite State Machine - stack is running TCP Echo client.
- - Stack opens the connection.
- - Stack sends data.
- - Peer echoes the data back.
- - Stack closes the connection.
-
-![Sample PyTCP log output](docs/images/tcp_fsm_clt_01.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_clt_02.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_clt_03.png)
-![Sample PyTCP log output](docs/images/tcp_fsm_clt_04.png)
-
-<br>
-
-#### Pre-parse packet sanity checks in action.
- - The first screenshot shows the stack with the sanity check turned off. A malformed ICMPv6 packet can crash it.
- - The second screenshot shows the stack with the sanity check turned on. A malformed ICMPv6 packet is discarded before being passed to the ICMPv6 protocol parser.
- - The third screenshot shows the malformed packet. The number of MA records field has been set to 777 even though the packet contains only one record.
-
-![Sample PyTCP log output](docs/images/pre_sanity_chk_01.png)
-![Sample PyTCP log output](docs/images/pre_sanity_chk_02.png)
-![Sample PyTCP log output](docs/images/pre_sanity_chk_03.png)
-
-<br>
-
-#### ARP Probe/Announcement mechanism.
- - Stack uses ARP Probes to find any possible conflicts for every IP address configured.
- - One of the IP addresses (192.168.9.102) is already taken, so the stack gets notified about it and skips it.
- - The rest of the IP addresses are free, so stack claims them by sending ARP Announcement for each of them.
-
-![Sample PyTCP log output](docs/images/ip_arp_probe_01.png)
-![Sample PyTCP log output](docs/images/ip_arp_probe_02.png)
-![Sample PyTCP log output](docs/images/ip_arp_probe_03.png)
-![Sample PyTCP log output](docs/images/ip_arp_probe_04.png)
-
-<br>
-
-#### ARP resolution and handling ping packets.
- - Host 192.168.9.20 tries to ping the stack. To be able to do it, it first sends an ARP Request packet to find out the stack's MAC address.
- - Stack responds by sending an ARP Reply packet (stack doesn't need to send out its request since it already made a note of the host's MAC from the host's request).
- - Host sends ping packets, and stack responds to them.
-
-![Sample PyTCP log output](docs/images/arp_ping_01.png)
-![Sample PyTCP log output](docs/images/arp_ping_02.png)
-
-<br>
-
-#### IP fragmentation.
- - Host sends 4Kb UDP datagram using three fragmented IP packets (three fragments).
- - Stack receives packets and assembles them into a single piece, then passes it (via UDP protocol handler and UDP Socket) to UDP Echo service.
- - UDP Echo service picks data up and puts it back into UDP Socket.
- - UDP datagram is passed to the IP protocol handler, which creates an IP packet, and after checking that it exceeds the link, MTU fragments it into three separate IP packets.
- - IP packets are encapsulated in Ethernet frames and put on a TX ring.
-
-![Sample PyTCP log output](docs/images/ip_udp_frag_01.png)
-![Sample PyTCP log output](docs/images/ip_udp_frag_02.png)
-![Sample PyTCP log output](docs/images/ip_udp_frag_03.png)
-
+From the pinging host: `3 packets transmitted, 3 received, 0% packet loss, rtt avg ~1.0 ms`.
