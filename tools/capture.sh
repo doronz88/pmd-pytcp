@@ -141,8 +141,15 @@ boot)
     sleep 2
     stop_example
     log_highlights 'ICMPv6 ND DAD - (Starting|No duplicate)|Successfully claimed|Sent out ICMPv6 ND Router Solicitation|Sent out ARP Announcement|Multicast Listener Report .HBH' 16
+    # Standardized README columns: time / PROTO / src → dst /
+    # summary. ARP carries no IP layer, so its sender/target come
+    # from the ARP payload; ND/MLD endpoints are link-local /
+    # multicast and stay blank (named in the Info summary instead).
     wire -Y 'eth.src==02:00:00:77:77:77' -T fields \
-        -e frame.time_relative -e _ws.col.Protocol -e _ws.col.Info
+        -e frame.time_relative -e _ws.col.Protocol \
+        -e ipv6.src -e ipv6.dst \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 \
+        -e _ws.col.Info
     ;;
 arp)
     start_capture arp
@@ -152,7 +159,11 @@ arp)
     sleep 1
     stop_example
     log_highlights 'Sent out ARP Probe|Sent out ARP Announcement|Successfully claimed IPv4' 10
-    wire -Y arp -T fields -e frame.time_relative -e _ws.col.Info
+    # ARP has no IP layer: src → dst is the ARP-payload
+    # sender → target (0.0.0.0 → addr for a Probe; addr → addr
+    # for an Announcement).
+    wire -Y arp -T fields -e frame.time_relative \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 -e _ws.col.Info
     ;;
 icmp)
     [ -n "$PEER" ] || PEER="$(ip -4 -o addr show 2>/dev/null \
@@ -167,8 +178,11 @@ icmp)
     stop_example
     echo "=== host ping ($PEER -> $IP4_ADDR) ==="
     tail -2 "$OUT"
+    # ip.src/ip.dst for ICMP; arp.*.proto_ipv4 fills the same
+    # src → dst column for the interleaved ARP resolution.
     wire -Y 'arp || icmp' -T fields \
-        -e frame.time_relative -e ip.src -e ip.dst -e _ws.col.Info
+        -e frame.time_relative -e ip.src -e ip.dst \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 -e _ws.col.Info
     ;;
 tcp | udp)
     if [ "$scenario" = tcp ]; then
@@ -202,6 +216,7 @@ tcp | udp)
     # fragmented UDP datagram is visible fragment-by-fragment.
     wire -Y "arp || ip.addr==${IP4_ADDR}" -T fields \
         -e frame.time_relative -e ip.src -e ip.dst \
+        -e arp.src.proto_ipv4 -e arp.dst.proto_ipv4 \
         -e ip.id -e ip.flags.mf -e ip.frag_offset \
         -e tcp.flags.str -e _ws.col.Info
     ;;

@@ -202,9 +202,10 @@ Every wire block uses the same columns:
 time(s)   PROTO   src → dst   summary
 ```
 
-`—` in the `src → dst` column marks frames with no IPv4/IPv6 layer
-(ARP), or IPv6 ND/MLD frames whose source/destination are
-link-local/multicast and are named in the summary instead.
+`src → dst` is the IPv4/IPv6 source → destination; for ARP it is
+the ARP-payload **sender → target**. `—` marks IPv6 ND/MLD frames
+whose link-local/multicast endpoints are named in the summary
+instead (the `boot` capture did not record them as columns).
 
 #### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
 
@@ -230,14 +231,14 @@ Stack log:
 Wire capture (`tshark -i tap7`):
 
 ```text
-0.39   ICMPv6  —   Neighbor Solicitation for fe80::d559:3d07:bd31:f1d1   (link-local DAD)
-0.62   ARP     —   Who has 192.168.1.77?   (ARP Probe)
-1.39   ICMPv6  —   Multicast Listener Report Message v2
-1.39   ICMPv6  —   Router Solicitation from 02:00:00:77:77:77
-2.03   ICMPv6  —   Neighbor Solicitation for 2603:808c:2800:4301:d9fd:d546:1fd:4484   (SLAAC GUA DAD)
-6.39   ICMPv6  —   Neighbor Advertisement fe80::d559:3d07:bd31:f1d1 (sol) is at 02:00:00:77:77:77
-7.08   ARP     —   ARP Announcement for 192.168.1.77
-9.08   ARP     —   ARP Announcement for 192.168.1.77
+0.39   ICMPv6  —                             Neighbor Solicitation for fe80::d559:3d07:bd31:f1d1   (link-local DAD)
+0.62   ARP     0.0.0.0 → 192.168.1.77        Who has 192.168.1.77?   (ARP Probe)
+1.39   ICMPv6  —                             Multicast Listener Report Message v2
+1.39   ICMPv6  —                             Router Solicitation from 02:00:00:77:77:77
+2.03   ICMPv6  —                             Neighbor Solicitation for 2603:808c:2800:4301:d9fd:d546:1fd:4484   (SLAAC GUA DAD)
+6.39   ICMPv6  —                             Neighbor Advertisement fe80::d559:3d07:bd31:f1d1 (sol) is at 02:00:00:77:77:77
+7.08   ARP     192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
+9.08   ARP     192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
 ```
 
 #### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
@@ -249,11 +250,11 @@ address with two ARP **Announcements** (sender = target).
 Wire capture (`tshark -i tap7 -f arp`):
 
 ```text
-0.00   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
-1.47   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
-3.37   ARP   —   ARP Probe — Who has 192.168.1.77?   (sender 0.0.0.0)
-6.63   ARP   —   ARP Announcement for 192.168.1.77   (sender = target)
-8.63   ARP   —   ARP Announcement for 192.168.1.77   (sender = target)
+0.00   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
+1.47   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
+3.37   ARP   0.0.0.0 → 192.168.1.77        ARP Probe — Who has 192.168.1.77?
+6.63   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
+8.63   ARP   192.168.1.77 → 192.168.1.77   ARP Announcement for 192.168.1.77
 ```
 
 Probe vs. Announcement, decoded (`tshark -V`):
@@ -273,8 +274,8 @@ Wire capture (`tshark -i tap7`, rebased to the first Echo Request):
 
 ```text
 0.000  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=1, ttl=64
-0.001  ARP   —                             Who has 192.168.1.10? Tell 192.168.1.77
-0.001  ARP   —                             192.168.1.10 is at a2:4b:a1:00:92:56
+0.001  ARP   192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+0.001  ARP   192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
 0.001  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=1, ttl=64
 1.001  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=2, ttl=64
 1.002  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=2, ttl=64
@@ -325,8 +326,8 @@ On the wire (`tshark -i tap7`) — the full RFC 9293 exchange:
 
 ```text
 44.934  TCP  192.168.1.10 → 192.168.1.77   [SYN]       MSS=1460 SACK_PERM WS=1024 TSopt
-44.937  ARP  —                             Who has 192.168.1.10? Tell 192.168.1.77
-44.937  ARP  —                             192.168.1.10 is at a2:4b:a1:00:92:56
+44.937  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+44.937  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
 44.937  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   MSS=1460 SACK_PERM WS=128 TSopt
 44.937  TCP  192.168.1.10 → 192.168.1.77   [ACK]
 44.937  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 11     "malpi\nquit\n"  (request)
@@ -381,8 +382,8 @@ fragmentation fields — IP-id, MF, frag-offset):
 
 ```text
 38.987  UDP  192.168.1.10 → 192.168.1.77   id=0x2361 MF=0 off=0     UDP "malpi\n" request (14 B)
-38.988  ARP  —                             Who has 192.168.1.10? Tell 192.168.1.77
-38.988  ARP  —                             192.168.1.10 is at a2:4b:a1:00:92:56
+38.988  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+38.988  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
 38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=0     fragment 1 — UDP header + first 1480 B
 38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=0 off=185   fragment 2 — final 89 B (offset 185×8 = 1480)
 ```
