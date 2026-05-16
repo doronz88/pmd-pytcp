@@ -35,6 +35,13 @@ PORT="${PORT:-7}"
 PEER="${PEER:-}"
 IP4_ADDR="${IP4%%/*}"
 
+# Readiness waits. A static address is not owned until RFC 5227 ACD
+# (and any IPv6 SLAAC) completes, then the service rebinds on its
+# next 0.5 s retry; on a busy bridged LAN this can take well over
+# 30 s, so the defaults are generous and env-tunable.
+CLAIM_TIMEOUT="${CLAIM_TIMEOUT:-60}"
+BIND_TIMEOUT="${BIND_TIMEOUT:-90}"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PY="${PY:-$ROOT/venv/bin/python}"
 
@@ -115,7 +122,7 @@ boot)
     start_capture "ip6 or arp"
     start_example examples.stack --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4"
-    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" 40
+    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" "$CLAIM_TIMEOUT"
     sleep 2
     stop_example
     log_highlights 'ICMPv6 ND DAD - (Starting|No duplicate)|Successfully claimed|Sent out ICMPv6 ND Router Solicitation|Sent out ARP Announcement|Multicast Listener Report .HBH' 16
@@ -126,7 +133,7 @@ arp)
     start_capture arp
     start_example examples.stack --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
-    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" 30
+    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" "$CLAIM_TIMEOUT"
     sleep 1
     stop_example
     log_highlights 'Sent out ARP Probe|Sent out ARP Announcement|Successfully claimed IPv4' 10
@@ -138,7 +145,7 @@ icmp)
     start_capture "arp or icmp"
     start_example examples.stack --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
-    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" 30
+    wait_for "Successfully claimed IPv4 address ${IP4_ADDR}" "$CLAIM_TIMEOUT"
     sleep 1
     ping -c 3 -W 1 "$IP4_ADDR" >"$OUT" 2>&1 || true
     sleep 1
@@ -157,8 +164,8 @@ tcp | udp)
     start_capture "(${scenario} port ${PORT}) or arp"
     start_example "$mod" --local-port "$PORT" --stack-interface "$IFACE" \
         --stack-ip4-address "$IP4" --stack-ip4-gateway "$GW4" --stack-no-ip6
-    wait_for "Socket created, bound to ${IP4_ADDR}, port ${PORT}" 35
-    wait_for "Socket set to listening mode" 5
+    wait_for "Socket created, bound to ${IP4_ADDR}, port ${PORT}" "$BIND_TIMEOUT"
+    wait_for "Socket set to listening mode" 10
     sleep 1
     if [ "$scenario" = tcp ]; then
         printf 'malpi\nquit\n' | timeout 8 nc -w5 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
