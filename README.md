@@ -274,18 +274,18 @@ the stack then resolves the *host's* MAC via ARP before replying:
 Wire capture (`tshark -i tap7`, rebased to the first Echo Request):
 
 ```text
-0.000  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=1, ttl=64
+0.000  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626e, seq=1, ttl=64
 0.001  ARP   192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
 0.001  ARP   192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
-0.001  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=1, ttl=64
-1.001  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=2, ttl=64
-1.002  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=2, ttl=64
-2.046  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626c, seq=3, ttl=64
-2.047  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626c, seq=3, ttl=64
+0.001  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626e, seq=1, ttl=64
+1.001  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626e, seq=2, ttl=64
+1.002  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626e, seq=2, ttl=64
+2.032  ICMP  192.168.1.10 → 192.168.1.77   Echo (ping) request   id=0x626e, seq=3, ttl=64
+2.033  ICMP  192.168.1.77 → 192.168.1.10   Echo (ping) reply     id=0x626e, seq=3, ttl=64
 ```
 
 From the pinging host:
-`3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.807/1.017/1.405/0.274 ms`.
+`3 packets transmitted, 3 received, 0% packet loss; rtt min/avg/max/mdev = 0.693/0.873/1.185/0.221 ms`.
 
 #### ICMPv6 Echo over IPv6 (Neighbor Discovery + ping6)
 
