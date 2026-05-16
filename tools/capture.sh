@@ -237,7 +237,15 @@ tcp | udp)
     [ "$scenario" = tcp ] && wait_for "Socket set to listening mode" 10
     sleep 1
     if [ "$scenario" = tcp ]; then
-        printf 'malpi\nquit\n' | timeout 12 nc -w8 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
+        # 'malpi' and 'quit' as SEPARATE messages with a gap, so
+        # the service recv()s 'quit' on its own and matches its
+        # quit/close set — the PyTCP service then performs the
+        # graceful active close (FIN), instead of the client
+        # idle-timing-out and racing the service's late banner
+        # into an RST. The trailing sleep keeps the pipe open
+        # until the service's FIN arrives.
+        { printf 'malpi\n'; sleep 3; printf 'quit\n'; sleep 3; } \
+            | timeout 18 nc -w12 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
     else
         printf 'malpi\n' | timeout 12 nc -u -w8 "$IP4_ADDR" "$PORT" >"$OUT" 2>&1 || true
     fi
@@ -288,7 +296,11 @@ tcp6 | udp6)
     [ "$scenario" = tcp6 ] && wait_for "Socket set to listening mode" 10
     sleep 1
     if [ "$scenario" = tcp6 ]; then
-        printf 'malpi\nquit\n' | timeout 12 nc -6 -w8 "$IP6_ADDR" "$PORT" >"$OUT" 2>&1 || true
+        # See the tcp branch: separate 'malpi' / 'quit' messages
+        # so the PyTCP service does the graceful active close
+        # (FIN) rather than the client racing into an RST.
+        { printf 'malpi\n'; sleep 3; printf 'quit\n'; sleep 3; } \
+            | timeout 18 nc -6 -w12 "$IP6_ADDR" "$PORT" >"$OUT" 2>&1 || true
     else
         printf 'malpi\n' | timeout 12 nc -6 -u -w8 "$IP6_ADDR" "$PORT" >"$OUT" 2>&1 || true
     fi
