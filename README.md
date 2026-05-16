@@ -124,38 +124,54 @@ stack.stop()
  - Stack - *MAC address manipulation library - Compatible with buffer protocol (Memoryview).*
  - Stack - *IPv4 address manipulation library - Compatible with buffer protocol (Memoryview) and not dependent on Python standard library.*
  - Stack - *IPv6 address manipulation library - Compatible with buffer protocol (Memoryview) and not dependent on Python standard library.*
- - Code - *Unit testing for some of the libraries and modules (based on Facebook's Testslide framework)*
- - Ethernet protocol - *Support of Ethernet II standard frames.*
+ - Stack - *Importable as a zero-runtime-dependency library (stdlib only), split into three independent packages: net_addr, net_proto, pytcp.*
+ - Stack - *Event-driven millisecond-resolution timer (heap-based deadline scheduler, no polling tick).*
+ - Stack - *Runtime-tunable sysctl registry mirroring the Linux /proc/sys/net/ surface (boot-time and live overrides).*
+ - Stack - *Link control API (ip-link-style): per-interface MAC / MTU / state / counters.*
+ - Stack - *Per-protocol packet-flow stat counters for diagnostics and packet-flow tracing in tests.*
+ - Stack - *TX-path feedback mechanism so send failures are reported back to sockets.*
+ - Stack - *Homegrown high-performance logger (no third-party logging dependency).*
+ - Code - *Native 'unittest' test suite (zero non-stdlib runtime deps); ~11,000 unit + integration tests; per-RFC adherence audits under docs/rfc/.*
+ - Ethernet protocol - *Ethernet II frames (RFC 894) and IEEE 802.3 frames with LLC + SNAP encapsulation (RFC 1042).*
  - Ethernet protocol - *Unicast, IPv4 multicast, IPv6 multicast and broadcast addressing.*
- - ARP protocol - *Replies, queries, ARP cache mechanism.*
- - ARP protocol - *ARP Probe/Announcement IP conflict detection (ACD) mechanism.*
+ - ARP protocol - *Replies, queries, ARP cache mechanism (RFC 826).*
+ - ARP protocol - *ARP Probe/Announcement IPv4 Address Conflict Detection (RFC 5227).*
  - IPv4 protocol - *Default routing, the stack can talk to hosts over the Internet using IPv4 protocol.*
- - IPv4 protocol - *Automatic IPv4 address configuration using DHCPv4 protocol.*
+ - IPv4 protocol - *Automatic IPv4 address configuration using the DHCPv4 client (RFC 2131/2132).*
+ - IPv4 protocol - *IPv4 link-local autoconfiguration (RFC 3927).*
  - IPv4 protocol - *Inbound packet defragmentation, robust mechanism able to handle out-of-order and overlapping data fragments.*
  - IPv4 protocol - *Outbound packet fragmentation.*
- - IPv4 protocol - *IPv4 options accepted but not supported.*
+ - IPv4 protocol - *IPv4 options parsed as typed objects; Path MTU Discovery (RFC 1191).*
  - IPv4 protocol -  *Multiple stack's IPv4 addresses supported, each of them acts as it was assigned to separate VRF* 
- - ICMPv4 protocol - *The echo-request, echo-reply, and port-unreachable messages.*
+ - ICMPv4 protocol - *Echo-request, echo-reply, and the destination-unreachable / time-exceeded / parameter-problem error family with RFC 1122 generation gates and error rate-limiting.*
  - IPv6 protocol - *Default routing, the stack can talk to hosts over the Internet using IPv6 protocol.*
  - IPv6 protocol - *Automatic link-local address configuration using EUI64 and Duplicate Address Detection.*
- - IPv6 protocol - *Automatic GUA address configuration using Router Advertisement / EUI64.*
+ - IPv6 protocol - *SLAAC global address configuration via Router Advertisement (RFC 4862).*
+ - IPv6 protocol - *RFC 7217 stable opaque interface identifiers and RFC 8981 temporary (privacy) addresses with lifetime management.*
+ - IPv6 protocol - *RFC 6724 default source / destination address selection.*
+ - IPv6 protocol - *Default-router selection with RFC 4191 preferences, RFC 4311 / RFC 8028 first-hop selection.*
  - IPv6 protocol - *Automatic assignment of Solicited Node Multicast addresses.*
  - IPv6 protocol - *Automatic assignment of IPv6 multicast MAC addresses.*
- - IPv6 protocol - *Inbound packet defragmentation, robust mechanism able to handle out-of-order and overlapping data fragments.*
- - IPv6 protocol - *Outbound packet fragmentation.*
- - ICMPv6 protocol - *The echo-request, echo-reply, and port-unreachable messages.*
- - ICMPv6 protocol - *Neighbor Discovery, Duplicate Address Detection.*
- - ICMPv6 protocol - *Neighbor Discovery cache mechanism.*
- - ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) protocol implementation (only messages needed by stack).*
- - UDP protocol - *Full support. The stack can exchange data with other hosts using the UDP protocol.*
- - UDP sockets - *Full support, stack's 'end user' API similar to Berkeley sockets.*
+ - IPv6 protocol - *Typed extension-header chain parsing; Path MTU Discovery (RFC 8201).*
+ - IPv6 protocol - *Inbound packet defragmentation (out-of-order / overlapping / atomic-fragment handling) and outbound fragmentation.*
+ - ICMPv6 protocol - *Echo-request, echo-reply, and the destination-unreachable / time-exceeded / parameter-problem / packet-too-big error family (RFC 4443).*
+ - ICMPv6 protocol - *Neighbor Discovery (NS/NA/RS/RA) with RFC 4861 Hop-Limit acceptance gates and a Neighbor cache.*
+ - ICMPv6 protocol - *Optimistic DAD (RFC 4429), Enhanced DAD (RFC 7527), Gratuitous Neighbor Advertisement (RFC 9131).*
+ - ICMPv6 protocol - *ND Redirect message processing (RFC 4861 §8).*
+ - ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) - messages needed by the host (RFC 3810).*
+ - UDP protocol - *Full support, including IPv6 zero-checksum datagrams (RFC 6935).*
+ - UDP sockets - *Berkeley-sockets-style API; optional connect(); IP_RECVERR / MSG_ERRQUEUE error queue.*
  - UDP services - *The Echo, Discard, and Daytime services implemented for testing purposes (in 'examples').*
- - TCP protocol - *Full implementation of TCP Finite State Machine. At this point, the stack can exchange bulk data with other hosts over the TCP protocol.*
- - TCP protocol - *TCP options support for: MSS, WSCALE, SACKPERM, TIMESTAMP.*
- - TCP protocol - *TCP sliding window mechanism with and data retransmission (fast retransmit and time-based scenarios).*
- - TCP protocol - *TCP backoff mechanism / basic congestion control.*
- - TCP protocol - *TCP SYN/FIN packet retransmission.*
- - TCP sockets - *Full support, stack's 'end user' API similar to Berkeley sockets*
+ - TCP protocol - *Full RFC 9293 Finite State Machine; the stack can exchange bulk data with other hosts over TCP.*
+ - TCP protocol - *Options: MSS, Window Scale, SACK-Permitted/SACK, Timestamps; PAWS (RFC 7323), RFC 6691 MSS handling.*
+ - TCP protocol - *Congestion control: NewReno (RFC 5681/6582) and CUBIC (RFC 9438), PRR (RFC 6937), HyStart++ (RFC 9406), ABE (RFC 8511).*
+ - TCP protocol - *Loss recovery: fast retransmit/recovery, SACK-based recovery (RFC 6675), RACK-TLP (RFC 8985), F-RTO (RFC 5682), limited/early transmit.*
+ - TCP protocol - *RFC 6298 RTO computation with Karn's algorithm and binary backoff; SYN/FIN retransmission.*
+ - TCP protocol - *Hardening: RFC 5961 blind-attack mitigations, RFC 5927 ICMP-attack guard, RFC 6528 ISS, RFC 6056 port randomisation, RFC 1337 / RFC 6191 TIME-WAIT handling.*
+ - TCP protocol - *TCP Fast Open (RFC 7413), AccECN (RFC 9768), keep-alive, zero-window probing / persist timer, SWS avoidance, Nagle.*
+ - TCP/UDP - *Datagram Packetization Layer Path MTU Discovery (RFC 8899 / RFC 4821).*
+ - TCP sockets - *Berkeley-sockets-style API: fileno()/eventfd + selectors integration, blocking/non-blocking modes, errno-mapped OSError, getaddrinfo family, common setsockopt options.*
+ - RAW sockets - *RAW IP socket support with explicit protocol selection.*
 
 #### To be implemented:
 
@@ -171,8 +187,8 @@ stack.stop()
  - [ ] Testing - *Need to refactor packet flow tests (tests/packet_flow_*.py) to use the same format and dir as FPA tests based on test_frames.*
  - [ ] Testing - *Create FPA unit tests for MLDv2 Report (len, str, assemble).*
  - [ ] IPv4 - *Reimplement packet defragmentation to store whole packets in flow DB instead of making copies of the IP header and data.*
- - [ ] Stack - *Implement RAW socket support - to be used by example, ICMP-Echo client.*
- - [ ] Code - *Unit testing for remaining libraries and modules (based on Facebook's Testslide library).*
+ - [x] Stack - *Implement RAW socket support - to be used by example, ICMP-Echo client.*
+ - [x] Code - *Migrate the test suite to native 'unittest' (replacing the Testslide framework) and broaden coverage.*
  - [ ] Code - *Rewrite DHCPv4 protocol support to use standard FPA/FPP approach instead of legacy code.*
  - [ ] Stack - *Get back to implementing the stack debugging console so certain information about stack components can be displayed on demand by sending commands. e.g., 'show icmpv6 nd cache', 'show ipv6 route', etc... it should also let you run interactive commands like ping or stack's UDP/TCP echo clients.*
  - [ ] QUIC protocol - *Research and plan for the implementation. This depends on the ability to create a lab environment for it.*
@@ -180,9 +196,9 @@ stack.stop()
  - [ ] IPv6 protocol - *Implement remaining extension headers.*
  - [ ] IPv6 protocol - *Validate and possibly reimplement certain IPv6 mechanisms/processes according to RFC rules.*
  - [ ] IPv6 protocol - *Investigate Hop-by-Hop Options header and its relation to MLD2 Report message, implement if needed for MLD2 to work properly.*
- - [ ] ICMPv6 protocol - *Implement ND Redirect message.*
+ - [x] ICMPv6 protocol - *Implement ND Redirect message.*
  - [ ] ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) full implementation <-- it may be required by stack to respond to MLD queries.*
- - [ ] TCP protocol - *Proper handling of RST packets in various states. Need to research this. There is a bug report submitted on that.*
+ - [x] TCP protocol - *Proper handling of RST packets in various states (RFC 5961 blind-attack hardening).*
  - [ ] TCP protocol - *Need to rework the CLOSE syscall mechanism so the FIN flag can be set on the last data packet instead of being carried in a separate one.*
  - [ ] TCP protocol - *ACK packet retransmission in case we got FIN retransmission in TIME_WAIT state. Need to investigate this.*
  - [ ] TCP protocol - *implement proper response to packets containing old SEQ and/or ACK numbers. Need to investigate this.*
