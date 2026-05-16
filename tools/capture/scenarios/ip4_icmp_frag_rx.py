@@ -51,7 +51,11 @@ def command(*, count: int, size: int, **kwargs: Any) -> None:
 
     cfg = make_config(**kwargs)
     with Harness(cfg) as harness:
-        harness.start_capture("arp or icmp")
+        # Capture by host, not BPF 'icmp': a transport/proto BPF
+        # filter only matches the FIRST IPv4 fragment, so the
+        # later fragments of a fragmented Echo would be invisible
+        # and inbound reassembly could not be shown.
+        harness.start_capture(f"arp or host {cfg.ip4_addr}")
         harness.start_example(
             "examples.stack",
             "--stack-interface",
@@ -70,7 +74,7 @@ def command(*, count: int, size: int, **kwargs: Any) -> None:
         harness.print_client_output(f"host ping -s {size} (-> {cfg.ip4_addr})")
         harness.wire(
             "-Y",
-            "arp || icmp",
+            f"arp || ip.addr=={cfg.ip4_addr}",
             "-T",
             "fields",
             "-e",

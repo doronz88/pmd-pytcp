@@ -487,3 +487,27 @@ fragments sharing one identification:
 are plain UDP. The 1561-byte reply + 8-byte UDP header = 1569 B,
 over the 1500-byte link MTU, so the stack splits it across the two
 fragments above.)
+
+#### Inbound IPv4 reassembly (oversized ping)
+
+The receive-side counterpart of the fragmentation demos. The host
+sends a 4000-byte `ping`, which its kernel splits into three IPv4
+fragments. The stack **reassembles** them into one Echo Request,
+then replies with a 4000-byte Echo Reply that it **itself
+fragments** into three:
+
+```text
+0.000  IPv4  192.168.1.10 → 192.168.1.77   id=0xf29f MF=1 off=0    Echo Request — fragment 1/3
+0.000  IPv4  192.168.1.10 → 192.168.1.77   id=0xf29f MF=1 off=185  fragment 2/3   (off 185×8 = 1480 B)
+0.000  IPv4  192.168.1.10 → 192.168.1.77   id=0xf29f MF=0 off=370  fragment 3/3 → reassembles to Echo Request id=0x6271, seq=1
+0.001  ARP   192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+0.001  ARP   192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
+0.002  IPv4  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=0    Echo Reply — fragment 1/3
+0.002  IPv4  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=185  fragment 2/3
+0.002  IPv4  192.168.1.77 → 192.168.1.10   id=0x0001 MF=0 off=370  fragment 3/3 → Echo Reply id=0x6271, seq=1
+```
+
+From the pinging host:
+`1 packets transmitted, 1 received, 0% packet loss; rtt min/avg/max/mdev = 2.048/2.048/2.048/0.000 ms`
+(`4008 bytes from 192.168.1.77` — the full 4000-byte payload made
+the round trip, reassembled on both ends).
