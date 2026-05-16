@@ -1,0 +1,87 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the 'ip4-dhcp' scenario: the DHCPv4 client
+lease (DISCOVER / OFFER / REQUEST / ACK). Requires a reachable
+DHCPv4 server on the bridge.
+
+tools/capture/scenarios/ip4_dhcp.py
+
+ver 3.0.4
+"""
+
+import time
+from typing import Any
+
+import click
+
+from tools.capture.lib import Harness, common_options, make_config
+
+
+@click.command(name="ip4-dhcp", help="DHCPv4 client lease (needs a DHCPv4 server on the bridge).")
+@common_options
+def command(**kwargs: Any) -> None:
+    """
+    Capture the DHCPv4 client lease acquisition.
+    """
+
+    cfg = make_config(**kwargs)
+    with Harness(cfg) as harness:
+        # No --stack-ip4-address ⇒ stack.init() runs the DHCPv4
+        # client (ip4_dhcp defaults True when no static IPv4).
+        harness.start_capture("arp or port 67 or port 68")
+        harness.start_example(
+            "examples.stack",
+            "--stack-interface",
+            cfg.iface,
+            "--stack-no-ip6",
+        )
+        harness.wait_for("Successfully claimed IPv4 address", cfg.claim_timeout)
+        time.sleep(1)
+        harness.stop_example()
+        harness.log_highlights(
+            r"Found cached lease|DHCP|Initial desync|Successfully claimed IPv4|Sent out ARP Announcement",
+            20,
+        )
+        harness.wire(
+            "-Y",
+            "dhcp || bootp || arp",
+            "-T",
+            "fields",
+            "-e",
+            "frame.time_relative",
+            "-e",
+            "_ws.col.Protocol",
+            "-e",
+            "ip.src",
+            "-e",
+            "ip.dst",
+            "-e",
+            "arp.src.proto_ipv4",
+            "-e",
+            "arp.dst.proto_ipv4",
+            "-e",
+            "_ws.col.Info",
+        )
