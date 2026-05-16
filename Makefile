@@ -25,6 +25,16 @@ run: venv
 run_tun: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --interface tun7 --ip4-address 10.0.0.2/24
 
+# Run an example-capture / e2e scenario. Needs root + the TAP/bridge
+# (sudo make tap7 && sudo make bridge). Usage:
+#   sudo make capture SCENARIO=ip6-tcp-monkeys
+#   sudo make capture SCENARIO=ip4-udp-monkeys CAPTURE_ARGS="--payload malpa --raw"
+# With no SCENARIO it prints the list of scenarios.
+SCENARIO ?=
+CAPTURE_ARGS ?=
+capture: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python -m tools.capture $(SCENARIO) $(CAPTURE_ARGS)
+
 clean:
 	@rm -rf $(VENV)
 	@rm -rf dist tcp_ip_stack.egg-info PyTCP.egg-info
