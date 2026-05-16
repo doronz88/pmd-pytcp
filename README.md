@@ -340,6 +340,30 @@ The same ASCII monkeys, echoed over the UDP service. The reply
 IPv4-fragments it — the classic "IP fragmentation" demo, captured
 for real.
 
+```text
+$ printf 'malpi\n' | nc -u 192.168.1.77 7
+                                       ______AAAA_______________AAAA______
+                                             VVVV               VVVV
+                                             (__)               (__)
+                                              \ \               / /
+               .="=.                           \ \              / /
+             _/.-.-.\_    _                     > \   .="=.   / <
+            ( ( o o ) )   ))                     > \ /     \ / <
+             |/  "  \|   //                       > \\_o_o_// <
+              \'---'/   //                         > ( (_) ) <
+              /`---`\  ((                           >|     |<
+             / /_,_\ \  \\                         / |\___/| \
+             \_\_'__/ \  ))                        / \_____/ \
+             /`  /`~\  |//                         /         \
+            /   /    \  /                           /   o   \
+        ,--`,--'\/\    /                             ) ___ (
+         '-- "--'  '--'                             / /   \ \
+                                                   ( /     \ )
+                                                   ><       ><
+                                                  ///\     /\\\
+                                                  '''       '''
+```
+
 On the wire (`tshark -i tap7`; `.10` = peer, `.77` = the stack;
 columns: time, src, dst, IP-id, MF, frag-offset):
 
