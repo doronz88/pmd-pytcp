@@ -323,10 +323,11 @@ As a quick end-to-end check the client streams two ASCII-art
 TCP connection — the original "two monkeys delivered via TCP" demo,
 now reproducible as plain text. Connecting to the service returns
 its banner, then the monkeys make the full round trip through the
-stack's TCP path intact:
+stack's TCP path intact; sending `quit` asks the service to close,
+and PyTCP performs the graceful active close itself:
 
 ```text
-$ nc 192.168.1.77 7
+$ { printf 'malpi\n'; sleep 3; printf 'quit\n'; } | nc 192.168.1.77 7
 ***CLIENT OPEN / SERVICE OPEN***
                                        ______AAAA_______________AAAA______
                                              VVVV               VVVV
@@ -348,31 +349,39 @@ $ nc 192.168.1.77 7
                                                    ><       ><
                                                   ///\     /\\\
                                                   '''       '''
+***CLIENT OPEN, SERVICE CLOSING***
 ```
 
-On the wire (`tshark -i tap7`) — the full RFC 9293 exchange:
+On the wire (`tshark -i tap7`, rebased to the SYN) — the full
+RFC 9293 exchange, handshake through graceful close:
 
 ```text
-44.934  TCP  192.168.1.10 → 192.168.1.77   [SYN]       MSS=1460 SACK_PERM WS=1024 TSopt
-44.937  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
-44.937  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
-44.937  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   MSS=1460 SACK_PERM WS=128 TSopt
-44.937  TCP  192.168.1.10 → 192.168.1.77   [ACK]
-44.937  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 11     "malpi\nquit\n"  (request)
-44.941  TCP  192.168.1.77 → 192.168.1.10   [ACK]       len 1448   monkeys, segment 1 (full MSS)
-44.941  TCP  192.168.1.10 → 192.168.1.77   [ACK]       ack 1449
-44.943  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 146    monkeys, segment 2
-44.943  TCP  192.168.1.10 → 192.168.1.77   [ACK]       ack 1595
-49.948  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]              peer closes (nc idle timeout)
-49.951  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 37     service "CLOSING" banner
-49.951  TCP  192.168.1.10 → 192.168.1.77   [RST]                  peer already gone
+0.000  TCP  192.168.1.10 → 192.168.1.77   [SYN]       Seq=0 MSS=1460 SACK_PERM WS=1024 TSopt
+0.003  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+0.003  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
+0.003  TCP  192.168.1.77 → 192.168.1.10   [SYN,ACK]   Seq=0 Ack=1 MSS=1460 SACK_PERM WS=128 TSopt
+0.003  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Seq=1 Ack=1
+0.003  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 6      "malpi\n"  (request)
+0.007  TCP  192.168.1.77 → 192.168.1.10   [ACK]       len 1448   banner + monkeys, segment 1 (full MSS)
+0.007  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1449
+0.009  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 146    monkeys, segment 2
+0.009  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1595
+2.999  TCP  192.168.1.10 → 192.168.1.77   [PSH,ACK]   len 5      "quit\n"  (request)
+3.001  TCP  192.168.1.77 → 192.168.1.10   [PSH,ACK]   len 35     "SERVICE CLOSING" banner
+3.001  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1630
+3.003  TCP  192.168.1.77 → 192.168.1.10   [FIN,ACK]              PyTCP active close
+3.043  TCP  192.168.1.10 → 192.168.1.77   [ACK]       Ack=1631   peer acks the FIN
+6.001  TCP  192.168.1.10 → 192.168.1.77   [FIN,ACK]              peer closes its half
+6.001  TCP  192.168.1.77 → 192.168.1.10   [ACK]       Ack=13     connection fully closed (no RST)
 ```
 
 The stack negotiates MSS / SACK-permitted / window-scale /
 timestamps on the handshake, resolves the peer's MAC via ARP
-mid-handshake, segments the echoed monkeys to the MSS, and tracks
-the peer's cumulative ACKs — a complete TCP connection driven
-entirely by pure-Python code.
+mid-handshake, segments the echoed monkeys to the MSS, tracks the
+peer's cumulative ACKs, and on `quit` performs the RFC 9293 §3.6
+active close — FIN, peer ACK, peer FIN, FIN ACK — a complete TCP
+connection opened, used, and gracefully torn down entirely by
+pure-Python code.
 
 #### Monkeys over UDP — IPv4 fragmentation
 
