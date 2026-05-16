@@ -27,7 +27,7 @@ This package contains the stack components and global structures.
 
 pytcp/stack/__init__.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 from __future__ import annotations

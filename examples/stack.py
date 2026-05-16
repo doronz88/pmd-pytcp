@@ -31,7 +31,7 @@ base to run other examples provided as the subsystems.
 
 examples/stack.py
 
-ver 3.0.3
+ver 3.0.4
 """
 
 import time
