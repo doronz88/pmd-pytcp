@@ -214,9 +214,9 @@ class TestEthernet8023HarnessSmoke(Ethernet8023TestCase):
             STACK__MAC_ADDRESS,
             msg="Inherited stack MAC must be unchanged.",
         )
-        addresses = {host.address for host in self._packet_handler._ip4_host}
+        addresses = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
             STACK__IP4_HOST.address,
             addresses,
-            msg="Inherited stack IPv4 host must be present in '_ip4_host'.",
+            msg="Inherited stack IPv4 host must be present in '_ip4_ifaddr'.",
         )

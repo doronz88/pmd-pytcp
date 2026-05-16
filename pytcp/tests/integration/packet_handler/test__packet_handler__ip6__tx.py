@@ -383,7 +383,7 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
         """
 
         if self._clear_ip6_host:
-            self._packet_handler._ip6_host = []
+            self._packet_handler._ip6_ifaddr = []
 
         self.assertEqual(
             self._packet_handler._phtx_ip6(**self._kwargs),
@@ -565,7 +565,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
 
     def setUp(self) -> None:
         """
-        Add a link-local host to '_ip6_host' / '_ip6_unicast' so
+        Add a link-local host to '_ip6_ifaddr' / '_ip6_unicast' so
         the caller-supplied fe80::7 source passes the ownership
         check and reaches the scope gate.
         """
@@ -574,7 +574,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
         from net_addr import Ip6IfAddr
 
         link_local_host = Ip6IfAddr("fe80::7/64")
-        self._packet_handler._ip6_host.append(link_local_host)
+        self._packet_handler._ip6_ifaddr.append(link_local_host)
 
     def test__phtx_ip6__link_local_src_global_dst__drops_scope_mismatch(self) -> None:
         """

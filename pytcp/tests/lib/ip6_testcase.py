@@ -106,13 +106,13 @@ class Ip6TestCase(NetworkTestCase):
 
     def _set_ip6_hosts(self, *hosts: Ip6IfAddr) -> None:
         """
-        Replace the stack's '_ip6_host' list with the given
+        Replace the stack's '_ip6_ifaddr' list with the given
         hosts. Used by source-selection tests that exercise
         'PacketHandler._select_ip6_source' against a controlled
         owned-address list.
         """
 
-        self._packet_handler._ip6_host = list(hosts)
+        self._packet_handler._ip6_ifaddr = list(hosts)
 
     def _drive_ip6_rx(self, *, frame: bytes) -> list[bytes]:
         """

@@ -148,7 +148,7 @@ class PacketHandlerIp4Rx(ABC):
         # broadcast address). The limited-broadcast / multicast /
         # reserved cases are caught by the parser sanity check; this
         # gate covers the per-subnet directed-broadcast class that
-        # requires '_ip4_host' state to recognise.
+        # requires '_ip4_ifaddr' state to recognise.
         if packet_rx.ip4.src in self._ip4_broadcast:
             self._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
             __debug__ and log(

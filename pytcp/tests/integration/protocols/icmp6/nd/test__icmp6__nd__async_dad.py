@@ -48,7 +48,7 @@ These tests pin the new concurrency invariants:
   conflict (it isn't B's nonce).
 - '_claim_ip6_address_async' returns a Thread the caller can
   '.join()'; the worker eventually exits with the address
-  installed in '_ip6_host' on success.
+  installed in '_ip6_ifaddr' on success.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__async_dad.py
 
@@ -272,8 +272,8 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
         )
         self.assertIn(
             _CANDIDATE_HOST.address,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="After successful async claim, address must be in '_ip6_host'.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="After successful async claim, address must be in '_ip6_ifaddr'.",
         )
 
     def test__icmp6__nd__async_dad__claim_async_optimistic_fire_and_forget(self) -> None:
@@ -294,13 +294,13 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
                 # so the test isn't racy on slow runners.
                 deadline = time.monotonic() + 1.0
                 while time.monotonic() < deadline:
-                    if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_host]:
+                    if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_ifaddr]:
                         break
                     time.sleep(0.005)
 
                 self.assertIn(
                     _CANDIDATE_HOST.address,
-                    [host.address for host in self._packet_handler._ip6_host],
+                    [host.address for host in self._packet_handler._ip6_ifaddr],
                     msg="Optimistic worker must pre-claim the address before DAD completes.",
                 )
                 self.assertEqual(

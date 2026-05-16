@@ -255,15 +255,15 @@ class NetworkTestCase(TestCase):
         )
 
         self._packet_handler._mac_multicast = [STACK__IP6_HOST.address.solicited_node_multicast.multicast_mac]
-        self._packet_handler._ip4_host = [STACK__IP4_HOST]
+        self._packet_handler._ip4_ifaddr = [STACK__IP4_HOST]
         self._packet_handler._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
-        self._packet_handler._ip6_host = [STACK__IP6_HOST]
+        self._packet_handler._ip6_ifaddr = [STACK__IP6_HOST]
         self._packet_handler._ip6_multicast = [
             IP6__MULTICAST__ALL_NODES,
             STACK__IP6_HOST.address.solicited_node_multicast,
         ]
-        self._packet_handler._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
-        self._packet_handler._ip6_host_candidate = [STACK__IP6_HOST__CANDIDATE]
+        self._packet_handler._ip4_ifaddr_candidate = [STACK__IP4_HOST__CANDIDATE]
+        self._packet_handler._ip6_ifaddr_candidate = [STACK__IP6_HOST__CANDIDATE]
 
         # Initialize the list holding the frames "sent" by mock TxRing.
         self._frames_tx = []

@@ -128,7 +128,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
         Reference: RFC 8981 §3.3 (Generation and lifetime of temporary addresses).
         """
 
-        self._packet_handler._ip6_host = [_HOST_STABLE_A, _HOST_TEMP_A]
+        self._packet_handler._ip6_ifaddr = [_HOST_STABLE_A, _HOST_TEMP_A]
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_A, _PREFIX_A)]
 
@@ -151,7 +151,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
         Reference: RFC 6724 §5 (rule 7 ordered before rule 8).
         """
 
-        self._packet_handler._ip6_host = [_HOST_STABLE_A, _HOST_TEMP_B]
+        self._packet_handler._ip6_ifaddr = [_HOST_STABLE_A, _HOST_TEMP_B]
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_B, _PREFIX_B)]
 
@@ -175,7 +175,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
         Reference: RFC 4862 §5.5.4 (PREFERRED / DEPRECATED state).
         """
 
-        self._packet_handler._ip6_host = [_HOST_STABLE_A, _HOST_TEMP_A]
+        self._packet_handler._ip6_ifaddr = [_HOST_STABLE_A, _HOST_TEMP_A]
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [
             _temp(_HOST_TEMP_A, _PREFIX_A, deprecated=True),
@@ -216,7 +216,7 @@ class TestRfc6724Rule7TempNoPreference(Ip6TestCase):
         Reference: RFC 6724 §5 rule 7 (no preference under use_tempaddr=1).
         """
 
-        self._packet_handler._ip6_host = [_HOST_STABLE_A, _HOST_TEMP_B]
+        self._packet_handler._ip6_ifaddr = [_HOST_STABLE_A, _HOST_TEMP_B]
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_B, _PREFIX_B)]
 
@@ -256,7 +256,7 @@ class TestRfc6724Rule7TempDisabled(Ip6TestCase):
         Reference: RFC 6724 §5 rule 7 (no-op when use_tempaddr=0).
         """
 
-        self._packet_handler._ip6_host = [_HOST_STABLE_B, _HOST_TEMP_A]
+        self._packet_handler._ip6_ifaddr = [_HOST_STABLE_B, _HOST_TEMP_A]
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_B, _PREFIX_B)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_A, _PREFIX_A)]
 

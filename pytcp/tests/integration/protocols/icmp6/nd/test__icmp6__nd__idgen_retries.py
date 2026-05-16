@@ -176,14 +176,14 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         )
         self.assertIn(
             regen2.address,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="The successful candidate (regen2) must end up in _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="The successful candidate (regen2) must end up in _ip6_ifaddr.",
         )
         # Nor should the failed candidates.
         self.assertNotIn(
             original.address,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="Failed original candidate must NOT be in _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="Failed original candidate must NOT be in _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__idgen_retries__exhaustion_gives_up(self) -> None:
@@ -228,7 +228,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         # No address installed.
         self.assertNotIn(
             original.address,
-            [host.address for host in self._packet_handler._ip6_host],
+            [host.address for host in self._packet_handler._ip6_ifaddr],
             msg="With all attempts failing no address must be installed.",
         )
 

@@ -54,9 +54,9 @@ class PacketHandlerArpRx(ABC):
         from pytcp.lib.tx_status import TxStatus
 
         _mac_unicast: MacAddress
-        _ip4_host: list[Ip4IfAddr]
+        _ip4_ifaddr: list[Ip4IfAddr]
         _packet_stats_rx: PacketStatsRx
-        _ip4_host_candidate: list[Ip4IfAddr]
+        _ip4_ifaddr_candidate: list[Ip4IfAddr]
         _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
         _arp_defend__last_emitted: dict[Ip4Address, float]
         _arp_defend__last_conflict_at: dict[Ip4Address, float]
@@ -101,7 +101,7 @@ class PacketHandlerArpRx(ABC):
           - Second conflict within DEFEND_INTERVAL of the
             previous conflict → abandon the address (the §2.4(b)
             MUST). No defense is emitted; the address is removed
-            from '_ip4_host'; bound TcpSessions are aborted
+            from '_ip4_ifaddr'; bound TcpSessions are aborted
             (§2.4 final SHOULD).
           - Otherwise → fire a defensive gratuitous ARP, gated by
             the per-IP last-defended-at rate-limit (§2.4(c)
@@ -132,7 +132,7 @@ class PacketHandlerArpRx(ABC):
     def _abandon_ipv4_address(self, *, ip4_unicast: "Ip4Address") -> None:
         """
         Tear down all TCP sessions bound to 'ip4_unicast' and
-        remove it from '_ip4_host' — RFC 5227 §2.4(b) MUST
+        remove it from '_ip4_ifaddr' — RFC 5227 §2.4(b) MUST
         ("immediately cease using this address") plus the
         §2.4-final SHOULD ("hosts SHOULD actively attempt to
         reset any existing connections using that address").
@@ -151,11 +151,11 @@ class PacketHandlerArpRx(ABC):
                 if session is not None:
                     session.tcp_fsm(syscall=SysCall.ABORT)
 
-        # Remove the abandoned address from '_ip4_host' so
+        # Remove the abandoned address from '_ip4_ifaddr' so
         # the stack stops claiming it. Future RX-side conflict
         # detection on this IP will see it is no longer in
         # '_ip4_unicast' and skip the defense path entirely.
-        self._ip4_host = [host for host in self._ip4_host if host.address != ip4_unicast]
+        self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host.address != ip4_unicast]
 
         self._packet_stats_rx.arp__conflict__abandon += 1
         __debug__ and log(
@@ -216,7 +216,7 @@ class PacketHandlerArpRx(ABC):
         # do not update cache if SPA matches one of our IP
         # addresses to avoid updating cache with our own IP
         # address that could be spoofed by an attacker.
-        spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._ip4_host)
+        spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._ip4_ifaddr)
         if (
             (spa_on_local_subnet or arp__constants.ARP__ACCEPT == 1)
             and (packet_rx.ethernet.dst == self._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
@@ -273,7 +273,7 @@ class PacketHandlerArpRx(ABC):
         # case would otherwise fall through to the 'tpa_unknown' drop
         # (a candidate is not yet in '_ip4_unicast' during DAD). The
         # earlier loop-drop check already filtered out our own SHA.
-        if packet_rx.arp.spa.is_unspecified and packet_rx.arp.tpa in {c.address for c in self._ip4_host_candidate}:
+        if packet_rx.arp.spa.is_unspecified and packet_rx.arp.tpa in {c.address for c in self._ip4_ifaddr_candidate}:
             self._packet_stats_rx.arp__op_request__simultaneous_probe += 1
             __debug__ and log(
                 "arp",
@@ -303,7 +303,7 @@ class PacketHandlerArpRx(ABC):
             )
 
             # If we’re probing this address, mark conflict too.
-            if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
+            if packet_rx.arp.spa in {c.address for c in self._ip4_ifaddr_candidate}:
                 self._packet_stats_rx.arp__op_request__probe_conflict__gratuitous += 1
                 self._ip4_arp_dad__registry.try_signal_conflict(
                     packet_rx.arp.spa,
@@ -365,7 +365,7 @@ class PacketHandlerArpRx(ABC):
                 should_reply = False
             else:
                 sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
-                    packet_rx.arp.spa in host.network for host in self._ip4_host
+                    packet_rx.arp.spa in host.network for host in self._ip4_ifaddr
                 )
                 if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
                     __debug__ and log(
@@ -422,7 +422,7 @@ class PacketHandlerArpRx(ABC):
         # Check for ARP reply that is response to our ARP probe, this indicates
         # the IP address we trying to claim is in use.
         if (
-            packet_rx.arp.spa in [_.address for _ in self._ip4_host_candidate]
+            packet_rx.arp.spa in [_.address for _ in self._ip4_ifaddr_candidate]
             and packet_rx.ethernet.dst == packet_rx.arp.tha == self._mac_unicast
             and packet_rx.arp.tpa.is_unspecified
         ):
@@ -463,7 +463,7 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
 
-            if packet_rx.arp.spa in {c.address for c in self._ip4_host_candidate}:
+            if packet_rx.arp.spa in {c.address for c in self._ip4_ifaddr_candidate}:
                 self._packet_stats_rx.arp__op_reply__probe_conflict__gratuitous += 1
                 self._ip4_arp_dad__registry.try_signal_conflict(
                     packet_rx.arp.spa,

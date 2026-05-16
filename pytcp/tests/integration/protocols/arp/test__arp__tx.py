@@ -455,7 +455,7 @@ class TestArpTxHelpers(ArpTestCase):
         """
 
         if self._clear_ip4_host:
-            self._packet_handler._ip4_host = []
+            self._packet_handler._ip4_ifaddr = []
 
         getattr(self._packet_handler, self._method_name)(**self._kwargs)
 

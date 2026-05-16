@@ -31,7 +31,7 @@ Integration tests for the IPv6 ND Optimistic Duplicate Address
 Detection algorithm (RFC 4429) — nd_linux_parity §20.
 
 When 'icmp6.optimistic_dad = 1' the host installs a tentative
-address into '_ip6_host' as OPTIMISTIC immediately rather than
+address into '_ip6_ifaddr' as OPTIMISTIC immediately rather than
 waiting for DAD to pass. The address is usable as outbound
 source during the DAD probe period; Neighbor Advertisements
 emitted while OPTIMISTIC clear the Override flag per §3.3 so
@@ -41,7 +41,7 @@ VALID; on collision the optimistic entry is removed.
 
 When 'icmp6.optimistic_dad = 0' (the default) PyTCP retains the
 RFC 4862 §5.4 strict semantics: the address stays out of
-'_ip6_host' until DAD passes; the state map records a TENTATIVE
+'_ip6_ifaddr' until DAD passes; the state map records a TENTATIVE
 entry only for the duration of the wait.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py
@@ -167,7 +167,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
     """
     With 'icmp6.optimistic_dad = 0' (default), '_perform_ip6_nd_dad'
     records TENTATIVE during the wait and transitions to VALID on
-    success. The address is NOT installed into '_ip6_host' until
+    success. The address is NOT installed into '_ip6_ifaddr' until
     after DAD passes.
     """
 
@@ -231,7 +231,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
 class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
     """
     With 'icmp6.optimistic_dad = 1', the candidate address is
-    installed into '_ip6_host' as OPTIMISTIC BEFORE the DAD
+    installed into '_ip6_ifaddr' as OPTIMISTIC BEFORE the DAD
     probe wait — so the address is usable as outbound source
     during the wait per RFC 4429 §3.3.
     """
@@ -246,7 +246,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
 
     def test__icmp6__nd__optimistic_dad__optimistic_in_ip6_host_during_wait(self) -> None:
         """
-        Ensure the candidate is in '_ip6_host' and marked
+        Ensure the candidate is in '_ip6_ifaddr' and marked
         OPTIMISTIC while the DAD wait is still running.
 
         Reference: RFC 4429 §3.3 (Optimistic Tentative Address usable
@@ -256,7 +256,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         captured: dict[str, object] = {}
 
         def _trigger_conflict() -> None:
-            captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_host]
+            captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_ifaddr]
             captured["state_during_wait"] = self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE)
             self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
                 _CANDIDATE,
@@ -284,7 +284,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         """
         Ensure a successful Optimistic DAD claim transitions
         the state from OPTIMISTIC to VALID and leaves the
-        address in '_ip6_host'.
+        address in '_ip6_ifaddr'.
 
         Reference: RFC 4429 §3.3 step 4 (DAD success → no Override
         flag suppression, address VALID).
@@ -301,14 +301,14 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         )
         self.assertIn(
             _CANDIDATE,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="Successful Optimistic DAD must keep the address in _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="Successful Optimistic DAD must keep the address in _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__optimistic_dad__removed_on_conflict(self) -> None:
         """
         Ensure a failed Optimistic DAD claim removes the
-        pre-claimed address from '_ip6_host' and clears the
+        pre-claimed address from '_ip6_ifaddr' and clears the
         per-address state entry.
 
         Reference: RFC 4429 §3.3 (DAD failure must remove the
@@ -329,8 +329,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
 
         self.assertNotIn(
             _CANDIDATE,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="Failed Optimistic DAD must remove the address from _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="Failed Optimistic DAD must remove the address from _ip6_ifaddr.",
         )
         self.assertIsNone(
             self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE),
@@ -353,13 +353,13 @@ class TestIcmp6Nd__OptimisticDad__NaOverrideFlag(NdTestCase):
 
     def setUp(self) -> None:
         """
-        Install the candidate as a regular '_ip6_host' entry
+        Install the candidate as a regular '_ip6_ifaddr' entry
         and prepare the solicited-node multicast group so the
         Ethernet RX gate accepts an inbound NS for the candidate.
         """
 
         super().setUp()
-        self._packet_handler._ip6_host.append(_CANDIDATE_HOST)
+        self._packet_handler._ip6_ifaddr.append(_CANDIDATE_HOST)
         snm_mac = _CANDIDATE.solicited_node_multicast.multicast_mac
         snm_ip = _CANDIDATE.solicited_node_multicast
         if snm_mac not in self._packet_handler._mac_multicast:
@@ -431,7 +431,7 @@ class TestIcmp6Nd__OptimisticDad__NaOverrideFlag(NdTestCase):
 class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
     """
     With 'icmp6.optimistic_dad = 0' (default) the address is NOT
-    installed into '_ip6_host' before DAD completes — RFC 4862
+    installed into '_ip6_ifaddr' before DAD completes — RFC 4862
     §5.4 strict semantics.
     """
 
@@ -445,7 +445,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
 
     def test__icmp6__nd__optimistic_dad__off_no_pre_claim(self) -> None:
         """
-        Ensure the candidate is NOT in '_ip6_host' while
+        Ensure the candidate is NOT in '_ip6_ifaddr' while
         synchronous DAD is in flight when the sysctl is off.
 
         Reference: RFC 4862 §5.4 (default DAD: address tentative
@@ -455,7 +455,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
         captured: dict[str, object] = {}
 
         def _trigger_conflict() -> None:
-            captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_host]
+            captured["addresses_during_wait"] = [host.address for host in self._packet_handler._ip6_ifaddr]
             captured["state_during_wait"] = self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE)
             self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
                 _CANDIDATE,

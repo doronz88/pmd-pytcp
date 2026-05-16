@@ -81,7 +81,7 @@ class PacketHandlerIcmp6Tx(ABC):
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip6_multicast: list[Ip6Address]
-        _ip6_host: list[Ip6IfAddr]
+        _ip6_ifaddr: list[Ip6IfAddr]
         _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
 
         # pylint: disable=unused-argument
@@ -347,7 +347,7 @@ class PacketHandlerIcmp6Tx(ABC):
 
         # Pick appropriate source address
         ip6__src = Ip6Address()
-        for ip6_host in self._ip6_host:
+        for ip6_host in self._ip6_ifaddr:
             if icmp6_ns_target_address in ip6_host.network:
                 ip6__src = ip6_host.address
 
@@ -395,7 +395,7 @@ class PacketHandlerIcmp6Tx(ABC):
         # multicast variant since the target is on a known
         # local subnet (we already have a cache entry for it).
         ip6__src = Ip6Address()
-        for ip6_host in self._ip6_host:
+        for ip6_host in self._ip6_ifaddr:
             if icmp6_ns_target_address in ip6_host.network:
                 ip6__src = ip6_host.address
 

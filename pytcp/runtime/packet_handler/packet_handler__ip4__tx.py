@@ -70,7 +70,7 @@ class PacketHandlerIp4Tx(ABC):
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip4_host: list[Ip4IfAddr]
+        _ip4_ifaddr: list[Ip4IfAddr]
         _ip4_multicast: list[Ip4Address]
         _ip4_id: int
         _ip4_support: bool
@@ -375,7 +375,7 @@ class PacketHandlerIp4Tx(ABC):
         # If packet is a response to network broadcast then replace source address
         # with first stack address that belongs to appropriate subnet.
         if ip4__src in self._ip4_broadcast:
-            ip4_src_list = [ip4_host.address for ip4_host in self._ip4_host if ip4_host.network.broadcast == ip4__src]
+            ip4_src_list = [ip4_host.address for ip4_host in self._ip4_ifaddr if ip4_host.network.broadcast == ip4__src]
             if ip4_src_list:
                 self._packet_stats_tx.ip4__src_network_broadcast__replace += 1
                 ip4__src = ip4_src_list[0]
@@ -413,7 +413,7 @@ class PacketHandlerIp4Tx(ABC):
         if ip4__src.is_unspecified:
             selected = self._select_ip4_source(ip4__dst=ip4__dst)
             if selected is not None:
-                if any(ip4__dst in host.network for host in self._ip4_host):
+                if any(ip4__dst in host.network for host in self._ip4_ifaddr):
                     self._packet_stats_tx.ip4__src_network_unspecified__replace_local += 1
                 else:
                     self._packet_stats_tx.ip4__src_network_unspecified__replace_external += 1
@@ -439,7 +439,7 @@ class PacketHandlerIp4Tx(ABC):
     def _select_ip4_source(self, *, ip4__dst: Ip4Address) -> Ip4Address | None:
         """
         Run RFC 6724 §6 default source-address selection over
-        the candidate set in '_ip4_host' and return the winner.
+        the candidate set in '_ip4_ifaddr' and return the winner.
 
         Only rules 1 (same address), 2 (scope), and 8 (longest
         matching prefix) apply to IPv4: rule 3 (avoid
@@ -455,7 +455,7 @@ class PacketHandlerIp4Tx(ABC):
         DROPPED__IP4__SRC_UNSPECIFIED handling.
         """
 
-        candidates = [host.address for host in self._ip4_host]
+        candidates = [host.address for host in self._ip4_ifaddr]
         if not candidates:
             return None
 

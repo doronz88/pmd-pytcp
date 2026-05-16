@@ -52,7 +52,7 @@ class PacketHandlerArpTx(ABC):
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip4_support: bool
-        _ip4_host: list[Ip4IfAddr]
+        _ip4_ifaddr: list[Ip4IfAddr]
 
         # pylint: disable=unused-argument
 
@@ -84,7 +84,7 @@ class PacketHandlerArpTx(ABC):
             return Ip4Address()
 
         if arp__constants.ARP__ANNOUNCE in (1, 2):
-            for host in self._ip4_host:
+            for host in self._ip4_ifaddr:
                 if arp__tpa in host.network:
                     return host.address
 

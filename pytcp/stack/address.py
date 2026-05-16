@@ -124,13 +124,13 @@ class Ip4AddressApi:
     'RTM_NEWADDR' / 'RTM_DELADDR' semantics.
 
     Phase-1 implementation: thin wrapper around
-    'PacketHandler._ip4_host' mutations plus active TCP-session
+    'PacketHandler._ip4_ifaddr' mutations plus active TCP-session
     abort via 'SysCall.ABORT' (RFC 5227 §2.4-final SHOULD —
     deliberately stricter than Linux's "silent rot" behaviour).
 
     Consumer code — DHCPv4 client, future operator-config CLI,
     future DHCPv6 client — uses ONLY this surface. Never reaches
-    into 'packet_handler._ip4_host' directly. This is the
+    into 'packet_handler._ip4_ifaddr' directly. This is the
     architectural seam the Phase-3 north-star turns into a real
     IPC channel; the wrapper internals swap from direct
     attribute mutation to RTNETLINK-equivalent message bus
@@ -144,7 +144,7 @@ class Ip4AddressApi:
     ) -> None:
         """
         Bind the API to a packet handler instance. The packet
-        handler owns the underlying '_ip4_host' list; the API is
+        handler owns the underlying '_ip4_ifaddr' list; the API is
         the only sanctioned consumer of mutations to that list.
         The conflict-subscription registry lives on the API
         instance so per-address callback fan-out is local to
@@ -162,7 +162,7 @@ class Ip4AddressApi:
         caller's responsibility; this method does not de-dup).
         """
 
-        self._packet_handler._ip4_host.append(ip4_host)
+        self._packet_handler._ip4_ifaddr.append(ip4_host)
         __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_host}")
 
     def remove_host(
@@ -187,11 +187,11 @@ class Ip4AddressApi:
         if abort_bound_sessions:
             self._abort_bound_tcp_sessions(ip4_address)
 
-        before = len(self._packet_handler._ip4_host)
-        self._packet_handler._ip4_host = [
-            host for host in self._packet_handler._ip4_host if host.address != ip4_address
+        before = len(self._packet_handler._ip4_ifaddr)
+        self._packet_handler._ip4_ifaddr = [
+            host for host in self._packet_handler._ip4_ifaddr if host.address != ip4_address
         ]
-        removed = before - len(self._packet_handler._ip4_host)
+        removed = before - len(self._packet_handler._ip4_ifaddr)
         __debug__ and log(
             "stack",
             f"<lg>Address API</>: removed IPv4 address {ip4_address} "
@@ -235,7 +235,7 @@ class Ip4AddressApi:
         read-only" constraint from CLAUDE.md).
         """
 
-        return tuple(self._packet_handler._ip4_host)
+        return tuple(self._packet_handler._ip4_ifaddr)
 
     def probe(self, *, address: Ip4Address) -> ProbeResult:
         """

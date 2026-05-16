@@ -49,14 +49,14 @@ if TYPE_CHECKING:
 class _FakePacketHandler:
     """
     Minimal packet-handler stand-in for 'Ip4AddressApi' tests —
-    exposes only the '_ip4_host' attribute the API mutates plus
+    exposes only the '_ip4_ifaddr' attribute the API mutates plus
     the RFC 5227 ACD-helper methods the API delegates to.
     Using a hand-rolled class avoids the autospec ceremony for
     a 50-attribute production class.
     """
 
     def __init__(self) -> None:
-        self._ip4_host: list[Ip4IfAddr] = []
+        self._ip4_ifaddr: list[Ip4IfAddr] = []
         # The new ACD API methods on 'Ip4AddressApi' delegate to
         # these helpers. Tests configure 'probe_result' and
         # 'announce_calls' to drive / observe behaviour.
@@ -109,7 +109,7 @@ class TestIp4AddressApiAddHost(TestCase):
     def test__ip4_address_api__add_host_appends_to_packet_handler_list(self) -> None:
         """
         Ensure 'add_host' appends the supplied 'Ip4IfAddr' to the
-        packet handler's '_ip4_host' list.
+        packet handler's '_ip4_ifaddr' list.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -119,7 +119,7 @@ class TestIp4AddressApiAddHost(TestCase):
         self._api.add_host(ip4_host=host)
 
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [host],
             msg="add_host must append the supplied Ip4IfAddr to the packet handler list.",
         )
@@ -134,13 +134,13 @@ class TestIp4AddressApiAddHost(TestCase):
         """
 
         existing = Ip4IfAddr("10.0.0.4/24")
-        self._packet_handler._ip4_host.append(existing)
+        self._packet_handler._ip4_ifaddr.append(existing)
 
         new = Ip4IfAddr("10.0.0.5/24")
         self._api.add_host(ip4_host=new)
 
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [existing, new],
             msg="add_host must preserve pre-existing hosts.",
         )
@@ -164,7 +164,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
         self._packet_handler = _FakePacketHandler()
         self._target_host = Ip4IfAddr("10.0.0.5/24")
         self._other_host = Ip4IfAddr("10.0.0.6/24")
-        self._packet_handler._ip4_host = [self._target_host, self._other_host]
+        self._packet_handler._ip4_ifaddr = [self._target_host, self._other_host]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__remove_host_drops_matching_address(self) -> None:
@@ -180,7 +180,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
             self._api.remove_host(ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [self._other_host],
             msg="remove_host must drop only the host matching the supplied address.",
         )
@@ -217,7 +217,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
 
         mock_abort.assert_not_called()
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [self._other_host],
             msg="remove_host(abort=False) must still remove the address from the host list.",
         )
@@ -236,7 +236,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
             self._api.remove_host(ip4_address=Ip4Address("10.0.0.99"))
 
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [self._target_host, self._other_host],
             msg="remove_host for an unknown address must leave the host list unchanged.",
         )
@@ -258,7 +258,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._old_host = Ip4IfAddr("10.0.0.5/24")
-        self._packet_handler._ip4_host = [self._old_host]
+        self._packet_handler._ip4_ifaddr = [self._old_host]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__replace_host_installs_new_and_removes_old(self) -> None:
@@ -280,7 +280,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
             )
 
         self.assertEqual(
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             [new_host],
             msg="replace_host must leave only the new host installed; the old address is removed.",
         )
@@ -300,7 +300,7 @@ class TestIp4AddressApiReplaceHost(TestCase):
         snapshot_at_abort: list[Ip4IfAddr] = []
 
         def _snapshot(_: Ip4Address) -> None:
-            snapshot_at_abort.extend(self._packet_handler._ip4_host)
+            snapshot_at_abort.extend(self._packet_handler._ip4_ifaddr)
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions", side_effect=_snapshot):
             self._api.replace_host(
@@ -338,7 +338,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
 
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
-        self._packet_handler._ip4_host = [Ip4IfAddr("10.0.0.5/24"), Ip4IfAddr("10.0.0.6/24")]
+        self._packet_handler._ip4_ifaddr = [Ip4IfAddr("10.0.0.5/24"), Ip4IfAddr("10.0.0.6/24")]
         self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__list_returns_tuple_copy(self) -> None:
@@ -376,7 +376,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         snapshot = self._api.list_ip4_hosts()
         before_len = len(snapshot)
 
-        self._packet_handler._ip4_host.clear()
+        self._packet_handler._ip4_ifaddr.clear()
 
         self.assertEqual(
             len(snapshot),
@@ -611,7 +611,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         )
         self.assertIn(
             host,
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             msg="Clean claim must install the host via add_host.",
         )
 
@@ -647,7 +647,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         )
         self.assertNotIn(
             host,
-            self._packet_handler._ip4_host,
+            self._packet_handler._ip4_ifaddr,
             msg="Conflicting claim must NOT install the host.",
         )
 

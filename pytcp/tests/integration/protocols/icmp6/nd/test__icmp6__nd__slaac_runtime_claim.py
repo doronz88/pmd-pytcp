@@ -30,7 +30,7 @@
 Integration tests for runtime SLAAC stable-address lifecycle —
 post-boot PI admission triggers a fresh claim, and a periodic
 sweep removes expired entries from both the tracking table and
-'_ip6_host'.
+'_ip6_ifaddr'.
 
 PyTCP previously claimed stable SLAAC addresses only during the
 boot-time '_create_stack_ip6_addressing' loop; a brand-new
@@ -40,7 +40,7 @@ RFC 8981 temp-address path was already runtime-dynamic (per
 nd_linux_parity §18b); this commit closes the asymmetry for
 the stable address. The §18c.1 sweep is extended with an
 '_icmp6_sweep_slaac_addresses' counterpart so expired stable
-entries also get pruned from '_ip6_host', not just from the
+entries also get pruned from '_ip6_ifaddr', not just from the
 lifetime table.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_runtime_claim.py
@@ -95,7 +95,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
     With '_ip6_addressing_complete = True' (post-boot), a PI
     for a brand-new prefix triggers a stable-address DAD claim
     via '_claim_ip6_address_async'. The address ends up in
-    '_ip6_host' once the worker completes.
+    '_ip6_ifaddr' once the worker completes.
     """
 
     def tearDown(self) -> None:
@@ -110,7 +110,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
         """
         Ensure a post-boot RA carrying a new prefix admits the
         prefix to the SLAAC table AND triggers a stable-address
-        claim that lands in '_ip6_host'.
+        claim that lands in '_ip6_ifaddr'.
 
         Reference: RFC 4862 §5.5.3 (e)(4) (autoconfig form
                                            address from PI).
@@ -143,14 +143,14 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                 expected = self._packet_handler._derive_ip6_host(ip6_network=PREFIX_NEW).address
                 deadline = time.monotonic() + 1.0
                 while time.monotonic() < deadline:
-                    if expected in [host.address for host in self._packet_handler._ip6_host]:
+                    if expected in [host.address for host in self._packet_handler._ip6_ifaddr]:
                         break
                     time.sleep(0.005)
 
         self.assertIn(
             expected,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="Post-boot PI for a new prefix must produce a stable address in _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="Post-boot PI for a new prefix must produce a stable address in _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__slaac_runtime__pre_boot_no_claim(self) -> None:
@@ -187,12 +187,12 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                 )
                 time.sleep(0.05)  # generous slack for any (illicit) worker to land
 
-        # Expected stable address must NOT be in _ip6_host —
+        # Expected stable address must NOT be in _ip6_ifaddr —
         # boot loop hasn't run yet.
         expected = self._packet_handler._derive_ip6_host(ip6_network=PREFIX_NEW).address
         self.assertNotIn(
             expected,
-            [host.address for host in self._packet_handler._ip6_host],
+            [host.address for host in self._packet_handler._ip6_ifaddr],
             msg="Pre-boot RX-path PI must NOT claim the stable address; that's the boot loop's job.",
         )
         # But the SLAAC tracking table did update.
@@ -206,7 +206,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
         """
         Ensure a post-boot PI for an EXISTING prefix only
         refreshes lifetimes — no fresh claim is spawned. The
-        existing address must remain in '_ip6_host'; no
+        existing address must remain in '_ip6_ifaddr'; no
         duplicate appears.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -232,11 +232,11 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                 expected = self._packet_handler._derive_ip6_host(ip6_network=PREFIX_NEW).address
                 deadline = time.monotonic() + 1.0
                 while time.monotonic() < deadline:
-                    if expected in [h.address for h in self._packet_handler._ip6_host]:
+                    if expected in [h.address for h in self._packet_handler._ip6_ifaddr]:
                         break
                     time.sleep(0.005)
 
-                ip6_host_count_after_first = sum(1 for h in self._packet_handler._ip6_host if h.address == expected)
+                ip6_host_count_after_first = sum(1 for h in self._packet_handler._ip6_ifaddr if h.address == expected)
                 self.assertEqual(
                     ip6_host_count_after_first,
                     1,
@@ -258,7 +258,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                 )
                 time.sleep(0.05)
 
-        ip6_host_count_after_second = sum(1 for h in self._packet_handler._ip6_host if h.address == expected)
+        ip6_host_count_after_second = sum(1 for h in self._packet_handler._ip6_ifaddr if h.address == expected)
         self.assertEqual(
             ip6_host_count_after_second,
             1,
@@ -270,7 +270,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
     """
     '_icmp6_sweep_slaac_addresses()' removes entries past
     'valid_until' from BOTH '_icmp6_slaac_addresses' AND
-    '_ip6_host'.
+    '_ip6_ifaddr'.
     """
 
     def _make_slaac(
@@ -325,7 +325,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
     def test__icmp6__nd__slaac_sweep__removes_expired_from_ip6_host(self) -> None:
         """
         Ensure expired stable SLAAC addresses are removed
-        from '_ip6_host'.
+        from '_ip6_ifaddr'.
 
         Reference: RFC 4862 §5.5.3 (e)(7) (expired stable
                                            address must not
@@ -335,20 +335,20 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         expired_addr = "2001:db8:0:1::dead"
         expired = self._make_slaac(address=expired_addr, prefix=PREFIX_A, offset_valid=-1.0)
         self._packet_handler._icmp6_slaac_addresses = [expired]
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{expired_addr}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{expired_addr}/64"))
 
         self.assertIn(
             Ip6Address(expired_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Pre-condition: expired SLAAC addr must be in _ip6_host before sweep.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Pre-condition: expired SLAAC addr must be in _ip6_ifaddr before sweep.",
         )
 
         self._packet_handler._icmp6_sweep_slaac_addresses()
 
         self.assertNotIn(
             Ip6Address(expired_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Sweep must remove expired SLAAC addr from _ip6_host.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Sweep must remove expired SLAAC addr from _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__slaac_sweep__preserves_non_expired(self) -> None:
@@ -362,7 +362,7 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         active_addr = "2001:db8:0:1::cafe"
         active = self._make_slaac(address=active_addr, prefix=PREFIX_A, offset_valid=86400)
         self._packet_handler._icmp6_slaac_addresses = [active]
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{active_addr}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{active_addr}/64"))
 
         self._packet_handler._icmp6_sweep_slaac_addresses()
 
@@ -373,23 +373,23 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
         )
         self.assertIn(
             Ip6Address(active_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Active SLAAC addr must remain in _ip6_host.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Active SLAAC addr must remain in _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__slaac_sweep__does_not_touch_non_slaac(self) -> None:
         """
-        Ensure '_ip6_host' entries that aren't backed by a
+        Ensure '_ip6_ifaddr' entries that aren't backed by a
         SLAAC table record are NOT removed — the sweep is
         scoped to the SLAAC tracking table.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        # Address present in _ip6_host but NOT in the
+        # Address present in _ip6_ifaddr but NOT in the
         # SLAAC table.
         statically_configured = "2001:db8:0:9::1"
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{statically_configured}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{statically_configured}/64"))
 
         # An expired SLAAC entry references a different
         # address.
@@ -400,6 +400,6 @@ class TestIcmp6Nd__SlaacRuntimeSweep__RemovesExpired(NdTestCase):
 
         self.assertIn(
             Ip6Address(statically_configured),
-            [h.address for h in self._packet_handler._ip6_host],
+            [h.address for h in self._packet_handler._ip6_ifaddr],
             msg="Statically-configured (non-SLAAC) addresses must NOT be touched by the sweep.",
         )

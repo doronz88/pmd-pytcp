@@ -211,7 +211,7 @@ class TestArpDefendInterval(ArpTestCase):
         Reference: RFC 5227 §2.4 (ongoing conflict detection and defense).
         """
 
-        self._packet_handler._ip4_host = [STACK__IP4_HOST, _STACK_IP4_HOST_2]
+        self._packet_handler._ip4_ifaddr = [STACK__IP4_HOST, _STACK_IP4_HOST_2]
 
         self._set_monotonic(1000.0)
         self._drive_conflict(spa=STACK__IP4_HOST.address)

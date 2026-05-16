@@ -140,8 +140,8 @@ class _StubHandler(PacketHandlerArpRx):
 
         self._packet_stats_rx = PacketStatsRx()
         self._mac_unicast = STACK__MAC_UNICAST
-        self._ip4_host = [STACK__IP4_HOST]
-        self._ip4_host_candidate = [STACK__IP4_HOST__CANDIDATE]
+        self._ip4_ifaddr = [STACK__IP4_HOST]
+        self._ip4_ifaddr_candidate = [STACK__IP4_HOST__CANDIDATE]
         self._ip4_arp_dad__registry: DadSlotRegistry[Ip4Address] = DadSlotRegistry()
         # Install slots for every candidate so the RX path's
         # 'try_signal_conflict' has somewhere to write — mirrors
@@ -160,7 +160,7 @@ class _StubHandler(PacketHandlerArpRx):
         Mirror the PacketHandler's '_ip4_unicast' property helper.
         """
 
-        return [host.address for host in self._ip4_host]
+        return [host.address for host in self._ip4_ifaddr]
 
     def _send_arp_reply(self, **kwargs: object) -> None:
         """
@@ -725,7 +725,7 @@ class TestPacketHandlerArpRxProbeConflictPerInstanceSet(_ArpRxTestBase):
     at '_create_stack_ip4_addressing'
     (pytcp/runtime/packet_handler/__init__.py) reads via
     'has_signal()' to decide whether to admit a candidate to
-    '_ip4_host'.
+    '_ip4_ifaddr'.
     """
 
     def test__stack__packet_handler__arp__rx__gratuitous_request_probe_conflict_writes_to_per_instance_set(
@@ -954,7 +954,7 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         Reference: RFC 5227 §2.4 (ongoing conflict detection and defense).
         """
 
-        self._handler._ip4_host = [STACK__IP4_HOST, STACK__IP4_HOST_2]
+        self._handler._ip4_ifaddr = [STACK__IP4_HOST, STACK__IP4_HOST_2]
 
         with patch("time.monotonic", side_effect=[1000.0, 1001.0, 1002.0]):
             self._drive_conflict(spa=STACK__IP4_ADDRESS)
@@ -977,7 +977,7 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         Ensure a second conflicting ARP packet for the same IP
         within DEFEND_INTERVAL of the previous conflict
         triggers the abandon path: the IPv4 address is removed
-        from '_ip4_host' and the 'arp__conflict__abandon' stat
+        from '_ip4_ifaddr' and the 'arp__conflict__abandon' stat
         is incremented. The second conflict does NOT emit a
         defensive gratuitous ARP — the host is giving up the
         address rather than defending it.
@@ -999,10 +999,10 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         )
         self.assertNotIn(
             STACK__IP4_HOST,
-            self._handler._ip4_host,
+            self._handler._ip4_ifaddr,
             msg=(
                 "RFC 5227 §2.4(b) MUST: the abandoned IPv4 address must be "
-                "removed from '_ip4_host' so the stack stops using it."
+                "removed from '_ip4_ifaddr' so the stack stops using it."
             ),
         )
         self.assertEqual(
@@ -1016,7 +1016,7 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         Ensure two conflicts spaced MORE than DEFEND_INTERVAL
         apart do NOT trigger the abandon path — both fire
         their own defensive gratuitous ARP and the address
-        stays in '_ip4_host'. The MUST in §2.4(b) is gated on
+        stays in '_ip4_ifaddr'. The MUST in §2.4(b) is gated on
         "within DEFEND_INTERVAL"; conflicts outside that window
         are independent events.
 
@@ -1035,7 +1035,7 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         )
         self.assertIn(
             STACK__IP4_HOST,
-            self._handler._ip4_host,
+            self._handler._ip4_ifaddr,
             msg="Address must NOT be abandoned when conflicts are past DEFEND_INTERVAL.",
         )
         self.assertEqual(

@@ -83,7 +83,7 @@ class _StubHandler(PacketHandlerIcmp6Tx):
     def __init__(self, *, ip6_multicast: list[Ip6Address] | None = None) -> None:
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
-        self._ip6_host = [STACK__IP6_HOST]
+        self._ip6_ifaddr = [STACK__IP6_HOST]
         self._ip6_multicast = ip6_multicast if ip6_multicast is not None else []
         self._icmp6_dad__states = {}
 

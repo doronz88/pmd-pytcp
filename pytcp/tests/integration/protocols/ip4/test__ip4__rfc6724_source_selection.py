@@ -31,7 +31,7 @@ Integration tests for the RFC 6724 §6 IPv4 source-address
 selection — rules 1, 2, and 8 applied to the IPv4 family.
 
 Exercises 'PacketHandler._select_ip4_source' against an
-in-memory '_ip4_host' list with mixed scopes and overlapping
+in-memory '_ip4_ifaddr' list with mixed scopes and overlapping
 prefixes. The IPv4 family has no SLAAC PREFERRED/DEPRECATED
 state, no temporary addresses, and no §10.3 policy table, so
 rules 3, 6, and 7 do not apply.
@@ -64,13 +64,13 @@ class TestRfc6724Ip4Rule1SameAddress(Ip4TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip4_host' with one stack address whose
+        Populate '_ip4_ifaddr' with one stack address whose
         value coincides with the destination used in the
         rule-1 case.
         """
 
         super().setUp()
-        self._packet_handler._ip4_host = [_HOST_PREFIX_A]
+        self._packet_handler._ip4_ifaddr = [_HOST_PREFIX_A]
 
     def test__ip4__rfc6724_rule1__dst_equals_candidate__returns_dst(self) -> None:
         """
@@ -101,13 +101,13 @@ class TestRfc6724Ip4Rule2Scope(Ip4TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip4_host' with one link-local
+        Populate '_ip4_ifaddr' with one link-local
         (169.254.0.0/16) and one global candidate so the
         selector has to choose between scopes.
         """
 
         super().setUp()
-        self._packet_handler._ip4_host = [_HOST_LINK_LOCAL, _HOST_PREFIX_A]
+        self._packet_handler._ip4_ifaddr = [_HOST_LINK_LOCAL, _HOST_PREFIX_A]
 
     def test__ip4__rfc6724_rule2__global_dst_picks_global_source(self) -> None:
         """
@@ -156,13 +156,13 @@ class TestRfc6724Ip4Rule8LongestMatch(Ip4TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip4_host' with three same-scope candidates
+        Populate '_ip4_ifaddr' with three same-scope candidates
         whose prefixes differ in the third octet so the
         selector has a clean rule-8 tiebreak.
         """
 
         super().setUp()
-        self._packet_handler._ip4_host = [_HOST_PREFIX_A, _HOST_PREFIX_B, _HOST_PREFIX_C]
+        self._packet_handler._ip4_ifaddr = [_HOST_PREFIX_A, _HOST_PREFIX_B, _HOST_PREFIX_C]
 
     def test__ip4__rfc6724_rule8__picks_longest_common_prefix(self) -> None:
         """
@@ -216,14 +216,14 @@ class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
 
     def test__ip4__rfc6724__no_candidates_returns_none(self) -> None:
         """
-        Ensure the selector returns None when '_ip4_host' is
+        Ensure the selector returns None when '_ip4_ifaddr' is
         empty — the IPv4 TX path falls back to the existing
         DROPPED__IP4__SRC_UNSPECIFIED handling.
 
         Reference: RFC 6724 §5 (Source Address Selection).
         """
 
-        self._packet_handler._ip4_host = []
+        self._packet_handler._ip4_ifaddr = []
 
         result = self._packet_handler._select_ip4_source(
             ip4__dst=_DST_OUTSIDE_ALL,
@@ -247,7 +247,7 @@ class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
         # rule 8 ties; rule 1's short-circuit on dst itself
         # is what makes the test pin the rule order.
         sibling = Ip4IfAddr("10.0.1.91/24")  # same address as _DST_IN_PREFIX_A
-        self._packet_handler._ip4_host = [_HOST_PREFIX_A, sibling]
+        self._packet_handler._ip4_ifaddr = [_HOST_PREFIX_A, sibling]
 
         result = self._packet_handler._select_ip4_source(ip4__dst=_DST_IN_PREFIX_A)
 

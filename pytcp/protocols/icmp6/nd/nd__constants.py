@@ -246,7 +246,7 @@ ICMP6__MAX_DESYNC_FACTOR_S = 600
 
 # Linux net.ipv6.conf.<iface>.optimistic_dad policy. Controls
 # whether RFC 4429 Optimistic DAD is used: when enabled, a
-# tentative address is installed into '_ip6_host' as OPTIMISTIC
+# tentative address is installed into '_ip6_ifaddr' as OPTIMISTIC
 # immediately rather than waiting for DAD to pass. The address
 # is usable as outbound source during the DAD probe period, but
 # Neighbor Advertisements emitted while OPTIMISTIC clear the
@@ -647,7 +647,7 @@ register(
     description=(
         "Interval (seconds) between RFC 8981 temporary-address "
         "sweeps; default 60. Removes entries past 'valid_until' "
-        "from both the temp-address table and '_ip6_host'."
+        "from both the temp-address table and '_ip6_ifaddr'."
     ),
 )
 register(

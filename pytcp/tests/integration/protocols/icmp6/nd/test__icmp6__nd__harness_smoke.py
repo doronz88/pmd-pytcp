@@ -482,9 +482,9 @@ class TestNdHarnessSmoke(NdTestCase):
             STACK__MAC_ADDRESS,
             msg="Inherited stack MAC must be unchanged.",
         )
-        addresses = {host.address for host in self._packet_handler._ip6_host}
+        addresses = {host.address for host in self._packet_handler._ip6_ifaddr}
         self.assertIn(
             STACK__IP6_HOST.address,
             addresses,
-            msg="Inherited stack IPv6 host must be present in '_ip6_host'.",
+            msg="Inherited stack IPv6 host must be present in '_ip6_ifaddr'.",
         )

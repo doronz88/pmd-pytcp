@@ -779,8 +779,8 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
                 ip4_host.gateway = HOST_B__IP4_ADDRESS
                 ip6_host.gateway = HOST_B__IP6_ADDRESS
 
-        self._packet_handler._ip4_host = [ip4_host]
-        self._packet_handler._ip6_host = [ip6_host]
+        self._packet_handler._ip4_ifaddr = [ip4_host]
+        self._packet_handler._ip6_ifaddr = [ip6_host]
 
     def test__packet_handler__ethernet__tx(self) -> None:
         """

@@ -95,7 +95,7 @@ class _StubHandler(PacketHandlerIp4Tx):
         self._ip4_support = ip4_support
         self._interface_layer = interface_layer
         self._interface_mtu = interface_mtu
-        self._ip4_host = ip4_hosts if ip4_hosts is not None else [STACK__IP4_HOST]
+        self._ip4_ifaddr = ip4_hosts if ip4_hosts is not None else [STACK__IP4_HOST]
         self._ip4_multicast = [STACK__IP4_MULTICAST]
         self._ip4_id = 0
 
@@ -104,11 +104,11 @@ class _StubHandler(PacketHandlerIp4Tx):
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:
-        return [host.address for host in self._ip4_host]
+        return [host.address for host in self._ip4_ifaddr]
 
     @property
     def _ip4_broadcast(self) -> list[Ip4Address]:
-        return [host.network.broadcast for host in self._ip4_host] + [STACK__IP4_LIMITED_BROADCAST]
+        return [host.network.broadcast for host in self._ip4_ifaddr] + [STACK__IP4_LIMITED_BROADCAST]
 
     def _phtx_ethernet(self, **kwargs: object) -> TxStatus:
         self.ethernet_tx_calls.append(kwargs)

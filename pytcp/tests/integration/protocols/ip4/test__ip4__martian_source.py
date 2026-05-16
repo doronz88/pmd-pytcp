@@ -35,7 +35,7 @@ martian class is directed broadcast — the broadcast address of a
 locally configured subnet (e.g. 10.0.1.255 for a host on
 10.0.1.0/24). Recognising it requires per-interface subnet state,
 so the check lives in the IPv4 RX packet handler where the
-configured '_ip4_host' list is in scope.
+configured '_ip4_ifaddr' list is in scope.
 
 pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py
 

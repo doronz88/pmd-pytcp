@@ -89,7 +89,7 @@ class _StubHandler(PacketHandlerIp6Tx):
         self._ip6_support = ip6_support
         self._interface_layer = interface_layer
         self._interface_mtu = interface_mtu
-        self._ip6_host = ip6_hosts if ip6_hosts is not None else [STACK__IP6_HOST]
+        self._ip6_ifaddr = ip6_hosts if ip6_hosts is not None else [STACK__IP6_HOST]
         self._ip6_multicast = [STACK__IP6_MULTICAST]
         self._icmp6_slaac_addresses = []
         self._icmp6_temp_addresses = []
@@ -101,7 +101,7 @@ class _StubHandler(PacketHandlerIp6Tx):
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:
-        return [host.address for host in self._ip6_host]
+        return [host.address for host in self._ip6_ifaddr]
 
     def _phtx_ethernet(self, **kwargs: object) -> TxStatus:
         self.ethernet_tx_calls.append(kwargs)

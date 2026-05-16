@@ -31,7 +31,7 @@ The two helpers exposed here are scope-extraction
 ('common_prefix_len'), the data PyTCP's selector consumes when
 applying RFC 6724 §5 rules 2 and 8. The selector itself lives on
 the IPv6 TX mixin because it needs the runtime address book
-('_ip6_host', '_icmp6_slaac_addresses', '_icmp6_temp_addresses').
+('_ip6_ifaddr', '_icmp6_slaac_addresses', '_icmp6_temp_addresses').
 
 pytcp/protocols/ip6/ip6__source_selection.py
 

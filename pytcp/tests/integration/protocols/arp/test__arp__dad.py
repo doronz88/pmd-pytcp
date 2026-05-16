@@ -63,7 +63,7 @@ class TestArpDad(ArpTestCase):
     def test__arp__dad__no_conflict_admits_candidate(self) -> None:
         """
         Ensure the DAD flow with no conflicting RX frames during
-        the probe window admits the candidate IP to '_ip4_host'
+        the probe window admits the candidate IP to '_ip4_ifaddr'
         and emits the announcement after the probe loop completes.
         Three probes + one announcement = four wire frames.
 
@@ -72,25 +72,25 @@ class TestArpDad(ArpTestCase):
         """
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
-        addresses_before = {host.address for host in self._packet_handler._ip4_host}
+        addresses_before = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_before,
-            msg="Pre-condition: candidate IP must not already be in '_ip4_host'.",
+            msg="Pre-condition: candidate IP must not already be in '_ip4_ifaddr'.",
         )
 
         self._drive_dad()
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
             candidate_address,
             addresses_after,
-            msg=("Candidate IP must be admitted to '_ip4_host' once DAD completes " "without conflict."),
+            msg=("Candidate IP must be admitted to '_ip4_ifaddr' once DAD completes " "without conflict."),
         )
         self.assertEqual(
-            self._packet_handler._ip4_host_candidate,
+            self._packet_handler._ip4_ifaddr_candidate,
             [],
-            msg="'_ip4_host_candidate' must be drained once each candidate has been resolved.",
+            msg="'_ip4_ifaddr_candidate' must be drained once each candidate has been resolved.",
         )
         self.assertFalse(
             self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
@@ -111,7 +111,7 @@ class TestArpDad(ArpTestCase):
         Ensure a broadcast gratuitous ARP Request whose SPA
         matches our candidate IP and arrives during the probe
         window flags the candidate as conflicted and prevents
-        admission to '_ip4_host' — end-to-end pin of the
+        admission to '_ip4_ifaddr' — end-to-end pin of the
         probe-conflict MUST that commit cffd4841 closed
         (RX-vs-DAD set disconnect).
 
@@ -134,12 +134,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad(on_sleep=_inject_conflict)
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_after,
             msg=(
-                "Candidate IP must NOT be admitted to '_ip4_host' when a "
+                "Candidate IP must NOT be admitted to '_ip4_ifaddr' when a "
                 "conflicting gratuitous ARP Request is received during the probe window."
             ),
         )
@@ -153,7 +153,7 @@ class TestArpDad(ArpTestCase):
         Ensure a unicast ARP Reply addressed to us with SPA
         matching our candidate IP and TPA = unspecified (the
         canonical reply-to-our-probe shape) flags the candidate
-        as conflicted and prevents admission to '_ip4_host'.
+        as conflicted and prevents admission to '_ip4_ifaddr'.
 
         Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
         """
@@ -174,12 +174,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad(on_sleep=_inject_conflict)
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_after,
             msg=(
-                "Candidate IP must NOT be admitted to '_ip4_host' when a "
+                "Candidate IP must NOT be admitted to '_ip4_ifaddr' when a "
                 "unicast ARP Reply targeting our probe arrives during the probe window."
             ),
         )
@@ -215,12 +215,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad(on_sleep=_inject_conflict)
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_after,
             msg=(
-                "Candidate IP must NOT be admitted to '_ip4_host' when a "
+                "Candidate IP must NOT be admitted to '_ip4_ifaddr' when a "
                 "gratuitous ARP Reply for the candidate arrives during the probe window."
             ),
         )
@@ -289,7 +289,7 @@ class TestArpDad(ArpTestCase):
     def test__arp__dad__candidate_already_in_ip4_host_unchanged(self) -> None:
         """
         Ensure DAD does not displace already-claimed addresses
-        from '_ip4_host' regardless of probe outcome — the
+        from '_ip4_ifaddr' regardless of probe outcome — the
         non-candidate stack IP set up by 'NetworkTestCase' must
         still be present after DAD runs.
 
@@ -300,12 +300,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad()
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
             existing_address,
             addresses_after,
             msg=(
-                "Pre-existing stack IPs must remain in '_ip4_host' across the "
+                "Pre-existing stack IPs must remain in '_ip4_ifaddr' across the "
                 "DAD run; only candidates participate in the probe loop."
             ),
         )
@@ -524,12 +524,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad(on_sleep=_inject_conflict)
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_after,
             msg=(
-                "Candidate IP must NOT be admitted to '_ip4_host' when a peer "
+                "Candidate IP must NOT be admitted to '_ip4_ifaddr' when a peer "
                 "ARP Probe (SPA = 0) for the candidate arrives during the "
                 "probe window."
             ),
@@ -569,12 +569,12 @@ class TestArpDad(ArpTestCase):
 
         self._drive_dad(on_sleep=_inject_conflict, num_sleep_callbacks=5)
 
-        addresses_after = {host.address for host in self._packet_handler._ip4_host}
+        addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
             candidate_address,
             addresses_after,
             msg=(
-                "Candidate IP must NOT be admitted to '_ip4_host' when a "
+                "Candidate IP must NOT be admitted to '_ip4_ifaddr' when a "
                 "conflicting ARP arrives during the ANNOUNCE_WAIT window."
             ),
         )

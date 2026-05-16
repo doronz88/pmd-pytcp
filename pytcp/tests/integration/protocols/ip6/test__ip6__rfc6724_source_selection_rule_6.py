@@ -75,7 +75,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
 
         host_label_1_far = Ip6IfAddr("2400::7/64")
         host_label_2_close = Ip6IfAddr("2002:cb00::7/64")
-        self._packet_handler._ip6_host = [host_label_1_far, host_label_2_close]
+        self._packet_handler._ip6_ifaddr = [host_label_1_far, host_label_2_close]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
@@ -109,7 +109,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
 
         host_ula = Ip6IfAddr("fc00:1::7/64")
         host_6to4 = Ip6IfAddr("2002:0::7/64")
-        self._packet_handler._ip6_host = [host_ula, host_6to4]
+        self._packet_handler._ip6_ifaddr = [host_ula, host_6to4]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
@@ -135,7 +135,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
 
         host_gua = Ip6IfAddr("2620:0:1::7/64")
         host_ula = Ip6IfAddr("fd00:1::7/64")
-        self._packet_handler._ip6_host = [host_gua, host_ula]
+        self._packet_handler._ip6_ifaddr = [host_gua, host_ula]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
@@ -161,7 +161,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
 
         host_6to4 = Ip6IfAddr("2002:c612::7/64")
         host_ula = Ip6IfAddr("fd00:1::7/64")
-        self._packet_handler._ip6_host = [host_6to4, host_ula]
+        self._packet_handler._ip6_ifaddr = [host_6to4, host_ula]
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
@@ -197,7 +197,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
 
         host_matching_dep = Ip6IfAddr("2002:dead::7/64")  # label 2, will be DEPRECATED
         host_non_matching_pref = Ip6IfAddr("2620:0:1::7/64")  # label 1, PREFERRED
-        self._packet_handler._ip6_host = [host_matching_dep, host_non_matching_pref]
+        self._packet_handler._ip6_ifaddr = [host_matching_dep, host_non_matching_pref]
 
         now = time.monotonic()
         self._packet_handler._icmp6_slaac_addresses = [

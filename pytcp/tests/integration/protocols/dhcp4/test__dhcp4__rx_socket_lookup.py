@@ -188,7 +188,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
 
         # Pre-lease: clear the owned-host list so the socket binds
         # at local=0.0.0.0 the way the production INIT path does.
-        self._packet_handler._ip4_host = []
+        self._packet_handler._ip4_ifaddr = []
 
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:

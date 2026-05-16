@@ -1466,12 +1466,12 @@ class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
 
     def setUp(self) -> None:
         """
-        Build the standard mock stack, then clear '_ip4_host' so the
+        Build the standard mock stack, then clear '_ip4_ifaddr' so the
         derived '_ip4_unicast' is empty.
         """
 
         super().setUp()
-        self._packet_handler._ip4_host = []
+        self._packet_handler._ip4_ifaddr = []
 
     def test__packet_handler__ip4__rx__dhcp_client_no_unicast(self) -> None:
         """

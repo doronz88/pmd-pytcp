@@ -161,7 +161,7 @@ class TestIp6HarnessSmoke(Ip6TestCase):
 
     def test__ip6__harness__set_ip6_hosts_replaces_owned_list(self) -> None:
         """
-        Ensure '_set_ip6_hosts' replaces the stack's '_ip6_host'
+        Ensure '_set_ip6_hosts' replaces the stack's '_ip6_ifaddr'
         list with the supplied hosts. Source-selection tests rely
         on this controlled-owned-address contract.
 
@@ -173,11 +173,11 @@ class TestIp6HarnessSmoke(Ip6TestCase):
 
         self._set_ip6_hosts(a, b)
 
-        addresses = [host.address for host in self._packet_handler._ip6_host]
+        addresses = [host.address for host in self._packet_handler._ip6_ifaddr]
         self.assertEqual(
             addresses,
             [Ip6Address("2001:db8:1::10"), Ip6Address("2001:db8:2::20")],
-            msg="'_set_ip6_hosts' must replace '_ip6_host' with the supplied list in order.",
+            msg="'_set_ip6_hosts' must replace '_ip6_ifaddr' with the supplied list in order.",
         )
 
     def test__ip6__harness__network_test_case_state_intact(self) -> None:
@@ -193,9 +193,9 @@ class TestIp6HarnessSmoke(Ip6TestCase):
             STACK__MAC_ADDRESS,
             msg="Inherited stack MAC must be unchanged.",
         )
-        addresses = {host.address for host in self._packet_handler._ip6_host}
+        addresses = {host.address for host in self._packet_handler._ip6_ifaddr}
         self.assertIn(
             STACK__IP6_HOST.address,
             addresses,
-            msg="Inherited stack IPv6 host must be present in '_ip6_host'.",
+            msg="Inherited stack IPv6 host must be present in '_ip6_ifaddr'.",
         )

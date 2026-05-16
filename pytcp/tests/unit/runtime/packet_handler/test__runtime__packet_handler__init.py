@@ -105,10 +105,10 @@ class TestPacketHandlerBaseConstruction(TestCase):
 
         self.assertIsInstance(h._packet_stats_rx, PacketStatsRx)
         self.assertIsInstance(h._packet_stats_tx, PacketStatsTx)
-        self.assertEqual(h._ip4_host, [])
-        self.assertEqual(h._ip6_host, [])
-        self.assertEqual(h._ip4_host_candidate, [])
-        self.assertEqual(h._ip6_host_candidate, [])
+        self.assertEqual(h._ip4_ifaddr, [])
+        self.assertEqual(h._ip6_ifaddr, [])
+        self.assertEqual(h._ip4_ifaddr_candidate, [])
+        self.assertEqual(h._ip6_ifaddr_candidate, [])
         self.assertEqual(h._ip4_multicast, [])
         self.assertEqual(h._ip6_multicast, [])
         self.assertEqual(h._ip4_id, 0)
@@ -120,7 +120,7 @@ class TestPacketHandlerBaseConstruction(TestCase):
     def test__stack__packet_handler__init__ip4_host_seeds_candidate(self) -> None:
         """
         Ensure passing 'ip4_host=' seeds the candidate list (the
-        address still has to pass DAD before moving to _ip4_host).
+        address still has to pass DAD before moving to _ip4_ifaddr).
         """
 
         h = PacketHandlerL2(
@@ -132,9 +132,9 @@ class TestPacketHandlerBaseConstruction(TestCase):
         )
 
         self.assertEqual(
-            h._ip4_host_candidate,
+            h._ip4_ifaddr_candidate,
             [STACK__IP4_HOST],
-            msg="ip4_host constructor arg must seed the _ip4_host_candidate list.",
+            msg="ip4_host constructor arg must seed the _ip4_ifaddr_candidate list.",
         )
 
     def test__stack__packet_handler__init__ip6_host_seeds_candidate(self) -> None:
@@ -151,9 +151,9 @@ class TestPacketHandlerBaseConstruction(TestCase):
         )
 
         self.assertEqual(
-            h._ip6_host_candidate,
+            h._ip6_ifaddr_candidate,
             [STACK__IP6_HOST],
-            msg="ip6_host constructor arg must seed the _ip6_host_candidate list.",
+            msg="ip6_host constructor arg must seed the _ip6_ifaddr_candidate list.",
         )
 
 
@@ -169,7 +169,7 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
 
         h = _build_l2_handler()
-        h._ip4_host = [STACK__IP4_HOST]
+        h._ip4_ifaddr = [STACK__IP4_HOST]
 
         self.assertEqual(h._ip4_unicast, [STACK__IP4_HOST.address])
         self.assertEqual(h.ip4_unicast, [STACK__IP4_HOST.address])
@@ -181,7 +181,7 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
 
         h = _build_l2_handler()
-        h._ip6_host = [STACK__IP6_HOST]
+        h._ip6_ifaddr = [STACK__IP6_HOST]
 
         self.assertEqual(h._ip6_unicast, [STACK__IP6_HOST.address])
         self.assertEqual(h.ip6_unicast, [STACK__IP6_HOST.address])
@@ -193,7 +193,7 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
 
         h = _build_l2_handler()
-        h._ip4_host = [STACK__IP4_HOST]
+        h._ip4_ifaddr = [STACK__IP4_HOST]
 
         self.assertIn(
             STACK__IP4_HOST.network.broadcast,
@@ -221,11 +221,11 @@ class TestPacketHandlerAddressAssignment(TestCase):
         h = _build_l2_handler()
 
         h._assign_ip4_host(STACK__IP4_HOST)
-        self.assertEqual(h._ip4_host, [STACK__IP4_HOST])
+        self.assertEqual(h._ip4_ifaddr, [STACK__IP4_HOST])
         self.assertEqual(h._ip4_unicast, [STACK__IP4_HOST.address])
 
         h._remove_ip4_host(STACK__IP4_HOST)
-        self.assertEqual(h._ip4_host, [])
+        self.assertEqual(h._ip4_ifaddr, [])
         self.assertEqual(h._ip4_unicast, [])
 
     def test__stack__packet_handler__init__l2_ip6_assign_also_adds_mac_multicast(self) -> None:
@@ -289,16 +289,16 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
     def test__stack__packet_handler__init__l3_create_ip4_addressing_promotes_candidates(self) -> None:
         """
         Ensure PacketHandlerL3's '_create_stack_ip4_addressing' moves
-        every candidate into '_ip4_host' (no DAD on L3).
+        every candidate into '_ip4_ifaddr' (no DAD on L3).
         """
 
         h = _build_l3_handler()
-        h._ip4_host_candidate = [STACK__IP4_HOST]
+        h._ip4_ifaddr_candidate = [STACK__IP4_HOST]
 
         h._create_stack_ip4_addressing()
 
-        self.assertEqual(h._ip4_host, [STACK__IP4_HOST])
-        self.assertEqual(h._ip4_host_candidate, [])
+        self.assertEqual(h._ip4_ifaddr, [STACK__IP4_HOST])
+        self.assertEqual(h._ip4_ifaddr_candidate, [])
 
     def test__stack__packet_handler__init__l3_create_ip4_disables_ip4_when_empty(self) -> None:
         """
@@ -308,7 +308,7 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
 
         h = _build_l3_handler()
         h._ip4_support = True
-        h._ip4_host_candidate = []
+        h._ip4_ifaddr_candidate = []
 
         h._create_stack_ip4_addressing()
 
@@ -322,12 +322,12 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
 
         h = _build_l3_handler()
         h._send_icmp6_multicast_listener_report = MagicMock()  # type: ignore[method-assign]
-        h._ip6_host_candidate = [STACK__IP6_HOST]
+        h._ip6_ifaddr_candidate = [STACK__IP6_HOST]
 
         h._create_stack_ip6_addressing()
 
         self.assertIn(Ip6Address("ff02::1"), h._ip6_multicast)
-        self.assertIn(STACK__IP6_HOST, h._ip6_host)
+        self.assertIn(STACK__IP6_HOST, h._ip6_ifaddr)
 
 
 class TestPacketHandlerL2SubsystemLoop(TestCase):

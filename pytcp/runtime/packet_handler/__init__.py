@@ -118,10 +118,10 @@ class PacketHandler(Subsystem, ABC):
     _interface_name: str | None
     _ip6_support: bool
     _ip4_support: bool
-    _ip6_host_candidate: list[Ip6IfAddr]
-    _ip4_host_candidate: list[Ip4IfAddr]
-    _ip6_host: list[Ip6IfAddr]
-    _ip4_host: list[Ip4IfAddr]
+    _ip6_ifaddr_candidate: list[Ip6IfAddr]
+    _ip4_ifaddr_candidate: list[Ip4IfAddr]
+    _ip6_ifaddr: list[Ip6IfAddr]
+    _ip4_ifaddr: list[Ip4IfAddr]
     _ip6_multicast: list[Ip6Address]
     _ip4_multicast: list[Ip4Address]
     _ip6_id: int
@@ -186,12 +186,12 @@ class PacketHandler(Subsystem, ABC):
         self._ip4_support = ip4_support
 
         # Used to assign IP addresses to the stack.
-        self._ip6_host_candidate = []
-        self._ip4_host_candidate = []
+        self._ip6_ifaddr_candidate = []
+        self._ip4_ifaddr_candidate = []
 
         # Used to keep track of IPv6 and IPv4 unicast addresses.
-        self._ip6_host = []
-        self._ip4_host = []
+        self._ip6_ifaddr = []
+        self._ip4_ifaddr = []
 
         # Used to keep track of IPv6 and IPv4 multicast addresses.
         self._ip6_multicast = []
@@ -225,10 +225,10 @@ class PacketHandler(Subsystem, ABC):
 
         # Assign IP addresses statically.
         if ip6_host is not None:
-            self._ip6_host_candidate.append(ip6_host)
+            self._ip6_ifaddr_candidate.append(ip6_host)
 
         if ip4_host is not None:
-            self._ip4_host_candidate.append(ip4_host)
+            self._ip4_ifaddr_candidate.append(ip4_host)
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:
@@ -236,7 +236,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv6 unicast addresses.
         """
 
-        return [ip6_host.address for ip6_host in self._ip6_host]
+        return [ip6_host.address for ip6_host in self._ip6_ifaddr]
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:
@@ -244,7 +244,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv4 unicast addresses.
         """
 
-        return [ip4_host.address for ip4_host in self._ip4_host]
+        return [ip4_host.address for ip4_host in self._ip4_ifaddr]
 
     @property
     def _ip4_broadcast(self) -> list[Ip4Address]:
@@ -252,7 +252,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv4 broadcast addresses.
         """
 
-        ip4_broadcast = [ip4_host.network.broadcast for ip4_host in self._ip4_host]
+        ip4_broadcast = [ip4_host.network.broadcast for ip4_host in self._ip4_ifaddr]
         ip4_broadcast.append(Ip4Address(0xFFFFFFFF))
 
         return ip4_broadcast
@@ -341,7 +341,7 @@ class PacketHandler(Subsystem, ABC):
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        self._ip6_host.append(ip6_host)
+        self._ip6_ifaddr.append(ip6_host)
 
         __debug__ and log("stack", f"Assigned IPv6 unicast address {ip6_host}")
 
@@ -352,7 +352,7 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv6 host unicast address from the list stack listens on.
         """
 
-        self._ip6_host.remove(ip6_host)
+        self._ip6_ifaddr.remove(ip6_host)
 
         __debug__ and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
@@ -400,7 +400,7 @@ class PacketHandler(Subsystem, ABC):
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        self._ip4_host.append(ip4_host)
+        self._ip4_ifaddr.append(ip4_host)
 
         __debug__ and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
 
@@ -409,7 +409,7 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv4 host unicast address from the list stack listens on.
         """
 
-        self._ip4_host.remove(ip4_host)
+        self._ip4_ifaddr.remove(ip4_host)
 
         __debug__ and log("stack", f"Removed IPv4 unicast address {ip4_host}")
 
@@ -477,7 +477,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv4 host addresses.
         """
 
-        return self._ip6_host
+        return self._ip6_ifaddr
 
     @property
     def ip6_unicast(self) -> list[Ip6Address]:
@@ -493,7 +493,7 @@ class PacketHandler(Subsystem, ABC):
         Get the list of stack's IPv4 host addresses.
         """
 
-        return self._ip4_host
+        return self._ip4_ifaddr
 
     @property
     def ip4_unicast(self) -> list[Ip4Address]:
@@ -650,7 +650,7 @@ class PacketHandler(Subsystem, ABC):
         # '_ip6_addressing_complete' flag gates this so the
         # boot loop's own claim path doesn't double up. On
         # refresh ('existing is not None') no claim is needed
-        # — the stable address is already in '_ip6_host'.
+        # — the stable address is already in '_ip6_ifaddr'.
         if existing is None and self._ip6_addressing_complete:
             ip6_host = Ip6IfAddr((address, Ip6Mask("/64")))
             ip6_host.gateway = router_address
@@ -775,7 +775,7 @@ class PacketHandler(Subsystem, ABC):
             return host
 
         # Spawn async DAD claim. The worker will assign the
-        # address into '_ip6_host' on success or fall through
+        # address into '_ip6_ifaddr' on success or fall through
         # to the failure path on collision (where retries
         # exhaust before the temp-table entry is left
         # orphaned).
@@ -796,9 +796,9 @@ class PacketHandler(Subsystem, ABC):
         """
         Remove temporary addresses whose 'valid_until'
         deadline has passed from BOTH '_icmp6_temp_addresses'
-        AND '_ip6_host'. The lazy accessor
+        AND '_ip6_ifaddr'. The lazy accessor
         ('get_icmp6_temp_addresses') already filters out
-        expired entries at read time, but '_ip6_host' is the
+        expired entries at read time, but '_ip6_ifaddr' is the
         hot list that the RX dispatch and TX source-address
         selection both walk directly — leaving expired
         entries there would mean the host kept receiving on
@@ -823,14 +823,14 @@ class PacketHandler(Subsystem, ABC):
                 f"<INFO>RFC 8981 sweep: temp address {entry.address} "
                 f"(prefix {entry.prefix}) past valid_until — removing</>",
             )
-            # Drop from '_ip6_host'. The address may already
+            # Drop from '_ip6_ifaddr'. The address may already
             # be absent (e.g. if a manual operator action
             # removed it). The solicited-node multicast may
             # already be absent too (manual cleanup, never
             # joined). Both are tolerated — best-effort.
-            for ip6_host in list(self._ip6_host):
+            for ip6_host in list(self._ip6_ifaddr):
                 if ip6_host.address == entry.address:
-                    self._ip6_host.remove(ip6_host)
+                    self._ip6_ifaddr.remove(ip6_host)
                     snm = ip6_host.address.solicited_node_multicast
                     if snm in self._ip6_multicast:
                         self._remove_ip6_multicast(snm)
@@ -927,9 +927,9 @@ class PacketHandler(Subsystem, ABC):
     def _icmp6_sweep_slaac_addresses(self) -> None:
         """
         Remove stable SLAAC entries past 'valid_until' from
-        BOTH '_icmp6_slaac_addresses' AND '_ip6_host'. The
+        BOTH '_icmp6_slaac_addresses' AND '_ip6_ifaddr'. The
         lazy accessor 'get_icmp6_slaac_addresses()' already
-        filters expired entries at read time, but '_ip6_host'
+        filters expired entries at read time, but '_ip6_ifaddr'
         is the hot list TX and RX walk directly — the stable
         address must be pruned there too once its valid
         lifetime has elapsed.
@@ -953,9 +953,9 @@ class PacketHandler(Subsystem, ABC):
                 f"<INFO>SLAAC sweep: stable address {entry.address} "
                 f"(prefix {entry.prefix}) past valid_until — removing</>",
             )
-            for ip6_host in list(self._ip6_host):
+            for ip6_host in list(self._ip6_ifaddr):
                 if ip6_host.address == entry.address:
-                    self._ip6_host.remove(ip6_host)
+                    self._ip6_ifaddr.remove(ip6_host)
                     snm = ip6_host.address.solicited_node_multicast
                     if snm in self._ip6_multicast:
                         self._remove_ip6_multicast(snm)
@@ -1577,7 +1577,7 @@ class PacketHandlerL2(
             # Conflict — drop the per-address state entry; the
             # caller is responsible for reverting any pre-claim
             # (Optimistic-DAD wrapper removes the address from
-            # '_ip6_host'; the strict path never assigned it).
+            # '_ip6_ifaddr'; the strict path never assigned it).
             self._icmp6_dad__states.pop(ip6_unicast_candidate, None)
         else:
             __debug__ and log(
@@ -1612,7 +1612,7 @@ class PacketHandlerL2(
     def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6IfAddr) -> bool:
         """
         Claim 'ip6_host' using RFC 4429 §3 Optimistic DAD: the
-        address is installed into '_ip6_host' as OPTIMISTIC
+        address is installed into '_ip6_ifaddr' as OPTIMISTIC
         before the DAD probes are emitted, then the DAD probe
         loop runs as in the strict path. On success the state
         is promoted to VALID; on collision the address is
@@ -1750,9 +1750,9 @@ class PacketHandlerL2(
         self._assign_ip6_multicast(Ip6Address("ff02::1"))
 
         # Configure Link Local address(es) staticaly.
-        for ip6_host in list(self._ip6_host_candidate):
+        for ip6_host in list(self._ip6_ifaddr_candidate):
             if ip6_host.address.is_link_local:
-                self._ip6_host_candidate.remove(ip6_host)
+                self._ip6_ifaddr_candidate.remove(ip6_host)
                 _claim_ip6_address(ip6_host)
 
         # Configure Link Local address automatically.
@@ -1767,7 +1767,7 @@ class PacketHandlerL2(
 
         # If we don't have any link local address then disable
         # IPv6 protocol operations.
-        if not self._ip6_host:
+        if not self._ip6_ifaddr:
             __debug__ and log(
                 "stack",
                 "<WARN>Unable to assign any IPv6 link local address, " "disabling IPv6 protocol</>",
@@ -1776,8 +1776,8 @@ class PacketHandlerL2(
             return
 
         # Check if there are any statically configures GUA addresses.
-        for ip6_host in list(self._ip6_host_candidate):
-            self._ip6_host_candidate.remove(ip6_host)
+        for ip6_host in list(self._ip6_ifaddr_candidate):
+            self._ip6_ifaddr_candidate.remove(ip6_host)
             _claim_ip6_address(ip6_host)
 
         # Send out IPv6 Router Solicitation messages with
@@ -1876,15 +1876,15 @@ class PacketHandlerL2(
         # Probe each candidate sequentially via the Address API's
         # 'claim_with_acd' composite primitive (probe + announce
         # + install in one synchronous call). Each candidate stays
-        # in '_ip4_host_candidate' until its probe loop completes
+        # in '_ip4_ifaddr_candidate' until its probe loop completes
         # so the ARP RX path can match the address against the
         # candidate list when scoring inbound conflicts (see
         # 'packet_handler__arp__rx'). The API hides the underlying
         # RFC 5227 §2.1.1 probe / §2.3 announce helpers so this
         # path doesn't reach into '_arp_dad_*' directly.
-        for ip4_host in list(self._ip4_host_candidate):
+        for ip4_host in list(self._ip4_ifaddr_candidate):
             result = stack.address.claim_with_acd(ip4_host=ip4_host)
-            self._ip4_host_candidate.remove(ip4_host)
+            self._ip4_ifaddr_candidate.remove(ip4_host)
             if result.success:
                 __debug__ and log(
                     "stack",
@@ -1900,9 +1900,9 @@ class PacketHandlerL2(
         # not running, disable IPv4 outright. When DHCP IS running,
         # 'stack.start()' blocks on
         # 'dhcp4_client.start_and_wait_for_bind(...)' AFTER this
-        # method returns, so '_ip4_host' may still populate via the
+        # method returns, so '_ip4_ifaddr' may still populate via the
         # Address API before any IPv4 application traffic flows.
-        if not self._ip4_host and not self._ip4_dhcp:
+        if not self._ip4_ifaddr and not self._ip4_dhcp:
             __debug__ and log(
                 "stack",
                 "<WARN>No statically configured IPv4 address and DHCP " "disabled; disabling IPv4 protocol</>",
@@ -2059,11 +2059,11 @@ class PacketHandlerL3(
 
         self._assign_ip6_multicast(Ip6Address("ff02::1"))
 
-        for ip6_host in list(self._ip6_host_candidate):
-            self._ip6_host_candidate.remove(ip6_host)
+        for ip6_host in list(self._ip6_ifaddr_candidate):
+            self._ip6_ifaddr_candidate.remove(ip6_host)
             self._assign_ip6_host(ip6_host=ip6_host)
 
-        if not self._ip6_host:
+        if not self._ip6_ifaddr:
             __debug__ and log(
                 "stack",
                 "<WARN>Unable to assign any IPv6 address, disabling IPv6 " "protocol</>",
@@ -2077,11 +2077,11 @@ class PacketHandlerL3(
         should listen on.
         """
 
-        for ip4_host in list(self._ip4_host_candidate):
-            self._ip4_host_candidate.remove(ip4_host)
+        for ip4_host in list(self._ip4_ifaddr_candidate):
+            self._ip4_ifaddr_candidate.remove(ip4_host)
             self._assign_ip4_host(ip4_host=ip4_host)
 
-        if not self._ip4_host:
+        if not self._ip4_ifaddr:
             __debug__ and log(
                 "stack",
                 "<WARN>Unable to assign any IPv4 address, disabling IPv4 " "protocol</>",

@@ -103,13 +103,13 @@ class Ip4TestCase(NetworkTestCase):
 
     def _set_ip4_hosts(self, *hosts: Ip4IfAddr) -> None:
         """
-        Replace the stack's '_ip4_host' list with the given
+        Replace the stack's '_ip4_ifaddr' list with the given
         hosts. Used by source-selection tests that exercise
         'PacketHandler._select_ip4_source' against a controlled
         owned-address list.
         """
 
-        self._packet_handler._ip4_host = list(hosts)
+        self._packet_handler._ip4_ifaddr = list(hosts)
 
     def _drive_ip4_rx(self, *, frame: bytes) -> list[bytes]:
         """

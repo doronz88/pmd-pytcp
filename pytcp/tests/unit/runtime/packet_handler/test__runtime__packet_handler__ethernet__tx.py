@@ -108,8 +108,8 @@ class _StubHandler(PacketHandlerEthernetTx):
 
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
-        self._ip4_host = [STACK__IP4_HOST]
-        self._ip6_host = [STACK__IP6_HOST]
+        self._ip4_ifaddr = [STACK__IP4_HOST]
+        self._ip6_ifaddr = [STACK__IP6_HOST]
 
 
 def _build_ip4_assembler(*, src: Ip4Address, dst: Ip4Address) -> Ip4Assembler:
@@ -396,7 +396,7 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         host has no default gateway configured.
         """
 
-        self._handler._ip6_host = [STACK__IP6_HOST__NO_GW]
+        self._handler._ip6_ifaddr = [STACK__IP6_HOST__NO_GW]
 
         ip6 = _build_ip6_assembler(src=STACK__IP6_HOST__NO_GW.address, dst=Ip6Address("2001:db8:0:ffff::1"))
         status = self._handler._phtx_ethernet(ethernet__payload=ip6)
@@ -631,7 +631,7 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         host has no default gateway configured.
         """
 
-        self._handler._ip4_host = [STACK__IP4_HOST__NO_GW]
+        self._handler._ip4_ifaddr = [STACK__IP4_HOST__NO_GW]
 
         ip4 = _build_ip4_assembler(src=STACK__IP4_HOST__NO_GW.address, dst=Ip4Address("10.10.10.10"))
         status = self._handler._phtx_ethernet(ethernet__payload=ip4)

@@ -91,11 +91,11 @@ class _StubHandler(PacketHandlerArpTx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_support = ip4_support
         if ip4_host is not None:
-            self._ip4_host: list[Ip4IfAddr] = list(ip4_host)
-            self._ip4_unicast_list = [host.address for host in self._ip4_host]
+            self._ip4_ifaddr: list[Ip4IfAddr] = list(ip4_host)
+            self._ip4_unicast_list = [host.address for host in self._ip4_ifaddr]
         else:
             self._ip4_unicast_list = list(ip4_unicast) if ip4_unicast is not None else [STACK__IP4_ADDRESS]
-            self._ip4_host = [Ip4IfAddr(f"{addr}/24") for addr in self._ip4_unicast_list]
+            self._ip4_ifaddr = [Ip4IfAddr(f"{addr}/24") for addr in self._ip4_unicast_list]
 
         # Spy: record every call to _phtx_ethernet.
         self.ethernet_tx_calls: list[dict[str, object]] = []

@@ -72,7 +72,7 @@ class PacketHandlerIp6Tx(ABC):
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip6_host: list[Ip6IfAddr]
+        _ip6_ifaddr: list[Ip6IfAddr]
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int
@@ -299,7 +299,7 @@ class PacketHandlerIp6Tx(ABC):
         if ip6__src.is_unspecified and ip6__dst.is_unicast:
             selected = self._select_ip6_source(ip6__dst=ip6__dst)
             if selected is not None:
-                if any(ip6__dst in host.network for host in self._ip6_host):
+                if any(ip6__dst in host.network for host in self._ip6_ifaddr):
                     self._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
                 else:
                     self._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
@@ -343,7 +343,7 @@ class PacketHandlerIp6Tx(ABC):
     def _select_ip6_source(self, *, ip6__dst: Ip6Address) -> Ip6Address | None:
         """
         Run RFC 6724 default source-address selection over the
-        candidate set in '_ip6_host' and return the winner.
+        candidate set in '_ip6_ifaddr' and return the winner.
 
         The candidate set is the addresses owned by the stack;
         rule 1 short-circuits when the destination is itself
@@ -366,7 +366,7 @@ class PacketHandlerIp6Tx(ABC):
         DROPPED__IP6__SRC_UNSPECIFIED handling.
         """
 
-        candidates = [host.address for host in self._ip6_host]
+        candidates = [host.address for host in self._ip6_ifaddr]
         if not candidates:
             return None
 

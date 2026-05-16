@@ -162,7 +162,7 @@ class TestIp4HarnessSmoke(Ip4TestCase):
 
     def test__ip4__harness__set_ip4_hosts_replaces_owned_list(self) -> None:
         """
-        Ensure '_set_ip4_hosts' replaces the stack's '_ip4_host'
+        Ensure '_set_ip4_hosts' replaces the stack's '_ip4_ifaddr'
         list with the supplied hosts. Source-selection tests rely
         on this controlled-owned-address contract.
 
@@ -174,11 +174,11 @@ class TestIp4HarnessSmoke(Ip4TestCase):
 
         self._set_ip4_hosts(a, b)
 
-        addresses = [host.address for host in self._packet_handler._ip4_host]
+        addresses = [host.address for host in self._packet_handler._ip4_ifaddr]
         self.assertEqual(
             addresses,
             [Ip4Address("192.0.2.10"), Ip4Address("198.51.100.20")],
-            msg="'_set_ip4_hosts' must replace '_ip4_host' with the supplied list in order.",
+            msg="'_set_ip4_hosts' must replace '_ip4_ifaddr' with the supplied list in order.",
         )
 
     def test__ip4__harness__network_test_case_state_intact(self) -> None:
@@ -194,9 +194,9 @@ class TestIp4HarnessSmoke(Ip4TestCase):
             STACK__MAC_ADDRESS,
             msg="Inherited stack MAC must be unchanged.",
         )
-        addresses = {host.address for host in self._packet_handler._ip4_host}
+        addresses = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
             STACK__IP4_HOST.address,
             addresses,
-            msg="Inherited stack IPv4 host must be present in '_ip4_host'.",
+            msg="Inherited stack IPv4 host must be present in '_ip4_ifaddr'.",
         )

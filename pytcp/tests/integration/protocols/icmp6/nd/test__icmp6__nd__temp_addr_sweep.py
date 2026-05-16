@@ -32,7 +32,7 @@ sweep — nd_linux_parity §18c.1.
 
 When a temp address's 'valid_until' deadline passes, the
 sweep removes it from both '_icmp6_temp_addresses' and
-'_ip6_host'. Until §18c.2 ships the regeneration logic,
+'_ip6_ifaddr'. Until §18c.2 ships the regeneration logic,
 the sweep is cleanup-only — expired temps simply disappear
 without replacement.
 
@@ -124,7 +124,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
     """
     '_icmp6_sweep_temp_addresses()' removes entries whose
     'valid_until' deadline has passed from BOTH
-    '_icmp6_temp_addresses' AND '_ip6_host'.
+    '_icmp6_temp_addresses' AND '_ip6_ifaddr'.
     """
 
     def _make_temp(
@@ -179,7 +179,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
     def test__icmp6__nd__temp_addr_sweep__removes_expired_from_ip6_host(self) -> None:
         """
         Ensure the sweep removes the expired temp address
-        from '_ip6_host' (the hot list of addresses the
+        from '_ip6_ifaddr' (the hot list of addresses the
         stack listens on).
 
         Reference: RFC 8981 §3.4 (expired temp must not be
@@ -191,20 +191,20 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         # Insert into both tables so the sweep can find &
         # remove from each.
         self._packet_handler._icmp6_temp_addresses = [expired]
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{expired_addr}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{expired_addr}/64"))
 
         self.assertIn(
             Ip6Address(expired_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Pre-condition: expired temp must be in _ip6_host before the sweep.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Pre-condition: expired temp must be in _ip6_ifaddr before the sweep.",
         )
 
         self._packet_handler._icmp6_sweep_temp_addresses()
 
         self.assertNotIn(
             Ip6Address(expired_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Sweep must remove expired temp from _ip6_host.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Sweep must remove expired temp from _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__temp_addr_sweep__preserves_non_expired(self) -> None:
@@ -218,7 +218,7 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         active_addr = "2001:db8:0:1::cafe"
         active = self._make_temp(address=active_addr, prefix=PREFIX_A, offset_valid=86400)
         self._packet_handler._icmp6_temp_addresses = [active]
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{active_addr}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{active_addr}/64"))
 
         self._packet_handler._icmp6_sweep_temp_addresses()
 
@@ -229,22 +229,22 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         )
         self.assertIn(
             Ip6Address(active_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Active temp must remain in _ip6_host after sweep.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Active temp must remain in _ip6_ifaddr after sweep.",
         )
 
     def test__icmp6__nd__temp_addr_sweep__no_op_when_no_expired(self) -> None:
         """
         Ensure the sweep is a no-op when no entries have
         expired — '_icmp6_temp_addresses' length is unchanged
-        and no '_ip6_host' entries are removed.
+        and no '_ip6_ifaddr' entries are removed.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         active = self._make_temp(address="2001:db8:0:1::1234", prefix=PREFIX_A, offset_valid=3600)
         self._packet_handler._icmp6_temp_addresses = [active]
-        ip6_host_count_before = len(self._packet_handler._ip6_host)
+        ip6_host_count_before = len(self._packet_handler._ip6_ifaddr)
 
         self._packet_handler._icmp6_sweep_temp_addresses()
 
@@ -254,14 +254,14 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
             msg="No-op sweep must preserve all temp entries.",
         )
         self.assertEqual(
-            len(self._packet_handler._ip6_host),
+            len(self._packet_handler._ip6_ifaddr),
             ip6_host_count_before,
-            msg="No-op sweep must not touch _ip6_host.",
+            msg="No-op sweep must not touch _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__temp_addr_sweep__handles_temp_only_in_ip6_host(self) -> None:
         """
-        Ensure the sweep does NOT remove an _ip6_host entry
+        Ensure the sweep does NOT remove an _ip6_ifaddr entry
         that has no matching '_icmp6_temp_addresses' record
         — e.g. the stable SLAAC address. The sweep is
         scoped to the temp-address table.
@@ -269,10 +269,10 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        # Stable address present in _ip6_host but NOT in
+        # Stable address present in _ip6_ifaddr but NOT in
         # the temp table.
         stable_addr = "2001:db8:0:9::1"
-        self._packet_handler._ip6_host.append(Ip6IfAddr(f"{stable_addr}/64"))
+        self._packet_handler._ip6_ifaddr.append(Ip6IfAddr(f"{stable_addr}/64"))
 
         # An expired temp tracks a DIFFERENT address.
         expired = self._make_temp(address="2001:db8:0:1::dead", prefix=PREFIX_A, offset_valid=-1.0)
@@ -282,6 +282,6 @@ class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):
 
         self.assertIn(
             Ip6Address(stable_addr),
-            [h.address for h in self._packet_handler._ip6_host],
-            msg="Stable (non-temp) addresses in _ip6_host must NOT be touched by the temp sweep.",
+            [h.address for h in self._packet_handler._ip6_ifaddr],
+            msg="Stable (non-temp) addresses in _ip6_ifaddr must NOT be touched by the temp sweep.",
         )

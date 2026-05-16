@@ -162,7 +162,7 @@ class TestNetAddrIp6Host(TestCase):
         Initialize the IPv6 host object with testcase arguments.
         """
 
-        self._ip6_host = Ip6IfAddr(*self._args, **self._kwargs)
+        self._ip6_ifaddr = Ip6IfAddr(*self._args, **self._kwargs)
 
     def test__net_addr__ip6_host__str(self) -> None:
         """
@@ -170,7 +170,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            str(self._ip6_host),
+            str(self._ip6_ifaddr),
             self._results["__str__"],
         )
 
@@ -180,7 +180,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            repr(self._ip6_host),
+            repr(self._ip6_ifaddr),
             self._results["__repr__"],
         )
 
@@ -190,31 +190,31 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertTrue(
-            self._ip6_host == self._ip6_host,
+            self._ip6_ifaddr == self._ip6_ifaddr,
             msg="An Ip6IfAddr instance must compare equal to itself.",
         )
 
         self.assertTrue(
-            self._ip6_host == Ip6IfAddr(str(self._ip6_host)),
+            self._ip6_ifaddr == Ip6IfAddr(str(self._ip6_ifaddr)),
             msg="Ip6IfAddr must compare equal to one reconstructed from its string representation.",
         )
 
         self.assertFalse(
-            self._ip6_host == "not an IPv6 host",
+            self._ip6_ifaddr == "not an IPv6 host",
             msg="Ip6IfAddr must not compare equal to a foreign string value.",
         )
 
         self.assertFalse(
-            self._ip6_host == None,  # noqa: E711
+            self._ip6_ifaddr == None,  # noqa: E711
             msg="Ip6IfAddr must not compare equal to None.",
         )
 
         self.assertFalse(
-            self._ip6_host
+            self._ip6_ifaddr
             == Ip6IfAddr(
                 (
-                    Ip6Address((int(self._ip6_host.address) ^ 0x01) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
-                    self._ip6_host.network,
+                    Ip6Address((int(self._ip6_ifaddr.address) ^ 0x01) & 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF),
+                    self._ip6_ifaddr.network,
                 ),
             ),
             msg="Ip6IfAddr instances with different addresses must not compare equal.",
@@ -226,7 +226,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.version,
+            self._ip6_ifaddr.version,
             self._results["version"],
         )
 
@@ -237,7 +237,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.is_ip4,
+            self._ip6_ifaddr.is_ip4,
             self._results["is_ip4"],
         )
 
@@ -248,7 +248,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.is_ip6,
+            self._ip6_ifaddr.is_ip6,
             self._results["is_ip6"],
         )
 
@@ -258,7 +258,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.address,
+            self._ip6_ifaddr.address,
             self._results["address"],
         )
 
@@ -268,7 +268,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.network,
+            self._ip6_ifaddr.network,
             self._results["network"],
         )
 
@@ -279,7 +279,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.gateway,
+            self._ip6_ifaddr.gateway,
             self._results["gateway"],
         )
 
@@ -290,7 +290,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.origin,
+            self._ip6_ifaddr.origin,
             self._results["origin"],
         )
 
@@ -301,7 +301,7 @@ class TestNetAddrIp6Host(TestCase):
         """
 
         self.assertEqual(
-            self._ip6_host.expiration_time,
+            self._ip6_ifaddr.expiration_time,
             self._results["expiration_time"],
         )
 
@@ -1043,16 +1043,16 @@ class TestNetAddrIp6HostSetters(TestCase):
         Initialize a base IPv6 host for setter tests.
         """
 
-        self._ip6_host = Ip6IfAddr("2001:db8::1/64", origin=Ip6IfAddrSource.STATIC)
+        self._ip6_ifaddr = Ip6IfAddr("2001:db8::1/64", origin=Ip6IfAddrSource.STATIC)
 
     def test__net_addr__ip6_host__origin_setter(self) -> None:
         """
         Ensure the IPv6 host 'origin' setter stores the new value.
         """
 
-        self._ip6_host.origin = Ip6IfAddrSource.UNKNOWN
+        self._ip6_ifaddr.origin = Ip6IfAddrSource.UNKNOWN
         self.assertEqual(
-            self._ip6_host.origin,
+            self._ip6_ifaddr.origin,
             Ip6IfAddrSource.UNKNOWN,
             msg="The 'origin' setter must store the assigned value.",
         )
@@ -1062,9 +1062,9 @@ class TestNetAddrIp6HostSetters(TestCase):
         Ensure the IPv6 host 'expiration_time' setter stores the new value.
         """
 
-        self._ip6_host.expiration_time = 9999999999
+        self._ip6_ifaddr.expiration_time = 9999999999
         self.assertEqual(
-            self._ip6_host.expiration_time,
+            self._ip6_ifaddr.expiration_time,
             9999999999,
             msg="The 'expiration_time' setter must store the assigned value.",
         )
@@ -1074,9 +1074,9 @@ class TestNetAddrIp6HostSetters(TestCase):
         Ensure the IPv6 host 'gateway' setter accepts a link-local address.
         """
 
-        self._ip6_host.gateway = Ip6Address("fe80::1")
+        self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
         self.assertEqual(
-            self._ip6_host.gateway,
+            self._ip6_ifaddr.gateway,
             Ip6Address("fe80::1"),
             msg="The 'gateway' setter must store a valid link-local address.",
         )
@@ -1086,9 +1086,9 @@ class TestNetAddrIp6HostSetters(TestCase):
         Ensure the IPv6 host 'gateway' setter accepts a global address.
         """
 
-        self._ip6_host.gateway = Ip6Address("2001:db8::ffff")
+        self._ip6_ifaddr.gateway = Ip6Address("2001:db8::ffff")
         self.assertEqual(
-            self._ip6_host.gateway,
+            self._ip6_ifaddr.gateway,
             Ip6Address("2001:db8::ffff"),
             msg="The 'gateway' setter must store a valid global address.",
         )
@@ -1098,10 +1098,10 @@ class TestNetAddrIp6HostSetters(TestCase):
         Ensure the IPv6 host 'gateway' setter accepts None to clear the gateway.
         """
 
-        self._ip6_host.gateway = Ip6Address("fe80::1")
-        self._ip6_host.gateway = None
+        self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
+        self._ip6_ifaddr.gateway = None
         self.assertIsNone(
-            self._ip6_host.gateway,
+            self._ip6_ifaddr.gateway,
             msg="Assigning None to 'gateway' must clear the stored gateway.",
         )
 
@@ -1115,7 +1115,7 @@ class TestNetAddrIp6HostSetters(TestCase):
             Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject a non-global, non-link-local address.",
         ):
-            self._ip6_host.gateway = Ip6Address("fc00::1")
+            self._ip6_ifaddr.gateway = Ip6Address("fc00::1")
 
     def test__net_addr__ip6_host__gateway_setter__error__network_address(self) -> None:
         """
@@ -1126,7 +1126,7 @@ class TestNetAddrIp6HostSetters(TestCase):
             Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject the network address.",
         ):
-            self._ip6_host.gateway = Ip6Address("2001:db8::")
+            self._ip6_ifaddr.gateway = Ip6Address("2001:db8::")
 
     def test__net_addr__ip6_host__gateway_setter__error__host_address(self) -> None:
         """
@@ -1137,4 +1137,4 @@ class TestNetAddrIp6HostSetters(TestCase):
             Ip6IfAddrGatewayError,
             msg="The 'gateway' setter must reject the host's own address.",
         ):
-            self._ip6_host.gateway = Ip6Address("2001:db8::1")
+            self._ip6_ifaddr.gateway = Ip6Address("2001:db8::1")

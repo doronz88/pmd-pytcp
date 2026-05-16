@@ -209,8 +209,8 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         )
         self.assertNotIn(
             _CANDIDATE_HOST.address,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="DAD failure must still remove the address from _ip6_host.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="DAD failure must still remove the address from _ip6_ifaddr.",
         )
 
     def test__icmp6__nd__accept_dad__one_does_not_disable_ipv6(self) -> None:
@@ -258,14 +258,14 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
             self._packet_handler._ip6_support,
             msg="accept_dad=2 + DAD success must leave _ip6_support True.",
         )
-        # Address must be in _ip6_host (DAD passed).
+        # Address must be in _ip6_ifaddr (DAD passed).
         deadline = time.monotonic() + 1.0
         while time.monotonic() < deadline:
-            if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_host]:
+            if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_ifaddr]:
                 break
             time.sleep(0.005)
         self.assertIn(
             _CANDIDATE_HOST.address,
-            [host.address for host in self._packet_handler._ip6_host],
+            [host.address for host in self._packet_handler._ip6_ifaddr],
             msg="Successful DAD with accept_dad=2 must still install the address.",
         )

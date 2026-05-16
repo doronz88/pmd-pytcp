@@ -394,7 +394,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
     invokes the SLAAC mutator (existing §12a behaviour), and
     ALSO invokes the §18b temp-address mutator. The temp
     address ends up in '_icmp6_temp_addresses' and (after the
-    §20.1 DAD worker thread completes) in '_ip6_host'.
+    §20.1 DAD worker thread completes) in '_ip6_ifaddr'.
     """
 
     def tearDown(self) -> None:
@@ -500,7 +500,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
     def test__icmp6__nd__rfc8981__claim_worker_assigns_temp_to_ip6_host(self) -> None:
         """
         Ensure the DAD worker spawned for the temp address
-        eventually installs it into '_ip6_host' (DAD passes
+        eventually installs it into '_ip6_ifaddr' (DAD passes
         when 'icmp6.dad_transmits=0' so the worker
         immediately considers the claim successful).
 
@@ -531,12 +531,12 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
                 temp_address = self._packet_handler._icmp6_temp_addresses[0].address
                 deadline = time.monotonic() + 1.0
                 while time.monotonic() < deadline:
-                    if temp_address in [host.address for host in self._packet_handler._ip6_host]:
+                    if temp_address in [host.address for host in self._packet_handler._ip6_ifaddr]:
                         break
                     time.sleep(0.005)
 
         self.assertIn(
             temp_address,
-            [host.address for host in self._packet_handler._ip6_host],
-            msg="DAD worker must install the temp address into '_ip6_host' after DAD passes.",
+            [host.address for host in self._packet_handler._ip6_ifaddr],
+            msg="DAD worker must install the temp address into '_ip6_ifaddr' after DAD passes.",
         )

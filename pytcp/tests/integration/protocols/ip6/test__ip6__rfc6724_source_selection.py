@@ -70,12 +70,12 @@ class TestRfc6724Rule1SameAddress(Ip6TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip6_host' with one stack address whose value
+        Populate '_ip6_ifaddr' with one stack address whose value
         coincides with the destination used in the rule-1 case.
         """
 
         super().setUp()
-        self._packet_handler._ip6_host = [_HOST_PREFIX_A]
+        self._packet_handler._ip6_ifaddr = [_HOST_PREFIX_A]
         self._packet_handler._icmp6_slaac_addresses = []
 
     def test__ip6__rfc6724_rule1__dst_equals_candidate__returns_dst(self) -> None:
@@ -107,12 +107,12 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip6_host' with one link-local and one global
+        Populate '_ip6_ifaddr' with one link-local and one global
         candidate so the selector has to choose between scopes.
         """
 
         super().setUp()
-        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL, _HOST_PREFIX_A]
+        self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL, _HOST_PREFIX_A]
         self._packet_handler._icmp6_slaac_addresses = []
 
     def test__ip6__rfc6724_rule2__global_dst_picks_global_source(self) -> None:
@@ -174,7 +174,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
         NOT leak off-link).
         """
 
-        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
+        self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
         result = self._packet_handler._select_ip6_source(
             ip6__dst=_DST_OUTSIDE_ALL,
@@ -203,7 +203,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
         ff02:: has scop=2 = link-local).
         """
 
-        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
+        self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
         result = self._packet_handler._select_ip6_source(
             ip6__dst=Ip6Address("ff02::1"),
@@ -229,7 +229,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
         scope).
         """
 
-        self._packet_handler._ip6_host = [_HOST_LINK_LOCAL]
+        self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
         result = self._packet_handler._select_ip6_source(
             ip6__dst=Ip6Address("ff0e::1"),
@@ -248,13 +248,13 @@ class TestRfc6724Rule3Deprecated(Ip6TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip6_host' with two SLAAC-derived candidates and
+        Populate '_ip6_ifaddr' with two SLAAC-derived candidates and
         '_icmp6_slaac_addresses' with one PREFERRED entry and one
         DEPRECATED entry so rule 3 has data to act on.
         """
 
         super().setUp()
-        self._packet_handler._ip6_host = [_HOST_PREFIX_A, _HOST_PREFIX_B]
+        self._packet_handler._ip6_ifaddr = [_HOST_PREFIX_A, _HOST_PREFIX_B]
         now = time.monotonic()
         self._packet_handler._icmp6_slaac_addresses = [
             Icmp6SlaacAddress(
@@ -309,7 +309,7 @@ class TestRfc6724Rule3Deprecated(Ip6TestCase):
         Reference: RFC 4862 §5.5.4 (state applies to autoconfigured addresses).
         """
 
-        self._packet_handler._ip6_host = [_HOST_PREFIX_A, _HOST_PREFIX_C]
+        self._packet_handler._ip6_ifaddr = [_HOST_PREFIX_A, _HOST_PREFIX_C]
         # _HOST_PREFIX_A is DEPRECATED in the slaac list. _HOST_PREFIX_C
         # is absent — therefore PREFERRED by default.
         self._packet_handler._icmp6_slaac_addresses = [
@@ -337,14 +337,14 @@ class TestRfc6724Rule8LongestMatch(Ip6TestCase):
 
     def setUp(self) -> None:
         """
-        Populate '_ip6_host' with three same-scope same-state
+        Populate '_ip6_ifaddr' with three same-scope same-state
         candidates whose prefixes differ in the third hextet so
         the selector has a clean rule-8 tiebreak after rules 1,
         2, 3 collapse into ties.
         """
 
         super().setUp()
-        self._packet_handler._ip6_host = [
+        self._packet_handler._ip6_ifaddr = [
             _HOST_PREFIX_A,
             _HOST_PREFIX_B,
             _HOST_PREFIX_C,
@@ -402,7 +402,7 @@ class TestRfc6724SelectorBoundaries(Ip6TestCase):
 
     def test__ip6__rfc6724__no_candidates_returns_none(self) -> None:
         """
-        Ensure the selector returns None when '_ip6_host' is
+        Ensure the selector returns None when '_ip6_ifaddr' is
         empty — the IPv6 TX path must fall back to the existing
         DROPPED__IP6__SRC_UNSPECIFIED handling rather than
         raise.
@@ -410,7 +410,7 @@ class TestRfc6724SelectorBoundaries(Ip6TestCase):
         Reference: RFC 6724 §5 (Source Address Selection).
         """
 
-        self._packet_handler._ip6_host = []
+        self._packet_handler._ip6_ifaddr = []
 
         result = self._packet_handler._select_ip6_source(
             ip6__dst=_DST_OUTSIDE_ALL,
@@ -437,7 +437,7 @@ class TestRfc6724SelectorBoundaries(Ip6TestCase):
         # AND _HOST_PREFIX_B is PREFERRED (rule 3 would prefer it)
         # Rule 1 must win.
         now = time.monotonic()
-        self._packet_handler._ip6_host = [_HOST_PREFIX_A, _HOST_PREFIX_B]
+        self._packet_handler._ip6_ifaddr = [_HOST_PREFIX_A, _HOST_PREFIX_B]
         self._packet_handler._icmp6_slaac_addresses = [
             Icmp6SlaacAddress(
                 address=_HOST_PREFIX_A.address,
