@@ -191,6 +191,44 @@ calling ```stack.init(...)```, and driving the stack — see
 
 ### Examples
 
+#### ARP Probe / Announcement (RFC 5227 Address Conflict Detection)
+
+On startup the stack defends each configured IPv4 address: it sends three ARP **Probes**
+(sender `0.0.0.0`), and if no host objects, claims the address with two ARP
+**Announcements** (sender = target).
+
+Stack log:
+
+```text
+0000.29 | ARP   | TX - ARP Request 0.0.0.0 / 02:00:00:77:77:77 > 192.168.9.7 / 00:00:00:00:00:00
+0000.29 | STACK | Sent out ARP Probe for 192.168.9.7
+0002.20 | STACK | Sent out ARP Probe for 192.168.9.7
+0004.11 | STACK | Sent out ARP Probe for 192.168.9.7
+0007.65 | ARP   | TX - ARP Request 192.168.9.7 / 02:00:00:77:77:77 > 192.168.9.7 / 00:00:00:00:00:00
+0007.65 | STACK | Sent out ARP Announcement for 192.168.9.7
+0009.65 | STACK | Sent out ARP Announcement for 192.168.9.7
+0009.65 | STACK | Successfully claimed IPv4 address 192.168.9.7
+```
+
+Wire capture (`tshark -i tap7 -f arp`):
+
+```text
+1  0.000000  Who has 192.168.9.7?  (ARP Probe)
+2  1.909315  Who has 192.168.9.7?  (ARP Probe)
+3  3.821676  Who has 192.168.9.7?  (ARP Probe)
+5  7.365211  ARP Announcement for 192.168.9.7
+6  9.365800  ARP Announcement for 192.168.9.7
+```
+
+Probe vs. Announcement, decoded (`tshark -V`):
+
+```text
+ARP Probe         Opcode: request   Sender IP: 0.0.0.0       Target IP: 192.168.9.7
+ARP Announcement  Opcode: request   Sender IP: 192.168.9.7   Target IP: 192.168.9.7
+```
+
+<br>
+
 #### Several ping packets and two monkeys were delivered via TCP over the IPv6 protocol.
 
 ![Sample PyTCP log output](docs/images/malpi_00.png)
