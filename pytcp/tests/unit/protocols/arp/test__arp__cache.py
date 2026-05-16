@@ -219,10 +219,10 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
         eth = EthernetAssembler()
         self._cache.enqueue_pending(ip4_address=ip, ethernet_packet_tx=eth)
 
-        self.assertIs(
-            self._cache._entries[ip].queued_packet,
-            eth,
-            msg="enqueue_pending must store the packet on the INCOMPLETE entry.",
+        self.assertEqual(
+            list(self._cache._entries[ip].queued_packets),
+            [eth],
+            msg="enqueue_pending must append the packet to the INCOMPLETE entry's pending queue.",
         )
 
 

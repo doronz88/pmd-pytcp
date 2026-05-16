@@ -221,32 +221,40 @@ requirement. PyTCP relies on (1) Timeout exclusively.
 > destined to the same unresolved IP address, and transmit
 > the saved packet when the address has been resolved."
 
-**Adherence:** **not met**. PyTCP's TX flow on a cache
-miss is to discard the original packet and rely on the
-upper-layer retransmit:
+**Adherence:** **met — and exceeded.** PyTCP saves
+unresolved packets in a bounded per-neighbour queue and
+flushes them all on resolution, mirroring the Linux
+`neigh->arp_queue` (`net/core/neighbour.c`):
 
-- `ArpCache.find_entry` returns `None` and fires an ARP
-  Request (`pytcp/stack/arp_cache.py:175-181`).
-- The caller — the IPv4 TX path that needed the resolution
-  — does not store the packet anywhere; it returns a
-  `TxStatus.DROPPED__ETHER__DST_RESOLUTION_FAIL` (or
-  similar) up the stack, and the TCP/UDP/ICMP layer's
-  retransmit timer is the only thing that drives a retry.
+- On a cache miss the IPv4 Ethernet-TX path calls
+  `stack.arp_cache.enqueue_pending(...)` for both the
+  on-link and the gateway branch
+  (`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
+  appending the dropped Ethernet frame to the INCOMPLETE
+  entry's pending queue.
+- The generic `NeighborCache` (`pytcp/lib/neighbor.py`)
+  holds the pending packets in a `deque` bounded by the
+  `neighbor.unres_qlen` sysctl (Linux
+  `net.ipv4.neigh.default.unres_qlen`; default 64,
+  sized to hold every fragment of a maximum-size IPv4
+  datagram at a 1500-byte MTU). On overflow the **oldest**
+  packet is dropped (Linux drop-from-head policy), keeping
+  the newest within the bound.
+- When the ARP Reply arrives, `__update_arp_cache` →
+  `arp_cache.add_entry` → `NeighborCache._add_entry`
+  drains the whole queue and re-emits every frame in
+  **FIFO arrival order** through the resolved MAC. The
+  same generic mechanism serves IPv6/ND, so the latent
+  fragmented-IPv6 case is covered too.
 
-This is a SHOULD-strength deviation, but the practical
-impact matches the RFC's explicit warning:
-- TCP SYN: the initial SYN is lost, RTT estimate inflated
-  by the RFC 6298 `INITIAL_RTO` (1 second);
-- UDP-based DNS: the first query is lost, the resolver
-  must time out and retry;
-- One-shot ICMP echo: the first ping is lost, `ping(1)`
-  reports 1/2 packets and a brief delay.
-
-The "save at least one (latest)" formulation maps cleanly
-onto a `dict[Ip4Address, ArpAssembler-or-buffer]` in the
-ARP cache subsystem with `add_entry()` flushing the queue
-for that IP on resolution. The fix has no RFC interaction
-beyond §2.3.2.2 itself.
+The RFC's SHOULD floor is "at least one (the latest)";
+PyTCP exceeds it by saving *all* packets within the
+bound. This is required for correctness, not just
+performance: a fragmented datagram is several link-layer
+packets, and a single-slot "latest only" queue would
+make every fragmented datagram to an unresolved neighbour
+unreassemblable. There is no RFC interaction beyond
+§2.3.2.2 itself.
 
 > "DISCUSSION: Failure to follow this recommendation
 > causes the first packet of every exchange to be lost.
@@ -284,10 +292,11 @@ requirements; pasting it here for traceability:
 | Flush out-of-date ARP cache entries          | 2.3.2.1     | x    |        |     | met                         |
 | Prevent ARP floods                           | 2.3.2.1     | x    |        |     | **not met** — see §2.3.2.1  |
 | Cache timeout configurable                   | 2.3.2.1     |      | x      |     | met (stack.init kwargs)     |
-| Save at least one (latest) unresolved pkt    | 2.3.2.2     |      | x      |     | **not met** — see §2.3.2.2  |
+| Save at least one (latest) unresolved pkt    | 2.3.2.2     |      | x      |     | met (exceeds — bounded queue) |
 
-Two of the four requirements (one MUST, one SHOULD) are
-not met today. The MUST ("Prevent ARP floods") is the
+One of the four requirements (the MUST "Prevent ARP
+floods") is not met today; the §2.3.2.2 SHOULD is now met
+and exceeded. The MUST ("Prevent ARP floods") is the
 priority blocker; the SHOULD ("Save at least one ...")
 is the highest-leverage user-visible improvement.
 
@@ -363,23 +372,29 @@ target IP as TPA).
 
 **Status:** **locked in**.
 
-### §2.3.2.2 — Save unresolved packet (SHOULD, NOT MET)
+### §2.3.2.2 — Save unresolved packet (SHOULD, MET — exceeded)
 
-**No test surface — gap not yet closed.** When the gap is
-closed, the natural test is one that:
+**Locked in.** Pinned at both layers:
 
-1. constructs a `PacketHandler` with no ARP cache entry
-   for IP `X`;
-2. drives an outbound IPv4 packet destined for `X`
-   through `_phtx_ip4`;
-3. drives an inbound ARP Reply resolving `X → MAC`;
-4. asserts the original IPv4 packet appears in
-   `tx_ring._tx_deque` (or equivalent observable) within
-   a small bounded window after the Reply is processed.
+- Unit (`pytcp/tests/unit/lib/test__lib__neighbor.py`,
+  `TestNeighborCachePendingQueue`): all queued packets
+  flush in FIFO order on resolution; the queue is bounded
+  by `neighbor.unres_qlen` and drops the **oldest** on
+  overflow (keeping the newest within the bound).
+- Integration
+  (`pytcp/tests/integration/protocols/arp/test__arp__resolution_flow.py`):
+  drives three outbound IPv4 packets to an unresolved IP,
+  then an inbound ARP Reply, and asserts all three are
+  flushed in FIFO arrival order with the resolved MAC.
+- Adapter
+  (`pytcp/tests/unit/protocols/arp/test__arp__cache.py`):
+  `enqueue_pending` appends to the INCOMPLETE entry's
+  pending queue.
 
-A second test should pin "only the latest packet is
-saved": queue 5 packets to `X` while unresolved, resolve,
-assert exactly 1 packet is sent post-resolution.
+PyTCP saves *all* packets within the bound (not just the
+latest), exceeding the SHOULD floor — required so a
+fragmented datagram (multiple link-layer packets) to an
+unresolved neighbour survives resolution intact.
 
 ### Test coverage summary
 

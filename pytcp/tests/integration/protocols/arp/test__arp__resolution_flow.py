@@ -255,14 +255,17 @@ class TestArpResolutionFlow(ArpTestCase):
             ),
         )
 
-    def test__arp__resolution__only_latest_packet_kept(self) -> None:
+    def test__arp__resolution__all_queued_packets_flushed_in_fifo_order(self) -> None:
         """
         Ensure that when multiple outbound packets are queued
-        against the same unresolved IP, only the most recently
-        queued packet is delivered post-resolution — RFC 1122
-        §2.3.2.2 says "save at least one (the latest)".
+        against the same unresolved IP, every one is delivered
+        in arrival order once the MAC resolves — not just the
+        latest. A fragmented datagram is several link-layer
+        packets, so keeping only the newest would lose it;
+        PyTCP mirrors the Linux bounded per-neighbour queue,
+        which exceeds the "save at least one" SHOULD floor.
 
-        Reference: RFC 1122 §2.3.2.2 (save the latest unresolved packet).
+        Reference: RFC 1122 §2.3.2.2 (save unresolved packets, transmit on resolution).
         """
 
         self._drive_outbound_ip4(dst=HOST_A__IP4_ADDRESS, ip4_id=_IP4_ID__FIRST)
@@ -275,12 +278,11 @@ class TestArpResolutionFlow(ArpTestCase):
 
         self.assertEqual(
             self._flushed_ip4_ids(),
-            [_IP4_ID__THIRD],
+            [_IP4_ID__FIRST, _IP4_ID__SECOND, _IP4_ID__THIRD],
             msg=(
-                "Post-resolution, only the most recently queued packet "
-                f"(id={_IP4_ID__THIRD:#06x}) must appear on the wire. The "
-                "first two queued packets must have been overwritten. Got "
-                f"flushed IDs: {[hex(i) for i in self._flushed_ip4_ids()]!r}"
+                "Post-resolution, every queued packet must be flushed in "
+                "FIFO arrival order. Got flushed IDs: "
+                f"{[hex(i) for i in self._flushed_ip4_ids()]!r}"
             ),
         )
 

@@ -1085,3 +1085,60 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
                     "would lose the queued TX. RFC 1122 §2.3.2.2."
                 ),
             )
+
+
+class TestNeighborCachePendingQueue(_NeighborCacheFixture):
+    """
+    The RFC 1122 §2.3.2.2 bounded pending-packet queue
+    (Linux 'neigh->arp_queue' semantics).
+    """
+
+    def test__lib__neighbor__pending_queue_flushes_all_in_fifo_order(self) -> None:
+        """
+        Ensure every packet queued against an unresolved
+        neighbour is delivered, in arrival order, once the MAC
+        resolves — not just the most recent one (a fragmented
+        datagram is several link-layer packets).
+
+        Reference: RFC 1122 §2.3.2.2 (save unresolved packets, transmit on resolution).
+        """
+
+        p1, p2, p3 = object(), object(), object()
+
+        with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+            self._cache._find_entry(ADDR_A)
+            self._cache._enqueue_pending(ADDR_A, p1)
+            self._cache._enqueue_pending(ADDR_A, p2)
+            self._cache._enqueue_pending(ADDR_A, p3)
+            self._cache._add_entry(ADDR_A, MAC_A)
+
+        self.assertEqual(
+            self._flush_calls,
+            [(p1, MAC_A), (p2, MAC_A), (p3, MAC_A)],
+            msg="All queued packets must flush in FIFO order on resolution.",
+        )
+
+    def test__lib__neighbor__pending_queue_bounded_drops_oldest(self) -> None:
+        """
+        Ensure the pending queue is bounded by the
+        'neighbor.unres_qlen' sysctl and, on overflow, drops
+        the oldest packet (keeping the newest within the
+        bound) — matching the Linux unresolved-queue policy.
+
+        Reference: RFC 1122 §2.3.2.2 (save unresolved packets, transmit on resolution).
+        """
+
+        p1, p2, p3, p4, p5 = object(), object(), object(), object(), object()
+
+        with sysctl_module.override("neighbor.unres_qlen", 3):
+            with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+                self._cache._find_entry(ADDR_A)
+                for pkt in (p1, p2, p3, p4, p5):
+                    self._cache._enqueue_pending(ADDR_A, pkt)
+                self._cache._add_entry(ADDR_A, MAC_A)
+
+        self.assertEqual(
+            self._flush_calls,
+            [(p3, MAC_A), (p4, MAC_A), (p5, MAC_A)],
+            msg="Overflow must drop the oldest packets and keep the newest within unres_qlen.",
+        )

@@ -89,6 +89,16 @@ NEIGHBOR__GC_THRESH3 = 1024
 # gc_thresh2.
 NEIGHBOR__GC_STALE_TIME = 60
 
+# Maximum number of outbound packets queued against a single
+# unresolved neighbour while ARP/ND resolution is in flight
+# (Linux 'net.ipv4.neigh.default.unres_qlen'). On overflow the
+# oldest queued packet is dropped. Linux moved from a 3-packet
+# 'unres_qlen' to a byte-based 'unres_qlen_bytes' precisely so a
+# fragmented datagram fits the queue; PyTCP keeps a packet-count
+# knob and defaults it high enough to hold every fragment of a
+# maximum-size IPv4 datagram at a 1500-byte MTU (~45 fragments).
+NEIGHBOR__UNRES_QLEN = 64
+
 
 def _is_non_negative_int(name: str) -> Callable[[Any], None]:
     """
@@ -178,6 +188,14 @@ register(
     default=NEIGHBOR__GC_STALE_TIME,
     validator=is_positive_int("neighbor.gc_stale_time"),
     description="Time STALE entries must age before GC-eligible above gc_thresh2, seconds.",
+)
+register(
+    key="neighbor.unres_qlen",
+    module_name=__name__,
+    attr="NEIGHBOR__UNRES_QLEN",
+    default=NEIGHBOR__UNRES_QLEN,
+    validator=is_positive_int("neighbor.unres_qlen"),
+    description="Max packets queued per unresolved neighbour; drop-oldest on overflow.",
 )
 
 

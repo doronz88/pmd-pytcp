@@ -57,6 +57,7 @@ ver 3.0.4
 
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from enum import auto
 from typing import Callable, override
@@ -104,7 +105,7 @@ class NeighborEntry[A: Ip4Address | Ip6Address, P = object]:
     state: NudState = NudState.INCOMPLETE
     state_changed_at: float = 0.0
     probe_count: int = 0
-    queued_packet: P | None = field(default=None)
+    queued_packets: deque[P] = field(default_factory=deque)
     last_used_at: float = 0.0
 
 
@@ -268,18 +269,19 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 )
                 return
 
-            queued_packet = entry.queued_packet
+            queued_packets = list(entry.queued_packets)
+            entry.queued_packets.clear()
             object.__setattr__(entry, "mac_address", mac_address)
-            object.__setattr__(entry, "queued_packet", None)
             object.__setattr__(entry, "probe_count", 0)
             self._transition(entry, NudState.REACHABLE, now)
 
-            if queued_packet is not None and self._flush_callback is not None:
+            if queued_packets and self._flush_callback is not None:
                 __debug__ and log(
                     "stack",
-                    f"NUD: {address} resolved → flushing queued packet",
+                    f"NUD: {address} resolved → flushing {len(queued_packets)} queued packet(s)",
                 )
-                self._flush_callback(queued_packet, mac_address)
+                for queued_packet in queued_packets:
+                    self._flush_callback(queued_packet, mac_address)
 
     def _add_permanent_entry(self, address: A, mac_address: MacAddress) -> None:
         """
@@ -320,14 +322,16 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 self._transition(entry, NudState.REACHABLE, time.monotonic())
                 object.__setattr__(entry, "probe_count", 0)
 
-    def _enqueue_pending(self, address: A, packet: object) -> None:
+    def _enqueue_pending(self, address: A, packet: P) -> None:
         """
-        Save the most recent outbound packet for an
-        INCOMPLETE address so 'add_entry' can dispatch it
-        once the MAC is resolved (RFC 1122 §2.3.2.2).
-        Subsequent calls overwrite — only the latest is
-        kept, matching the SHOULD's "at least one (the
-        latest)" wording.
+        Append an outbound packet to the INCOMPLETE address's
+        bounded pending queue so 'add_entry' can dispatch all
+        of them once the MAC is resolved (RFC 1122 §2.3.2.2).
+        A fragmented datagram is several link-layer packets,
+        so the queue holds many — bounded by the
+        'neighbor.unres_qlen' sysctl, dropping the oldest on
+        overflow (Linux 'neigh->arp_queue' policy: keep the
+        newest within the limit).
         """
 
         with self._lock:
@@ -338,7 +342,13 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 # ignore rather than raise; the protocol's
                 # next find will create the entry.
                 return
-            object.__setattr__(entry, "queued_packet", packet)
+            # Re-resolve the bound on every enqueue so a live
+            # sysctl override takes effect immediately.
+            bound = nbr_const.NEIGHBOR__UNRES_QLEN
+            queue = entry.queued_packets
+            while len(queue) >= bound:
+                queue.popleft()
+            queue.append(packet)
 
     # ------------------------------------------------------------
     # Subsystem loop — timer-driven transitions.
@@ -447,7 +457,8 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
         Entries that are NEVER eviction-eligible:
           - PERMANENT (operator-configured static neighbours).
           - INCOMPLETE / PROBE / DELAY entries with a
-            'queued_packet' set (would lose the queued TX).
+            non-empty 'queued_packets' queue (would lose the
+            queued TX).
 
         Eviction priority is deliberately conservative —
         FAILED first (no working neighbour to lose), then
@@ -469,7 +480,7 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
             evictable = [
                 entry
                 for entry in self._entries.values()
-                if entry.state is not NudState.PERMANENT and entry.queued_packet is None
+                if entry.state is not NudState.PERMANENT and not entry.queued_packets
             ]
 
             # Tier 1 — FAILED entries (oldest first).
