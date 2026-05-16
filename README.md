@@ -332,3 +332,29 @@ timestamps on the handshake, resolves the peer's MAC via ARP
 mid-handshake, segments the echoed monkeys to the MSS, and tracks
 the peer's cumulative ACKs — a complete TCP connection driven
 entirely by pure-Python code.
+
+#### Monkeys over UDP — IPv4 fragmentation
+
+The same ASCII monkeys, echoed over the UDP service. The reply
+(~1.5 KB) exceeds the 1500-byte link MTU, so the stack
+IPv4-fragments it — the classic "IP fragmentation" demo, captured
+for real.
+
+On the wire (`tshark -i tap7`; `.10` = peer, `.77` = the stack;
+columns: time, src, dst, IP-id, MF, frag-offset):
+
+```text
+38.987  .10 → .77   id=0x2361 MF=0 off=0      UDP "malpi\n" request (14 B)
+38.988  .77 → ARP   Who has 192.168.1.10? Tell 192.168.1.77
+38.988  ARP → .77   192.168.1.10 is at a2:4b:a1:00:92:56
+38.988  .77 → .10   id=0x0001 MF=1 off=0      fragment 1 — UDP header + first 1480 B
+38.988  .77 → .10   id=0x0001 MF=0 off=185    fragment 2 — final 89 B (offset 185×8 = 1480)
+```
+
+The oversized UDP datagram is split into two IPv4 fragments sharing
+one IP id; the peer's kernel reassembles them and `nc -u` prints
+the monkeys. The first datagram is held in the per-neighbour queue
+until the ARP reply resolves the peer's MAC (RFC 1122 §2.3.2.2),
+then both fragments are flushed in order — a fragmented datagram
+delivered to a cold neighbour, lost by neither the DF bit nor a
+single-slot queue.
