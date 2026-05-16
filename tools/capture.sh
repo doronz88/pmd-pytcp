@@ -4,7 +4,7 @@
 #
 # Brings up a chosen example scenario on a TAP interface, waits until
 # the stack is actually ready (no hand-timing), drives the client
-# exchange, captures the wire with tcpdump, and prints a clean
+# exchange, captures the wire with tshark, and prints a clean
 # README-ready transcript: filtered stack log + tshark decode (+ the
 # client output for echo scenarios). All processes are torn down on
 # exit via a trap, so nothing is left running.
@@ -64,10 +64,9 @@ trap cleanup EXIT INT TERM
 
 die() { echo "error: $*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "must run as root (tcpdump + TAP need it)"
+[ "$(id -u)" -eq 0 ] || die "must run as root (packet capture + TAP need it)"
 [ -x "$PY" ] || die "venv python not found at $PY (run: make venv)"
-command -v tcpdump >/dev/null || die "tcpdump not installed"
-command -v tshark  >/dev/null || die "tshark not installed"
+command -v tshark >/dev/null || die "tshark not installed"
 ip link show "$IFACE" >/dev/null 2>&1 || die "interface $IFACE missing (run: make tap7)"
 
 strip() { sed -r 's/\x1b\[[0-9;]*m//g'; }
@@ -84,9 +83,11 @@ wait_for() {
 }
 
 start_capture() { # <bpf-filter>
-    # -U: write each packet to the savefile as it is captured, so
-    # the pcap is complete even if tcpdump is stopped abruptly.
-    tcpdump -i "$IFACE" -U -w "$PCAP" "$1" >/dev/null 2>&1 &
+    # tshark (already required for decoding) doubles as the
+    # capture engine, so there is no tcpdump dependency. It writes
+    # the savefile incrementally; a graceful SIGTERM on stop flushes
+    # and closes it cleanly.
+    tshark -i "$IFACE" -f "$1" -w "$PCAP" >/dev/null 2>&1 &
     CAP_PID=$!
     disown "$CAP_PID" 2>/dev/null || true
     sleep 1
@@ -104,7 +105,7 @@ stop_example() {
     sleep 2
     kill -9 "$SVC_PID" 2>/dev/null || true
     SVC_PID=""
-    # SIGTERM (not KILL) so tcpdump flushes and closes the pcap.
+    # SIGTERM (not KILL) so tshark flushes and closes the pcap.
     kill -TERM "$CAP_PID" 2>/dev/null || true
     sleep 1
     kill -9 "$CAP_PID" 2>/dev/null || true
