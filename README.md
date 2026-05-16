@@ -31,12 +31,9 @@ Contributions are welcome.
 
 ### Features
 
-PyTCP tracks RFC conformance through per-RFC adherence audits under
-`docs/rfc/`. The list below summarises those audits per protocol.
-**Full** = substantially implemented and conformant for a host stack;
-**Partial** = implemented with documented gaps; items still on the
-roadmap (host-stack gaps, or Phase-2 router-grade scope) are noted at
-the end of each protocol.
+Highlights per protocol, with the governing RFC(s) in parentheses.
+Conformance is tracked through per-RFC adherence audits under
+`docs/rfc/`; some areas are still in progress.
 
 #### Stack & sockets (engineering, non-RFC)
 
@@ -53,84 +50,67 @@ the end of each protocol.
 
 #### Ethernet
 
- - **RFC 894** IP over Ethernet (Ethernet II) - *Full* - framing, EtherType demux, ARP, broadcast/multicast mapping.
- - **RFC 1042** IP over IEEE 802 (LLC + SNAP) - *Partial* - inbound 802.3/LLC/SNAP demux; outbound is Ethernet II only.
+ - Ethernet II framing with EtherType demux, broadcast and multicast mapping (RFC 894)
+ - Inbound IEEE 802.3 / LLC + SNAP support (RFC 1042)
 
 #### ARP
 
- - **RFC 826** Address Resolution Protocol - *Partial* - resolution + cache faithful; drop-on-miss packet not saved.
- - **RFC 1122** Host Requirements (ARP) - *Partial* - core met; flood-prevention / packet-save not implemented.
- - **RFC 5227** IPv4 Address Conflict Detection - *Full* - ARP Probe / Announcement / defence.
- - **RFC 5494** ARP IANA considerations - *Full* - reserved/experimental codepoints rejected.
- - *Roadmap:* RFC 1027 Proxy ARP (Phase-2 router).
+ - ARP resolution with a neighbor cache, replies and queries (RFC 826, RFC 1122)
+ - IPv4 Address Conflict Detection — probe, announce, defend (RFC 5227)
+ - IANA-correct ARP codepoint handling (RFC 5494)
 
 #### IPv4
 
- - **RFC 791** Internet Protocol v4 - *Partial* - host wire format / options met; forwarding (TTL-decrement, source-route) is Phase-2.
- - **RFC 815** Datagram reassembly - *Full* - sorted-offset reassembly, overlap rejection, lazy reaper.
- - **RFC 3168** ECN - *Full*. **RFC 3927** IPv4 link-local autoconfiguration - *Full*. **RFC 6814** deprecated IPv4 options (never originated) - *Full*.
- - **RFC 919 / 922** broadcasting - *Partial* (host-side). **RFC 1112** IP multicasting - *Partial* (send/receive; no IGMP). **RFC 1122** Host Requirements (IPv4) - *Partial*.
- - **RFC 1918** private addresses, **RFC 2474** DSCP, **RFC 6398** Router Alert, **RFC 6864** IPv4 ID field, **RFC 6890** special-purpose registries, **RFC 7126** IP-option filtering - *Partial* (host-side; QoS/forwarding scope deferred).
- - Multiple stack IPv4 addresses supported; outbound fragmentation.
- - *Roadmap:* RFC 1191 IPv4 Path MTU Discovery (not implemented); RFC 1812 router requirements (Phase-2).
+ - IPv4 with options parsing, inbound reassembly and outbound fragmentation (RFC 791, RFC 815)
+ - Multiple host addresses; private, special-purpose and broadcast address handling (RFC 1918, RFC 6890, RFC 919, RFC 922)
+ - ECN, DSCP and Router Alert support (RFC 3168, RFC 2474, RFC 6398)
+ - IPv4 link-local autoconfiguration (RFC 3927)
+ - Host-side IP multicasting (RFC 1112)
 
 #### ICMPv4
 
- - **RFC 792** ICMPv4 - *Partial* - echo / unreachable / time-exceeded / parameter-problem with RFC 1122 generation gates + rate-limiting; Redirect (type 5) not implemented.
- - **RFC 1122** Host Requirements (ICMP) - *Partial* - inbound Redirect processing not implemented.
- - **RFC 6633** deprecate Source Quench - *Full*. **RFC 6918** deprecate obsolete ICMP types - *Full* (compliant by structural absence).
- - *Roadmap:* RFC 1812 router ICMP, RFC 4884 extended multi-part ICMP.
+ - Echo, Destination Unreachable, Time Exceeded and Parameter Problem, with RFC-correct generation gating and rate-limiting (RFC 792, RFC 1122)
+ - Obsolete message types correctly omitted (RFC 6633, RFC 6918)
 
 #### IPv6
 
- - **RFC 8200** IPv6 + extension headers - *Full* - all §4 extension headers, TLV options, chain ordering.
- - **RFC 4193** unique local addresses, **RFC 8190** special-purpose registries - *Full*.
- - **RFC 5095** RH0 deprecation, **RFC 5722** overlapping-fragment handling, **RFC 6946** atomic fragments, **RFC 7739** fragment-ID randomisation - *Full*.
- - **RFC 6437** flow label (keyed-hash, sysctl-toggle) - *Full*.
- - **RFC 6724** default address selection - *Partial* - source-selection rules shipped; destination-address selection deferred.
- - **RFC 8201** Path MTU Discovery for IPv6 - *Partial* - PTB demuxed & cached; no MTU aging / probe walk-back.
- - **RFC 8504** IPv6 node requirements - *Partial* - core host requirements met.
- - Inbound defragmentation + outbound fragmentation; Solicited-Node multicast & IPv6 multicast-MAC auto-assignment.
+ - IPv6 with the full extension-header chain and TLV options (RFC 8200)
+ - Inbound reassembly and outbound fragmentation, with fragmentation hardening (RFC 5722, RFC 6946, RFC 7739)
+ - Unique-local and special-purpose addressing (RFC 4193, RFC 8190)
+ - Flow-label generation (RFC 6437)
+ - Default source-address selection (RFC 6724); Path MTU Discovery (RFC 8201); node requirements (RFC 8504)
 
 #### ICMPv6 / Neighbor Discovery
 
- - **RFC 4443** ICMPv6 - *Full* - echo + destination-unreachable / time-exceeded / parameter-problem / packet-too-big.
- - **RFC 4862** Stateless Address Autoconfiguration - *Full* - link-local, DAD, RA prefix, 2-hour rule, lifetime sweep.
- - **RFC 7217** stable opaque IIDs (default-on), **RFC 4429** Optimistic DAD, **RFC 7527** Enhanced DAD, **RFC 9131** Gratuitous NA, **RFC 6980** ND-no-fragmentation - *Full*.
- - **RFC 7559** RS retransmission backoff, **RFC 4311** host-to-router load sharing - *Full*.
- - **RFC 4861** Neighbor Discovery - *Partial* - host NS/NA/RS/RA + NUD cache + inbound Redirect processing; Redirect generation (router) is Phase-2.
- - **RFC 3810** MLDv2 - *Partial* - listener role (responds to queries with a scheduled Report); querier role is Phase-2.
- - **RFC 8981** temporary (privacy) addresses - *Partial* - random IID + per-prefix claim; regeneration cadence deferred.
- - *Roadmap:* RFC 4191 default-router preferences / more-specific routes, RFC 8028 multihomed first-hop selection, RFC 8106 RA DNS options. (RFC 4941 superseded by 7217/8981; RFC 5175 RA-flags option has no consumer.)
+ - Full ICMPv6 message set including Packet Too Big (RFC 4443)
+ - Stateless Address Autoconfiguration: link-local, DAD, RA prefixes and lifetimes (RFC 4862)
+ - Stable opaque and temporary (privacy) addresses (RFC 7217, RFC 8981)
+ - Optimistic DAD, Enhanced DAD and Gratuitous NA (RFC 4429, RFC 7527, RFC 9131)
+ - Neighbor Discovery with a NUD cache and Router Solicitation backoff (RFC 4861, RFC 7559)
+ - MLDv2 listener (RFC 3810)
 
 #### UDP
 
- - **RFC 768** UDP - *Full*. **RFC 1122** Host Requirements (UDP) - *Full*.
- - **RFC 6935** UDP zero-checksum over IPv6 - *Full*.
- - **RFC 6056** transport-port randomisation - *Partial* - Algorithms 1 & 2.
- - **RFC 8085** UDP usage guidelines - *Partial* - UDP-path PLPMTUD not implemented.
- - UDP Echo / Discard / Daytime example services.
+ - UDP with full host-requirements conformance (RFC 768, RFC 1122)
+ - Zero-checksum UDP over IPv6 (RFC 6935)
+ - Ephemeral-port randomisation (RFC 6056)
+ - Echo / Discard / Daytime example services
 
 #### TCP
 
- - **RFC 9293** TCP - *Full* - complete wire format + Finite State Machine; bulk data transfer.
- - **RFC 1122** Host Requirements (TCP), **RFC 6093** urgent mechanism - *Full*.
- - *Congestion control:* **RFC 5681** Reno, **RFC 6582** NewReno, **RFC 9438** CUBIC, **RFC 9406** HyStart++, **RFC 8511** ABE, **RFC 6928** IW10 - *Full*.
- - *Loss recovery:* **RFC 2018** SACK, **RFC 2883** D-SACK, **RFC 3042** Limited Transmit, **RFC 6675** SACK-based recovery, **RFC 6937** PRR, **RFC 8985** RACK-TLP, **RFC 5682** F-RTO - *Full*.
- - *Timers:* **RFC 6298** RTO computation (Karn + backoff), **RFC 8961** time-based loss-detection requirements - *Full*.
- - *Options:* **RFC 7323** Timestamps / Window Scale / PAWS, **RFC 6691** MSS, **RFC 7413** TCP Fast Open - *Full*.
- - *ECN:* **RFC 3168** ECN, **RFC 9768** AccECN - *Full*; **RFC 8311** ECN relaxation - *Partial*.
- - *Hardening:* **RFC 5961** blind in-window attacks, **RFC 5927** ICMP-against-TCP, **RFC 6056** port randomisation, **RFC 6528** hash-based ISS, **RFC 1337** / **RFC 6191** TIME-WAIT - *Full*.
- - Keep-alive, zero-window probing / persist timer, SWS avoidance, Nagle.
- - *Partial:* RFC 3522 Eifel detection, RFC 4821 PLPMTUD, RFC 8899 DPLPMTUD.
- - *Roadmap:* RFC 4015 Eifel response, RFC 5562 ECN-setup SYN, RFC 5827 Early Retransmit, RFC 5925/5926 TCP-AO, RFC 7661 CWV, RFC 8257 DCTCP, RFC 8684 MPTCP, RFC 9331 L4S.
+ - Complete TCP: full finite state machine and reliable bulk transfer (RFC 9293, RFC 1122)
+ - Modern congestion control — CUBIC, NewReno, PRR, HyStart++, ABE, IW10 (RFC 9438, RFC 6582, RFC 6937, RFC 9406, RFC 8511, RFC 6928)
+ - Advanced loss recovery — SACK, D-SACK, RACK-TLP, F-RTO, limited transmit (RFC 2018, RFC 2883, RFC 8985, RFC 5682, RFC 3042)
+ - RFC-correct RTO with Karn's algorithm and backoff (RFC 6298, RFC 8961)
+ - Window Scale, Timestamps, PAWS, MSS and TCP Fast Open (RFC 7323, RFC 6691, RFC 7413)
+ - ECN and Accurate ECN (RFC 3168, RFC 9768)
+ - Blind-attack and ICMP-attack hardening, randomised ISS and ports, robust TIME-WAIT (RFC 5961, RFC 5927, RFC 6528, RFC 1337, RFC 6191)
+ - Keep-alive, zero-window probing, silly-window-syndrome avoidance, Nagle
 
-#### DHCPv4 (client)
+#### DHCPv4 client
 
- - **RFC 2131** DHCP - *Full* - client FSM, lease, RENEW / REBIND / DECLINE (no DHCPINFORM).
- - **RFC 1542** BOOTP clarifications - *Full*. **RFC 4436** DNAv4 detect-network-attachment - *Full*. **RFC 6842** client-ID echo - *Full*.
- - **RFC 951** BOOTP, **RFC 2132** DHCP options, **RFC 4361** node-specific client-ID/DUID - *Partial*.
- - *Roadmap:* RFC 3203 FORCERENEW, RFC 3442 classless static route (opt 121), RFC 4702 client FQDN (opt 81), RFC 8910 captive-portal (opt 114).
+ - Full DHCPv4 client: lease acquisition, RENEW / REBIND / DECLINE (RFC 2131, RFC 1542)
+ - Detecting Network Attachment and client-ID handling (RFC 4436, RFC 6842, RFC 4361)
 
 ---
 
