@@ -14,17 +14,17 @@
 
 <br>
 
-**PyTCP is a complete, RFC-grounded TCP/IP stack written in pure Python — every layer, from the raw Ethernet frame up to the socket API, is real code you can read.**
+**PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack.
 
-It is not a wrapper around the operating system. PyTCP runs entirely in user space, attached to a Linux TAP/TUN interface, and builds the network from the ground up: Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 with extension headers and fragmentation, ICMPv4/ICMPv6, IPv6 Neighbor Discovery and SLAAC, a DHCPv4 client, UDP, and a full RFC 9293 TCP — complete finite state machine, modern congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and the security hardening real networks demand. It talks to other hosts across the local segment and the open Internet.
+The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extension headers and fragmentation), ICMPv4 and ICMPv6, IPv6 Neighbor Discovery and SLAAC, a DHCPv4 client, UDP, and RFC 9293 TCP. The TCP implementation includes the full finite state machine, congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and RFC 5961 hardening. It exchanges traffic with other hosts on the local segment and over the Internet.
 
-The guiding goal is ambitious and deliberate: a pure-Python stack that is **feature-equivalent to the Linux kernel network stack**. RFC text is the primary authority; where a spec leaves room, PyTCP follows what Linux does, so behaviour is predictable to anyone who already knows the Linux networking model. Host-stack parity is the current focus, with router-grade forwarding as the next horizon.
+The project's goal is a pure-Python stack that is feature-equivalent to the Linux kernel network stack. RFC text is the primary authority; where a spec is silent or offers a choice, PyTCP follows Linux. Host-stack parity is the current scope; router-grade forwarding is planned.
 
-Conformance is treated as a first-class deliverable, not an afterthought. Behaviour is pinned by roughly eleven thousand unit and integration tests and tracked against more than a hundred per-RFC adherence audits living alongside the code, so "implemented" always means *implemented to the spec, and proven so*.
+Behaviour is covered by roughly 11,000 unit and integration tests and tracked against more than 100 per-RFC adherence audits kept in the repository under `docs/rfc/`.
 
-The whole stack ships as a zero-runtime-dependency library — three clean packages, standard library only — exposing a Berkeley-sockets-style API. Drop it into an application in place of the standard socket layer and the bytes on the wire are entirely yours.
+The stack has zero runtime dependencies (standard library only), is organised as three packages (`net_addr`, `net_proto`, `pytcp`), and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer.
 
-Contributions are welcome. If you care about how networks actually work down at the packet level, this is a good place to dig in.
+Contributions are welcome.
 
 ---
 
