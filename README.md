@@ -175,37 +175,37 @@ stack.stop()
 
 #### To be implemented:
 
- - [ ] Ethernet II - *Ensure the minimum value for the 'type' field is 0x600, part of integrity checks*
+ - [x] Ethernet II - *Ensure the minimum value for the 'type' field is 0x600, part of integrity checks*
  - [ ] Protocols - *Refactor integrity and sanity messages to be more consistent and provide more detail on the issue, eg. length of the bad packet, etc.*
  - [ ] IPv4/TCP/ICMPv6 - *Reconsider mechanism of adding options after creating initial options object.*
- - [ ] IMCPv4 - *Add proper assert messages.*
- - [ ] IMCPv6 - *Add proper assert messages.*
- - [ ] ICMPv4 - *Refactor unit tests to test assembling and parsing on packet vs message classes.
- - [ ] ICMPv6 - *Refactor unit tests to test assembling and parsing on packet vs message classes.
+ - [x] ICMPv4 - *Add proper assert messages.*
+ - [x] ICMPv6 - *Add proper assert messages.*
+ - [x] ICMPv4 - *Refactor unit tests to test assembling and parsing on packet vs message classes.*
+ - [x] ICMPv6 - *Refactor unit tests to test assembling and parsing on packet vs message classes.*
 
- - [ ] ICMPv6 - *MLDv2 support is quite a mess now. Need to finish it.*
- - [ ] Testing - *Need to refactor packet flow tests (tests/packet_flow_*.py) to use the same format and dir as FPA tests based on test_frames.*
- - [ ] Testing - *Create FPA unit tests for MLDv2 Report (len, str, assemble).*
+ - [x] ICMPv6 - *MLDv2 support reworked into the standard FPA/FPP six-file layout with full unit coverage.*
+ - [x] Testing - *Refactor packet flow tests (tests/packet_flow_*.py) to use the same format and dir as FPA tests based on test_frames.*
+ - [x] Testing - *Create FPA unit tests for MLDv2 Report (len, str, assemble).*
  - [ ] IPv4 - *Reimplement packet defragmentation to store whole packets in flow DB instead of making copies of the IP header and data.*
  - [x] Stack - *Implement RAW socket support - to be used by example, ICMP-Echo client.*
  - [x] Code - *Migrate the test suite to native 'unittest' (replacing the Testslide framework) and broaden coverage.*
- - [ ] Code - *Rewrite DHCPv4 protocol support to use standard FPA/FPP approach instead of legacy code.*
+ - [x] Code - *Rewrite DHCPv4 protocol support to use standard FPA/FPP approach instead of legacy code.*
  - [ ] Stack - *Get back to implementing the stack debugging console so certain information about stack components can be displayed on demand by sending commands. e.g., 'show icmpv6 nd cache', 'show ipv6 route', etc... it should also let you run interactive commands like ping or stack's UDP/TCP echo clients.*
  - [ ] QUIC protocol - *Research and plan for the implementation. This depends on the ability to create a lab environment for it.*
  - [ ] IPv6 protocol - *Redesign the RA PI option handling and ND prefix auto-configuration to use A and L flags properly. Some research is also needed when a different than /64 prefix is advertised.*
  - [ ] IPv6 protocol - *Implement remaining extension headers.*
  - [ ] IPv6 protocol - *Validate and possibly reimplement certain IPv6 mechanisms/processes according to RFC rules.*
- - [ ] IPv6 protocol - *Investigate Hop-by-Hop Options header and its relation to MLD2 Report message, implement if needed for MLD2 to work properly.*
+ - [x] IPv6 protocol - *Investigate Hop-by-Hop Options header and its relation to MLD2 Report message, implement if needed for MLD2 to work properly.*
  - [x] ICMPv6 protocol - *Implement ND Redirect message.*
- - [ ] ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) full implementation <-- it may be required by stack to respond to MLD queries.*
+ - [x] ICMPv6 protocol - *Multicast Listener Discovery v2 (MLDv2) - stack responds to MLD queries with a scheduled MLDv2 Report.*
  - [x] TCP protocol - *Proper handling of RST packets in various states (RFC 5961 blind-attack hardening).*
  - [ ] TCP protocol - *Need to rework the CLOSE syscall mechanism so the FIN flag can be set on the last data packet instead of being carried in a separate one.*
- - [ ] TCP protocol - *ACK packet retransmission in case we got FIN retransmission in TIME_WAIT state. Need to investigate this.*
- - [ ] TCP protocol - *implement proper response to packets containing old SEQ and/or ACK numbers. Need to investigate this.*
+ - [x] TCP protocol - *ACK packet retransmission in case we got FIN retransmission in TIME_WAIT state (RFC 1337 Hazard #1).*
+ - [x] TCP protocol - *implement proper response to packets containing old SEQ and/or ACK numbers (RFC 5961 acceptability checks).*
  - [ ] IPv6/IPv4 protocols - *proper routing mechanism, route tables, etc...*
  - [ ] IPv6/IPv4 protocols - *ability of stack to act as a router*
- - [ ] ARP cache - *implement proper FSM*
- - [ ] ICMPv6 ND cache - *implement proper FSM*
+ - [x] ARP cache - *implement proper FSM (RFC 4861-style NUD: INCOMPLETE/REACHABLE/STALE/DELAY/PROBE/FAILED).*
+ - [x] ICMPv6 ND cache - *implement proper FSM (RFC 4861-style NUD: INCOMPLETE/REACHABLE/STALE/DELAY/PROBE/FAILED).*
  - [x] Logging - *Replace Loguru with a homegrown logger to improve performance and flexibility.*
  - [x] Stack - *Convert the PyTCP stack to a library so external applications can easily import it.*
  - [x] Stack - *Packet flow counters to help gather packet statistics and let packet flow trace for unit testing.*
