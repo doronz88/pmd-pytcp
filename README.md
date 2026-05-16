@@ -18,6 +18,8 @@
 
 It is not a wrapper around the operating system. PyTCP runs entirely in user space, attached to a Linux TAP/TUN interface, and builds the network from the ground up: Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 with extension headers and fragmentation, ICMPv4/ICMPv6, IPv6 Neighbor Discovery and SLAAC, a DHCPv4 client, UDP, and a full RFC 9293 TCP — complete finite state machine, modern congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and the security hardening real networks demand. It talks to other hosts across the local segment and the open Internet.
 
+The guiding goal is ambitious and deliberate: a pure-Python stack that is **feature-equivalent to the Linux kernel network stack**. RFC text is the primary authority; where a spec leaves room, PyTCP follows what Linux does, so behaviour is predictable to anyone who already knows the Linux networking model. Host-stack parity is the current focus, with router-grade forwarding as the next horizon.
+
 Conformance is treated as a first-class deliverable, not an afterthought. Behaviour is pinned by roughly eleven thousand unit and integration tests and tracked against more than a hundred per-RFC adherence audits living alongside the code, so "implemented" always means *implemented to the spec, and proven so*.
 
 The whole stack ships as a zero-runtime-dependency library — three clean packages, standard library only — exposing a Berkeley-sockets-style API. Drop it into an application in place of the standard socket layer and the bytes on the wire are entirely yours.
