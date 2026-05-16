@@ -446,15 +446,16 @@ $ printf 'malpi\n' | nc -u 192.168.1.77 7
                                                   '''       '''
 ```
 
-On the wire (`tshark -i tap7`; the summary carries the IPv4
-fragmentation fields — IP-id, MF, frag-offset):
+On the wire (`tshark -i tap7`, rebased to the request; the
+summary carries the IPv4 fragmentation fields — IP-id, MF,
+frag-offset):
 
 ```text
-38.987  UDP  192.168.1.10 → 192.168.1.77   id=0x2361 MF=0 off=0     UDP "malpi\n" request (14 B)
-38.988  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
-38.988  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
-38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=0     fragment 1 — UDP header + first 1480 B
-38.988  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=0 off=185   fragment 2 — final 89 B (offset 185×8 = 1480)
+0.000  UDP  192.168.1.10 → 192.168.1.77   id=0x9655 MF=0 off=0     UDP "malpi\n" request (14 B)
+0.001  ARP  192.168.1.77 → 192.168.1.10   Who has 192.168.1.10? Tell 192.168.1.77
+0.001  ARP  192.168.1.10 → 192.168.1.77   192.168.1.10 is at a2:4b:a1:00:92:56
+0.001  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=1 off=0     fragment 1 — UDP header + first 1480 B
+0.002  UDP  192.168.1.77 → 192.168.1.10   id=0x0001 MF=0 off=185   fragment 2 — final 89 B (offset 185×8 = 1480)
 ```
 
 The oversized UDP datagram is split into two IPv4 fragments sharing
