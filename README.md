@@ -239,18 +239,18 @@ address with two ARP **Announcements** (sender = target).
 Wire capture (`tshark -i tap7 -f arp`):
 
 ```text
-1  0.000000  Who has 192.168.9.7?  (ARP Probe)
-2  1.909315  Who has 192.168.9.7?  (ARP Probe)
-3  3.821676  Who has 192.168.9.7?  (ARP Probe)
-5  7.365211  ARP Announcement for 192.168.9.7
-6  9.365800  ARP Announcement for 192.168.9.7
+0.00  Who has 192.168.1.77?  (ARP Probe)
+1.47  Who has 192.168.1.77?  (ARP Probe)
+3.37  Who has 192.168.1.77?  (ARP Probe)
+6.63  ARP Announcement for 192.168.1.77
+8.63  ARP Announcement for 192.168.1.77
 ```
 
 Probe vs. Announcement, decoded (`tshark -V`):
 
 ```text
-ARP Probe         Opcode: request   Sender IP: 0.0.0.0       Target IP: 192.168.9.7
-ARP Announcement  Opcode: request   Sender IP: 192.168.9.7   Target IP: 192.168.9.7
+ARP Probe         Opcode: request   Sender IP: 0.0.0.0        Target IP: 192.168.1.77
+ARP Announcement  Opcode: request   Sender IP: 192.168.1.77   Target IP: 192.168.1.77
 ```
 
 #### ARP resolution and ICMP Echo
