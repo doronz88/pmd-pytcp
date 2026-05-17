@@ -48,10 +48,11 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
+from pytcp.runtime.timer import Timer
 from pytcp import stack
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
-from pytcp.protocols.tcp.tcp__enums import CcMode
-from pytcp.protocols.tcp.tcp__session import FsmState, SysCall, TcpSession
+from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
+from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
@@ -175,7 +176,7 @@ class TcpSessionTestCase(NetworkTestCase):
         super().setUp()
 
         self._timer = FakeTimer()
-        stack.mock__init(mock__timer=cast(stack.Timer, self._timer))
+        stack.mock__init(mock__timer=cast(Timer, self._timer))
 
         self._interface_mtu_was_set = hasattr(stack, "interface_mtu") and "interface_mtu" in stack.__dict__
         self._interface_mtu_prior = stack.__dict__.get("interface_mtu")

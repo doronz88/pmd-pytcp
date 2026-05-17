@@ -47,10 +47,7 @@ ver 3.0.5
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__session import (
-    FsmState,
-    SysCall,
-)
+from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,

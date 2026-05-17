@@ -37,13 +37,9 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__session import (
-    ConnError,
-    FsmState,
-    SysCall,
-    TcpSession,
-    TcpSessionError,
-)
+from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
+from pytcp.protocols.tcp.tcp__errors import TcpSessionError
+from pytcp.protocols.tcp.tcp__session import TcpSession
 
 
 class _TcpSessionSyscallFixture(TestCase):

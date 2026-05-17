@@ -44,8 +44,9 @@ from net_proto import (
     Ip6Assembler,
     UdpAssembler,
 )
+from net_proto.lib.enums import IpProto
 from pytcp import stack
-from pytcp.socket import AddressFamily, IpProto, SocketType
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.udp__socket import UdpSocket
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 from pytcp.tests.lib.network_testcase import (

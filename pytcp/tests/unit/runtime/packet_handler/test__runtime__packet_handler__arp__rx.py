@@ -1055,7 +1055,7 @@ class TestPacketHandlerArpRxDefendInterval(_ArpRxTestBase):
         Reference: RFC 5227 §2.4 final (reset connections before abandon).
         """
 
-        from pytcp.protocols.tcp.tcp__session import SysCall
+        from pytcp.protocols.tcp.tcp__enums import SysCall
         from pytcp.socket import AddressFamily, SocketType
         from pytcp.socket.socket_id import SocketId
 

@@ -63,6 +63,7 @@ from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
+from pytcp.runtime.timer import Timer
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
@@ -198,7 +199,7 @@ class IcmpTestCase(NetworkTestCase):
         super().setUp()
 
         self._timer = FakeTimer()
-        stack.mock__init(mock__timer=cast(stack.Timer, self._timer))
+        stack.mock__init(mock__timer=cast(Timer, self._timer))
 
         self._interface_mtu_was_set = hasattr(stack, "interface_mtu") and "interface_mtu" in stack.__dict__
         self._interface_mtu_prior = stack.__dict__.get("interface_mtu")

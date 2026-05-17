@@ -403,3 +403,23 @@ def initialize_interface__tun(interface_name: str) -> dict[str, Any]:
 # exported here so 'pytcp.stack.{init,start,stop,mock__init}'
 # import paths stay stable.
 from pytcp.stack.lifecycle import init, mock__init, start, stop  # noqa: E402, F401
+
+# Public API surface of the stack package (source_files.md §2.3:
+# __all__ lives only in package __init__.py). Required so mypy's
+# strict no_implicit_reexport recognises the lifecycle / handler
+# re-exports and the logging / sysctl config names as the
+# package's intentional public surface.
+__all__ = [
+    "LOG__CHANNEL",
+    "LOG__DEBUG",
+    "LOG__OUTPUT",
+    "PacketHandlerL2",
+    "PacketHandlerL3",
+    "TCP__ISS_SECRET",
+    "init",
+    "mock__init",
+    "rx_ring",
+    "start",
+    "stop",
+    "sysctl",
+]

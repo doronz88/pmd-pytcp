@@ -43,6 +43,7 @@ from net_addr import (
     Ip6Address,
     Ip6AddressFormatError,
 )
+from net_proto.lib.enums import IpProto
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -51,7 +52,6 @@ from pytcp.socket import (
     IPPROTO_IPV6,
     SOL_SOCKET,
     AddressFamily,
-    IpProto,
     SocketType,
     gaierror,
     socket,

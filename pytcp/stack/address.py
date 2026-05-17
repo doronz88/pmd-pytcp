@@ -410,7 +410,7 @@ class Ip4AddressApi:
         """
 
         from pytcp import stack
-        from pytcp.protocols.tcp.tcp__session import SysCall
+        from pytcp.protocols.tcp.tcp__enums import SysCall
 
         for socket_id in list(stack.sockets):
             if socket_id.local_address == ip4_address:

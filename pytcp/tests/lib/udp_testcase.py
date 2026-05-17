@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
-from net_proto.lib.enums import EtherType
+from net_proto.lib.enums import EtherType, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
@@ -48,7 +48,7 @@ from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.udp.udp__parser import UdpParser
 from pytcp import stack
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
-from pytcp.socket import AddressFamily, IpProto, SocketType
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.udp__socket import UdpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,

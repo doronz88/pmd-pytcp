@@ -142,7 +142,7 @@ class PacketHandlerArpRx(ABC):
         # bound to this address. The session-side ABORT
         # syscall sends RST and tears down the session per
         # RFC 9293 §3.10.7.4.
-        from pytcp.protocols.tcp.tcp__session import SysCall
+        from pytcp.protocols.tcp.tcp__enums import SysCall
 
         for socket_id in list(stack.sockets):
             if socket_id.local_address == ip4_unicast:

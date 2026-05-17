@@ -49,7 +49,8 @@ from net_proto.protocols.tcp.options.tcp__option__sack import (
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTimestamps
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
-from net_proto.protocols.tcp.options.tcp__options import TcpOption, TcpOptions
+from net_proto.protocols.tcp.options.tcp__option import TcpOption
+from net_proto.protocols.tcp.options.tcp__options import TcpOptions
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,

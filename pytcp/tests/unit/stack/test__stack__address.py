@@ -403,7 +403,7 @@ class TestIp4AddressApiAbortBoundSessions(TestCase):
         """
 
         from pytcp import stack
-        from pytcp.protocols.tcp.tcp__session import SysCall
+        from pytcp.protocols.tcp.tcp__enums import SysCall
 
         target_addr = Ip4Address("10.0.0.5")
         other_addr = Ip4Address("10.0.0.99")

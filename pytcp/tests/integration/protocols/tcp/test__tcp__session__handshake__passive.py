@@ -66,7 +66,8 @@ ver 3.0.5
 
 from net_addr import Ip4Address
 from pytcp import stack
-from pytcp.protocols.tcp.tcp__session import FsmState, SysCall, TcpSession
+from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
 from pytcp.socket.tcp__socket import TcpSocket

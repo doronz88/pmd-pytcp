@@ -195,7 +195,7 @@ class TestArpHarnessSmoke(ArpTestCase):
 
         self._set_monotonic(42.0)
         self.assertEqual(
-            arp_rx_module.time.monotonic(),
+            arp_rx_module.time.monotonic(),  # type: ignore[attr-defined]  # deliberate clock-patch introspection
             42.0,
             msg=(
                 "The clock visible to '_maybe_send_arp_defense' must equal the "

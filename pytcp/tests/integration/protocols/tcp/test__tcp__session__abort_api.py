@@ -40,11 +40,7 @@ ver 3.0.5
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__enums import ConnError
-from pytcp.protocols.tcp.tcp__session import (
-    FsmState,
-    SysCall,
-)
+from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (

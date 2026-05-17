@@ -57,12 +57,8 @@ ver 3.0.5
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__enums import CcMode
-from pytcp.protocols.tcp.tcp__session import (
-    FsmState,
-    SysCall,
-    TcpSession,
-)
+from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
+from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,

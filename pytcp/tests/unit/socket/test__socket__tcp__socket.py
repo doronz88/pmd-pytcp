@@ -42,7 +42,8 @@ from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
-from pytcp.protocols.tcp.tcp__session import FsmState, TcpSessionError
+from pytcp.protocols.tcp.tcp__enums import FsmState
+from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,

@@ -45,6 +45,7 @@ from net_addr import (
     Ip6Address,
     Ip6AddressFormatError,
 )
+from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_enum import ProtoEnum
 from pytcp import stack
 from pytcp.lib.logger import log
@@ -64,7 +65,6 @@ from pytcp.socket import (
     UDP_NO_CHECK6_RX,
     UDP_NO_CHECK6_TX,
     AddressFamily,
-    IpProto,
     SocketType,
     gaierror,
     socket,

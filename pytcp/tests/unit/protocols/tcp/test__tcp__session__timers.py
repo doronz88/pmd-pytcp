@@ -37,7 +37,8 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from pytcp.protocols.tcp.tcp__session import _PUMP, FsmState, TcpSession
+from pytcp.protocols.tcp.tcp__enums import FsmState
+from pytcp.protocols.tcp.tcp__session import _PUMP, TcpSession
 from pytcp.runtime.timer import TimerHandle
 
 

@@ -38,11 +38,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, IpVersion
-from pytcp.protocols.tcp.tcp__session import (
-    FsmState,
-    SysCall,
-    TcpSession,
-)
+from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket.tcp__metadata import TcpMetadata
 
 

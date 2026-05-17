@@ -36,7 +36,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__session import FsmState, TcpSession
+from pytcp.protocols.tcp.tcp__enums import FsmState
+from pytcp.protocols.tcp.tcp__session import TcpSession
 
 
 class _TcpSessionFixture(TestCase):
@@ -251,7 +252,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
         Reference: RFC 9293 §3.10.1 (OPEN signalling fields).
         """
 
-        from pytcp.protocols.tcp.tcp__session import ConnError
+        from pytcp.protocols.tcp.tcp__enums import ConnError
 
         session = self._make_session()
         self.assertIs(
