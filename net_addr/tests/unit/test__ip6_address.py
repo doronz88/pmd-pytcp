@@ -1782,3 +1782,63 @@ class TestNetAddrIp6AddressFormat(TestCase):
                     expected,
                     msg=f"format(Ip6Address, {spec!r}) must be {expected!r}.",
                 )
+
+
+class TestNetAddrIp6AddressTransitional(TestCase):
+    """
+    The NetAddr IPv6 transitional-address extractor tests.
+    """
+
+    def test__net_addr__ip6_address__ipv4_mapped(self) -> None:
+        """
+        Ensure 'ipv4_mapped' extracts the embedded IPv4 address
+        from an ::ffff:0:0/96 address and is None otherwise.
+
+        Reference: RFC 4291 (IPv4-mapped IPv6 address, §2.5.5.2).
+        """
+
+        self.assertEqual(
+            Ip6Address("::ffff:192.0.2.1").ipv4_mapped,
+            Ip4Address("192.0.2.1"),
+            msg="ipv4_mapped must extract the embedded IPv4 address.",
+        )
+        self.assertIsNone(
+            Ip6Address("2001:db8::1").ipv4_mapped,
+            msg="ipv4_mapped must be None for a non-mapped address.",
+        )
+
+    def test__net_addr__ip6_address__sixtofour(self) -> None:
+        """
+        Ensure 'sixtofour' extracts the embedded IPv4 address
+        from a 2002::/16 address and is None otherwise.
+
+        Reference: RFC 3056 (6to4, §2).
+        """
+
+        self.assertEqual(
+            Ip6Address("2002:c000:0201::").sixtofour,
+            Ip4Address("192.0.2.1"),
+            msg="sixtofour must extract the embedded IPv4 address.",
+        )
+        self.assertIsNone(
+            Ip6Address("2001:db8::1").sixtofour,
+            msg="sixtofour must be None for a non-6to4 address.",
+        )
+
+    def test__net_addr__ip6_address__teredo(self) -> None:
+        """
+        Ensure 'teredo' returns the (server, client) IPv4 pair
+        for a 2001:0000::/32 address and is None otherwise.
+
+        Reference: RFC 4380 (Teredo, §4).
+        """
+
+        self.assertEqual(
+            Ip6Address("2001:0000:4136:e378:8000:63bf:3fff:fdd2").teredo,
+            (Ip4Address("65.54.227.120"), Ip4Address("192.0.2.45")),
+            msg="teredo must return the (server, client) IPv4 pair.",
+        )
+        self.assertIsNone(
+            Ip6Address("2001:db8::1").teredo,
+            msg="teredo must be None for a non-Teredo address.",
+        )

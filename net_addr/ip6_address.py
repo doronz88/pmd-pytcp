@@ -35,6 +35,7 @@ import socket
 from typing import Self, override
 
 from net_addr.errors import Ip6AddressFormatError
+from net_addr.ip4_address import Ip4Address
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MAC__IP6_MULTICAST_PREFIX, MacAddress
@@ -78,6 +79,15 @@ IP6__BENCHMARK_PREFIX_MASK = 0xFFFF_FFFF_FFFF_0000_0000_0000_0000_0000
 # RFC 4291 §2.5.5.2 IPv4-mapped IPv6 — ::ffff:0:0/96
 IP6__IPV4_MAPPED_PREFIX = 0x0000_0000_0000_0000_0000_FFFF_0000_0000
 IP6__IPV4_MAPPED_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_0000_0000
+
+# RFC 3056 §2 6to4 — 2002::/16 (embedded IPv4 in bits 111..80)
+IP6__6TO4_PREFIX = 0x2002_0000_0000_0000_0000_0000_0000_0000
+IP6__6TO4_PREFIX_MASK = 0xFFFF_0000_0000_0000_0000_0000_0000_0000
+
+# RFC 4380 §4 Teredo — 2001:0000::/32 (server bits 95..64,
+# obfuscated client = bitwise-NOT of bits 31..0)
+IP6__TEREDO_PREFIX = 0x2001_0000_0000_0000_0000_0000_0000_0000
+IP6__TEREDO_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
 
 IP6__REGEX = (
     r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
@@ -188,6 +198,46 @@ class Ip6Address(IpAddress):
 
         nibbles = f"{self._address:032x}"
         return ":".join(nibbles[index : index + 4] for index in range(0, 32, 4))
+
+    @property
+    def ipv4_mapped(self) -> Ip4Address | None:
+        """
+        Get the embedded IPv4 address of an IPv4-mapped IPv6
+        address (::ffff:0:0/96), or None.
+        """
+
+        if self._address & IP6__IPV4_MAPPED_PREFIX_MASK == IP6__IPV4_MAPPED_PREFIX:
+            return Ip4Address(self._address & 0xFFFF_FFFF)
+
+        return None
+
+    @property
+    def sixtofour(self) -> Ip4Address | None:
+        """
+        Get the embedded IPv4 address of a 6to4 IPv6 address
+        (2002::/16), or None.
+        """
+
+        if self._address & IP6__6TO4_PREFIX_MASK == IP6__6TO4_PREFIX:
+            return Ip4Address((self._address >> 80) & 0xFFFF_FFFF)
+
+        return None
+
+    @property
+    def teredo(self) -> tuple[Ip4Address, Ip4Address] | None:
+        """
+        Get the (server, client) IPv4 pair of a Teredo IPv6
+        address (2001:0000::/32), or None. The client address
+        is the bitwise-NOT-obfuscated low 32 bits.
+        """
+
+        if self._address & IP6__TEREDO_PREFIX_MASK == IP6__TEREDO_PREFIX:
+            return (
+                Ip4Address((self._address >> 64) & 0xFFFF_FFFF),
+                Ip4Address(~self._address & 0xFFFF_FFFF),
+            )
+
+        return None
 
     @property
     def solicited_node_multicast(self) -> Self:
