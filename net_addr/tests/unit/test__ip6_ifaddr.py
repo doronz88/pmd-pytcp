@@ -958,6 +958,24 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             },
         },
         {
+            "_description": "Test Ip6IfAddrFormatError: tuple with invalid second element.",
+            "_args": [(Ip6Address("2001:db8::1"), 12345)],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6IfAddrFormatError,
+                "error_message": "The IPv6 interface address format is invalid: (Ip6Address('2001:db8::1'), 12345)",
+            },
+        },
+        {
+            "_description": "Test Ip6IfAddrFormatError: string with out-of-range mask.",
+            "_args": ["2001:db8::1/200"],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6IfAddrFormatError,
+                "error_message": "The IPv6 interface address format is invalid: '2001:db8::1/200'",
+            },
+        },
+        {
             "_description": "Test Ip6IfAddrGatewayError: gateway equals network address.",
             "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
             "_kwargs": {"gateway": Ip6Address("2001:db8::")},

@@ -39,6 +39,7 @@ from net_addr.errors import (
     Ip4IfAddrGatewayError,
     Ip4IfAddrSanityError,
     Ip4MaskFormatError,
+    Ip4NetworkFormatError,
 )
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
@@ -116,7 +117,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
                 self._network = Ip4Network(host)
                 self._validate_gateway(gateway)
                 return
-            except ValueError, Ip4AddressFormatError, Ip4MaskFormatError:
+            except ValueError, Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError:
                 pass
 
         raise Ip4IfAddrFormatError(host)

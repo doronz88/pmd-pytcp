@@ -41,6 +41,7 @@ from net_addr.errors import (
     Ip6IfAddrGatewayError,
     Ip6IfAddrSanityError,
     Ip6MaskFormatError,
+    Ip6NetworkFormatError,
 )
 from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
@@ -129,8 +130,10 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
             self._address = tuple_address
             if isinstance(network_or_mask, Ip6Network):
                 self._network = network_or_mask
-            else:
+            elif isinstance(network_or_mask, Ip6Mask):
                 self._network = Ip6Network((tuple_address, network_or_mask))
+            else:
+                raise Ip6IfAddrFormatError(host)
             if self._address not in self._network:
                 raise Ip6IfAddrSanityError(host)
             self._validate_gateway(gateway)
@@ -143,7 +146,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
                 self._network = Ip6Network(host)
                 self._validate_gateway(gateway)
                 return
-            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
+            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
                 pass
 
         raise Ip6IfAddrFormatError(host)

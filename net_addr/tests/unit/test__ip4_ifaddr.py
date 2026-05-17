@@ -619,6 +619,17 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
         },
         {
+            "_description": "Test Ip4IfAddrFormatError: string with out-of-range mask.",
+            "_args": [
+                "10.0.0.1/99",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4IfAddrFormatError,
+                "error_message": "The IPv4 interface address format is invalid: '10.0.0.1/99'",
+            },
+        },
+        {
             "_description": "Test Ip4IfAddrGatewayError: gateway not in network.",
             "_args": [
                 "192.168.1.100/24",
