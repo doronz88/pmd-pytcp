@@ -319,6 +319,14 @@ class Ip6Address(IpAddress):
 
         return self._address & IP6__LINK_LOCAL_PREFIX_MASK == IP6__LINK_LOCAL_PREFIX
 
+    # Non-goal: site-local addressing (fec0::/10, the stdlib
+    # `ipaddress` `is_site_local`) is deliberately not
+    # implemented. RFC 3879 formally deprecated the site-local
+    # prefix; its successor, Unique Local Addresses (ULA,
+    # fc00::/7, RFC 4193), is already classified by
+    # `is_private`. Adding an `is_site_local` predicate would
+    # resurface a deprecated mechanism with no PyTCP consumer.
+
     @property
     @override
     def is_loopback(self) -> bool:
