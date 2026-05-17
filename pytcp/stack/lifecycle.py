@@ -343,6 +343,7 @@ def init(
             arp_dad_verifier=lambda addr: _address_api.probe(address=addr).success,
             arp_dad_announcer=lambda addr: _address_api.announce(address=addr),
             address_api=_stack.address,
+            route_api=_stack.route,
         )
     else:
         _stack.dhcp4_client = None

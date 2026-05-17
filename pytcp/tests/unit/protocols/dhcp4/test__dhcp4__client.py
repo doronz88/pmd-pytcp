@@ -38,6 +38,7 @@ from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
+from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.stack import sysctl
 from pytcp.tests.lib.dhcp4_mock_server import (
@@ -198,7 +199,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
 
         assert result is not None
         self.assertEqual(
-            result.ip4_host.gateway,
+            result.gateway,
             Ip4Address("10.0.0.1"),
             msg="Dhcp4Lease.ip4_host.gateway must equal the first router address in the DHCP Router option.",
         )
@@ -302,7 +303,7 @@ class TestDhcp4ClientFetchNoRouter(_Dhcp4ClientFixture):
 
         assert result is not None
         self.assertIsNone(
-            result.ip4_host.gateway,
+            result.gateway,
             msg="Dhcp4Lease.ip4_host.gateway must remain None when the DHCP Ack carries no Router option.",
         )
 
@@ -1776,6 +1777,67 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         mock_address_api.add_ifaddr.assert_called_once_with(
             ip4_ifaddr=client._lease.ip4_host,
         )
+
+    def test__dhcp4_client__bound_transition_installs_default_route(self) -> None:
+        """
+        Ensure the daemon-mode INIT → BOUND transition installs
+        the leased gateway as a protocol=DHCP default route via
+        the Route API.
+
+        Reference: RFC 2131 §3.1 step 1 (Router option, option 3).
+        """
+
+        self._server.enqueue_offer(router=[Ip4Address("10.0.0.1")])
+        self._server.enqueue_ack(router=[Ip4Address("10.0.0.1")])
+        mock_route_api = MagicMock(name="RouteApi")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=mock_route_api)
+
+        client._subsystem_loop()
+
+        mock_route_api.replace_default_ip4.assert_called_once_with(
+            gateway=Ip4Address("10.0.0.1"),
+            protocol=RouteProtocol.DHCP,
+        )
+
+    def test__dhcp4_client__bound_transition_no_router_skips_route_install(self) -> None:
+        """
+        Ensure the BOUND transition installs no default route
+        when the DHCP Ack carries no Router option.
+
+        Reference: RFC 2131 §3.1 step 1 (Router option, option 3).
+        """
+
+        self._server.enqueue_offer(router=None)
+        self._server.enqueue_ack(router=None)
+        mock_route_api = MagicMock(name="RouteApi")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=mock_route_api)
+
+        client._subsystem_loop()
+
+        mock_route_api.replace_default_ip4.assert_not_called()
+
+    def test__dhcp4_client__reset_to_init_removes_default_route(self) -> None:
+        """
+        Ensure tearing the lease down (NAK / expiry reset with
+        host removal) removes the DHCP default route via the
+        Route API.
+
+        Reference: RFC 2131 §4.4.5 (lease expiry — host relinquishes the address).
+        """
+
+        mock_route_api = MagicMock(name="RouteApi")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=mock_route_api)
+        client._lease = Dhcp4Lease(
+            ip4_host=Ip4IfAddr((Ip4Address("10.0.0.100"), Ip4Mask("/24"))),
+            gateway=Ip4Address("10.0.0.1"),
+            lease_time__sec=3600,
+            server_id=Ip4Address("10.0.0.1"),
+            acquired_at_monotonic=0.0,
+        )
+
+        client._reset_to_init(remove_lease_host=True)
+
+        mock_route_api.remove_default_ip4.assert_called_once_with()
 
     def test__dhcp4_client__bound_transition_invokes_arp_dad_announcer(self) -> None:
         """

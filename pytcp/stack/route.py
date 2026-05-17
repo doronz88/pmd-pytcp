@@ -215,6 +215,24 @@ class RouteApi:
         )
         __debug__ and log("stack", f"<lg>Route API</>: IPv4 default via {gateway} ({protocol!r})")
 
+    def remove_default_ip4(self) -> int:
+        """
+        Remove the IPv4 default route, if any — the DHCP / static
+        lease-loss path. Returns the number of routes removed
+        (0 or, normally, 1). Linux 'ip route del default'.
+        """
+
+        return self._ip4_fib.remove(destination=DEFAULT_IP4_NETWORK)
+
+    def remove_default_ip6(self) -> int:
+        """
+        Remove the IPv6 default route, if any — the RA
+        router-lifetime-expiry path. Returns the number of routes
+        removed. Linux 'ip -6 route del default'.
+        """
+
+        return self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
+
     def replace_default_ip6(self, *, gateway: Ip6Address, protocol: RouteProtocol) -> None:
         """
         Atomically replace the IPv6 default route: remove any

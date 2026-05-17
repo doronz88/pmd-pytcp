@@ -110,7 +110,7 @@ def _resolve_gateway_mac(lease: "Dhcp4Lease", /) -> MacAddress | None:
 
     if lease.gateway_mac is not None:
         return lease.gateway_mac
-    if lease.ip4_host.gateway is None:
+    if lease.gateway is None:
         return None
     try:
         from pytcp import stack  # noqa: PLC0415 — late import; arp_cache populated at stack.init()
@@ -120,7 +120,7 @@ def _resolve_gateway_mac(lease: "Dhcp4Lease", /) -> MacAddress | None:
     if arp_cache is None:
         return None
     try:
-        mac = arp_cache.find_entry(ip4_address=lease.ip4_host.gateway)
+        mac = arp_cache.find_entry(ip4_address=lease.gateway)
     except Exception:  # noqa: BLE001 — defensive; missing entry / stale fixture
         return None
     if mac is None or isinstance(mac, MacAddress):
@@ -160,7 +160,7 @@ def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
         "version": _DHCP4__LEASE_CACHE__VERSION,
         "address": str(lease.ip4_host.address),
         "mask": str(lease.ip4_host.network.mask),
-        "gateway": (str(lease.ip4_host.gateway) if lease.ip4_host.gateway is not None else None),
+        "gateway": (str(lease.gateway) if lease.gateway is not None else None),
         "gateway_mac": (str(gateway_mac) if gateway_mac is not None else None),
         "server_id": str(lease.server_id),
         "lease_time__sec": lease.lease_time__sec,
@@ -269,8 +269,6 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         return None
 
     ip4_host = Ip4IfAddr((address, mask))
-    if gateway is not None:
-        ip4_host.gateway = gateway
 
     # The monotonic clock did not exist before this process
     # started, so we cannot reconstruct the original
@@ -283,6 +281,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
 
     return Dhcp4Lease(
         ip4_host=ip4_host,
+        gateway=gateway,
         lease_time__sec=lease_time__sec,
         server_id=server_id,
         acquired_at_monotonic=acquired_at_monotonic,

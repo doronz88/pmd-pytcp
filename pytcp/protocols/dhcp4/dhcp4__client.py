@@ -41,6 +41,7 @@ from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 
 if TYPE_CHECKING:
     from pytcp.stack.address import Ip4AddressApi
+    from pytcp.stack.route import RouteApi
 
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from net_proto.protocols.dhcp4.dhcp4__enums import (
@@ -89,6 +90,7 @@ from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     write_cached_lease,
 )
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
+from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
 
@@ -146,6 +148,12 @@ class Dhcp4Lease:
     lease_time__sec: int
     server_id: Ip4Address
     acquired_at_monotonic: float
+    # Leased default gateway (DHCP option 3, first router). Lives
+    # on the lease, not on 'ip4_host' — the Ip4IfAddr value type
+    # carries no gateway (host-mode routing is the FIB's job; the
+    # Route API installs this as the protocol=DHCP default route
+    # on BOUND). None when the server omitted option 3.
+    gateway: Ip4Address | None = None
     gateway_mac: MacAddress | None = None
     t1_override: int | None = None
     t2_override: int | None = None
@@ -195,6 +203,7 @@ class Dhcp4Client(Subsystem):
         arp_dad_verifier: "Callable[[Ip4Address], bool] | None" = None,
         arp_dad_announcer: "Callable[[Ip4Address], None] | None" = None,
         address_api: "Ip4AddressApi | None" = None,
+        route_api: "RouteApi | None" = None,
     ) -> None:
         """
         Initialize the DHCPv4 client.
@@ -224,6 +233,7 @@ class Dhcp4Client(Subsystem):
         self._arp_dad_verifier = arp_dad_verifier
         self._arp_dad_announcer = arp_dad_announcer
         self._address_api = address_api
+        self._route_api = route_api
         # Set at the top of '_do_init_to_bound'; reused by every
         # outbound TX in this acquisition cycle to populate the
         # DHCP header 'secs' field per RFC 1542 §3.2.
@@ -349,6 +359,16 @@ class Dhcp4Client(Subsystem):
         self._lease = lease
         if self._address_api is not None:
             self._address_api.add_ifaddr(ip4_ifaddr=lease.ip4_host)
+        # Install the leased gateway as the protocol=DHCP default
+        # route — Phase 3 of
+        # docs/refactor/routing_table_host_mode.md. The FIB is
+        # the single source of truth for the next hop;
+        # 'lease.gateway' no longer rides on 'ip4_host'.
+        if self._route_api is not None and lease.gateway is not None:
+            self._route_api.replace_default_ip4(
+                gateway=lease.gateway,
+                protocol=RouteProtocol.DHCP,
+            )
         if self._arp_dad_announcer is not None:
             self._arp_dad_announcer(lease.ip4_host.address)
         write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
@@ -601,11 +621,10 @@ class Dhcp4Client(Subsystem):
             )
             return None
         ip4_host = Ip4IfAddr((result.yiaddr, result.subnet_mask))
-        if result.router:
-            ip4_host.gateway = result.router[0]
         t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
         return Dhcp4Lease(
             ip4_host=ip4_host,
+            gateway=result.router[0] if result.router else None,
             lease_time__sec=result.lease_time,
             server_id=result.srv_id if result.srv_id is not None else lease.server_id,
             acquired_at_monotonic=time.monotonic(),
@@ -698,6 +717,12 @@ class Dhcp4Client(Subsystem):
                     dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                 ),
             )
+        # Lease lost ⇒ the DHCP default route goes with it
+        # (Linux drops the default on lease expiry / NAK). Guarded
+        # independently of 'address_api' — the route plane and
+        # address plane are separate Phase-3 surfaces.
+        if remove_lease_host and self._lease is not None and self._route_api is not None:
+            self._route_api.remove_default_ip4()
         # Phase 5 — purge the on-disk lease cache so the next
         # boot does not try INIT-REBOOT on an invalidated
         # lease. Always invalidate on the NAK / expiry paths,
@@ -835,11 +860,10 @@ class Dhcp4Client(Subsystem):
             return
 
         ip4_host = Ip4IfAddr((result.yiaddr, result.subnet_mask))
-        if result.router:
-            ip4_host.gateway = result.router[0]
         t1_override, t2_override = self._extract_t1_t2_overrides(result, result.lease_time)
         refreshed = Dhcp4Lease(
             ip4_host=ip4_host,
+            gateway=result.router[0] if result.router else None,
             lease_time__sec=result.lease_time,
             server_id=(result.srv_id if result.srv_id is not None else cached.server_id),
             acquired_at_monotonic=time.monotonic(),
@@ -1132,6 +1156,11 @@ class Dhcp4Client(Subsystem):
                         dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                     ),
                 )
+            # RELEASE on shutdown ⇒ drop the DHCP default route
+            # too (same plane-separation rationale as
+            # '_reset_to_init').
+            if self._route_api is not None:
+                self._route_api.remove_default_ip4()
 
     def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """
@@ -1266,8 +1295,6 @@ class Dhcp4Client(Subsystem):
             return None
 
         ip4_host = Ip4IfAddr((ack.yiaddr, ack.subnet_mask))
-        if ack.router:
-            ip4_host.gateway = ack.router[0]
 
         # RFC 2131 §3.1 step 5 — probe the offered address before
         # claiming it. On conflict, emit DHCPDECLINE, wait at
@@ -1292,6 +1319,7 @@ class Dhcp4Client(Subsystem):
         t1_override, t2_override = self._extract_t1_t2_overrides(ack, ack.lease_time)
         return Dhcp4Lease(
             ip4_host=ip4_host,
+            gateway=ack.router[0] if ack.router else None,
             lease_time__sec=ack.lease_time,
             server_id=srv_id,
             acquired_at_monotonic=time.monotonic(),

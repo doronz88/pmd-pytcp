@@ -402,6 +402,44 @@ class TestRouteApiMutation(TestCase):
             msg="replace_default_ip6 must leave exactly the new default route.",
         )
 
+    def test__stack__route__remove_default_clears_default_route(self) -> None:
+        """
+        Ensure 'remove_default_ip4' / 'remove_default_ip6' delete
+        the default route and leave non-default routes intact
+        (the DHCP / RA lease-loss path).
+
+        Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
+        """
+
+        static = Route(
+            destination=Ip4Network("10.9.0.0/16"),
+            gateway=Ip4Address("10.0.1.254"),
+            protocol=RouteProtocol.STATIC,
+        )
+        self._route_api.add_ip4_route(route=static)
+        self._route_api.replace_default_ip4(
+            gateway=Ip4Address("10.0.1.1"),
+            protocol=RouteProtocol.DHCP,
+        )
+        self._route_api.replace_default_ip6(
+            gateway=Ip6Address("fe80::1"),
+            protocol=RouteProtocol.RA,
+        )
+
+        self._route_api.remove_default_ip4()
+        self._route_api.remove_default_ip6()
+
+        self.assertEqual(
+            self._route_api.list_ip4_routes(),
+            (static,),
+            msg="remove_default_ip4 must delete only the default route.",
+        )
+        self.assertEqual(
+            self._route_api.list_ip6_routes(),
+            (),
+            msg="remove_default_ip6 must delete the IPv6 default route.",
+        )
+
     def test__stack__route__replace_default_preserves_non_default_routes(self) -> None:
         """
         Ensure 'replace_default_ip4' touches only the default

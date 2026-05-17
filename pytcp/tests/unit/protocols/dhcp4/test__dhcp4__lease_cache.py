@@ -67,10 +67,9 @@ def _make_lease(
     """
 
     ip4_host = Ip4IfAddr((Ip4Address(address), Ip4Mask(mask)))
-    if gateway is not None:
-        ip4_host.gateway = Ip4Address(gateway)
     return Dhcp4Lease(
         ip4_host=ip4_host,
+        gateway=Ip4Address(gateway) if gateway is not None else None,
         lease_time__sec=lease_time__sec,
         server_id=Ip4Address(server_id),
         acquired_at_monotonic=acquired_at_monotonic,
@@ -134,8 +133,8 @@ class TestDhcp4LeaseCacheRoundTrip(_CacheFixture):
             msg="Round-trip subnet mask must equal the original.",
         )
         self.assertEqual(
-            read.ip4_host.gateway,
-            original.ip4_host.gateway,
+            read.gateway,
+            original.gateway,
             msg="Round-trip gateway must equal the original.",
         )
         self.assertEqual(
@@ -164,7 +163,7 @@ class TestDhcp4LeaseCacheRoundTrip(_CacheFixture):
 
         assert read is not None
         self.assertIsNone(
-            read.ip4_host.gateway,
+            read.gateway,
             msg="Round-trip gateway-less lease must read back with gateway=None.",
         )
 
