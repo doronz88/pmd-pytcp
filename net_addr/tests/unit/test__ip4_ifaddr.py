@@ -140,25 +140,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "expiration_time": 0,
             },
         },
-        {
-            "_description": "Test the IPv4 host: 10.0.0.1/8 (Ip4Address, None)",
-            "_args": [
-                (Ip4Address("10.0.0.1"), None),
-            ],
-            "_kwargs": {},
-            "_results": {
-                "__str__": "10.0.0.1/8",
-                "__repr__": "Ip4IfAddr('10.0.0.1/8')",
-                "version": IpVersion.IP4,
-                "is_ip6": False,
-                "is_ip4": True,
-                "address": Ip4Address("10.0.0.1"),
-                "network": Ip4Network("10.0.0.0/8"),
-                "gateway": None,
-                "origin": Ip4IfAddrSource.UNKNOWN,
-                "expiration_time": 0,
-            },
-        },
     ]
 )
 class TestNetAddrIp4Host(TestCase):
@@ -584,6 +565,17 @@ class TestNetAddrIp4HostSemantics(TestCase):
             "_results": {
                 "error": Ip4IfAddrFormatError,
                 "error_message": "The IPv4 interface address format is invalid: None",
+            },
+        },
+        {
+            "_description": "Test Ip4IfAddrFormatError: maskless (Ip4Address, None) tuple is rejected.",
+            "_args": [
+                (Ip4Address("10.0.0.1"), None),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4IfAddrFormatError,
+                "error_message": "The IPv4 interface address format is invalid: (Ip4Address('10.0.0.1'), None)",
             },
         },
         {

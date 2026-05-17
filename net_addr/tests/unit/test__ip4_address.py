@@ -35,7 +35,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpVersion, MacAddress
+from net_addr import Ip4Address, Ip4AddressFormatError, Ip6Address, IpVersion, MacAddress
 
 
 @parameterized_class(
@@ -65,11 +65,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -97,11 +92,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -129,11 +119,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": True,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -161,11 +146,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": True,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -193,11 +173,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -225,11 +200,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -257,11 +227,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -289,11 +254,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -321,11 +281,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -353,11 +308,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -385,11 +335,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -417,11 +362,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -449,11 +389,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -481,11 +416,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -513,11 +443,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -545,11 +470,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -577,11 +497,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -609,11 +524,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -641,11 +551,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -673,11 +578,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -705,11 +605,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -737,11 +632,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -769,11 +659,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": True,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -801,11 +686,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -833,11 +713,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": True,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -865,11 +740,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": True,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": True,
             },
         },
         {
@@ -897,11 +767,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -929,11 +794,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -961,11 +821,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -993,11 +848,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1025,11 +875,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1057,11 +902,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1089,11 +929,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1121,11 +956,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1153,11 +983,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1185,11 +1010,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": True,
-                "is_class_d": False,
-                "is_class_e": False,
             },
         },
         {
@@ -1217,11 +1037,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": True,
-                "is_class_e": False,
             },
         },
         {
@@ -1247,11 +1062,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": True,
-                "is_class_e": False,
             },
         },
         {
@@ -1279,11 +1089,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": True,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": True,
             },
         },
         {
@@ -1311,11 +1116,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": True,
                 "is_invalid": False,
                 "is_limited_broadcast": False,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": True,
             },
         },
         {
@@ -1343,11 +1143,6 @@ from net_addr import Ip4Address, Ip4AddressFormatError, Ip4Mask, Ip6Address, IpV
                 "is_reserved": False,
                 "is_invalid": False,
                 "is_limited_broadcast": True,
-                "is_class_a": False,
-                "is_class_b": False,
-                "is_class_c": False,
-                "is_class_d": False,
-                "is_class_e": True,
             },
         },
     ]
@@ -1569,76 +1364,6 @@ class TestNetAddrIp4Address(TestCase):
         self.assertEqual(
             self._ip4_address.is_limited_broadcast,
             self._results["is_limited_broadcast"],
-        )
-
-    def test__net_addr__ip4_address__is_class_a(self) -> None:
-        """
-        Ensure the IPv4 address 'is_class_a' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.is_class_a,
-            self._results["is_class_a"],
-        )
-
-    def test__net_addr__ip4_address__is_class_b(self) -> None:
-        """
-        Ensure the IPv4 address 'is_class_b' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.is_class_b,
-            self._results["is_class_b"],
-        )
-
-    def test__net_addr__ip4_address__is_class_c(self) -> None:
-        """
-        Ensure the IPv4 address 'is_class_c' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.is_class_c,
-            self._results["is_class_c"],
-        )
-
-    def test__net_addr__ip4_address__is_class_d(self) -> None:
-        """
-        Ensure the IPv4 address 'is_class_d' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.is_class_d,
-            self._results["is_class_d"],
-        )
-
-    def test__net_addr__ip4_address__is_class_e(self) -> None:
-        """
-        Ensure the IPv4 address 'is_class_e' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.is_class_e,
-            self._results["is_class_e"],
-        )
-
-    def test__net_addr__ip4_address__class__mutually_exclusive(self) -> None:
-        """
-        Ensure every IPv4 address belongs to exactly one of the five
-        address classes (A, B, C, D, E).
-        """
-
-        flags = [
-            self._ip4_address.is_class_a,
-            self._ip4_address.is_class_b,
-            self._ip4_address.is_class_c,
-            self._ip4_address.is_class_d,
-            self._ip4_address.is_class_e,
-        ]
-
-        self.assertEqual(
-            sum(flags),
-            1,
-            msg=f"Address {self._ip4_address} must belong to exactly one class; got flags {flags}.",
         )
 
 
@@ -1868,188 +1593,6 @@ class TestNetAddrIp4AddressErrors(TestCase):
                 f"Expected exception message to start with "
                 f"{self._results['error_message']!r}, got {str(error.exception)!r}."
             ),
-        )
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "Test classful_mask for Class A boundary: 0.0.0.0",
-            "_args": ["0.0.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.0.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class A address: 1.0.0.0",
-            "_args": ["1.0.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.0.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class A address: 10.0.0.0",
-            "_args": ["10.0.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.0.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class A boundary: 127.255.255.255",
-            "_args": ["127.255.255.255"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.0.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class B boundary: 128.0.0.0",
-            "_args": ["128.0.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class B address: 169.254.0.0",
-            "_args": ["169.254.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class B address: 172.16.0.0",
-            "_args": ["172.16.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class B boundary: 191.255.255.255",
-            "_args": ["191.255.255.255"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.0.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class C boundary: 192.0.0.0",
-            "_args": ["192.0.0.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.255.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class C address: 192.168.1.0",
-            "_args": ["192.168.1.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.255.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class C address: 223.255.255.0",
-            "_args": ["223.255.255.0"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.255.0"),
-            },
-        },
-        {
-            "_description": "Test classful_mask for Class C boundary: 223.255.255.255",
-            "_args": ["223.255.255.255"],
-            "_kwargs": {},
-            "_results": {
-                "classful_mask": Ip4Mask("255.255.255.0"),
-            },
-        },
-    ]
-)
-class TestNetAddrIp4AddressClassfulMask(TestCase):
-    """
-    The NetAddr IPv4 address classful mask tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-    _results: dict[str, Any]
-
-    def setUp(self) -> None:
-        """
-        Initialize the IPv4 address object with testcase arguments.
-        """
-
-        self._ip4_address = Ip4Address(*self._args, **self._kwargs)
-
-    def test__net_addr__ip4_address__classful_mask(self) -> None:
-        """
-        Ensure the IPv4 address 'classful_mask' property returns a correct value.
-        """
-
-        self.assertEqual(
-            self._ip4_address.classful_mask,
-            self._results["classful_mask"],
-        )
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "Test classful_mask raises ValueError for Class D address: 224.0.0.0",
-            "_args": ["224.0.0.0"],
-            "_kwargs": {},
-        },
-        {
-            "_description": "Test classful_mask raises ValueError for Class D address: 239.255.255.255",
-            "_args": ["239.255.255.255"],
-            "_kwargs": {},
-        },
-        {
-            "_description": "Test classful_mask raises ValueError for Class E address: 240.0.0.0",
-            "_args": ["240.0.0.0"],
-            "_kwargs": {},
-        },
-        {
-            "_description": "Test classful_mask raises ValueError for Class E address: 255.255.255.255",
-            "_args": ["255.255.255.255"],
-            "_kwargs": {},
-        },
-    ]
-)
-class TestNetAddrIp4AddressClassfulMaskErrors(TestCase):
-    """
-    The NetAddr IPv4 address classful mask error tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-
-    def setUp(self) -> None:
-        """
-        Initialize the IPv4 address object with testcase arguments.
-        """
-
-        self._ip4_address = Ip4Address(*self._args, **self._kwargs)
-
-    def test__net_addr__ip4_address__classful_mask__error(self) -> None:
-        """
-        Ensure 'classful_mask' raises ValueError for Class D and Class E addresses.
-        """
-
-        with self.assertRaises(ValueError) as error:
-            _ = self._ip4_address.classful_mask
-
-        self.assertEqual(
-            str(error.exception),
-            "Unable to assign classful mask to IPv4 address.",
         )
 
 

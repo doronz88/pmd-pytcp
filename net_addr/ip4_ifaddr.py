@@ -62,7 +62,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
 
     def __init__(
         self,
-        host: Self | tuple[Ip4Address, Ip4Network] | tuple[Ip4Address, Ip4Mask] | tuple[Ip4Address, None] | str,
+        host: Self | tuple[Ip4Address, Ip4Network] | tuple[Ip4Address, Ip4Mask] | str,
         /,
         *,
         gateway: Ip4Address | None = None,
@@ -100,10 +100,10 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
             self._address = tuple_address
             if isinstance(network_or_mask, Ip4Network):
                 self._network = network_or_mask
-            elif network_or_mask is None:
-                self._network = Ip4Network((tuple_address, tuple_address.classful_mask))
-            else:
+            elif isinstance(network_or_mask, Ip4Mask):
                 self._network = Ip4Network((tuple_address, network_or_mask))
+            else:
+                raise Ip4IfAddrFormatError(host)
             if self._address not in self._network:
                 raise Ip4IfAddrSanityError(host)
             self._validate_gateway(gateway)
