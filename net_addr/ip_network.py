@@ -35,7 +35,6 @@ from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Self, overload, override
 
 from net_addr.base import Base
-from net_addr.errors import IpNetworkFormatError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
@@ -71,30 +70,6 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         """
 
         raise NotImplementedError
-
-    @staticmethod
-    def from_value(value: str, /) -> "Ip4Network | Ip6Network":
-        """
-        Build the concrete IPv4 or IPv6 network from a CIDR /
-        address-mask string of unknown family (IPv4 attempted
-        first). Raises 'IpNetworkFormatError' when the value
-        parses as neither.
-        """
-
-        from net_addr.ip4_network import Ip4Network
-        from net_addr.ip6_network import Ip6Network
-
-        try:
-            return Ip4Network(value)
-        except IpNetworkFormatError:
-            pass
-
-        try:
-            return Ip6Network(value)
-        except IpNetworkFormatError:
-            pass
-
-        raise IpNetworkFormatError(value)
 
     @staticmethod
     def _summarize_ints(lo: int, hi: int, bits: int, /) -> Iterator[tuple[int, int]]:

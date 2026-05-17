@@ -37,8 +37,6 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore
 
 from net_addr import (
-    IfAddr,
-    IfAddrFormatError,
     Ip4Address,
     Ip4IfAddr,
     Ip4IfAddrFormatError,
@@ -899,32 +897,6 @@ class TestNetAddrIp4HostSetters(TestCase):
             msg="The 'gateway' setter must reject the host's own address.",
         ):
             self._ip4_ifaddr.gateway = Ip4Address("192.168.1.100")
-
-
-class TestNetAddrIfAddrFromValue(TestCase):
-    """
-    The NetAddr IfAddr.from_value version-detecting factory tests.
-    """
-
-    def test__net_addr__ifaddr__from_value(self) -> None:
-        """
-        Ensure 'IfAddr.from_value' detects the address family
-        and returns the matching concrete interface address; an
-        unparsable value raises 'IfAddrFormatError'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        v4 = IfAddr.from_value("192.0.2.1/24")
-        self.assertIsInstance(v4, Ip4IfAddr, msg="An IPv4 host string must yield an Ip4IfAddr.")
-        self.assertEqual(v4, Ip4IfAddr("192.0.2.1/24"), msg="from_value must preserve the IPv4 interface address.")
-
-        v6 = IfAddr.from_value("2001:db8::1/64")
-        self.assertIsInstance(v6, Ip6IfAddr, msg="An IPv6 host string must yield an Ip6IfAddr.")
-        self.assertEqual(v6, Ip6IfAddr("2001:db8::1/64"), msg="from_value must preserve the IPv6 interface address.")
-
-        with self.assertRaises(IfAddrFormatError, msg="An unparsable value must raise IfAddrFormatError."):
-            IfAddr.from_value("not-an-ifaddr")
 
 
 class TestNetAddrIp4IfAddrFormat(TestCase):

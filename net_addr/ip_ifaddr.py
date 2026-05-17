@@ -31,10 +31,9 @@ ver 3.0.5
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, override
+from typing import override
 
 from net_addr.base import Base
-from net_addr.errors import IfAddrFormatError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
@@ -42,10 +41,6 @@ from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_network import Ip6Network
-
-if TYPE_CHECKING:
-    from net_addr.ip4_ifaddr import Ip4IfAddr
-    from net_addr.ip6_ifaddr import Ip6IfAddr
 
 
 class IfAddr[
@@ -70,30 +65,6 @@ class IfAddr[
     _gateway: A | None
     _origin: O
     _expiration_time: int
-
-    @staticmethod
-    def from_value(value: str, /) -> "Ip4IfAddr | Ip6IfAddr":
-        """
-        Build the concrete IPv4 or IPv6 interface address from a
-        host string of unknown family (IPv4 attempted first).
-        Raises 'IfAddrFormatError' when the value parses as
-        neither.
-        """
-
-        from net_addr.ip4_ifaddr import Ip4IfAddr
-        from net_addr.ip6_ifaddr import Ip6IfAddr
-
-        try:
-            return Ip4IfAddr(value)
-        except IfAddrFormatError:
-            pass
-
-        try:
-            return Ip6IfAddr(value)
-        except IfAddrFormatError:
-            pass
-
-        raise IfAddrFormatError(value)
 
     @override
     def __str__(self) -> str:

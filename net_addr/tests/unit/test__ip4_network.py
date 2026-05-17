@@ -46,7 +46,6 @@ from net_addr import (
     Ip6IfAddr,
     Ip6Network,
     IpNetwork,
-    IpNetworkFormatError,
     IpVersion,
 )
 
@@ -1092,32 +1091,6 @@ class TestNetAddrIp4NetworkOrdering(TestCase):
 
         with self.assertRaises(TypeError, msg="Ip4Network < Ip6Network must raise TypeError."):
             _ = Ip4Network("10.0.0.0/8") < Ip6Network("2001:db8::/32")
-
-
-class TestNetAddrIpNetworkFromValue(TestCase):
-    """
-    The NetAddr IpNetwork.from_value version-detecting factory tests.
-    """
-
-    def test__net_addr__ip_network__from_value(self) -> None:
-        """
-        Ensure 'IpNetwork.from_value' detects the address family
-        and returns the matching concrete network; an
-        unparsable value raises 'IpNetworkFormatError'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        v4 = IpNetwork.from_value("192.0.2.0/24")
-        self.assertIsInstance(v4, Ip4Network, msg="An IPv4 CIDR must yield an Ip4Network.")
-        self.assertEqual(v4, Ip4Network("192.0.2.0/24"), msg="from_value must preserve the IPv4 network.")
-
-        v6 = IpNetwork.from_value("2001:db8::/32")
-        self.assertIsInstance(v6, Ip6Network, msg="An IPv6 CIDR must yield an Ip6Network.")
-        self.assertEqual(v6, Ip6Network("2001:db8::/32"), msg="from_value must preserve the IPv6 network.")
-
-        with self.assertRaises(IpNetworkFormatError, msg="An unparsable value must raise IpNetworkFormatError."):
-            IpNetwork.from_value("not-a-network")
 
 
 @parameterized_class(
