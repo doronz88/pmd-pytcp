@@ -1731,3 +1731,24 @@ class TestNetAddrIp6AddressCompressedExploded(TestCase):
                     str(obj),
                     msg="compressed must equal str() for an IPv6 address.",
                 )
+
+
+class TestNetAddrIp6AddressMaxPrefixlen(TestCase):
+    """
+    The NetAddr IPv6 address max_prefixlen tests.
+    """
+
+    def test__net_addr__ip6_address__max_prefixlen(self) -> None:
+        """
+        Ensure 'max_prefixlen' is 128 for any IPv6 address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ["::", "2001:db8::1", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"]:
+            with self.subTest(address=value):
+                self.assertEqual(
+                    Ip6Address(value).max_prefixlen,
+                    128,
+                    msg=f"max_prefixlen must be 128 for {value}.",
+                )

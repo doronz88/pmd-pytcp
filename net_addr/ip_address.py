@@ -100,6 +100,15 @@ class IpAddress(Address, Ip, ABC):
         return str(self)
 
     @property
+    def max_prefixlen(self) -> int:
+        """
+        Get the address-family width in bits (32 for IPv4,
+        128 for IPv6).
+        """
+
+        return len(memoryview(self)) * 8
+
+    @property
     @abstractmethod
     def exploded(self) -> str:
         """

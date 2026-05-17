@@ -2205,3 +2205,24 @@ class TestNetAddrIpAddressFromValue(TestCase):
 
         with self.assertRaises(IpAddressFormatError, msg="An unparsable value must raise IpAddressFormatError."):
             IpAddress.from_value("not-an-address")
+
+
+class TestNetAddrIp4AddressMaxPrefixlen(TestCase):
+    """
+    The NetAddr IPv4 address max_prefixlen tests.
+    """
+
+    def test__net_addr__ip4_address__max_prefixlen(self) -> None:
+        """
+        Ensure 'max_prefixlen' is 32 for any IPv4 address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ["0.0.0.0", "192.0.2.1", "255.255.255.255"]:
+            with self.subTest(address=value):
+                self.assertEqual(
+                    Ip4Address(value).max_prefixlen,
+                    32,
+                    msg=f"max_prefixlen must be 32 for {value}.",
+                )

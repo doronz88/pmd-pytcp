@@ -203,6 +203,14 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         return self._mask
 
     @property
+    def prefixlen(self) -> int:
+        """
+        Get the IP network prefix length.
+        """
+
+        return len(self._mask)
+
+    @property
     @abstractmethod
     def last(self) -> A:
         """
@@ -247,7 +255,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         return f"{self._address}/{self.hostmask}"
 
     @property
-    def _max_prefixlen(self) -> int:
+    def max_prefixlen(self) -> int:
         """
         Get the address-family width in bits (32 for IPv4,
         128 for IPv6).
@@ -290,7 +298,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         prefixlen = len(self._mask)
 
-        if prefixlen == self._max_prefixlen:
+        if prefixlen == self.max_prefixlen:
             yield self
             return
 
@@ -303,13 +311,13 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
                 raise ValueError(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
             new_prefix = prefixlen + prefixlen_diff
 
-        if new_prefix > self._max_prefixlen:
+        if new_prefix > self.max_prefixlen:
             raise ValueError(f"prefixlen_diff {prefixlen_diff} is invalid for a /{prefixlen} network")
 
         network_type = type(self)
         address_type = type(self._address)
         mask = type(self._mask)(self._mask_int(new_prefix))
-        step = 1 << (self._max_prefixlen - new_prefix)
+        step = 1 << (self.max_prefixlen - new_prefix)
         for start in range(int(self._address), int(self.last) + 1, step):
             yield network_type((address_type(start), mask))
 
@@ -376,4 +384,4 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         if prefixlen == 0:
             return 0
-        return ((1 << prefixlen) - 1) << (self._max_prefixlen - prefixlen)
+        return ((1 << prefixlen) - 1) << (self.max_prefixlen - prefixlen)

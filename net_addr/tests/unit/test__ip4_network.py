@@ -1214,3 +1214,23 @@ class TestNetAddrIp4NetworkWithForms(TestCase):
                     self._results[key],
                     msg=f"Unexpected {key} for case: {self._description}",
                 )
+
+
+class TestNetAddrIp4NetworkPrefixlen(TestCase):
+    """
+    The NetAddr IPv4 network prefixlen / max_prefixlen tests.
+    """
+
+    def test__net_addr__ip4_network__prefixlen(self) -> None:
+        """
+        Ensure 'prefixlen' is the mask prefix length and
+        'max_prefixlen' is 32.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for cidr, prefixlen in [("0.0.0.0/0", 0), ("192.0.2.0/24", 24), ("192.0.2.5/32", 32)]:
+            with self.subTest(network=cidr):
+                net = Ip4Network(cidr)
+                self.assertEqual(net.prefixlen, prefixlen, msg=f"Unexpected prefixlen for {cidr}.")
+                self.assertEqual(net.max_prefixlen, 32, msg=f"max_prefixlen must be 32 for {cidr}.")

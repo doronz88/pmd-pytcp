@@ -997,3 +997,23 @@ class TestNetAddrIp6NetworkWithForms(TestCase):
                     self._results[key],
                     msg=f"Unexpected {key} for case: {self._description}",
                 )
+
+
+class TestNetAddrIp6NetworkPrefixlen(TestCase):
+    """
+    The NetAddr IPv6 network prefixlen / max_prefixlen tests.
+    """
+
+    def test__net_addr__ip6_network__prefixlen(self) -> None:
+        """
+        Ensure 'prefixlen' is the mask prefix length and
+        'max_prefixlen' is 128.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for cidr, prefixlen in [("::/0", 0), ("2001:db8::/32", 32), ("2001:db8::5/128", 128)]:
+            with self.subTest(network=cidr):
+                net = Ip6Network(cidr)
+                self.assertEqual(net.prefixlen, prefixlen, msg=f"Unexpected prefixlen for {cidr}.")
+                self.assertEqual(net.max_prefixlen, 128, msg=f"max_prefixlen must be 128 for {cidr}.")
