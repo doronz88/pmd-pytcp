@@ -92,14 +92,6 @@ class IpAddress(Address, Ip, ABC):
         raise NotImplementedError
 
     @property
-    def compressed(self) -> str:
-        """
-        Get the address in its canonical compressed text form.
-        """
-
-        return str(self)
-
-    @property
     def max_prefixlen(self) -> int:
         """
         Get the address-family width in bits (32 for IPv4,
@@ -107,15 +99,6 @@ class IpAddress(Address, Ip, ABC):
         """
 
         return len(memoryview(self)) * 8
-
-    @property
-    @abstractmethod
-    def exploded(self) -> str:
-        """
-        Get the address in its fully expanded text form.
-        """
-
-        raise NotImplementedError
 
     @property
     def is_unicast(self) -> bool:

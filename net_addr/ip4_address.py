@@ -129,16 +129,18 @@ class Ip4Address(IpAddress):
 
         return ".".join(str(octet) for octet in reversed(bytes(self))) + ".in-addr.arpa"
 
-    @property
     @override
-    def exploded(self) -> str:
+    def _format_alt(self, format_spec: str, /) -> str | None:
         """
-        Get the IPv4 address in fully expanded form. IPv4 has
-        no zero compression, so this is the dotted-decimal
-        string.
+        Render the 'ex' (expanded) text code. IPv4 has no zero
+        compression, so the expanded form is the dotted-decimal
+        string. Any other code is not recognised.
         """
 
-        return str(self)
+        if format_spec == "ex":
+            return str(self)
+
+        return None
 
     @property
     @override

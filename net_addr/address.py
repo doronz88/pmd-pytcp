@@ -65,18 +65,34 @@ class Address(Base, ABC):
 
         return self._address
 
+    def _format_alt(self, format_spec: str, /) -> str | None:
+        """
+        Render a type-specific textual format code, or None if
+        the code is not recognised by this address type. The
+        base type recognises none.
+        """
+
+        return None
+
     def __format__(self, format_spec: str, /) -> str:
         """
-        Format the address as a fixed-width integer. An empty
-        spec or one ending in 's' yields the text form; 'b' /
-        'x' / 'X' give the value zero-padded to the address-
-        family bit width, 'n' maps to 'b' for 32-bit families
-        and 'x' otherwise. The '#' (radix prefix) and '_'
-        (4-digit grouping) modifiers are supported.
+        Format the address. An empty spec or one ending in 's'
+        yields the text form (str-style width / alignment
+        applied); a type-specific text code ('ex' for the
+        expanded IP form, 'hy' / 'ci' for MAC notations) is
+        rendered by '_format_alt'; otherwise the value is a
+        fixed-width integer — 'b' / 'x' / 'X' zero-padded to
+        the address-family bit width, 'n' mapping to 'b' for
+        32-bit families and 'x' otherwise, with the '#' (radix
+        prefix) and '_' (4-digit grouping) modifiers.
         """
 
         if not format_spec or format_spec[-1] == "s":
             return format(str(self), format_spec)
+
+        alt = self._format_alt(format_spec)
+        if alt is not None:
+            return alt
 
         code = format_spec[-1]
         flags = format_spec[:-1]

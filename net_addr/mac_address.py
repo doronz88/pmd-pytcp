@@ -103,6 +103,24 @@ class MacAddress(Address):
         return ":".join([f"{_:0>2x}" for _ in bytes(self)])
 
     @override
+    def _format_alt(self, format_spec: str, /) -> str | None:
+        """
+        Render a popular MAC notation code: 'hy' for the
+        hyphen-separated form (01-02-03-04-05-06), 'ci' for the
+        Cisco three-group dotted form (0102.0304.0506). Both
+        emit lowercase hex; any other code is not recognised.
+        """
+
+        match format_spec:
+            case "hy":
+                return "-".join(f"{octet:0>2x}" for octet in bytes(self))
+            case "ci":
+                digits = f"{self._address:012x}"
+                return ".".join(digits[index : index + 4] for index in range(0, 12, 4))
+
+        return None
+
+    @override
     def __buffer__(self, _: int) -> memoryview:
         """
         Get the MAC address as a memoryview.

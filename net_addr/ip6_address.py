@@ -234,17 +234,19 @@ class Ip6Address(IpAddress):
 
         return ".".join(reversed(f"{self._address:032x}")) + ".ip6.arpa"
 
-    @property
     @override
-    def exploded(self) -> str:
+    def _format_alt(self, format_spec: str, /) -> str | None:
         """
-        Get the IPv6 address in fully expanded form — eight
-        groups of four lowercase hex digits, no zero
-        compression (RFC 4291 §2.2 form 1).
+        Render the 'ex' (expanded) text code — eight groups of
+        four lowercase hex digits, no zero compression (RFC 4291
+        §2.2 form 1). Any other code is not recognised.
         """
 
-        nibbles = f"{self._address:032x}"
-        return ":".join(nibbles[index : index + 4] for index in range(0, 32, 4))
+        if format_spec == "ex":
+            nibbles = f"{self._address:032x}"
+            return ":".join(nibbles[index : index + 4] for index in range(0, 32, 4))
+
+        return None
 
     @property
     def ipv4_mapped(self) -> Ip4Address | None:

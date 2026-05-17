@@ -2149,15 +2149,16 @@ class TestNetAddrIp4AddressReversePointer(TestCase):
                 )
 
 
-class TestNetAddrIp4AddressCompressedExploded(TestCase):
+class TestNetAddrIp4AddressFormatExploded(TestCase):
     """
-    The NetAddr IPv4 address compressed / exploded form tests.
+    The NetAddr IPv4 address 'ex' / default text-format tests.
     """
 
-    def test__net_addr__ip4_address__compressed_exploded(self) -> None:
+    def test__net_addr__ip4_address__format_exploded(self) -> None:
         """
-        Ensure 'compressed' and 'exploded' both yield the
-        dotted-decimal string for IPv4 (no expansion exists).
+        Ensure the 'ex' format code and the default text form
+        both yield the dotted-decimal string for IPv4 (no zero
+        compression exists for IPv4).
 
         Reference: RFC 791 §2.3 (IPv4 dotted-decimal notation).
         """
@@ -2165,9 +2166,9 @@ class TestNetAddrIp4AddressCompressedExploded(TestCase):
         for address in ["192.0.2.1", "0.0.0.0", "255.255.255.255", "10.20.30.40"]:
             with self.subTest(address=address):
                 obj = Ip4Address(address)
-                self.assertEqual(obj.compressed, address, msg=f"compressed must be {address}.")
-                self.assertEqual(obj.exploded, address, msg=f"exploded must be {address}.")
-                self.assertEqual(obj.compressed, str(obj), msg="compressed must equal str().")
+                self.assertEqual(format(obj, "ex"), address, msg=f"'ex' must be {address}.")
+                self.assertEqual(f"{obj}", address, msg=f"default form must be {address}.")
+                self.assertEqual(format(obj, "ex"), str(obj), msg="'ex' must equal str() for IPv4.")
 
 
 class TestNetAddrIpAddressFromValue(TestCase):

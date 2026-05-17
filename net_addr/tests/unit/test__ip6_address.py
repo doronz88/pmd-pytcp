@@ -1677,15 +1677,16 @@ class TestNetAddrIp6AddressReversePointer(TestCase):
                 )
 
 
-class TestNetAddrIp6AddressCompressedExploded(TestCase):
+class TestNetAddrIp6AddressFormatExploded(TestCase):
     """
-    The NetAddr IPv6 address compressed / exploded form tests.
+    The NetAddr IPv6 address 'ex' / default text-format tests.
     """
 
-    def test__net_addr__ip6_address__exploded(self) -> None:
+    def test__net_addr__ip6_address__format_exploded(self) -> None:
         """
-        Ensure 'exploded' yields the fully expanded eight-group
-        four-hex-digit form with no zero compression.
+        Ensure the 'ex' format code yields the fully expanded
+        eight-group four-hex-digit form with no zero
+        compression.
 
         Reference: RFC 4291 §2.2 (IPv6 text representation, form 1).
         """
@@ -1699,15 +1700,15 @@ class TestNetAddrIp6AddressCompressedExploded(TestCase):
         ]:
             with self.subTest(address=address):
                 self.assertEqual(
-                    Ip6Address(address).exploded,
+                    format(Ip6Address(address), "ex"),
                     expected,
-                    msg=f"Unexpected exploded form for {address}.",
+                    msg=f"Unexpected 'ex' form for {address}.",
                 )
 
-    def test__net_addr__ip6_address__compressed(self) -> None:
+    def test__net_addr__ip6_address__format_default_compressed(self) -> None:
         """
-        Ensure 'compressed' yields the canonical zero-compressed
-        text form (identical to str()).
+        Ensure the default text form yields the canonical
+        zero-compressed representation (identical to str()).
 
         Reference: RFC 5952 §4 (canonical IPv6 text representation).
         """
@@ -1722,14 +1723,14 @@ class TestNetAddrIp6AddressCompressedExploded(TestCase):
             with self.subTest(address=address):
                 obj = Ip6Address(address)
                 self.assertEqual(
-                    obj.compressed,
+                    f"{obj}",
                     expected,
-                    msg=f"Unexpected compressed form for {address}.",
+                    msg=f"Unexpected default form for {address}.",
                 )
                 self.assertEqual(
-                    obj.compressed,
+                    f"{obj}",
                     str(obj),
-                    msg="compressed must equal str() for an IPv6 address.",
+                    msg="default form must equal str() for an IPv6 address.",
                 )
 
 

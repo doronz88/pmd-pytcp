@@ -1041,14 +1041,14 @@ class TestNetAddrMacAddressFormat(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        a = MacAddress("01:02:03:04:05:06")
+        a = MacAddress("0a:1b:2c:3d:4e:5f")
         for spec, expected in [
-            ("x", "010203040506"),
-            ("X", "010203040506"),
-            ("n", "010203040506"),
-            ("b", "000000010000001000000011000001000000010100000110"),
-            ("#x", "0x010203040506"),
-            ("_x", "0102_0304_0506"),
+            ("x", "0a1b2c3d4e5f"),
+            ("X", "0A1B2C3D4E5F"),
+            ("n", "0a1b2c3d4e5f"),
+            ("b", "000010100001101100101100001111010100111001011111"),
+            ("#x", "0x0a1b2c3d4e5f"),
+            ("_x", "0a1b_2c3d_4e5f"),
         ]:
             with self.subTest(spec=spec):
                 self.assertEqual(
@@ -1056,3 +1056,37 @@ class TestNetAddrMacAddressFormat(TestCase):
                     expected,
                     msg=f"format(MacAddress, {spec!r}) must be {expected!r}.",
                 )
+
+    def test__net_addr__mac_address__format_notation(self) -> None:
+        """
+        Ensure the popular MAC notation codes render correctly:
+        'hy' is the hyphen form, 'ci' the Cisco three-group
+        dotted form, and the default / 's' spec the canonical
+        colon-separated lowercase form.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("0a:1b:2c:3d:4e:5f")
+        for spec, expected in [
+            ("", "0a:1b:2c:3d:4e:5f"),
+            ("s", "0a:1b:2c:3d:4e:5f"),
+            ("hy", "0a-1b-2c-3d-4e-5f"),
+            ("ci", "0a1b.2c3d.4e5f"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    expected,
+                    msg=f"format(MacAddress, {spec!r}) must be {expected!r}.",
+                )
+
+    def test__net_addr__mac_address__format_unknown_raises(self) -> None:
+        """
+        Ensure an unrecognised format code raises 'ValueError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            format(MacAddress("0a:1b:2c:3d:4e:5f"), "zz")
