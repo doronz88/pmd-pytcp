@@ -16,12 +16,29 @@ ROOT_FILES := tests_runner.py
 LINT_FILES := $(PYTCP_FILES) $(NET_ADDR_FILES) $(NET_PROTO_FILES) $(EXAMPLES_FILES) $(ROOT_FILES)
 MYPY_PACKAGES := $(PYTCP_PATH) $(NET_ADDR_PATH) $(NET_PROTO_PATH) $(EXAMPLES_PATH)
 
+# If any recipe fails, delete its target file. Without this a
+# failed (or interrupted) 'venv' build leaves a half-populated
+# venv whose 'bin/activate' is newer than the requirements
+# files, so every later 'make' considers the venv up to date
+# and never reinstalls — the exact reason a package listed in
+# requirements_dev.txt could be missing from the venv.
+.DELETE_ON_ERROR:
+
+# 'venv/bin/activate' is the timestamp marker for the venv. It
+# is rebuilt whenever either requirements file is newer. The
+# rebuild is from a clean slate ('rm -rf') so a stale or
+# half-built venv cannot survive, and the marker is 'touch'ed
+# only as the LAST step so its mtime reflects a fully
+# successful install — not venv-dir creation, which would
+# stamp it before pip ran.
 $(VENV)/bin/activate: requirements.txt requirements_dev.txt
+	@rm -rf $(VENV)
 	@python3.14 -m venv $(VENV)
-	@echo "export PYTHONPATH=$(ROOT_PATH)" >> venv/bin/activate
+	@echo "export PYTHONPATH=$(ROOT_PATH)" >> $(VENV)/bin/activate
 	@./$(VENV)/bin/python -m pip install --upgrade pip
 	@./$(VENV)/bin/pip install -r requirements.txt
 	@./$(VENV)/bin/pip install -r requirements_dev.txt
+	@touch $(VENV)/bin/activate
 
 venv: $(VENV)/bin/activate
 
