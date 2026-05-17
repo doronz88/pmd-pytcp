@@ -1375,3 +1375,63 @@ class TestNetAddrIp4NetworkSummarize(TestCase):
 
         with self.assertRaises(TypeError):
             list(IpNetwork.summarize([5]))  # type: ignore[list-item]
+
+
+class TestNetAddrIp4NetworkStrict(TestCase):
+    """
+    The NetAddr Ip4Network strict-mode constructor tests.
+    """
+
+    def test__net_addr__ip4_network__strict_clean_ok(self) -> None:
+        """
+        Ensure a network whose address has no host bits set
+        constructs normally under strict=True (str and tuple
+        forms), and copy/None never trip strict.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        self.assertEqual(
+            Ip4Network("192.168.1.0/24", strict=True),
+            Ip4Network("192.168.1.0/24"),
+            msg="A host-bit-free CIDR must construct under strict.",
+        )
+        self.assertEqual(
+            Ip4Network((Ip4Address("10.0.0.0"), Ip4Mask("/24")), strict=True),
+            Ip4Network("10.0.0.0/24"),
+            msg="A host-bit-free tuple must construct under strict.",
+        )
+        self.assertEqual(
+            Ip4Network(Ip4Network("10.0.0.0/24"), strict=True),
+            Ip4Network("10.0.0.0/24"),
+            msg="Copy construction must not trip strict.",
+        )
+
+    def test__net_addr__ip4_network__strict_host_bits_raise(self) -> None:
+        """
+        Ensure strict=True rejects an address carrying bits
+        outside the mask, for both the string and tuple forms.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        with self.assertRaises(Ip4NetworkFormatError):
+            Ip4Network("192.168.1.100/24", strict=True)
+        with self.assertRaises(Ip4NetworkFormatError):
+            Ip4Network("10.0.0.5 255.255.255.0", strict=True)
+        with self.assertRaises(Ip4NetworkFormatError):
+            Ip4Network((Ip4Address("10.0.0.5"), Ip4Mask("/24")), strict=True)
+
+    def test__net_addr__ip4_network__default_masks(self) -> None:
+        """
+        Ensure the default (strict=False) still silently masks
+        host bits, preserving the existing constructor contract.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        self.assertEqual(
+            Ip4Network("192.168.1.100/24"),
+            Ip4Network("192.168.1.0/24"),
+            msg="Default construction must keep masking host bits.",
+        )

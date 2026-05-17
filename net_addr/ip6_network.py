@@ -58,9 +58,19 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         self,
         network: Self | tuple[Ip6Address, Ip6Mask] | str | None = None,
         /,
+        *,
+        # Deliberate deviation from net_addr.md §4.2 (no kwargs on a
+        # value-type __init__): keyword-only 'strict' added by
+        # maintainer decision for ipaddress-parity strict network
+        # parsing. Default False preserves the silent
+        # mask-on-construct contract the rest of the stack relies on;
+        # pass strict=True to reject an address carrying host bits.
+        strict: bool = False,
     ) -> None:
         """
-        Initialize the IPv6 network object.
+        Initialize the IPv6 network object. Pass strict=True to
+        reject an address carrying bits outside the network mask
+        ('Ip6NetworkFormatError'); the default silently masks.
         """
 
         if network is None:
@@ -75,6 +85,8 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
 
         if isinstance(network, tuple):
             tuple_address, tuple_mask = network
+            if strict and int(tuple_address) & ~int(tuple_mask) & IP6__MASK:
+                raise Ip6NetworkFormatError(network)
             self._mask = tuple_mask
             self._address = Ip6Address(int(tuple_address) & int(tuple_mask))
             return
@@ -83,7 +95,10 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             try:
                 address, mask = network.split("/")
                 self._mask = Ip6Mask("/" + mask)
-                self._address = Ip6Address(int(Ip6Address(address)) & int(self._mask))
+                raw_address = int(Ip6Address(address))
+                if strict and raw_address & ~int(self._mask) & IP6__MASK:
+                    raise Ip6NetworkFormatError(network)
+                self._address = Ip6Address(raw_address & int(self._mask))
                 return
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
                 pass

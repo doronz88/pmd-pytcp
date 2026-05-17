@@ -1136,3 +1136,55 @@ class TestNetAddrIp6NetworkSummarize(TestCase):
         mixed = [Ip6Network("2001:db8::/64"), Ip4Network("10.0.0.0/24")]
         with self.assertRaises(TypeError):
             list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]
+
+
+class TestNetAddrIp6NetworkStrict(TestCase):
+    """
+    The NetAddr Ip6Network strict-mode constructor tests.
+    """
+
+    def test__net_addr__ip6_network__strict_clean_ok(self) -> None:
+        """
+        Ensure a network whose address has no host bits set
+        constructs normally under strict=True.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        self.assertEqual(
+            Ip6Network("2001:db8::/64", strict=True),
+            Ip6Network("2001:db8::/64"),
+            msg="A host-bit-free CIDR must construct under strict.",
+        )
+        self.assertEqual(
+            Ip6Network((Ip6Address("2001:db8::"), Ip6Mask("/64")), strict=True),
+            Ip6Network("2001:db8::/64"),
+            msg="A host-bit-free tuple must construct under strict.",
+        )
+
+    def test__net_addr__ip6_network__strict_host_bits_raise(self) -> None:
+        """
+        Ensure strict=True rejects an address carrying bits
+        outside the mask (string and tuple forms).
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        with self.assertRaises(Ip6NetworkFormatError):
+            Ip6Network("2001:db8::1/64", strict=True)
+        with self.assertRaises(Ip6NetworkFormatError):
+            Ip6Network((Ip6Address("2001:db8::1"), Ip6Mask("/64")), strict=True)
+
+    def test__net_addr__ip6_network__default_masks(self) -> None:
+        """
+        Ensure the default (strict=False) still silently masks
+        host bits, preserving the existing constructor contract.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        self.assertEqual(
+            Ip6Network("2001:db8::1/64"),
+            Ip6Network("2001:db8::/64"),
+            msg="Default construction must keep masking host bits.",
+        )
