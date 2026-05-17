@@ -1934,6 +1934,33 @@ class TestNetAddrIp6AddressScopeId(TestCase):
             msg="Unzoned hashing is stable.",
         )
 
+    def test__net_addr__ip6_address__scope_id__global_scope_rejected(self) -> None:
+        """
+        Ensure a '%zone' suffix is rejected on an address whose
+        scope is global (a zone index is meaningless there), and
+        accepted on the non-global scopes where it is meaningful
+        — link-local unicast, loopback, and non-global multicast.
+
+        Reference: RFC 4007 §6 (zone indices meaningful only for
+        non-global scopes).
+        """
+
+        for bad in ["2001:db8::1%eth0", "ff0e::1%eth0", "::%eth0"]:
+            with self.subTest(value=bad):
+                with self.assertRaises(
+                    Ip6AddressFormatError,
+                    msg=f"A zone on the global-scope address {bad!r} must raise.",
+                ):
+                    Ip6Address(bad)
+
+        for good in ["fe80::1%eth0", "::1%lo", "ff02::1%eth0", "ff05::1%eth0"]:
+            with self.subTest(value=good):
+                self.assertEqual(
+                    Ip6Address(good).scope_id,
+                    good.split("%", 1)[1],
+                    msg=f"A zone on the non-global-scope address {good!r} must be accepted.",
+                )
+
     def test__net_addr__ip6_address__scope_id__invalid_raises(self) -> None:
         """
         Ensure an empty or multi-'%' zone raises

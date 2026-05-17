@@ -151,10 +151,16 @@ class Ip6Address(IpAddress):
             if not (sep and (not zone or "%" in zone)) and re.search(IP6__REGEX, addr_part):
                 try:
                     self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part))
-                    self._scope_id = zone if sep else None
-                    return
                 except OSError:
                     pass
+                else:
+                    # RFC 4007 §6: a zone index is only meaningful
+                    # for non-global scopes. Reject a '%zone' on a
+                    # global-scope address.
+                    if sep and not self._is_zoneable:
+                        raise Ip6AddressFormatError(address)
+                    self._scope_id = zone if sep else None
+                    return
 
         raise Ip6AddressFormatError(address)
 
@@ -251,6 +257,23 @@ class Ip6Address(IpAddress):
             return NotImplemented
 
         return self._order_key() >= other._order_key()
+
+    @property
+    def _is_zoneable(self) -> bool:
+        """
+        Check whether the address has a non-global scope and so
+        may carry an RFC 4007 zone identifier: link-local
+        unicast, loopback (link-local scope per RFC 4007 §6), or
+        multicast with a non-global scope value (0 < scop < 0xE).
+        """
+
+        if self.is_link_local or self.is_loopback:
+            return True
+
+        if self.is_multicast:
+            return 0x0 < (self._address >> 112) & 0x0F < 0xE
+
+        return False
 
     @property
     def scope_id(self) -> str | None:
