@@ -36,7 +36,7 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -90,7 +90,7 @@ class _TcpSocketTestCase(TestCase):
         self._log_patch = patch("pytcp.socket.tcp__socket.log")
         self._log_patch.start()
 
-        self._sockets: dict = {}
+        self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
             "pytcp.socket.tcp__socket.stack.sockets",
             self._sockets,

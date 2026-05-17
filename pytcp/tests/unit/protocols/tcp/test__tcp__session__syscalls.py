@@ -32,6 +32,7 @@ ver 3.0.5
 """
 
 from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -76,7 +77,7 @@ class _TcpSessionSyscallFixture(TestCase):
         )
         self._mtu_patch.start()
 
-        self._sockets: dict = {}
+        self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.sockets",
             self._sockets,

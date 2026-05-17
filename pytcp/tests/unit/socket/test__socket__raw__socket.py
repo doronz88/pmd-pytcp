@@ -35,6 +35,7 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -88,7 +89,7 @@ class _RawSocketTestCase(TestCase):
         self._log_patch.start()
         self.addCleanup(self._log_patch.stop)
 
-        self._sockets: dict = {}
+        self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
             "pytcp.socket.raw__socket.stack.sockets",
             self._sockets,

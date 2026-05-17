@@ -35,6 +35,7 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -99,7 +100,7 @@ class _UdpSocketTestCase(TestCase):
         self._log_patch.start()
         self.addCleanup(self._log_patch.stop)
 
-        self._sockets: dict = {}
+        self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
             "pytcp.socket.udp__socket.stack.sockets",
             self._sockets,
@@ -1723,7 +1724,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
 
         from pytcp.socket import IP_TTL, IPPROTO_IP
 
-        captured: list[dict] = []
+        captured: list[dict[str, Any]] = []
 
         original_send = self._handler.send_udp_packet
 

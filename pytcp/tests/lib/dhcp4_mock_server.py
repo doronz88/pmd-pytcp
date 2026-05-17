@@ -45,6 +45,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
+from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4Option
 from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
 )
@@ -309,7 +310,7 @@ class Dhcp4MockServer:
         assert isinstance(resolved_xid, int)
         assert isinstance(resolved_chaddr, MacAddress)
 
-        options: list = [Dhcp4OptionMessageType(message_type=message_type)]
+        options: list[Dhcp4Option] = [Dhcp4OptionMessageType(message_type=message_type)]
         if subnet_mask is not None:
             options.append(Dhcp4OptionSubnetMask(subnet_mask=subnet_mask))
         if router:
@@ -366,7 +367,7 @@ class Dhcp4MockServer:
         assert isinstance(resolved_xid, int)
         assert isinstance(resolved_chaddr, MacAddress)
 
-        options: list = [Dhcp4OptionMessageType(message_type=Dhcp4MessageType.NAK)]
+        options: list[Dhcp4Option] = [Dhcp4OptionMessageType(message_type=Dhcp4MessageType.NAK)]
         if resolved_srv_id is not None:
             assert isinstance(resolved_srv_id, Ip4Address)
             options.append(Dhcp4OptionServerId(server_id=resolved_srv_id))

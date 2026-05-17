@@ -43,6 +43,7 @@ from net_proto import (
     Ip4FragAssembler,
     Ip6Assembler,
 )
+from net_proto.lib.buffer import Buffer
 from pytcp.runtime.tx_ring import TxRing
 
 
@@ -202,7 +203,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt = MagicMock(spec=EthernetAssembler)
         pkt.__len__.return_value = 64
 
-        def assemble(buffers: list) -> None:
+        def assemble(buffers: list[Buffer]) -> None:
             buffers.append(b"x" * 64)
 
         pkt.assemble.side_effect = assemble
@@ -384,7 +385,7 @@ class TestTxRingInnerDrain(_TxRingFixture):
         pkt = MagicMock(spec=EthernetAssembler)
         pkt.__len__.return_value = 64
 
-        def assemble(buffers: list) -> None:
+        def assemble(buffers: list[Buffer]) -> None:
             buffers.append(b"x" * 64)
 
         pkt.assemble.side_effect = assemble

@@ -143,7 +143,7 @@ class TcpSessionTestCase(NetworkTestCase):
     """
 
     _timer: FakeTimer
-    _patches: list[_patch]
+    _patches: list[_patch[Any]]
     _interface_mtu_was_set: bool
     _interface_mtu_prior: object
     _sockets_prior: dict[Any, Any]

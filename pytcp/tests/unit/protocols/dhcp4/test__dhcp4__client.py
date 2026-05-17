@@ -30,7 +30,7 @@ pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py
 ver 3.0.5
 """
 
-from typing import override
+from typing import Any, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -1511,7 +1511,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
     """
 
     @staticmethod
-    def _log_messages(mock_log_call_args_list: list) -> list[str]:
+    def _log_messages(mock_log_call_args_list: list[Any]) -> list[str]:
         """
         Return every 'log("dhcp4", message)' message text from the
         captured call_args_list, filtering out non-dhcp4 channel

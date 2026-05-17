@@ -32,6 +32,7 @@ ver 3.0.5
 
 import os
 import queue
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -353,7 +354,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         # First select() returns ready (outer wake-up); subsequent
         # peeks return ready N-1 more times then empty so the
         # inner drain naturally exits.
-        select_returns: list[list] = [[MagicMock()]] * n_frames + [[]]
+        select_returns: list[list[Any]] = [[MagicMock()]] * n_frames + [[]]
         with (
             patch.object(
                 ring._selector,
@@ -389,7 +390,7 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
 
         ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=2)
 
-        select_returns: list[list] = [[MagicMock()]] * 100  # plenty of "ready"
+        select_returns: list[list[Any]] = [[MagicMock()]] * 100  # plenty of "ready"
         read_calls: list[int] = []
 
         def _track_read(fd: int, size: int) -> bytes:
