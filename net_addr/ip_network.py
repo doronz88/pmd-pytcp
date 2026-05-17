@@ -35,7 +35,11 @@ from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Self, overload, override
 
 from net_addr.base import Base
-from net_addr.errors import IpNetworkFormatError
+from net_addr.errors import (
+    Ip4NetworkFormatError,
+    Ip6NetworkFormatError,
+    IpNetworkFormatError,
+)
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
@@ -93,6 +97,44 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             return Ip6Network(value)
         except IpNetworkFormatError:
             pass
+
+        raise IpNetworkFormatError(value)
+
+    @staticmethod
+    def from_strict(value: str, /) -> "Ip4Network | Ip6Network":
+        """
+        Build the concrete IPv4 or IPv6 network from a CIDR /
+        address-mask string, rejecting any address that carries
+        bits outside the network mask (host bits set). This is
+        the strict counterpart to the default constructor, which
+        silently masks host bits. Raises the family-specific
+        'Ip4NetworkFormatError' / 'Ip6NetworkFormatError' when
+        host bits are present, or 'IpNetworkFormatError' when
+        the value parses as neither family.
+        """
+
+        from net_addr.ip4_network import Ip4Network
+        from net_addr.ip6_network import Ip6Network
+
+        address_part = value.split("/", 1)[0] if "/" in value else value.split(" ", 1)[0]
+
+        try:
+            ip4_network = Ip4Network(value)
+        except IpNetworkFormatError:
+            pass
+        else:
+            if int(Ip4Address(address_part)) != int(ip4_network.address):
+                raise Ip4NetworkFormatError(value)
+            return ip4_network
+
+        try:
+            ip6_network = Ip6Network(value)
+        except IpNetworkFormatError:
+            pass
+        else:
+            if int(Ip6Address(address_part)) != int(ip6_network.address):
+                raise Ip6NetworkFormatError(value)
+            return ip6_network
 
         raise IpNetworkFormatError(value)
 

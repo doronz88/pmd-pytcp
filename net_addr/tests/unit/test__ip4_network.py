@@ -1402,3 +1402,49 @@ class TestNetAddrIp4NetworkSummarize(TestCase):
 
         with self.assertRaises(TypeError):
             list(IpNetwork.summarize([5]))  # type: ignore[list-item]
+
+
+class TestNetAddrIp4NetworkFromStrict(TestCase):
+    """
+    The NetAddr IpNetwork.from_strict IPv4 host-bit-validation tests.
+    """
+
+    def test__net_addr__ip4_network__from_strict_clean(self) -> None:
+        """
+        Ensure 'from_strict' accepts a network whose address has
+        no host bits set and returns the equivalent Ip4Network.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        for value in ["192.168.1.0/24", "10.0.0.0/8", "0.0.0.0/0", "10.0.0.0 255.255.255.0"]:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    IpNetwork.from_strict(value),
+                    Ip4Network(value),
+                    msg=f"from_strict({value!r}) must equal the masked Ip4Network.",
+                )
+
+    def test__net_addr__ip4_network__from_strict_host_bits_raise(self) -> None:
+        """
+        Ensure 'from_strict' raises 'Ip4NetworkFormatError' when
+        the address carries bits outside the network mask.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        for value in ["192.168.1.100/24", "10.0.0.5 255.255.255.0", "10.1.2.3/16"]:
+            with self.subTest(value=value):
+                with self.assertRaises(Ip4NetworkFormatError):
+                    IpNetwork.from_strict(value)
+
+    def test__net_addr__ip4_network__from_strict_unparseable_raises(self) -> None:
+        """
+        Ensure 'from_strict' raises 'IpNetworkFormatError' when
+        the value parses as neither IPv4 nor IPv6.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(IpNetworkFormatError):
+            IpNetwork.from_strict("not-a-network")
