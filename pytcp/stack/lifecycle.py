@@ -188,11 +188,11 @@ def init(
     # resolution into the body so each invocation sees the
     # current values.
     if ip4_host is None and _stack.IP4_ADDRESS is not None:
-        ip4_host = Ip4IfAddr(_stack.IP4_ADDRESS, gateway=_stack.IP4_GATEWAY)
+        ip4_host = Ip4IfAddr(_stack.IP4_ADDRESS)
     if ip4_dhcp is None:
         ip4_dhcp = _stack.IP4_ADDRESS is None
     if ip6_host is None and _stack.IP6_ADDRESS is not None:
-        ip6_host = Ip6IfAddr(_stack.IP6_ADDRESS, gateway=_stack.IP6_GATEWAY)
+        ip6_host = Ip6IfAddr(_stack.IP6_ADDRESS)
     if ip6_gua_autoconfig is None:
         ip6_gua_autoconfig = _stack.IP6_ADDRESS is None
 
@@ -297,22 +297,22 @@ def init(
     # '._interface_layer'. See 'docs/refactor/link_api.md'.
     _stack.link = LinkApi(packet_handler=_stack.packet_handler)
 
-    # Host-mode routing table — Phase 1 of
+    # Host-mode routing table — Phase 3 of
     # 'docs/refactor/routing_table_host_mode.md'. Build the two
-    # FIBs, then dual-write the static boot-config gateway as a
-    # 'protocol=BOOT' default route IN ADDITION to the legacy
-    # 'Ip{4,6}IfAddr.gateway' write above (lines resolving
-    # 'ip4_host' / 'ip6_host'). Phase 1 is inert — nothing reads
-    # the FIB until the Phase-2 Ethernet-TX rewrite. DHCP / RA /
-    # autoconfig do NOT install here; they learn the gateway at
-    # runtime and (from Phase 3) install it via the Route API.
+    # FIBs and install the static boot-config gateway as the
+    # 'protocol=BOOT' default route. The Phase-1 dual-write is
+    # gone: 'Ip{4,6}IfAddr.gateway' is no longer written (the
+    # ctor calls above dropped 'gateway='), so the FIB is the
+    # single source of truth for the next hop. DHCP / RA /
+    # autoconfig install their learned gateway at runtime via
+    # 'RouteApi.replace_default_ip{4,6}'.
     ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
     ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
     install_boot_default_routes(
         ip4_fib=ip4_fib,
         ip6_fib=ip6_fib,
-        ip4_host=ip4_host,
-        ip6_host=ip6_host,
+        ip4_gateway=_stack.IP4_GATEWAY,
+        ip6_gateway=_stack.IP6_GATEWAY,
     )
     _stack.ip4_fib = ip4_fib
     _stack.ip6_fib = ip6_fib

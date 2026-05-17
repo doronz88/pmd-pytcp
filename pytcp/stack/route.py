@@ -36,7 +36,7 @@ pytcp/stack/route.py
 ver 3.0.5
 """
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, Ip6Address, Ip6IfAddr, Ip6Network
+from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
 from pytcp.lib.logger import log
 from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 
@@ -51,43 +51,42 @@ def install_boot_default_routes(
     *,
     ip4_fib: RouteTable[Ip4Address, Ip4Network],
     ip6_fib: RouteTable[Ip6Address, Ip6Network],
-    ip4_host: Ip4IfAddr | None,
-    ip6_host: Ip6IfAddr | None,
+    ip4_gateway: Ip4Address | None,
+    ip6_gateway: Ip6Address | None,
 ) -> None:
     """
-    Phase-1 dual-write: mirror the static boot-config gateway
-    carried on the interface address into the FIB as a
-    'protocol=BOOT' default route.
-
-    This is the transitional path described in
-    'docs/refactor/routing_table_host_mode.md' §3 Phase 1 / §6.4
-    — the gateway is written to BOTH 'Ip{4,6}IfAddr.gateway'
-    (read by the legacy Ethernet-TX scan until Phase 2) AND the
-    FIB. The DHCP / RA / autoconfig paths do NOT go through here;
-    they learn the gateway at runtime and (from Phase 3) install
-    it via the Route API. A host with no gateway installs no
-    default route.
+    Install the static boot-config gateway (if any) as a
+    'protocol=BOOT' default route in the FIB. This is the only
+    boot-time default-route source; 'Ip{4,6}IfAddr.gateway' is
+    no longer written (Phase 3 of
+    'docs/refactor/routing_table_host_mode.md' dropped the
+    Phase-1 dual-write — the FIB is now the single source of
+    truth for the next hop). The DHCP / RA / autoconfig paths
+    do NOT go through here; they learn the gateway at runtime
+    and install it via 'RouteApi.replace_default_ip{4,6}'. A
+    'None' gateway installs no default route (the DHCP /
+    autoconfig case).
     """
 
-    if ip4_host is not None and ip4_host.gateway is not None:
+    if ip4_gateway is not None:
         ip4_fib.add(
             route=Route(
                 destination=DEFAULT_IP4_NETWORK,
-                gateway=ip4_host.gateway,
+                gateway=ip4_gateway,
                 protocol=RouteProtocol.BOOT,
             )
         )
-        __debug__ and log("stack", f"<lg>Route API</>: boot IPv4 default via {ip4_host.gateway}")
+        __debug__ and log("stack", f"<lg>Route API</>: boot IPv4 default via {ip4_gateway}")
 
-    if ip6_host is not None and ip6_host.gateway is not None:
+    if ip6_gateway is not None:
         ip6_fib.add(
             route=Route(
                 destination=DEFAULT_IP6_NETWORK,
-                gateway=ip6_host.gateway,
+                gateway=ip6_gateway,
                 protocol=RouteProtocol.BOOT,
             )
         )
-        __debug__ and log("stack", f"<lg>Route API</>: boot IPv6 default via {ip6_host.gateway}")
+        __debug__ and log("stack", f"<lg>Route API</>: boot IPv6 default via {ip6_gateway}")
 
 
 class RouteApi:

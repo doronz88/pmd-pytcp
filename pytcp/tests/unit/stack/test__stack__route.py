@@ -34,7 +34,7 @@ ver 3.0.5
 from typing import override
 from unittest import TestCase
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, Ip6Address, Ip6IfAddr, Ip6Network
+from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
 from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.stack.route import RouteApi, install_boot_default_routes
 
@@ -128,7 +128,7 @@ class TestRouteApiRead(TestCase):
 
 class TestInstallBootDefaultRoutes(TestCase):
     """
-    The Phase-1 boot default-route dual-write helper tests.
+    The boot default-route install helper tests.
     """
 
     @override
@@ -142,20 +142,17 @@ class TestInstallBootDefaultRoutes(TestCase):
 
     def test__stack__route__boot_ipv4_gateway_installs_default(self) -> None:
         """
-        Ensure a boot IPv4 host carrying a gateway installs
-        exactly one 0.0.0.0/0 BOOT-protocol default route.
+        Ensure a static boot IPv4 gateway installs exactly one
+        0.0.0.0/0 BOOT-protocol default route.
 
         Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
         """
 
-        ip4_host = Ip4IfAddr("10.0.1.7/24")
-        ip4_host.gateway = Ip4Address("10.0.1.1")
-
         install_boot_default_routes(
             ip4_fib=self._ip4_fib,
             ip6_fib=self._ip6_fib,
-            ip4_host=ip4_host,
-            ip6_host=None,
+            ip4_gateway=Ip4Address("10.0.1.1"),
+            ip6_gateway=None,
         )
 
         self.assertEqual(
@@ -172,25 +169,22 @@ class TestInstallBootDefaultRoutes(TestCase):
         self.assertEqual(
             self._ip6_fib.snapshot(),
             (),
-            msg="No IPv6 host must leave the IPv6 FIB empty.",
+            msg="No IPv6 gateway must leave the IPv6 FIB empty.",
         )
 
     def test__stack__route__boot_ipv6_gateway_installs_default(self) -> None:
         """
-        Ensure a boot IPv6 host carrying a (link-local) gateway
-        installs exactly one ::/0 BOOT-protocol default route.
+        Ensure a static boot IPv6 (link-local) gateway installs
+        exactly one ::/0 BOOT-protocol default route.
 
         Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
         """
 
-        ip6_host = Ip6IfAddr("2001:db8:0:1::7/64")
-        ip6_host.gateway = Ip6Address("fe80::1")
-
         install_boot_default_routes(
             ip4_fib=self._ip4_fib,
             ip6_fib=self._ip6_fib,
-            ip4_host=None,
-            ip6_host=ip6_host,
+            ip4_gateway=None,
+            ip6_gateway=Ip6Address("fe80::1"),
         )
 
         self.assertEqual(
@@ -205,11 +199,11 @@ class TestInstallBootDefaultRoutes(TestCase):
             msg="A boot IPv6 gateway must install one BOOT default route.",
         )
 
-    def test__stack__route__no_host_installs_nothing(self) -> None:
+    def test__stack__route__no_gateway_installs_nothing(self) -> None:
         """
-        Ensure that with no hosts the dual-write installs no
-        routes (the DHCP / autoconfig path — gateway is learned
-        and installed later, in Phase 3).
+        Ensure that with no gateway nothing is installed (the
+        DHCP / autoconfig path — the gateway is learned and
+        installed at runtime via the Route API instead).
 
         Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
         """
@@ -217,54 +211,29 @@ class TestInstallBootDefaultRoutes(TestCase):
         install_boot_default_routes(
             ip4_fib=self._ip4_fib,
             ip6_fib=self._ip6_fib,
-            ip4_host=None,
-            ip6_host=None,
+            ip4_gateway=None,
+            ip6_gateway=None,
         )
 
         self.assertEqual(
             (self._ip4_fib.snapshot(), self._ip6_fib.snapshot()),
             ((), ()),
-            msg="No hosts must install no default routes.",
-        )
-
-    def test__stack__route__host_without_gateway_installs_nothing(self) -> None:
-        """
-        Ensure a host with no gateway installs no default route.
-
-        Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
-        """
-
-        install_boot_default_routes(
-            ip4_fib=self._ip4_fib,
-            ip6_fib=self._ip6_fib,
-            ip4_host=Ip4IfAddr("10.0.1.7/24"),
-            ip6_host=Ip6IfAddr("2001:db8:0:1::7/64"),
-        )
-
-        self.assertEqual(
-            (self._ip4_fib.snapshot(), self._ip6_fib.snapshot()),
-            ((), ()),
-            msg="A gateway-less host must install no default route.",
+            msg="No gateway must install no default routes.",
         )
 
     def test__stack__route__dual_stack_installs_both(self) -> None:
         """
-        Ensure a dual-stack boot host installs one IPv4 and one
-        IPv6 BOOT default route.
+        Ensure a dual-stack static boot config installs one IPv4
+        and one IPv6 BOOT default route.
 
         Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
         """
 
-        ip4_host = Ip4IfAddr("10.0.1.7/24")
-        ip4_host.gateway = Ip4Address("10.0.1.1")
-        ip6_host = Ip6IfAddr("2001:db8:0:1::7/64")
-        ip6_host.gateway = Ip6Address("fe80::1")
-
         install_boot_default_routes(
             ip4_fib=self._ip4_fib,
             ip6_fib=self._ip6_fib,
-            ip4_host=ip4_host,
-            ip6_host=ip6_host,
+            ip4_gateway=Ip4Address("10.0.1.1"),
+            ip6_gateway=Ip6Address("fe80::1"),
         )
 
         self.assertEqual(
