@@ -38,13 +38,22 @@ from typing import cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
+from net_addr import (
+    Ip4Address,
+    Ip4IfAddr,
+    Ip4Network,
+    Ip6Address,
+    Ip6IfAddr,
+    Ip6Network,
+    MacAddress,
+)
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
+from pytcp.runtime.fib import Route, RouteProtocol
 from pytcp.runtime.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
 from pytcp.runtime.tx_ring import TxRing
 
@@ -273,6 +282,31 @@ class NetworkTestCase(TestCase):
             mock__arp_cache=cast(ArpCache, mock_ArpCache),
             mock__nd_cache=cast(NdCache, mock_NdCache),
             mock__packet_handler=self._packet_handler,
+        )
+
+        # Pre-install the fixture default routes so the topology
+        # matches the legacy 'STACK__IP{4,6}_HOST.gateway'
+        # assignments above. 'mock__init' rebuilt the two FIBs
+        # fresh (empty) on the line above, so this install runs
+        # once per test with no leak and needs no tearDown
+        # restore (same lifecycle as the mocked packet handler /
+        # address / link singletons). The harness installs into
+        # the FIB directly — the Route API mutation surface
+        # (Phase 3) does not exist yet; this mirrors the existing
+        # 'packet_handler._ip4_ifaddr = [...]' scaffolding.
+        stack.ip4_fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=STACK__IP4_GATEWAY,
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+        stack.ip6_fib.add(
+            route=Route(
+                destination=Ip6Network("::/0"),
+                gateway=STACK__IP6_GATEWAY,
+                protocol=RouteProtocol.BOOT,
+            )
         )
 
         # Override the production RFC 7739 random Fragment ID

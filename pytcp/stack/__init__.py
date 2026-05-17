@@ -55,11 +55,13 @@ from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket.socket_id import SocketId
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.route import RouteApi
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address, Ip6Address
+    from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
     from pytcp.lib.plpmtud import PmtuSearch
     from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal
+    from pytcp.runtime.fib import RouteTable
     from pytcp.socket import socket
 
 
@@ -267,6 +269,22 @@ address: Ip4AddressApi
 # RFC 3927 link-local construction. See
 # 'docs/refactor/link_api.md' for the full plan.
 link: LinkApi
+# Host-mode routing table (FIB) — Phase 1 of
+# 'docs/refactor/routing_table_host_mode.md'. One per address
+# family. Reconstructed fresh by 'init()' / 'mock__init()'
+# (same lifecycle as 'timer' / 'address' / 'link'), so they do
+# not leak across the test suite and need no snapshot/restore.
+# Phase 1 is inert: the FIBs are populated by the boot
+# dual-write but nothing reads them yet — the Ethernet-TX
+# next-hop rewrite that consumes 'lookup()' lands in Phase 2.
+ip4_fib: RouteTable[Ip4Address, Ip4Network]
+ip6_fib: RouteTable[Ip6Address, Ip6Network]
+# Route API Phase 1 — read-only routing-control surface over
+# the two FIBs. Mirrors Linux 'ip route show' / RTNETLINK
+# 'RTM_GETROUTE'. Mutation lands in Phase 3. Constructed by
+# 'init()' / 'mock__init()' alongside 'address' / 'link'. See
+# 'docs/refactor/routing_table_host_mode.md' for the full plan.
+route: RouteApi
 # Phase 4 commit B — DHCPv4 client subsystem. Constructed by
 # 'init()' iff 'ip4_dhcp=True' on an L2 interface; spawned as a
 # background thread by 'start()'; joined by 'stop()'. None on L3

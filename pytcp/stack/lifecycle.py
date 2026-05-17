@@ -44,18 +44,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from net_addr import Ip4IfAddr, Ip6IfAddr, MacAddress
+from net_addr import (
+    Ip4Address,
+    Ip4IfAddr,
+    Ip4Network,
+    Ip6Address,
+    Ip6IfAddr,
+    Ip6Network,
+    MacAddress,
+)
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+from pytcp.runtime.fib import RouteTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.route import RouteApi, install_boot_default_routes
 
 
 def mock__init(
@@ -68,6 +78,7 @@ def mock__init(
     mock__packet_handler: PacketHandlerL2 | None = None,
     mock__address: Ip4AddressApi | None = None,
     mock__link: LinkApi | None = None,
+    mock__route: RouteApi | None = None,
     mock__dhcp4_client: Dhcp4Client | None = None,
 ) -> None:
     """
@@ -117,6 +128,22 @@ def mock__init(
         _stack.link = mock__link
     elif mock__packet_handler is not None:
         _stack.link = LinkApi(packet_handler=mock__packet_handler)
+
+    # Host-mode routing table — Phase 1. Rebuild the two FIBs
+    # fresh every 'mock__init' (i.e. every harness 'setUp') so
+    # route state cannot leak across the suite; same reconstruct-
+    # per-test lifecycle as 'timer' / 'address' / 'link', which
+    # is why the FIBs need no snapshot/restore entry. The
+    # integration harness installs the fixture default routes
+    # after this call; unit tests get clean empty FIBs.
+    ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+    ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+    _stack.ip4_fib = ip4_fib
+    _stack.ip6_fib = ip6_fib
+    if mock__route is not None:
+        _stack.route = mock__route
+    else:
+        _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
     # Phase 4 commit B — DHCPv4 lifecycle. Default to None unless
     # the harness explicitly opts in; existing tests (NetworkTestCase
@@ -269,6 +296,27 @@ def init(
     # 'packet_handler._mac_unicast' / '._interface_mtu' /
     # '._interface_layer'. See 'docs/refactor/link_api.md'.
     _stack.link = LinkApi(packet_handler=_stack.packet_handler)
+
+    # Host-mode routing table — Phase 1 of
+    # 'docs/refactor/routing_table_host_mode.md'. Build the two
+    # FIBs, then dual-write the static boot-config gateway as a
+    # 'protocol=BOOT' default route IN ADDITION to the legacy
+    # 'Ip{4,6}IfAddr.gateway' write above (lines resolving
+    # 'ip4_host' / 'ip6_host'). Phase 1 is inert — nothing reads
+    # the FIB until the Phase-2 Ethernet-TX rewrite. DHCP / RA /
+    # autoconfig do NOT install here; they learn the gateway at
+    # runtime and (from Phase 3) install it via the Route API.
+    ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+    ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+    install_boot_default_routes(
+        ip4_fib=ip4_fib,
+        ip6_fib=ip6_fib,
+        ip4_host=ip4_host,
+        ip6_host=ip6_host,
+    )
+    _stack.ip4_fib = ip4_fib
+    _stack.ip6_fib = ip6_fib
+    _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
     # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
     # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
