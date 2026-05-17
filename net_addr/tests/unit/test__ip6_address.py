@@ -1752,3 +1752,33 @@ class TestNetAddrIp6AddressMaxPrefixlen(TestCase):
                     128,
                     msg=f"max_prefixlen must be 128 for {value}.",
                 )
+
+
+class TestNetAddrIp6AddressFormat(TestCase):
+    """
+    The NetAddr IPv6 address __format__ tests.
+    """
+
+    def test__net_addr__ip6_address__format(self) -> None:
+        """
+        Ensure '__format__' treats the address as a 128-bit
+        zero-padded integer ('n' maps to 'x' for IPv6).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("::1")
+        for spec, expected in [
+            ("", "::1"),
+            ("s", "::1"),
+            ("x", "00000000000000000000000000000001"),
+            ("n", "00000000000000000000000000000001"),
+            ("b", "0" * 127 + "1"),
+            ("#x", "0x00000000000000000000000000000001"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    expected,
+                    msg=f"format(Ip6Address, {spec!r}) must be {expected!r}.",
+                )

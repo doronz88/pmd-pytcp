@@ -1026,3 +1026,33 @@ class TestNetAddrMacAddressArithmetic(TestCase):
 
         with self.assertRaises(TypeError, msg="address + address must raise TypeError."):
             _ = MacAddress("00:00:00:00:00:01") + MacAddress("00:00:00:00:00:02")
+
+
+class TestNetAddrMacAddressFormat(TestCase):
+    """
+    The NetAddr MAC address __format__ tests.
+    """
+
+    def test__net_addr__mac_address__format(self) -> None:
+        """
+        Ensure '__format__' treats the MAC as a 48-bit
+        zero-padded integer ('n' maps to 'x').
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("01:02:03:04:05:06")
+        for spec, expected in [
+            ("x", "010203040506"),
+            ("X", "010203040506"),
+            ("n", "010203040506"),
+            ("b", "000000010000001000000011000001000000010100000110"),
+            ("#x", "0x010203040506"),
+            ("_x", "0102_0304_0506"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    expected,
+                    msg=f"format(MacAddress, {spec!r}) must be {expected!r}.",
+                )

@@ -2226,3 +2226,48 @@ class TestNetAddrIp4AddressMaxPrefixlen(TestCase):
                     32,
                     msg=f"max_prefixlen must be 32 for {value}.",
                 )
+
+
+class TestNetAddrIp4AddressFormat(TestCase):
+    """
+    The NetAddr IPv4 address __format__ tests.
+    """
+
+    def test__net_addr__ip4_address__format(self) -> None:
+        """
+        Ensure '__format__' supports the documented spec set
+        (s/b/x/X/n with '#' and '_'); the address is a
+        32-bit zero-padded integer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Address("1.2.3.4")
+        for spec, expected in [
+            ("", "1.2.3.4"),
+            ("s", "1.2.3.4"),
+            (">10s", "   1.2.3.4"),
+            ("b", "00000001000000100000001100000100"),
+            ("x", "01020304"),
+            ("X", "01020304"),
+            ("n", "00000001000000100000001100000100"),
+            ("#x", "0x01020304"),
+            ("_b", "0000_0001_0000_0010_0000_0011_0000_0100"),
+            ("#_x", "0x0102_0304"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    expected,
+                    msg=f"format(Ip4Address, {spec!r}) must be {expected!r}.",
+                )
+
+    def test__net_addr__ip4_address__format__invalid_spec_raises(self) -> None:
+        """
+        Ensure an unsupported format code raises ValueError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError, msg="An unknown format code must raise ValueError."):
+            format(Ip4Address("1.2.3.4"), "q")

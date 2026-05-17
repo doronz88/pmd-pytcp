@@ -65,6 +65,41 @@ class Address(Base, ABC):
 
         return self._address
 
+    def __format__(self, format_spec: str, /) -> str:
+        """
+        Format the address as a fixed-width integer. An empty
+        spec or one ending in 's' yields the text form; 'b' /
+        'x' / 'X' give the value zero-padded to the address-
+        family bit width, 'n' maps to 'b' for 32-bit families
+        and 'x' otherwise. The '#' (radix prefix) and '_'
+        (4-digit grouping) modifiers are supported.
+        """
+
+        if not format_spec or format_spec[-1] == "s":
+            return format(str(self), format_spec)
+
+        code = format_spec[-1]
+        flags = format_spec[:-1]
+
+        if set(flags) - {"#", "_"} or code not in {"b", "x", "X", "n"}:
+            raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
+
+        bits = len(memoryview(self)) * 8
+
+        if code == "n":
+            code = "b" if bits == 32 else "x"
+
+        digit_width = bits if code == "b" else bits // 4
+        digits = format(self._address, f"0{digit_width}{code}")
+
+        if "_" in flags:
+            digits = "_".join(digits[i : i + 4] for i in range(0, len(digits), 4))
+
+        if "#" in flags:
+            digits = ("0b" if code == "b" else "0x") + digits
+
+        return digits
+
     @abstractmethod
     def __buffer__(self, _: int) -> memoryview:
         """
