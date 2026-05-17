@@ -63,6 +63,23 @@ class IpAddress(Address, Ip, ABC):
         raise NotImplementedError
 
     @property
+    def compressed(self) -> str:
+        """
+        Get the address in its canonical compressed text form.
+        """
+
+        return str(self)
+
+    @property
+    @abstractmethod
+    def exploded(self) -> str:
+        """
+        Get the address in its fully expanded text form.
+        """
+
+        raise NotImplementedError
+
+    @property
     def is_unicast(self) -> bool:
         """
         Check if the IP address is an unicast address.

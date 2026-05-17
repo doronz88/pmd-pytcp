@@ -178,6 +178,18 @@ class Ip6Address(IpAddress):
         return ".".join(reversed(f"{self._address:032x}")) + ".ip6.arpa"
 
     @property
+    @override
+    def exploded(self) -> str:
+        """
+        Get the IPv6 address in fully expanded form — eight
+        groups of four lowercase hex digits, no zero
+        compression (RFC 4291 §2.2 form 1).
+        """
+
+        nibbles = f"{self._address:032x}"
+        return ":".join(nibbles[index : index + 4] for index in range(0, 32, 4))
+
+    @property
     def solicited_node_multicast(self) -> Self:
         """
         Create IPv6 solicited node multicast address.

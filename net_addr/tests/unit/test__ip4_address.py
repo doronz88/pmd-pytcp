@@ -2139,3 +2139,24 @@ class TestNetAddrIp4AddressReversePointer(TestCase):
                     expected,
                     msg=f"Unexpected reverse_pointer for {address}.",
                 )
+
+
+class TestNetAddrIp4AddressCompressedExploded(TestCase):
+    """
+    The NetAddr IPv4 address compressed / exploded form tests.
+    """
+
+    def test__net_addr__ip4_address__compressed_exploded(self) -> None:
+        """
+        Ensure 'compressed' and 'exploded' both yield the
+        dotted-decimal string for IPv4 (no expansion exists).
+
+        Reference: RFC 791 §2.3 (IPv4 dotted-decimal notation).
+        """
+
+        for address in ["192.0.2.1", "0.0.0.0", "255.255.255.255", "10.20.30.40"]:
+            with self.subTest(address=address):
+                obj = Ip4Address(address)
+                self.assertEqual(obj.compressed, address, msg=f"compressed must be {address}.")
+                self.assertEqual(obj.exploded, address, msg=f"exploded must be {address}.")
+                self.assertEqual(obj.compressed, str(obj), msg="compressed must equal str().")

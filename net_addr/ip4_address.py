@@ -131,6 +131,17 @@ class Ip4Address(IpAddress):
 
     @property
     @override
+    def exploded(self) -> str:
+        """
+        Get the IPv4 address in fully expanded form. IPv4 has
+        no zero compression, so this is the dotted-decimal
+        string.
+        """
+
+        return str(self)
+
+    @property
+    @override
     def is_global(self) -> bool:
         """
         Check if the IPv4 address is a global address.

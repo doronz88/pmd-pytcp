@@ -1675,3 +1675,59 @@ class TestNetAddrIp6AddressReversePointer(TestCase):
                     expected,
                     msg=f"Unexpected reverse_pointer for {address}.",
                 )
+
+
+class TestNetAddrIp6AddressCompressedExploded(TestCase):
+    """
+    The NetAddr IPv6 address compressed / exploded form tests.
+    """
+
+    def test__net_addr__ip6_address__exploded(self) -> None:
+        """
+        Ensure 'exploded' yields the fully expanded eight-group
+        four-hex-digit form with no zero compression.
+
+        Reference: RFC 4291 §2.2 (IPv6 text representation, form 1).
+        """
+
+        for address, expected in [
+            ("2001:db8::1", "2001:0db8:0000:0000:0000:0000:0000:0001"),
+            ("::1", "0000:0000:0000:0000:0000:0000:0000:0001"),
+            ("::", "0000:0000:0000:0000:0000:0000:0000:0000"),
+            ("fe80::1", "fe80:0000:0000:0000:0000:0000:0000:0001"),
+            ("2001:db8:1:2:3:4:5:6", "2001:0db8:0001:0002:0003:0004:0005:0006"),
+        ]:
+            with self.subTest(address=address):
+                self.assertEqual(
+                    Ip6Address(address).exploded,
+                    expected,
+                    msg=f"Unexpected exploded form for {address}.",
+                )
+
+    def test__net_addr__ip6_address__compressed(self) -> None:
+        """
+        Ensure 'compressed' yields the canonical zero-compressed
+        text form (identical to str()).
+
+        Reference: RFC 5952 §4 (canonical IPv6 text representation).
+        """
+
+        for address, expected in [
+            ("2001:0db8:0000:0000:0000:0000:0000:0001", "2001:db8::1"),
+            ("::1", "::1"),
+            ("::", "::"),
+            ("fe80::1", "fe80::1"),
+            ("2001:db8:1:2:3:4:5:6", "2001:db8:1:2:3:4:5:6"),
+        ]:
+            with self.subTest(address=address):
+                obj = Ip6Address(address)
+                self.assertEqual(
+                    obj.compressed,
+                    expected,
+                    msg=f"Unexpected compressed form for {address}.",
+                )
+                self.assertEqual(
+                    obj.compressed,
+                    str(obj),
+                    msg="compressed must equal str() for an IPv6 address.",
+                )
