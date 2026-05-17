@@ -49,7 +49,10 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 )
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
-from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4OptionType
+from net_proto.protocols.dhcp4.options.dhcp4__option import (
+    Dhcp4Option,
+    Dhcp4OptionType,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
 )
@@ -1487,7 +1490,7 @@ class Dhcp4Client(Subsystem):
         # Phase 8.2 — emit a Lease Time hint when the operator
         # configured one (default 86400 = 1 day; set 0 to omit).
         lease_time_hint = dhcp4__constants.DHCP4__REQUESTED_LEASE_TIME__SEC
-        opts: list = [
+        opts: list[Dhcp4Option] = [
             Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
             Dhcp4OptionClientId(self._expected_client_id),
             Dhcp4OptionParamReqList(

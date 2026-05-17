@@ -54,6 +54,7 @@ from net_proto import (
     IpProto,
     Tracker,
 )
+from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__padn import (
     Ip6HbhOptionPadN,
@@ -264,7 +265,7 @@ class PacketHandlerIcmp6Tx(ABC):
 
         # Serialise the (now-checksummed) ICMPv6 packet to bytes for
         # carriage as the HBH payload.
-        icmp6_buffers: list = []
+        icmp6_buffers: list[Buffer] = []
         icmp6_packet_tx.assemble(icmp6_buffers)
         icmp6_bytes = b"".join(bytes(buf) for buf in icmp6_buffers)
 
