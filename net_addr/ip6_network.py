@@ -40,6 +40,7 @@ from net_addr.errors import (
 )
 from net_addr.ip6_address import IP6__MASK, Ip6Address
 from net_addr.ip6_mask import Ip6Mask
+from net_addr.ip6_wildcard import Ip6Wildcard
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 
@@ -97,6 +98,15 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         """
 
         return Ip6Address(int(self._address) + (~int(self._mask) & IP6__MASK))
+
+    @property
+    @override
+    def hostmask(self) -> Ip6Wildcard:
+        """
+        Get the network wildcard (inverted netmask).
+        """
+
+        return Ip6Wildcard(~int(self._mask) & IP6__MASK)
 
     @override
     def hosts(self) -> Iterator[Ip6Address]:

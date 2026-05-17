@@ -235,6 +235,17 @@ class TestNetAddrIpNetworkAbstractStubs(TestCase):
         with self.assertRaises(NotImplementedError):
             IpNetwork.last.fget(Ip4Network())  # type: ignore[attr-defined]
 
+    def test__net_addr__ip_network__hostmask_stub_raises(self) -> None:
+        """
+        Ensure the abstract 'IpNetwork.hostmask' stub raises
+        'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(NotImplementedError):
+            IpNetwork.hostmask.fget(Ip4Network())  # type: ignore[attr-defined]
+
 
 class TestNetAddrIpHostAbstractStubs(TestCase):
     """

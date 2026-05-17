@@ -44,6 +44,7 @@ from net_addr import (
     Ip6Mask,
     Ip6Network,
     Ip6NetworkFormatError,
+    Ip6Wildcard,
     IpVersion,
 )
 
@@ -911,3 +912,88 @@ class TestNetAddrIp6NetworkOrdering(TestCase):
 
         with self.assertRaises(TypeError, msg="Ip6Network < Ip4Network must raise TypeError."):
             _ = Ip6Network("2001:db8::/32") < Ip4Network("10.0.0.0/8")
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "Ip6Network 2001:db8::/32",
+            "_network": "2001:db8::/32",
+            "_results": {
+                "hostmask": Ip6Wildcard("::ffff:ffff:ffff:ffff:ffff:ffff"),
+                "with_prefixlen": "2001:db8::/32",
+                "with_netmask": "2001:db8::/ffff:ffff::",
+                "with_hostmask": "2001:db8::/::ffff:ffff:ffff:ffff:ffff:ffff",
+            },
+        },
+        {
+            "_description": "Ip6Network ::/0",
+            "_network": "::/0",
+            "_results": {
+                "hostmask": Ip6Wildcard("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"),
+                "with_prefixlen": "::/0",
+                "with_netmask": "::/::",
+                "with_hostmask": "::/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            },
+        },
+        {
+            "_description": "Ip6Network 2001:db8::5/128",
+            "_network": "2001:db8::5/128",
+            "_results": {
+                "hostmask": Ip6Wildcard("::"),
+                "with_prefixlen": "2001:db8::5/128",
+                "with_netmask": "2001:db8::5/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                "with_hostmask": "2001:db8::5/::",
+            },
+        },
+    ]
+)
+class TestNetAddrIp6NetworkWithForms(TestCase):
+    """
+    The NetAddr IPv6 network hostmask / with_* representation tests.
+    """
+
+    _description: str
+    _network: str
+    _results: dict[str, Any]
+
+    def setUp(self) -> None:
+        """
+        Build the network under test from its CIDR string.
+        """
+
+        self._net = Ip6Network(self._network)
+
+    def test__net_addr__ip6_network__hostmask(self) -> None:
+        """
+        Ensure 'hostmask' is the inverted-netmask Ip6Wildcard.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIsInstance(
+            self._net.hostmask,
+            Ip6Wildcard,
+            msg=f"hostmask must be an Ip6Wildcard for case: {self._description}",
+        )
+        self.assertEqual(
+            self._net.hostmask,
+            self._results["hostmask"],
+            msg=f"Unexpected hostmask for case: {self._description}",
+        )
+
+    def test__net_addr__ip6_network__with_forms(self) -> None:
+        """
+        Ensure with_prefixlen / with_netmask / with_hostmask
+        render the network in the three standard notations.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for key in ("with_prefixlen", "with_netmask", "with_hostmask"):
+            with self.subTest(form=key):
+                self.assertEqual(
+                    getattr(self._net, key),
+                    self._results[key],
+                    msg=f"Unexpected {key} for case: {self._description}",
+                )

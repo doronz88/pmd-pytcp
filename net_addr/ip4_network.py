@@ -40,6 +40,7 @@ from net_addr.errors import (
 )
 from net_addr.ip4_address import IP4__MASK, Ip4Address
 from net_addr.ip4_mask import Ip4Mask
+from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 
@@ -107,6 +108,15 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
         """
 
         return self.last
+
+    @property
+    @override
+    def hostmask(self) -> Ip4Wildcard:
+        """
+        Get the network wildcard (inverted netmask).
+        """
+
+        return Ip4Wildcard(~int(self._mask) & IP4__MASK)
 
     @override
     def hosts(self) -> Iterator[Ip4Address]:

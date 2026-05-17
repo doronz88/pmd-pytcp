@@ -41,6 +41,7 @@ from net_addr import (
     Ip4Mask,
     Ip4Network,
     Ip4NetworkFormatError,
+    Ip4Wildcard,
     Ip6Address,
     Ip6IfAddr,
     Ip6Network,
@@ -1117,3 +1118,99 @@ class TestNetAddrIpNetworkFromValue(TestCase):
 
         with self.assertRaises(IpNetworkFormatError, msg="An unparsable value must raise IpNetworkFormatError."):
             IpNetwork.from_value("not-a-network")
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "Ip4Network 192.0.2.0/24",
+            "_network": "192.0.2.0/24",
+            "_results": {
+                "hostmask": Ip4Wildcard("0.0.0.255"),
+                "with_prefixlen": "192.0.2.0/24",
+                "with_netmask": "192.0.2.0/255.255.255.0",
+                "with_hostmask": "192.0.2.0/0.0.0.255",
+            },
+        },
+        {
+            "_description": "Ip4Network 10.0.0.0/8",
+            "_network": "10.0.0.0/8",
+            "_results": {
+                "hostmask": Ip4Wildcard("0.255.255.255"),
+                "with_prefixlen": "10.0.0.0/8",
+                "with_netmask": "10.0.0.0/255.0.0.0",
+                "with_hostmask": "10.0.0.0/0.255.255.255",
+            },
+        },
+        {
+            "_description": "Ip4Network 0.0.0.0/0",
+            "_network": "0.0.0.0/0",
+            "_results": {
+                "hostmask": Ip4Wildcard("255.255.255.255"),
+                "with_prefixlen": "0.0.0.0/0",
+                "with_netmask": "0.0.0.0/0.0.0.0",
+                "with_hostmask": "0.0.0.0/255.255.255.255",
+            },
+        },
+        {
+            "_description": "Ip4Network 192.0.2.5/32",
+            "_network": "192.0.2.5/32",
+            "_results": {
+                "hostmask": Ip4Wildcard("0.0.0.0"),
+                "with_prefixlen": "192.0.2.5/32",
+                "with_netmask": "192.0.2.5/255.255.255.255",
+                "with_hostmask": "192.0.2.5/0.0.0.0",
+            },
+        },
+    ]
+)
+class TestNetAddrIp4NetworkWithForms(TestCase):
+    """
+    The NetAddr IPv4 network hostmask / with_* representation tests.
+    """
+
+    _description: str
+    _network: str
+    _results: dict[str, Any]
+
+    def setUp(self) -> None:
+        """
+        Build the network under test from its CIDR string.
+        """
+
+        self._net = Ip4Network(self._network)
+
+    def test__net_addr__ip4_network__hostmask(self) -> None:
+        """
+        Ensure 'hostmask' is the inverted-netmask Ip4Wildcard
+        (the contiguous special case of an ACL wildcard).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIsInstance(
+            self._net.hostmask,
+            Ip4Wildcard,
+            msg=f"hostmask must be an Ip4Wildcard for case: {self._description}",
+        )
+        self.assertEqual(
+            self._net.hostmask,
+            self._results["hostmask"],
+            msg=f"Unexpected hostmask for case: {self._description}",
+        )
+
+    def test__net_addr__ip4_network__with_forms(self) -> None:
+        """
+        Ensure with_prefixlen / with_netmask / with_hostmask
+        render the network in the three standard notations.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for key in ("with_prefixlen", "with_netmask", "with_hostmask"):
+            with self.subTest(form=key):
+                self.assertEqual(
+                    getattr(self._net, key),
+                    self._results[key],
+                    msg=f"Unexpected {key} for case: {self._description}",
+                )

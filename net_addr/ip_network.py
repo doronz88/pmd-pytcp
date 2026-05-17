@@ -39,8 +39,10 @@ from net_addr.errors import IpNetworkFormatError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
+from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_mask import Ip6Mask
+from net_addr.ip6_wildcard import Ip6Wildcard
 
 if TYPE_CHECKING:
     from net_addr.ip4_network import Ip4Network
@@ -208,6 +210,41 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         """
 
         raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def hostmask(self) -> "Ip4Wildcard | Ip6Wildcard":
+        """
+        Get the network wildcard (inverted netmask) — the
+        contiguous special case of an ACL/firewall wildcard.
+        """
+
+        raise NotImplementedError
+
+    @property
+    def with_prefixlen(self) -> str:
+        """
+        Get the network in 'address/prefixlen' notation.
+        """
+
+        return str(self)
+
+    @property
+    def with_netmask(self) -> str:
+        """
+        Get the network in 'address/netmask' notation.
+        """
+
+        return f"{self._address}/{type(self._address)(int(self._mask))}"
+
+    @property
+    def with_hostmask(self) -> str:
+        """
+        Get the network in 'address/hostmask' (wildcard)
+        notation.
+        """
+
+        return f"{self._address}/{self.hostmask}"
 
     @property
     def _max_prefixlen(self) -> int:
