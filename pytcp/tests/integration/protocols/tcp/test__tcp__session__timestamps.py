@@ -568,12 +568,14 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
 
     def test__rttm__non_tsopt_peer_falls_back_to_sample_tracker(self) -> None:
         """
-        Ensure the Phase-2 sample tracker continues to work
-        unchanged for peers that did not negotiate TSopt -
-        bilateral negotiation gates the TSecr path so legacy
-        peers fall through to the existing harvest logic.
+        Ensure a peer that did not negotiate the Timestamps
+        option falls through to the RTT sample tracker - the
+        bilateral negotiation gate keeps the TSecr path off for
+        legacy peers, so the existing sample-harvest logic is
+        used unchanged.
 
-        Regression guard.
+        Reference: RFC 7323 §3 (Timestamps option bilateral negotiation).
+        Reference: RFC 6298 §2 (RTO sample tracker).
         """
 
         from pytcp.protocols.tcp.tcp__rto import update as rto_update
@@ -1586,9 +1588,9 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
 
     def test__rfc7323__paws_drop_emits_ack_reply(self) -> None:
         """
-        Ensure that a stale-TSval segment dropped by PAWS triggers
-        an ACK reply per RFC 7323 §5.3 R1, so the peer can re-sync
-        its sender state without waiting for its own RTO.
+        Ensure a stale-TSval segment dropped by PAWS triggers an
+        ACK reply so the peer can re-sync its sender state without
+        waiting for its own RTO.
 
         Reference: RFC 7323 §5.3 (R1 ACK reply on PAWS drop).
         """
@@ -1636,13 +1638,13 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
 
     def test__rfc7323__ooo_segment_does_not_refresh_ts_recent(self) -> None:
         """
-        Ensure that an inbound OOO segment (SEG.SEQ > RCV.NXT)
-        passes PAWS but does NOT refresh '_ts_recent' per
-        RFC 7323 §4.3 rule (2)'s SEG.SEQ <= Last.ACK.sent gate.
-        Without this gate, OOO segments inflate TS.Recent and
-        the next outbound TSecr echoes a TSval the peer hasn't
-        yet seen acknowledged, distorting the peer's RTT
-        estimator.
+        Ensure an inbound out-of-order segment (SEG.SEQ >
+        RCV.NXT) passes PAWS but does NOT refresh '_ts_recent':
+        the SEG.SEQ <= Last.ACK.sent gate must reject it.
+        Without the gate, out-of-order segments inflate
+        TS.Recent and the next outbound TSecr echoes a TSval the
+        peer has not yet seen acknowledged, distorting the
+        peer's RTT estimator.
 
         Reference: RFC 7323 §4.3 (Last.ACK.sent gate on TS.Recent).
         """
@@ -1682,10 +1684,10 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
 
     def test__rfc7323__in_order_segment_refreshes_ts_recent(self) -> None:
         """
-        Ensure that an in-order inbound segment (SEG.SEQ ==
-        RCV.NXT) refreshes '_ts_recent' per RFC 7323 §4.3
-        rule (2)'s SEG.SEQ <= Last.ACK.sent gate (the gate
-        passes for in-order segments).
+        Ensure an in-order inbound segment (SEG.SEQ == RCV.NXT)
+        refreshes '_ts_recent': the SEG.SEQ <= Last.ACK.sent
+        gate passes for in-order segments so TS.Recent is
+        updated.
 
         Reference: RFC 7323 §4.3 (TS.Recent refresh on in-order accept).
         """
