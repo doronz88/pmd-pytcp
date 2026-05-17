@@ -38,10 +38,12 @@ from typing import Any, Literal
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, Ip6Address, Ip6IfAddr, Ip6Network
 from net_proto import Ip4Assembler, Ip4FragAssembler
+from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.runtime.fib import Route, RouteProtocol
 from pytcp.tests.lib.ethernet_testcase import EthernetTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -55,9 +57,7 @@ from pytcp.tests.lib.network_testcase import (
     IP4__MULTICAST__ALL_NODES,
     IP6__MULTICAST__ALL_NODES,
     MAC__UNSPECIFIED,
-    STACK__IP4_GATEWAY,
     STACK__IP4_HOST,
-    STACK__IP6_GATEWAY,
     STACK__IP6_HOST,
     STACK__MAC_ADDRESS,
 )
@@ -765,22 +765,48 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
 
         ip4_host = Ip4IfAddr("10.0.1.7/24")
         ip6_host = Ip6IfAddr("2001:db8:0:1::7/64")
-
-        match self._gateway_state:
-            case "set":
-                ip4_host.gateway = STACK__IP4_GATEWAY
-                ip6_host.gateway = STACK__IP6_GATEWAY
-            case "unset":
-                # Leave both gateways as None to exercise the 'no_gw__drop' branches.
-                pass
-            case "miss":
-                # Point gateways at hosts whose MACs are unresolved in the cache
-                # mocks (HOST_B is the canonical "cache-miss" fixture).
-                ip4_host.gateway = HOST_B__IP4_ADDRESS
-                ip6_host.gateway = HOST_B__IP6_ADDRESS
-
         self._packet_handler._ip4_ifaddr = [ip4_host]
         self._packet_handler._ip6_ifaddr = [ip6_host]
+
+        # Post-Phase-2 the Ethernet-TX next hop is decided by the
+        # FIB, not 'IfAddr.gateway'. The harness 'super().setUp()'
+        # already installed the fixture default routes (0.0.0.0/0
+        # via STACK__IP4_GATEWAY, ::/0 via STACK__IP6_GATEWAY) into
+        # fresh per-test FIBs, so '_gateway_state' now drives the
+        # FIB. The expected statuses / counters / frames are
+        # unchanged — only the control knob moved.
+        default4 = Ip4Network("0.0.0.0/0")
+        default6 = Ip6Network("::/0")
+        match self._gateway_state:
+            case "set":
+                # Keep the harness-installed default routes.
+                pass
+            case "unset":
+                # Remove the default routes so off-link
+                # destinations have no route — the 'no_gw__drop'
+                # branch (now "no route to host").
+                stack.ip4_fib.remove(destination=default4)
+                stack.ip6_fib.remove(destination=default6)
+            case "miss":
+                # Repoint the default routes at hosts whose MACs
+                # are unresolved in the cache mocks (HOST_B is the
+                # canonical "cache-miss" fixture).
+                stack.ip4_fib.remove(destination=default4)
+                stack.ip6_fib.remove(destination=default6)
+                stack.ip4_fib.add(
+                    route=Route(
+                        destination=default4,
+                        gateway=HOST_B__IP4_ADDRESS,
+                        protocol=RouteProtocol.BOOT,
+                    )
+                )
+                stack.ip6_fib.add(
+                    route=Route(
+                        destination=default6,
+                        gateway=HOST_B__IP6_ADDRESS,
+                        protocol=RouteProtocol.BOOT,
+                    )
+                )
 
     def test__packet_handler__ethernet__tx(self) -> None:
         """

@@ -36,8 +36,10 @@ from unittest.mock import MagicMock, patch
 from net_addr import (
     Ip4Address,
     Ip4IfAddr,
+    Ip4Network,
     Ip6Address,
     Ip6IfAddr,
+    Ip6Network,
     MacAddress,
 )
 from net_proto import (
@@ -49,6 +51,7 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.runtime.packet_handler.packet_handler__ethernet__tx import (
     PacketHandlerEthernetTx,
 )
@@ -148,6 +151,39 @@ class _EthernetTxTestBase(TestCase):
         self._arp_cache = self._arp_cache_patch.start()
         self._nd_cache = self._nd_cache_patch.start()
 
+        # Post-Phase-2 the Ethernet-TX next hop is decided by the
+        # FIB. Patch fresh real RouteTables (real lookup logic,
+        # not a mock) pre-populated with a default route via the
+        # STACK gateways so the extnet (off-link) tests resolve
+        # via the gateway. The localnet tests rely on the
+        # synthesized connected route from '_ip*_ifaddr'; the
+        # 'no_gateway' tests remove the default route to exercise
+        # the no-route drop.
+        self._ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        self._ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        self._ip4_fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=STACK__IP4_GATEWAY,
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+        self._ip6_fib.add(
+            route=Route(
+                destination=Ip6Network("::/0"),
+                gateway=STACK__IP6_GATEWAY,
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+        # 'create=True' — 'stack.ip4_fib' / 'ip6_fib' are
+        # module-level names that are only bound by 'init()' /
+        # 'mock__init()'; this unit file does not run either, so
+        # the attribute may be absent when the file runs alone.
+        self._ip4_fib_patch = patch.object(stack, "ip4_fib", self._ip4_fib, create=True)
+        self._ip6_fib_patch = patch.object(stack, "ip6_fib", self._ip6_fib, create=True)
+        self._ip4_fib_patch.start()
+        self._ip6_fib_patch.start()
+
         # Default cache responses: miss for everyone.
         self._arp_cache.find_entry.return_value = None
         self._nd_cache.find_entry.return_value = None
@@ -160,6 +196,8 @@ class _EthernetTxTestBase(TestCase):
         self._tx_ring_patch.stop()
         self._arp_cache_patch.stop()
         self._nd_cache_patch.stop()
+        self._ip4_fib_patch.stop()
+        self._ip6_fib_patch.stop()
 
 
 class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
@@ -171,6 +209,8 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         """
         Ensure a specified dst MAC is sent directly and neither the ARP
         cache nor the ND cache is consulted.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler._phtx_ethernet(
@@ -196,6 +236,8 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         """
         Ensure an unspecified src MAC is filled with the stack unicast
         MAC and 'ethernet__src_unspec__fill' is incremented.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ethernet(
@@ -219,6 +261,8 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         """
         Ensure a specified src MAC is not overwritten and
         'ethernet__src_spec' is incremented.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         custom_src = MacAddress("02:00:00:00:00:aa")
@@ -244,6 +288,8 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         """
         Ensure a RawAssembler payload (neither IPv4 nor IPv6) with an
         unspecified dst MAC is dropped because no resolution path applies.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler._phtx_ethernet(ethernet__payload=RawAssembler())
@@ -270,6 +316,8 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv6 multicast destination resolves to its derived
         multicast MAC without consulting the ND cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip6 = _build_ip6_assembler(
@@ -295,6 +343,8 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
     def test__stack__packet_handler__ethernet__tx__ip6_localnet_nd_cache_hit(self) -> None:
         """
         Ensure an IPv6 on-link destination resolves via the ND cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._nd_cache.find_entry.return_value = HOST_A__MAC
@@ -318,6 +368,8 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv6 on-link destination is dropped when the ND cache
         has no matching entry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._nd_cache.find_entry.return_value = None
@@ -371,6 +423,8 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv6 off-link destination resolves via the gateway MAC
         from the ND cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._nd_cache.find_entry.return_value = GATEWAY_MAC
@@ -394,9 +448,14 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv6 off-link destination is dropped when the source
         host has no default gateway configured.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._ip6_ifaddr = [STACK__IP6_HOST__NO_GW]
+        # No default route ⇒ the off-link destination has no
+        # route (the post-Phase-2 "no route to host" drop).
+        self._ip6_fib.remove(destination=Ip6Network("::/0"))
 
         ip6 = _build_ip6_assembler(src=STACK__IP6_HOST__NO_GW.address, dst=Ip6Address("2001:db8:0:ffff::1"))
         status = self._handler._phtx_ethernet(ethernet__payload=ip6)
@@ -411,6 +470,8 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv6 off-link destination is dropped when the gateway
         is configured but the ND cache has no entry for it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._nd_cache.find_entry.return_value = None
@@ -470,6 +531,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 multicast destination resolves to its derived
         multicast MAC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=Ip4Address("224.0.0.1"))
@@ -491,6 +554,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 255.255.255.255 destination resolves to the
         all-ones broadcast MAC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=Ip4Address("255.255.255.255"))
@@ -512,6 +577,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 destination equal to the source host's network
         broadcast resolves to the all-ones broadcast MAC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=STACK__IP4_HOST.network.broadcast)
@@ -532,6 +599,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
     def test__stack__packet_handler__ethernet__tx__ip4_localnet_arp_hit(self) -> None:
         """
         Ensure an IPv4 on-link destination resolves via the ARP cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._arp_cache.find_entry.return_value = HOST_A__MAC
@@ -555,6 +624,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 on-link destination is dropped when the ARP cache
         has no matching entry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._arp_cache.find_entry.return_value = None
@@ -606,6 +677,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 off-link destination resolves via the gateway MAC
         from the ARP cache.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._arp_cache.find_entry.return_value = GATEWAY_MAC
@@ -629,9 +702,14 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 off-link destination is dropped when the source
         host has no default gateway configured.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._ip4_ifaddr = [STACK__IP4_HOST__NO_GW]
+        # No default route ⇒ the off-link destination has no
+        # route (the post-Phase-2 "no route to host" drop).
+        self._ip4_fib.remove(destination=Ip4Network("0.0.0.0/0"))
 
         ip4 = _build_ip4_assembler(src=STACK__IP4_HOST__NO_GW.address, dst=Ip4Address("10.10.10.10"))
         status = self._handler._phtx_ethernet(ethernet__payload=ip4)
@@ -646,6 +724,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         """
         Ensure an IPv4 off-link destination is dropped when the gateway
         is configured but the ARP cache has no entry for it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._arp_cache.find_entry.return_value = None
@@ -700,6 +780,8 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         Ensure an 'Ip4FragAssembler' payload goes through the same IPv4
         routing logic as a plain 'Ip4Assembler' — the handler treats
         both the same way.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._arp_cache.find_entry.return_value = HOST_A__MAC

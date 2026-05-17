@@ -109,7 +109,6 @@ class PacketHandlerEthernetTx(ABC):
         if isinstance(ethernet_packet_tx.payload, Ip6Assembler):
             self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup += 1
 
-            ip6_src = ethernet_packet_tx.payload.src
             ip6_dst = ethernet_packet_tx.payload.dst
 
             # Send packet out if its destined to multicast IPv6 address.
@@ -124,43 +123,58 @@ class PacketHandlerEthernetTx(ABC):
                 self.__send_out_packet(ethernet_packet_tx)
                 return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
-            # Send out packet if is destined to external network (in relation to
-            # its source address) and we are able to obtain MAC of default gateway
-            # from ND cache.
-            for ip6_host in self._ip6_ifaddr:
-                if ip6_host.address == ip6_src and ip6_dst not in ip6_host.network:
-                    if ip6_host.gateway is None:
-                        self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop += 1
-                        __debug__ and log(
-                            "ether",
-                            f"<{ethernet_packet_tx.tracker} - <WARN>No default "
-                            f"gateway set for {ip6_host} source address, "
-                            "dropping</>",
-                        )
-                        return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6
-                    if mac_address := stack.nd_cache.find_entry(ip6_address=ip6_host.gateway):
-                        ethernet_packet_tx.dst = mac_address
-                        self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send += 1
-                        __debug__ and log(
-                            "ether",
-                            f"{ethernet_packet_tx.tracker} - Resolved destination "
-                            f"IPv6 {ip6_dst}"
-                            f" to Default Gateway MAC {ethernet_packet_tx.dst}",
-                        )
-                        self.__send_out_packet(ethernet_packet_tx)
-                        return TxStatus.PASSED__ETHERNET__TO_TX_RING
-                    self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop += 1
-                    # RFC 1122 §2.3.2.2 (IPv6 mirror): save the
-                    # most recently dropped packet for delivery
-                    # once the gateway MAC has been resolved.
-                    stack.nd_cache.enqueue_pending(
-                        ip6_address=ip6_host.gateway,
-                        ethernet_packet_tx=ethernet_packet_tx,
-                    )
-                    return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
+            # Resolve the next hop via the host-mode routing
+            # table (FIB). Phase 2 of
+            # docs/refactor/routing_table_host_mode.md: this is a
+            # destination-keyed longest-prefix lookup that
+            # replaces the prior source-address-coupled ifaddr
+            # scan. Deliberate Linux-correct behaviour change
+            # (RFC 1122 §3.3.4.1; RFC 4861 §5.2): a destination
+            # on-link for ANY interface address is sent directly
+            # even when the packet source belongs to a different
+            # interface address. 'route.gateway is None' ⇒
+            # on-link (connected route); non-None ⇒ off-link via
+            # that gateway. The 'extnet__no_gw__drop' counter and
+            # DST_NO_GATEWAY_IP6 status now mean "no route to
+            # host" (a superset of the old "no gateway").
+            # Phase 2 (router): the forwarding plane calls this
+            # same 'lookup' for transit packets.
+            ip6_route = stack.ip6_fib.lookup(
+                ip6_dst,
+                connected=[ip6_host.network for ip6_host in self._ip6_ifaddr],
+            )
+            if ip6_route is None:
+                self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop += 1
+                __debug__ and log(
+                    "ether",
+                    f"{ethernet_packet_tx.tracker} - <WARN>No route to " f"{ip6_dst}, dropping</>",
+                )
+                return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6
 
-            # Send out packet if we are able to obtain destination MAC
-            # from ICMPv6 ND cache.
+            if ip6_route.gateway is not None:
+                if mac_address := stack.nd_cache.find_entry(ip6_address=ip6_route.gateway):
+                    ethernet_packet_tx.dst = mac_address
+                    self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send += 1
+                    __debug__ and log(
+                        "ether",
+                        f"{ethernet_packet_tx.tracker} - Resolved destination "
+                        f"IPv6 {ip6_dst}"
+                        f" to Default Gateway MAC {ethernet_packet_tx.dst}",
+                    )
+                    self.__send_out_packet(ethernet_packet_tx)
+                    return TxStatus.PASSED__ETHERNET__TO_TX_RING
+                self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_miss__drop += 1
+                # RFC 1122 §2.3.2.2 (IPv6 mirror): save the
+                # most recently dropped packet for delivery
+                # once the gateway MAC has been resolved.
+                stack.nd_cache.enqueue_pending(
+                    ip6_address=ip6_route.gateway,
+                    ethernet_packet_tx=ethernet_packet_tx,
+                )
+                return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS
+
+            # On-link (connected route, no gateway): resolve the
+            # destination MAC directly from the ICMPv6 ND cache.
             if mac_address := stack.nd_cache.find_entry(
                 ip6_address=ip6_dst,
             ):
@@ -238,45 +252,55 @@ class PacketHandlerEthernetTx(ABC):
                         self.__send_out_packet(ethernet_packet_tx)
                         return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
-            # Send out packet if is destined to external network (in relation to
-            # its source address) and we are able to obtain MAC of default gateway
-            # from ARP cache.
-            for ip4_host in self._ip4_ifaddr:
-                if ip4_host.address == ip4_src and ip4_dst not in ip4_host.network:
-                    if ip4_host.gateway is None:
-                        self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop += 1
-                        __debug__ and log(
-                            "ether",
-                            f"{ethernet_packet_tx.tracker} - <WARN>No default "
-                            f"gateway set for {ip4_host} source address, "
-                            "dropping</>",
-                        )
-                        return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4
-                    if mac_address := stack.arp_cache.find_entry(
-                        ip4_address=ip4_host.gateway,
-                    ):
-                        self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send += 1
-                        ethernet_packet_tx.dst = mac_address
-                        __debug__ and log(
-                            "ether",
-                            f"{ethernet_packet_tx.tracker} - Resolved destination "
-                            f"IPv4 {ip4_dst} to Default Gateway MAC "
-                            f"{ethernet_packet_tx.dst}",
-                        )
-                        self.__send_out_packet(ethernet_packet_tx)
-                        return TxStatus.PASSED__ETHERNET__TO_TX_RING
-                    self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop += 1
-                    # RFC 1122 §2.3.2.2: save the most recently
-                    # dropped packet for delivery once the gateway
-                    # MAC has been resolved.
-                    stack.arp_cache.enqueue_pending(
-                        ip4_address=ip4_host.gateway,
-                        ethernet_packet_tx=ethernet_packet_tx,
-                    )
-                    return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
+            # Resolve the next hop via the host-mode routing
+            # table (FIB) — destination-keyed longest-prefix
+            # lookup; see the IPv6 branch above for the Phase-2
+            # rationale and the deliberate Linux-correct
+            # behaviour change. The directed-broadcast / network-
+            # address special-case above stays source-keyed
+            # (link-scope, not routed). 'route.gateway is None' ⇒
+            # on-link; the 'extnet__no_gw__drop' counter and
+            # DST_NO_GATEWAY_IP4 status now mean "no route to
+            # host".
+            ip4_route = stack.ip4_fib.lookup(
+                ip4_dst,
+                connected=[ip4_host.network for ip4_host in self._ip4_ifaddr],
+            )
+            if ip4_route is None:
+                self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop += 1
+                __debug__ and log(
+                    "ether",
+                    f"{ethernet_packet_tx.tracker} - <WARN>No route to " f"{ip4_dst}, dropping</>",
+                )
+                return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4
 
-            # Send out packet if we are able to obtain destination MAC from
-            # ARP cache, drop otherwise.
+            if ip4_route.gateway is not None:
+                if mac_address := stack.arp_cache.find_entry(
+                    ip4_address=ip4_route.gateway,
+                ):
+                    self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send += 1
+                    ethernet_packet_tx.dst = mac_address
+                    __debug__ and log(
+                        "ether",
+                        f"{ethernet_packet_tx.tracker} - Resolved destination "
+                        f"IPv4 {ip4_dst} to Default Gateway MAC "
+                        f"{ethernet_packet_tx.dst}",
+                    )
+                    self.__send_out_packet(ethernet_packet_tx)
+                    return TxStatus.PASSED__ETHERNET__TO_TX_RING
+                self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_miss__drop += 1
+                # RFC 1122 §2.3.2.2: save the most recently
+                # dropped packet for delivery once the gateway
+                # MAC has been resolved.
+                stack.arp_cache.enqueue_pending(
+                    ip4_address=ip4_route.gateway,
+                    ethernet_packet_tx=ethernet_packet_tx,
+                )
+                return TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS
+
+            # On-link (connected route, no gateway): resolve the
+            # destination MAC directly from the ARP cache, drop
+            # otherwise.
             if mac_address := stack.arp_cache.find_entry(
                 ip4_address=ip4_dst,
             ):

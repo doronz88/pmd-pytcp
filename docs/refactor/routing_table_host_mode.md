@@ -298,13 +298,17 @@ The FIB matches B's connected route and sends `dst` directly
 RFC 1122 §3.3.4.1 multihoming). Add an integration test that
 pins the new behaviour and cite the deviation inline.
 
-New/renamed stat counters: `ethernet__dst_unspec__ip{4,6}_lookup__route_hit__on_link__{arp,nd}_cache_hit__send`,
-`...__route_hit__gateway__..._cache_hit__send`,
-`...__no_route__drop`, mirroring the existing naming scheme.
-Update `pytcp/lib/packet_stats.py` and every
-`_assert_packet_stats_tx(exact=True, ...)` call in the
-integration suite (the strict default means every renamed
-counter must be re-pinned).
+Stat counters: **shipped decision — NOT renamed** (see
+§6.7). The 17 `ethernet__dst_unspec__ip{4,6}_lookup__*`
+counters and 7 `DROPPED__ETHERNET__DST_*` TxStatus members
+are preserved verbatim. They remain semantically accurate
+under the FIB: `locnet__*` = on-link (connected route, no
+gateway), `extnet__gw_*` = off-link via gateway route,
+`extnet__no_gw__drop` + `DST_NO_GATEWAY_IP{4,6}` = no route
+to host. `pytcp/lib/packet_stats.py` is untouched and none of
+the 222 counter assertions across 17 integration files needed
+editing — the rewrite is observably identical for every
+single-interface topology case.
 
 **Tests-first**: integration tests via `NetworkTestCase` —
 on-link dst → ARP/ND dst directly; off-link dst → default
@@ -546,6 +550,28 @@ precedent, keeps the API stable as `Route` gains Phase-2
 fields, and the `Route` dataclass already validates via
 `__post_init__`. `replace_default_ip4(*, gateway, protocol)`
 stays flat — it is a convenience over the common case.
+
+### 6.7 Phase 2 — counters NOT renamed (shipped 2026-05-17)
+
+**Decision: preserve all 17 `ethernet__dst_unspec__*lookup*`
+counters and all 7 `DROPPED__ETHERNET__DST_*` TxStatus
+members; do not rename to `route_hit__on_link` /
+`route_hit__gateway` / `no_route__drop`.** The recon found
+**222 counter references across 17 integration files** (the
+`locnet__*cache_hit__send` pair alone has 84). A rename is
+pure churn with zero behavioural value and large regression
+risk; the existing names stay semantically exact under the
+FIB (`locnet`=on-link/connected, `extnet__gw`=gateway route,
+`extnet__no_gw__drop`/`DST_NO_GATEWAY`=no route to host —
+a strict superset of the old "no gateway"). This deviates
+from the original §3-Phase-2 sketch which called for the
+rename; minimal-change + scope discipline
+(feature_implementation.md §3, §5) win. The only observable
+change is the deliberate Linux-correct multihoming fix
+(§6.2), pinned by 6 new tests in
+`test__ip{4,6}__routing.py`; every other case is
+byte-identical, so the 222 assertions stayed green
+untouched.
 
 ---
 
