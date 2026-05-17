@@ -36,10 +36,9 @@ from typing import cast
 
 from net_addr import (
     Ip4Address,
-    Ip4AddressFormatError,
     Ip6Address,
-    Ip6AddressFormatError,
     IpAddress,
+    IpAddressFormatError,
     IpVersion,
 )
 from pytcp import stack
@@ -52,12 +51,9 @@ def str_to_ip(ip_address: str, /) -> Ip6Address | Ip4Address | None:
     """
 
     try:
-        return Ip6Address(ip_address)
-    except Ip6AddressFormatError:
-        try:
-            return Ip4Address(ip_address)
-        except Ip4AddressFormatError:
-            return None
+        return IpAddress.from_value(ip_address)
+    except IpAddressFormatError:
+        return None
 
 
 def ip_version(
