@@ -277,3 +277,196 @@ class TestInstallBootDefaultRoutes(TestCase):
             1,
             msg="Dual-stack boot must install one IPv6 default route.",
         )
+
+
+class TestRouteApiMutation(TestCase):
+    """
+    The Phase-3 Route API mutation surface tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Build a RouteApi over fresh empty IPv4 / IPv6 FIBs.
+        """
+
+        self._ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        self._ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        self._route_api = RouteApi(ip4_fib=self._ip4_fib, ip6_fib=self._ip6_fib)
+
+    def test__stack__route__add_route_installs_into_fib(self) -> None:
+        """
+        Ensure 'add_ip4_route' / 'add_ip6_route' install the
+        route into the backing FIB.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        r4 = Route(destination=Ip4Network("10.9.0.0/16"), gateway=Ip4Address("10.0.1.254"))
+        r6 = Route(destination=Ip6Network("2001:db8:9::/48"), gateway=Ip6Address("fe80::9"))
+        self._route_api.add_ip4_route(route=r4)
+        self._route_api.add_ip6_route(route=r6)
+
+        self.assertEqual(
+            (self._ip4_fib.snapshot(), self._ip6_fib.snapshot()),
+            ((r4,), (r6,)),
+            msg="add_ip{4,6}_route must install the route into the FIB.",
+        )
+
+    def test__stack__route__remove_route_returns_count(self) -> None:
+        """
+        Ensure 'remove_ip4_route' deletes matching routes and
+        returns the removed count.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        net = Ip4Network("10.9.0.0/16")
+        self._route_api.add_ip4_route(route=Route(destination=net, gateway=Ip4Address("10.0.1.1")))
+        self._route_api.add_ip4_route(route=Route(destination=net, gateway=Ip4Address("10.0.1.2")))
+
+        removed = self._route_api.remove_ip4_route(
+            destination=net,
+            gateway=Ip4Address("10.0.1.1"),
+        )
+
+        self.assertEqual(
+            removed,
+            1,
+            msg="remove_ip4_route must return the number of routes removed.",
+        )
+        self.assertEqual(
+            len(self._route_api.list_ip4_routes()),
+            1,
+            msg="Only the gateway-matched route must be removed.",
+        )
+
+    def test__stack__route__remove_ip6_route_returns_count(self) -> None:
+        """
+        Ensure 'remove_ip6_route' deletes the matching IPv6
+        route and returns the removed count.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        net = Ip6Network("2001:db8:9::/48")
+        self._route_api.add_ip6_route(route=Route(destination=net, gateway=Ip6Address("fe80::9")))
+
+        removed = self._route_api.remove_ip6_route(destination=net)
+
+        self.assertEqual(
+            removed,
+            1,
+            msg="remove_ip6_route must return the number of routes removed.",
+        )
+        self.assertEqual(
+            self._route_api.list_ip6_routes(),
+            (),
+            msg="The IPv6 route must be gone after remove_ip6_route.",
+        )
+
+    def test__stack__route__replace_default_ipv4_swaps_atomically(self) -> None:
+        """
+        Ensure 'replace_default_ip4' removes any existing default
+        route and installs exactly one new default route via the
+        given gateway and protocol.
+
+        Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
+        """
+
+        self._route_api.add_ip4_route(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.1.1"),
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+
+        self._route_api.replace_default_ip4(
+            gateway=Ip4Address("10.0.1.254"),
+            protocol=RouteProtocol.DHCP,
+        )
+
+        self.assertEqual(
+            self._route_api.list_ip4_routes(),
+            (
+                Route(
+                    destination=Ip4Network("0.0.0.0/0"),
+                    gateway=Ip4Address("10.0.1.254"),
+                    protocol=RouteProtocol.DHCP,
+                ),
+            ),
+            msg="replace_default_ip4 must leave exactly the new default route.",
+        )
+
+    def test__stack__route__replace_default_ipv6_swaps_atomically(self) -> None:
+        """
+        Ensure 'replace_default_ip6' removes any existing ::/0
+        route and installs exactly one new default route via the
+        given (link-local) gateway and protocol.
+
+        Reference: RFC 4861 §6.3.4 (default router selection).
+        """
+
+        self._route_api.add_ip6_route(
+            route=Route(
+                destination=Ip6Network("::/0"),
+                gateway=Ip6Address("fe80::1"),
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+
+        self._route_api.replace_default_ip6(
+            gateway=Ip6Address("fe80::abcd"),
+            protocol=RouteProtocol.RA,
+        )
+
+        self.assertEqual(
+            self._route_api.list_ip6_routes(),
+            (
+                Route(
+                    destination=Ip6Network("::/0"),
+                    gateway=Ip6Address("fe80::abcd"),
+                    protocol=RouteProtocol.RA,
+                ),
+            ),
+            msg="replace_default_ip6 must leave exactly the new default route.",
+        )
+
+    def test__stack__route__replace_default_preserves_non_default_routes(self) -> None:
+        """
+        Ensure 'replace_default_ip4' touches only the default
+        route and leaves static non-default routes intact.
+
+        Reference: RFC 1122 §3.3.1 (default route / next-hop selection).
+        """
+
+        static = Route(
+            destination=Ip4Network("10.9.0.0/16"),
+            gateway=Ip4Address("10.0.1.254"),
+            protocol=RouteProtocol.STATIC,
+        )
+        self._route_api.add_ip4_route(route=static)
+        self._route_api.add_ip4_route(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.1.1"),
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+
+        self._route_api.replace_default_ip4(
+            gateway=Ip4Address("10.0.1.9"),
+            protocol=RouteProtocol.DHCP,
+        )
+
+        self.assertIn(
+            static,
+            self._route_api.list_ip4_routes(),
+            msg="A non-default static route must survive replace_default_ip4.",
+        )
+        self.assertEqual(
+            len(self._route_api.list_ip4_routes()),
+            2,
+            msg="replace_default must leave the static route + exactly one default.",
+        )

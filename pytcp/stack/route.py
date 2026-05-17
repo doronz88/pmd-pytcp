@@ -144,3 +144,93 @@ class RouteApi:
         """
 
         return self._ip6_fib.snapshot()
+
+    def add_ip4_route(self, *, route: Route[Ip4Address, Ip4Network]) -> None:
+        """
+        Install an explicit IPv4 route — Linux 'RTM_NEWROUTE' /
+        'ip -4 route add' equivalent. Does not de-duplicate; the
+        caller owns replace semantics (see 'replace_default_ip4').
+        """
+
+        self._ip4_fib.add(route=route)
+
+    def add_ip6_route(self, *, route: Route[Ip6Address, Ip6Network]) -> None:
+        """
+        Install an explicit IPv6 route — Linux 'RTM_NEWROUTE' /
+        'ip -6 route add' equivalent.
+        """
+
+        self._ip6_fib.add(route=route)
+
+    def remove_ip4_route(
+        self,
+        *,
+        destination: Ip4Network,
+        gateway: Ip4Address | None = None,
+    ) -> int:
+        """
+        Remove every IPv4 route to 'destination' (optionally
+        gateway-qualified) — Linux 'RTM_DELROUTE' / 'ip -4 route
+        del' equivalent. Returns the number of routes removed.
+        """
+
+        return self._ip4_fib.remove(destination=destination, gateway=gateway)
+
+    def remove_ip6_route(
+        self,
+        *,
+        destination: Ip6Network,
+        gateway: Ip6Address | None = None,
+    ) -> int:
+        """
+        Remove every IPv6 route to 'destination' (optionally
+        gateway-qualified) — Linux 'RTM_DELROUTE' / 'ip -6 route
+        del' equivalent. Returns the number of routes removed.
+        """
+
+        return self._ip6_fib.remove(destination=destination, gateway=gateway)
+
+    def replace_default_ip4(self, *, gateway: Ip4Address, protocol: RouteProtocol) -> None:
+        """
+        Atomically replace the IPv4 default route: remove any
+        existing 0.0.0.0/0 route, then install a single new one
+        via 'gateway' with the given 'protocol'. Linux 'ip route
+        replace default via ...' equivalent.
+
+        Remove-then-add (not the add-before-remove ordering of
+        'Ip4AddressApi.replace_ifaddr'): two same-prefix default
+        routes would create a lookup tiebreak ambiguity, whereas
+        two interface addresses do not. The call is synchronous
+        from the control-plane caller's view, so the transient
+        no-default window is not observable to a concurrent
+        lookup in practice.
+        """
+
+        self._ip4_fib.remove(destination=DEFAULT_IP4_NETWORK)
+        self._ip4_fib.add(
+            route=Route(
+                destination=DEFAULT_IP4_NETWORK,
+                gateway=gateway,
+                protocol=protocol,
+            )
+        )
+        __debug__ and log("stack", f"<lg>Route API</>: IPv4 default via {gateway} ({protocol!r})")
+
+    def replace_default_ip6(self, *, gateway: Ip6Address, protocol: RouteProtocol) -> None:
+        """
+        Atomically replace the IPv6 default route: remove any
+        existing ::/0 route, then install a single new one via
+        'gateway' (typically the RA source link-local address)
+        with the given 'protocol'. See 'replace_default_ip4' for
+        the remove-then-add rationale.
+        """
+
+        self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
+        self._ip6_fib.add(
+            route=Route(
+                destination=DEFAULT_IP6_NETWORK,
+                gateway=gateway,
+                protocol=protocol,
+            )
+        )
+        __debug__ and log("stack", f"<lg>Route API</>: IPv6 default via {gateway} ({protocol!r})")
