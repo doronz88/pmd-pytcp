@@ -38,34 +38,10 @@ from net_addr import (
     Ip4Address,
     Ip6Address,
     IpAddress,
-    IpAddressFormatError,
     IpVersion,
 )
 from pytcp import stack
 from pytcp.socket import AddressFamily, SocketType
-
-
-def str_to_ip(ip_address: str, /) -> Ip6Address | Ip4Address | None:
-    """
-    Convert string to the appropriate version of the IP address.
-    """
-
-    try:
-        return IpAddress.from_value(ip_address)
-    except IpAddressFormatError:
-        return None
-
-
-def ip_version(
-    *,
-    ip_address: str,
-) -> IpVersion | None:
-    """
-    Return version of the IP address string.
-    """
-
-    parsed = str_to_ip(ip_address)
-    return None if parsed is None else parsed.version
 
 
 def pick_local_ip_address[T: IpAddress](*, remote_ip_address: T) -> T:

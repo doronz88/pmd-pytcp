@@ -31,136 +31,24 @@ ver 3.0.5
 """
 
 from types import SimpleNamespace
-from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
-
-from parameterized import parameterized_class  # type: ignore
 
 from net_addr import (
     Ip4Address,
     Ip4Network,
     Ip6Address,
     Ip6Network,
-    IpVersion,
 )
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket__bind_helpers import (
-    ip_version,
     is_address_in_use,
     pick_local_ip4_address,
     pick_local_ip6_address,
     pick_local_ip_address,
     pick_local_port,
     pick_local_port_for,
-    str_to_ip,
 )
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "Well-formed IPv6 address.",
-            "_ip_address": "2001:db8::1",
-            "_results": {
-                "ip_version": IpVersion.IP6,
-                "str_to_ip": Ip6Address("2001:db8::1"),
-            },
-        },
-        {
-            "_description": "Well-formed IPv4 address.",
-            "_ip_address": "10.0.0.1",
-            "_results": {
-                "ip_version": IpVersion.IP4,
-                "str_to_ip": Ip4Address("10.0.0.1"),
-            },
-        },
-        {
-            "_description": "IPv6 loopback.",
-            "_ip_address": "::1",
-            "_results": {
-                "ip_version": IpVersion.IP6,
-                "str_to_ip": Ip6Address("::1"),
-            },
-        },
-        {
-            "_description": "IPv4 zero address.",
-            "_ip_address": "0.0.0.0",
-            "_results": {
-                "ip_version": IpVersion.IP4,
-                "str_to_ip": Ip4Address("0.0.0.0"),
-            },
-        },
-        {
-            "_description": "Garbage string that parses as neither.",
-            "_ip_address": "not-an-ip",
-            "_results": {
-                "ip_version": None,
-                "str_to_ip": None,
-            },
-        },
-        {
-            "_description": "Empty string.",
-            "_ip_address": "",
-            "_results": {
-                "ip_version": None,
-                "str_to_ip": None,
-            },
-        },
-    ]
-)
-class TestIpVersionAndStrToIp(TestCase):
-    """
-    The 'ip_version()' and 'str_to_ip()' happy/fallback path tests.
-    """
-
-    _description: str
-    _ip_address: str
-    _results: dict[str, Any]
-
-    def test__ip_helper__ip_version(self) -> None:
-        """
-        Ensure 'ip_version()' returns the correct 'IpVersion' member for
-        valid strings and 'None' for anything that parses as neither an
-        IPv6 nor an IPv4 address. Exercises the double try/except
-        fallback chain.
-        """
-
-        self.assertEqual(
-            ip_version(ip_address=self._ip_address),
-            self._results["ip_version"],
-            msg=f"Unexpected ip_version() result for case: {self._description}",
-        )
-
-    def test__ip_helper__str_to_ip(self) -> None:
-        """
-        Ensure 'str_to_ip()' returns the matching 'Ip6Address' /
-        'Ip4Address' value for valid strings and 'None' for unparsable
-        input. Mirrors the dispatch logic of 'ip_version()' but returns
-        the address object itself.
-        """
-
-        self.assertEqual(
-            str_to_ip(self._ip_address),
-            self._results["str_to_ip"],
-            msg=f"Unexpected str_to_ip() result for case: {self._description}",
-        )
-
-
-class TestStrToIpPositionalOnly(TestCase):
-    """
-    The 'str_to_ip()' signature tests.
-    """
-
-    def test__ip_helper__str_to_ip__positional_only(self) -> None:
-        """
-        Ensure 'str_to_ip' accepts its 'ip_address' argument positionally
-        only (it appears before the '/' in the signature). Passing it as
-        a keyword must raise 'TypeError'.
-        """
-
-        with self.assertRaises(TypeError):
-            str_to_ip(ip_address="10.0.0.1")  # type: ignore[call-arg]
 
 
 class TestPickLocalIp6Address(TestCase):
