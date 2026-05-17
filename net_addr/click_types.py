@@ -47,7 +47,7 @@ from net_addr.ip6_network import Ip6Network
 from net_addr.mac_address import MacAddress
 
 
-class ClickTypeMacAddress(ParamType):
+class ClickTypeMacAddress(ParamType[MacAddress]):
     """
     Custom Click type for handling the MAC address argument.
     """
@@ -76,7 +76,7 @@ class ClickTypeMacAddress(ParamType):
             )
 
 
-class ClickTypeIpAddress(ParamType):
+class ClickTypeIpAddress(ParamType[Ip6Address | Ip4Address]):
     """
     Custom Click type for handling IP address argument.
     """
@@ -112,7 +112,7 @@ class ClickTypeIpAddress(ParamType):
                 )
 
 
-class ClickTypeIp6Address(ParamType):
+class ClickTypeIp6Address(ParamType[Ip6Address]):
     """
     Custom Click type for handling IPv6 address argument.
     """
@@ -141,7 +141,7 @@ class ClickTypeIp6Address(ParamType):
             )
 
 
-class ClickTypeIp4Address(ParamType):
+class ClickTypeIp4Address(ParamType[Ip4Address]):
     """
     Custom Click type for handling IPv4 address argument.
     """
@@ -170,7 +170,7 @@ class ClickTypeIp4Address(ParamType):
             )
 
 
-class ClickTypeIpNetwork(ParamType):
+class ClickTypeIpNetwork(ParamType[Ip6Network | Ip4Network]):
     """
     Custom Click type for handling IP network argument.
     """
@@ -206,7 +206,7 @@ class ClickTypeIpNetwork(ParamType):
                 )
 
 
-class ClickTypeIp6Network(ParamType):
+class ClickTypeIp6Network(ParamType[Ip6Network]):
     """
     Custom Click type for handling IPv6 network argument.
     """
@@ -235,7 +235,7 @@ class ClickTypeIp6Network(ParamType):
             )
 
 
-class ClickTypeIp4Network(ParamType):
+class ClickTypeIp4Network(ParamType[Ip4Network]):
     """
     Custom Click type for handling IPv4 network argument.
     """
@@ -264,7 +264,7 @@ class ClickTypeIp4Network(ParamType):
             )
 
 
-class ClickTypeIfAddr(ParamType):
+class ClickTypeIfAddr(ParamType[Ip6IfAddr | Ip4IfAddr]):
     """
     Custom Click type for handling IP host argument.
     """
@@ -300,7 +300,7 @@ class ClickTypeIfAddr(ParamType):
                 )
 
 
-class ClickTypeIp6IfAddr(ParamType):
+class ClickTypeIp6IfAddr(ParamType[Ip6IfAddr]):
     """
     Custom Click type for handling IPv6 host argument.
     """
@@ -329,7 +329,7 @@ class ClickTypeIp6IfAddr(ParamType):
             )
 
 
-class ClickTypeIp4IfAddr(ParamType):
+class ClickTypeIp4IfAddr(ParamType[Ip4IfAddr]):
     """
     Custom Click type for handling IPv4 host argument.
     """

@@ -30,6 +30,7 @@ net_addr/tests/unit/test__click_types.py
 ver 3.0.5
 """
 
+from typing import assert_type
 from unittest import TestCase
 
 from click import BadParameter
@@ -509,3 +510,39 @@ class TestClickTypeIp4Host(TestCase):
             self._param.convert("2001:db8::1/64", None, None)
 
         self.assertIn("Invalid IPv4 host argument '2001:db8::1/64'", str(ctx.exception))
+
+
+class TestClickTypeParameterisation(TestCase):
+    """
+    The NetAddr Click type generic-binding tests.
+    """
+
+    def test__click_types__param_type_binding(self) -> None:
+        """
+        Ensure each Click type binds ParamType to the concrete
+        value type its convert() returns, so the generic is not
+        left as an unparameterised Any. The assert_type calls are
+        compile-time (mypy) assertions and runtime no-ops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        assert_type(ClickTypeMacAddress().convert("02:00:00:00:00:01", None, None), MacAddress)
+        assert_type(ClickTypeIp4Address().convert("10.0.0.1", None, None), Ip4Address)
+        assert_type(ClickTypeIp6Address().convert("2001:db8::1", None, None), Ip6Address)
+        assert_type(ClickTypeIp4Network().convert("10.0.0.0/24", None, None), Ip4Network)
+        assert_type(ClickTypeIp6Network().convert("2001:db8::/64", None, None), Ip6Network)
+        assert_type(ClickTypeIp4IfAddr().convert("10.0.0.1/24", None, None), Ip4IfAddr)
+        assert_type(ClickTypeIp6IfAddr().convert("2001:db8::1/64", None, None), Ip6IfAddr)
+        assert_type(
+            ClickTypeIpAddress().convert("2001:db8::1", None, None),
+            Ip6Address | Ip4Address,
+        )
+        assert_type(
+            ClickTypeIpNetwork().convert("2001:db8::/64", None, None),
+            Ip6Network | Ip4Network,
+        )
+        assert_type(
+            ClickTypeIfAddr().convert("2001:db8::1/64", None, None),
+            Ip6IfAddr | Ip4IfAddr,
+        )
