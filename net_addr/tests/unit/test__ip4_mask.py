@@ -35,7 +35,14 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import Ip4Mask, Ip4MaskFormatError, Ip6Mask, IpVersion
+from net_addr import (
+    Ip4Address,
+    Ip4Mask,
+    Ip4MaskFormatError,
+    Ip6Address,
+    Ip6Mask,
+    IpVersion,
+)
 
 
 @parameterized_class(
@@ -1018,3 +1025,79 @@ class TestNetAddrIp4MaskRoundtrip(TestCase):
             len(source),
             msg="Ip4Mask copied from another Ip4Mask must preserve the bit length.",
         )
+
+
+class TestNetAddrIp4MaskAndAddress(TestCase):
+    """
+    The NetAddr IPv4 mask & address (network address)
+    operator tests.
+    """
+
+    def test__net_addr__ip4_mask__and_address(self) -> None:
+        """
+        Ensure 'address & mask' (and the reflected form) yields
+        the network address — every host bit (mask=0) cleared,
+        every network bit unchanged.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        for addr, mask, expected in [
+            ("10.1.1.42", "/24", "10.1.1.0"),
+            ("192.168.5.130", "/26", "192.168.5.128"),
+            ("172.16.200.7", "/12", "172.16.0.0"),
+            ("10.1.1.42", "/32", "10.1.1.42"),
+            ("10.1.1.42", "/0", "0.0.0.0"),
+        ]:
+            with self.subTest(addr=addr, mask=mask):
+                a = Ip4Address(addr)
+                m = Ip4Mask(mask)
+                self.assertEqual(
+                    a & m,
+                    Ip4Address(expected),
+                    msg=f"{addr} & {mask} must be {expected}.",
+                )
+                self.assertEqual(
+                    m & a,
+                    Ip4Address(expected),
+                    msg=f"{mask} & {addr} (reflected) must be {expected}.",
+                )
+                self.assertIsInstance(
+                    a & m,
+                    Ip4Address,
+                    msg="address & mask must return an Ip4Address.",
+                )
+
+    def test__net_addr__ip4_mask__and_address_same_subnet_idiom(self) -> None:
+        """
+        Ensure the same-subnet idiom '(a & m) == (b & m)' admits
+        hosts in the same prefix and rejects hosts outside it.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        m = Ip4Mask("/24")
+        self.assertEqual(
+            Ip4Address("10.1.1.5") & m,
+            Ip4Address("10.1.1.200") & m,
+            msg="10.1.1.5 and 10.1.1.200 must share a /24.",
+        )
+        self.assertNotEqual(
+            Ip4Address("10.1.1.5") & m,
+            Ip4Address("10.1.2.5") & m,
+            msg="10.1.1.5 and 10.1.2.5 must not share a /24.",
+        )
+
+    def test__net_addr__ip4_mask__and_rejects_foreign_operand(self) -> None:
+        """
+        Ensure a non-address or cross-version operand yields
+        'TypeError' rather than a silent wrong result.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        m = Ip4Mask("/24")
+        with self.assertRaises(TypeError):
+            _ = m & 5
+        with self.assertRaises(TypeError):
+            _ = Ip6Address("::1") & m

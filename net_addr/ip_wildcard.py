@@ -35,6 +35,8 @@ from typing import override
 
 from net_addr.base import Base
 from net_addr.ip import Ip
+from net_addr.ip4_address import Ip4Address
+from net_addr.ip6_address import Ip6Address
 
 
 class IpWildcard(Base, Ip, ABC):
@@ -74,6 +76,31 @@ class IpWildcard(Base, Ip, ABC):
         """
 
         return self._wildcard
+
+    def __or__(self, other: object, /) -> Ip4Address | Ip6Address:
+        """
+        Get the canonical wildcard representative of an address:
+        every don't-care bit (wildcard=1) forced high, every
+        care bit unchanged, so '(a | w) == (b | w)' is the
+        ACL-equivalence test. A non-address or cross-version
+        operand is undefined and raises TypeError.
+        """
+
+        if isinstance(other, Ip4Address) and self.version == other.version:
+            return Ip4Address(int(other) | self._wildcard)
+
+        if isinstance(other, Ip6Address) and self.version == other.version:
+            return Ip6Address(int(other) | self._wildcard)
+
+        return NotImplemented
+
+    def __ror__(self, other: object, /) -> Ip4Address | Ip6Address:
+        """
+        Get the canonical wildcard representative of an address
+        (reflected operand form; bitwise OR is commutative).
+        """
+
+        return self.__or__(other)
 
     @override
     def __eq__(self, other: object, /) -> bool:

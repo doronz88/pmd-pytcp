@@ -35,6 +35,8 @@ from typing import override
 
 from net_addr.base import Base
 from net_addr.ip import Ip
+from net_addr.ip4_address import Ip4Address
+from net_addr.ip6_address import Ip6Address
 
 
 class IpMask(Base, Ip, ABC):
@@ -75,6 +77,31 @@ class IpMask(Base, Ip, ABC):
         """
 
         return self._mask
+
+    def __and__(self, other: object, /) -> Ip4Address | Ip6Address:
+        """
+        Get the network address of an address under this mask:
+        every host bit (mask=0) cleared, every network bit
+        unchanged, so '(a & m) == (b & m)' is the same-subnet
+        test. A non-address or cross-version operand is
+        undefined and raises TypeError.
+        """
+
+        if isinstance(other, Ip4Address) and self.version == other.version:
+            return Ip4Address(int(other) & self._mask)
+
+        if isinstance(other, Ip6Address) and self.version == other.version:
+            return Ip6Address(int(other) & self._mask)
+
+        return NotImplemented
+
+    def __rand__(self, other: object, /) -> Ip4Address | Ip6Address:
+        """
+        Get the network address of an address under this mask
+        (reflected operand form; bitwise AND is commutative).
+        """
+
+        return self.__and__(other)
 
     @override
     def __eq__(self, other: object, /) -> bool:

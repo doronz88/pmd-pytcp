@@ -35,7 +35,14 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import Ip4Wildcard, Ip6Wildcard, Ip6WildcardFormatError, IpVersion
+from net_addr import (
+    Ip4Address,
+    Ip4Wildcard,
+    Ip6Address,
+    Ip6Wildcard,
+    Ip6WildcardFormatError,
+    IpVersion,
+)
 
 
 @parameterized_class(
@@ -334,3 +341,81 @@ class TestNetAddrIp6WildcardSemantics(TestCase):
             source,
             msg="Copy-constructed Ip6Wildcard must equal its source.",
         )
+
+
+class TestNetAddrIp6WildcardOrAddress(TestCase):
+    """
+    The NetAddr IPv6 wildcard | address (canonical
+    representative) operator tests.
+    """
+
+    def test__net_addr__ip6_wildcard__or_address(self) -> None:
+        """
+        Ensure 'address | wildcard' (and the reflected form)
+        yields the canonical representative — every don't-care
+        bit (wildcard=1) forced high, every care bit unchanged.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for addr, wild, expected in [
+            ("2001:db8::a", "::f", "2001:db8::f"),
+            ("2001:db8::", "::f", "2001:db8::f"),
+            ("2001:db8::10", "::f", "2001:db8::1f"),
+            ("2001:db8::1", "::ffff", "2001:db8::ffff"),
+            ("::", "::", "::"),
+        ]:
+            with self.subTest(addr=addr, wild=wild):
+                a = Ip6Address(addr)
+                w = Ip6Wildcard(wild)
+                self.assertEqual(
+                    a | w,
+                    Ip6Address(expected),
+                    msg=f"{addr} | {wild} must be {expected}.",
+                )
+                self.assertEqual(
+                    w | a,
+                    Ip6Address(expected),
+                    msg=f"{wild} | {addr} (reflected) must be {expected}.",
+                )
+                self.assertIsInstance(
+                    a | w,
+                    Ip6Address,
+                    msg="address | wildcard must return an Ip6Address.",
+                )
+
+    def test__net_addr__ip6_wildcard__or_address_match_idiom(self) -> None:
+        """
+        Ensure the ACL match idiom '(candidate | w) == (base | w)'
+        admits members and rejects non-members of the
+        wildcard-equivalence class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        w = Ip6Wildcard("::ffff")
+        base = Ip6Address("2001:db8::")
+        self.assertEqual(
+            Ip6Address("2001:db8::abcd") | w,
+            base | w,
+            msg="2001:db8::abcd must match 2001:db8::/::ffff.",
+        )
+        self.assertNotEqual(
+            Ip6Address("2001:db8::1:abcd") | w,
+            base | w,
+            msg="2001:db8::1:abcd must not match 2001:db8::/::ffff.",
+        )
+
+    def test__net_addr__ip6_wildcard__or_rejects_foreign_operand(self) -> None:
+        """
+        Ensure a non-address or cross-version operand yields
+        'TypeError' rather than a silent wrong result.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        w = Ip6Wildcard("::ffff")
+        with self.assertRaises(TypeError):
+            _ = w | 5
+        with self.assertRaises(TypeError):
+            _ = Ip4Address("10.0.0.1") | w
