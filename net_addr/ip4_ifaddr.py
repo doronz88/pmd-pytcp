@@ -93,7 +93,10 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
 
         if isinstance(host, str):
             try:
-                address, _ = host.split("/")
+                # Accept both the CIDR 'addr/prefix' form and the
+                # standard IPv4 'addr netmask' space form, matching
+                # what Ip4Network parses.
+                address = host.split("/", 1)[0] if "/" in host else host.split(" ", 1)[0]
                 self._address = Ip4Address(address)
                 self._network = Ip4Network(host)
                 self._validate_gateway(gateway)

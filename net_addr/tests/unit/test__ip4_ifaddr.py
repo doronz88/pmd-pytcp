@@ -87,6 +87,25 @@ from net_addr import (
             },
         },
         {
+            "_description": "Test the IPv4 host: 192.168.1.100 255.255.255.0 (str, space netmask form)",
+            "_args": [
+                "192.168.1.100 255.255.255.0",
+            ],
+            "_kwargs": {
+                "gateway": Ip4Address("192.168.1.1"),
+            },
+            "_results": {
+                "__str__": "192.168.1.100/24",
+                "__repr__": "Ip4IfAddr('192.168.1.100/24')",
+                "version": IpVersion.IP4,
+                "is_ip6": False,
+                "is_ip4": True,
+                "address": Ip4Address("192.168.1.100"),
+                "network": Ip4Network("192.168.1.0/24"),
+                "gateway": Ip4Address("192.168.1.1"),
+            },
+        },
+        {
             "_description": "Test the IPv4 host: 192.168.1.100/24 (Ip4Address, Ip4Mask)",
             "_args": [
                 (Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0")),
