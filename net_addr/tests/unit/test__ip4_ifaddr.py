@@ -925,3 +925,32 @@ class TestNetAddrIfAddrFromValue(TestCase):
 
         with self.assertRaises(IfAddrFormatError, msg="An unparsable value must raise IfAddrFormatError."):
             IfAddr.from_value("not-an-ifaddr")
+
+
+class TestNetAddrIp4IfAddrFormat(TestCase):
+    """
+    The NetAddr IPv4 interface-address __format__ tests.
+    """
+
+    def test__net_addr__ip4_ifaddr__format(self) -> None:
+        """
+        Ensure __format__ renders the host address in the
+        pl / nm / hm notations; default and 'pl' equal str();
+        an unknown spec raises ValueError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4IfAddr("192.0.2.5/24")
+        for spec, expected in [
+            ("", "192.0.2.5/24"),
+            ("pl", "192.0.2.5/24"),
+            ("nm", "192.0.2.5/255.255.255.0"),
+            ("hm", "192.0.2.5/0.0.0.255"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(format(a, spec), expected, msg=f"format({spec!r}) must be {expected!r}.")
+
+        self.assertEqual(f"{a}", "192.0.2.5/24", msg="Default format must equal str().")
+        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+            format(a, "zz")

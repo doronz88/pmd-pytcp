@@ -229,30 +229,27 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         raise NotImplementedError
 
-    @property
-    def with_prefixlen(self) -> str:
+    def __format__(self, format_spec: str, /) -> str:
         """
-        Get the network in 'address/prefixlen' notation.
-        """
-
-        return str(self)
-
-    @property
-    def with_netmask(self) -> str:
-        """
-        Get the network in 'address/netmask' notation.
+        Render the network. An empty spec or 'pl' yields the
+        canonical 'address/prefixlen' form; 'nm' yields
+        'address/netmask'; 'hm' yields 'address/hostmask'
+        (wildcard). A trailing-'s' spec applies str-style
+        width / alignment.
         """
 
-        return f"{self._address}/{type(self._address)(int(self._mask))}"
+        match format_spec:
+            case "" | "pl":
+                return str(self)
+            case "nm":
+                return f"{self._address}/{type(self._address)(int(self._mask))}"
+            case "hm":
+                return f"{self._address}/{self.hostmask}"
 
-    @property
-    def with_hostmask(self) -> str:
-        """
-        Get the network in 'address/hostmask' (wildcard)
-        notation.
-        """
+        if format_spec[-1:] == "s":
+            return format(str(self), format_spec)
 
-        return f"{self._address}/{self.hostmask}"
+        raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
 
     @property
     def max_prefixlen(self) -> int:

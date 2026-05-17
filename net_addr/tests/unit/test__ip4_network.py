@@ -1199,21 +1199,31 @@ class TestNetAddrIp4NetworkWithForms(TestCase):
             msg=f"Unexpected hostmask for case: {self._description}",
         )
 
-    def test__net_addr__ip4_network__with_forms(self) -> None:
+    def test__net_addr__ip4_network__format(self) -> None:
         """
-        Ensure with_prefixlen / with_netmask / with_hostmask
-        render the network in the three standard notations.
+        Ensure __format__ renders the pl / nm / hm notations;
+        the default and 'pl' equal str(); an unknown spec
+        raises ValueError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        for key in ("with_prefixlen", "with_netmask", "with_hostmask"):
-            with self.subTest(form=key):
+        for spec, key in [("pl", "with_prefixlen"), ("nm", "with_netmask"), ("hm", "with_hostmask")]:
+            with self.subTest(spec=spec):
                 self.assertEqual(
-                    getattr(self._net, key),
+                    format(self._net, spec),
                     self._results[key],
-                    msg=f"Unexpected {key} for case: {self._description}",
+                    msg=f"Unexpected format {spec!r} for case: {self._description}",
                 )
+
+        self.assertEqual(
+            f"{self._net}",
+            self._results["with_prefixlen"],
+            msg=f"Default format must equal the prefixlen form for: {self._description}",
+        )
+
+        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+            format(self._net, "zz")
 
 
 class TestNetAddrIp4NetworkPrefixlen(TestCase):

@@ -1202,3 +1202,32 @@ class TestNetAddrIp6HostSetters(TestCase):
             msg="The 'gateway' setter must reject the host's own address.",
         ):
             self._ip6_ifaddr.gateway = Ip6Address("2001:db8::1")
+
+
+class TestNetAddrIp6IfAddrFormat(TestCase):
+    """
+    The NetAddr IPv6 interface-address __format__ tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__format(self) -> None:
+        """
+        Ensure __format__ renders the host address in the
+        pl / nm / hm notations; default and 'pl' equal str();
+        an unknown spec raises ValueError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6IfAddr("2001:db8::5/64")
+        for spec, expected in [
+            ("", "2001:db8::5/64"),
+            ("pl", "2001:db8::5/64"),
+            ("nm", "2001:db8::5/ffff:ffff:ffff:ffff::"),
+            ("hm", "2001:db8::5/::ffff:ffff:ffff:ffff"),
+        ]:
+            with self.subTest(spec=spec):
+                self.assertEqual(format(a, spec), expected, msg=f"format({spec!r}) must be {expected!r}.")
+
+        self.assertEqual(f"{a}", "2001:db8::5/64", msg="Default format must equal str().")
+        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+            format(a, "zz")

@@ -121,6 +121,28 @@ class IfAddr[
 
         return hash((type(self), self._address, self._network))
 
+    def __format__(self, format_spec: str, /) -> str:
+        """
+        Render the interface address. An empty spec or 'pl'
+        yields the canonical 'address/prefixlen' form; 'nm'
+        yields 'address/netmask'; 'hm' yields
+        'address/hostmask'. A trailing-'s' spec applies
+        str-style width / alignment.
+        """
+
+        match format_spec:
+            case "" | "pl":
+                return str(self)
+            case "nm":
+                return f"{self._address}/{type(self._address)(int(self._network.mask))}"
+            case "hm":
+                return f"{self._address}/{self._network.hostmask}"
+
+        if format_spec[-1:] == "s":
+            return format(str(self), format_spec)
+
+        raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
+
     @abstractmethod
     def _validate_gateway(self, address: A | None, /) -> None:
         """
