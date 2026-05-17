@@ -123,6 +123,7 @@ class TcpEchoService(TcpService):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     local_port: int,
     **kwargs: Any,

@@ -109,6 +109,7 @@ class UdpEchoService(UdpService):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     local_port: int,
     **kwargs: Any,

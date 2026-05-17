@@ -241,6 +241,7 @@ class IcmpEchoClient(Client):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     message_count: int,
     message_delay: int,
