@@ -30,20 +30,13 @@ net_addr/ip_version.py
 ver 3.0.5
 """
 
-from enum import Enum
+from enum import IntEnum
 
 
-class IpVersion(Enum):
+class IpVersion(IntEnum):
     """
     Enum for IP protocol version.
     """
 
     IP4 = 4
     IP6 = 6
-
-    def __int__(self) -> int:
-        """
-        Convert the IP version to an integer.
-        """
-
-        return self.value
