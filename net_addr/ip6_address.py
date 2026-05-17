@@ -199,6 +199,59 @@ class Ip6Address(IpAddress):
 
         return hash((type(self), self._address, self._scope_id))
 
+    def _order_key(self) -> tuple[int, str]:
+        """
+        Get the ordering key. The RFC 4007 scope identifier is
+        folded in so ordering stays consistent with equality
+        (same address, different scope is unequal and ordered).
+        """
+
+        return (self._address, self._scope_id or "")
+
+    @override
+    def __lt__(self, other: object, /) -> bool:
+        """
+        Order the IPv6 address by (integer value, scope id).
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._order_key() < other._order_key()
+
+    @override
+    def __le__(self, other: object, /) -> bool:
+        """
+        Order the IPv6 address by (integer value, scope id).
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._order_key() <= other._order_key()
+
+    @override
+    def __gt__(self, other: object, /) -> bool:
+        """
+        Order the IPv6 address by (integer value, scope id).
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._order_key() > other._order_key()
+
+    @override
+    def __ge__(self, other: object, /) -> bool:
+        """
+        Order the IPv6 address by (integer value, scope id).
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._order_key() >= other._order_key()
+
     @property
     def scope_id(self) -> str | None:
         """

@@ -1582,6 +1582,34 @@ class TestNetAddrIp6AddressOrdering(TestCase):
         self.assertFalse(a < a, msg="An Ip6Address must not be strictly less than itself.")
         self.assertTrue(a >= a, msg="An Ip6Address must be >= itself.")
 
+    def test__net_addr__ip6_address__ordering__scope_aware(self) -> None:
+        """
+        Ensure ordering folds the RFC 4007 scope identifier into
+        the sort key consistently with equality, so same-address
+        different-scope values stay totally ordered (exactly one
+        of <, ==, > holds) and an unscoped value sorts before a
+        scoped one.
+
+        Reference: RFC 4007 (scoped-address zone identifier).
+        """
+
+        plain = Ip6Address("fe80::1")
+        eth0 = Ip6Address("fe80::1%eth0")
+        eth1 = Ip6Address("fe80::1%eth1")
+
+        for lo, hi in ((plain, eth0), (eth0, eth1)):
+            self.assertNotEqual(lo, hi, msg="Different-scope values must be unequal.")
+            self.assertTrue(
+                (lo < hi) and not (hi < lo) and (lo <= hi) and (hi >= lo),
+                msg=f"Scope-differing values must be totally ordered: {lo!r} < {hi!r}.",
+            )
+
+        self.assertEqual(
+            sorted([eth1, plain, eth0]),
+            [plain, eth0, eth1],
+            msg="Ip6Address must sort by (address, scope_id), unscoped first.",
+        )
+
     def test__net_addr__ip6_address__ordering__cross_version_raises(self) -> None:
         """
         Ensure ordering an IPv6 address against an IPv4 address
