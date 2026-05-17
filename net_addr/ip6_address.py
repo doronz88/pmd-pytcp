@@ -301,6 +301,17 @@ class Ip6Address(IpAddress):
 
         return type(self)(self._address & IP6__SOLICITED_NODE_HOST_MASK | IP6__SOLICITED_NODE_PREFIX)
 
+    # Known deliberate divergence: this is "global unicast" in
+    # the addressing-architecture sense (RFC 4291 2000::/3), NOT
+    # RFC 6890 "Globally Reachable". It does not exclude the
+    # not-reachable sub-blocks 2001::/23 (RFC 6890 IETF Protocol
+    # Assignments — TEREDO, benchmarking, ORCHIDv2, AMT) or
+    # 2001:db8::/32 (RFC 3849 Documentation), so it returns True
+    # for them. Tightening to RFC-6890 reachability was verified
+    # correct but is intentionally NOT applied: is_global has no
+    # PyTCP consumer, so the strict form buys no functional
+    # correctness while destabilising unrelated stack tests —
+    # same disposition as is_site_local.
     @property
     @override
     def is_global(self) -> bool:

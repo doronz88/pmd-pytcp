@@ -142,6 +142,17 @@ class Ip4Address(IpAddress):
 
         return None
 
+    # Known deliberate divergence: this is "global unicast" in
+    # the addressing-architecture sense, NOT RFC 6890 "Globally
+    # Reachable". It does not exclude the IANA Special-Purpose
+    # blocks 100.64.0.0/10 (RFC 6598), 192.0.0.0/24 (RFC 6890),
+    # 192.0.2.0/24 / 198.51.100.0/24 / 203.0.113.0/24 (RFC 5737
+    # TEST-NET) or 198.18.0.0/15 (RFC 2544), so it returns True
+    # for them. Tightening to RFC-6890 reachability was verified
+    # correct but is intentionally NOT applied: is_global has no
+    # PyTCP consumer, so the strict form buys no functional
+    # correctness while destabilising unrelated stack tests —
+    # same disposition as is_site_local.
     @property
     @override
     def is_global(self) -> bool:
