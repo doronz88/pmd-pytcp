@@ -10,3 +10,4 @@ twine
 ipython
 pyupgrade
 parameterized
+coverage
