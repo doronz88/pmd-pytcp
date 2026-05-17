@@ -1522,8 +1522,10 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
         session.close()
         self._advance(ms=1)  # transition tick
         self._advance(ms=1)  # FIN emit tick
-        assert session.state is FsmState.FIN_WAIT_1, (
-            f"Setup invariant: session must be in FIN_WAIT_1 with FIN " f"sent, got {session.state}"
+        self.assertIs(
+            session.state,
+            FsmState.FIN_WAIT_1,
+            msg=f"Setup invariant: session must be in FIN_WAIT_1 with FIN " f"sent, got {session.state}",
         )
         return session
 
@@ -1591,7 +1593,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_ack_of_fin)
-        assert session.state is FsmState.FIN_WAIT_2, f"Setup: state={session.state}"
+        self.assertIs(session.state, FsmState.FIN_WAIT_2, msg=f"Setup: state={session.state}")
 
         snd_nxt_pre = session._snd_seq.nxt
         session.close()
@@ -1690,14 +1692,16 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_fin)
-        assert session.state is FsmState.CLOSE_WAIT, f"Setup: state={session.state}"
+        self.assertIs(session.state, FsmState.CLOSE_WAIT, msg=f"Setup: state={session.state}")
 
         # App close() -> LAST_ACK with our FIN sent.
         session.close()
         self._advance(ms=1)
         self._advance(ms=1)
-        assert session.state is FsmState.LAST_ACK, (
-            f"Setup invariant: state must be LAST_ACK after CLOSE in " f"CLOSE_WAIT, got {session.state}"
+        self.assertIs(
+            session.state,
+            FsmState.LAST_ACK,
+            msg=f"Setup invariant: state must be LAST_ACK after CLOSE in " f"CLOSE_WAIT, got {session.state}",
         )
 
         snd_nxt_pre = session._snd_seq.nxt
@@ -1756,7 +1760,9 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_fin)
-        assert session.state is FsmState.TIME_WAIT, f"Setup invariant: state must be TIME_WAIT, got {session.state}"
+        self.assertIs(
+            session.state, FsmState.TIME_WAIT, msg=f"Setup invariant: state must be TIME_WAIT, got {session.state}"
+        )
 
         time_wait_timer_name = f"{session}-time_wait"
         self.assertIn(

@@ -111,7 +111,9 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_ack_of_fin)
-        assert session.state is FsmState.FIN_WAIT_2, f"Setup failed: state is {session.state!r}, expected FIN_WAIT_2."
+        self.assertIs(
+            session.state, FsmState.FIN_WAIT_2, msg=f"Setup failed: state is {session.state!r}, expected FIN_WAIT_2."
+        )
 
         # Peer sends FIN+ACK.
         peer_fin = build_tcp4(
@@ -123,7 +125,9 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_fin)
-        assert session.state is FsmState.TIME_WAIT, f"Setup failed: state is {session.state!r}, expected TIME_WAIT."
+        self.assertIs(
+            session.state, FsmState.TIME_WAIT, msg=f"Setup failed: state is {session.state!r}, expected TIME_WAIT."
+        )
 
         return session
 
@@ -363,7 +367,7 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_fin)
-        assert session.state is FsmState.TIME_WAIT
+        self.assertIs(session.state, FsmState.TIME_WAIT, msg=f"State precondition: expected {FsmState.TIME_WAIT}.")
         return session
 
     def test__rfc1337__rst_in_time_wait_does_not_terminate(self) -> None:
@@ -564,7 +568,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             tsecr=self._timer.now_ms,
         )
         self._drive_rx(frame=peer_syn_ack)
-        assert session.state is FsmState.ESTABLISHED
+        self.assertIs(session.state, FsmState.ESTABLISHED, msg=f"State precondition: expected {FsmState.ESTABLISHED}.")
         assert session._ts.send_ts, "Bilateral TSopt must be active for RFC 6191 to apply."
 
         # Active close.
@@ -584,7 +588,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             tsecr=self._timer.now_ms,
         )
         self._drive_rx(frame=peer_ack_of_fin)
-        assert session.state is FsmState.FIN_WAIT_2
+        self.assertIs(session.state, FsmState.FIN_WAIT_2, msg=f"State precondition: expected {FsmState.FIN_WAIT_2}.")
 
         # Peer FIN+ACK -> TIME_WAIT.
         peer_fin = build_tcp4(
@@ -598,7 +602,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
             tsecr=self._timer.now_ms,
         )
         self._drive_rx(frame=peer_fin)
-        assert session.state is FsmState.TIME_WAIT
+        self.assertIs(session.state, FsmState.TIME_WAIT, msg=f"State precondition: expected {FsmState.TIME_WAIT}.")
         assert session._ts.ts_recent == peer_tsval_initial + 2, (
             "Setup invariant: post-TIME_WAIT '_ts_recent' must equal "
             f"peer's last TSval. Got {session._ts.ts_recent}, expected "
