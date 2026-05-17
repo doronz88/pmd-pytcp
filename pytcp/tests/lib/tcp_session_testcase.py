@@ -48,12 +48,12 @@ from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
 from net_proto.protocols.ip4.ip4__parser import Ip4Parser
 from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
-from pytcp.runtime.timer import Timer
 from pytcp import stack
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.protocols.tcp.tcp__stack import TcpStack
+from pytcp.runtime.timer import Timer
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.fake_timer import FakeTimer

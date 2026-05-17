@@ -38,6 +38,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
+from net_proto.protocols.tcp.options.tcp__option import TcpOption
 from net_proto.protocols.tcp.options.tcp__option__accecn0 import TcpOptionAccecn0
 from net_proto.protocols.tcp.options.tcp__option__fastopen import TcpOptionFastOpen
 from net_proto.protocols.tcp.options.tcp__option__mss import TcpOptionMss
@@ -49,7 +50,6 @@ from net_proto.protocols.tcp.options.tcp__option__sack import (
 from net_proto.protocols.tcp.options.tcp__option__sackperm import TcpOptionSackperm
 from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTimestamps
 from net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
-from net_proto.protocols.tcp.options.tcp__option import TcpOption
 from net_proto.protocols.tcp.options.tcp__options import TcpOptions
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pytcp.tests.lib.network_testcase import (
