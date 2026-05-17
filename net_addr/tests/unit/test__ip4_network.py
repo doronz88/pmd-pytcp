@@ -578,6 +578,17 @@ class TestNetAddrIp4NetworkContains(TestCase):
                 "error_message": "The IPv4 network format is invalid: 12345",
             },
         },
+        {
+            "_description": "Test the IPv4 network format: ('10.0.0.0', '/24') (mistyped tuple)",
+            "_args": [
+                ("10.0.0.0", "/24"),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4NetworkFormatError,
+                "error_message": "The IPv4 network format is invalid: ('10.0.0.0', '/24')",
+            },
+        },
     ]
 )
 class TestNetAddrIp4NetworkErrors(TestCase):

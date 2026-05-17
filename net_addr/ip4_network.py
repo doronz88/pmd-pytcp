@@ -84,7 +84,11 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
             return
 
         if isinstance(network, tuple):
+            if len(network) != 2:
+                raise Ip4NetworkFormatError(network)
             tuple_address, tuple_mask = network
+            if not (isinstance(tuple_address, Ip4Address) and isinstance(tuple_mask, Ip4Mask)):
+                raise Ip4NetworkFormatError(network)
             if strict and int(tuple_address) & ~int(tuple_mask) & IP4__MASK:
                 raise Ip4NetworkFormatError(network)
             self._mask = tuple_mask

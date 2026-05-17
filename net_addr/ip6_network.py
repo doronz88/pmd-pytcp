@@ -84,7 +84,11 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             return
 
         if isinstance(network, tuple):
+            if len(network) != 2:
+                raise Ip6NetworkFormatError(network)
             tuple_address, tuple_mask = network
+            if not (isinstance(tuple_address, Ip6Address) and isinstance(tuple_mask, Ip6Mask)):
+                raise Ip6NetworkFormatError(network)
             if strict and int(tuple_address) & ~int(tuple_mask) & IP6__MASK:
                 raise Ip6NetworkFormatError(network)
             self._mask = tuple_mask

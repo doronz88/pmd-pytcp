@@ -475,6 +475,17 @@ class TestNetAddrIp6NetworkContains(TestCase):
                 "error_message": "The IPv6 network format is invalid: 12345",
             },
         },
+        {
+            "_description": "Test the IPv6 network format: ('2001:db8::', '/64') (mistyped tuple)",
+            "_args": [
+                ("2001:db8::", "/64"),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": "The IPv6 network format is invalid: ('2001:db8::', '/64')",
+            },
+        },
     ]
 )
 class TestNetAddrIp6NetworkErrors(TestCase):
