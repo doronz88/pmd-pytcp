@@ -52,15 +52,18 @@ from net_addr.errors import (
     Ip4IfAddrSanityError,
     Ip4MaskFormatError,
     Ip4NetworkFormatError,
+    Ip4WildcardFormatError,
     Ip6AddressFormatError,
     Ip6IfAddrFormatError,
     Ip6IfAddrGatewayError,
     Ip6IfAddrSanityError,
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
+    Ip6WildcardFormatError,
     IpAddressFormatError,
     IpMaskFormatError,
     IpNetworkFormatError,
+    IpWildcardFormatError,
     MacAddressFormatError,
     NetAddrError,
 )
@@ -69,17 +72,20 @@ from net_addr.ip4_ifaddr import Ip4IfAddr
 from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
+from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip6_address import IP6__ADDRESS_LEN, Ip6Address
 from net_addr.ip6_ifaddr import Ip6IfAddr
 from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
+from net_addr.ip6_wildcard import Ip6Wildcard
 from net_addr.ip_address import IpAddress
 from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_ifaddr_source import IfAddrSource
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
+from net_addr.ip_wildcard import IpWildcard
 from net_addr.mac_address import MAC__ADDRESS_LEN, MacAddress
 
 __all__ = [
@@ -111,6 +117,8 @@ __all__ = [
     "Ip4MaskFormatError",
     "Ip4Network",
     "Ip4NetworkFormatError",
+    "Ip4Wildcard",
+    "Ip4WildcardFormatError",
     "Ip6Address",
     "Ip6AddressFormatError",
     "Ip6IfAddr",
@@ -122,6 +130,8 @@ __all__ = [
     "Ip6MaskFormatError",
     "Ip6Network",
     "Ip6NetworkFormatError",
+    "Ip6Wildcard",
+    "Ip6WildcardFormatError",
     "IpAddress",
     "IpAddressFormatError",
     "IpMask",
@@ -129,6 +139,8 @@ __all__ = [
     "IpNetwork",
     "IpNetworkFormatError",
     "IpVersion",
+    "IpWildcard",
+    "IpWildcardFormatError",
     "MAC__ADDRESS_LEN",
     "MacAddress",
     "MacAddressFormatError",

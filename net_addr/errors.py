@@ -49,6 +49,12 @@ class IpMaskFormatError(NetAddrError):
     """
 
 
+class IpWildcardFormatError(NetAddrError):
+    """
+    Base class for all IP wildcard format exceptions.
+    """
+
+
 class IpNetworkFormatError(NetAddrError):
     """
     Base class for all IP network format exceptions.
@@ -89,6 +95,15 @@ class Ip4MaskFormatError(IpMaskFormatError):
 
     def __init__(self, value: object, /) -> None:
         super().__init__(f"The IPv4 mask format is invalid: {value!r}")
+
+
+class Ip4WildcardFormatError(IpWildcardFormatError):
+    """
+    Exception raised when IPv4 wildcard format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 wildcard format is invalid: {value!r}")
 
 
 class Ip4NetworkFormatError(IpNetworkFormatError):
@@ -143,6 +158,15 @@ class Ip6MaskFormatError(IpMaskFormatError):
 
     def __init__(self, value: object, /) -> None:
         super().__init__(f"The IPv6 mask format is invalid: {value!r}")
+
+
+class Ip6WildcardFormatError(IpWildcardFormatError):
+    """
+    Exception raised when IPv6 wildcard format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv6 wildcard format is invalid: {value!r}")
 
 
 class Ip6NetworkFormatError(IpNetworkFormatError):
