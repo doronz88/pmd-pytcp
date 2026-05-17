@@ -30,6 +30,7 @@ net_addr/ip6_network.py
 ver 3.0.5
 """
 
+from collections.abc import Iterator
 from typing import Self, override
 
 from net_addr.errors import (
@@ -96,3 +97,19 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         """
 
         return Ip6Address(int(self._address) + (~int(self._mask) & IP6__MASK))
+
+    @override
+    def hosts(self) -> Iterator[Ip6Address]:
+        """
+        Iterate over the usable host addresses, excluding the
+        Subnet-Router anycast (network) address. IPv6 has no
+        broadcast address. A /127 and a single-host /128 yield
+        every address instead.
+        """
+
+        if len(self._mask) >= 127:
+            yield from self
+            return
+
+        for value in range(int(self._address) + 1, int(self.last) + 1):
+            yield Ip6Address(value)

@@ -790,3 +790,223 @@ class TestNetAddrIp4NetworkRoundtrip(TestCase):
             source.mask,
             msg="Copy-constructed Ip4Network must preserve the mask.",
         )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "Ip4Network 192.0.2.0/30 (4 addresses, 2 hosts).",
+            "_network": "192.0.2.0/30",
+            "_results": {
+                "num_addresses": 4,
+                "iter": ["192.0.2.0", "192.0.2.1", "192.0.2.2", "192.0.2.3"],
+                "hosts": ["192.0.2.1", "192.0.2.2"],
+                "supernet": "192.0.2.0/29",
+                "subnets": ["192.0.2.0/31", "192.0.2.2/31"],
+            },
+        },
+        {
+            "_description": "Ip4Network 192.0.2.0/31 (RFC 3021 point-to-point).",
+            "_network": "192.0.2.0/31",
+            "_results": {
+                "num_addresses": 2,
+                "iter": ["192.0.2.0", "192.0.2.1"],
+                "hosts": ["192.0.2.0", "192.0.2.1"],
+                "supernet": "192.0.2.0/30",
+                "subnets": ["192.0.2.0/32", "192.0.2.1/32"],
+            },
+        },
+        {
+            "_description": "Ip4Network 192.0.2.5/32 (single host).",
+            "_network": "192.0.2.5/32",
+            "_results": {
+                "num_addresses": 1,
+                "iter": ["192.0.2.5"],
+                "hosts": ["192.0.2.5"],
+                "supernet": "192.0.2.4/31",
+                "subnets": ["192.0.2.5/32"],
+            },
+        },
+    ]
+)
+class TestNetAddrIp4NetworkEnumeration(TestCase):
+    """
+    The NetAddr IPv4 network enumeration / subnetting tests.
+    """
+
+    _description: str
+    _network: str
+    _results: dict[str, Any]
+
+    def setUp(self) -> None:
+        """
+        Build the network under test from its CIDR string.
+        """
+
+        self._net = Ip4Network(self._network)
+
+    def test__net_addr__ip4_network__num_addresses(self) -> None:
+        """
+        Ensure 'num_addresses' counts every address in the
+        block, network and broadcast inclusive.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._net.num_addresses,
+            self._results["num_addresses"],
+            msg=f"Unexpected num_addresses for case: {self._description}",
+        )
+
+    def test__net_addr__ip4_network__iter(self) -> None:
+        """
+        Ensure iterating the network yields every address from
+        the network address through the broadcast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            [str(address) for address in self._net],
+            self._results["iter"],
+            msg=f"Unexpected iteration for case: {self._description}",
+        )
+
+    def test__net_addr__ip4_network__hosts(self) -> None:
+        """
+        Ensure 'hosts' excludes the network and broadcast
+        addresses, while a /31 and a single-host /32 yield
+        every address instead.
+
+        Reference: RFC 3021 (Using 31-Bit Prefixes on IPv4 Point-to-Point Links).
+        """
+
+        self.assertEqual(
+            [str(address) for address in self._net.hosts()],
+            self._results["hosts"],
+            msg=f"Unexpected hosts for case: {self._description}",
+        )
+
+    def test__net_addr__ip4_network__supernet(self) -> None:
+        """
+        Ensure 'supernet' returns the immediately containing
+        block one prefix bit shorter.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            str(self._net.supernet()),
+            self._results["supernet"],
+            msg=f"Unexpected supernet for case: {self._description}",
+        )
+
+    def test__net_addr__ip4_network__subnets(self) -> None:
+        """
+        Ensure 'subnets' tiles the network with the blocks one
+        prefix bit longer.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            [str(subnet) for subnet in self._net.subnets()],
+            self._results["subnets"],
+            msg=f"Unexpected subnets for case: {self._description}",
+        )
+
+
+class TestNetAddrIp4NetworkRelations(TestCase):
+    """
+    The NetAddr IPv4 network containment / overlap tests.
+    """
+
+    def test__net_addr__ip4_network__relations(self) -> None:
+        """
+        Ensure overlaps / subnet_of / supernet_of report
+        containment correctly, including the disjoint and
+        cross-version cases.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        outer = Ip4Network("10.0.0.0/8")
+        inner = Ip4Network("10.1.0.0/16")
+        other = Ip4Network("192.168.0.0/16")
+
+        for label, actual, expected in [
+            ("outer overlaps inner", outer.overlaps(inner), True),
+            ("outer overlaps other", outer.overlaps(other), False),
+            ("inner subnet_of outer", inner.subnet_of(outer), True),
+            ("outer subnet_of inner", outer.subnet_of(inner), False),
+            ("outer supernet_of inner", outer.supernet_of(inner), True),
+            ("inner supernet_of outer", inner.supernet_of(outer), False),
+            ("cross-version overlaps", outer.overlaps(Ip6Network("::/0")), False),
+            ("cross-version subnet_of", outer.subnet_of(Ip6Network("::/0")), False),
+        ]:
+            with self.subTest(relation=label):
+                self.assertEqual(
+                    actual,
+                    expected,
+                    msg=f"Unexpected result for: {label}",
+                )
+
+
+class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
+    """
+    The NetAddr IPv4 subnets / supernet argument tests.
+    """
+
+    def test__net_addr__ip4_network__subnets__new_prefix(self) -> None:
+        """
+        Ensure 'subnets' honours an explicit target prefix
+        length.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            [str(s) for s in Ip4Network("192.0.2.0/24").subnets(new_prefix=26)],
+            ["192.0.2.0/26", "192.0.2.64/26", "192.0.2.128/26", "192.0.2.192/26"],
+            msg="subnets(new_prefix=26) must tile a /24 into four /26 blocks.",
+        )
+
+    def test__net_addr__ip4_network__supernet__new_prefix_and_diff(self) -> None:
+        """
+        Ensure 'supernet' honours both an explicit target
+        prefix length and a prefix-length delta, including the
+        /0 boundary.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            str(Ip4Network("192.0.2.0/24").supernet(prefixlen_diff=8)),
+            "192.0.0.0/16",
+            msg="supernet(prefixlen_diff=8) must shorten a /24 to /16.",
+        )
+        self.assertEqual(
+            str(Ip4Network("10.20.30.0/24").supernet(new_prefix=0)),
+            "0.0.0.0/0",
+            msg="supernet(new_prefix=0) must collapse to the default route.",
+        )
+
+    def test__net_addr__ip4_network__subnetting__errors(self) -> None:
+        """
+        Ensure invalid subnets / supernet arguments raise
+        ValueError, mirroring the standard library.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for label, thunk in [
+            ("subnets new_prefix <= prefixlen", lambda: list(Ip4Network("10.0.0.0/8").subnets(new_prefix=4))),
+            ("subnets prefixlen_diff < 1", lambda: list(Ip4Network("10.0.0.0/8").subnets(prefixlen_diff=0))),
+            ("subnets past /32", lambda: list(Ip4Network("10.0.0.0/8").subnets(new_prefix=33))),
+            ("supernet new_prefix >= prefixlen", lambda: Ip4Network("10.0.0.0/8").supernet(new_prefix=8)),
+            ("supernet below /0", lambda: Ip4Network("10.0.0.0/8").supernet(prefixlen_diff=9)),
+        ]:
+            with self.subTest(case=label):
+                with self.assertRaises(ValueError, msg=f"{label} must raise ValueError"):
+                    thunk()

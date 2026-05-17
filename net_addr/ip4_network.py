@@ -30,6 +30,7 @@ net_addr/ip4_network.py
 ver 3.0.5
 """
 
+from collections.abc import Iterator
 from typing import Self, override
 
 from net_addr.errors import (
@@ -106,3 +107,18 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
         """
 
         return self.last
+
+    @override
+    def hosts(self) -> Iterator[Ip4Address]:
+        """
+        Iterate over the usable host addresses, excluding the
+        network and broadcast addresses. A /31 (RFC 3021) and a
+        single-host /32 yield every address instead.
+        """
+
+        if len(self._mask) >= 31:
+            yield from self
+            return
+
+        for value in range(int(self._address) + 1, int(self.last)):
+            yield Ip4Address(value)

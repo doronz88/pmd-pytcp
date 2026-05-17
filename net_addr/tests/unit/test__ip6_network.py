@@ -678,3 +678,161 @@ class TestNetAddrIp6NetworkRoundtrip(TestCase):
             source.mask,
             msg="Copy-constructed Ip6Network must preserve the mask.",
         )
+
+
+@parameterized_class(
+    [
+        {
+            "_description": "Ip6Network 2001:db8::/126 (4 addresses, 3 hosts).",
+            "_network": "2001:db8::/126",
+            "_results": {
+                "num_addresses": 4,
+                "iter": ["2001:db8::", "2001:db8::1", "2001:db8::2", "2001:db8::3"],
+                "hosts": ["2001:db8::1", "2001:db8::2", "2001:db8::3"],
+                "supernet": "2001:db8::/125",
+                "subnets": ["2001:db8::/127", "2001:db8::2/127"],
+            },
+        },
+        {
+            "_description": "Ip6Network 2001:db8::/127 (point-to-point).",
+            "_network": "2001:db8::/127",
+            "_results": {
+                "num_addresses": 2,
+                "iter": ["2001:db8::", "2001:db8::1"],
+                "hosts": ["2001:db8::", "2001:db8::1"],
+                "supernet": "2001:db8::/126",
+                "subnets": ["2001:db8::/128", "2001:db8::1/128"],
+            },
+        },
+        {
+            "_description": "Ip6Network 2001:db8::5/128 (single host).",
+            "_network": "2001:db8::5/128",
+            "_results": {
+                "num_addresses": 1,
+                "iter": ["2001:db8::5"],
+                "hosts": ["2001:db8::5"],
+                "supernet": "2001:db8::4/127",
+                "subnets": ["2001:db8::5/128"],
+            },
+        },
+    ]
+)
+class TestNetAddrIp6NetworkEnumeration(TestCase):
+    """
+    The NetAddr IPv6 network enumeration / subnetting tests.
+    """
+
+    _description: str
+    _network: str
+    _results: dict[str, Any]
+
+    def setUp(self) -> None:
+        """
+        Build the network under test from its CIDR string.
+        """
+
+        self._net = Ip6Network(self._network)
+
+    def test__net_addr__ip6_network__num_addresses(self) -> None:
+        """
+        Ensure 'num_addresses' counts every address in the
+        block, network address inclusive.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            self._net.num_addresses,
+            self._results["num_addresses"],
+            msg=f"Unexpected num_addresses for case: {self._description}",
+        )
+
+    def test__net_addr__ip6_network__iter(self) -> None:
+        """
+        Ensure iterating the network yields every address from
+        the network address through the last address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            [str(address) for address in self._net],
+            self._results["iter"],
+            msg=f"Unexpected iteration for case: {self._description}",
+        )
+
+    def test__net_addr__ip6_network__hosts(self) -> None:
+        """
+        Ensure 'hosts' excludes only the Subnet-Router anycast
+        (network) address — IPv6 has no broadcast — while /127
+        and /128 yield every address.
+
+        Reference: RFC 4291 (IP Version 6 Addressing Architecture).
+        """
+
+        self.assertEqual(
+            [str(address) for address in self._net.hosts()],
+            self._results["hosts"],
+            msg=f"Unexpected hosts for case: {self._description}",
+        )
+
+    def test__net_addr__ip6_network__supernet(self) -> None:
+        """
+        Ensure 'supernet' returns the immediately containing
+        block one prefix bit shorter.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            str(self._net.supernet()),
+            self._results["supernet"],
+            msg=f"Unexpected supernet for case: {self._description}",
+        )
+
+    def test__net_addr__ip6_network__subnets(self) -> None:
+        """
+        Ensure 'subnets' tiles the network with the blocks one
+        prefix bit longer.
+
+        Reference: RFC 4632 (Classless Inter-domain Routing).
+        """
+
+        self.assertEqual(
+            [str(subnet) for subnet in self._net.subnets()],
+            self._results["subnets"],
+            msg=f"Unexpected subnets for case: {self._description}",
+        )
+
+
+class TestNetAddrIp6NetworkRelations(TestCase):
+    """
+    The NetAddr IPv6 network containment / overlap tests.
+    """
+
+    def test__net_addr__ip6_network__relations(self) -> None:
+        """
+        Ensure overlaps / subnet_of / supernet_of report
+        containment correctly, including the disjoint and
+        cross-version cases.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        outer = Ip6Network("2001:db8::/32")
+        inner = Ip6Network("2001:db8:1::/48")
+        other = Ip6Network("2001:dead::/32")
+
+        for label, actual, expected in [
+            ("outer overlaps inner", outer.overlaps(inner), True),
+            ("outer overlaps other", outer.overlaps(other), False),
+            ("inner subnet_of outer", inner.subnet_of(outer), True),
+            ("outer supernet_of inner", outer.supernet_of(inner), True),
+            ("cross-version overlaps", outer.overlaps(Ip4Network("0.0.0.0/0")), False),
+        ]:
+            with self.subTest(relation=label):
+                self.assertEqual(
+                    actual,
+                    expected,
+                    msg=f"Unexpected result for: {label}",
+                )

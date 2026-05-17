@@ -31,7 +31,8 @@ ver 3.0.5
 """
 
 from abc import ABC, abstractmethod
-from typing import override
+from collections.abc import Iterator
+from typing import Self, override
 
 from net_addr.base import Base
 from net_addr.ip import Ip
@@ -120,3 +121,130 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         """
 
         raise NotImplementedError
+
+    @property
+    def _max_prefixlen(self) -> int:
+        """
+        Get the address-family width in bits (32 for IPv4,
+        128 for IPv6).
+        """
+
+        return len(memoryview(self._address)) * 8
+
+    @property
+    def num_addresses(self) -> int:
+        """
+        Get the total number of addresses in the network,
+        network and broadcast inclusive.
+        """
+
+        return int(self.last) - int(self._address) + 1
+
+    def __iter__(self) -> Iterator[A]:
+        """
+        Iterate over every address in the network, network and
+        broadcast inclusive.
+        """
+
+        address_type = type(self._address)
+        for value in range(int(self._address), int(self.last) + 1):
+            yield address_type(value)
+
+    @abstractmethod
+    def hosts(self) -> Iterator[A]:
+        """
+        Iterate over the usable host addresses in the network.
+        """
+
+        raise NotImplementedError
+
+    def subnets(self, *, prefixlen_diff: int = 1, new_prefix: int | None = None) -> Iterator[Self]:
+        """
+        Iterate over the subnets that tile this network at a
+        longer prefix length.
+        """
+
+        prefixlen = len(self._mask)
+
+        if prefixlen == self._max_prefixlen:
+            yield self
+            return
+
+        if new_prefix is not None:
+            if new_prefix <= prefixlen:
+                raise ValueError(f"new prefix must be longer than {prefixlen}; got {new_prefix}")
+            prefixlen_diff = new_prefix - prefixlen
+        else:
+            if prefixlen_diff < 1:
+                raise ValueError(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
+            new_prefix = prefixlen + prefixlen_diff
+
+        if new_prefix > self._max_prefixlen:
+            raise ValueError(f"prefixlen_diff {prefixlen_diff} is invalid for a /{prefixlen} network")
+
+        network_type = type(self)
+        address_type = type(self._address)
+        mask = type(self._mask)(self._mask_int(new_prefix))
+        step = 1 << (self._max_prefixlen - new_prefix)
+        for start in range(int(self._address), int(self.last) + 1, step):
+            yield network_type((address_type(start), mask))
+
+    def supernet(self, *, prefixlen_diff: int = 1, new_prefix: int | None = None) -> Self:
+        """
+        Get the supernet containing this network at a shorter
+        prefix length.
+        """
+
+        prefixlen = len(self._mask)
+
+        if new_prefix is not None:
+            if new_prefix >= prefixlen:
+                raise ValueError(f"new prefix must be shorter than {prefixlen}; got {new_prefix}")
+        else:
+            new_prefix = prefixlen - prefixlen_diff
+
+        if new_prefix < 0:
+            raise ValueError(f"prefixlen_diff {prefixlen_diff} is invalid for a /{prefixlen} network")
+
+        return type(self)((type(self._address)(int(self._address)), type(self._mask)(self._mask_int(new_prefix))))
+
+    def overlaps(self, other: Self, /) -> bool:
+        """
+        Check whether this network shares any address with
+        another network.
+        """
+
+        return (
+            self.version == other.version
+            and int(self._address) <= int(other.last)
+            and int(other.address) <= int(self.last)
+        )
+
+    def subnet_of(self, other: Self, /) -> bool:
+        """
+        Check whether this network is fully contained within
+        another network.
+        """
+
+        return (
+            self.version == other.version
+            and int(other.address) <= int(self._address)
+            and int(self.last) <= int(other.last)
+        )
+
+    def supernet_of(self, other: Self, /) -> bool:
+        """
+        Check whether this network fully contains another
+        network.
+        """
+
+        return other.subnet_of(self)
+
+    def _mask_int(self, prefixlen: int, /) -> int:
+        """
+        Build the integer mask value for a given prefix length.
+        """
+
+        if prefixlen == 0:
+            return 0
+        return ((1 << prefixlen) - 1) << (self._max_prefixlen - prefixlen)
