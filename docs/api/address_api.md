@@ -34,24 +34,24 @@ from pytcp.stack import address
 from net_addr import Ip4IfAddr
 
 # Install — Linux 'ip addr add 10.0.0.5/24 dev eth0'.
-address.add_host(ip4_host=Ip4IfAddr("10.0.0.5/24"))
+address.add_ifaddr(ip4_ifaddr=Ip4IfAddr("10.0.0.5/24"))
 
 # List — Linux 'ip addr show' / '/proc/net/route' equivalent.
-hosts = address.list_ip4_hosts()         # tuple[Ip4IfAddr, ...]; copy-by-value snapshot
+hosts = address.list_ip4_ifaddrs()         # tuple[Ip4IfAddr, ...]; copy-by-value snapshot
 
 # Remove — Linux 'ip addr del'.
-address.remove_host(ip4_address=Ip4Address("10.0.0.5"))
+address.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
 
 # Replace — atomic-ish swap (new added before old removed).
-address.replace_host(
+address.replace_ifaddr(
     old_address=Ip4Address("10.0.0.5"),
-    new_host=Ip4IfAddr("10.0.0.6/24"),
+    new_ifaddr=Ip4IfAddr("10.0.0.6/24"),
 )
 ```
 
 ### TCP-session ABORT policy on remove / replace
 
-`remove_host` and `replace_host` accept
+`remove_ifaddr` and `replace_ifaddr` accept
 `abort_bound_sessions: bool = True` (the default). When
 True, every TCP session bound to the removed local
 address is issued `SysCall.ABORT` (RFC 9293 §3.10.7.4 —
@@ -72,7 +72,7 @@ and RFC 3927 link-local (per-candidate Probe + Announce).
 ### Probe → Announce → Install (composite)
 
 ```python
-result = address.claim_with_acd(ip4_host=Ip4IfAddr("169.254.5.7/16"))
+result = address.claim_with_acd(ip4_ifaddr=Ip4IfAddr("169.254.5.7/16"))
 if result.success:
     # Probe was clean, announce burst fired, host is installed.
     print(f"Claimed {result.address}")
@@ -184,7 +184,7 @@ the Phase-3 "introspection is read-only" constraint.
   internal helpers; promoting that to a sanctioned API
   surface is a follow-up.
 - **`ip addr show eth0` per-interface filter** — Phase-1
-  is single-interface, so `list_ip4_hosts()` returns the
+  is single-interface, so `list_ip4_ifaddrs()` returns the
   whole list. Multi-interface Phase-2 will need either
   per-interface API instances (`stack.address["tap7"]`)
   or an ifname-filtered list.

@@ -134,12 +134,12 @@ left persistent caching as an optional follow-on.
 
 **Adherence:** met.
 `Ip4LinkLocal._do_claiming` calls
-`stack.address.claim_with_acd(ip4_host=self._candidate)`
+`stack.address.claim_with_acd(ip4_ifaddr=self._candidate)`
 which delegates to the underlying RFC 5227 §2.1.1 ARP probe
 sequence. The probe is synchronous (blocks ~5-9 s on the
 subsystem's dedicated thread). On clean probe the address
 is announced via RFC 5227 §2.3 and installed via
-`add_host`; on conflict the candidate is cleared and the
+`add_ifaddr`; on conflict the candidate is cleared and the
 FSM cycles back to INIT for a fresh attempt with the RNG's
 `attempt` counter incremented.
 
@@ -162,7 +162,7 @@ subsystem's callback implements the §2.5 decision tree:
   `stack.address.send_gratuitous_arp`, stay BOUND.
 - **§2.5(a)** — second conflict within the window: abandon.
   `abort_bound_tcp_sessions` honours the §2.5 paragraph 7
-  SHOULD (reset bound TCP sessions); `remove_host`
+  SHOULD (reset bound TCP sessions); `remove_ifaddr`
   uninstalls the address; `unsubscribe_conflicts` tears
   down the subscription; state cycles to INIT for a fresh
   reconfigure.

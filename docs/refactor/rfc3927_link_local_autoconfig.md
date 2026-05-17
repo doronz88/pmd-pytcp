@@ -77,7 +77,7 @@ The 2026-05-11 RFC 3927 audit
   provides the per-candidate conflict-signal slot the probe
   loop polls.
 - **`Ip4AddressApi`** (`pytcp/stack/address.py`) exposes
-  `add_host` / `remove_host` / `replace_host` as the
+  `add_ifaddr` / `remove_ifaddr` / `replace_ifaddr` as the
   kernel/userspace boundary for address installs — the
   Phase-3-clean surface link-local autoconfig writes to.
 - **`Subsystem` base class** (`pytcp/runtime/subsystem.py`) and
@@ -243,7 +243,7 @@ class ClaimResult:
     """
     Outcome of a 'claim_with_acd' call. 'success=True' means
     the address was probed without conflict, announced, and
-    installed via 'add_host'; the conflict fields are None.
+    installed via 'add_ifaddr'; the conflict fields are None.
     'success=False' means a conflicting ARP was observed
     during the probe window; the address is NOT installed and
     the conflict source is reported for diagnostic / retry
@@ -257,12 +257,12 @@ class ClaimResult:
 
 
 class Ip4AddressApi:
-    def claim_with_acd(self, *, ip4_host: Ip4IfAddr) -> ClaimResult:
+    def claim_with_acd(self, *, ip4_ifaddr: Ip4IfAddr) -> ClaimResult:
         """
         Synchronously claim an IPv4 host: run the RFC 5227
         §2.1.1 ARP Probe sequence; if no conflict is observed,
         run the §2.3 ARP Announce sequence and install via
-        'add_host'. Returns 'ClaimResult.success=True' on
+        'add_ifaddr'. Returns 'ClaimResult.success=True' on
         successful claim, 'success=False' with conflict
         source on conflict.
 
@@ -397,7 +397,7 @@ for ip4_host in list(self._ip4_ifaddr_candidate):
     verified = self._arp_dad_probe_address(ip4_host.address)
     self._ip4_ifaddr_candidate.remove(ip4_host)
     if verified:
-        stack.address.add_host(ip4_host=ip4_host)
+        stack.address.add_ifaddr(ip4_ifaddr=ip4_host)
         self._arp_dad_announce_address(ip4_host.address)
 ```
 
@@ -405,7 +405,7 @@ Becomes:
 
 ```python
 for ip4_host in list(self._ip4_ifaddr_candidate):
-    result = stack.address.claim_with_acd(ip4_host=ip4_host)
+    result = stack.address.claim_with_acd(ip4_ifaddr=ip4_host)
     self._ip4_ifaddr_candidate.remove(ip4_host)
     if result.success:
         # claim_with_acd already installed + announced
@@ -686,7 +686,7 @@ def _do_claiming(self) -> None:
     """
 
     assert self._candidate is not None
-    result = stack.address.claim_with_acd(ip4_host=self._candidate)
+    result = stack.address.claim_with_acd(ip4_ifaddr=self._candidate)
     if result.success:
         self._subscription = stack.address.subscribe_conflicts(
             address=self._candidate.address,
@@ -741,7 +741,7 @@ in `_do_claiming`; the BOUND state is otherwise inert.
 - Integration: `test__ip4_link_local__client__happy_path.py`
   drives INIT → CLAIMING → BOUND when no conflicting ARP
   arrives. Asserts the address is installed via the API
-  (`stack.address.list_ip4_hosts()` contains the candidate)
+  (`stack.address.list_ip4_ifaddrs()` contains the candidate)
   and the wire shows 3 probes + 2 announcements (the
   test exercises the API's full behaviour, not the
   internals).
@@ -799,7 +799,7 @@ def _on_bound_conflict(self, event: ConflictEvent, /) -> None:
     # reset any TCP sessions bound to the abandoned address.
     stack.address.abort_bound_tcp_sessions(address=event.address)
     stack.address.unsubscribe_conflicts(handle=self._subscription)
-    stack.address.remove_host(ip4_host=self._candidate)
+    stack.address.remove_ifaddr(ip4_ifaddr=self._candidate)
     self._subscription = None
     self._candidate = None
     self._defend_history.clear()
@@ -832,7 +832,7 @@ sysctl needed.
   `test__ip4_link_local__client__reconfigure_on_second_conflict.py`
   — two conflicts within `DEFEND_INTERVAL`, assert
   reconfigure: state cycles back to `INIT`, address
-  removed from `stack.address.list_ip4_hosts()`,
+  removed from `stack.address.list_ip4_ifaddrs()`,
   subscription cancelled.
 - Integration: TCP-session reset on abandon. Sets up a
   bound TCP socket on the link-local address, drives the
@@ -879,9 +879,9 @@ the audit record calls out.
 
 When DHCP succeeds while link-local has a 169.254/16 host
 installed, the DHCP-success handler in the lifecycle calls
-`stack.address.replace_host(...)`. This must remove the
+`stack.address.replace_ifaddr(...)`. This must remove the
 link-local host before installing the DHCP-acquired host.
-The existing `replace_host` API (mentioned in the DHCP plan
+The existing `replace_ifaddr` API (mentioned in the DHCP plan
 doc §4.5) handles this with no further coupling — both
 subsystems are clients of the same address API.
 
@@ -895,7 +895,7 @@ subsystems are clients of the same address API.
 - Integration:
   `test__ip4_link_local__client__dhcp_success_halts.py`
   — link-local in `BOUND`, DHCP succeeds → link-local
-  state goes `HALTED` and `stack.address.list_ip4_hosts`
+  state goes `HALTED` and `stack.address.list_ip4_ifaddrs`
   no longer contains the link-local host.
 
 ### Phase 5 — Adherence refresh + audit-doc updates (1 commit; ~2 hours)
@@ -1362,7 +1362,7 @@ Per CLAUDE.md Phase-3 design implications:
   (one-way read); link-local aborts TCP via
   `stack.address.abort_bound_tcp_sessions` (sanctioned
   helper); DHCP-on-success removes link-local addresses
-  via `stack.address.remove_host` (sanctioned helper).
+  via `stack.address.remove_ifaddr` (sanctioned helper).
 
 ### 12.3 The Phase-3 line this plan draws
 

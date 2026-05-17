@@ -187,7 +187,7 @@ stack.stop()
 stack.link.set_mac_address(mac_address=MacAddress("02:aa:bb:cc:dd:ee"))
 stack.start()
 # Optionally re-announce owned hosts:
-for host in stack.address.list_ip4_hosts():
+for host in stack.address.list_ip4_ifaddrs():
     stack.address.send_gratuitous_arp(address=host.address)
 ```
 

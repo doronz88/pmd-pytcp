@@ -404,7 +404,7 @@ apply.
 'Dhcp4Client._stop()' Subsystem post-stop hook emits a
 unicast DHCPRELEASE for the held lease before joining
 the thread, then removes the address via
-'address_api.remove_host(..., abort_bound_sessions=...)'.
+'address_api.remove_ifaddr(..., abort_bound_sessions=...)'.
 'stack.stop()' calls 'dhcp4_client.stop()' first in the
 teardown order so the RELEASE flies on still-live
 sockets before the TX ring shuts down. The new public
@@ -1009,7 +1009,7 @@ construction.
 match, it calls
 '_halt_ipv4_and_reset_to_init()' → which removes the
 expired Ip4IfAddr via
-'address_api.remove_host(ip4_address=..., abort_bound_sessions=True)'
+'address_api.remove_ifaddr(ip4_address=..., abort_bound_sessions=True)'
 (actively aborting any TCP sessions bound to the
 expired address — RFC 5227 §2.4-final SHOULD; cleaner
 than Linux's silent-rot kernel behaviour) and resets
@@ -1217,7 +1217,7 @@ is expected from the server.
   - `do_rebinding_returns_to_bound_on_ack`
     — broadcast REQUEST + ACK → BOUND.
   - `do_rebinding_halts_ipv4_on_lease_expiry`
-    — lease-expiry → INIT + 'remove_host'.
+    — lease-expiry → INIT + 'remove_ifaddr'.
   - `renewing_emits_unicast_request_with_ciaddr`
     — RENEW REQUEST wire shape: ciaddr=current IP, no
     server-id, no requested-ip.
@@ -1383,7 +1383,7 @@ is expected from the server.
 | Lease expiry / T1 / T2                              | locked in (Phase 4 — `TestDhcp4ClientLeaseLifecycle`)              |
 | DHCPRELEASE on shutdown                             | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | Sync release / renew / rebind public surface        | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
-| Cross-IP RENEW/REBIND → replace_host                | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
+| Cross-IP RENEW/REBIND → replace_ifaddr                | locked in (Phase 4 commit D — `TestDhcp4ClientReleaseAndShutdown`) |
 | RENEW/REBIND wire-level RX socket lookup            | locked in (post-Phase-4 fix — `test__dhcp4__rx_socket_lookup.py`)  |
 | DHCPINFORM                                          | not tested — gap                                                   |
 | xid validation on inbound                           | locked in (Phase 0 — `TestDhcp4ClientFetchXidMismatch`)            |
@@ -1417,7 +1417,7 @@ is expected from the server.
 | RENEW unicast wire path                                 | met (Phase 4 commit C + post-fix RX lookup)      |
 | REBIND broadcast wire path                              | met (Phase 4 commit C + post-fix RX lookup)      |
 | DHCPRELEASE on shutdown                                 | met (Phase 4 commit D)                           |
-| Cross-IP RENEW/REBIND atomic 'replace_host' swap        | met (Phase 4 commit D)                           |
+| Cross-IP RENEW/REBIND atomic 'replace_ifaddr' swap        | met (Phase 4 commit D)                           |
 | Active TCP-abort on lease change (deliberate dev.)      | met (Phase 4 commit D — sysctl-gated; default 1) |
 | DHCPNAK handling (bounded restart from DISCOVER)        | met (Phase 0)                                    |
 | DHCPINFORM                                              | not implemented                                  |
@@ -1444,18 +1444,18 @@ place.
 The 'Dhcp4Client' runs as a long-running 'Subsystem'
 under 'stack.start()' / 'stack.stop()', consuming the
 Phase-3-clean 'Ip4AddressApi' boundary surface
-(`stack.address.add_host` / `.replace_host` /
-`.remove_host`) for all address mutations. The Phase 4.5
+(`stack.address.add_ifaddr` / `.replace_ifaddr` /
+`.remove_ifaddr`) for all address mutations. The Phase 4.5
 FSM → API mutation table is wired end-to-end:
 
 | Transition                                  | Address-API call                                  |
 |---------------------------------------------|---------------------------------------------------|
-| `INIT → BOUND` (first lease)                | `add_host(ip4_host=...)`                          |
+| `INIT → BOUND` (first lease)                | `add_ifaddr(ip4_ifaddr=...)`                          |
 | `BOUND → RENEWING → BOUND` (same IP)        | none — internal lease bookkeeping only            |
-| `BOUND → RENEWING → BOUND` (different IP)   | `replace_host(old, new, abort_bound_sessions=...)`|
-| `RENEW / REBIND NAK → INIT`                 | `remove_host(addr, abort_bound_sessions=...)`     |
-| lease expiry without ACK                    | `remove_host(addr, abort_bound_sessions=...)`     |
-| `stack.stop()` (graceful)                   | `send_release()` + `remove_host(...)`             |
+| `BOUND → RENEWING → BOUND` (different IP)   | `replace_ifaddr(old, new, abort_bound_sessions=...)`|
+| `RENEW / REBIND NAK → INIT`                 | `remove_ifaddr(addr, abort_bound_sessions=...)`     |
+| lease expiry without ACK                    | `remove_ifaddr(addr, abort_bound_sessions=...)`     |
+| `stack.stop()` (graceful)                   | `send_release()` + `remove_ifaddr(...)`             |
 
 **Deliberate deviation from Linux.** The
 'dhcp.abort_sessions_on_lease_change' sysctl (default 1)

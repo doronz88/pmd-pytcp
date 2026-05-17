@@ -29,7 +29,7 @@ tools) via the sanctioned `Ip4AddressApi` surface in
 - `probe(*, address)` — runs the §2.1.1 probe sequence and
   returns success / conflict + peer info.
 - `announce(*, address)` — emits the §2.3 ANNOUNCE_NUM burst.
-- `claim_with_acd(*, ip4_host)` — composite probe + announce
+- `claim_with_acd(*, ip4_ifaddr)` — composite probe + announce
   + install for simple consumers.
 - `send_gratuitous_arp(*, address)` — single defensive ARP
   for §2.4(b).
@@ -327,7 +327,7 @@ behaviour is available to consumers via the conflict-
 subscription surface: a subscriber to
 `Ip4AddressApi.subscribe_conflicts(address=..., on_conflict=
 abandon_callback)` can call
-`Ip4AddressApi.remove_host(ip4_address=..., abort_bound_sessions=True)`
+`Ip4AddressApi.remove_ifaddr(ip4_address=..., abort_bound_sessions=True)`
 on first conflict for the (a) semantics. The RFC 3927
 link-local client uses this surface for its §2.5 defend /
 abandon decision tree.
@@ -577,7 +577,7 @@ there).
 
 - **Unit:**
   `pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__RemoveHost`
-  (cases at `:188-225`) — asserts `remove_host` issues
+  (cases at `:188-225`) — asserts `remove_ifaddr` issues
   `SysCall.ABORT` to every `TcpSession` bound to the
   removed address.
 - **Unit:**
@@ -677,7 +677,7 @@ normative requirement is met; the only "partial" entry is
 a MAY option not chosen by the default policy — and consumers
 who want (a)-mode semantics can wire it via the
 conflict-subscription surface (`subscribe_conflicts` →
-`remove_host(abort_bound_sessions=True)`).
+`remove_ifaddr(abort_bound_sessions=True)`).
 
 The ACD machinery has clean Phase-3 boundaries: all consumer
 access flows through `pytcp.stack.address` (`Ip4AddressApi`);

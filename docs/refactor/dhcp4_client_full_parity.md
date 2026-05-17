@@ -499,14 +499,14 @@ class Ip4AddressApi:
     `packet_handler._ip4_ifaddr` directly.
     """
 
-    def add_host(
+    def add_ifaddr(
         self,
         *,
         ip4_host: Ip4IfAddr,
         origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None: ...
 
-    def remove_host(
+    def remove_ifaddr(
         self,
         *,
         ip4_address: Ip4Address,
@@ -520,11 +520,11 @@ class Ip4AddressApi:
         only for diagnostics.
         """
 
-    def replace_host(
+    def replace_ifaddr(
         self,
         *,
         old_address: Ip4Address,
-        new_host: Ip4IfAddr,
+        new_ifaddr: Ip4IfAddr,
         new_origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None:
         """
@@ -534,7 +534,7 @@ class Ip4AddressApi:
         once `new` is bound (RFC 5227 §2.4 final SHOULD).
         """
 
-    def list_ip4_hosts(self) -> tuple[Ip4IfAddr, ...]:
+    def list_ip4_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
         """Read-only copy-by-value snapshot — Linux
         equivalent is `/proc/net/route` + `ip addr show`."""
 ```
@@ -583,12 +583,12 @@ above):
 
 | Transition                                  | Address-API call                       | TCP-session impact                  |
 |---------------------------------------------|----------------------------------------|-------------------------------------|
-| `INIT → BOUND` (first lease)                | `add_host(host, DHCP)`                 | none                                |
+| `INIT → BOUND` (first lease)                | `add_ifaddr(host, DHCP)`                 | none                                |
 | `BOUND → BOUND` (RENEW ACK, same IP)        | none (internal lease bookkeeping)      | none                                |
-| `BOUND → REBINDING → BOUND` (different IP)  | `replace_host(old, new, DHCP)`         | sessions on `old` abort             |
-| `RENEW/REBIND NAK → INIT → BOUND` (different IP) | `replace_host(old, new, DHCP)`    | sessions on `old` abort             |
-| `lease expiry, no new ACK`                  | `remove_host(addr)` + halt IPv4        | sessions on `addr` abort            |
-| `stack.stop()` (graceful)                   | `send_release()` + `remove_host(addr)` | sessions abort with RST before RELEASE |
+| `BOUND → REBINDING → BOUND` (different IP)  | `replace_ifaddr(old, new, DHCP)`         | sessions on `old` abort             |
+| `RENEW/REBIND NAK → INIT → BOUND` (different IP) | `replace_ifaddr(old, new, DHCP)`    | sessions on `old` abort             |
+| `lease expiry, no new ACK`                  | `remove_ifaddr(addr)` + halt IPv4        | sessions on `addr` abort            |
+| `stack.stop()` (graceful)                   | `send_release()` + `remove_ifaddr(addr)` | sessions abort with RST before RELEASE |
 
 **Deliberate deviation from Linux: active TCP-session
 abort.**
@@ -601,7 +601,7 @@ with the existing `_abandon_ipv4_address` hook
 implements RFC 5227 §2.4 final SHOULD ("hosts SHOULD
 actively attempt to reset any existing connections
 using that address"). Reusing it on every
-`remove_host` / `replace_host` is cleaner than
+`remove_ifaddr` / `replace_ifaddr` is cleaner than
 Linux's behaviour.
 
 This is a deliberate improvement; the RFC 2131
@@ -609,7 +609,7 @@ adherence record should mark it under "deviation
 noted (cleaner than Linux)" rather than as a gap.
 Document the choice with an inline comment at the
 `abort_bound_sessions` parameter in
-`Ip4AddressApi.remove_host`.
+`Ip4AddressApi.remove_ifaddr`.
 
 **Route-table cleanup deferred to Phase 7.**
 
@@ -630,24 +630,24 @@ dhcpcd's per-lease route-tracking list.
   abort.
 - Different-IP after NAK → `_ip4_ifaddr` swap atomic
   (assert both never co-exist outside the
-  `replace_host` window).
+  `replace_ifaddr` window).
 - TCP session bound to the old IP after swap → asserted
   aborted (RST emitted, session removed from
   `stack.sockets`).
 - Lease expiry → `_ip4_ifaddr` empty + IPv4 disabled +
   abort happened.
 - `stack.stop()` while BOUND → DHCPRELEASE on wire,
-  THEN `remove_host` + abort.
+  THEN `remove_ifaddr` + abort.
 
 **Tests for §4.4 (extended):** new integration
 harness `pytcp/tests/lib/dhcp4_testcase.py`:
 
 - Boot path: stub server replies → BOUND.
 - T1 fires → RENEWING → unicast REQUEST → BOUND
-  (same IP, no `replace_host` call).
+  (same IP, no `replace_ifaddr` call).
 - T2 fires (no RENEWING ACK) → REBINDING.
 - Lease expires (no REBINDING ACK) → INIT + halt.
-- Stack stop → DHCPRELEASE + `remove_host`.
+- Stack stop → DHCPRELEASE + `remove_ifaddr`.
 
 **Adherence record refresh:** RFC 2131 §4.4 marked
 met; §4.4.5 lease-expiry behaviour pinned. Add a
@@ -983,7 +983,7 @@ relevant phase.
    default 30 000 ms — matches Linux dhcpcd's
    default `oneshot` 30-s timeout.
 8. **TCP-session abort policy on lease change.**
-   The plan defaults `Ip4AddressApi.remove_host`'s
+   The plan defaults `Ip4AddressApi.remove_ifaddr`'s
    `abort_bound_sessions=True` (active abort, cleaner
    than Linux). Should this be configurable via a
    sysctl `dhcp.abort_sessions_on_lease_change`
@@ -1132,7 +1132,7 @@ cutover.
 | Concern                  | Linux                                                                                    | PyTCP Phase 1 (this plan)                                       | PyTCP Phase 3 (north-star)                                  |
 |--------------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------|
 | DHCP code lives in       | Userspace daemon (`dhcpcd`, `dhclient`, `systemd-networkd`)                              | Same Python process as the TCP/IP stack                         | Logically userspace (DHCP becomes a consumer of the kernel-equivalent address API) |
-| Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_host(...)` / `.remove_host(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
+| Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_ifaddr(...)` / `.remove_ifaddr(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
 | Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4IfAddr.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
 | TCP-session on removed IP| Kernel silently lets RTO accumulate; no proactive RST                                    | Active abort via `_abandon_ipv4_address` (RFC 5227 §2.4 final SHOULD) | Same — Linux-deviation deliberate                          |
 | Lease persistence        | `/var/lib/dhcp/dhcpcd.lease` (per-interface)                                             | `dhcp.lease_cache_path` sysctl (Phase 5)                        | Same                                                        |

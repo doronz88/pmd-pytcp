@@ -403,7 +403,7 @@ Plan uses **properties** for read access (`link.mac_address`,
 `link.mtu`). Alternative: methods (`link.get_mac_address()`).
 
 Linux RTNETLINK is method-shaped (`RTM_GETLINK`). PyTCP's
-existing `Ip4AddressApi.list_ip4_hosts()` is method-shaped.
+existing `Ip4AddressApi.list_ip4_ifaddrs()` is method-shaped.
 
 **Decision (confirmed 2026-05-12):** **all reads are
 properties, including `stats`.** Pythonic default; matches
