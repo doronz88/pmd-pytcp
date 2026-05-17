@@ -30,6 +30,7 @@ net_addr/tests/unit/test__ip4_network.py
 ver 3.0.5
 """
 
+from collections.abc import Callable
 from typing import Any
 from unittest import TestCase
 
@@ -1053,13 +1054,14 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        for label, thunk in [
+        cases: list[tuple[str, Callable[[], object]]] = [
             ("subnets new_prefix <= prefixlen", lambda: list(Ip4Network("10.0.0.0/8").subnets(new_prefix=4))),
             ("subnets prefixlen_diff < 1", lambda: list(Ip4Network("10.0.0.0/8").subnets(prefixlen_diff=0))),
             ("subnets past /32", lambda: list(Ip4Network("10.0.0.0/8").subnets(new_prefix=33))),
             ("supernet new_prefix >= prefixlen", lambda: Ip4Network("10.0.0.0/8").supernet(new_prefix=8)),
             ("supernet below /0", lambda: Ip4Network("10.0.0.0/8").supernet(prefixlen_diff=9)),
-        ]:
+        ]
+        for label, thunk in cases:
             with self.subTest(case=label):
                 with self.assertRaises(ValueError, msg=f"{label} must raise ValueError"):
                     thunk()
