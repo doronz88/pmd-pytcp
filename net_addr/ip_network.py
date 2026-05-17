@@ -282,6 +282,24 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         for value in range(int(self._address), int(self.last) + 1):
             yield address_type(value)
 
+    def __getitem__(self, index: int, /) -> A:
+        """
+        Get the address at the given index within the network.
+        A negative index counts back from the last address; an
+        out-of-range index raises IndexError. Slicing is not
+        supported.
+        """
+
+        count = self.num_addresses
+
+        if index < 0:
+            index += count
+
+        if not 0 <= index < count:
+            raise IndexError(f"network index out of range: {index}")
+
+        return type(self._address)(int(self._address) + index)
+
     @abstractmethod
     def hosts(self) -> Iterator[A]:
         """

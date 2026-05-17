@@ -1234,3 +1234,43 @@ class TestNetAddrIp4NetworkPrefixlen(TestCase):
                 net = Ip4Network(cidr)
                 self.assertEqual(net.prefixlen, prefixlen, msg=f"Unexpected prefixlen for {cidr}.")
                 self.assertEqual(net.max_prefixlen, 32, msg=f"max_prefixlen must be 32 for {cidr}.")
+
+
+class TestNetAddrIp4NetworkGetitem(TestCase):
+    """
+    The NetAddr IPv4 network indexing tests.
+    """
+
+    def test__net_addr__ip4_network__getitem(self) -> None:
+        """
+        Ensure 'network[i]' returns the i-th address (negative
+        indexes count from the last address); out-of-range
+        raises IndexError; slices are not supported.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        net = Ip4Network("192.0.2.0/24")
+        for index, expected in [
+            (0, Ip4Address("192.0.2.0")),
+            (1, Ip4Address("192.0.2.1")),
+            (255, Ip4Address("192.0.2.255")),
+            (-1, Ip4Address("192.0.2.255")),
+            (-256, Ip4Address("192.0.2.0")),
+        ]:
+            with self.subTest(index=index):
+                self.assertEqual(net[index], expected, msg=f"net[{index}] must be {expected}.")
+
+        for bad in (256, -257):
+            with self.subTest(index=bad):
+                with self.assertRaises(IndexError, msg=f"net[{bad}] must raise IndexError."):
+                    _ = net[bad]
+
+        single = Ip4Network("192.0.2.5/32")
+        self.assertEqual(single[0], Ip4Address("192.0.2.5"), msg="single[0] must be the host.")
+        self.assertEqual(single[-1], Ip4Address("192.0.2.5"), msg="single[-1] must be the host.")
+        with self.assertRaises(IndexError, msg="single[1] must raise IndexError."):
+            _ = single[1]
+
+        with self.assertRaises(TypeError, msg="Slicing must not be supported."):
+            _ = net[0:2]  # type: ignore[index]

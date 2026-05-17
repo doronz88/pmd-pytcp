@@ -1017,3 +1017,33 @@ class TestNetAddrIp6NetworkPrefixlen(TestCase):
                 net = Ip6Network(cidr)
                 self.assertEqual(net.prefixlen, prefixlen, msg=f"Unexpected prefixlen for {cidr}.")
                 self.assertEqual(net.max_prefixlen, 128, msg=f"max_prefixlen must be 128 for {cidr}.")
+
+
+class TestNetAddrIp6NetworkGetitem(TestCase):
+    """
+    The NetAddr IPv6 network indexing tests.
+    """
+
+    def test__net_addr__ip6_network__getitem(self) -> None:
+        """
+        Ensure 'network[i]' returns the i-th address (negative
+        indexes count from the last address); out-of-range
+        raises IndexError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        net = Ip6Network("2001:db8::/126")
+        for index, expected in [
+            (0, Ip6Address("2001:db8::")),
+            (3, Ip6Address("2001:db8::3")),
+            (-1, Ip6Address("2001:db8::3")),
+            (-4, Ip6Address("2001:db8::")),
+        ]:
+            with self.subTest(index=index):
+                self.assertEqual(net[index], expected, msg=f"net[{index}] must be {expected}.")
+
+        for bad in (4, -5):
+            with self.subTest(index=bad):
+                with self.assertRaises(IndexError, msg=f"net[{bad}] must raise IndexError."):
+                    _ = net[bad]
