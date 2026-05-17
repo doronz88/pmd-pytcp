@@ -107,9 +107,11 @@ class Ip6Address(IpAddress):
     IPv6 address support class.
     """
 
-    __slots__ = ()
+    __slots__ = ("_scope_id",)
 
     _version: IpVersion = IpVersion.IP6
+
+    _scope_id: str | None
 
     def __init__(
         self,
@@ -120,12 +122,15 @@ class Ip6Address(IpAddress):
         Initialize the IPv6 address object.
         """
 
+        self._scope_id = None
+
         if address is None:
             self._address = 0
             return
 
         if isinstance(address, Ip6Address):
             self._address = int(address)
+            self._scope_id = address._scope_id
             return
 
         if isinstance(address, int):
@@ -139,9 +144,14 @@ class Ip6Address(IpAddress):
                 return
 
         if isinstance(address, str):
-            if re.search(IP6__REGEX, address):
+            # RFC 4007 / RFC 6874: an optional '%<zone>' suffix
+            # is the scope identifier; it must be non-empty and
+            # contain no further '%'.
+            addr_part, sep, zone = address.partition("%")
+            if not (sep and (not zone or "%" in zone)) and re.search(IP6__REGEX, addr_part):
                 try:
-                    self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, address))
+                    self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part))
+                    self._scope_id = zone if sep else None
                     return
                 except OSError:
                     pass
@@ -154,7 +164,12 @@ class Ip6Address(IpAddress):
         Get the IPv6 address log string.
         """
 
-        return socket.inet_ntop(socket.AF_INET6, bytes(self))
+        text = socket.inet_ntop(socket.AF_INET6, bytes(self))
+
+        if self._scope_id is not None:
+            text = f"{text}%{self._scope_id}"
+
+        return text
 
     @override
     def __buffer__(self, _: int) -> memoryview:
@@ -163,6 +178,38 @@ class Ip6Address(IpAddress):
         """
 
         return memoryview(bytearray(self._address.to_bytes(IP6__ADDRESS_LEN)))
+
+    @override
+    def __eq__(self, other: object, /) -> bool:
+        """
+        Compare the IPv6 address with another object. The RFC
+        4007 scope identifier is part of the address identity.
+        """
+
+        return other is self or (
+            isinstance(other, type(self)) and self._address == other._address and self._scope_id == other._scope_id
+        )
+
+    @override
+    def __hash__(self) -> int:
+        """
+        Get the IPv6 address hash value (scope identifier
+        included).
+        """
+
+        return hash((type(self), self._address, self._scope_id))
+
+    @property
+    def scope_id(self) -> str | None:
+        """
+        Get the RFC 4007 zone identifier (the text after '%'),
+        or None if the address is unscoped.
+        """
+
+        # Phase 2: multi-interface link-local scoping consumes
+        # this (ND / routing / source selection thread the
+        # sin6_scope_id equivalent through the data path).
+        return self._scope_id
 
     @property
     @override

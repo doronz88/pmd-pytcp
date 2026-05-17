@@ -1842,3 +1842,78 @@ class TestNetAddrIp6AddressTransitional(TestCase):
             Ip6Address("2001:db8::1").teredo,
             msg="teredo must be None for a non-Teredo address.",
         )
+
+
+class TestNetAddrIp6AddressScopeId(TestCase):
+    """
+    The NetAddr IPv6 address RFC 4007 scope-identifier tests.
+    """
+
+    def test__net_addr__ip6_address__scope_id__parse_and_roundtrip(self) -> None:
+        """
+        Ensure a '%zone' suffix is parsed into 'scope_id' and
+        round-trips through str(); the address bits are
+        unaffected.
+
+        Reference: RFC 4007 (IPv6 Scoped Address Architecture).
+        """
+
+        a = Ip6Address("fe80::1%eth0")
+        self.assertEqual(a.scope_id, "eth0", msg="scope_id must be the text after '%'.")
+        self.assertEqual(str(a), "fe80::1%eth0", msg="str() must round-trip the zone.")
+        self.assertEqual(int(a), int(Ip6Address("fe80::1")), msg="The zone is not part of the 128 bits.")
+        self.assertEqual(bytes(a), bytes(Ip6Address("fe80::1")), msg="packed bytes ignore the zone.")
+        self.assertEqual(Ip6Address("fe80::1%1").scope_id, "1", msg="A numeric zone is kept as a string.")
+
+    def test__net_addr__ip6_address__scope_id__identity(self) -> None:
+        """
+        Ensure the scope identifier participates in equality
+        and hashing.
+
+        Reference: RFC 4007 (IPv6 Scoped Address Architecture).
+        """
+
+        self.assertEqual(Ip6Address("fe80::1%eth0"), Ip6Address("fe80::1%eth0"), msg="Same zone must be equal.")
+        self.assertNotEqual(Ip6Address("fe80::1%eth0"), Ip6Address("fe80::1"), msg="Zoned != unzoned.")
+        self.assertNotEqual(Ip6Address("fe80::1%eth0"), Ip6Address("fe80::1%eth1"), msg="Different zones must differ.")
+        self.assertEqual(
+            hash(Ip6Address("fe80::1%eth0")),
+            hash(Ip6Address("fe80::1%eth0")),
+            msg="Equal zoned addresses must hash equal.",
+        )
+        self.assertEqual(
+            Ip6Address(Ip6Address("fe80::1%eth0")).scope_id,
+            "eth0",
+            msg="Copy-construction must preserve the zone.",
+        )
+
+    def test__net_addr__ip6_address__scope_id__unzoned_unchanged(self) -> None:
+        """
+        Ensure an address with no zone has scope_id None and
+        compares / hashes exactly as before (single-interface
+        behaviour is provably unchanged).
+
+        Reference: RFC 4007 (IPv6 Scoped Address Architecture).
+        """
+
+        self.assertIsNone(Ip6Address("fe80::1").scope_id, msg="An unzoned address must have scope_id None.")
+        self.assertIsNone(Ip6Address(1).scope_id, msg="An int-built address has no zone.")
+        self.assertEqual(Ip6Address("fe80::1"), Ip6Address("fe80::1"), msg="Unzoned equality unchanged.")
+        self.assertEqual(
+            hash(Ip6Address("fe80::1")),
+            hash(Ip6Address("fe80::1")),
+            msg="Unzoned hashing is stable.",
+        )
+
+    def test__net_addr__ip6_address__scope_id__invalid_raises(self) -> None:
+        """
+        Ensure an empty or multi-'%' zone raises
+        'Ip6AddressFormatError'.
+
+        Reference: RFC 4007 (IPv6 Scoped Address Architecture).
+        """
+
+        for bad in ["fe80::1%", "fe80::1%a%b", "%eth0"]:
+            with self.subTest(value=bad):
+                with self.assertRaises(Ip6AddressFormatError, msg=f"{bad!r} must raise."):
+                    Ip6Address(bad)
