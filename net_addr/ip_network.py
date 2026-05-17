@@ -31,8 +31,8 @@ ver 3.0.5
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Self, override
+from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING, Self, overload, override
 
 from net_addr.base import Base
 from net_addr.errors import IpNetworkFormatError
@@ -95,6 +95,88 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             pass
 
         raise IpNetworkFormatError(value)
+
+    @staticmethod
+    def _summarize_ints(lo: int, hi: int, bits: int, /) -> Iterator[tuple[int, int]]:
+        """
+        Iterate over '(network_int, prefixlen)' pairs that
+        minimally tile the inclusive integer range [lo, hi] with
+        aligned CIDR blocks (RFC 4632 greedy summarization).
+        """
+
+        while lo <= hi:
+            align = bits if lo == 0 else (lo & -lo).bit_length() - 1
+            span = (hi - lo + 1).bit_length() - 1
+            step = min(align, span)
+            yield lo, bits - step
+            lo += 1 << step
+
+    @staticmethod
+    def _merge_spans(spans: list[tuple[int, int]], /) -> list[tuple[int, int]]:
+        """
+        Merge a list of inclusive integer intervals, combining
+        overlapping and exactly-adjacent intervals; gaps are
+        preserved.
+        """
+
+        merged: list[tuple[int, int]] = []
+        for lo, hi in sorted(spans):
+            if merged and lo <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+            else:
+                merged.append((lo, hi))
+        return merged
+
+    @overload
+    @staticmethod
+    def summarize(items: Iterable[Ip4Address | Ip4Network], /) -> "Iterator[Ip4Network]": ...
+
+    @overload
+    @staticmethod
+    def summarize(items: Iterable[Ip6Address | Ip6Network], /) -> "Iterator[Ip6Network]": ...
+
+    @staticmethod
+    def summarize(
+        items: "Iterable[Ip4Address | Ip6Address | Ip4Network | Ip6Network]",
+        /,
+    ) -> "Iterator[Ip4Network | Ip6Network]":
+        """
+        Iterate over the minimal set of CIDR networks that
+        exactly covers the union of the given addresses and
+        networks — overlapping and adjacent entries aggregated,
+        gaps preserved. All items must be the same IP version
+        (a mixed-version or non-address/network item raises
+        TypeError); an empty input yields nothing.
+        """
+
+        from net_addr.ip4_network import Ip4Network
+        from net_addr.ip6_network import Ip6Network
+
+        spans4: list[tuple[int, int]] = []
+        spans6: list[tuple[int, int]] = []
+
+        for item in items:
+            if isinstance(item, Ip4Address):
+                spans4.append((int(item), int(item)))
+            elif isinstance(item, Ip6Address):
+                spans6.append((int(item), int(item)))
+            elif isinstance(item, Ip4Network):
+                spans4.append((int(item.address), int(item.last)))
+            elif isinstance(item, Ip6Network):
+                spans6.append((int(item.address), int(item.last)))
+            else:
+                raise TypeError(f"summarize() requires IP addresses or networks; got {item!r}")
+
+        if spans4 and spans6:
+            raise TypeError("summarize() requires a single IP version; got a mix of IPv4 and IPv6")
+
+        for lo, hi in IpNetwork._merge_spans(spans4):
+            for network_int, prefixlen in IpNetwork._summarize_ints(lo, hi, 32):
+                yield Ip4Network((Ip4Address(network_int), Ip4Mask(f"/{prefixlen}")))
+
+        for lo, hi in IpNetwork._merge_spans(spans6):
+            for network_int, prefixlen in IpNetwork._summarize_ints(lo, hi, 128):
+                yield Ip6Network((Ip6Address(network_int), Ip6Mask(f"/{prefixlen}")))
 
     @override
     def __str__(self) -> str:

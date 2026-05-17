@@ -45,6 +45,7 @@ from net_addr import (
     Ip6Network,
     Ip6NetworkFormatError,
     Ip6Wildcard,
+    IpNetwork,
     IpVersion,
 )
 
@@ -1086,3 +1087,52 @@ class TestNetAddrIp6NetworkAddressExclude(TestCase):
         )
         with self.assertRaises(ValueError, msg="A non-contained operand must raise ValueError."):
             list(n.address_exclude(Ip6Network("2001:dead::/32")))
+
+
+class TestNetAddrIp6NetworkSummarize(TestCase):
+    """
+    The NetAddr IPv6 IpNetwork.summarize prefix-aggregation tests.
+    """
+
+    def test__net_addr__ip6_network__summarize(self) -> None:
+        """
+        Ensure 'summarize' aggregates a set of addresses and
+        networks into the minimal covering CIDR set — adjacent
+        and overlapping entries merged, gaps preserved.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        cases: list[tuple[list[Ip6Address | Ip6Network], list[str]]] = [
+            ([Ip6Network("2001:db8::/64"), Ip6Network("2001:db8:0:1::/64")], ["2001:db8::/63"]),
+            (
+                [
+                    Ip6Address("2001:db8::"),
+                    Ip6Address("2001:db8::1"),
+                    Ip6Address("2001:db8::2"),
+                    Ip6Address("2001:db8::3"),
+                ],
+                ["2001:db8::/126"],
+            ),
+            ([Ip6Network("2001:db8::/64"), Ip6Network("2001:db8:0:2::/64")], ["2001:db8::/64", "2001:db8:0:2::/64"]),
+            ([], []),
+        ]
+        for items, expected in cases:
+            with self.subTest(items=items):
+                self.assertEqual(
+                    [str(network) for network in IpNetwork.summarize(items)],
+                    expected,
+                    msg=f"summarize({items}) must be {expected}.",
+                )
+
+    def test__net_addr__ip6_network__summarize_mixed_version_raises(self) -> None:
+        """
+        Ensure 'summarize' raises 'TypeError' on a mixed-version
+        input set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        mixed = [Ip6Network("2001:db8::/64"), Ip4Network("10.0.0.0/24")]
+        with self.assertRaises(TypeError):
+            list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]

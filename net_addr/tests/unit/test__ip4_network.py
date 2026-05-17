@@ -1339,3 +1339,66 @@ class TestNetAddrIp4NetworkAddressExclude(TestCase):
             list(n.address_exclude(Ip4Network("198.51.100.0/25")))
         with self.assertRaises(ValueError, msg="A cross-version operand must raise ValueError."):
             list(n.address_exclude(Ip6Network("2001:db8::/32")))  # type: ignore[arg-type]
+
+
+class TestNetAddrIp4NetworkSummarize(TestCase):
+    """
+    The NetAddr IPv4 IpNetwork.summarize prefix-aggregation tests.
+    """
+
+    def test__net_addr__ip4_network__summarize(self) -> None:
+        """
+        Ensure 'summarize' aggregates a set of addresses and
+        networks into the minimal covering CIDR set — adjacent
+        and overlapping entries merged, gaps preserved.
+
+        Reference: RFC 4632 §3.1 (CIDR address/prefix).
+        """
+
+        cases: list[tuple[list[Ip4Address | Ip4Network], list[str]]] = [
+            ([Ip4Network("10.0.0.0/24"), Ip4Network("10.0.1.0/24")], ["10.0.0.0/23"]),
+            ([Ip4Network("192.0.2.0/24"), Ip4Network("192.0.2.128/25")], ["192.0.2.0/24"]),
+            ([Ip4Address("10.0.0.0"), Ip4Address("10.0.0.1")], ["10.0.0.0/31"]),
+            ([Ip4Network("10.0.0.0/24"), Ip4Network("10.0.2.0/24")], ["10.0.0.0/24", "10.0.2.0/24"]),
+            (
+                [
+                    Ip4Network("10.0.0.0/30"),
+                    Ip4Address("10.0.0.4"),
+                    Ip4Address("10.0.0.5"),
+                    Ip4Address("10.0.0.6"),
+                    Ip4Address("10.0.0.7"),
+                ],
+                ["10.0.0.0/29"],
+            ),
+            ([], []),
+        ]
+        for items, expected in cases:
+            with self.subTest(items=items):
+                self.assertEqual(
+                    [str(network) for network in IpNetwork.summarize(items)],
+                    expected,
+                    msg=f"summarize({items}) must be {expected}.",
+                )
+
+    def test__net_addr__ip4_network__summarize_mixed_version_raises(self) -> None:
+        """
+        Ensure 'summarize' raises 'TypeError' on a mixed-version
+        input set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        mixed = [Ip4Network("10.0.0.0/24"), Ip6Network("2001:db8::/64")]
+        with self.assertRaises(TypeError):
+            list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]
+
+    def test__net_addr__ip4_network__summarize_bad_item_raises(self) -> None:
+        """
+        Ensure 'summarize' raises 'TypeError' when an item is
+        neither an IP address nor an IP network.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError):
+            list(IpNetwork.summarize([5]))  # type: ignore[list-item]
