@@ -258,6 +258,34 @@ class Ip6Address(IpAddress):
 
         return self._order_key() >= other._order_key()
 
+    @override
+    def __add__(self, other: object, /) -> Self:
+        """
+        Get the IPv6 address advanced by an integer offset, with
+        the RFC 4007 zone identifier carried onto the result.
+        """
+
+        if not isinstance(other, int):
+            return NotImplemented
+
+        result = type(self)(self._address + other)
+        result._scope_id = self._scope_id
+        return result
+
+    @override
+    def __sub__(self, other: object, /) -> Self:
+        """
+        Get the IPv6 address retreated by an integer offset, with
+        the RFC 4007 zone identifier carried onto the result.
+        """
+
+        if not isinstance(other, int):
+            return NotImplemented
+
+        result = type(self)(self._address - other)
+        result._scope_id = self._scope_id
+        return result
+
     @property
     def _is_zoneable(self) -> bool:
         """

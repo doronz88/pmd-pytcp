@@ -1641,6 +1641,29 @@ class TestNetAddrIp6AddressArithmetic(TestCase):
         self.assertEqual(a + 0, a, msg="address + 0 must be unchanged.")
         self.assertIsInstance(a + 1, Ip6Address, msg="Arithmetic must return an Ip6Address.")
 
+    def test__net_addr__ip6_address__arithmetic__preserves_scope(self) -> None:
+        """
+        Ensure 'address + int' / 'address - int' carry the RFC
+        4007 zone identifier onto the result, consistently with
+        equality / hashing / ordering; an unscoped operand stays
+        unscoped.
+
+        Reference: RFC 4007 (scoped-address zone identifier).
+        """
+
+        scoped = Ip6Address("fe80::10%eth0")
+        self.assertEqual((scoped + 1).scope_id, "eth0", msg="address + int must keep the zone.")
+        self.assertEqual((scoped - 1).scope_id, "eth0", msg="address - int must keep the zone.")
+        self.assertEqual(
+            scoped + 1,
+            Ip6Address("fe80::11%eth0"),
+            msg="The offset scoped address must equal the literal scoped form.",
+        )
+        self.assertIsNone(
+            (Ip6Address("fe80::10") + 1).scope_id,
+            msg="An unscoped operand must yield an unscoped result.",
+        )
+
     def test__net_addr__ip6_address__arithmetic__overflow_raises(self) -> None:
         """
         Ensure arithmetic past the IPv6 address space raises the
