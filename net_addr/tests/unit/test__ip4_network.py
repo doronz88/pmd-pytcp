@@ -1050,3 +1050,42 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
             with self.subTest(case=label):
                 with self.assertRaises(ValueError, msg=f"{label} must raise ValueError"):
                     thunk()
+
+
+class TestNetAddrIp4NetworkOrdering(TestCase):
+    """
+    The NetAddr IPv4 network ordering tests.
+    """
+
+    def test__net_addr__ip4_network__ordering(self) -> None:
+        """
+        Ensure IPv4 networks are totally ordered by network
+        address then prefix length (longer prefix sorts later
+        when the network address is equal).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Network("10.0.0.0/8")
+        b = Ip4Network("10.0.0.0/24")
+        c = Ip4Network("192.168.0.0/16")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="Ip4Network must sort by (network address, prefix length).",
+        )
+        self.assertTrue(a < b, msg="Same network, longer prefix must sort after.")
+        self.assertTrue(b < c, msg="Lower network address must sort before.")
+        self.assertEqual(min(c, b, a), a, msg="min() must return the lowest Ip4Network.")
+
+    def test__net_addr__ip4_network__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv4 network against an IPv6 network
+        raises TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip4Network < Ip6Network must raise TypeError."):
+            _ = Ip4Network("10.0.0.0/8") < Ip6Network("2001:db8::/32")

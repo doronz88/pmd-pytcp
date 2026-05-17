@@ -91,6 +91,54 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         return hash((type(self), self._address, self._mask))
 
+    def __lt__(self, other: object, /) -> bool:
+        """
+        Order the IP network by network address then prefix
+        length. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (int(self._address), int(self._mask)) < (int(other._address), int(other._mask))
+
+    def __le__(self, other: object, /) -> bool:
+        """
+        Order the IP network by network address then prefix
+        length. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (int(self._address), int(self._mask)) <= (int(other._address), int(other._mask))
+
+    def __gt__(self, other: object, /) -> bool:
+        """
+        Order the IP network by network address then prefix
+        length. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (int(self._address), int(self._mask)) > (int(other._address), int(other._mask))
+
+    def __ge__(self, other: object, /) -> bool:
+        """
+        Order the IP network by network address then prefix
+        length. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (int(self._address), int(self._mask)) >= (int(other._address), int(other._mask))
+
     def __contains__(self, other: object, /) -> bool:
         """
         Check if the IP network contains the IP address or host.

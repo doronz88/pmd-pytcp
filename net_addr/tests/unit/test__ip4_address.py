@@ -2012,3 +2012,56 @@ class TestNetAddrIp4AddressRoundtrip(TestCase):
             int(source),
             msg="Ip4Address copied from another Ip4Address must preserve the integer value.",
         )
+
+
+class TestNetAddrIp4AddressOrdering(TestCase):
+    """
+    The NetAddr IPv4 address ordering tests.
+    """
+
+    def test__net_addr__ip4_address__ordering(self) -> None:
+        """
+        Ensure IPv4 addresses are totally ordered by their
+        integer value (sortable, min/max, all comparisons).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Address("10.0.0.1")
+        b = Ip4Address("10.0.0.2")
+        c = Ip4Address("192.168.1.1")
+
+        self.assertEqual(
+            sorted([c, a, b]),
+            [a, b, c],
+            msg="Ip4Address must sort ascending by integer value.",
+        )
+        self.assertEqual(min(c, a, b), a, msg="min() must return the lowest Ip4Address.")
+        self.assertEqual(max(c, a, b), c, msg="max() must return the highest Ip4Address.")
+        for left, op, right, expected in [
+            (a, "<", b, True),
+            (b, "<", a, False),
+            (a, "<=", a, True),
+            (a, "<", a, False),
+            (c, ">", a, True),
+            (a, ">=", a, True),
+        ]:
+            with self.subTest(case=f"{left} {op} {right}"):
+                got = {
+                    "<": left < right,
+                    "<=": left <= right,
+                    ">": left > right,
+                    ">=": left >= right,
+                }[op]
+                self.assertEqual(got, expected, msg=f"{left} {op} {right} must be {expected}.")
+
+    def test__net_addr__ip4_address__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv4 address against an IPv6 address
+        raises TypeError (mixed-version ordering is undefined).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip4Address < Ip6Address must raise TypeError."):
+            _ = Ip4Address("10.0.0.1") < Ip6Address("2001:db8::1")

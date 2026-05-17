@@ -874,3 +874,40 @@ class TestNetAddrIp6NetworkRelations(TestCase):
                     expected,
                     msg=f"Unexpected result for: {label}",
                 )
+
+
+class TestNetAddrIp6NetworkOrdering(TestCase):
+    """
+    The NetAddr IPv6 network ordering tests.
+    """
+
+    def test__net_addr__ip6_network__ordering(self) -> None:
+        """
+        Ensure IPv6 networks are totally ordered by network
+        address then prefix length.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Network("2001:db8::/32")
+        b = Ip6Network("2001:db8::/48")
+        c = Ip6Network("2001:dead::/32")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="Ip6Network must sort by (network address, prefix length).",
+        )
+        self.assertTrue(a < b < c, msg="Chained Ip6Network ordering must hold.")
+        self.assertEqual(max(c, b, a), c, msg="max() must return the highest Ip6Network.")
+
+    def test__net_addr__ip6_network__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv6 network against an IPv4 network
+        raises TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip6Network < Ip4Network must raise TypeError."):
+            _ = Ip6Network("2001:db8::/32") < Ip4Network("10.0.0.0/8")

@@ -944,3 +944,42 @@ class TestNetAddrMacAddressRoundtrip(TestCase):
             int(source),
             msg="Copy-constructed MacAddress must preserve the integer payload.",
         )
+
+
+class TestNetAddrMacAddressOrdering(TestCase):
+    """
+    The NetAddr MAC address ordering tests.
+    """
+
+    def test__net_addr__mac_address__ordering(self) -> None:
+        """
+        Ensure MAC addresses are totally ordered by their
+        integer value (sortable, min/max, all comparisons).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("00:00:00:00:00:01")
+        b = MacAddress("00:00:00:00:00:02")
+        c = MacAddress("ff:ff:ff:ff:ff:fe")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="MacAddress must sort ascending by integer value.",
+        )
+        self.assertEqual(min(c, b, a), a, msg="min() must return the lowest MacAddress.")
+        self.assertEqual(max(c, b, a), c, msg="max() must return the highest MacAddress.")
+        self.assertTrue(a < b, msg="MacAddress < must order by integer value.")
+        self.assertTrue(a <= a and a >= a, msg="MacAddress <= / >= must be reflexive.")
+
+    def test__net_addr__mac_address__ordering__foreign_type_raises(self) -> None:
+        """
+        Ensure ordering a MAC address against an unrelated type
+        raises TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="MacAddress < int must raise TypeError."):
+            _ = MacAddress("00:00:00:00:00:01") < 5

@@ -1552,3 +1552,43 @@ class TestIp6AddressIsReserved(TestCase):
             Ip6Address("::").is_reserved,
             msg="Unspecified is covered by is_unspecified, not is_reserved.",
         )
+
+
+class TestNetAddrIp6AddressOrdering(TestCase):
+    """
+    The NetAddr IPv6 address ordering tests.
+    """
+
+    def test__net_addr__ip6_address__ordering(self) -> None:
+        """
+        Ensure IPv6 addresses are totally ordered by their
+        integer value (sortable, min/max, all comparisons).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("2001:db8::1")
+        b = Ip6Address("2001:db8::2")
+        c = Ip6Address("2001:db8:1::")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="Ip6Address must sort ascending by integer value.",
+        )
+        self.assertEqual(min(c, b, a), a, msg="min() must return the lowest Ip6Address.")
+        self.assertEqual(max(c, b, a), c, msg="max() must return the highest Ip6Address.")
+        self.assertTrue(a < b <= b < c, msg="Chained Ip6Address comparisons must hold.")
+        self.assertFalse(a < a, msg="An Ip6Address must not be strictly less than itself.")
+        self.assertTrue(a >= a, msg="An Ip6Address must be >= itself.")
+
+    def test__net_addr__ip6_address__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv6 address against an IPv4 address
+        raises TypeError (mixed-version ordering is undefined).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip6Address < Ip4Address must raise TypeError."):
+            _ = Ip6Address("2001:db8::1") < Ip4Address("10.0.0.1")

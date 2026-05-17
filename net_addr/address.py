@@ -76,6 +76,54 @@ class Address(Base, ABC):
 
         return hash((type(self), self._address))
 
+    def __lt__(self, other: object, /) -> bool:
+        """
+        Order the network address by its integer value. Ordering
+        across address types (e.g. IPv4 vs IPv6) is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._address < other._address
+
+    def __le__(self, other: object, /) -> bool:
+        """
+        Order the network address by its integer value. Ordering
+        across address types (e.g. IPv4 vs IPv6) is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._address <= other._address
+
+    def __gt__(self, other: object, /) -> bool:
+        """
+        Order the network address by its integer value. Ordering
+        across address types (e.g. IPv4 vs IPv6) is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._address > other._address
+
+    def __ge__(self, other: object, /) -> bool:
+        """
+        Order the network address by its integer value. Ordering
+        across address types (e.g. IPv4 vs IPv6) is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self._address >= other._address
+
     @property
     def unspecified(self) -> Self:
         """
