@@ -42,7 +42,7 @@ pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py
 ver 3.0.5
 """
 
-from typing import Any, cast
+from typing import Any
 
 from net_addr import Ip6Address, MacAddress
 from net_proto import Icmp6NdMessageNeighborSolicitation
@@ -216,7 +216,7 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
                 and probe.ip_src.is_unspecified
                 and probe.message.target_address == CANDIDATE
             ):
-                dad_message = cast(Icmp6NdMessageNeighborSolicitation, probe.message)
+                dad_message = probe.message
                 break
 
         self.assertIsNotNone(
@@ -271,7 +271,7 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
                 and probe.ip_src.is_unspecified
                 and probe.message.target_address == CANDIDATE
             ):
-                dad_message = cast(Icmp6NdMessageNeighborSolicitation, probe.message)
+                dad_message = probe.message
                 break
 
         self.assertIsNotNone(

@@ -208,7 +208,7 @@ class IcmpTestCase(NetworkTestCase):
         # registrations across tests if not cleared. Snapshot the prior
         # contents, then start each test with an empty dict; tearDown
         # restores so unrelated tests outside this class are unaffected.
-        self._sockets_prior = cast(dict[Any, Any], dict(stack.sockets))
+        self._sockets_prior = dict(stack.sockets)
         stack.sockets.clear()
 
         # 'stack.tcp_stack' aggregates per-stack TCP state. Replace

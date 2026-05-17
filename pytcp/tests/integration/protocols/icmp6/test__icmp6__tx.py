@@ -92,16 +92,13 @@ class TestIcmp6Tx__EchoRequest(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS,
-                icmp6__message=Icmp6MessageEchoRequest(
-                    id=12345,
-                    seq=54320,
-                    data=_ECHO_PAYLOAD,
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            icmp6__message=Icmp6MessageEchoRequest(
+                id=12345,
+                seq=54320,
+                data=_ECHO_PAYLOAD,
             ),
         )
 
@@ -185,16 +182,13 @@ class TestIcmp6Tx__EchoReply(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS,
-                icmp6__message=Icmp6MessageEchoReply(
-                    id=12345,
-                    seq=54320,
-                    data=_ECHO_PAYLOAD,
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            icmp6__message=Icmp6MessageEchoReply(
+                id=12345,
+                seq=54320,
+                data=_ECHO_PAYLOAD,
             ),
         )
 
@@ -260,15 +254,12 @@ class TestIcmp6Tx__DestUnreachablePort(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS,
-                icmp6__message=Icmp6MessageDestinationUnreachable(
-                    code=Icmp6DestinationUnreachableCode.PORT,
-                    data=_DST_UNREACH_PAYLOAD,
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            icmp6__message=Icmp6MessageDestinationUnreachable(
+                code=Icmp6DestinationUnreachableCode.PORT,
+                data=_DST_UNREACH_PAYLOAD,
             ),
         )
 
@@ -333,15 +324,12 @@ class TestIcmp6Tx__RouterSolicitation(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=IP6__MULTICAST__ALL_ROUTERS,
-                ip6__hop=255,
-                icmp6__message=Icmp6NdMessageRouterSolicitation(
-                    options=Icmp6NdOptions(Icmp6NdOptionSlla(STACK__MAC_ADDRESS)),
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=IP6__MULTICAST__ALL_ROUTERS,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageRouterSolicitation(
+                options=Icmp6NdOptions(Icmp6NdOptionSlla(STACK__MAC_ADDRESS)),
             ),
         )
 
@@ -411,29 +399,26 @@ class TestIcmp6Tx__RouterAdvertisement(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=IP6__MULTICAST__ALL_NODES,
-                ip6__hop=255,
-                icmp6__message=Icmp6NdMessageRouterAdvertisement(
-                    hop=64,
-                    flag_m=True,
-                    flag_o=True,
-                    router_lifetime=1800,
-                    reachable_time=900,
-                    retrans_timer=300,
-                    options=Icmp6NdOptions(
-                        Icmp6NdOptionSlla(STACK__MAC_ADDRESS),
-                        Icmp6NdOptionPi(
-                            flag_l=True,
-                            flag_a=False,
-                            flag_r=True,
-                            valid_lifetime=7200,
-                            preferred_lifetime=3600,
-                            prefix=STACK__IP6_HOST.network,
-                        ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=IP6__MULTICAST__ALL_NODES,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageRouterAdvertisement(
+                hop=64,
+                flag_m=True,
+                flag_o=True,
+                router_lifetime=1800,
+                reachable_time=900,
+                retrans_timer=300,
+                options=Icmp6NdOptions(
+                    Icmp6NdOptionSlla(STACK__MAC_ADDRESS),
+                    Icmp6NdOptionPi(
+                        flag_l=True,
+                        flag_a=False,
+                        flag_r=True,
+                        valid_lifetime=7200,
+                        preferred_lifetime=3600,
+                        prefix=STACK__IP6_HOST.network,
                     ),
                 ),
             ),
@@ -499,19 +484,16 @@ class TestIcmp6Tx__NeighborAdvertisement(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS,
-                ip6__hop=255,
-                icmp6__message=Icmp6NdMessageNeighborAdvertisement(
-                    target_address=STACK__IP6_HOST.address,
-                    flag_r=False,
-                    flag_s=True,
-                    flag_o=True,
-                    options=Icmp6NdOptions(Icmp6NdOptionTlla(STACK__MAC_ADDRESS)),
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
+                target_address=STACK__IP6_HOST.address,
+                flag_r=False,
+                flag_s=True,
+                flag_o=True,
+                options=Icmp6NdOptions(Icmp6NdOptionTlla(STACK__MAC_ADDRESS)),
             ),
         )
 
@@ -575,16 +557,13 @@ class TestIcmp6Tx__NeighborSolicitation(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=HOST_A__IP6_ADDRESS.solicited_node_multicast,
-                ip6__hop=255,
-                icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                    target_address=HOST_A__IP6_ADDRESS,
-                    options=Icmp6NdOptions(Icmp6NdOptionSlla(STACK__MAC_ADDRESS)),
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=HOST_A__IP6_ADDRESS.solicited_node_multicast,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                target_address=HOST_A__IP6_ADDRESS,
+                options=Icmp6NdOptions(Icmp6NdOptionSlla(STACK__MAC_ADDRESS)),
             ),
         )
 
@@ -650,16 +629,13 @@ class TestIcmp6Tx__NeighborSolicitationDad(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=IP6__UNSPECIFIED,
-                ip6__dst=STACK__IP6_HOST.address.solicited_node_multicast,
-                ip6__hop=255,
-                icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                    target_address=STACK__IP6_HOST.address,
-                    options=Icmp6NdOptions(),
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=IP6__UNSPECIFIED,
+            ip6__dst=STACK__IP6_HOST.address.solicited_node_multicast,
+            ip6__hop=255,
+            icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                target_address=STACK__IP6_HOST.address,
+                options=Icmp6NdOptions(),
             ),
         )
 
@@ -713,40 +689,37 @@ class TestIcmp6Tx__Mld2Report(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler._phtx_icmp6(
-                ip6__src=STACK__IP6_HOST.address,
-                ip6__dst=IP6__MULTICAST__MLD2_ROUTERS,
-                ip6__hop=1,
-                icmp6__message=Icmp6Mld2MessageReport(
-                    records=[
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
-                            multicast_address=Ip6Address("ff02::a"),
-                        ),
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE,
-                            multicast_address=Ip6Address("ff02::b"),
-                        ),
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE,
-                            multicast_address=Ip6Address("ff02::c"),
-                        ),
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
-                            multicast_address=Ip6Address("ff02::d"),
-                        ),
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
-                            multicast_address=Ip6Address("ff02::e"),
-                        ),
-                        Icmp6Mld2MulticastAddressRecord(
-                            type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
-                            multicast_address=Ip6Address("ff02::f"),
-                        ),
-                    ],
-                ),
+        return self._packet_handler._phtx_icmp6(
+            ip6__src=STACK__IP6_HOST.address,
+            ip6__dst=IP6__MULTICAST__MLD2_ROUTERS,
+            ip6__hop=1,
+            icmp6__message=Icmp6Mld2MessageReport(
+                records=[
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
+                        multicast_address=Ip6Address("ff02::a"),
+                    ),
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_INCLUDE,
+                        multicast_address=Ip6Address("ff02::b"),
+                    ),
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_EXCLUDE,
+                        multicast_address=Ip6Address("ff02::c"),
+                    ),
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.MODE_IS_INCLUDE,
+                        multicast_address=Ip6Address("ff02::d"),
+                    ),
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
+                        multicast_address=Ip6Address("ff02::e"),
+                    ),
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.ALLOW_NEW_SOURCES,
+                        multicast_address=Ip6Address("ff02::f"),
+                    ),
+                ],
             ),
         )
 
@@ -1186,13 +1159,10 @@ class TestIcmp6Tx__SendIcmp6Packet(IcmpTestCase):
     """
 
     def _drive(self) -> TxStatus:
-        return cast(
-            TxStatus,
-            self._packet_handler.send_icmp6_packet(
-                ip6__local_address=STACK__IP6_HOST.address,
-                ip6__remote_address=HOST_A__IP6_ADDRESS,
-                icmp6__message=Icmp6MessageEchoRequest(id=1, seq=1, data=b""),
-            ),
+        return self._packet_handler.send_icmp6_packet(
+            ip6__local_address=STACK__IP6_HOST.address,
+            ip6__remote_address=HOST_A__IP6_ADDRESS,
+            icmp6__message=Icmp6MessageEchoRequest(id=1, seq=1, data=b""),
         )
 
     def test__icmp6__tx__send_packet__tx_status(self) -> None:

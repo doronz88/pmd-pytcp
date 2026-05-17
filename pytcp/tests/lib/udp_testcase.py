@@ -37,7 +37,7 @@ ver 3.0.5
 """
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import EtherType
@@ -129,7 +129,7 @@ class UdpTestCase(NetworkTestCase):
         # prior contents, then start each test with an empty dict;
         # tearDown restores so unrelated tests outside this class
         # are unaffected.
-        self._sockets_prior = cast(dict[Any, Any], dict(stack.sockets))
+        self._sockets_prior = dict(stack.sockets)
         stack.sockets.clear()
 
         # 'stack.pmtu_cache' is the per-destination Path-MTU dict
