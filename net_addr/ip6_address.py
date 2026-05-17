@@ -145,10 +145,12 @@ class Ip6Address(IpAddress):
 
         if isinstance(address, str):
             # RFC 4007 / RFC 6874: an optional '%<zone>' suffix
-            # is the scope identifier; it must be non-empty and
-            # contain no further '%'.
+            # is the scope identifier. It is accepted only when
+            # absent, or present with a non-empty zone containing
+            # no further '%'.
             addr_part, sep, zone = address.partition("%")
-            if not (sep and (not zone or "%" in zone)) and re.search(IP6__REGEX, addr_part):
+            zone_ok = not sep or (bool(zone) and "%" not in zone)
+            if zone_ok and re.search(IP6__REGEX, addr_part):
                 try:
                     self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part))
                 except OSError:
