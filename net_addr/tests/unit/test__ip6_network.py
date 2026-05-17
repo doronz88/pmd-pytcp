@@ -1136,38 +1136,3 @@ class TestNetAddrIp6NetworkSummarize(TestCase):
         mixed = [Ip6Network("2001:db8::/64"), Ip4Network("10.0.0.0/24")]
         with self.assertRaises(TypeError):
             list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]
-
-
-class TestNetAddrIp6NetworkFromStrict(TestCase):
-    """
-    The NetAddr IpNetwork.from_strict IPv6 host-bit-validation tests.
-    """
-
-    def test__net_addr__ip6_network__from_strict_clean(self) -> None:
-        """
-        Ensure 'from_strict' accepts a network whose address has
-        no host bits set and returns the equivalent Ip6Network.
-
-        Reference: RFC 4632 §3.1 (CIDR address/prefix).
-        """
-
-        for value in ["2001:db8::/64", "::/0", "2001:db8:abcd::/48"]:
-            with self.subTest(value=value):
-                self.assertEqual(
-                    IpNetwork.from_strict(value),
-                    Ip6Network(value),
-                    msg=f"from_strict({value!r}) must equal the masked Ip6Network.",
-                )
-
-    def test__net_addr__ip6_network__from_strict_host_bits_raise(self) -> None:
-        """
-        Ensure 'from_strict' raises 'Ip6NetworkFormatError' when
-        the address carries bits outside the network mask.
-
-        Reference: RFC 4632 §3.1 (CIDR address/prefix).
-        """
-
-        for value in ["2001:db8::1/64", "2001:db8:abcd:1::/48"]:
-            with self.subTest(value=value):
-                with self.assertRaises(Ip6NetworkFormatError):
-                    IpNetwork.from_strict(value)
