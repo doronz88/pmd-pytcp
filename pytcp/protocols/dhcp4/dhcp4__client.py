@@ -211,7 +211,7 @@ class Dhcp4Client(Subsystem):
         The optional 'address_api' is the kernel/userspace
         boundary surface (Phase-3 north-star); on BOUND transition
         (daemon mode only) the lifecycle calls
-        'address_api.add_host(...)' to install the leased
+        'address_api.add_ifaddr(...)' to install the leased
         Ip4IfAddr on the stack's address list. Sync 'fetch()' does
         not touch the API — the caller owns the returned lease.
         """
@@ -298,7 +298,7 @@ class Dhcp4Client(Subsystem):
         this in 'while not stop_event'.
 
         Commit-B scope: INIT runs '_do_init_to_bound', installs
-        the lease on the stack via 'address_api.add_host', emits
+        the lease on the stack via 'address_api.add_ifaddr', emits
         the RFC 5227 §2.3 announcements via the
         'arp_dad_announcer' callback, signals
         'self._event__bound', and transitions to BOUND. The
@@ -345,7 +345,7 @@ class Dhcp4Client(Subsystem):
 
         self._lease = lease
         if self._address_api is not None:
-            self._address_api.add_host(ip4_host=lease.ip4_host)
+            self._address_api.add_ifaddr(ip4_ifaddr=lease.ip4_host)
         if self._arp_dad_announcer is not None:
             self._arp_dad_announcer(lease.ip4_host.address)
         write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
@@ -654,7 +654,7 @@ class Dhcp4Client(Subsystem):
             # leave the cache stale across long uptime spans.
             write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, outcome)
         else:
-            # Cross-IP RENEW/REBIND: atomic 'replace_host' swap
+            # Cross-IP RENEW/REBIND: atomic 'replace_ifaddr' swap
             # via the address API. The 'abort_bound_sessions'
             # flag is sysctl-gated so operators can opt into
             # Linux-parity silent-rot behaviour
@@ -666,9 +666,9 @@ class Dhcp4Client(Subsystem):
                 f"(lease_time={outcome.lease_time__sec}s)",
             )
             if self._address_api is not None:
-                self._address_api.replace_host(
+                self._address_api.replace_ifaddr(
                     old_address=prior.ip4_host.address,
-                    new_host=outcome.ip4_host,
+                    new_ifaddr=outcome.ip4_host,
                     abort_bound_sessions=bool(
                         dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                     ),
@@ -689,7 +689,7 @@ class Dhcp4Client(Subsystem):
         """
 
         if remove_lease_host and self._lease is not None and self._address_api is not None:
-            self._address_api.remove_host(
+            self._address_api.remove_ifaddr(
                 ip4_address=self._lease.ip4_host.address,
                 abort_bound_sessions=bool(
                     dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
@@ -1123,7 +1123,7 @@ class Dhcp4Client(Subsystem):
                     f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
                 )
             if self._address_api is not None:
-                self._address_api.remove_host(
+                self._address_api.remove_ifaddr(
                     ip4_address=self._lease.ip4_host.address,
                     abort_bound_sessions=bool(
                         dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,

@@ -68,7 +68,7 @@ class ClaimResult:
     """
     Outcome of an 'Ip4AddressApi.claim_with_acd' call —
     composite of an RFC 5227 §2.1.1 probe + §2.3 announce +
-    'add_host' install. 'success=True' means probe was clean,
+    'add_ifaddr' install. 'success=True' means probe was clean,
     announce burst fired, and the host was installed.
     'success=False' means probe observed a conflict; the
     address is NOT installed and the conflict source is
@@ -154,18 +154,18 @@ class Ip4AddressApi:
         self._packet_handler = packet_handler
         self._subscriptions = _Subscriptions()
 
-    def add_host(self, *, ip4_host: Ip4IfAddr) -> None:
+    def add_ifaddr(self, *, ip4_ifaddr: Ip4IfAddr) -> None:
         """
-        Install 'ip4_host' on the stack's IPv4 address list —
+        Install 'ip4_ifaddr' on the stack's IPv4 address list —
         Linux 'RTM_NEWADDR' / 'ip addr add' equivalent.
         Idempotent against duplicate-address installs (the
         caller's responsibility; this method does not de-dup).
         """
 
-        self._packet_handler._ip4_ifaddr.append(ip4_host)
-        __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_host}")
+        self._packet_handler._ip4_ifaddr.append(ip4_ifaddr)
+        __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_ifaddr}")
 
-    def remove_host(
+    def remove_ifaddr(
         self,
         *,
         ip4_address: Ip4Address,
@@ -198,15 +198,15 @@ class Ip4AddressApi:
             f"({removed} host(s); abort_bound_sessions={abort_bound_sessions})",
         )
 
-    def replace_host(
+    def replace_ifaddr(
         self,
         *,
         old_address: Ip4Address,
-        new_host: Ip4IfAddr,
+        new_ifaddr: Ip4IfAddr,
         abort_bound_sessions: bool = True,
     ) -> None:
         """
-        Atomic-ish swap: install 'new_host' BEFORE removing the
+        Atomic-ish swap: install 'new_ifaddr' BEFORE removing the
         Ip4IfAddr(es) keyed by 'old_address'. The transient overlap
         parallels Linux's 'RTM_NEWADDR' → 'RTM_DELADDR' ordering
         (RTNETLINK guarantees the kernel processes them in the
@@ -216,16 +216,16 @@ class Ip4AddressApi:
         TCP sessions bound to 'old_address' are aborted per
         'abort_bound_sessions' once the new address is installed,
         matching the RFC 5227 §2.4-final SHOULD policy
-        Ip4AddressApi.remove_host already applies.
+        Ip4AddressApi.remove_ifaddr already applies.
         """
 
-        self.add_host(ip4_host=new_host)
-        self.remove_host(
+        self.add_ifaddr(ip4_ifaddr=new_ifaddr)
+        self.remove_ifaddr(
             ip4_address=old_address,
             abort_bound_sessions=abort_bound_sessions,
         )
 
-    def list_ip4_hosts(self) -> tuple[Ip4IfAddr, ...]:
+    def list_ip4_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
         """
         Return a read-only copy-by-value snapshot of the stack's
         IPv4 host list. Linux equivalent: reading
@@ -287,11 +287,11 @@ class Ip4AddressApi:
         handler = cast("PacketHandlerL2", self._packet_handler)
         handler._arp_dad_announce_address(address)
 
-    def claim_with_acd(self, *, ip4_host: Ip4IfAddr) -> ClaimResult:
+    def claim_with_acd(self, *, ip4_ifaddr: Ip4IfAddr) -> ClaimResult:
         """
         Composite claim — probe + announce + install in one
         synchronous call. On clean probe: announce burst fires,
-        host is installed via 'add_host', and success=True is
+        host is installed via 'add_ifaddr', and success=True is
         returned. On conflict: announce does NOT fire, host is
         NOT installed, and success=False is returned with the
         conflicting peer MAC.
@@ -301,16 +301,16 @@ class Ip4AddressApi:
         library entry point).
         """
 
-        probe_result = self.probe(address=ip4_host.address)
+        probe_result = self.probe(address=ip4_ifaddr.address)
         if not probe_result.success:
             return ClaimResult(
                 success=False,
-                address=ip4_host.address,
+                address=ip4_ifaddr.address,
                 conflict_sender_mac=probe_result.conflict_sender_mac,
             )
-        self.announce(address=ip4_host.address)
-        self.add_host(ip4_host=ip4_host)
-        return ClaimResult(success=True, address=ip4_host.address)
+        self.announce(address=ip4_ifaddr.address)
+        self.add_ifaddr(ip4_ifaddr=ip4_ifaddr)
+        return ClaimResult(success=True, address=ip4_ifaddr.address)
 
     def send_gratuitous_arp(self, *, address: Ip4Address) -> None:
         """

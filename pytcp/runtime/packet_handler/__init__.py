@@ -1869,7 +1869,7 @@ class PacketHandlerL2(
         commit B, the DHCPv4 path is owned by 'stack.dhcp4_client'
         (a 'Subsystem' that 'stack.start()' brings up after the
         packet handler) — the lifecycle calls
-        'stack.address.add_host(...)' on its BOUND transition; this
+        'stack.address.add_ifaddr(...)' on its BOUND transition; this
         method is not the integration point for that.
         """
 
@@ -1883,7 +1883,7 @@ class PacketHandlerL2(
         # RFC 5227 §2.1.1 probe / §2.3 announce helpers so this
         # path doesn't reach into '_arp_dad_*' directly.
         for ip4_host in list(self._ip4_ifaddr_candidate):
-            result = stack.address.claim_with_acd(ip4_host=ip4_host)
+            result = stack.address.claim_with_acd(ip4_ifaddr=ip4_host)
             self._ip4_ifaddr_candidate.remove(ip4_host)
             if result.success:
                 __debug__ and log(

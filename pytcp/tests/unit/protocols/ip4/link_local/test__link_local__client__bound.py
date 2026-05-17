@@ -173,7 +173,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         cast(MagicMock, self._address_api).abort_bound_tcp_sessions.assert_called_once_with(
             address=bound_address,
         )
-        cast(MagicMock, self._address_api).remove_host.assert_called_once()
+        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once()
         cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_called_once()
         self.assertEqual(
             self._client._state,
@@ -215,7 +215,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
             msg="Two conflicts outside the window must both trigger defends.",
         )
         cast(MagicMock, self._address_api).abort_bound_tcp_sessions.assert_not_called()
-        cast(MagicMock, self._address_api).remove_host.assert_not_called()
+        cast(MagicMock, self._address_api).remove_ifaddr.assert_not_called()
         cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_not_called()
         self.assertEqual(
             self._client._state,

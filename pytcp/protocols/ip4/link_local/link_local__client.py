@@ -206,7 +206,7 @@ class Ip4LinkLocal(Subsystem):
 
         assert self._candidate is not None, "_do_claiming requires a candidate from _do_init"
 
-        result = self._address_api.claim_with_acd(ip4_host=self._candidate)
+        result = self._address_api.claim_with_acd(ip4_ifaddr=self._candidate)
         if result.success:
             self._conflict_count = 0
             self._defend_history = []
@@ -296,7 +296,7 @@ class Ip4LinkLocal(Subsystem):
             f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
         )
         self._address_api.abort_bound_tcp_sessions(address=event.address)
-        self._address_api.remove_host(ip4_address=event.address)
+        self._address_api.remove_ifaddr(ip4_address=event.address)
         if self._subscription is not None:
             self._address_api.unsubscribe_conflicts(handle=self._subscription)
             self._subscription = None
@@ -374,7 +374,7 @@ class Ip4LinkLocal(Subsystem):
                 "stack",
                 f"<lg>Link-Local</>: releasing {self._candidate.address} " f"(DHCP took over)",
             )
-            self._address_api.remove_host(ip4_address=self._candidate.address)
+            self._address_api.remove_ifaddr(ip4_address=self._candidate.address)
         self._candidate = None
         self._defend_history.clear()
         self._conflict_count = 0

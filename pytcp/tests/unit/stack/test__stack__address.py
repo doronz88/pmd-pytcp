@@ -91,7 +91,7 @@ class _FakeRegistry:
 
 class TestIp4AddressApiAddHost(TestCase):
     """
-    'Ip4AddressApi.add_host' installs an Ip4IfAddr on the stack's
+    'Ip4AddressApi.add_ifaddr' installs an Ip4IfAddr on the stack's
     address list.
     """
 
@@ -108,7 +108,7 @@ class TestIp4AddressApiAddHost(TestCase):
 
     def test__ip4_address_api__add_host_appends_to_packet_handler_list(self) -> None:
         """
-        Ensure 'add_host' appends the supplied 'Ip4IfAddr' to the
+        Ensure 'add_ifaddr' appends the supplied 'Ip4IfAddr' to the
         packet handler's '_ip4_ifaddr' list.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -116,18 +116,18 @@ class TestIp4AddressApiAddHost(TestCase):
 
         host = Ip4IfAddr("10.0.0.5/24")
 
-        self._api.add_host(ip4_host=host)
+        self._api.add_ifaddr(ip4_ifaddr=host)
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [host],
-            msg="add_host must append the supplied Ip4IfAddr to the packet handler list.",
+            msg="add_ifaddr must append the supplied Ip4IfAddr to the packet handler list.",
         )
 
     def test__ip4_address_api__add_host_preserves_existing_hosts(self) -> None:
         """
-        Ensure 'add_host' is additive — pre-existing hosts on the
-        packet handler list survive an add_host call. Mirrors
+        Ensure 'add_ifaddr' is additive — pre-existing hosts on the
+        packet handler list survive an add_ifaddr call. Mirrors
         Linux RTM_NEWADDR semantics (additive, not replacing).
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -137,18 +137,18 @@ class TestIp4AddressApiAddHost(TestCase):
         self._packet_handler._ip4_ifaddr.append(existing)
 
         new = Ip4IfAddr("10.0.0.5/24")
-        self._api.add_host(ip4_host=new)
+        self._api.add_ifaddr(ip4_ifaddr=new)
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [existing, new],
-            msg="add_host must preserve pre-existing hosts.",
+            msg="add_ifaddr must preserve pre-existing hosts.",
         )
 
 
 class TestIp4AddressApiRemoveHost(TestCase):
     """
-    'Ip4AddressApi.remove_host' removes hosts keyed by address and
+    'Ip4AddressApi.remove_ifaddr' removes hosts keyed by address and
     optionally ABORTs bound TCP sessions per the RFC 5227 §2.4-final
     SHOULD (deliberate deviation from Linux's silent-rot).
     """
@@ -169,7 +169,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
 
     def test__ip4_address_api__remove_host_drops_matching_address(self) -> None:
         """
-        Ensure 'remove_host' filters out every Ip4IfAddr whose
+        Ensure 'remove_ifaddr' filters out every Ip4IfAddr whose
         '.address' equals the supplied 'ip4_address' and leaves
         other hosts intact.
 
@@ -177,17 +177,17 @@ class TestIp4AddressApiRemoveHost(TestCase):
         """
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.remove_host(ip4_address=Ip4Address("10.0.0.5"))
+            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._other_host],
-            msg="remove_host must drop only the host matching the supplied address.",
+            msg="remove_ifaddr must drop only the host matching the supplied address.",
         )
 
     def test__ip4_address_api__remove_host_default_aborts_bound_sessions(self) -> None:
         """
-        Ensure 'remove_host' defaults to ABORTing TCP sessions
+        Ensure 'remove_ifaddr' defaults to ABORTing TCP sessions
         bound to the address — the deliberate deviation from
         Linux's silent-rot behaviour.
 
@@ -195,13 +195,13 @@ class TestIp4AddressApiRemoveHost(TestCase):
         """
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
-            self._api.remove_host(ip4_address=Ip4Address("10.0.0.5"))
+            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
 
         mock_abort.assert_called_once_with(Ip4Address("10.0.0.5"))
 
     def test__ip4_address_api__remove_host_abort_false_skips_abort(self) -> None:
         """
-        Ensure 'remove_host(abort_bound_sessions=False)' performs
+        Ensure 'remove_ifaddr(abort_bound_sessions=False)' performs
         the address removal without aborting TCP sessions —
         Linux-parity "silent rot" semantic for diagnostics or
         for callers with their own teardown discipline.
@@ -210,7 +210,7 @@ class TestIp4AddressApiRemoveHost(TestCase):
         """
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
-            self._api.remove_host(
+            self._api.remove_ifaddr(
                 ip4_address=Ip4Address("10.0.0.5"),
                 abort_bound_sessions=False,
             )
@@ -219,12 +219,12 @@ class TestIp4AddressApiRemoveHost(TestCase):
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._other_host],
-            msg="remove_host(abort=False) must still remove the address from the host list.",
+            msg="remove_ifaddr(abort=False) must still remove the address from the host list.",
         )
 
     def test__ip4_address_api__remove_host_unknown_address_is_noop(self) -> None:
         """
-        Ensure 'remove_host' for an address not present on the
+        Ensure 'remove_ifaddr' for an address not present on the
         packet handler list is a no-op (still aborts any matching
         TCP sessions, but the list filter naturally leaves
         everything intact).
@@ -233,18 +233,18 @@ class TestIp4AddressApiRemoveHost(TestCase):
         """
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.remove_host(ip4_address=Ip4Address("10.0.0.99"))
+            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.99"))
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._target_host, self._other_host],
-            msg="remove_host for an unknown address must leave the host list unchanged.",
+            msg="remove_ifaddr for an unknown address must leave the host list unchanged.",
         )
 
 
 class TestIp4AddressApiReplaceHost(TestCase):
     """
-    'Ip4AddressApi.replace_host' atomically swaps an old address
+    'Ip4AddressApi.replace_ifaddr' atomically swaps an old address
     for a new Ip4IfAddr — RTM_NEWADDR-before-RTM_DELADDR ordering.
     """
 
@@ -263,9 +263,9 @@ class TestIp4AddressApiReplaceHost(TestCase):
 
     def test__ip4_address_api__replace_host_installs_new_and_removes_old(self) -> None:
         """
-        Ensure 'replace_host' ends with the new host installed
+        Ensure 'replace_ifaddr' ends with the new host installed
         and the old address removed — net effect equivalent to
-        'remove_host(old) + add_host(new)' but with the install-
+        'remove_ifaddr(old) + add_ifaddr(new)' but with the install-
         before-remove ordering Linux RTNETLINK guarantees.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -274,20 +274,20 @@ class TestIp4AddressApiReplaceHost(TestCase):
         new_host = Ip4IfAddr("10.0.0.7/24")
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.replace_host(
+            self._api.replace_ifaddr(
                 old_address=Ip4Address("10.0.0.5"),
-                new_host=new_host,
+                new_ifaddr=new_host,
             )
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [new_host],
-            msg="replace_host must leave only the new host installed; the old address is removed.",
+            msg="replace_ifaddr must leave only the new host installed; the old address is removed.",
         )
 
     def test__ip4_address_api__replace_host_installs_new_before_removing_old(self) -> None:
         """
-        Ensure 'replace_host' installs the new host BEFORE
+        Ensure 'replace_ifaddr' installs the new host BEFORE
         removing the old (matching Linux RTM_NEWADDR →
         RTM_DELADDR ordering). The transient overlap is observable
         by stubbing '_abort_bound_tcp_sessions' to capture the
@@ -303,29 +303,29 @@ class TestIp4AddressApiReplaceHost(TestCase):
             snapshot_at_abort.extend(self._packet_handler._ip4_ifaddr)
 
         with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions", side_effect=_snapshot):
-            self._api.replace_host(
+            self._api.replace_ifaddr(
                 old_address=Ip4Address("10.0.0.5"),
-                new_host=new_host,
+                new_ifaddr=new_host,
             )
 
         # At the moment '_abort_bound_tcp_sessions' fired (during
-        # the remove_host half of the swap), BOTH old and new must
+        # the remove_ifaddr half of the swap), BOTH old and new must
         # have been present on the list.
         self.assertIn(
             new_host,
             snapshot_at_abort,
-            msg="replace_host must install the new host BEFORE the abort-and-remove of the old.",
+            msg="replace_ifaddr must install the new host BEFORE the abort-and-remove of the old.",
         )
         self.assertIn(
             self._old_host,
             snapshot_at_abort,
-            msg="replace_host must NOT have removed the old host before the abort fired.",
+            msg="replace_ifaddr must NOT have removed the old host before the abort fired.",
         )
 
 
 class TestIp4AddressApiListIp4Hosts(TestCase):
     """
-    'Ip4AddressApi.list_ip4_hosts' returns a read-only snapshot of
+    'Ip4AddressApi.list_ip4_ifaddrs' returns a read-only snapshot of
     the stack's IPv4 address list.
     """
 
@@ -343,7 +343,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
 
     def test__ip4_address_api__list_returns_tuple_copy(self) -> None:
         """
-        Ensure 'list_ip4_hosts' returns a tuple (immutable) snapshot
+        Ensure 'list_ip4_ifaddrs' returns a tuple (immutable) snapshot
         — the caller cannot mutate stack state through it. Matches
         the Phase-3 "introspection is read-only / copy-by-value"
         contract from CLAUDE.md.
@@ -351,12 +351,12 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        snapshot = self._api.list_ip4_hosts()
+        snapshot = self._api.list_ip4_ifaddrs()
 
         self.assertIsInstance(
             snapshot,
             tuple,
-            msg="list_ip4_hosts must return a tuple (immutable snapshot).",
+            msg="list_ip4_ifaddrs must return a tuple (immutable snapshot).",
         )
         self.assertEqual(
             len(snapshot),
@@ -367,13 +367,13 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
     def test__ip4_address_api__list_decouples_from_underlying_list(self) -> None:
         """
         Ensure mutating the underlying packet handler list AFTER
-        calling 'list_ip4_hosts' does NOT mutate the returned
+        calling 'list_ip4_ifaddrs' does NOT mutate the returned
         snapshot — the tuple is a copy, not a view.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        snapshot = self._api.list_ip4_hosts()
+        snapshot = self._api.list_ip4_ifaddrs()
         before_len = len(snapshot)
 
         self._packet_handler._ip4_ifaddr.clear()
@@ -579,7 +579,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
     def test__ip4_address_api__claim_clean_installs_and_announces(self) -> None:
         """
         Ensure a clean probe leads to: announce burst fires,
-        host is installed via 'add_host', and the return value
+        host is installed via 'add_ifaddr', and the return value
         reports success.
 
         Reference: RFC 5227 §2.1.1 + §2.3 (probe-then-announce on success).
@@ -588,7 +588,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         host = Ip4IfAddr("169.254.42.42/16")
         self._packet_handler.probe_result = True
 
-        result = self._api.claim_with_acd(ip4_host=host)
+        result = self._api.claim_with_acd(ip4_ifaddr=host)
 
         self.assertTrue(
             result.success,
@@ -612,7 +612,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         self.assertIn(
             host,
             self._packet_handler._ip4_ifaddr,
-            msg="Clean claim must install the host via add_host.",
+            msg="Clean claim must install the host via add_ifaddr.",
         )
 
     def test__ip4_address_api__claim_conflict_does_not_install(self) -> None:
@@ -629,7 +629,7 @@ class TestIp4AddressApiClaimWithAcd(TestCase):
         self._packet_handler.probe_result = False
         self._packet_handler.probe_peer_mac = peer_mac
 
-        result = self._api.claim_with_acd(ip4_host=host)
+        result = self._api.claim_with_acd(ip4_ifaddr=host)
 
         self.assertFalse(
             result.success,

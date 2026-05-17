@@ -173,9 +173,9 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         self._dhcp_bound = True
         client._subsystem_loop()
 
-        # Verify the release path: unsubscribe, remove_host, halted.
+        # Verify the release path: unsubscribe, remove_ifaddr, halted.
         cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_called_once()
-        cast(MagicMock, self._address_api).remove_host.assert_called_once()
+        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once()
         self.assertEqual(
             client._state,
             Ip4LinkLocalState.HALTED,
