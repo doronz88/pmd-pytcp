@@ -60,14 +60,14 @@ per-file-ignores = [
 
 [tool.mypy]
 python_version = "3.14"
-check_untyped_defs = true
-disallow_untyped_defs = true
+strict = true
+# Source modules deliberately carry no __all__ (source_files.md
+# §2.3 restricts __all__ to package __init__.py), so the strict
+# bundle's no_implicit_reexport is structurally incompatible with
+# the codebase's module convention. Keep implicit re-export on;
+# every other strict flag is enforced.
+implicit_reexport = true
 disallow_any_unimported = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_return_any = true
-warn_unused_ignores = true
 show_error_codes = true
 
 [tool.pylint.master]
