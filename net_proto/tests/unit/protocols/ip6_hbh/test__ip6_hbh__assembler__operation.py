@@ -32,6 +32,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__pad1 import (
@@ -87,7 +88,7 @@ class TestIp6HbhAssemblerOperation(TestCase):
             msg="8-byte total HBH must yield hdr_ext_len=0 (RFC 8200 §4.3).",
         )
 
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
         # HBH wire frame (8 bytes, header-only):
         #   Bytes 0-1 : 06 00       -> next=TCP, hdr_ext_len=0
@@ -112,7 +113,7 @@ class TestIp6HbhAssemblerOperation(TestCase):
             ip6_hbh__options=opts,
             ip6_hbh__payload=b"",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
         # HBH wire frame (8 bytes):
         #   Bytes 0-1 : 11 00       -> next=UDP, hdr_ext_len=0
@@ -155,7 +156,7 @@ class TestIp6HbhAssemblerOperation(TestCase):
             ip6_hbh__options=opts,
             ip6_hbh__payload=b"PAYLOAD",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
 
         self.assertEqual(len(buffers), 3, msg="assemble must append exactly 3 buffers.")

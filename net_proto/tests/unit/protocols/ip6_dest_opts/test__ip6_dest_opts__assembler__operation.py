@@ -32,6 +32,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__assembler import Ip6DestOptsAssembler
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__pad1 import (
@@ -87,7 +88,7 @@ class TestIp6DestOptsAssemblerOperation(TestCase):
             msg="8-byte total HBH must yield hdr_ext_len=0 (RFC 8200 §4.6).",
         )
 
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
         # DestOpts wire frame (8 bytes, header-only):
         #   Bytes 0-1 : 06 00       -> next=TCP, hdr_ext_len=0
@@ -112,7 +113,7 @@ class TestIp6DestOptsAssemblerOperation(TestCase):
             ip6_dest_opts__options=opts,
             ip6_dest_opts__payload=b"",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
         # DestOpts wire frame (8 bytes):
         #   Bytes 0-1 : 11 00       -> next=UDP, hdr_ext_len=0
@@ -155,7 +156,7 @@ class TestIp6DestOptsAssemblerOperation(TestCase):
             ip6_dest_opts__options=opts,
             ip6_dest_opts__payload=b"PAYLOAD",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
 
         self.assertEqual(len(buffers), 3, msg="assemble must append exactly 3 buffers.")

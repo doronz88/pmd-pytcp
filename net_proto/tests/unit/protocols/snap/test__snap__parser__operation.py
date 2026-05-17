@@ -39,6 +39,7 @@ from net_proto import (
     SnapOui,
     SnapParser,
 )
+from net_proto.lib.buffer import Buffer
 
 
 class TestSnapParserOperation(TestCase):
@@ -175,7 +176,7 @@ class TestSnapParserOperation(TestCase):
             snap__pid=int(SnapCiscoProtocol.UDLD),
             snap__payload=b"udld-tlv",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         original.assemble(buffers)
         serialized = b"".join(bytes(b) for b in buffers)
 

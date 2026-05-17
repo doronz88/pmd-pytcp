@@ -32,6 +32,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
+from net_proto.lib.buffer import Buffer
 from net_proto.lib.enums import IpProto
 from net_proto.protocols.ip6_routing.ip6_routing__assembler import (
     Ip6RoutingAssembler,
@@ -79,7 +80,7 @@ class TestIp6RoutingAssemblerOperation(TestCase):
             msg="8-byte total RH must yield hdr_ext_len=0.",
         )
 
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
         # Routing wire frame (8 bytes, header-only):
         #   Bytes 0-3 : 06 00 04 02 -> next=TCP, hdr_ext_len=0, RH4, sl=2
@@ -114,7 +115,7 @@ class TestIp6RoutingAssemblerOperation(TestCase):
             ip6_routing__data=b"\xaa\xbb\xcc\xdd",
             ip6_routing__payload=b"PAYLOAD",
         )
-        buffers: list = []
+        buffers: list[Buffer] = []
         asm.assemble(buffers)
 
         self.assertEqual(len(buffers), 3, msg="assemble must append exactly 3 buffers.")
