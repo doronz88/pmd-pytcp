@@ -55,6 +55,16 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
     _address: A
     _mask: M
 
+    @abstractmethod
+    def __init__(self, network: Self | tuple[A, M] | str | None = None, /) -> None:
+        """
+        Initialize the IP network object. Concrete subclasses
+        bind the version-specific address / mask types and the
+        accepted input forms.
+        """
+
+        raise NotImplementedError
+
     @override
     def __str__(self) -> str:
         """
@@ -208,37 +218,42 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         return type(self)((type(self._address)(int(self._address)), type(self._mask)(self._mask_int(new_prefix))))
 
-    def overlaps(self, other: Self, /) -> bool:
+    def overlaps(self, other: object, /) -> bool:
         """
         Check whether this network shares any address with
-        another network.
+        another network. A non-network or cross-version operand
+        compares as non-overlapping.
         """
 
         return (
-            self.version == other.version
+            isinstance(other, IpNetwork)
+            and self.version == other.version
             and int(self._address) <= int(other.last)
             and int(other.address) <= int(self.last)
         )
 
-    def subnet_of(self, other: Self, /) -> bool:
+    def subnet_of(self, other: object, /) -> bool:
         """
         Check whether this network is fully contained within
-        another network.
+        another network. A non-network or cross-version operand
+        compares as not-contained.
         """
 
         return (
-            self.version == other.version
+            isinstance(other, IpNetwork)
+            and self.version == other.version
             and int(other.address) <= int(self._address)
             and int(self.last) <= int(other.last)
         )
 
-    def supernet_of(self, other: Self, /) -> bool:
+    def supernet_of(self, other: object, /) -> bool:
         """
         Check whether this network fully contains another
-        network.
+        network. A non-network or cross-version operand
+        compares as not-contained.
         """
 
-        return other.subnet_of(self)
+        return isinstance(other, IpNetwork) and other.subnet_of(self)
 
     def _mask_int(self, prefixlen: int, /) -> int:
         """
