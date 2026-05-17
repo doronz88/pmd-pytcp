@@ -2065,3 +2065,50 @@ class TestNetAddrIp4AddressOrdering(TestCase):
 
         with self.assertRaises(TypeError, msg="Ip4Address < Ip6Address must raise TypeError."):
             _ = Ip4Address("10.0.0.1") < Ip6Address("2001:db8::1")
+
+
+class TestNetAddrIp4AddressArithmetic(TestCase):
+    """
+    The NetAddr IPv4 address arithmetic tests.
+    """
+
+    def test__net_addr__ip4_address__arithmetic(self) -> None:
+        """
+        Ensure 'address + int' / 'address - int' yield the
+        offset IPv4 address (stdlib-exact: int operand only).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Address("10.0.0.10")
+        self.assertEqual(a + 1, Ip4Address("10.0.0.11"), msg="address + 1 must advance by one.")
+        self.assertEqual(a - 1, Ip4Address("10.0.0.9"), msg="address - 1 must retreat by one.")
+        self.assertEqual(a + 0, a, msg="address + 0 must be unchanged.")
+        self.assertEqual(a + 256, Ip4Address("10.0.1.10"), msg="address + 256 must carry across octets.")
+        self.assertIsInstance(a + 1, Ip4Address, msg="Arithmetic must return an Ip4Address.")
+
+    def test__net_addr__ip4_address__arithmetic__overflow_raises(self) -> None:
+        """
+        Ensure arithmetic past the IPv4 address space raises the
+        net_addr format error (over- and under-flow).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(Ip4AddressFormatError, msg="Overflow past 255.255.255.255 must raise."):
+            _ = Ip4Address("255.255.255.255") + 1
+        with self.assertRaises(Ip4AddressFormatError, msg="Underflow below 0.0.0.0 must raise."):
+            _ = Ip4Address("0.0.0.0") - 1
+
+    def test__net_addr__ip4_address__arithmetic__non_int_raises(self) -> None:
+        """
+        Ensure address arithmetic with a non-int operand raises
+        TypeError (no address+address, no string operand).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="address + address must raise TypeError."):
+            _ = Ip4Address("10.0.0.1") + Ip4Address("10.0.0.2")
+        with self.assertRaises(TypeError, msg="address + str must raise TypeError."):
+            _ = Ip4Address("10.0.0.1") + "1"

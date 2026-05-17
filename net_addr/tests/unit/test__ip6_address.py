@@ -1592,3 +1592,47 @@ class TestNetAddrIp6AddressOrdering(TestCase):
 
         with self.assertRaises(TypeError, msg="Ip6Address < Ip4Address must raise TypeError."):
             _ = Ip6Address("2001:db8::1") < Ip4Address("10.0.0.1")
+
+
+class TestNetAddrIp6AddressArithmetic(TestCase):
+    """
+    The NetAddr IPv6 address arithmetic tests.
+    """
+
+    def test__net_addr__ip6_address__arithmetic(self) -> None:
+        """
+        Ensure 'address + int' / 'address - int' yield the
+        offset IPv6 address (stdlib-exact: int operand only).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("2001:db8::10")
+        self.assertEqual(a + 1, Ip6Address("2001:db8::11"), msg="address + 1 must advance by one.")
+        self.assertEqual(a - 1, Ip6Address("2001:db8::f"), msg="address - 1 must retreat by one.")
+        self.assertEqual(a + 0, a, msg="address + 0 must be unchanged.")
+        self.assertIsInstance(a + 1, Ip6Address, msg="Arithmetic must return an Ip6Address.")
+
+    def test__net_addr__ip6_address__arithmetic__overflow_raises(self) -> None:
+        """
+        Ensure arithmetic past the IPv6 address space raises the
+        net_addr format error (over- and under-flow).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(Ip6AddressFormatError, msg="Overflow past the max IPv6 address must raise."):
+            _ = Ip6Address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff") + 1
+        with self.assertRaises(Ip6AddressFormatError, msg="Underflow below :: must raise."):
+            _ = Ip6Address("::") - 1
+
+    def test__net_addr__ip6_address__arithmetic__non_int_raises(self) -> None:
+        """
+        Ensure address arithmetic with a non-int operand raises
+        TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="address + address must raise TypeError."):
+            _ = Ip6Address("2001:db8::1") + Ip6Address("2001:db8::2")

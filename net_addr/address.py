@@ -45,6 +45,19 @@ class Address(Base, ABC):
 
     _address: int
 
+    @abstractmethod
+    def __init__(
+        self,
+        address: Self | str | bytes | bytearray | memoryview | int | None = None,
+        /,
+    ) -> None:
+        """
+        Initialize the network address object. Concrete
+        subclasses bind the accepted input forms.
+        """
+
+        raise NotImplementedError
+
     def __int__(self) -> int:
         """
         Get the network address as integer.
@@ -123,6 +136,30 @@ class Address(Base, ABC):
             return NotImplemented
 
         return self._address >= other._address
+
+    def __add__(self, other: object, /) -> Self:
+        """
+        Get the network address advanced by an integer offset.
+        An out-of-range result raises the address-type format
+        error (delegated to the constructor).
+        """
+
+        if not isinstance(other, int):
+            return NotImplemented
+
+        return type(self)(self._address + other)
+
+    def __sub__(self, other: object, /) -> Self:
+        """
+        Get the network address retreated by an integer offset.
+        An out-of-range result raises the address-type format
+        error (delegated to the constructor).
+        """
+
+        if not isinstance(other, int):
+            return NotImplemented
+
+        return type(self)(self._address - other)
 
     @property
     def unspecified(self) -> Self:

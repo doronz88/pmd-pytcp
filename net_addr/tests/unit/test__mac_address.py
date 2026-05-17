@@ -983,3 +983,46 @@ class TestNetAddrMacAddressOrdering(TestCase):
 
         with self.assertRaises(TypeError, msg="MacAddress < int must raise TypeError."):
             _ = MacAddress("00:00:00:00:00:01") < 5
+
+
+class TestNetAddrMacAddressArithmetic(TestCase):
+    """
+    The NetAddr MAC address arithmetic tests.
+    """
+
+    def test__net_addr__mac_address__arithmetic(self) -> None:
+        """
+        Ensure 'address + int' / 'address - int' yield the
+        offset MAC address (stdlib-exact: int operand only).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("00:00:00:00:00:10")
+        self.assertEqual(a + 1, MacAddress("00:00:00:00:00:11"), msg="address + 1 must advance by one.")
+        self.assertEqual(a - 1, MacAddress("00:00:00:00:00:0f"), msg="address - 1 must retreat by one.")
+        self.assertIsInstance(a + 1, MacAddress, msg="Arithmetic must return a MacAddress.")
+
+    def test__net_addr__mac_address__arithmetic__overflow_raises(self) -> None:
+        """
+        Ensure arithmetic past the MAC address space raises the
+        net_addr format error.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(MacAddressFormatError, msg="Overflow past ff:ff:ff:ff:ff:ff must raise."):
+            _ = MacAddress("ff:ff:ff:ff:ff:ff") + 1
+        with self.assertRaises(MacAddressFormatError, msg="Underflow below 00:00:00:00:00:00 must raise."):
+            _ = MacAddress("00:00:00:00:00:00") - 1
+
+    def test__net_addr__mac_address__arithmetic__non_int_raises(self) -> None:
+        """
+        Ensure MAC arithmetic with a non-int operand raises
+        TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="address + address must raise TypeError."):
+            _ = MacAddress("00:00:00:00:00:01") + MacAddress("00:00:00:00:00:02")
