@@ -35,7 +35,7 @@ ver 3.0.5
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_32__MAX
 from pytcp.protocols.tcp.tcp__seq import (

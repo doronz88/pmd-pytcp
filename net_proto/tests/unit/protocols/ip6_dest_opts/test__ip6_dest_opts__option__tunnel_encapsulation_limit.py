@@ -34,7 +34,7 @@ ver 3.0.5
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_8__MAX
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option import (

@@ -35,7 +35,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip6Address
 from net_proto import Icmp6IntegrityError, Icmp6Parser, Ip6Parser, PacketRx

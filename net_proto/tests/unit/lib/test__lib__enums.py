@@ -34,7 +34,7 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.enums import EtherType, IpProto
 from net_proto.lib.proto import Proto

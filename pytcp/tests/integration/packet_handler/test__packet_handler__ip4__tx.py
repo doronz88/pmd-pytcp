@@ -36,7 +36,7 @@ ver 3.0.5
 
 from typing import Any, override
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address
 from net_proto import (

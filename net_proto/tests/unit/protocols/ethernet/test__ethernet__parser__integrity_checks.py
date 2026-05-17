@@ -37,7 +37,7 @@ ver 3.0.5
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto import (
     ETHERNET__HEADER__LEN,

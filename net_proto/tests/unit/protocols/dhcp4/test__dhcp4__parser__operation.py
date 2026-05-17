@@ -35,7 +35,7 @@ import struct
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address, Ip4Mask, MacAddress
 from net_proto import (

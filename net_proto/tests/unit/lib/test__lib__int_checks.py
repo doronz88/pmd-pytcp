@@ -33,7 +33,7 @@ ver 3.0.5
 from typing import Any, Callable
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import (
     UINT_2__MAX,

@@ -33,7 +33,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip6Address
 from pytcp.protocols.ip6.ip6__policy_table import (

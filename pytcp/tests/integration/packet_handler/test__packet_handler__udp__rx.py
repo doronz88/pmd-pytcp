@@ -34,7 +34,7 @@ pytcp/tests/integration/packet_handler/test__packet_handler__udp__rx.py
 ver 3.0.5
 """
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx

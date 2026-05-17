@@ -34,7 +34,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import (
     Ip4Address,

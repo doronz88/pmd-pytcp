@@ -36,7 +36,7 @@ ver 3.0.5
 
 from typing import Any
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto import ArpOperation
 from pytcp.lib.packet_stats import PacketStatsTx

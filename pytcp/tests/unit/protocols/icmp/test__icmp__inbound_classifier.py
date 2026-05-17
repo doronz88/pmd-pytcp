@@ -34,7 +34,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound

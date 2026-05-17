@@ -37,7 +37,7 @@ pytcp/tests/integration/protocols/arp/test__arp__rx.py
 ver 3.0.5
 """
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import ArpOperation

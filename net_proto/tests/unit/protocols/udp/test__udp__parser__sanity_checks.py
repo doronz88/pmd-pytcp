@@ -33,7 +33,7 @@ ver 3.0.5
 from types import SimpleNamespace
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import IpVersion
 from net_proto import PacketRx, UdpParser, UdpSanityError

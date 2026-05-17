@@ -33,7 +33,7 @@ ver 3.0.5
 
 from unittest import TestCase
 
-from parameterized import parameterized_class  # type: ignore
+from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address
 from pytcp.protocols.ip4.ip4__source_selection import (
