@@ -39,6 +39,8 @@ ver 3.0.5
 
 from typing import Any
 
+from parameterized import parameterized_class  # type: ignore[import-untyped]
+
 from net_addr import Ip6Address, MacAddress
 from net_proto import Icmp6Type
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
@@ -322,25 +324,60 @@ class TestIcmp6Rx__EchoRequest(IcmpTestCase):
         )
 
 
-class _NsRespondsWithNa(IcmpTestCase):
+@parameterized_class(
+    [
+        {
+            "_description": "NS to a unicast destination, with SLLA (ND cache update)",
+            "_FRAME_RX": _FRAME_RX__NS_UNICAST_WITH_SLLA,
+            "_NS_RX_STATS": {
+                "ethernet__pre_parse": 1,
+                "ethernet__dst_unicast": 1,
+                "ip6__pre_parse": 1,
+                "ip6__dst_unicast": 1,
+                "icmp6__pre_parse": 1,
+                "icmp6__nd_neighbor_solicitation": 1,
+                "icmp6__nd_neighbor_solicitation__update_nd_cache": 1,
+                "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
+            },
+        },
+        {
+            "_description": "NS to the solicited-node multicast, no SLLA (no cache update)",
+            "_FRAME_RX": _FRAME_RX__NS_MULTICAST_NO_SLLA,
+            "_NS_RX_STATS": {
+                "ethernet__pre_parse": 1,
+                "ethernet__dst_multicast": 1,
+                "ip6__pre_parse": 1,
+                "ip6__dst_multicast": 1,
+                "icmp6__pre_parse": 1,
+                "icmp6__nd_neighbor_solicitation": 1,
+                "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
+            },
+        },
+        {
+            "_description": "NS to the solicited-node multicast, with SLLA (ND cache update)",
+            "_FRAME_RX": _FRAME_RX__NS_MULTICAST_WITH_SLLA,
+            "_NS_RX_STATS": {
+                "ethernet__pre_parse": 1,
+                "ethernet__dst_multicast": 1,
+                "ip6__pre_parse": 1,
+                "ip6__dst_multicast": 1,
+                "icmp6__pre_parse": 1,
+                "icmp6__nd_neighbor_solicitation": 1,
+                "icmp6__nd_neighbor_solicitation__update_nd_cache": 1,
+                "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
+            },
+        },
+    ]
+)
+class TestIcmp6Rx__NsRespondsWithNa(IcmpTestCase):
     """
-    Shared assertions for an inbound NS that triggers an NA reply.
-    Subclasses set '_FRAME_RX' and override '_NS_RX_STATS'. The
-    base class itself short-circuits via setUp so unittest's
-    discovery doesn't try to run its tests with empty fixtures.
+    The inbound-NS-triggers-NA scenarios (unicast / multicast,
+    with / without SLLA).
     """
 
-    _FRAME_RX: bytes = b""
-    _NS_RX_STATS: dict[str, Any] = {}
-
-    def setUp(self) -> None:
-        """
-        Skip when invoked directly on the abstract base class.
-        """
-
-        if type(self) is _NsRespondsWithNa:
-            self.skipTest("abstract base class for NS-responds-with-NA scenarios")
-        super().setUp()
+    _description: str
+    _FRAME_RX: bytes
+    _NS_RX_STATS: dict[str, Any]
 
     def test__icmp6__rx__ns__emits_one_na(self) -> None:
         """
@@ -400,62 +437,6 @@ class _NsRespondsWithNa(IcmpTestCase):
         self._drive_rx(frame=self._FRAME_RX)
 
         self._assert_packet_stats_tx(**_NA_TX_STATS)
-
-
-class TestIcmp6Rx__NsUnicastWithSlla(_NsRespondsWithNa):
-    """
-    Inbound NS to a unicast destination, carrying an SLLA option
-    that updates the ND cache.
-    """
-
-    _FRAME_RX = _FRAME_RX__NS_UNICAST_WITH_SLLA
-    _NS_RX_STATS: dict[str, Any] = {
-        "ethernet__pre_parse": 1,
-        "ethernet__dst_unicast": 1,
-        "ip6__pre_parse": 1,
-        "ip6__dst_unicast": 1,
-        "icmp6__pre_parse": 1,
-        "icmp6__nd_neighbor_solicitation": 1,
-        "icmp6__nd_neighbor_solicitation__update_nd_cache": 1,
-        "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
-    }
-
-
-class TestIcmp6Rx__NsMulticastNoSlla(_NsRespondsWithNa):
-    """
-    Inbound NS to the solicited-node multicast, no SLLA, no cache
-    update.
-    """
-
-    _FRAME_RX = _FRAME_RX__NS_MULTICAST_NO_SLLA
-    _NS_RX_STATS: dict[str, Any] = {
-        "ethernet__pre_parse": 1,
-        "ethernet__dst_multicast": 1,
-        "ip6__pre_parse": 1,
-        "ip6__dst_multicast": 1,
-        "icmp6__pre_parse": 1,
-        "icmp6__nd_neighbor_solicitation": 1,
-        "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
-    }
-
-
-class TestIcmp6Rx__NsMulticastWithSlla(_NsRespondsWithNa):
-    """
-    Inbound NS to the solicited-node multicast, with SLLA, ND cache
-    update.
-    """
-
-    _FRAME_RX = _FRAME_RX__NS_MULTICAST_WITH_SLLA
-    _NS_RX_STATS: dict[str, Any] = {
-        "ethernet__pre_parse": 1,
-        "ethernet__dst_multicast": 1,
-        "ip6__pre_parse": 1,
-        "ip6__dst_multicast": 1,
-        "icmp6__pre_parse": 1,
-        "icmp6__nd_neighbor_solicitation": 1,
-        "icmp6__nd_neighbor_solicitation__update_nd_cache": 1,
-        "icmp6__nd_neighbor_solicitation__target_stack__respond": 1,
-    }
 
 
 class TestIcmp6Rx__NsDad(IcmpTestCase):

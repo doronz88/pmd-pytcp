@@ -1639,11 +1639,11 @@ class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
             win=PEER__WIN,
         )
         self._drive_rx(frame=peer_fin)
-        if session.state is not FsmState.CLOSING:
-            self.skipTest(
-                f"Simultaneous-close driver did not reach CLOSING (got "
-                f"{session.state}); skipping CLOSING-idempotency check."
-            )
+        self.assertIs(
+            session.state,
+            FsmState.CLOSING,
+            msg=f"Simultaneous-close must deterministically reach CLOSING; got {session.state}.",
+        )
 
         snd_nxt_pre = session._snd_seq.nxt
         session.close()

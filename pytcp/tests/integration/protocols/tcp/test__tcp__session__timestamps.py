@@ -939,11 +939,11 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
         )
         self._drive_rx(frame=peer_fin)
 
-        if session.state is not FsmState.TIME_WAIT:
-            self.skipTest(
-                f"Active-close path did not reach TIME_WAIT (got {session.state}); "
-                "the test's CLOSE driver doesn't model this branch on every release."
-            )
+        self.assertIs(
+            session.state,
+            FsmState.TIME_WAIT,
+            msg=f"Active-close path must deterministically reach TIME_WAIT; got {session.state}.",
+        )
 
         ts_recent_pre = session._ts.ts_recent
         stale_late_fin = build_tcp4(
