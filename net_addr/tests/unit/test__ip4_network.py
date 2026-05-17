@@ -1274,3 +1274,58 @@ class TestNetAddrIp4NetworkGetitem(TestCase):
 
         with self.assertRaises(TypeError, msg="Slicing must not be supported."):
             _ = net[0:2]  # type: ignore[index]
+
+
+class TestNetAddrIp4NetworkAddressExclude(TestCase):
+    """
+    The NetAddr IPv4 network address_exclude (CIDR set-subtraction) tests.
+    """
+
+    def test__net_addr__ip4_network__address_exclude(self) -> None:
+        """
+        Ensure 'address_exclude' returns the minimal aggregate
+        CIDRs covering self minus other, in stdlib descent
+        order; an equal operand yields nothing.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n = Ip4Network("192.0.2.0/24")
+        for other, expected in [
+            (Ip4Network("192.0.2.128/25"), ["192.0.2.0/25"]),
+            (Ip4Network("192.0.2.64/26"), ["192.0.2.128/25", "192.0.2.0/26"]),
+            (Ip4Network("192.0.2.0/24"), []),
+            (
+                Ip4Network("192.0.2.1/32"),
+                [
+                    "192.0.2.128/25",
+                    "192.0.2.64/26",
+                    "192.0.2.32/27",
+                    "192.0.2.16/28",
+                    "192.0.2.8/29",
+                    "192.0.2.4/30",
+                    "192.0.2.2/31",
+                    "192.0.2.0/32",
+                ],
+            ),
+        ]:
+            with self.subTest(other=str(other)):
+                self.assertEqual(
+                    [str(x) for x in n.address_exclude(other)],
+                    expected,
+                    msg=f"Unexpected address_exclude({other}) result.",
+                )
+
+    def test__net_addr__ip4_network__address_exclude__errors(self) -> None:
+        """
+        Ensure excluding a non-contained or cross-version
+        network raises ValueError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n = Ip4Network("192.0.2.0/24")
+        with self.assertRaises(ValueError, msg="A non-contained operand must raise ValueError."):
+            list(n.address_exclude(Ip4Network("198.51.100.0/25")))
+        with self.assertRaises(ValueError, msg="A cross-version operand must raise ValueError."):
+            list(n.address_exclude(Ip6Network("2001:db8::/32")))  # type: ignore[arg-type]

@@ -358,6 +358,37 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         return type(self)((type(self._address)(int(self._address)), type(self._mask)(self._mask_int(new_prefix))))
 
+    def address_exclude(self, other: Self, /) -> Iterator[Self]:
+        """
+        Iterate over the minimal set of aggregate networks
+        covering this network with 'other' removed. 'other'
+        must be fully contained in this network (else
+        ValueError); an equal operand yields nothing.
+        """
+
+        if not other.subnet_of(self):
+            raise ValueError(f"{other} is not contained in {self}")
+
+        if other == self:
+            return
+
+        s1, s2 = self.subnets()
+
+        while s1 != other and s2 != other:
+            if other.subnet_of(s1):
+                yield s2
+                s1, s2 = s1.subnets()
+            elif other.subnet_of(s2):
+                yield s1
+                s1, s2 = s2.subnets()
+            else:
+                raise ValueError(f"{other} is not contained in {self}")
+
+        if s1 == other:
+            yield s2
+        elif s2 == other:
+            yield s1
+
     def overlaps(self, other: object, /) -> bool:
         """
         Check whether this network shares any address with

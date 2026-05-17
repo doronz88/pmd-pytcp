@@ -1047,3 +1047,32 @@ class TestNetAddrIp6NetworkGetitem(TestCase):
             with self.subTest(index=bad):
                 with self.assertRaises(IndexError, msg=f"net[{bad}] must raise IndexError."):
                     _ = net[bad]
+
+
+class TestNetAddrIp6NetworkAddressExclude(TestCase):
+    """
+    The NetAddr IPv6 network address_exclude tests.
+    """
+
+    def test__net_addr__ip6_network__address_exclude(self) -> None:
+        """
+        Ensure 'address_exclude' returns the minimal aggregate
+        CIDRs covering self minus other; an equal operand
+        yields nothing.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n = Ip6Network("2001:db8::/32")
+        self.assertEqual(
+            [str(x) for x in n.address_exclude(Ip6Network("2001:db8:8000::/33"))],
+            ["2001:db8::/33"],
+            msg="Excluding the upper /33 must yield the lower /33.",
+        )
+        self.assertEqual(
+            list(n.address_exclude(Ip6Network("2001:db8::/32"))),
+            [],
+            msg="Excluding self must yield nothing.",
+        )
+        with self.assertRaises(ValueError, msg="A non-contained operand must raise ValueError."):
+            list(n.address_exclude(Ip6Network("2001:dead::/32")))
