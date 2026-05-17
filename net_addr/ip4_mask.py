@@ -78,7 +78,7 @@ class Ip4Mask(IpMask):
                 if self._validate_bits(IP4__ADDRESS_LEN * 8):
                     return
 
-        if isinstance(mask, str) and re.search(r"^/\d{1,2}$", mask):
+        if isinstance(mask, str) and re.search(r"^/(0|[1-9][0-9]?)$", mask):
             bit_count = int(mask[1:])
             if 0 <= bit_count <= IP4__ADDRESS_LEN * 8:
                 self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)

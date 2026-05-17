@@ -505,6 +505,28 @@ class TestNetAddrIp4Mask(TestCase):
             },
         },
         {
+            "_description": "Test the IPv4 mask format: '/08' (leading-zero prefix length)",
+            "_args": [
+                "/08",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '/08'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '/00' (leading-zero prefix length)",
+            "_args": [
+                "/00",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '/00'",
+            },
+        },
+        {
             "_description": "Test the IPv4 mask format: '255.255.255,255'",
             "_args": [
                 "255.255.255,255",

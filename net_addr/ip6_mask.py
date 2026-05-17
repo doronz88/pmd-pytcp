@@ -77,7 +77,7 @@ class Ip6Mask(IpMask):
                 if self._validate_bits(IP6__ADDRESS_LEN * 8):
                     return
 
-        if isinstance(mask, str) and re.search(r"^/\d{1,3}$", mask):
+        if isinstance(mask, str) and re.search(r"^/(0|[1-9][0-9]{0,2})$", mask):
             bit_count = int(mask[1:])
             if 0 <= bit_count <= IP6__ADDRESS_LEN * 8:
                 self._mask = ((1 << bit_count) - 1) << (IP6__ADDRESS_LEN * 8 - bit_count)

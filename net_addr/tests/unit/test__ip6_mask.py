@@ -619,6 +619,28 @@ class TestNetAddrIp6Mask(TestCase):
             },
         },
         {
+            "_description": "Test the IPv6 mask format: '/064' (leading-zero prefix length)",
+            "_args": [
+                "/064",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6MaskFormatError,
+                "error_message": "The IPv6 mask format is invalid: '/064'",
+            },
+        },
+        {
+            "_description": "Test the IPv6 mask format: '/00' (leading-zero prefix length)",
+            "_args": [
+                "/00",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6MaskFormatError,
+                "error_message": "The IPv6 mask format is invalid: '/00'",
+            },
+        },
+        {
             "_description": "Test the IPv6 mask format: '/-1'",
             "_args": [
                 "/-1",
