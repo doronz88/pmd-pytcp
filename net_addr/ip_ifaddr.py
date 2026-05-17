@@ -23,7 +23,7 @@
 
 
 """
-This module contains IP host base class.
+This module contains IP interface address base class.
 
 net_addr/ip_ifaddr.py
 
@@ -49,7 +49,7 @@ class IfAddr[
     O: (Ip6IfAddrSource, Ip4IfAddrSource),
 ](Base, Ip, ABC):
     """
-    IP host support base class.
+    IP interface address support base class.
     """
 
     __slots__ = (
@@ -69,7 +69,7 @@ class IfAddr[
     @override
     def __str__(self) -> str:
         """
-        Get the IP host address log string.
+        Get the IP interface address log string.
         """
 
         return f"{self._address}/{len(self._network.mask)}"
@@ -77,7 +77,7 @@ class IfAddr[
     @override
     def __eq__(self, other: object, /) -> bool:
         """
-        Compare the IP host address with another object.
+        Compare the IP interface address with another object.
         """
 
         return other is self or (
@@ -87,7 +87,7 @@ class IfAddr[
     @override
     def __hash__(self) -> int:
         """
-        Get the IP host hash value.
+        Get the IP interface address hash value.
         """
 
         return hash((type(self), self._address, self._network))
@@ -95,7 +95,7 @@ class IfAddr[
     @abstractmethod
     def _validate_gateway(self, address: A | None, /) -> None:
         """
-        Validate the IP host address gateway.
+        Validate the IP interface address gateway.
         """
 
         raise NotImplementedError
@@ -103,7 +103,7 @@ class IfAddr[
     @property
     def address(self) -> A:
         """
-        Get the IP host address '_address' attribute.
+        Get the IP interface address '_address' attribute.
         """
 
         return self._address
@@ -111,7 +111,7 @@ class IfAddr[
     @property
     def network(self) -> N:
         """
-        Get the IP host address '_network' attribute.
+        Get the IP interface address '_network' attribute.
         """
 
         return self._network
@@ -119,7 +119,7 @@ class IfAddr[
     @property
     def origin(self) -> O:
         """
-        Get the IP host address '_origin' attribute.
+        Get the IP interface address '_origin' attribute.
         """
 
         return self._origin
@@ -127,7 +127,7 @@ class IfAddr[
     @origin.setter
     def origin(self, origin: O, /) -> None:
         """
-        Set the IP host address '_origin' attribute.
+        Set the IP interface address '_origin' attribute.
         """
 
         self._origin = origin
@@ -135,7 +135,7 @@ class IfAddr[
     @property
     def expiration_time(self) -> int:
         """
-        Get the IP host address '_expiration_time' attribute.
+        Get the IP interface address '_expiration_time' attribute.
         """
 
         return self._expiration_time
@@ -143,7 +143,7 @@ class IfAddr[
     @expiration_time.setter
     def expiration_time(self, time: int, /) -> None:
         """
-        Set the IP host address '_expiration_time' attribute.
+        Set the IP interface address '_expiration_time' attribute.
         """
 
         self._expiration_time = time
@@ -151,7 +151,7 @@ class IfAddr[
     @property
     def gateway(self) -> A | None:
         """
-        Get the IP host address '_gateway' attribute.
+        Get the IP interface address '_gateway' attribute.
         """
 
         return self._gateway
@@ -159,7 +159,7 @@ class IfAddr[
     @gateway.setter
     def gateway(self, address: A | None, /) -> None:
         """
-        Set the IP host address '_gateway' attribute.
+        Set the IP interface address '_gateway' attribute.
         """
 
         self._validate_gateway(address)

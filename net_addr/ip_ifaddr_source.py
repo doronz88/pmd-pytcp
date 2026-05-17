@@ -23,7 +23,7 @@
 
 
 """
-This module contains IP host origin base enum.
+This module contains IP interface-address source base enum.
 
 net_addr/ip_ifaddr_source.py
 
@@ -35,5 +35,5 @@ from enum import Enum
 
 class IfAddrSource(Enum):
     """
-    IP host address origin enum.
+    IP interface-address source enum.
     """

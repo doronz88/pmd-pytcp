@@ -23,7 +23,7 @@
 
 
 """
-This module contains IPv6 host support class.
+This module contains IPv6 interface address support class.
 
 net_addr/ip6_ifaddr.py
 
@@ -79,7 +79,7 @@ def _is_reserved_iid(iid: int) -> bool:
 
 class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
     """
-    IPv6 host support class.
+    IPv6 interface address support class.
     """
 
     __slots__ = ()
@@ -99,13 +99,15 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
         expiration_time: int | None = None,
     ) -> None:
         """
-        Initialize the IPv6 host object.
+        Initialize the IPv6 interface address object.
         """
 
         if isinstance(host, Ip6IfAddr):
-            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
-            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
-            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
+            assert gateway is None, f"Gateway cannot be set when copying an interface address. Got: {gateway!r}"
+            assert origin is None, f"Origin cannot be set when copying an interface address. Got: {origin!r}"
+            assert (
+                expiration_time is None
+            ), f"Expiration time cannot be set when copying an interface address. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway
@@ -149,7 +151,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
     @override
     def _validate_gateway(self, address: Ip6Address | None, /) -> None:
         """
-        Validate the IPv6 host address gateway.
+        Validate the IPv6 interface address gateway.
         """
 
         if address is not None and (
@@ -163,7 +165,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
     @classmethod
     def from_eui64(cls, *, mac_address: MacAddress, ip6_network: Ip6Network) -> Self:
         """
-        Create IPv6 EUI64 host address.
+        Create IPv6 EUI64 interface address.
         """
 
         assert len(ip6_network.mask) == 64, f"The IPv6 EUI64 network address mask must be /64. Got: {ip6_network.mask}"
@@ -182,7 +184,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
     @classmethod
     def from_rfc8981_temp(cls, *, ip6_network: Ip6Network) -> Self:
         """
-        Create an IPv6 host address with a random Interface
+        Create an IPv6 interface address with a random Interface
         Identifier per RFC 8981 §3.3.2 (temporary addresses).
 
         The IID is a fresh 64-bit random draw, regenerated if
@@ -230,7 +232,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
         network_id: bytes = b"",
     ) -> Self:
         """
-        Create an IPv6 host address with a stable opaque
+        Create an IPv6 interface address with a stable opaque
         Interface Identifier per RFC 7217 §5:
 
             RID = SHA-256(Prefix || Net_Iface || Network_ID || DAD_Counter || secret_key)

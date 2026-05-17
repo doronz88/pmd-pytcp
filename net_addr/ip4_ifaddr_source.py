@@ -23,7 +23,7 @@
 
 
 """
-This module contains IPv4 host origin enum.
+This module contains IPv4 interface-address source enum.
 
 net_addr/ip4_ifaddr_source.py
 
@@ -37,7 +37,7 @@ from net_addr.ip_ifaddr_source import IfAddrSource
 
 class Ip4IfAddrSource(IfAddrSource):
     """
-    IPv4 host origin enumeration.
+    IPv4 interface-address source enumeration.
     """
 
     STATIC = auto()

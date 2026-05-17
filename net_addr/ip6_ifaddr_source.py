@@ -23,7 +23,7 @@
 
 
 """
-This module contains IPv6 host origin enum.
+This module contains IPv6 interface-address source enum.
 
 net_addr/ip6_ifaddr_source.py
 
@@ -37,7 +37,7 @@ from net_addr.ip_ifaddr_source import IfAddrSource
 
 class Ip6IfAddrSource(IfAddrSource):
     """
-    IPv6 host origin enumeration.
+    IPv6 interface-address source enumeration.
     """
 
     STATIC = auto()

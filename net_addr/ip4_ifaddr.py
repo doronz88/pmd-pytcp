@@ -23,7 +23,7 @@
 
 
 """
-This module contains IPv4 host support class.
+This module contains IPv4 interface address support class.
 
 net_addr/ip4_ifaddr.py
 
@@ -50,7 +50,7 @@ from net_addr.ip_version import IpVersion
 
 class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
     """
-    IPv4 host support class.
+    IPv4 interface address support class.
     """
 
     __slots__ = ()
@@ -70,13 +70,15 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
         expiration_time: int | None = None,
     ) -> None:
         """
-        Initialize the IPv4 host object.
+        Initialize the IPv4 interface address object.
         """
 
         if isinstance(host, Ip4IfAddr):
-            assert gateway is None, f"Gateway cannot be set when copying host. Got: {gateway!r}"
-            assert origin is None, f"Origin cannot be set when copying host. Got: {origin!r}"
-            assert expiration_time is None, f"Expiration time cannot be set when copying host. Got: {expiration_time!r}"
+            assert gateway is None, f"Gateway cannot be set when copying an interface address. Got: {gateway!r}"
+            assert origin is None, f"Origin cannot be set when copying an interface address. Got: {origin!r}"
+            assert (
+                expiration_time is None
+            ), f"Expiration time cannot be set when copying an interface address. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway
@@ -122,7 +124,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
     @override
     def _validate_gateway(self, address: Ip4Address | None, /) -> None:
         """
-        Validate the IPv4 host address gateway.
+        Validate the IPv4 interface address gateway.
         """
 
         if address is not None and (
