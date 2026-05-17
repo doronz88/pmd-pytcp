@@ -74,6 +74,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6TempAddress,
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
+from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 
@@ -534,6 +535,17 @@ class PacketHandler(Subsystem, ABC):
             None,
         )
 
+        # Phase 3 of docs/refactor/routing_table_host_mode.md:
+        # the RA's router lifetime drives the host-mode FIB
+        # default route. This is the single chokepoint where RA
+        # router info is consumed — the per-IfAddr
+        # 'ip6_host.gateway = ...' writes the SLAAC / RFC 8981 /
+        # RFC 7217 paths used are gone (the FIB owns the next
+        # hop). 'getattr' guards reduced test contexts that drive
+        # this without a Route API bound (same pattern as the
+        # 'stack.nd_cache' getattr below).
+        route_api = getattr(stack, "route", None)
+
         if router_lifetime > 0:
             normalised_prf = Icmp6NdRoutePreference.MEDIUM if prf is Icmp6NdRoutePreference.RESERVED else prf
             self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
@@ -546,11 +558,15 @@ class PacketHandler(Subsystem, ABC):
                 ),
             )
             self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
+            if route_api is not None:
+                route_api.replace_default_ip6(gateway=address, protocol=RouteProtocol.RA)
             return
 
         if existing is not None:
             self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
             self._packet_stats_rx.icmp6__nd_router_advertisement__remove_router += 1
+            if route_api is not None:
+                route_api.remove_default_ip6()
 
     def get_icmp6_default_routers(self) -> list[Icmp6DefaultRouter]:
         """
@@ -653,13 +669,9 @@ class PacketHandler(Subsystem, ABC):
         # — the stable address is already in '_ip6_ifaddr'.
         if existing is None and self._ip6_addressing_complete:
             ip6_host = Ip6IfAddr((address, Ip6Mask("/64")))
-            ip6_host.gateway = router_address
             self._claim_ip6_address_async(
                 ip6_host=ip6_host,
-                regenerate=self._make_rfc7217_regenerator(
-                    ip6_network=prefix,
-                    gateway=router_address,
-                ),
+                regenerate=self._make_rfc7217_regenerator(ip6_network=prefix),
             )
 
     def get_icmp6_slaac_addresses(self) -> list[Icmp6SlaacAddress]:
@@ -751,7 +763,6 @@ class PacketHandler(Subsystem, ABC):
             # source). Skip the temp address; the stable SLAAC
             # entry still carries the prefix.
             return
-        temp_host.gateway = router_address
 
         self._icmp6_temp_addresses.append(
             Icmp6TempAddress(
@@ -770,9 +781,7 @@ class PacketHandler(Subsystem, ABC):
         # (no 'dad_counter' is needed; the random generator is
         # stateless).
         def _regenerate() -> Ip6IfAddr:
-            host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
-            host.gateway = router_address
-            return host
+            return Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
         # Spawn async DAD claim. The worker will assign the
         # address into '_ip6_ifaddr' on success or fall through
@@ -889,7 +898,6 @@ class PacketHandler(Subsystem, ABC):
                 temp_host = Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
             except RuntimeError:
                 continue
-            temp_host.gateway = newest.router_address
 
             # Append a NEW entry alongside (not replacing) the
             # existing one. Lifetimes derived from the same
@@ -911,10 +919,8 @@ class PacketHandler(Subsystem, ABC):
 
             # RFC 8981 §3.3.3 regen via §20.3 retry: each retry
             # mints a fresh random IID.
-            def _regenerate(p: Ip6Network = prefix, ra: Ip6Address = newest.router_address) -> Ip6IfAddr:
-                host = Ip6IfAddr.from_rfc8981_temp(ip6_network=p)
-                host.gateway = ra
-                return host
+            def _regenerate(p: Ip6Network = prefix) -> Ip6IfAddr:
+                return Ip6IfAddr.from_rfc8981_temp(ip6_network=p)
 
             __debug__ and log(
                 "stack",
@@ -1163,7 +1169,6 @@ class PacketHandler(Subsystem, ABC):
         self,
         *,
         ip6_network: Ip6Network,
-        gateway: Ip6Address | None,
     ) -> Callable[[], Ip6IfAddr] | None:
         """
         Build a DAD-failure regenerator for an RFC 7217 stable
@@ -1182,14 +1187,12 @@ class PacketHandler(Subsystem, ABC):
 
         def _regenerate() -> Ip6IfAddr:
             counter[0] += 1
-            host = Ip6IfAddr.from_rfc7217(
+            return Ip6IfAddr.from_rfc7217(
                 ip6_network=ip6_network,
                 mac_address=self._mac_unicast,
                 secret_key=self._icmp6_slaac__secret_key,
                 dad_counter=counter[0],
             )
-            host.gateway = gateway
-            return host
 
         return _regenerate
 
@@ -1759,10 +1762,9 @@ class PacketHandlerL2(
         if self._ip6_lla_autoconfig:
             lla_network = Ip6Network("fe80::/64")
             ip6_host = self._derive_ip6_host(ip6_network=lla_network)
-            ip6_host.gateway = None
             _claim_ip6_address(
                 ip6_host,
-                regenerate=self._make_rfc7217_regenerator(ip6_network=lla_network, gateway=None),
+                regenerate=self._make_rfc7217_regenerator(ip6_network=lla_network),
             )
 
         # If we don't have any link local address then disable
@@ -1785,16 +1787,20 @@ class PacketHandlerL2(
         # so SLAAC can pick up the advertised prefix.
         if self._ip6_gua_autoconfig:
             self._send_icmp6_nd_router_solicitations_with_backoff()
-            for prefix, gateway in list(self._icmp6_ra__prefixes):
+            # The RA source (tuple's 2nd element) no longer feeds
+            # a per-IfAddr gateway: the default route was already
+            # installed in the FIB by '_update_icmp6_default_router'
+            # when the boot-window RA was received. Phase 4 may
+            # simplify '_icmp6_ra__prefixes' to a prefix list.
+            for prefix, _ in list(self._icmp6_ra__prefixes):
                 __debug__ and log(
                     "stack",
                     f"Attempting IPv6 address auto configuration for RA " f"prefix {prefix}",
                 )
                 ip6_address = self._derive_ip6_host(ip6_network=prefix)
-                ip6_address.gateway = gateway
                 _claim_ip6_address(
                     ip6_address,
-                    regenerate=self._make_rfc7217_regenerator(ip6_network=prefix, gateway=gateway),
+                    regenerate=self._make_rfc7217_regenerator(ip6_network=prefix),
                 )
 
         # Open the runtime-claim gate. From here on, any PI
