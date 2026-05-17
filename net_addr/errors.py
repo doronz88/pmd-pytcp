@@ -57,19 +57,19 @@ class IpNetworkFormatError(NetAddrError):
 
 class IfAddrFormatError(NetAddrError):
     """
-    Base class for all IP host format exceptions.
+    Base class for all IP interface address format exceptions.
     """
 
 
 class IfAddrGatewayError(NetAddrError):
     """
-    Base class for all IP host gateway exceptions.
+    Base class for all IP interface address gateway exceptions.
     """
 
 
 class IfAddrSanityError(NetAddrError):
     """
-    Base class for all IP host sanity exceptions.
+    Base class for all IP interface address sanity exceptions.
     """
 
 
@@ -102,16 +102,16 @@ class Ip4NetworkFormatError(IpNetworkFormatError):
 
 class Ip4IfAddrFormatError(IfAddrFormatError):
     """
-    Exception raised when IPv4 host format is invalid.
+    Exception raised when IPv4 interface address format is invalid.
     """
 
     def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 host format is invalid: {value!r}")
+        super().__init__(f"The IPv4 interface address format is invalid: {value!r}")
 
 
 class Ip4IfAddrSanityError(IfAddrSanityError):
     """
-    Exception raised when IPv4 host doesn't belong to provided network.
+    Exception raised when IPv4 interface address doesn't belong to provided network.
     """
 
     def __init__(self, value: object, /) -> None:
@@ -120,11 +120,11 @@ class Ip4IfAddrSanityError(IfAddrSanityError):
 
 class Ip4IfAddrGatewayError(IfAddrGatewayError):
     """
-    Exception raised when IPv4 host gateway is invalid.
+    Exception raised when IPv4 interface address gateway is invalid.
     """
 
     def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 host gateway is invalid: {value!r}")
+        super().__init__(f"The IPv4 interface address gateway is invalid: {value!r}")
 
 
 class Ip6AddressFormatError(IpAddressFormatError):
@@ -156,16 +156,16 @@ class Ip6NetworkFormatError(IpNetworkFormatError):
 
 class Ip6IfAddrFormatError(IfAddrFormatError):
     """
-    Exception raised when IPv6 host format is invalid.
+    Exception raised when IPv6 interface address format is invalid.
     """
 
     def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv6 host format is invalid: {value!r}")
+        super().__init__(f"The IPv6 interface address format is invalid: {value!r}")
 
 
 class Ip6IfAddrSanityError(IfAddrSanityError):
     """
-    Exception raised when IPv6 host doesn't belong to provided network.
+    Exception raised when IPv6 interface address doesn't belong to provided network.
     """
 
     def __init__(self, value: object, /) -> None:
@@ -174,11 +174,11 @@ class Ip6IfAddrSanityError(IfAddrSanityError):
 
 class Ip6IfAddrGatewayError(IfAddrGatewayError):
     """
-    Exception raised when IPv6 host gateway is invalid.
+    Exception raised when IPv6 interface address gateway is invalid.
     """
 
     def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv6 host gateway is invalid: {value!r}")
+        super().__init__(f"The IPv6 interface address gateway is invalid: {value!r}")
 
 
 class MacAddressFormatError(NetAddrError):

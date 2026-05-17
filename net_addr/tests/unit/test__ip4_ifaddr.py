@@ -550,7 +550,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4IfAddrFormatError,
-                "error_message": "The IPv4 host format is invalid: 12345",
+                "error_message": "The IPv4 interface address format is invalid: 12345",
             },
         },
         {
@@ -561,7 +561,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4IfAddrFormatError,
-                "error_message": "The IPv4 host format is invalid: 'not-a-host'",
+                "error_message": "The IPv4 interface address format is invalid: 'not-a-host'",
             },
         },
         {
@@ -572,7 +572,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4IfAddrFormatError,
-                "error_message": "The IPv4 host format is invalid: '192.168.1.0/24/extra'",
+                "error_message": "The IPv4 interface address format is invalid: '192.168.1.0/24/extra'",
             },
         },
         {
@@ -583,7 +583,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip4IfAddrFormatError,
-                "error_message": "The IPv4 host format is invalid: None",
+                "error_message": "The IPv4 interface address format is invalid: None",
             },
         },
         {
@@ -596,7 +596,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
             "_results": {
                 "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 host gateway is invalid: Ip4Address('10.0.0.1')",
+                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('10.0.0.1')",
             },
         },
         {
@@ -609,7 +609,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
             "_results": {
                 "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.0')",
+                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.0')",
             },
         },
         {
@@ -622,7 +622,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
             "_results": {
                 "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.255')",
+                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.255')",
             },
         },
         {
@@ -635,7 +635,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
             },
             "_results": {
                 "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 host gateway is invalid: Ip4Address('192.168.1.100')",
+                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.100')",
             },
         },
     ]

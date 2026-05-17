@@ -892,7 +892,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6IfAddrFormatError,
-                "error_message": "The IPv6 host format is invalid: 12345",
+                "error_message": "The IPv6 interface address format is invalid: 12345",
             },
         },
         {
@@ -901,7 +901,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6IfAddrFormatError,
-                "error_message": "The IPv6 host format is invalid: 'not-a-host'",
+                "error_message": "The IPv6 interface address format is invalid: 'not-a-host'",
             },
         },
         {
@@ -910,7 +910,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {},
             "_results": {
                 "error": Ip6IfAddrFormatError,
-                "error_message": "The IPv6 host format is invalid: None",
+                "error_message": "The IPv6 interface address format is invalid: None",
             },
         },
         {
@@ -919,7 +919,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {"gateway": Ip6Address("2001:db8::")},
             "_results": {
                 "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::')",
+                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('2001:db8::')",
             },
         },
         {
@@ -928,7 +928,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {"gateway": Ip6Address("2001:db8::1")},
             "_results": {
                 "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 host gateway is invalid: Ip6Address('2001:db8::1')",
+                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('2001:db8::1')",
             },
         },
         {
@@ -937,7 +937,7 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             "_kwargs": {"gateway": Ip6Address("fc00::1")},
             "_results": {
                 "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 host gateway is invalid: Ip6Address('fc00::1')",
+                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('fc00::1')",
             },
         },
     ]
