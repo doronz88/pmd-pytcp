@@ -152,7 +152,8 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Create IPv6 EUI64 interface address.
         """
 
-        assert len(ip6_network.mask) == 64, f"The IPv6 EUI64 network address mask must be /64. Got: {ip6_network.mask}"
+        if len(ip6_network.mask) != 64:
+            raise Ip6IfAddrFormatError(ip6_network)
 
         interface_id = (
             ((int(mac_address) & 0xFFFFFF000000) << 16) | int(mac_address) & 0xFFFFFF | 0xFFFE000000
@@ -186,9 +187,8 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Reference: RFC 5453 (reserved IIDs).
         """
 
-        assert (
-            len(ip6_network.mask) == 64
-        ), f"The IPv6 RFC 8981 temp network address mask must be /64. Got: {ip6_network.mask}"
+        if len(ip6_network.mask) != 64:
+            raise Ip6IfAddrFormatError(ip6_network)
 
         for _ in range(_RFC8981__MAX_RETRIES):
             iid = int.from_bytes(secrets.token_bytes(8), byteorder="big")
@@ -238,13 +238,13 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Reference: RFC 7217 §5 (Algorithm Specification).
         """
 
-        assert (
-            len(ip6_network.mask) == 64
-        ), f"The IPv6 RFC 7217 network address mask must be /64. Got: {ip6_network.mask}"
+        if len(ip6_network.mask) != 64:
+            raise Ip6IfAddrFormatError(ip6_network)
 
-        assert (
-            len(secret_key) >= 16
-        ), f"RFC 7217 §5 mandates secret_key length ≥ 128 bits (16 bytes). Got: {len(secret_key)} bytes"
+        # Do not echo the key bytes into the exception (it ends
+        # up in logs / tracebacks); report only its length.
+        if len(secret_key) < 16:
+            raise Ip6IfAddrFormatError(f"secret_key length {len(secret_key)} < 16 bytes (RFC 7217 §5 minimum)")
 
         # Concatenate the PRF inputs in the order specified by
         # RFC 7217 §5. Net_Iface = MAC bytes; DAD_Counter =

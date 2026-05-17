@@ -519,19 +519,26 @@ class TestNetAddrIp6HostFromEui64(TestCase):
 
     def test__net_addr__ip6_host__from_eui64__non_64_mask_raises(self) -> None:
         """
-        Ensure 'from_eui64()' rejects a network whose mask is not /64.
+        Ensure 'from_eui64()' rejects a network whose mask is not
+        /64 with 'Ip6IfAddrFormatError'.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 4291 §2.5.1 (modified EUI-64 IIDs are 64 bits).
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6IfAddrFormatError,
             msg="from_eui64() must reject a network whose mask is not /64.",
-        ):
+        ) as error:
             Ip6IfAddr.from_eui64(
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 ip6_network=Ip6Network("2001:db8::/48"),
             )
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv6 interface address format is invalid: Ip6Network('2001:db8::/48')",
+            msg="from_eui64() must report the rejected network.",
+        )
 
 
 class TestNetAddrIp6HostFromRfc7217(TestCase):
@@ -700,38 +707,53 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
     def test__net_addr__ip6_host__from_rfc7217__non_64_mask_raises(self) -> None:
         """
         Ensure 'from_rfc7217()' rejects a network whose mask is
-        not /64 (the same constraint as 'from_eui64').
+        not /64 (the same constraint as 'from_eui64') with
+        'Ip6IfAddrFormatError'.
 
         Reference: RFC 4291 §2.5.1 (modified EUI-64 IIDs are 64 bits).
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6IfAddrFormatError,
             msg="from_rfc7217() must reject a network whose mask is not /64.",
-        ):
+        ) as error:
             Ip6IfAddr.from_rfc7217(
                 ip6_network=Ip6Network("2001:db8::/48"),
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 secret_key=b"a-fixed-128-bit-secret-key-bytes",
             )
 
+        self.assertEqual(
+            str(error.exception),
+            "The IPv6 interface address format is invalid: Ip6Network('2001:db8::/48')",
+            msg="from_rfc7217() must report the rejected network.",
+        )
+
     def test__net_addr__ip6_host__from_rfc7217__rejects_short_secret_key(self) -> None:
         """
         Ensure 'from_rfc7217()' rejects a secret_key shorter
-        than 16 bytes (the spec-mandated minimum).
+        than 16 bytes (the spec-mandated minimum) with
+        'Ip6IfAddrFormatError', without echoing the key bytes.
 
         Reference: RFC 7217 §5 (secret_key SHOULD be ≥ 128 bits).
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6IfAddrFormatError,
             msg="from_rfc7217() must reject a secret_key < 16 bytes (128 bits).",
-        ):
+        ) as error:
             Ip6IfAddr.from_rfc7217(
                 ip6_network=Ip6Network("2001:db8::/64"),
                 mac_address=MacAddress("02:00:00:11:22:33"),
                 secret_key=b"too-short",
             )
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv6 interface address format is invalid: "
+            "'secret_key length 9 < 16 bytes (RFC 7217 §5 minimum)'",
+            msg="from_rfc7217() must report the key-length problem without leaking the key.",
+        )
 
 
 class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
@@ -784,16 +806,23 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
     def test__net_addr__ip6_host__from_rfc8981_temp__non_64_mask_raises(self) -> None:
         """
         Ensure 'from_rfc8981_temp()' rejects a network whose
-        mask is not /64 (the IID width is fixed at 64 bits).
+        mask is not /64 (the IID width is fixed at 64 bits) with
+        'Ip6IfAddrFormatError'.
 
         Reference: RFC 4291 §2.5.1 (IIDs are 64 bits for unicast addresses).
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6IfAddrFormatError,
             msg="from_rfc8981_temp() must reject a network whose mask is not /64.",
-        ):
+        ) as error:
             Ip6IfAddr.from_rfc8981_temp(ip6_network=Ip6Network("2001:db8::/48"))
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv6 interface address format is invalid: Ip6Network('2001:db8::/48')",
+            msg="from_rfc8981_temp() must report the rejected network.",
+        )
 
     def test__net_addr__ip6_host__from_rfc8981_temp__avoids_reserved_iid(self) -> None:
         """
