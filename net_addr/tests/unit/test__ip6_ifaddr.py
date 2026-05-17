@@ -750,8 +750,7 @@ class TestNetAddrIp6HostFromRfc7217(TestCase):
 
         self.assertEqual(
             str(error.exception),
-            "The IPv6 interface address format is invalid: "
-            "'secret_key length 9 < 16 bytes (RFC 7217 §5 minimum)'",
+            "The IPv6 interface address format is invalid: " "'secret_key length 9 < 16 bytes (RFC 7217 §5 minimum)'",
             msg="from_rfc7217() must report the key-length problem without leaking the key.",
         )
 
