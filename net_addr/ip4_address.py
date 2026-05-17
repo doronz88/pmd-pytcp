@@ -177,6 +177,7 @@ class Ip4Address(IpAddress):
         """
         Check if the IPv4 address is a link local address.
         """
+
         return self._address & 0xFF_FF_00_00 == 0xA9_FE_00_00  # 169.254.0.0 - 169.254.255.255
 
     @property
