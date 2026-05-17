@@ -89,6 +89,10 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             tuple_address, tuple_mask = network
             if not (isinstance(tuple_address, Ip6Address) and isinstance(tuple_mask, Ip6Mask)):
                 raise Ip6NetworkFormatError(network)
+            # A prefix has no RFC 4007 zone; reject a scoped
+            # address rather than silently dropping the zone.
+            if tuple_address.scope_id is not None:
+                raise Ip6NetworkFormatError(network)
             if strict and int(tuple_address) & ~int(tuple_mask) & IP6__MASK:
                 raise Ip6NetworkFormatError(network)
             self._mask = tuple_mask
@@ -99,7 +103,12 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
             try:
                 address, mask = network.split("/")
                 self._mask = Ip6Mask("/" + mask)
-                raw_address = int(Ip6Address(address))
+                address_obj = Ip6Address(address)
+                # A prefix has no RFC 4007 zone; reject a scoped
+                # address rather than silently dropping the zone.
+                if address_obj.scope_id is not None:
+                    raise Ip6NetworkFormatError(network)
+                raw_address = int(address_obj)
                 if strict and raw_address & ~int(self._mask) & IP6__MASK:
                     raise Ip6NetworkFormatError(network)
                 self._address = Ip6Address(raw_address & int(self._mask))

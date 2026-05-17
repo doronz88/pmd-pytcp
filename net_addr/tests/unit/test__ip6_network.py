@@ -486,6 +486,30 @@ class TestNetAddrIp6NetworkContains(TestCase):
                 "error_message": "The IPv6 network format is invalid: ('2001:db8::', '/64')",
             },
         },
+        {
+            "_description": "Test the IPv6 network format: 'fe80::1%eth0/64' (zoned address in network literal)",
+            "_args": [
+                "fe80::1%eth0/64",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": "The IPv6 network format is invalid: 'fe80::1%eth0/64'",
+            },
+        },
+        {
+            "_description": "Test the IPv6 network format: (Ip6Address('fe80::1%eth0'), Ip6Mask('/64')) (zoned tuple)",
+            "_args": [
+                (Ip6Address("fe80::1%eth0"), Ip6Mask("/64")),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": (
+                    "The IPv6 network format is invalid: " "(Ip6Address('fe80::1%eth0'), Ip6Mask('/64'))"
+                ),
+            },
+        },
     ]
 )
 class TestNetAddrIp6NetworkErrors(TestCase):
