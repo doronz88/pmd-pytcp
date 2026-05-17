@@ -36,17 +36,19 @@ from net_proto.lib.enums import EtherType
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.arp.arp__base import Arp
+from net_proto.protocols.arp.arp__enums import (
+    ARP__HARDWARE_LEN__ETHERNET,
+    ARP__PROTOCOL_LEN__IP4,
+    ArpHardwareType,
+    ArpOperation,
+)
 from net_proto.protocols.arp.arp__errors import (
     ArpIntegrityError,
     ArpSanityError,
 )
 from net_proto.protocols.arp.arp__header import (
-    ARP__HARDWARE_LEN__ETHERNET,
     ARP__HEADER__LEN,
-    ARP__PROTOCOL_LEN__IP4,
-    ArpHardwareType,
     ArpHeader,
-    ArpOperation,
 )
 
 

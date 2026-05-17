@@ -37,9 +37,11 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Message,
     Icmp6Type,
 )
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__pi import (
+    NdPrefixInfo,
+)
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
-    NdPrefixInfo,
 )
 
 
