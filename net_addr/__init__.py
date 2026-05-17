@@ -69,19 +69,16 @@ from net_addr.errors import (
 )
 from net_addr.ip4_address import IP4__ADDRESS_LEN, Ip4Address
 from net_addr.ip4_ifaddr import Ip4IfAddr
-from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip6_address import IP6__ADDRESS_LEN, Ip6Address
 from net_addr.ip6_ifaddr import Ip6IfAddr
-from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
 from net_addr.ip6_wildcard import Ip6Wildcard
 from net_addr.ip_address import IpAddress
 from net_addr.ip_ifaddr import IfAddr
-from net_addr.ip_ifaddr_source import IfAddrSource
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
@@ -105,14 +102,12 @@ __all__ = [
     "IfAddrFormatError",
     "IfAddrGatewayError",
     "IfAddrSanityError",
-    "IfAddrSource",
     "Ip4Address",
     "Ip4AddressFormatError",
     "Ip4IfAddr",
     "Ip4IfAddrFormatError",
     "Ip4IfAddrGatewayError",
     "Ip4IfAddrSanityError",
-    "Ip4IfAddrSource",
     "Ip4Mask",
     "Ip4MaskFormatError",
     "Ip4Network",
@@ -125,7 +120,6 @@ __all__ = [
     "Ip6IfAddrFormatError",
     "Ip6IfAddrGatewayError",
     "Ip6IfAddrSanityError",
-    "Ip6IfAddrSource",
     "Ip6Mask",
     "Ip6MaskFormatError",
     "Ip6Network",

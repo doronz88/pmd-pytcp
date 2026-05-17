@@ -30,7 +30,6 @@ net_addr/tests/unit/test__ip4_ifaddr.py
 ver 3.0.5
 """
 
-import time
 from typing import Any
 from unittest import TestCase
 
@@ -42,14 +41,11 @@ from net_addr import (
     Ip4IfAddrFormatError,
     Ip4IfAddrGatewayError,
     Ip4IfAddrSanityError,
-    Ip4IfAddrSource,
     Ip4Mask,
     Ip4Network,
     Ip6IfAddr,
     IpVersion,
 )
-
-IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
 
 
 @parameterized_class(
@@ -61,8 +57,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.DHCP,
-                "expiration_time": IP4_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
@@ -73,8 +67,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.DHCP,
-                "expiration_time": IP4_ADDRESS_EXPIRATION_TIME,
             },
         },
         {
@@ -92,8 +84,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": None,
-                "origin": Ip4IfAddrSource.UNKNOWN,
-                "expiration_time": 0,
             },
         },
         {
@@ -103,7 +93,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
@@ -114,8 +103,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.STATIC,
-                "expiration_time": 0,
             },
         },
         {
@@ -125,7 +112,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "192.168.1.100/24",
@@ -136,8 +122,6 @@ IP4_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
                 "gateway": Ip4Address("192.168.1.1"),
-                "origin": Ip4IfAddrSource.STATIC,
-                "expiration_time": 0,
             },
         },
     ]
@@ -304,30 +288,6 @@ class TestNetAddrIp4Host(TestCase):
             self._results["gateway"],
         )
 
-    def test__net_addr__ip4_host__origin(self) -> None:
-        """
-        Ensure the IPv4 host 'origin' property returns a correct value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip4_ifaddr.origin,
-            self._results["origin"],
-        )
-
-    def test__net_addr__ip4_host__expiration_time(self) -> None:
-        """
-        Ensure the IPv4 host 'expiration_time' property returns a correct value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip4_ifaddr.expiration_time,
-            self._results["expiration_time"],
-        )
-
 
 class TestNetAddrIp4HostSemantics(TestCase):
     """
@@ -337,7 +297,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__eq__ignores_metadata(self) -> None:
         """
         Ensure '__eq__()' compares only address and network, ignoring
-        gateway, origin, and expiration_time.
+        the gateway.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -346,19 +306,17 @@ class TestNetAddrIp4HostSemantics(TestCase):
         decorated = Ip4IfAddr(
             "192.168.1.100/24",
             gateway=Ip4Address("192.168.1.1"),
-            origin=Ip4IfAddrSource.DHCP,
-            expiration_time=IP4_ADDRESS_EXPIRATION_TIME,
         )
 
         self.assertEqual(
             plain,
             decorated,
-            msg="Ip4IfAddr equality must ignore gateway, origin, and expiration_time.",
+            msg="Ip4IfAddr equality must ignore the gateway.",
         )
         self.assertEqual(
             hash(plain),
             hash(decorated),
-            msg="Equal Ip4IfAddr values must hash to the same value regardless of metadata.",
+            msg="Equal Ip4IfAddr values must hash to the same value regardless of gateway.",
         )
 
     def test__net_addr__ip4_host__eq__cross_version(self) -> None:
@@ -507,7 +465,7 @@ class TestNetAddrIp4HostSemantics(TestCase):
 
     def test__net_addr__ip4_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip4IfAddr preserves gateway, origin, and expiration_time.
+        Ensure copying an Ip4IfAddr preserves address, network, and gateway.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -515,8 +473,6 @@ class TestNetAddrIp4HostSemantics(TestCase):
         source = Ip4IfAddr(
             "192.168.1.100/24",
             gateway=Ip4Address("192.168.1.1"),
-            origin=Ip4IfAddrSource.DHCP,
-            expiration_time=IP4_ADDRESS_EXPIRATION_TIME,
         )
         clone = Ip4IfAddr(source)
 
@@ -534,16 +490,6 @@ class TestNetAddrIp4HostSemantics(TestCase):
             clone.gateway,
             source.gateway,
             msg="Copying an Ip4IfAddr must preserve its gateway.",
-        )
-        self.assertEqual(
-            clone.origin,
-            source.origin,
-            msg="Copying an Ip4IfAddr must preserve its origin.",
-        )
-        self.assertEqual(
-            clone.expiration_time,
-            source.expiration_time,
-            msg="Copying an Ip4IfAddr must preserve its expiration_time.",
         )
 
 
@@ -713,55 +659,10 @@ class TestNetAddrIp4HostErrors(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "AssertionError: DHCP origin requires expiration_time.",
-            "_args": ["192.168.1.100/24"],
-            "_kwargs": {
-                "origin": Ip4IfAddrSource.DHCP,
-            },
-        },
-        {
-            "_description": "AssertionError: non-DHCP origin with expiration_time set.",
-            "_args": ["192.168.1.100/24"],
-            "_kwargs": {
-                "origin": Ip4IfAddrSource.STATIC,
-                "expiration_time": 9999999999,
-            },
-        },
-        {
-            "_description": "AssertionError: DHCP origin with expiration_time in the past.",
-            "_args": ["192.168.1.100/24"],
-            "_kwargs": {
-                "origin": Ip4IfAddrSource.DHCP,
-                "expiration_time": 1,
-            },
-        },
-        {
-            "_description": "AssertionError: DHCP origin with negative expiration_time.",
-            "_args": ["192.168.1.100/24"],
-            "_kwargs": {
-                "origin": Ip4IfAddrSource.DHCP,
-                "expiration_time": -1,
-            },
-        },
-        {
             "_description": "AssertionError: copying Ip4IfAddr with gateway set.",
             "_args": [Ip4IfAddr("192.168.1.100/24")],
             "_kwargs": {
                 "gateway": Ip4Address("192.168.1.1"),
-            },
-        },
-        {
-            "_description": "AssertionError: copying Ip4IfAddr with origin set.",
-            "_args": [Ip4IfAddr("192.168.1.100/24")],
-            "_kwargs": {
-                "origin": Ip4IfAddrSource.STATIC,
-            },
-        },
-        {
-            "_description": "AssertionError: copying Ip4IfAddr with expiration_time set.",
-            "_args": [Ip4IfAddr("192.168.1.100/24")],
-            "_kwargs": {
-                "expiration_time": 9999999999,
             },
         },
     ]
@@ -799,35 +700,7 @@ class TestNetAddrIp4HostSetters(TestCase):
         Initialize a base IPv4 host for setter tests.
         """
 
-        self._ip4_ifaddr = Ip4IfAddr("192.168.1.100/24", origin=Ip4IfAddrSource.STATIC)
-
-    def test__net_addr__ip4_host__origin_setter(self) -> None:
-        """
-        Ensure the IPv4 host 'origin' setter stores the new value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip4_ifaddr.origin = Ip4IfAddrSource.UNKNOWN
-        self.assertEqual(
-            self._ip4_ifaddr.origin,
-            Ip4IfAddrSource.UNKNOWN,
-            msg="The 'origin' setter must store the assigned value.",
-        )
-
-    def test__net_addr__ip4_host__expiration_time_setter(self) -> None:
-        """
-        Ensure the IPv4 host 'expiration_time' setter stores the new value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip4_ifaddr.expiration_time = 9999999999
-        self.assertEqual(
-            self._ip4_ifaddr.expiration_time,
-            9999999999,
-            msg="The 'expiration_time' setter must store the assigned value.",
-        )
+        self._ip4_ifaddr = Ip4IfAddr("192.168.1.100/24")
 
     def test__net_addr__ip4_host__gateway_setter(self) -> None:
         """

@@ -30,7 +30,6 @@ net_addr/tests/unit/test__ip6_ifaddr.py
 ver 3.0.5
 """
 
-import time
 from typing import Any
 from unittest import TestCase
 
@@ -43,14 +42,11 @@ from net_addr import (
     Ip6IfAddrFormatError,
     Ip6IfAddrGatewayError,
     Ip6IfAddrSanityError,
-    Ip6IfAddrSource,
     Ip6Mask,
     Ip6Network,
     IpVersion,
     MacAddress,
 )
-
-IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
 
 
 @parameterized_class(
@@ -62,8 +58,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.AUTOCONFIG,
-                "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
@@ -74,8 +68,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.AUTOCONFIG,
-                "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
         },
         {
@@ -93,8 +85,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": None,
-                "origin": Ip6IfAddrSource.UNKNOWN,
-                "expiration_time": 0,
             },
         },
         {
@@ -104,8 +94,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.DHCP,
-                "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
@@ -116,8 +104,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.DHCP,
-                "expiration_time": IP6_ADDRESS_EXPIRATION_TIME,
             },
         },
         {
@@ -130,7 +116,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
             ],
             "_kwargs": {
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.STATIC,
             },
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
@@ -141,8 +126,6 @@ IP6_ADDRESS_EXPIRATION_TIME = int(time.time() + 3600)
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
                 "gateway": Ip6Address("2001:b:c:d::1"),
-                "origin": Ip6IfAddrSource.STATIC,
-                "expiration_time": 0,
             },
         },
     ]
@@ -301,32 +284,6 @@ class TestNetAddrIp6Host(TestCase):
             self._results["gateway"],
         )
 
-    def test__net_addr__ip6_host__origin(self) -> None:
-        """
-        Ensure the IPv6 host 'origin' property returns a correct
-        value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip6_ifaddr.origin,
-            self._results["origin"],
-        )
-
-    def test__net_addr__ip6_host__expiration_time(self) -> None:
-        """
-        Ensure the IPv6 host 'expiration_time' property returns a correct
-        value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip6_ifaddr.expiration_time,
-            self._results["expiration_time"],
-        )
-
 
 class TestNetAddrIp6HostSemantics(TestCase):
     """
@@ -336,7 +293,7 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__eq__ignores_metadata(self) -> None:
         """
         Ensure '__eq__()' compares only address and network, ignoring
-        gateway, origin, and expiration_time.
+        the gateway.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -345,19 +302,17 @@ class TestNetAddrIp6HostSemantics(TestCase):
         decorated = Ip6IfAddr(
             "2001:db8::1/64",
             gateway=Ip6Address("2001:db8::ffff"),
-            origin=Ip6IfAddrSource.DHCP,
-            expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
         )
 
         self.assertEqual(
             plain,
             decorated,
-            msg="Ip6IfAddr equality must ignore gateway, origin, and expiration_time.",
+            msg="Ip6IfAddr equality must ignore the gateway.",
         )
         self.assertEqual(
             hash(plain),
             hash(decorated),
-            msg="Equal Ip6IfAddr values must hash to the same value regardless of metadata.",
+            msg="Equal Ip6IfAddr values must hash to the same value regardless of gateway.",
         )
 
     def test__net_addr__ip6_host__eq__cross_version(self) -> None:
@@ -506,7 +461,7 @@ class TestNetAddrIp6HostSemantics(TestCase):
 
     def test__net_addr__ip6_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip6IfAddr preserves gateway, origin, and expiration_time.
+        Ensure copying an Ip6IfAddr preserves address, network, and gateway.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -514,8 +469,6 @@ class TestNetAddrIp6HostSemantics(TestCase):
         source = Ip6IfAddr(
             "2001:db8::1/64",
             gateway=Ip6Address("fe80::1"),
-            origin=Ip6IfAddrSource.DHCP,
-            expiration_time=IP6_ADDRESS_EXPIRATION_TIME,
         )
         clone = Ip6IfAddr(source)
 
@@ -533,16 +486,6 @@ class TestNetAddrIp6HostSemantics(TestCase):
             clone.gateway,
             source.gateway,
             msg="Copying an Ip6IfAddr must preserve its gateway.",
-        )
-        self.assertEqual(
-            clone.origin,
-            source.origin,
-            msg="Copying an Ip6IfAddr must preserve its origin.",
-        )
-        self.assertEqual(
-            clone.expiration_time,
-            source.expiration_time,
-            msg="Copying an Ip6IfAddr must preserve its expiration_time.",
         )
 
 
@@ -1034,45 +977,9 @@ class TestNetAddrIp6HostErrors(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "AssertionError: DHCP origin requires expiration_time.",
-            "_args": ["2001:db8::1/64"],
-            "_kwargs": {"origin": Ip6IfAddrSource.DHCP},
-        },
-        {
-            "_description": "AssertionError: AUTOCONFIG origin requires expiration_time.",
-            "_args": ["2001:db8::1/64"],
-            "_kwargs": {"origin": Ip6IfAddrSource.AUTOCONFIG},
-        },
-        {
-            "_description": "AssertionError: STATIC origin with expiration_time set.",
-            "_args": ["2001:db8::1/64"],
-            "_kwargs": {
-                "origin": Ip6IfAddrSource.STATIC,
-                "expiration_time": 9999999999,
-            },
-        },
-        {
-            "_description": "AssertionError: DHCP origin with expiration_time in the past.",
-            "_args": ["2001:db8::1/64"],
-            "_kwargs": {
-                "origin": Ip6IfAddrSource.DHCP,
-                "expiration_time": 1,
-            },
-        },
-        {
             "_description": "AssertionError: copying Ip6IfAddr with gateway set.",
             "_args": [Ip6IfAddr("2001:db8::1/64")],
             "_kwargs": {"gateway": Ip6Address("fe80::1")},
-        },
-        {
-            "_description": "AssertionError: copying Ip6IfAddr with origin set.",
-            "_args": [Ip6IfAddr("2001:db8::1/64")],
-            "_kwargs": {"origin": Ip6IfAddrSource.STATIC},
-        },
-        {
-            "_description": "AssertionError: copying Ip6IfAddr with expiration_time set.",
-            "_args": [Ip6IfAddr("2001:db8::1/64")],
-            "_kwargs": {"expiration_time": 9999999999},
         },
     ]
 )
@@ -1109,35 +1016,7 @@ class TestNetAddrIp6HostSetters(TestCase):
         Initialize a base IPv6 host for setter tests.
         """
 
-        self._ip6_ifaddr = Ip6IfAddr("2001:db8::1/64", origin=Ip6IfAddrSource.STATIC)
-
-    def test__net_addr__ip6_host__origin_setter(self) -> None:
-        """
-        Ensure the IPv6 host 'origin' setter stores the new value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip6_ifaddr.origin = Ip6IfAddrSource.UNKNOWN
-        self.assertEqual(
-            self._ip6_ifaddr.origin,
-            Ip6IfAddrSource.UNKNOWN,
-            msg="The 'origin' setter must store the assigned value.",
-        )
-
-    def test__net_addr__ip6_host__expiration_time_setter(self) -> None:
-        """
-        Ensure the IPv6 host 'expiration_time' setter stores the new value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip6_ifaddr.expiration_time = 9999999999
-        self.assertEqual(
-            self._ip6_ifaddr.expiration_time,
-            9999999999,
-            msg="The 'expiration_time' setter must store the assigned value.",
-        )
+        self._ip6_ifaddr = Ip6IfAddr("2001:db8::1/64")
 
     def test__net_addr__ip6_host__gateway_setter__link_local(self) -> None:
         """

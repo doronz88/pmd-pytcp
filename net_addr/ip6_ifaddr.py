@@ -32,7 +32,6 @@ ver 3.0.5
 
 import hashlib
 import secrets
-import time
 from typing import Self, override
 
 from net_addr.errors import (
@@ -44,7 +43,6 @@ from net_addr.errors import (
     Ip6NetworkFormatError,
 )
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_mask import Ip6Mask
 from net_addr.ip6_network import Ip6Network
 from net_addr.ip_ifaddr import IfAddr
@@ -78,7 +76,7 @@ def _is_reserved_iid(iid: int) -> bool:
     return _RESERVED_SUBNET_ANYCAST_LO <= iid <= _RESERVED_SUBNET_ANYCAST_HI
 
 
-class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
+class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
     """
     IPv6 interface address support class.
     """
@@ -87,8 +85,6 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
 
     _version: IpVersion = IpVersion.IP6
     _gateway: Ip6Address | None
-    _origin: Ip6IfAddrSource
-    _expiration_time: int
 
     def __init__(
         self,
@@ -96,8 +92,6 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
         /,
         *,
         gateway: Ip6Address | None = None,
-        origin: Ip6IfAddrSource | None = None,
-        expiration_time: int | None = None,
     ) -> None:
         """
         Initialize the IPv6 interface address object.
@@ -105,25 +99,12 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network, Ip6IfAddrSource]):
 
         if isinstance(host, Ip6IfAddr):
             assert gateway is None, f"Gateway cannot be set when copying an interface address. Got: {gateway!r}"
-            assert origin is None, f"Origin cannot be set when copying an interface address. Got: {origin!r}"
-            assert (
-                expiration_time is None
-            ), f"Expiration time cannot be set when copying an interface address. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway
-            self._origin = host.origin
-            self._expiration_time = host.expiration_time
             return
 
         self._gateway = gateway
-        self._origin = origin or Ip6IfAddrSource.UNKNOWN
-        self._expiration_time = expiration_time or 0
-
-        if self._origin in {Ip6IfAddrSource.AUTOCONFIG, Ip6IfAddrSource.DHCP}:
-            assert self._expiration_time >= int(time.time())
-        else:
-            assert self._expiration_time == 0
 
         if isinstance(host, tuple):
             tuple_address, network_or_mask = host

@@ -36,17 +36,14 @@ from typing import override
 from net_addr.base import Base
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip6_address import Ip6Address
-from net_addr.ip6_ifaddr_source import Ip6IfAddrSource
 from net_addr.ip6_network import Ip6Network
 
 
 class IfAddr[
     A: (Ip6Address, Ip4Address),
     N: (Ip6Network, Ip4Network),
-    O: (Ip6IfAddrSource, Ip4IfAddrSource),
 ](Base, Ip, ABC):
     """
     IP interface address support base class.
@@ -56,15 +53,11 @@ class IfAddr[
         "_address",
         "_network",
         "_gateway",
-        "_origin",
-        "_expiration_time",
     )
 
     _address: A
     _network: N
     _gateway: A | None
-    _origin: O
-    _expiration_time: int
 
     @override
     def __str__(self) -> str:
@@ -137,38 +130,6 @@ class IfAddr[
         """
 
         return self._network
-
-    @property
-    def origin(self) -> O:
-        """
-        Get the IP interface address '_origin' attribute.
-        """
-
-        return self._origin
-
-    @origin.setter
-    def origin(self, origin: O, /) -> None:
-        """
-        Set the IP interface address '_origin' attribute.
-        """
-
-        self._origin = origin
-
-    @property
-    def expiration_time(self) -> int:
-        """
-        Get the IP interface address '_expiration_time' attribute.
-        """
-
-        return self._expiration_time
-
-    @expiration_time.setter
-    def expiration_time(self, time: int, /) -> None:
-        """
-        Set the IP interface address '_expiration_time' attribute.
-        """
-
-        self._expiration_time = time
 
     @property
     def gateway(self) -> A | None:

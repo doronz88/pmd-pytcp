@@ -30,7 +30,6 @@ net_addr/ip4_ifaddr.py
 ver 3.0.5
 """
 
-import time
 from typing import Self, override
 
 from net_addr.errors import (
@@ -42,14 +41,13 @@ from net_addr.errors import (
     Ip4NetworkFormatError,
 )
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_ifaddr_source import Ip4IfAddrSource
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_version import IpVersion
 
 
-class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
+class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
     """
     IPv4 interface address support class.
     """
@@ -58,8 +56,6 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
 
     _version: IpVersion = IpVersion.IP4
     _gateway: Ip4Address | None
-    _origin: Ip4IfAddrSource
-    _expiration_time: int
 
     def __init__(
         self,
@@ -67,8 +63,6 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
         /,
         *,
         gateway: Ip4Address | None = None,
-        origin: Ip4IfAddrSource | None = None,
-        expiration_time: int | None = None,
     ) -> None:
         """
         Initialize the IPv4 interface address object.
@@ -76,25 +70,12 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network, Ip4IfAddrSource]):
 
         if isinstance(host, Ip4IfAddr):
             assert gateway is None, f"Gateway cannot be set when copying an interface address. Got: {gateway!r}"
-            assert origin is None, f"Origin cannot be set when copying an interface address. Got: {origin!r}"
-            assert (
-                expiration_time is None
-            ), f"Expiration time cannot be set when copying an interface address. Got: {expiration_time!r}"
             self._address = host.address
             self._network = host.network
             self._gateway = host.gateway
-            self._origin = host.origin
-            self._expiration_time = host.expiration_time
             return
 
         self._gateway = gateway
-        self._origin = origin or Ip4IfAddrSource.UNKNOWN
-        self._expiration_time = expiration_time or 0
-
-        if self._origin == Ip4IfAddrSource.DHCP:
-            assert self._expiration_time >= int(time.time())
-        else:
-            assert self._expiration_time == 0
 
         if isinstance(host, tuple):
             tuple_address, network_or_mask = host
