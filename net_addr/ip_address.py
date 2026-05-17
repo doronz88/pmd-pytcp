@@ -31,10 +31,16 @@ ver 3.0.5
 """
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from net_addr.address import Address
+from net_addr.errors import IpAddressFormatError
 from net_addr.ip import Ip
 from net_addr.mac_address import MacAddress
+
+if TYPE_CHECKING:
+    from net_addr.ip4_address import Ip4Address
+    from net_addr.ip6_address import Ip6Address
 
 
 class IpAddress(Address, Ip, ABC):
@@ -43,6 +49,29 @@ class IpAddress(Address, Ip, ABC):
     """
 
     __slots__ = ()
+
+    @staticmethod
+    def from_value(value: str | bytes | bytearray | memoryview | int, /) -> "Ip4Address | Ip6Address":
+        """
+        Build the concrete IPv4 or IPv6 address from a value of
+        unknown family (IPv4 attempted first). Raises
+        'IpAddressFormatError' when the value parses as neither.
+        """
+
+        from net_addr.ip4_address import Ip4Address
+        from net_addr.ip6_address import Ip6Address
+
+        try:
+            return Ip4Address(value)
+        except IpAddressFormatError:
+            pass
+
+        try:
+            return Ip6Address(value)
+        except IpAddressFormatError:
+            pass
+
+        raise IpAddressFormatError(value)
 
     @property
     @abstractmethod

@@ -35,7 +35,15 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore
 
-from net_addr import Ip4Address, Ip4AddressFormatError, Ip6Address, IpVersion, MacAddress
+from net_addr import (
+    Ip4Address,
+    Ip4AddressFormatError,
+    Ip6Address,
+    IpAddress,
+    IpAddressFormatError,
+    IpVersion,
+    MacAddress,
+)
 
 
 @parameterized_class(
@@ -2160,3 +2168,40 @@ class TestNetAddrIp4AddressCompressedExploded(TestCase):
                 self.assertEqual(obj.compressed, address, msg=f"compressed must be {address}.")
                 self.assertEqual(obj.exploded, address, msg=f"exploded must be {address}.")
                 self.assertEqual(obj.compressed, str(obj), msg="compressed must equal str().")
+
+
+class TestNetAddrIpAddressFromValue(TestCase):
+    """
+    The NetAddr IpAddress.from_value version-detecting factory tests.
+    """
+
+    def test__net_addr__ip_address__from_value(self) -> None:
+        """
+        Ensure 'IpAddress.from_value' detects the address family
+        and returns the matching concrete type; an
+        unparsable value raises 'IpAddressFormatError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        v4 = IpAddress.from_value("192.0.2.1")
+        self.assertIsInstance(v4, Ip4Address, msg="A dotted-quad must yield an Ip4Address.")
+        self.assertEqual(v4, Ip4Address("192.0.2.1"), msg="from_value must preserve the IPv4 value.")
+
+        v6 = IpAddress.from_value("2001:db8::1")
+        self.assertIsInstance(v6, Ip6Address, msg="A colon-hex string must yield an Ip6Address.")
+        self.assertEqual(v6, Ip6Address("2001:db8::1"), msg="from_value must preserve the IPv6 value.")
+
+        self.assertIsInstance(
+            IpAddress.from_value(b"\xc0\x00\x02\x01"),
+            Ip4Address,
+            msg="A 4-byte value must yield an Ip4Address.",
+        )
+        self.assertIsInstance(
+            IpAddress.from_value(b"\x20\x01\x0d\xb8" + b"\x00" * 11 + b"\x01"),
+            Ip6Address,
+            msg="A 16-byte value must yield an Ip6Address.",
+        )
+
+        with self.assertRaises(IpAddressFormatError, msg="An unparsable value must raise IpAddressFormatError."):
+            IpAddress.from_value("not-an-address")
