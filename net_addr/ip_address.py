@@ -54,6 +54,15 @@ class IpAddress(Address, Ip, ABC):
         raise NotImplementedError
 
     @property
+    @abstractmethod
+    def reverse_pointer(self) -> str:
+        """
+        Get the reverse-DNS PTR name for this IP address.
+        """
+
+        raise NotImplementedError
+
+    @property
     def is_unicast(self) -> bool:
         """
         Check if the IP address is an unicast address.

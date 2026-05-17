@@ -2112,3 +2112,30 @@ class TestNetAddrIp4AddressArithmetic(TestCase):
             _ = Ip4Address("10.0.0.1") + Ip4Address("10.0.0.2")
         with self.assertRaises(TypeError, msg="address + str must raise TypeError."):
             _ = Ip4Address("10.0.0.1") + "1"
+
+
+class TestNetAddrIp4AddressReversePointer(TestCase):
+    """
+    The NetAddr IPv4 address reverse-pointer tests.
+    """
+
+    def test__net_addr__ip4_address__reverse_pointer(self) -> None:
+        """
+        Ensure 'reverse_pointer' yields the reversed-octet
+        in-addr.arpa PTR name.
+
+        Reference: RFC 1035 (Domain Names — in-addr.arpa).
+        """
+
+        for address, expected in [
+            ("192.0.2.1", "1.2.0.192.in-addr.arpa"),
+            ("8.8.8.8", "8.8.8.8.in-addr.arpa"),
+            ("0.0.0.0", "0.0.0.0.in-addr.arpa"),
+            ("255.255.255.255", "255.255.255.255.in-addr.arpa"),
+        ]:
+            with self.subTest(address=address):
+                self.assertEqual(
+                    Ip4Address(address).reverse_pointer,
+                    expected,
+                    msg=f"Unexpected reverse_pointer for {address}.",
+                )

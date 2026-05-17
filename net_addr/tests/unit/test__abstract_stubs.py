@@ -105,6 +105,17 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         with self.assertRaises(NotImplementedError):
             IpAddress.multicast_mac.fget(Ip4Address())  # type: ignore[attr-defined]
 
+    def test__net_addr__ip_address__reverse_pointer_stub_raises(self) -> None:
+        """
+        Ensure the abstract 'IpAddress.reverse_pointer' stub
+        raises 'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(NotImplementedError):
+            IpAddress.reverse_pointer.fget(Ip4Address())  # type: ignore[attr-defined]
+
     def test__net_addr__ip_address__is_loopback_stub_raises(self) -> None:
         """
         Ensure the abstract 'IpAddress.is_loopback' stub raises

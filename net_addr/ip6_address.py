@@ -168,6 +168,16 @@ class Ip6Address(IpAddress):
         return MacAddress(MAC__IP6_MULTICAST_PREFIX | self._address & 0x0000_FFFF_FFFF)
 
     @property
+    @override
+    def reverse_pointer(self) -> str:
+        """
+        Get the IPv6 reverse-DNS PTR name (all 32 reversed
+        nibbles in the ip6.arpa zone).
+        """
+
+        return ".".join(reversed(f"{self._address:032x}")) + ".ip6.arpa"
+
+    @property
     def solicited_node_multicast(self) -> Self:
         """
         Create IPv6 solicited node multicast address.

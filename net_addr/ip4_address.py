@@ -121,6 +121,16 @@ class Ip4Address(IpAddress):
 
     @property
     @override
+    def reverse_pointer(self) -> str:
+        """
+        Get the IPv4 reverse-DNS PTR name (reversed octets in
+        the in-addr.arpa zone).
+        """
+
+        return ".".join(str(octet) for octet in reversed(bytes(self))) + ".in-addr.arpa"
+
+    @property
+    @override
     def is_global(self) -> bool:
         """
         Check if the IPv4 address is a global address.

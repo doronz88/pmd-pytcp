@@ -1636,3 +1636,42 @@ class TestNetAddrIp6AddressArithmetic(TestCase):
 
         with self.assertRaises(TypeError, msg="address + address must raise TypeError."):
             _ = Ip6Address("2001:db8::1") + Ip6Address("2001:db8::2")
+
+
+class TestNetAddrIp6AddressReversePointer(TestCase):
+    """
+    The NetAddr IPv6 address reverse-pointer tests.
+    """
+
+    def test__net_addr__ip6_address__reverse_pointer(self) -> None:
+        """
+        Ensure 'reverse_pointer' yields the reversed-nibble
+        ip6.arpa PTR name (all 32 nibbles).
+
+        Reference: RFC 3596 (DNS Extensions for IPv6 — ip6.arpa).
+        """
+
+        for address, expected in [
+            (
+                "2001:db8::1",
+                "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa",
+            ),
+            (
+                "::1",
+                "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa",
+            ),
+            (
+                "::",
+                "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa",
+            ),
+            (
+                "fe80::1",
+                "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa",
+            ),
+        ]:
+            with self.subTest(address=address):
+                self.assertEqual(
+                    Ip6Address(address).reverse_pointer,
+                    expected,
+                    msg=f"Unexpected reverse_pointer for {address}.",
+                )
