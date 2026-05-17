@@ -66,6 +66,8 @@ class TestClickTypeMacAddress(TestCase):
     def test__click_types__mac_address__name(self) -> None:
         """
         Ensure the type name advertises the expected MAC-address format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "xx:xx:xx:xx:xx:xx")
@@ -73,6 +75,8 @@ class TestClickTypeMacAddress(TestCase):
     def test__click_types__mac_address__valid(self) -> None:
         """
         Ensure a well-formed MAC address is parsed into a 'MacAddress'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("02:03:04:aa:bb:cc", None, None)
@@ -83,6 +87,8 @@ class TestClickTypeMacAddress(TestCase):
     def test__click_types__mac_address__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid MAC address raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -102,6 +108,8 @@ class TestClickTypeIpAddress(TestCase):
     def test__click_types__ip_address__name(self) -> None:
         """
         Ensure the type name advertises both IPv6 and IPv4 formats.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x or x.x.x.x")
@@ -109,6 +117,8 @@ class TestClickTypeIpAddress(TestCase):
     def test__click_types__ip_address__valid_ip6(self) -> None:
         """
         Ensure a valid IPv6 address is parsed into an 'Ip6Address'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("2001:db8::1", None, None)
@@ -119,6 +129,8 @@ class TestClickTypeIpAddress(TestCase):
     def test__click_types__ip_address__valid_ip4_fallback(self) -> None:
         """
         Ensure a valid IPv4 address is parsed after the IPv6 attempt fails.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("192.0.2.1", None, None)
@@ -129,6 +141,8 @@ class TestClickTypeIpAddress(TestCase):
     def test__click_types__ip_address__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IP address raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -148,6 +162,8 @@ class TestClickTypeIp6Address(TestCase):
     def test__click_types__ip6_address__name(self) -> None:
         """
         Ensure the type name advertises the IPv6-only format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x")
@@ -155,6 +171,8 @@ class TestClickTypeIp6Address(TestCase):
     def test__click_types__ip6_address__valid(self) -> None:
         """
         Ensure a valid IPv6 address is parsed into an 'Ip6Address'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("fe80::1", None, None)
@@ -165,6 +183,8 @@ class TestClickTypeIp6Address(TestCase):
     def test__click_types__ip6_address__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv6 address raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -184,6 +204,8 @@ class TestClickTypeIp4Address(TestCase):
     def test__click_types__ip4_address__name(self) -> None:
         """
         Ensure the type name advertises the IPv4-only format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x.x.x.x")
@@ -191,6 +213,8 @@ class TestClickTypeIp4Address(TestCase):
     def test__click_types__ip4_address__valid(self) -> None:
         """
         Ensure a valid IPv4 address is parsed into an 'Ip4Address'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("10.0.0.1", None, None)
@@ -201,6 +225,8 @@ class TestClickTypeIp4Address(TestCase):
     def test__click_types__ip4_address__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv4 address raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -220,6 +246,8 @@ class TestClickTypeIpNetwork(TestCase):
     def test__click_types__ip_network__name(self) -> None:
         """
         Ensure the type name advertises both IPv6 and IPv4 network formats.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x/n or x.x.x.x/n")
@@ -227,6 +255,8 @@ class TestClickTypeIpNetwork(TestCase):
     def test__click_types__ip_network__valid_ip6(self) -> None:
         """
         Ensure a valid IPv6 network is parsed into an 'Ip6Network'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("2001:db8::/64", None, None)
@@ -237,6 +267,8 @@ class TestClickTypeIpNetwork(TestCase):
     def test__click_types__ip_network__valid_ip4_fallback(self) -> None:
         """
         Ensure a valid IPv4 network is parsed after the IPv6 attempt fails.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("10.0.0.0/8", None, None)
@@ -247,6 +279,8 @@ class TestClickTypeIpNetwork(TestCase):
     def test__click_types__ip_network__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IP network raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -266,6 +300,8 @@ class TestClickTypeIp6Network(TestCase):
     def test__click_types__ip6_network__name(self) -> None:
         """
         Ensure the type name advertises the IPv6-only network format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x/n")
@@ -273,6 +309,8 @@ class TestClickTypeIp6Network(TestCase):
     def test__click_types__ip6_network__valid(self) -> None:
         """
         Ensure a valid IPv6 network is parsed into an 'Ip6Network'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("fe80::/64", None, None)
@@ -283,6 +321,8 @@ class TestClickTypeIp6Network(TestCase):
     def test__click_types__ip6_network__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv6 network raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -302,6 +342,8 @@ class TestClickTypeIp4Network(TestCase):
     def test__click_types__ip4_network__name(self) -> None:
         """
         Ensure the type name advertises the IPv4-only network format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x.x.x.x/n")
@@ -309,6 +351,8 @@ class TestClickTypeIp4Network(TestCase):
     def test__click_types__ip4_network__valid(self) -> None:
         """
         Ensure a valid IPv4 network is parsed into an 'Ip4Network'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("192.0.2.0/24", None, None)
@@ -319,6 +363,8 @@ class TestClickTypeIp4Network(TestCase):
     def test__click_types__ip4_network__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv4 network raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -338,6 +384,8 @@ class TestClickTypeIpHost(TestCase):
     def test__click_types__ip_host__name(self) -> None:
         """
         Ensure the type name advertises both IPv6 and IPv4 host formats.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x/n or x.x.x.x/n")
@@ -345,6 +393,8 @@ class TestClickTypeIpHost(TestCase):
     def test__click_types__ip_host__valid_ip6(self) -> None:
         """
         Ensure a valid IPv6 host is parsed into an 'Ip6IfAddr'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("2001:db8::1/64", None, None)
@@ -355,6 +405,8 @@ class TestClickTypeIpHost(TestCase):
     def test__click_types__ip_host__valid_ip4_fallback(self) -> None:
         """
         Ensure a valid IPv4 host is parsed after the IPv6 attempt fails.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("192.0.2.1/24", None, None)
@@ -365,6 +417,8 @@ class TestClickTypeIpHost(TestCase):
     def test__click_types__ip_host__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IP host raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -384,6 +438,8 @@ class TestClickTypeIp6Host(TestCase):
     def test__click_types__ip6_host__name(self) -> None:
         """
         Ensure the type name advertises the IPv6-only host format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x:x:x:x::x/n")
@@ -391,6 +447,8 @@ class TestClickTypeIp6Host(TestCase):
     def test__click_types__ip6_host__valid(self) -> None:
         """
         Ensure a valid IPv6 host is parsed into an 'Ip6IfAddr'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("2001:db8::1/64", None, None)
@@ -401,6 +459,8 @@ class TestClickTypeIp6Host(TestCase):
     def test__click_types__ip6_host__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv6 host raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:
@@ -420,6 +480,8 @@ class TestClickTypeIp4Host(TestCase):
     def test__click_types__ip4_host__name(self) -> None:
         """
         Ensure the type name advertises the IPv4-only host format.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._param.name, "x.x.x.x/n")
@@ -427,6 +489,8 @@ class TestClickTypeIp4Host(TestCase):
     def test__click_types__ip4_host__valid(self) -> None:
         """
         Ensure a valid IPv4 host is parsed into an 'Ip4IfAddr'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         result = self._param.convert("192.0.2.1/24", None, None)
@@ -437,6 +501,8 @@ class TestClickTypeIp4Host(TestCase):
     def test__click_types__ip4_host__invalid_raises_bad_parameter(self) -> None:
         """
         Ensure an invalid IPv4 host raises 'click.BadParameter'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(BadParameter) as ctx:

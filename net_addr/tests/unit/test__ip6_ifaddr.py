@@ -167,6 +167,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__str(self) -> None:
         """
         Ensure the IPv6 host '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -177,6 +179,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__repr(self) -> None:
         """
         Ensure the IPv6 host '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -187,6 +191,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__eq(self) -> None:
         """
         Ensure the IPv6 host '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -223,6 +229,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__version(self) -> None:
         """
         Ensure the IPv6 host 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -234,6 +242,8 @@ class TestNetAddrIp6Host(TestCase):
         """
         Ensure the IPv6 host 'is_ip4' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -245,6 +255,8 @@ class TestNetAddrIp6Host(TestCase):
         """
         Ensure the IPv6 host 'is_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -255,6 +267,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__address(self) -> None:
         """
         Ensure the IPv6 host 'address' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -265,6 +279,8 @@ class TestNetAddrIp6Host(TestCase):
     def test__net_addr__ip6_host__network(self) -> None:
         """
         Ensure the IPv6 host 'network' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -276,6 +292,8 @@ class TestNetAddrIp6Host(TestCase):
         """
         Ensure the IPv6 host 'gateway' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -287,6 +305,8 @@ class TestNetAddrIp6Host(TestCase):
         """
         Ensure the IPv6 host 'origin' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -298,6 +318,8 @@ class TestNetAddrIp6Host(TestCase):
         """
         Ensure the IPv6 host 'expiration_time' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -315,6 +337,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
         """
         Ensure '__eq__()' compares only address and network, ignoring
         gateway, origin, and expiration_time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         plain = Ip6IfAddr("2001:db8::1/64")
@@ -339,6 +363,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__eq__cross_version(self) -> None:
         """
         Ensure '__eq__()' returns False when compared to an Ip4IfAddr.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -351,6 +377,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
         """
         Ensure the IPv6 host is never equal to a value of a foreign type,
         including its own component pieces.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip6IfAddr("2001:db8::1/64")
@@ -375,6 +403,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__ne(self) -> None:
         """
         Ensure the IPv6 host '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip6IfAddr("2001:db8::1/64")
@@ -394,6 +424,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__hash__distinct_instances(self) -> None:
         """
         Ensure two independently constructed equal hosts hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6IfAddr("2001:db8::1/64")
@@ -413,6 +445,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
         """
         Ensure equal IPv6 hosts collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6IfAddr("2001:db8::1/64")
@@ -439,6 +473,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
         """
         Ensure equal IPv6 hosts refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6IfAddr("2001:db8::1/64")
@@ -455,6 +491,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__roundtrip__str(self) -> None:
         """
         Ensure 'Ip6IfAddr(str(x))' yields a host equal to 'x' (metadata-free).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in ("::/0", "::1/128", "2001:db8::1/64", "fe80::1/10", "ff02::1/128"):
@@ -469,6 +507,8 @@ class TestNetAddrIp6HostSemantics(TestCase):
     def test__net_addr__ip6_host__copy_preserves_fields(self) -> None:
         """
         Ensure copying an Ip6IfAddr preserves gateway, origin, and expiration_time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = Ip6IfAddr(
@@ -514,6 +554,8 @@ class TestNetAddrIp6HostFromEui64(TestCase):
     def test__net_addr__ip6_host__from_eui64(self) -> None:
         """
         Ensure 'from_eui64()' builds a /64 host from a MAC and network.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip6IfAddr.from_eui64(
@@ -535,6 +577,8 @@ class TestNetAddrIp6HostFromEui64(TestCase):
     def test__net_addr__ip6_host__from_eui64__non_64_mask_raises(self) -> None:
         """
         Ensure 'from_eui64()' rejects a network whose mask is not /64.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -955,6 +999,8 @@ class TestNetAddrIp6HostErrors(TestCase):
     def test__net_addr__ip6_host__errors(self) -> None:
         """
         Ensure the IPv6 host raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -1024,6 +1070,8 @@ class TestNetAddrIp6HostAssertionErrors(TestCase):
     def test__net_addr__ip6_host__assertion_errors(self) -> None:
         """
         Ensure the IPv6 host raises AssertionError on constraint violations.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -1048,6 +1096,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__origin_setter(self) -> None:
         """
         Ensure the IPv6 host 'origin' setter stores the new value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip6_ifaddr.origin = Ip6IfAddrSource.UNKNOWN
@@ -1060,6 +1110,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__expiration_time_setter(self) -> None:
         """
         Ensure the IPv6 host 'expiration_time' setter stores the new value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip6_ifaddr.expiration_time = 9999999999
@@ -1072,6 +1124,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__gateway_setter__link_local(self) -> None:
         """
         Ensure the IPv6 host 'gateway' setter accepts a link-local address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
@@ -1084,6 +1138,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__gateway_setter__global(self) -> None:
         """
         Ensure the IPv6 host 'gateway' setter accepts a global address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip6_ifaddr.gateway = Ip6Address("2001:db8::ffff")
@@ -1096,6 +1152,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__gateway_setter__clear(self) -> None:
         """
         Ensure the IPv6 host 'gateway' setter accepts None to clear the gateway.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
@@ -1109,6 +1167,8 @@ class TestNetAddrIp6HostSetters(TestCase):
         """
         Ensure the 'gateway' setter rejects an address that is neither
         global nor link-local.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -1120,6 +1180,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__gateway_setter__error__network_address(self) -> None:
         """
         Ensure the 'gateway' setter rejects the network address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -1131,6 +1193,8 @@ class TestNetAddrIp6HostSetters(TestCase):
     def test__net_addr__ip6_host__gateway_setter__error__host_address(self) -> None:
         """
         Ensure the 'gateway' setter rejects the host's own address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(

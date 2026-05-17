@@ -174,6 +174,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__str(self) -> None:
         """
         Ensure the IPv6 network '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -184,6 +186,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__repr(self) -> None:
         """
         Ensure the IPv6 network '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -194,6 +198,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__eq(self) -> None:
         """
         Ensure the IPv6 network '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -232,6 +238,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__version(self) -> None:
         """
         Ensure the IPv6 network 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -243,6 +251,8 @@ class TestNetAddrIp6Network(TestCase):
         """
         Ensure the IPv6 network 'is_ip4' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -254,6 +264,8 @@ class TestNetAddrIp6Network(TestCase):
         """
         Ensure the IPv6 network 'is_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -264,6 +276,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__address(self) -> None:
         """
         Ensure the IPv6 network 'address' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -274,6 +288,8 @@ class TestNetAddrIp6Network(TestCase):
     def test__net_addr__ip6_network__mask(self) -> None:
         """
         Ensure the IPv6 network 'mask' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -285,6 +301,8 @@ class TestNetAddrIp6Network(TestCase):
         """
         Ensure the IPv6 network 'last' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -376,6 +394,8 @@ class TestNetAddrIp6NetworkContains(TestCase):
     def test__net_addr__ip6_network__contains(self) -> None:
         """
         Ensure the IPv6 network '__contains__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -468,6 +488,8 @@ class TestNetAddrIp6NetworkErrors(TestCase):
     def test__net_addr__ip6_network__errors(self) -> None:
         """
         Ensure the IPv6 network raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -490,6 +512,8 @@ class TestNetAddrIp6NetworkEquality(TestCase):
         """
         Ensure an IPv6 network never compares equal to an IPv4 network
         even when their prefix lengths overlap.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -502,6 +526,8 @@ class TestNetAddrIp6NetworkEquality(TestCase):
         """
         Ensure the IPv6 network is never equal to a value of a foreign
         type, including its own component pieces.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         network = Ip6Network("2001:db8::/64")
@@ -534,6 +560,8 @@ class TestNetAddrIp6NetworkEquality(TestCase):
     def test__net_addr__ip6_network__ne(self) -> None:
         """
         Ensure the IPv6 network '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         network = Ip6Network("2001:db8::/64")
@@ -563,6 +591,8 @@ class TestNetAddrIp6NetworkHashConsistency(TestCase):
     def test__net_addr__ip6_network__hash__distinct_instances(self) -> None:
         """
         Ensure two independently constructed equal networks hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Network("2001:db8::abcd/64")
@@ -583,6 +613,8 @@ class TestNetAddrIp6NetworkHashConsistency(TestCase):
         """
         Ensure equal IPv6 networks collapse into a single element when
         used in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Network("2001:db8::/64")
@@ -609,6 +641,8 @@ class TestNetAddrIp6NetworkHashConsistency(TestCase):
         """
         Ensure equal IPv6 networks refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Network("2001:db8::/64")
@@ -631,6 +665,8 @@ class TestNetAddrIp6NetworkRoundtrip(TestCase):
     def test__net_addr__ip6_network__roundtrip__str(self) -> None:
         """
         Ensure 'Ip6Network(str(x))' yields a network equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -653,6 +689,8 @@ class TestNetAddrIp6NetworkRoundtrip(TestCase):
         """
         Ensure constructing an Ip6Network from another Ip6Network yields
         an equal network with the same hash.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = Ip6Network("2001:db8::abcd/64")

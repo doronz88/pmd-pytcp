@@ -54,6 +54,8 @@ class TestNetAddrBaseAbstractStubs(TestCase):
     def test__net_addr__base__str_stub_raises(self) -> None:
         """
         Ensure the abstract 'Base.__str__()' stub body raises 'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -62,6 +64,8 @@ class TestNetAddrBaseAbstractStubs(TestCase):
     def test__net_addr__base__eq_stub_raises(self) -> None:
         """
         Ensure the abstract 'Base.__eq__()' stub body raises 'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -77,6 +81,8 @@ class TestNetAddrAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'Address.__buffer__()' stub body raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -92,6 +98,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.multicast_mac' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -101,6 +109,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.is_loopback' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -110,6 +120,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.is_global' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -119,6 +131,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.is_private' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -128,6 +142,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.is_link_local' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -137,6 +153,8 @@ class TestNetAddrIpAddressAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpAddress.is_multicast' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -152,6 +170,8 @@ class TestNetAddrIpMaskAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpMask.__buffer__()' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -167,6 +187,8 @@ class TestNetAddrIpNetworkAbstractStubs(TestCase):
         """
         Ensure the abstract 'IpNetwork.last' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -182,6 +204,8 @@ class TestNetAddrIpHostAbstractStubs(TestCase):
         """
         Ensure the abstract 'IfAddr._validate_gateway()' stub raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip4IfAddr("192.0.2.1/24")
@@ -198,6 +222,8 @@ class TestNetAddrIpVersion(TestCase):
     def test__net_addr__ip_version__values(self) -> None:
         """
         Ensure the 'IpVersion' enum exposes IP4 and IP6 members.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(IpVersion.IP4.value, 4)
@@ -206,6 +232,8 @@ class TestNetAddrIpVersion(TestCase):
     def test__net_addr__ip_version__int_conversion(self) -> None:
         """
         Ensure 'int(IpVersion.x)' returns the underlying numeric value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(int(IpVersion.IP4), 4)

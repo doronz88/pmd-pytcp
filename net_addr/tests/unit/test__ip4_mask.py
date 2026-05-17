@@ -351,6 +351,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__len(self) -> None:
         """
         Ensure the IPv4 mask '__len__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -361,6 +363,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__str(self) -> None:
         """
         Ensure the IPv4 mask '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -371,6 +375,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__repr(self) -> None:
         """
         Ensure the IPv4 mask '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -381,6 +387,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__bytes(self) -> None:
         """
         Ensure the IPv4 mask '__bytes__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -391,6 +399,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__buffer(self) -> None:
         """
         Ensure the IPv4 mask '__buffer__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -401,6 +411,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__int(self) -> None:
         """
         Ensure the IPv4 mask '__int__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -411,6 +423,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__eq(self) -> None:
         """
         Ensure the IPv4 mask '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -436,6 +450,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__version(self) -> None:
         """
         Ensure the IPv4 mask 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -446,6 +462,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__is_ip4(self) -> None:
         """
         Ensure the IPv4 mask 'is_ip4' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -456,6 +474,8 @@ class TestNetAddrIp4Mask(TestCase):
     def test__net_addr__ip4_mask__is_ip6(self) -> None:
         """
         Ensure the IPv4 mask 'is_ip6' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -690,6 +710,8 @@ class TestNetAddrIp4MaskErrors(TestCase):
     def test__net_addr__ip4_mask__errors(self) -> None:
         """
         Ensure the IPv4 mask raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -712,6 +734,8 @@ class TestNetAddrIp4MaskEquality(TestCase):
     def test__net_addr__ip4_mask__eq__identity(self) -> None:
         """
         Ensure the IPv4 mask equals itself.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mask = Ip4Mask("/24")
@@ -724,6 +748,8 @@ class TestNetAddrIp4MaskEquality(TestCase):
         """
         Ensure two IPv4 masks with the same underlying value are equal
         regardless of which constructor form was used.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -745,6 +771,8 @@ class TestNetAddrIp4MaskEquality(TestCase):
     def test__net_addr__ip4_mask__eq__different_value(self) -> None:
         """
         Ensure two IPv4 masks with different values are not equal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -757,6 +785,8 @@ class TestNetAddrIp4MaskEquality(TestCase):
         """
         Ensure the IPv4 mask is never equal to a value of a foreign type,
         even when the underlying integer/bytes would match.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mask = Ip4Mask("/24")
@@ -785,6 +815,8 @@ class TestNetAddrIp4MaskEquality(TestCase):
     def test__net_addr__ip4_mask__ne(self) -> None:
         """
         Ensure the IPv4 mask '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mask = Ip4Mask("/24")
@@ -811,6 +843,8 @@ class TestNetAddrIp4MaskHashConsistency(TestCase):
         """
         Ensure equal IPv4 masks built from different input forms produce
         identical hash values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         from_slash = Ip4Mask("/24")
@@ -856,6 +890,8 @@ class TestNetAddrIp4MaskHashConsistency(TestCase):
         """
         Ensure equal IPv4 masks collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4Mask("/24")
@@ -882,6 +918,8 @@ class TestNetAddrIp4MaskHashConsistency(TestCase):
         """
         Ensure equal IPv4 masks refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4Mask("/24")
@@ -904,6 +942,8 @@ class TestNetAddrIp4MaskRoundtrip(TestCase):
     def test__net_addr__ip4_mask__roundtrip__str(self) -> None:
         """
         Ensure 'Ip4Mask(str(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for value in ("/0", "/1", "/15", "/24", "/31", "/32"):
@@ -918,6 +958,8 @@ class TestNetAddrIp4MaskRoundtrip(TestCase):
     def test__net_addr__ip4_mask__roundtrip__int(self) -> None:
         """
         Ensure 'Ip4Mask(int(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for value in (0, 0xFF000000, 0xFFFF0000, 0xFFFFFF00, 0xFFFFFFFF):
@@ -932,6 +974,8 @@ class TestNetAddrIp4MaskRoundtrip(TestCase):
     def test__net_addr__ip4_mask__roundtrip__bytes(self) -> None:
         """
         Ensure 'Ip4Mask(bytes(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for value in (
@@ -952,6 +996,8 @@ class TestNetAddrIp4MaskRoundtrip(TestCase):
         """
         Ensure 'Ip4Mask(x)' where 'x' is an Ip4Mask yields a mask equal
         to the source.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = Ip4Mask("/24")

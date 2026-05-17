@@ -382,6 +382,8 @@ class TestNetAddrMacAddress(TestCase):
     def test__net_addr__mac_address__str(self) -> None:
         """
         Ensure the MAC address '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -392,6 +394,8 @@ class TestNetAddrMacAddress(TestCase):
     def test__net_addr__mac_address__repr(self) -> None:
         """
         Ensure the MAC address '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -402,6 +406,8 @@ class TestNetAddrMacAddress(TestCase):
     def test__net_addr__mac_address__bytes(self) -> None:
         """
         Ensure the MAC address '__bytes__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -412,6 +418,8 @@ class TestNetAddrMacAddress(TestCase):
     def test__net_addr__mac_address__int(self) -> None:
         """
         Ensure the MAC address '__int__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -422,6 +430,8 @@ class TestNetAddrMacAddress(TestCase):
     def test__net_addr__mac_address__eq(self) -> None:
         """
         Ensure the MAC address '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -443,6 +453,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_unspecified()' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -454,6 +466,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_unicast' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -465,6 +479,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_multicast' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -476,6 +492,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_multicast_ip4' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -487,6 +505,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_multicast_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -511,6 +531,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_broadcast' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -522,6 +544,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'unspecified' property yields the all-zero
         MAC address regardless of the source instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -673,6 +697,8 @@ class TestNetAddrMacAddressErrors(TestCase):
     def test__net_addr__mac_address__errors(self) -> None:
         """
         Ensure the MAC address raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -695,6 +721,8 @@ class TestNetAddrMacAddressEquality(TestCase):
         """
         Ensure the MAC address is never equal to a value of a foreign type,
         even when the underlying integer or byte payload would match.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mac = MacAddress("02:03:04:aa:bb:cc")
@@ -719,6 +747,8 @@ class TestNetAddrMacAddressEquality(TestCase):
     def test__net_addr__mac_address__ne(self) -> None:
         """
         Ensure the MAC address '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mac = MacAddress("02:03:04:aa:bb:cc")
@@ -745,6 +775,8 @@ class TestNetAddrMacAddressHashConsistency(TestCase):
         """
         Ensure independently constructed equal MAC addresses hash identically
         regardless of the input form.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = MacAddress("02:03:04:aa:bb:cc")
@@ -775,6 +807,8 @@ class TestNetAddrMacAddressHashConsistency(TestCase):
         """
         Ensure equal MAC addresses collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = MacAddress("02:03:04:aa:bb:cc")
@@ -801,6 +835,8 @@ class TestNetAddrMacAddressHashConsistency(TestCase):
         """
         Ensure equal MAC addresses refer to the same dict entry regardless
         of which constructor form built the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = MacAddress("02:03:04:aa:bb:cc")
@@ -823,6 +859,8 @@ class TestNetAddrMacAddressRoundtrip(TestCase):
     def test__net_addr__mac_address__roundtrip__str(self) -> None:
         """
         Ensure 'MacAddress(str(x))' yields a MAC address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -843,6 +881,8 @@ class TestNetAddrMacAddressRoundtrip(TestCase):
     def test__net_addr__mac_address__roundtrip__int(self) -> None:
         """
         Ensure 'MacAddress(int(x))' yields a MAC address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -861,6 +901,8 @@ class TestNetAddrMacAddressRoundtrip(TestCase):
     def test__net_addr__mac_address__roundtrip__bytes(self) -> None:
         """
         Ensure 'MacAddress(bytes(x))' yields a MAC address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -880,6 +922,8 @@ class TestNetAddrMacAddressRoundtrip(TestCase):
         """
         Ensure constructing a MacAddress from another MacAddress yields an
         equal instance with the same hash.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = MacAddress("02:03:04:aa:bb:cc")

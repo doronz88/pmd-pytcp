@@ -252,6 +252,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__str(self) -> None:
         """
         Ensure the IPv4 network '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -262,6 +264,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__repr(self) -> None:
         """
         Ensure the IPv4 network '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -272,6 +276,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__eq(self) -> None:
         """
         Ensure the IPv4 network '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -315,6 +321,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__version(self) -> None:
         """
         Ensure the IPv4 network 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -325,6 +333,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__is_ip4(self) -> None:
         """
         Ensure the IPv4 network 'is_ip4' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -335,6 +345,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__is_ip6(self) -> None:
         """
         Ensure the IPv4 network 'is_ip6' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -345,6 +357,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__address(self) -> None:
         """
         Ensure the IPv4 network 'address' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -355,6 +369,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__mask(self) -> None:
         """
         Ensure the IPv4 network 'mask' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -365,6 +381,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__last(self) -> None:
         """
         Ensure the IPv4 network 'last' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -375,6 +393,8 @@ class TestNetAddrIp4Network(TestCase):
     def test__net_addr__ip4_network__broadcast(self) -> None:
         """
         Ensure the IPv4 network 'broadcast' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -466,6 +486,8 @@ class TestNetAddrIp4NetworkContains(TestCase):
     def test__net_addr__ip4_network__contains(self) -> None:
         """
         Ensure the IPv4 network '__contains__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -569,6 +591,8 @@ class TestNetAddrIp4NetworkErrors(TestCase):
     def test__net_addr__ip4_network__errors(self) -> None:
         """
         Ensure the IPv4 network raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -591,6 +615,8 @@ class TestNetAddrIp4NetworkEquality(TestCase):
         """
         Ensure an IPv4 network never compares equal to an IPv6 network
         even when their string representations overlap.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -603,6 +629,8 @@ class TestNetAddrIp4NetworkEquality(TestCase):
         """
         Ensure the IPv4 network is never equal to a value of a foreign
         type, including its own component pieces.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         network = Ip4Network("192.168.1.0/24")
@@ -635,6 +663,8 @@ class TestNetAddrIp4NetworkEquality(TestCase):
     def test__net_addr__ip4_network__ne(self) -> None:
         """
         Ensure the IPv4 network '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         network = Ip4Network("192.168.1.0/24")
@@ -664,6 +694,8 @@ class TestNetAddrIp4NetworkHashConsistency(TestCase):
     def test__net_addr__ip4_network__hash__distinct_instances(self) -> None:
         """
         Ensure two independently constructed equal networks hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4Network("192.168.1.100/24")
@@ -695,6 +727,8 @@ class TestNetAddrIp4NetworkHashConsistency(TestCase):
         """
         Ensure equal IPv4 networks collapse into a single element when
         used in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4Network("192.168.1.0/24")
@@ -721,6 +755,8 @@ class TestNetAddrIp4NetworkHashConsistency(TestCase):
         """
         Ensure equal IPv4 networks refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4Network("192.168.1.0/24")
@@ -743,6 +779,8 @@ class TestNetAddrIp4NetworkRoundtrip(TestCase):
     def test__net_addr__ip4_network__roundtrip__str(self) -> None:
         """
         Ensure 'Ip4Network(str(x))' yields a network equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -765,6 +803,8 @@ class TestNetAddrIp4NetworkRoundtrip(TestCase):
         """
         Ensure constructing an Ip4Network from another Ip4Network yields
         an equal network with the same hash.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = Ip4Network("192.168.1.100/24")

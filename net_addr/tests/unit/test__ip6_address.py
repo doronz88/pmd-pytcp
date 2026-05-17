@@ -629,6 +629,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__str(self) -> None:
         """
         Ensure the IPv6 address '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -639,6 +641,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__repr(self) -> None:
         """
         Ensure the IPv6 address '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -649,6 +653,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__bytes(self) -> None:
         """
         Ensure the IPv6 address '__bytes__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -659,6 +665,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__int(self) -> None:
         """
         Ensure the IPv6 address '__int__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -669,6 +677,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__eq(self) -> None:
         """
         Ensure the IPv6 address '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -699,6 +709,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__version(self) -> None:
         """
         Ensure the IPv6 address 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -709,6 +721,8 @@ class TestNetAddrIp6Address(TestCase):
     def test__net_addr__ip6_address__unspecified(self) -> None:
         """
         Ensure the IPv6 address 'unspecified' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -720,6 +734,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_ip4' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -731,6 +747,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -742,6 +760,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_unspecified' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -753,6 +773,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_unicast' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -764,6 +786,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_global' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -775,6 +799,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_link_local' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -786,6 +812,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_loopback' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -797,6 +825,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_multicast' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -808,6 +838,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_multicast__all_nodes' property returns
         a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -819,6 +851,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_multicast__all_routers' property returns
         a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -830,6 +864,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_multicast__solicited_node' property returns
         a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -841,6 +877,8 @@ class TestNetAddrIp6Address(TestCase):
         """
         Ensure the IPv6 address 'is_private' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -987,6 +1025,8 @@ class TestNetAddrIp6AddressErrors(TestCase):
     def test__net_addr__ip6_address__errors(self) -> None:
         """
         Ensure the IPv6 address raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -1008,6 +1048,8 @@ class TestNetAddrIp6AddressSemantics(TestCase):
         """
         Ensure an IPv6 address never compares equal to an IPv4 address
         even when they share the same integer value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -1019,6 +1061,8 @@ class TestNetAddrIp6AddressSemantics(TestCase):
     def test__net_addr__ip6_address__eq__foreign_types(self) -> None:
         """
         Ensure the IPv6 address is never equal to a value of a foreign type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         address = Ip6Address("2001:db8::1")
@@ -1039,6 +1083,8 @@ class TestNetAddrIp6AddressSemantics(TestCase):
     def test__net_addr__ip6_address__ne(self) -> None:
         """
         Ensure the IPv6 address '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         address = Ip6Address("2001:db8::1")
@@ -1064,6 +1110,8 @@ class TestNetAddrIp6AddressHashConsistency(TestCase):
     def test__net_addr__ip6_address__hash__distinct_instances(self) -> None:
         """
         Ensure two independently constructed equal addresses hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Address("ff02::1:ff00:0")
@@ -1097,6 +1145,8 @@ class TestNetAddrIp6AddressHashConsistency(TestCase):
         """
         Ensure equal IPv6 addresses collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Address("2001:db8::1")
@@ -1123,6 +1173,8 @@ class TestNetAddrIp6AddressHashConsistency(TestCase):
         """
         Ensure equal IPv6 addresses refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Address("2001:db8::1")
@@ -1145,6 +1197,8 @@ class TestNetAddrIp6AddressRoundtrip(TestCase):
     def test__net_addr__ip6_address__roundtrip__str(self) -> None:
         """
         Ensure 'Ip6Address(str(x))' yields an address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -1167,6 +1221,8 @@ class TestNetAddrIp6AddressRoundtrip(TestCase):
     def test__net_addr__ip6_address__roundtrip__bytes(self) -> None:
         """
         Ensure 'Ip6Address(bytes(x))' yields an address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -1186,6 +1242,8 @@ class TestNetAddrIp6AddressRoundtrip(TestCase):
     def test__net_addr__ip6_address__roundtrip__int(self) -> None:
         """
         Ensure 'Ip6Address(int(x))' yields an address equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in (
@@ -1211,6 +1269,8 @@ class TestNetAddrIp6AddressMulticastMac(TestCase):
     def test__net_addr__ip6_address__multicast_mac__all_nodes(self) -> None:
         """
         Ensure multicast_mac maps ff02::1 to 33:33:00:00:00:01.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -1222,6 +1282,8 @@ class TestNetAddrIp6AddressMulticastMac(TestCase):
     def test__net_addr__ip6_address__multicast_mac__solicited_node(self) -> None:
         """
         Ensure multicast_mac uses the low 32 bits of the IPv6 address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -1233,6 +1295,8 @@ class TestNetAddrIp6AddressMulticastMac(TestCase):
     def test__net_addr__ip6_address__multicast_mac__non_multicast_raises(self) -> None:
         """
         Ensure 'multicast_mac' raises AssertionError for a non-multicast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -1251,6 +1315,8 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
         """
         Ensure the solicited-node multicast of a unicast address is
         ff02::1:ff<low-24-bits>.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -1262,6 +1328,8 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
     def test__net_addr__ip6_address__solicited_node_multicast__unspecified(self) -> None:
         """
         Ensure the unspecified address maps to ff02::1:ff00:0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -1273,6 +1341,8 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
     def test__net_addr__ip6_address__solicited_node_multicast__multicast_raises(self) -> None:
         """
         Ensure 'solicited_node_multicast' rejects a multicast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(

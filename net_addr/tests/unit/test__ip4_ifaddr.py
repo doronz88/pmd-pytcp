@@ -162,6 +162,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__str(self) -> None:
         """
         Ensure the IPv4 host '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -172,6 +174,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__repr(self) -> None:
         """
         Ensure the IPv4 host '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -182,6 +186,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__eq(self) -> None:
         """
         Ensure the IPv4 host '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -229,6 +235,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__version(self) -> None:
         """
         Ensure the IPv4 host 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -239,6 +247,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__is_ip4(self) -> None:
         """
         Ensure the IPv4 host 'is_ip4' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -249,6 +259,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__is_ip6(self) -> None:
         """
         Ensure the IPv4 host 'is_ip6' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -259,6 +271,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__address(self) -> None:
         """
         Ensure the IPv4 host 'address' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -269,6 +283,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__network(self) -> None:
         """
         Ensure the IPv4 host 'network' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -279,6 +295,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__gateway(self) -> None:
         """
         Ensure the IPv4 host 'gateway' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -289,6 +307,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__origin(self) -> None:
         """
         Ensure the IPv4 host 'origin' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -299,6 +319,8 @@ class TestNetAddrIp4Host(TestCase):
     def test__net_addr__ip4_host__expiration_time(self) -> None:
         """
         Ensure the IPv4 host 'expiration_time' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -316,6 +338,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
         """
         Ensure '__eq__()' compares only address and network, ignoring
         gateway, origin, and expiration_time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         plain = Ip4IfAddr("192.168.1.100/24")
@@ -340,6 +364,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__eq__cross_version(self) -> None:
         """
         Ensure '__eq__()' returns False when compared to an Ip6IfAddr.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -352,6 +378,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
         """
         Ensure the IPv4 host is never equal to a value of a foreign type,
         including its own component pieces.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip4IfAddr("192.168.1.100/24")
@@ -376,6 +404,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__ne(self) -> None:
         """
         Ensure the IPv4 host '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         host = Ip4IfAddr("192.168.1.100/24")
@@ -395,6 +425,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__hash__distinct_instances(self) -> None:
         """
         Ensure two independently constructed equal hosts hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4IfAddr("192.168.1.100/24")
@@ -414,6 +446,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
         """
         Ensure equal IPv4 hosts collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4IfAddr("192.168.1.100/24")
@@ -440,6 +474,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
         """
         Ensure equal IPv4 hosts refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip4IfAddr("192.168.1.100/24")
@@ -456,6 +492,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__roundtrip__str(self) -> None:
         """
         Ensure 'Ip4IfAddr(str(x))' yields a host equal to 'x' (metadata-free).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for spec in ("0.0.0.0/0", "10.0.0.1/8", "192.168.1.100/24", "255.255.255.254/31"):
@@ -470,6 +508,8 @@ class TestNetAddrIp4HostSemantics(TestCase):
     def test__net_addr__ip4_host__copy_preserves_fields(self) -> None:
         """
         Ensure copying an Ip4IfAddr preserves gateway, origin, and expiration_time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = Ip4IfAddr(
@@ -645,6 +685,8 @@ class TestNetAddrIp4HostErrors(TestCase):
     def test__net_addr__ip4_host__errors(self) -> None:
         """
         Ensure the IPv4 host raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -725,6 +767,8 @@ class TestNetAddrIp4HostAssertionErrors(TestCase):
     def test__net_addr__ip4_host__assertion_errors(self) -> None:
         """
         Ensure the IPv4 host raises AssertionError on constraint violations.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -749,6 +793,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__origin_setter(self) -> None:
         """
         Ensure the IPv4 host 'origin' setter stores the new value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip4_ifaddr.origin = Ip4IfAddrSource.UNKNOWN
@@ -761,6 +807,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__expiration_time_setter(self) -> None:
         """
         Ensure the IPv4 host 'expiration_time' setter stores the new value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip4_ifaddr.expiration_time = 9999999999
@@ -773,6 +821,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter(self) -> None:
         """
         Ensure the IPv4 host 'gateway' setter stores a valid gateway.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip4_ifaddr.gateway = Ip4Address("192.168.1.254")
@@ -785,6 +835,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter__clear(self) -> None:
         """
         Ensure the IPv4 host 'gateway' setter accepts None to clear the gateway.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._ip4_ifaddr.gateway = Ip4Address("192.168.1.1")
@@ -797,6 +849,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter__error__outside_network(self) -> None:
         """
         Ensure the 'gateway' setter rejects an address outside the host network.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -808,6 +862,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter__error__network_address(self) -> None:
         """
         Ensure the 'gateway' setter rejects the network address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -819,6 +875,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter__error__broadcast_address(self) -> None:
         """
         Ensure the 'gateway' setter rejects the broadcast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
@@ -830,6 +888,8 @@ class TestNetAddrIp4HostSetters(TestCase):
     def test__net_addr__ip4_host__gateway_setter__error__host_address(self) -> None:
         """
         Ensure the 'gateway' setter rejects the host's own address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(

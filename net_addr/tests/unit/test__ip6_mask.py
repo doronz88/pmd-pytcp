@@ -470,6 +470,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__len(self) -> None:
         """
         Ensure the IPv6 mask '__len__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -480,6 +482,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__str(self) -> None:
         """
         Ensure the IPv6 mask '__str__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -490,6 +494,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__repr(self) -> None:
         """
         Ensure the IPv6 mask '__repr__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -500,6 +506,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__bytes(self) -> None:
         """
         Ensure the IPv6 mask '__bytes__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -510,6 +518,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__int(self) -> None:
         """
         Ensure the IPv6 mask '__int__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -520,6 +530,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__eq(self) -> None:
         """
         Ensure the IPv6 mask '__eq__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -550,6 +562,8 @@ class TestNetAddrIp6Mask(TestCase):
     def test__net_addr__ip6_mask__version(self) -> None:
         """
         Ensure the IPv6 mask 'version' property returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -561,6 +575,8 @@ class TestNetAddrIp6Mask(TestCase):
         """
         Ensure the IPv6 mask 'is_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -572,6 +588,8 @@ class TestNetAddrIp6Mask(TestCase):
         """
         Ensure the IPv6 mask 'is_ip6' property returns a correct
         value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -737,6 +755,8 @@ class TestNetAddrIp6MaskErrors(TestCase):
     def test__net_addr__ip6_mask__errors(self) -> None:
         """
         Ensure the IPv6 mask raises an error on invalid input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(self._results["error"]) as error:
@@ -759,6 +779,8 @@ class TestNetAddrIp6MaskEquality(TestCase):
         """
         Ensure an IPv6 mask never compares equal to an IPv4 mask even when
         their integer values overlap in the low bits.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -770,6 +792,8 @@ class TestNetAddrIp6MaskEquality(TestCase):
     def test__net_addr__ip6_mask__eq__foreign_types(self) -> None:
         """
         Ensure the IPv6 mask is never equal to a value of a foreign type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mask = Ip6Mask("/64")
@@ -794,6 +818,8 @@ class TestNetAddrIp6MaskEquality(TestCase):
     def test__net_addr__ip6_mask__ne(self) -> None:
         """
         Ensure the IPv6 mask '__ne__()' method returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mask = Ip6Mask("/64")
@@ -819,6 +845,8 @@ class TestNetAddrIp6MaskHashConsistency(TestCase):
     def test__net_addr__ip6_mask__hash__distinct_instances(self) -> None:
         """
         Ensure equal masks constructed from different forms hash identically.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Mask("/16")
@@ -842,6 +870,8 @@ class TestNetAddrIp6MaskHashConsistency(TestCase):
         """
         Ensure equal IPv6 masks collapse into a single element when used
         in a set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Mask("/64")
@@ -868,6 +898,8 @@ class TestNetAddrIp6MaskHashConsistency(TestCase):
         """
         Ensure equal IPv6 masks refer to the same dict entry regardless
         of which constructor form was used to build the key.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = Ip6Mask("/64")
@@ -890,6 +922,8 @@ class TestNetAddrIp6MaskRoundtrip(TestCase):
     def test__net_addr__ip6_mask__roundtrip__str(self) -> None:
         """
         Ensure 'Ip6Mask(str(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for prefix in (0, 1, 8, 16, 32, 48, 64, 96, 127, 128):
@@ -904,6 +938,8 @@ class TestNetAddrIp6MaskRoundtrip(TestCase):
     def test__net_addr__ip6_mask__roundtrip__int(self) -> None:
         """
         Ensure 'Ip6Mask(int(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for prefix in (0, 1, 64, 127, 128):
@@ -918,6 +954,8 @@ class TestNetAddrIp6MaskRoundtrip(TestCase):
     def test__net_addr__ip6_mask__roundtrip__bytes(self) -> None:
         """
         Ensure 'Ip6Mask(bytes(x))' yields a mask equal to 'x'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for prefix in (0, 1, 64, 127, 128):
