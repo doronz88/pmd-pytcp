@@ -61,6 +61,7 @@ from net_addr.errors import (
     IpMaskFormatError,
     IpNetworkFormatError,
     IpWildcardFormatError,
+    MacAddressError,
     MacAddressFormatError,
     NetAddrError,
 )
@@ -131,6 +132,7 @@ __all__ = [
     "IpWildcardFormatError",
     "MAC__ADDRESS_LEN",
     "MacAddress",
+    "MacAddressError",
     "MacAddressFormatError",
     "NetAddrError",
 ]

@@ -35,7 +35,12 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_addr import MacAddress, MacAddressFormatError
+from net_addr import (
+    MacAddress,
+    MacAddressError,
+    MacAddressFormatError,
+    NetAddrError,
+)
 
 
 @parameterized_class(
@@ -709,6 +714,36 @@ class TestNetAddrMacAddressErrors(TestCase):
             self._results["error_message"],
             msg=f"Expected error message does not match for case: {self._description}.",
         )
+
+
+class TestNetAddrMacAddressErrorHierarchy(TestCase):
+    """
+    The NetAddr MAC address error-class hierarchy tests.
+    """
+
+    def test__net_addr__mac_address__error_hierarchy(self) -> None:
+        """
+        Ensure 'MacAddressFormatError' sits under a per-type
+        'MacAddressError' base which sits under 'NetAddrError',
+        mirroring every other net_addr value type's error
+        hierarchy.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertTrue(
+            issubclass(MacAddressFormatError, MacAddressError),
+            msg="MacAddressFormatError must derive from the MacAddressError base.",
+        )
+        self.assertTrue(
+            issubclass(MacAddressError, NetAddrError),
+            msg="MacAddressError must derive from the NetAddrError root.",
+        )
+
+        with self.assertRaises(MacAddressError, msg="A bad MAC must be catchable as MacAddressError."):
+            MacAddress("not-a-mac")
+        with self.assertRaises(NetAddrError, msg="A bad MAC must remain catchable as NetAddrError."):
+            MacAddress("not-a-mac")
 
 
 class TestNetAddrMacAddressEquality(TestCase):

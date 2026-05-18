@@ -181,7 +181,13 @@ class Ip6IfAddrSanityError(IfAddrSanityError):
         super().__init__(f"The IPv6 address doesn't belong to the provided network: {value!r}")
 
 
-class MacAddressFormatError(NetAddrError):
+class MacAddressError(NetAddrError):
+    """
+    Base class for all MAC address exceptions.
+    """
+
+
+class MacAddressFormatError(MacAddressError):
     """
     Exception raised when MAC address format is invalid.
     """
