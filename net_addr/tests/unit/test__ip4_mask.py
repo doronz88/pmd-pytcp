@@ -724,6 +724,39 @@ class TestNetAddrIp4Mask(TestCase):
                 "error_message": "The IPv4 mask format is invalid: 1.1",
             },
         },
+        {
+            "_description": "Test the IPv4 mask format: '255.255.255.0 ' (trailing space)",
+            "_args": [
+                "255.255.255.0 ",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '255.255.255.0 '",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '255.255.255.0\\n' (trailing newline)",
+            "_args": [
+                "255.255.255.0\n",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": r"The IPv4 mask format is invalid: '255.255.255.0\n'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 mask format: '0255.0.0.0' (leading-zero octet)",
+            "_args": [
+                "0255.0.0.0",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4MaskFormatError,
+                "error_message": "The IPv4 mask format is invalid: '0255.0.0.0'",
+            },
+        },
     ]
 )
 class TestNetAddrIp4MaskErrors(TestCase):

@@ -1611,6 +1611,72 @@ class TestNetAddrIp4Address(TestCase):
                 "error_message": "The IPv4 address format is invalid: 1.1",
             },
         },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.010' (octal octet)",
+            "_args": [
+                "1.2.3.010",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3.010'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '01.02.03.04' (leading zeros)",
+            "_args": [
+                "01.02.03.04",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '01.02.03.04'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.04' (leading-zero octet)",
+            "_args": [
+                "1.2.3.04",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3.04'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.4 ' (trailing space)",
+            "_args": [
+                "1.2.3.4 ",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3.4 '",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.4\\n' (trailing newline)",
+            "_args": [
+                "1.2.3.4\n",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": r"The IPv4 address format is invalid: '1.2.3.4\n'",
+            },
+        },
+        {
+            "_description": "Test the IPv4 address format: '1.2.3.0x4' (hex octet)",
+            "_args": [
+                "1.2.3.0x4",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4AddressFormatError,
+                "error_message": "The IPv4 address format is invalid: '1.2.3.0x4'",
+            },
+        },
     ]
 )
 class TestNetAddrIp4AddressErrors(TestCase):

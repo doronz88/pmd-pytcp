@@ -252,6 +252,16 @@ class TestNetAddrIp4Wildcard(TestCase):
             "_args": [[]],
             "_results": {"error_message": "The IPv4 wildcard format is invalid: []"},
         },
+        {
+            "_description": "IPv4 wildcard: trailing space",
+            "_args": ["0.0.255.255 "],
+            "_results": {"error_message": "The IPv4 wildcard format is invalid: '0.0.255.255 '"},
+        },
+        {
+            "_description": "IPv4 wildcard: leading-zero octet",
+            "_args": ["0.0.0.0255"],
+            "_results": {"error_message": "The IPv4 wildcard format is invalid: '0.0.0.0255'"},
+        },
     ]
 )
 class TestNetAddrIp4WildcardErrors(TestCase):

@@ -30,12 +30,11 @@ net_addr/ip4_wildcard.py
 ver 3.0.5
 """
 
-import re
 import socket
 from typing import Self, override
 
 from net_addr.errors import Ip4WildcardFormatError
-from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK, IP4__REGEX
+from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
 from net_addr.ip_version import IpVersion
 from net_addr.ip_wildcard import IpWildcard
 
@@ -79,9 +78,13 @@ class Ip4Wildcard(IpWildcard):
                 self._wildcard = int.from_bytes(wildcard)
                 return
 
-        if isinstance(wildcard, str) and re.search(IP4__REGEX, wildcard):
+        if isinstance(wildcard, str):
+            # 'socket.inet_pton' is the strict POSIX parser; the
+            # legacy 'socket.inet_aton' would accept octal / hex
+            # octets, leading zeros and surrounding whitespace and
+            # silently reinterpret the dotted wildcard.
             try:
-                self._wildcard = int.from_bytes(socket.inet_aton(wildcard))
+                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard))
                 return
             except OSError:
                 pass

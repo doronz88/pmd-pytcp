@@ -30,7 +30,6 @@ net_addr/ip4_address.py
 ver 3.0.5
 """
 
-import re
 import socket
 from typing import Self, override
 
@@ -41,7 +40,6 @@ from net_addr.mac_address import MAC__IP4_MULTICAST_PREFIX, MacAddress
 
 IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
-IP4__REGEX = r"((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}" r"(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])"
 
 
 class Ip4Address(IpAddress):
@@ -81,12 +79,17 @@ class Ip4Address(IpAddress):
                 return
 
         if isinstance(address, str):
-            if re.search(IP4__REGEX, address):
-                try:
-                    self._address = int.from_bytes(socket.inet_aton(address))
-                    return
-                except OSError:
-                    pass
+            # 'socket.inet_pton' is the strict POSIX parser: it
+            # accepts only canonical four-octet dotted-decimal and
+            # rejects the legacy 'socket.inet_aton' leniencies
+            # (octal / hex octets, leading zeros, fewer than four
+            # parts, surrounding whitespace) that would otherwise
+            # silently reinterpret the address.
+            try:
+                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address))
+                return
+            except OSError:
+                pass
 
         raise Ip4AddressFormatError(address)
 

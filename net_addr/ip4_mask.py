@@ -35,7 +35,7 @@ import socket
 from typing import Self, override
 
 from net_addr.errors import Ip4MaskFormatError
-from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK, IP4__REGEX
+from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
 from net_addr.ip_mask import IpMask
 from net_addr.ip_version import IpVersion
 
@@ -84,9 +84,13 @@ class Ip4Mask(IpMask):
                 self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)
                 return
 
-        if isinstance(mask, str) and re.search(IP4__REGEX, mask):
+        if isinstance(mask, str):
+            # 'socket.inet_pton' is the strict POSIX parser; the
+            # legacy 'socket.inet_aton' would accept octal / hex
+            # octets, leading zeros and surrounding whitespace and
+            # silently reinterpret the dotted netmask.
             try:
-                candidate = int.from_bytes(socket.inet_aton(mask))
+                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, mask))
             except OSError:
                 pass
             else:
