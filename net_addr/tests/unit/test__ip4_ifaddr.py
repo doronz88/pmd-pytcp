@@ -39,7 +39,6 @@ from net_addr import (
     Ip4Address,
     Ip4IfAddr,
     Ip4IfAddrFormatError,
-    Ip4IfAddrGatewayError,
     Ip4IfAddrSanityError,
     Ip4Mask,
     Ip4Network,
@@ -55,9 +54,7 @@ from net_addr import (
             "_args": [
                 "192.168.1.100/24",
             ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4IfAddr('192.168.1.100/24')",
@@ -66,7 +63,6 @@ from net_addr import (
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
-                "gateway": Ip4Address("192.168.1.1"),
             },
         },
         {
@@ -83,7 +79,6 @@ from net_addr import (
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
-                "gateway": None,
             },
         },
         {
@@ -91,9 +86,7 @@ from net_addr import (
             "_args": [
                 "192.168.1.100 255.255.255.0",
             ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4IfAddr('192.168.1.100/24')",
@@ -102,7 +95,6 @@ from net_addr import (
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
-                "gateway": Ip4Address("192.168.1.1"),
             },
         },
         {
@@ -110,9 +102,7 @@ from net_addr import (
             "_args": [
                 (Ip4Address("192.168.1.100"), Ip4Mask("255.255.255.0")),
             ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4IfAddr('192.168.1.100/24')",
@@ -121,7 +111,6 @@ from net_addr import (
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
-                "gateway": Ip4Address("192.168.1.1"),
             },
         },
         {
@@ -129,9 +118,7 @@ from net_addr import (
             "_args": [
                 (Ip4Address("192.168.1.100"), Ip4Network("192.168.1.0/24")),
             ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "192.168.1.100/24",
                 "__repr__": "Ip4IfAddr('192.168.1.100/24')",
@@ -140,7 +127,6 @@ from net_addr import (
                 "is_ip4": True,
                 "address": Ip4Address("192.168.1.100"),
                 "network": Ip4Network("192.168.1.0/24"),
-                "gateway": Ip4Address("192.168.1.1"),
             },
         },
     ]
@@ -295,18 +281,6 @@ class TestNetAddrIp4Host(TestCase):
             self._results["network"],
         )
 
-    def test__net_addr__ip4_host__gateway(self) -> None:
-        """
-        Ensure the IPv4 host 'gateway' property returns a correct value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip4_ifaddr.gateway,
-            self._results["gateway"],
-        )
-
 
 class TestNetAddrIp4HostSemantics(TestCase):
     """
@@ -315,27 +289,23 @@ class TestNetAddrIp4HostSemantics(TestCase):
 
     def test__net_addr__ip4_host__eq__ignores_metadata(self) -> None:
         """
-        Ensure '__eq__()' compares only address and network, ignoring
-        the gateway.
+        Ensure '__eq__()' compares only address and network.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         plain = Ip4IfAddr("192.168.1.100/24")
-        decorated = Ip4IfAddr(
-            "192.168.1.100/24",
-            gateway=Ip4Address("192.168.1.1"),
-        )
+        other = Ip4IfAddr((Ip4Address("192.168.1.100"), Ip4Mask("/24")))
 
         self.assertEqual(
             plain,
-            decorated,
-            msg="Ip4IfAddr equality must ignore the gateway.",
+            other,
+            msg="Ip4IfAddr equality must compare only address and network.",
         )
         self.assertEqual(
             hash(plain),
-            hash(decorated),
-            msg="Equal Ip4IfAddr values must hash to the same value regardless of gateway.",
+            hash(other),
+            msg="Equal Ip4IfAddr values must hash to the same value.",
         )
 
     def test__net_addr__ip4_host__eq__cross_version(self) -> None:
@@ -484,15 +454,12 @@ class TestNetAddrIp4HostSemantics(TestCase):
 
     def test__net_addr__ip4_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip4IfAddr preserves address, network, and gateway.
+        Ensure copying an Ip4IfAddr preserves address and network.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        source = Ip4IfAddr(
-            "192.168.1.100/24",
-            gateway=Ip4Address("192.168.1.1"),
-        )
+        source = Ip4IfAddr("192.168.1.100/24")
         clone = Ip4IfAddr(source)
 
         self.assertEqual(
@@ -504,11 +471,6 @@ class TestNetAddrIp4HostSemantics(TestCase):
             clone.network,
             source.network,
             msg="Copying an Ip4IfAddr must preserve its network.",
-        )
-        self.assertEqual(
-            clone.gateway,
-            source.gateway,
-            msg="Copying an Ip4IfAddr must preserve its gateway.",
         )
 
 
@@ -594,58 +556,6 @@ class TestNetAddrIp4HostSemantics(TestCase):
                 "error_message": "The IPv4 interface address format is invalid: '10.0.0.1/99'",
             },
         },
-        {
-            "_description": "Test Ip4IfAddrGatewayError: gateway not in network.",
-            "_args": [
-                "192.168.1.100/24",
-            ],
-            "_kwargs": {
-                "gateway": Ip4Address("10.0.0.1"),
-            },
-            "_results": {
-                "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('10.0.0.1')",
-            },
-        },
-        {
-            "_description": "Test Ip4IfAddrGatewayError: gateway equals network address.",
-            "_args": [
-                "192.168.1.100/24",
-            ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.0"),
-            },
-            "_results": {
-                "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.0')",
-            },
-        },
-        {
-            "_description": "Test Ip4IfAddrGatewayError: gateway equals broadcast address.",
-            "_args": [
-                "192.168.1.100/24",
-            ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.255"),
-            },
-            "_results": {
-                "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.255')",
-            },
-        },
-        {
-            "_description": "Test Ip4IfAddrGatewayError: gateway equals host address.",
-            "_args": [
-                "192.168.1.100/24",
-            ],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.100"),
-            },
-            "_results": {
-                "error": Ip4IfAddrGatewayError,
-                "error_message": "The IPv4 interface address gateway is invalid: Ip4Address('192.168.1.100')",
-            },
-        },
     ]
 )
 class TestNetAddrIp4HostErrors(TestCase):
@@ -673,133 +583,6 @@ class TestNetAddrIp4HostErrors(TestCase):
             self._results["error_message"],
             msg=f"Expected error message does not match for case: {self._description}.",
         )
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "AssertionError: copying Ip4IfAddr with gateway set.",
-            "_args": [Ip4IfAddr("192.168.1.100/24")],
-            "_kwargs": {
-                "gateway": Ip4Address("192.168.1.1"),
-            },
-        },
-    ]
-)
-class TestNetAddrIp4HostAssertionErrors(TestCase):
-    """
-    The NetAddr IPv4 host assertion error tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-
-    def test__net_addr__ip4_host__assertion_errors(self) -> None:
-        """
-        Ensure the IPv4 host raises AssertionError on constraint violations.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            AssertionError,
-            msg=f"Expected AssertionError for case: {self._description}.",
-        ):
-            Ip4IfAddr(*self._args, **self._kwargs)
-
-
-class TestNetAddrIp4HostSetters(TestCase):
-    """
-    The NetAddr IPv4 host property setter tests.
-    """
-
-    def setUp(self) -> None:
-        """
-        Initialize a base IPv4 host for setter tests.
-        """
-
-        self._ip4_ifaddr = Ip4IfAddr("192.168.1.100/24")
-
-    def test__net_addr__ip4_host__gateway_setter(self) -> None:
-        """
-        Ensure the IPv4 host 'gateway' setter stores a valid gateway.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip4_ifaddr.gateway = Ip4Address("192.168.1.254")
-        self.assertEqual(
-            self._ip4_ifaddr.gateway,
-            Ip4Address("192.168.1.254"),
-            msg="The 'gateway' setter must store a valid in-network address.",
-        )
-
-    def test__net_addr__ip4_host__gateway_setter__clear(self) -> None:
-        """
-        Ensure the IPv4 host 'gateway' setter accepts None to clear the gateway.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip4_ifaddr.gateway = Ip4Address("192.168.1.1")
-        self._ip4_ifaddr.gateway = None
-        self.assertIsNone(
-            self._ip4_ifaddr.gateway,
-            msg="Assigning None to 'gateway' must clear the stored gateway.",
-        )
-
-    def test__net_addr__ip4_host__gateway_setter__error__outside_network(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects an address outside the host network.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip4IfAddrGatewayError,
-            msg="The 'gateway' setter must reject an address outside the host's network.",
-        ):
-            self._ip4_ifaddr.gateway = Ip4Address("10.0.0.1")
-
-    def test__net_addr__ip4_host__gateway_setter__error__network_address(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects the network address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip4IfAddrGatewayError,
-            msg="The 'gateway' setter must reject the network address.",
-        ):
-            self._ip4_ifaddr.gateway = Ip4Address("192.168.1.0")
-
-    def test__net_addr__ip4_host__gateway_setter__error__broadcast_address(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects the broadcast address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip4IfAddrGatewayError,
-            msg="The 'gateway' setter must reject the broadcast address.",
-        ):
-            self._ip4_ifaddr.gateway = Ip4Address("192.168.1.255")
-
-    def test__net_addr__ip4_host__gateway_setter__error__host_address(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects the host's own address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip4IfAddrGatewayError,
-            msg="The 'gateway' setter must reject the host's own address.",
-        ):
-            self._ip4_ifaddr.gateway = Ip4Address("192.168.1.100")
 
 
 class TestNetAddrIp4IfAddrFormat(TestCase):

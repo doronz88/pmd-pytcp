@@ -40,7 +40,6 @@ from net_addr import (
     Ip6Address,
     Ip6IfAddr,
     Ip6IfAddrFormatError,
-    Ip6IfAddrGatewayError,
     Ip6IfAddrSanityError,
     Ip6Mask,
     Ip6Network,
@@ -56,9 +55,7 @@ from net_addr import (
             "_args": [
                 "2001:b:c:d:1:2:3:4/64",
             ],
-            "_kwargs": {
-                "gateway": Ip6Address("2001:b:c:d::1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
@@ -67,7 +64,6 @@ from net_addr import (
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
-                "gateway": Ip6Address("2001:b:c:d::1"),
             },
         },
         {
@@ -84,7 +80,6 @@ from net_addr import (
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
-                "gateway": None,
             },
         },
         {
@@ -92,9 +87,7 @@ from net_addr import (
             "_args": [
                 (Ip6Address("2001:b:c:d:1:2:3:4"), Ip6Mask("/64")),
             ],
-            "_kwargs": {
-                "gateway": Ip6Address("2001:b:c:d::1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
@@ -103,7 +96,6 @@ from net_addr import (
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
-                "gateway": Ip6Address("2001:b:c:d::1"),
             },
         },
         {
@@ -114,9 +106,7 @@ from net_addr import (
                     Ip6Network("2001:b:c:d::/64"),
                 ),
             ],
-            "_kwargs": {
-                "gateway": Ip6Address("2001:b:c:d::1"),
-            },
+            "_kwargs": {},
             "_results": {
                 "__str__": "2001:b:c:d:1:2:3:4/64",
                 "__repr__": "Ip6IfAddr('2001:b:c:d:1:2:3:4/64')",
@@ -125,7 +115,6 @@ from net_addr import (
                 "is_ip4": False,
                 "address": Ip6Address("2001:b:c:d:1:2:3:4"),
                 "network": Ip6Network("2001:b:c:d:1::/64"),
-                "gateway": Ip6Address("2001:b:c:d::1"),
             },
         },
     ]
@@ -271,19 +260,6 @@ class TestNetAddrIp6Host(TestCase):
             self._results["network"],
         )
 
-    def test__net_addr__ip6_host__gateway(self) -> None:
-        """
-        Ensure the IPv6 host 'gateway' property returns a correct
-        value.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertEqual(
-            self._ip6_ifaddr.gateway,
-            self._results["gateway"],
-        )
-
 
 class TestNetAddrIp6HostSemantics(TestCase):
     """
@@ -292,27 +268,23 @@ class TestNetAddrIp6HostSemantics(TestCase):
 
     def test__net_addr__ip6_host__eq__ignores_metadata(self) -> None:
         """
-        Ensure '__eq__()' compares only address and network, ignoring
-        the gateway.
+        Ensure '__eq__()' compares only address and network.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         plain = Ip6IfAddr("2001:db8::1/64")
-        decorated = Ip6IfAddr(
-            "2001:db8::1/64",
-            gateway=Ip6Address("2001:db8::ffff"),
-        )
+        other = Ip6IfAddr((Ip6Address("2001:db8::1"), Ip6Mask("/64")))
 
         self.assertEqual(
             plain,
-            decorated,
-            msg="Ip6IfAddr equality must ignore the gateway.",
+            other,
+            msg="Ip6IfAddr equality must compare only address and network.",
         )
         self.assertEqual(
             hash(plain),
-            hash(decorated),
-            msg="Equal Ip6IfAddr values must hash to the same value regardless of gateway.",
+            hash(other),
+            msg="Equal Ip6IfAddr values must hash to the same value.",
         )
 
     def test__net_addr__ip6_host__eq__cross_version(self) -> None:
@@ -461,15 +433,12 @@ class TestNetAddrIp6HostSemantics(TestCase):
 
     def test__net_addr__ip6_host__copy_preserves_fields(self) -> None:
         """
-        Ensure copying an Ip6IfAddr preserves address, network, and gateway.
+        Ensure copying an Ip6IfAddr preserves address and network.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        source = Ip6IfAddr(
-            "2001:db8::1/64",
-            gateway=Ip6Address("fe80::1"),
-        )
+        source = Ip6IfAddr("2001:db8::1/64")
         clone = Ip6IfAddr(source)
 
         self.assertEqual(
@@ -481,11 +450,6 @@ class TestNetAddrIp6HostSemantics(TestCase):
             clone.network,
             source.network,
             msg="Copying an Ip6IfAddr must preserve its network.",
-        )
-        self.assertEqual(
-            clone.gateway,
-            source.gateway,
-            msg="Copying an Ip6IfAddr must preserve its gateway.",
         )
 
 
@@ -946,33 +910,6 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
                 "error_message": "The IPv6 interface address format is invalid: '2001:db8::1/200'",
             },
         },
-        {
-            "_description": "Test Ip6IfAddrGatewayError: gateway equals network address.",
-            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
-            "_kwargs": {"gateway": Ip6Address("2001:db8::")},
-            "_results": {
-                "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('2001:db8::')",
-            },
-        },
-        {
-            "_description": "Test Ip6IfAddrGatewayError: gateway equals host address.",
-            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
-            "_kwargs": {"gateway": Ip6Address("2001:db8::1")},
-            "_results": {
-                "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('2001:db8::1')",
-            },
-        },
-        {
-            "_description": "Test Ip6IfAddrGatewayError: gateway is neither global nor link-local.",
-            "_args": [(Ip6Address("2001:db8::1"), Ip6Network("2001:db8::/64"))],
-            "_kwargs": {"gateway": Ip6Address("fc00::1")},
-            "_results": {
-                "error": Ip6IfAddrGatewayError,
-                "error_message": "The IPv6 interface address gateway is invalid: Ip6Address('fc00::1')",
-            },
-        },
     ]
 )
 class TestNetAddrIp6HostErrors(TestCase):
@@ -1000,133 +937,6 @@ class TestNetAddrIp6HostErrors(TestCase):
             self._results["error_message"],
             msg=f"Expected error message does not match for case: {self._description}.",
         )
-
-
-@parameterized_class(
-    [
-        {
-            "_description": "AssertionError: copying Ip6IfAddr with gateway set.",
-            "_args": [Ip6IfAddr("2001:db8::1/64")],
-            "_kwargs": {"gateway": Ip6Address("fe80::1")},
-        },
-    ]
-)
-class TestNetAddrIp6HostAssertionErrors(TestCase):
-    """
-    The NetAddr IPv6 host assertion error tests.
-    """
-
-    _description: str
-    _args: list[Any]
-    _kwargs: dict[str, Any]
-
-    def test__net_addr__ip6_host__assertion_errors(self) -> None:
-        """
-        Ensure the IPv6 host raises AssertionError on constraint violations.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            AssertionError,
-            msg=f"Expected AssertionError for case: {self._description}.",
-        ):
-            Ip6IfAddr(*self._args, **self._kwargs)
-
-
-class TestNetAddrIp6HostSetters(TestCase):
-    """
-    The NetAddr IPv6 host property setter tests.
-    """
-
-    def setUp(self) -> None:
-        """
-        Initialize a base IPv6 host for setter tests.
-        """
-
-        self._ip6_ifaddr = Ip6IfAddr("2001:db8::1/64")
-
-    def test__net_addr__ip6_host__gateway_setter__link_local(self) -> None:
-        """
-        Ensure the IPv6 host 'gateway' setter accepts a link-local address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
-        self.assertEqual(
-            self._ip6_ifaddr.gateway,
-            Ip6Address("fe80::1"),
-            msg="The 'gateway' setter must store a valid link-local address.",
-        )
-
-    def test__net_addr__ip6_host__gateway_setter__global(self) -> None:
-        """
-        Ensure the IPv6 host 'gateway' setter accepts a global address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip6_ifaddr.gateway = Ip6Address("2001:db8::ffff")
-        self.assertEqual(
-            self._ip6_ifaddr.gateway,
-            Ip6Address("2001:db8::ffff"),
-            msg="The 'gateway' setter must store a valid global address.",
-        )
-
-    def test__net_addr__ip6_host__gateway_setter__clear(self) -> None:
-        """
-        Ensure the IPv6 host 'gateway' setter accepts None to clear the gateway.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._ip6_ifaddr.gateway = Ip6Address("fe80::1")
-        self._ip6_ifaddr.gateway = None
-        self.assertIsNone(
-            self._ip6_ifaddr.gateway,
-            msg="Assigning None to 'gateway' must clear the stored gateway.",
-        )
-
-    def test__net_addr__ip6_host__gateway_setter__error__not_routable(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects an address that is neither
-        global nor link-local.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip6IfAddrGatewayError,
-            msg="The 'gateway' setter must reject a non-global, non-link-local address.",
-        ):
-            self._ip6_ifaddr.gateway = Ip6Address("fc00::1")
-
-    def test__net_addr__ip6_host__gateway_setter__error__network_address(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects the network address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip6IfAddrGatewayError,
-            msg="The 'gateway' setter must reject the network address.",
-        ):
-            self._ip6_ifaddr.gateway = Ip6Address("2001:db8::")
-
-    def test__net_addr__ip6_host__gateway_setter__error__host_address(self) -> None:
-        """
-        Ensure the 'gateway' setter rejects the host's own address.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with self.assertRaises(
-            Ip6IfAddrGatewayError,
-            msg="The 'gateway' setter must reject the host's own address.",
-        ):
-            self._ip6_ifaddr.gateway = Ip6Address("2001:db8::1")
 
 
 class TestNetAddrIp6IfAddrFormat(TestCase):

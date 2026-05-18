@@ -80,14 +80,11 @@ def tearDownModule() -> None:
 STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
 STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
 STACK__IP4_GATEWAY = Ip4Address("10.0.1.1")
-STACK__IP4_HOST.gateway = STACK__IP4_GATEWAY
 STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 STACK__IP6_GATEWAY = Ip6Address("fe80::1")
-STACK__IP6_HOST.gateway = STACK__IP6_GATEWAY
 
 STACK__IP4_HOST__NO_GW = Ip4IfAddr("192.168.99.7/24")
 STACK__IP6_HOST__NO_GW = Ip6IfAddr("2001:db8:0:99::7/64")
-STACK__IP6_HOST__NO_GW.gateway = None
 
 GATEWAY_MAC = MacAddress("02:00:00:00:00:01")
 HOST_A__MAC = MacAddress("02:00:00:00:00:91")

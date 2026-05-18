@@ -93,11 +93,9 @@ STACK__IP6_HOST__CANDIDATE = Ip6IfAddr("2001:db8:0:1::5/64")
 STACK__MAC_ADDRESS = MacAddress("02:00:00:00:00:07")
 STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
 STACK__IP4_GATEWAY = Ip4Address("10.0.1.1")
-STACK__IP4_HOST.gateway = STACK__IP4_GATEWAY
 STACK__IP4_GATEWAY_MAC_ADDRESS = MacAddress("02:00:00:00:00:01")
 STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
 STACK__IP6_GATEWAY = Ip6Address("fe80::1")
-STACK__IP6_HOST.gateway = STACK__IP6_GATEWAY
 STACK__IP6_GATEWAY_MAC_ADDRESS = MacAddress("02:00:00:00:00:01")
 
 # Set the test device's addressing.
@@ -284,9 +282,9 @@ class NetworkTestCase(TestCase):
             mock__packet_handler=self._packet_handler,
         )
 
-        # Pre-install the fixture default routes so the topology
-        # matches the legacy 'STACK__IP{4,6}_HOST.gateway'
-        # assignments above. 'mock__init' rebuilt the two FIBs
+        # Pre-install the fixture default routes (STACK gateways)
+        # so the topology has a next hop for off-link traffic.
+        # 'mock__init' rebuilt the two FIBs
         # fresh (empty) on the line above, so this install runs
         # once per test with no leak and needs no tearDown
         # restore (same lifecycle as the mocked packet handler /

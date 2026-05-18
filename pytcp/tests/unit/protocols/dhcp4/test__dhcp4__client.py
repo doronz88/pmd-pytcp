@@ -2538,9 +2538,9 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         """
 
         ip4_host = Ip4IfAddr((Ip4Address(address), Ip4Mask("255.255.255.0")))
-        ip4_host.gateway = Ip4Address("192.168.1.1")
         return Dhcp4Lease(
             ip4_host=ip4_host,
+            gateway=Ip4Address("192.168.1.1"),
             lease_time__sec=lease_time__sec,
             server_id=Ip4Address("192.168.1.1"),
             acquired_at_monotonic=0.0,
@@ -2823,9 +2823,9 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         """
 
         ip4_host = Ip4IfAddr((Ip4Address("192.168.1.145"), Ip4Mask("255.255.255.0")))
-        ip4_host.gateway = self._GATEWAY_IP
         return Dhcp4Lease(
             ip4_host=ip4_host,
+            gateway=self._GATEWAY_IP,
             lease_time__sec=3600,
             server_id=self._GATEWAY_IP,
             acquired_at_monotonic=0.0,

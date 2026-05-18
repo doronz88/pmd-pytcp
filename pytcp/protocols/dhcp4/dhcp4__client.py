@@ -779,7 +779,7 @@ class Dhcp4Client(Subsystem):
             __debug__ and log(
                 "dhcp4",
                 f"<lg>DNAv4 succeeded</>: cached gateway "
-                f"{cached.ip4_host.gateway} answered; adopting "
+                f"{cached.gateway} answered; adopting "
                 f"{cached.ip4_host} without DHCP traffic",
             )
             self._on_bound(cached)
@@ -944,7 +944,7 @@ class Dhcp4Client(Subsystem):
 
         if not dhcp4__constants.DHCP4__DNAV4:
             return False
-        if lease.ip4_host.gateway is None or lease.gateway_mac is None:
+        if lease.gateway is None or lease.gateway_mac is None:
             return False
 
         # Lazy import — 'pytcp.stack' is only populated after
@@ -960,17 +960,17 @@ class Dhcp4Client(Subsystem):
         # Snapshot the gateway entry's 'state_changed_at' so we
         # can detect a fresh Reply: ARP RX touches the field
         # whenever a Reply lands on the matching IP.
-        entry = arp_cache._entries.get(lease.ip4_host.gateway)  # pylint: disable=protected-access
+        entry = arp_cache._entries.get(lease.gateway)  # pylint: disable=protected-access
         before_changed_at = entry.state_changed_at if entry is not None else 0.0
 
         __debug__ and log(
             "dhcp4",
-            f"DNAv4: unicast ARP probe to " f"{lease.ip4_host.gateway} @ {lease.gateway_mac}",
+            f"DNAv4: unicast ARP probe to " f"{lease.gateway} @ {lease.gateway_mac}",
         )
 
         try:
             packet_handler.send_arp_unicast_request(
-                arp__tpa=lease.ip4_host.gateway,
+                arp__tpa=lease.gateway,
                 ethernet__dst=lease.gateway_mac,
             )
         except Exception as error:  # noqa: BLE001 — defensive against stack-not-ready
@@ -987,7 +987,7 @@ class Dhcp4Client(Subsystem):
         # advances 'state_changed_at'. Polling at ~10 ms
         # cadence converges in well under the 1-second budget.
         while time.monotonic() < deadline:
-            entry = arp_cache._entries.get(lease.ip4_host.gateway)  # pylint: disable=protected-access
+            entry = arp_cache._entries.get(lease.gateway)  # pylint: disable=protected-access
             if (
                 entry is not None
                 and entry.mac_address == lease.gateway_mac
@@ -998,7 +998,7 @@ class Dhcp4Client(Subsystem):
 
         __debug__ and log(
             "dhcp4",
-            f"<WARN>DNAv4: cached gateway {lease.ip4_host.gateway} "
+            f"<WARN>DNAv4: cached gateway {lease.gateway} "
             f"did not answer within {dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS} ms; "
             f"falling through to INIT-REBOOT</>",
         )

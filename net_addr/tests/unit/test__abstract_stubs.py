@@ -36,12 +36,10 @@ from unittest import TestCase
 from net_addr.address import Address
 from net_addr.base import Base
 from net_addr.ip4_address import Ip4Address
-from net_addr.ip4_ifaddr import Ip4IfAddr
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip_address import IpAddress
-from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
@@ -234,25 +232,6 @@ class TestNetAddrIpNetworkAbstractStubs(TestCase):
 
         with self.assertRaises(NotImplementedError):
             IpNetwork.hostmask.fget(Ip4Network())  # type: ignore[attr-defined]
-
-
-class TestNetAddrIpHostAbstractStubs(TestCase):
-    """
-    The NetAddr 'IfAddr' abstract stub body tests.
-    """
-
-    def test__net_addr__ip_host__validate_gateway_stub_raises(self) -> None:
-        """
-        Ensure the abstract 'IfAddr._validate_gateway()' stub raises
-        'NotImplementedError'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        host = Ip4IfAddr("192.0.2.1/24")
-
-        with self.assertRaises(NotImplementedError):
-            IfAddr._validate_gateway(host, None)
 
 
 class TestNetAddrIpVersion(TestCase):

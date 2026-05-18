@@ -67,12 +67,6 @@ class IfAddrFormatError(NetAddrError):
     """
 
 
-class IfAddrGatewayError(NetAddrError):
-    """
-    Base class for all IP interface address gateway exceptions.
-    """
-
-
 class IfAddrSanityError(NetAddrError):
     """
     Base class for all IP interface address sanity exceptions.
@@ -133,15 +127,6 @@ class Ip4IfAddrSanityError(IfAddrSanityError):
         super().__init__(f"The IPv4 address doesn't belong to the provided network: {value!r}")
 
 
-class Ip4IfAddrGatewayError(IfAddrGatewayError):
-    """
-    Exception raised when IPv4 interface address gateway is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 interface address gateway is invalid: {value!r}")
-
-
 class Ip6AddressFormatError(IpAddressFormatError):
     """
     Exception raised when IPv6 address format is invalid.
@@ -194,15 +179,6 @@ class Ip6IfAddrSanityError(IfAddrSanityError):
 
     def __init__(self, value: object, /) -> None:
         super().__init__(f"The IPv6 address doesn't belong to the provided network: {value!r}")
-
-
-class Ip6IfAddrGatewayError(IfAddrGatewayError):
-    """
-    Exception raised when IPv6 interface address gateway is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv6 interface address gateway is invalid: {value!r}")
 
 
 class MacAddressFormatError(NetAddrError):

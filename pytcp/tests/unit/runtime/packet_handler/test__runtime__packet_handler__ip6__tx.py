@@ -65,7 +65,6 @@ def tearDownModule() -> None:
 
 
 STACK__IP6_HOST = Ip6IfAddr("2001:db8:0:1::7/64")
-STACK__IP6_HOST.gateway = Ip6Address("fe80::1")
 STACK__IP6_ADDRESS = STACK__IP6_HOST.address
 STACK__IP6_MULTICAST = Ip6Address("ff02::1")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
@@ -128,6 +127,8 @@ class TestPacketHandlerIp6TxGating(TestCase):
     def test__stack__packet_handler__ip6__tx__disabled_drops(self) -> None:
         """
         Ensure the handler drops when IPv6 support is disabled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip6_support=False)
@@ -152,6 +153,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__src_not_owned_drops(self) -> None:
         """
         Ensure an src not owned by the stack drops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler._phtx_ip6(
@@ -166,6 +169,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__src_multicast_replaced(self) -> None:
         """
         Ensure a multicast src is replaced with the stack unicast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip6(
@@ -179,6 +184,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__src_multicast_no_unicast_drops(self) -> None:
         """
         Ensure a multicast src with no stack unicast drops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip6_hosts=[])
@@ -194,6 +201,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__src_unspec_local_dst_replaced(self) -> None:
         """
         Ensure an unspecified src with an in-network dst is replaced.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip6(
@@ -208,6 +217,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         """
         Ensure an unspecified src with an external unicast dst picks
         the first gateway-having host.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip6(
@@ -221,6 +232,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__src_unspec_no_replacement_drops(self) -> None:
         """
         Ensure an unspecified src with no replacement candidate drops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip6_hosts=[])
@@ -236,6 +249,8 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     def test__stack__packet_handler__ip6__tx__dst_unspecified_drops(self) -> None:
         """
         Ensure an unspecified dst drops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler._phtx_ip6(
@@ -257,6 +272,8 @@ class TestPacketHandlerIp6TxSend(TestCase):
         """
         Ensure an L2-layer stack forwards within-MTU packets to the
         Ethernet TX layer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L2)
@@ -274,6 +291,8 @@ class TestPacketHandlerIp6TxSend(TestCase):
         """
         Ensure an L3-layer stack enqueues IPv6 packets directly on the
         TX ring.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3)
@@ -292,6 +311,8 @@ class TestPacketHandlerIp6TxSend(TestCase):
         """
         Ensure a packet exceeding the interface MTU is delegated to
         '_phtx_ip6_frag' and its TxStatus returned.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_mtu=200)
@@ -318,6 +339,8 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
         """
         Ensure 'send_ip6_packet' wraps the caller's bytes payload in a
         RawAssembler tagged with the supplied next header.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler()

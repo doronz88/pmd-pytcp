@@ -65,7 +65,6 @@ def tearDownModule() -> None:
 
 
 STACK__IP4_HOST = Ip4IfAddr("10.0.1.7/24")
-STACK__IP4_HOST.gateway = Ip4Address("10.0.1.1")
 STACK__IP4_ADDRESS = STACK__IP4_HOST.address
 STACK__IP4_MULTICAST = Ip4Address("224.0.0.1")
 STACK__IP4_NET_BROADCAST = STACK__IP4_HOST.network.broadcast
@@ -123,6 +122,8 @@ class TestPacketHandlerIp4TxGating(TestCase):
     def test__stack__packet_handler__ip4__tx__ip4_disabled_drops(self) -> None:
         """
         Ensure the handler drops when IPv4 support is disabled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip4_support=False)
@@ -151,6 +152,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
     def test__stack__packet_handler__ip4__tx__src_not_owned_drops(self) -> None:
         """
         Ensure an src not owned by the stack drops with SRC_NOT_OWNED.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         status = self._handler._phtx_ip4(
@@ -165,6 +168,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
     def test__stack__packet_handler__ip4__tx__src_multicast_replaced(self) -> None:
         """
         Ensure a multicast src is replaced with the stack primary unicast.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip4(
@@ -182,6 +187,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
     def test__stack__packet_handler__ip4__tx__src_multicast_no_unicast_drops(self) -> None:
         """
         Ensure a multicast src with no stack unicast available drops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip4_hosts=[])
@@ -198,6 +205,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure a 255.255.255.255 src is replaced with the stack primary
         unicast.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip4(
@@ -212,6 +221,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure a network-broadcast src is replaced with the matching
         network's unicast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip4(
@@ -226,6 +237,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure an unspecified src with a local-network dst is replaced
         with the local-network unicast address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip4(
@@ -240,6 +253,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure an unspecified src with an external dst is replaced with
         the first stack host that has a gateway set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._handler._phtx_ip4(
@@ -254,6 +269,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure an unspecified src is allowed for a DHCP UDP packet
         (sport=68 → dport=67) — the only valid zero-src send.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip4_hosts=[])
@@ -278,6 +295,8 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         """
         Ensure an unspecified src with no replacement candidate drops
         with SRC_UNSPECIFIED.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(ip4_hosts=[])
@@ -299,6 +318,8 @@ class TestPacketHandlerIp4TxDstValidation(TestCase):
     def test__stack__packet_handler__ip4__tx__dst_unspecified_drops(self) -> None:
         """
         Ensure an unspecified dst drops with DST_UNSPECIFIED.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler()
@@ -321,6 +342,8 @@ class TestPacketHandlerIp4TxSend(TestCase):
         """
         Ensure an L2-layer stack forwards the assembled IPv4 packet to
         the Ethernet TX layer when within MTU.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L2)
@@ -338,6 +361,8 @@ class TestPacketHandlerIp4TxSend(TestCase):
         """
         Ensure an L3-layer stack enqueues the IPv4 packet directly on
         the TX ring, bypassing the Ethernet layer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3)
@@ -363,6 +388,8 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
         """
         Ensure a packet exceeding the MTU is split into multiple
         fragments, each passed through the Ethernet TX layer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L2, interface_mtu=200)
@@ -397,6 +424,8 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
         """
         Ensure the L3 fragmentation path enqueues each fragment on the
         TX ring and returns PASSED__IP4__TO_TX_RING.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3, interface_mtu=200)
@@ -433,6 +462,8 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
         """
         Ensure 'send_ip4_packet' wraps the caller's bytes payload in a
         RawAssembler tagged with the supplied proto and forwards it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler()

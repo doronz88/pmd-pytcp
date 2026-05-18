@@ -30,7 +30,10 @@ in [`net_proto.md`](net_proto.md) and
 - Address classes: `Ip4Address`, `Ip6Address`, `MacAddress`.
 - Network classes: `Ip4Network`, `Ip6Network`.
 - Interface-address classes: `Ip4IfAddr`, `Ip6IfAddr` (address + network +
-  optional gateway / origin / expiration metadata).
+  optional origin / expiration metadata). The default gateway is
+  no longer interface-address state — it lives in the routing
+  table (FIB) reached through the Route API; see
+  `docs/refactor/routing_table_host_mode.md`.
 - Mask classes: `Ip4Mask`, `Ip6Mask`.
 - Enumerations: `IpVersion`, `Ip4IfAddrSource`,
   `Ip6IfAddrSource`.
@@ -152,9 +155,8 @@ descendants declare additional slots for their own fields:
 
 ```python
 class IfAddr[A, N, O](Address, ABC):
-    __slots__ = ("_network", "_gateway", "_origin", "_expiration_time")
+    __slots__ = ("_network", "_origin", "_expiration_time")
     _network: N
-    _gateway: A | None
     _origin: O
     _expiration_time: int
 ```
@@ -236,15 +238,17 @@ forbids it. The two valid mutation patterns:
 
 - **Construct a fresh instance** with the new value:
   `ifaddr.address = new_address` is forbidden; instead
-  `Ip4IfAddr(other, gateway=new_gateway)` (the copy
-  constructor form — see §4.2) produces a new interface
-  address with the override.
-- **Class-side state on `Ip4IfAddr`** (the `gateway`,
-  `origin`, `expiration_time` extras) is the historical
+  `Ip4IfAddr((new_address, mask))` (or the copy-constructor
+  form — see §4.2) produces a new interface address.
+- **Class-side state on `Ip4IfAddr`** (the `origin`,
+  `expiration_time` extras) is the historical
   exception: these were carved out as mutable for the
   packet-handler RX path before the value-type contract
   was tightened. Treat them as a known wart, not a
-  template.
+  template. The `gateway` carve-out is **gone** — the
+  default gateway moved to the FIB / Route API
+  (`docs/refactor/routing_table_host_mode.md`), so `IfAddr`
+  has no mutable address-routing state.
 
 ### 4.4 Equality and hashing
 
@@ -348,11 +352,10 @@ interface addresses, and masks. The differences:
 - `IfAddr[A, N, O]` is generic over address, network, and
   interface-address-source enum.
 - Interface-address classes have the known carve-out for mutable
-  `gateway` / `origin` / `expiration_time` fields (§4.3) —
-  these are kw-only constructor arguments and accessed via
-  read-only properties on the public surface but settable
-  via the internal `_gateway` slot from the packet handler.
-  Each setter on an interface address MUST carry the
+  `origin` / `expiration_time` fields (§4.3). The `gateway`
+  carve-out has been removed — the default gateway is FIB /
+  Route-API state, not interface-address state. Any remaining
+  mutable-field setter MUST carry the
   `# Hack to bypass the value-type immutability contract.`
   inline comment so the deviation is greppable.
 
@@ -395,8 +398,8 @@ Exception
 ```
 
 - Constructor input validation raises `*FormatError`.
-- Cross-field invariants (e.g. interface-address gateway not in network)
-  raise `*SanityError`.
+- Cross-field invariants (e.g. an interface address not contained
+  by its own network) raise `*SanityError`.
 - The base `<Type>Error` is unused as a direct raise — it's
   the catch-all for consumers that want to handle "any
   problem with this value type."
@@ -461,10 +464,10 @@ anti-patterns live in [`source_files.md`](source_files.md)
   output). Drop one, and the type stops being
   interchangeable across PyTCP's data path.
 - **Keyword arguments on a value-type `__init__`** (except
-  for `Ip4IfAddr` / `Ip6IfAddr`'s `gateway` / `origin` /
-  `expiration_time` carve-outs in §4.3). The single
-  positional-only `address: Self | str | bytes | ... | None`
-  is the contract.
+  for `Ip4IfAddr` / `Ip6IfAddr`'s `origin` /
+  `expiration_time` carve-outs in §4.3; `gateway` is no
+  longer one of them). The single positional-only
+  `address: Self | str | bytes | ... | None` is the contract.
 - **Raising `ValueError` / `TypeError`** on constructor
   failure. Use `<Type>FormatError` — see §7.
 - **Importing `net_proto` or `pytcp`** from `net_addr/`.
@@ -501,8 +504,9 @@ When in doubt, mirror the structure of:
 - `net_addr/mac_address.py` — non-IP address type. Shows
   how the pattern generalises beyond IPv4 / IPv6.
 - `net_addr/ip4_ifaddr.py` — interface-address class with the known
-  carve-out for mutable gateway / origin / expiration_time
-  via `__slots__` + setters.
+  carve-out for mutable origin / expiration_time via
+  `__slots__` + setters (the `gateway` carve-out is gone —
+  default gateway is FIB / Route-API state).
 - `net_addr/click_types.py` — every Click `ParamType`
   subclass.
 - `net_addr/errors.py` — the canonical error-class

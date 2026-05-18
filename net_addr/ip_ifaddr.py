@@ -30,7 +30,7 @@ net_addr/ip_ifaddr.py
 ver 3.0.5
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import override
 
 from net_addr.base import Base
@@ -52,12 +52,10 @@ class IfAddr[
     __slots__ = (
         "_address",
         "_network",
-        "_gateway",
     )
 
     _address: A
     _network: N
-    _gateway: A | None
 
     @override
     def __str__(self) -> str:
@@ -107,14 +105,6 @@ class IfAddr[
 
         raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
 
-    @abstractmethod
-    def _validate_gateway(self, address: A | None, /) -> None:
-        """
-        Validate the IP interface address gateway.
-        """
-
-        raise NotImplementedError
-
     @property
     def address(self) -> A:
         """
@@ -130,21 +120,3 @@ class IfAddr[
         """
 
         return self._network
-
-    @property
-    def gateway(self) -> A | None:
-        """
-        Get the IP interface address '_gateway' attribute.
-        """
-
-        return self._gateway
-
-    @gateway.setter
-    def gateway(self, address: A | None, /) -> None:
-        """
-        Set the IP interface address '_gateway' attribute.
-        """
-
-        self._validate_gateway(address)
-
-        self._gateway = address

@@ -32,12 +32,11 @@ ver 3.0.5
 
 import hashlib
 import secrets
-from typing import Self, override
+from typing import Self
 
 from net_addr.errors import (
     Ip6AddressFormatError,
     Ip6IfAddrFormatError,
-    Ip6IfAddrGatewayError,
     Ip6IfAddrSanityError,
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
@@ -84,27 +83,20 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
     __slots__ = ()
 
     _version: IpVersion = IpVersion.IP6
-    _gateway: Ip6Address | None
 
     def __init__(
         self,
         host: Self | tuple[Ip6Address, Ip6Network] | tuple[Ip6Address, Ip6Mask] | str,
         /,
-        *,
-        gateway: Ip6Address | None = None,
     ) -> None:
         """
         Initialize the IPv6 interface address object.
         """
 
         if isinstance(host, Ip6IfAddr):
-            assert gateway is None, f"Gateway cannot be set when copying an interface address. Got: {gateway!r}"
             self._address = host.address
             self._network = host.network
-            self._gateway = host.gateway
             return
-
-        self._gateway = gateway
 
         if isinstance(host, tuple):
             tuple_address, network_or_mask = host
@@ -117,7 +109,6 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 raise Ip6IfAddrFormatError(host)
             if self._address not in self._network:
                 raise Ip6IfAddrSanityError(host)
-            self._validate_gateway(gateway)
             return
 
         if isinstance(host, str):
@@ -125,26 +116,11 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 address, _ = host.split("/")
                 self._address = Ip6Address(address)
                 self._network = Ip6Network(host)
-                self._validate_gateway(gateway)
                 return
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
                 pass
 
         raise Ip6IfAddrFormatError(host)
-
-    @override
-    def _validate_gateway(self, address: Ip6Address | None, /) -> None:
-        """
-        Validate the IPv6 interface address gateway.
-        """
-
-        if address is not None and (
-            not address.is_global
-            and not address.is_link_local
-            or address == self._network.address
-            or address == self._address
-        ):
-            raise Ip6IfAddrGatewayError(address)
 
     @classmethod
     def from_eui64(cls, *, mac_address: MacAddress, ip6_network: Ip6Network) -> Self:
