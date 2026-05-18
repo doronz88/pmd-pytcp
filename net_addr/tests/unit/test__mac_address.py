@@ -1125,3 +1125,28 @@ class TestNetAddrMacAddressFormat(TestCase):
 
         with self.assertRaises(ValueError):
             format(MacAddress("0a:1b:2c:3d:4e:5f"), "zz")
+
+
+class TestNetAddrMacAddressWhitespace(TestCase):
+    """
+    The NetAddr MacAddress surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__mac_address__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("02:00:00:00:00:07",):
+            expected = MacAddress(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        MacAddress(wrapped),
+                        expected,
+                        msg=f"MacAddress({wrapped!r}) must equal MacAddress({value!r}).",
+                    )

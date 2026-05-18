@@ -79,14 +79,15 @@ class Ip4Address(IpAddress):
                 return
 
         if isinstance(address, str):
-            # 'socket.inet_pton' is the strict POSIX parser: it
-            # accepts only canonical four-octet dotted-decimal and
-            # rejects the legacy 'socket.inet_aton' leniencies
-            # (octal / hex octets, leading zeros, fewer than four
-            # parts, surrounding whitespace) that would otherwise
-            # silently reinterpret the address.
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor. 'socket.inet_pton'
+            # is the strict POSIX parser: it accepts only canonical
+            # four-octet dotted-decimal and rejects the legacy
+            # 'socket.inet_aton' leniencies (octal / hex octets,
+            # leading zeros, fewer than four parts) that would
+            # otherwise silently reinterpret the address.
             try:
-                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address))
+                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address.strip()))
                 return
             except OSError:
                 pass

@@ -1223,3 +1223,28 @@ class TestNetAddrIp6NetworkStrict(TestCase):
             Ip6Network("2001:db8::/64"),
             msg="Default construction must keep masking host bits.",
         )
+
+
+class TestNetAddrIp6NetworkWhitespace(TestCase):
+    """
+    The NetAddr Ip6Network surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip6_network__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("2001:db8::/64",):
+            expected = Ip6Network(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip6Network(wrapped),
+                        expected,
+                        msg=f"Ip6Network({wrapped!r}) must equal Ip6Network({value!r}).",
+                    )

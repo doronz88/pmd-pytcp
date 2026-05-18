@@ -725,28 +725,6 @@ class TestNetAddrIp4Mask(TestCase):
             },
         },
         {
-            "_description": "Test the IPv4 mask format: '255.255.255.0 ' (trailing space)",
-            "_args": [
-                "255.255.255.0 ",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4MaskFormatError,
-                "error_message": "The IPv4 mask format is invalid: '255.255.255.0 '",
-            },
-        },
-        {
-            "_description": "Test the IPv4 mask format: '255.255.255.0\\n' (trailing newline)",
-            "_args": [
-                "255.255.255.0\n",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4MaskFormatError,
-                "error_message": r"The IPv4 mask format is invalid: '255.255.255.0\n'",
-            },
-        },
-        {
             "_description": "Test the IPv4 mask format: '0255.0.0.0' (leading-zero octet)",
             "_args": [
                 "0255.0.0.0",
@@ -1156,3 +1134,28 @@ class TestNetAddrIp4MaskAndAddress(TestCase):
             _ = m & 5
         with self.assertRaises(TypeError):
             _ = Ip6Address("::1") & m
+
+
+class TestNetAddrIp4MaskWhitespace(TestCase):
+    """
+    The NetAddr Ip4Mask surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip4_mask__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("/24", "255.255.255.0"):
+            expected = Ip4Mask(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip4Mask(wrapped),
+                        expected,
+                        msg=f"Ip4Mask({wrapped!r}) must equal Ip4Mask({value!r}).",
+                    )

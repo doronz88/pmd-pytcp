@@ -79,12 +79,14 @@ class Ip4Wildcard(IpWildcard):
                 return
 
         if isinstance(wildcard, str):
-            # 'socket.inet_pton' is the strict POSIX parser; the
-            # legacy 'socket.inet_aton' would accept octal / hex
-            # octets, leading zeros and surrounding whitespace and
-            # silently reinterpret the dotted wildcard.
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor. 'socket.inet_pton'
+            # is the strict POSIX parser; the legacy
+            # 'socket.inet_aton' would accept octal / hex octets and
+            # leading zeros and silently reinterpret the dotted
+            # wildcard.
             try:
-                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard))
+                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard.strip()))
                 return
             except OSError:
                 pass

@@ -105,11 +105,14 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
         # done: it is RFC-silent and has no PyTCP consumer — same
         # disposition as the is_global divergences.
         if isinstance(network, str):
-            parts = network.split("/", 1) if "/" in network else network.split(" ", 1)
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor.
+            text = network.strip()
+            parts = text.split("/", 1) if "/" in text else text.split(" ", 1)
             if len(parts) == 2:
                 try:
                     address_str, mask_str = parts
-                    self._mask = Ip4Mask(f"/{mask_str}" if "/" in network else mask_str)
+                    self._mask = Ip4Mask(f"/{mask_str}" if "/" in text else mask_str)
                     raw_address = int(Ip4Address(address_str))
                     if strict and raw_address & ~int(self._mask) & IP4__MASK:
                         raise Ip4NetworkFormatError(network)

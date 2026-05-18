@@ -1076,3 +1076,28 @@ class TestNetAddrIp6IfAddrScoped(TestCase):
             "The IPv6 interface address format is invalid: 'fe80::1%tap0'",
             msg="The rejected scoped string must be reported verbatim.",
         )
+
+
+class TestNetAddrIp6IfAddrWhitespace(TestCase):
+    """
+    The NetAddr Ip6IfAddr surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("2001:db8::7/64",):
+            expected = Ip6IfAddr(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip6IfAddr(wrapped),
+                        expected,
+                        msg=f"Ip6IfAddr({wrapped!r}) must equal Ip6IfAddr({value!r}).",
+                    )

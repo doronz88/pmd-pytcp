@@ -78,19 +78,23 @@ class Ip4Mask(IpMask):
                     self._mask = candidate
                     return
 
-        if isinstance(mask, str) and re.search(r"^/(0|[1-9][0-9]?)$", mask):
-            bit_count = int(mask[1:])
-            if 0 <= bit_count <= IP4__ADDRESS_LEN * 8:
-                self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)
-                return
-
         if isinstance(mask, str):
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor.
+            text = mask.strip()
+
+            if re.search(r"^/(0|[1-9][0-9]?)$", text):
+                bit_count = int(text[1:])
+                if 0 <= bit_count <= IP4__ADDRESS_LEN * 8:
+                    self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)
+                    return
+
             # 'socket.inet_pton' is the strict POSIX parser; the
             # legacy 'socket.inet_aton' would accept octal / hex
-            # octets, leading zeros and surrounding whitespace and
-            # silently reinterpret the dotted netmask.
+            # octets and leading zeros and silently reinterpret the
+            # dotted netmask.
             try:
-                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, mask))
+                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, text))
             except OSError:
                 pass
             else:

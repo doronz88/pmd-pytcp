@@ -79,12 +79,16 @@ class Ip6Wildcard(IpWildcard):
                 self._wildcard = int.from_bytes(wildcard)
                 return
 
-        if isinstance(wildcard, str) and re.search(IP6__REGEX, wildcard):
-            try:
-                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, wildcard))
-                return
-            except OSError:
-                pass
+        if isinstance(wildcard, str):
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor.
+            text = wildcard.strip()
+            if re.search(IP6__REGEX, text):
+                try:
+                    self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, text))
+                    return
+                except OSError:
+                    pass
 
         raise Ip6WildcardFormatError(wildcard)
 

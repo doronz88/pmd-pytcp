@@ -77,11 +77,15 @@ class Ip6Mask(IpMask):
                     self._mask = candidate
                     return
 
-        if isinstance(mask, str) and re.search(r"^/(0|[1-9][0-9]{0,2})$", mask):
-            bit_count = int(mask[1:])
-            if 0 <= bit_count <= IP6__ADDRESS_LEN * 8:
-                self._mask = ((1 << bit_count) - 1) << (IP6__ADDRESS_LEN * 8 - bit_count)
-                return
+        if isinstance(mask, str):
+            # Surrounding whitespace is stripped uniformly across
+            # every net_addr string constructor.
+            text = mask.strip()
+            if re.search(r"^/(0|[1-9][0-9]{0,2})$", text):
+                bit_count = int(text[1:])
+                if 0 <= bit_count <= IP6__ADDRESS_LEN * 8:
+                    self._mask = ((1 << bit_count) - 1) << (IP6__ADDRESS_LEN * 8 - bit_count)
+                    return
 
         raise Ip6MaskFormatError(mask)
 

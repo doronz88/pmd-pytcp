@@ -1070,3 +1070,28 @@ class TestNetAddrIp6MaskAndAddress(TestCase):
             _ = m & 5
         with self.assertRaises(TypeError):
             _ = Ip4Address("10.0.0.1") & m
+
+
+class TestNetAddrIp6MaskWhitespace(TestCase):
+    """
+    The NetAddr Ip6Mask surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip6_mask__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("/64",):
+            expected = Ip6Mask(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip6Mask(wrapped),
+                        expected,
+                        msg=f"Ip6Mask({wrapped!r}) must equal Ip6Mask({value!r}).",
+                    )

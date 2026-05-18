@@ -253,11 +253,6 @@ class TestNetAddrIp4Wildcard(TestCase):
             "_results": {"error_message": "The IPv4 wildcard format is invalid: []"},
         },
         {
-            "_description": "IPv4 wildcard: trailing space",
-            "_args": ["0.0.255.255 "],
-            "_results": {"error_message": "The IPv4 wildcard format is invalid: '0.0.255.255 '"},
-        },
-        {
             "_description": "IPv4 wildcard: leading-zero octet",
             "_args": ["0.0.0.0255"],
             "_results": {"error_message": "The IPv4 wildcard format is invalid: '0.0.0.0255'"},
@@ -425,3 +420,28 @@ class TestNetAddrIp4WildcardOrAddress(TestCase):
             _ = w | 5
         with self.assertRaises(TypeError):
             _ = Ip6Address("::1") | w
+
+
+class TestNetAddrIp4WildcardWhitespace(TestCase):
+    """
+    The NetAddr Ip4Wildcard surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip4_wildcard__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("0.0.0.255",):
+            expected = Ip4Wildcard(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip4Wildcard(wrapped),
+                        expected,
+                        msg=f"Ip4Wildcard({wrapped!r}) must equal Ip4Wildcard({value!r}).",
+                    )

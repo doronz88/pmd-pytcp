@@ -147,8 +147,9 @@ class Ip6Address(IpAddress):
             # RFC 4007 / RFC 6874: an optional '%<zone>' suffix
             # is the scope identifier. It is accepted only when
             # absent, or present with a non-empty zone containing
-            # no further '%'.
-            addr_part, sep, zone = address.partition("%")
+            # no further '%'. Surrounding whitespace is stripped
+            # uniformly across every net_addr string constructor.
+            addr_part, sep, zone = address.strip().partition("%")
             zone_ok = not sep or (bool(zone) and "%" not in zone)
             if zone_ok and re.search(IP6__REGEX, addr_part):
                 try:

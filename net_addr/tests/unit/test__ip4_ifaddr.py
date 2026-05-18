@@ -612,3 +612,28 @@ class TestNetAddrIp4IfAddrFormat(TestCase):
         self.assertEqual(f"{a}", "192.0.2.5/24", msg="Default format must equal str().")
         with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
             format(a, "zz")
+
+
+class TestNetAddrIp4IfAddrWhitespace(TestCase):
+    """
+    The NetAddr Ip4IfAddr surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip4_ifaddr__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("10.0.0.7/24",):
+            expected = Ip4IfAddr(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip4IfAddr(wrapped),
+                        expected,
+                        msg=f"Ip4IfAddr({wrapped!r}) must equal Ip4IfAddr({value!r}).",
+                    )

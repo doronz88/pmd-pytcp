@@ -1491,17 +1491,6 @@ class TestNetAddrIp4Address(TestCase):
             },
         },
         {
-            "_description": "Test the IPv4 address format: ' 1.2.3.4'",
-            "_args": [
-                " 1.2.3.4",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4AddressFormatError,
-                "error_message": "The IPv4 address format is invalid: ' 1.2.3.4'",
-            },
-        },
-        {
             "_description": "Test the IPv4 address format: b'\\xff\\xff\\xff'",
             "_args": [
                 b"\xff\xff\xff",
@@ -1642,28 +1631,6 @@ class TestNetAddrIp4Address(TestCase):
             "_results": {
                 "error": Ip4AddressFormatError,
                 "error_message": "The IPv4 address format is invalid: '1.2.3.04'",
-            },
-        },
-        {
-            "_description": "Test the IPv4 address format: '1.2.3.4 ' (trailing space)",
-            "_args": [
-                "1.2.3.4 ",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4AddressFormatError,
-                "error_message": "The IPv4 address format is invalid: '1.2.3.4 '",
-            },
-        },
-        {
-            "_description": "Test the IPv4 address format: '1.2.3.4\\n' (trailing newline)",
-            "_args": [
-                "1.2.3.4\n",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4AddressFormatError,
-                "error_message": r"The IPv4 address format is invalid: '1.2.3.4\n'",
             },
         },
         {
@@ -2299,3 +2266,28 @@ class TestNetAddrIp4AddressFormat(TestCase):
 
         with self.assertRaises(ValueError, msg="An unknown format code must raise ValueError."):
             format(Ip4Address("1.2.3.4"), "q")
+
+
+class TestNetAddrIp4AddressWhitespace(TestCase):
+    """
+    The NetAddr Ip4Address surrounding-whitespace tolerance tests.
+    """
+
+    def test__net_addr__ip4_address__whitespace_tolerated(self) -> None:
+        """
+        Ensure surrounding whitespace is stripped from a string
+        argument, uniformly with every other net_addr value
+        type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in ("10.0.0.7",):
+            expected = Ip4Address(value)
+            for wrapped in (f" {value}", f"{value} ", f"\t{value}\n", f"  {value}  \n"):
+                with self.subTest(value=value, wrapped=wrapped):
+                    self.assertEqual(
+                        Ip4Address(wrapped),
+                        expected,
+                        msg=f"Ip4Address({wrapped!r}) must equal Ip4Address({value!r}).",
+                    )

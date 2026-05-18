@@ -120,8 +120,10 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 # RFC 4007 §6: the zone qualifies the address,
                 # not the prefix. Split the zoned address off
                 # and derive the network from a scope-stripped
-                # copy of it.
-                address, _, mask = host.partition("/")
+                # copy of it. Surrounding whitespace is stripped
+                # uniformly across every net_addr string
+                # constructor.
+                address, _, mask = host.strip().partition("/")
                 self._address = Ip6Address(address)
                 # No 'address in network' sanity check here (unlike
                 # the tuple form): the network is derived by masking

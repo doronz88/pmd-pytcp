@@ -86,14 +86,17 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
             try:
                 # Accept both the CIDR 'addr/prefix' form and the
                 # standard IPv4 'addr netmask' space form, matching
-                # what Ip4Network parses.
-                address = host.split("/", 1)[0] if "/" in host else host.split(" ", 1)[0]
+                # what Ip4Network parses. Surrounding whitespace is
+                # stripped uniformly across every net_addr string
+                # constructor.
+                text = host.strip()
+                address = text.split("/", 1)[0] if "/" in text else text.split(" ", 1)[0]
                 self._address = Ip4Address(address)
                 # No 'address in network' sanity check here (unlike
                 # the tuple form): the network is derived by masking
                 # this same host string, so containment holds by
                 # construction.
-                self._network = Ip4Network(host)
+                self._network = Ip4Network(text)
                 return
             except ValueError, Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError:
                 pass
