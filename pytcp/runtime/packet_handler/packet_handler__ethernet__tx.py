@@ -137,8 +137,8 @@ class PacketHandlerEthernetTx(ABC):
             # that gateway. The 'extnet__no_gw__drop' counter and
             # DST_NO_GATEWAY_IP6 status now mean "no route to
             # host" (a superset of the old "no gateway").
-            # Phase 2 (router): the forwarding plane calls this
-            # same 'lookup' for transit packets.
+            # Phase 2: the forwarding plane (router-grade) calls
+            # this same 'lookup' for transit packets.
             ip6_route = stack.ip6_fib.lookup(
                 ip6_dst,
                 connected=[ip6_host.network for ip6_host in self._ip6_ifaddr],

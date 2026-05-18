@@ -2,7 +2,7 @@
 
 | Field             | Value |
 |-------------------|-------|
-| Status            | **Pending** — plan only; no code written |
+| Status            | **Shipped** 2026-05-17 — Phases 0-6 complete on `PyTCP_3_0_5`. Commits: b42f4105 (plan), 9c48921b (P0), ec351d6c (P1), 8546fe3a (P2), 6511ef8d (P3a), 929ba26a (P3b-lifecycle), 00bd721d (P3b-DHCP), 05d99535 (P3b-RA), a3379b7b (P4a), f2571692 (P4b), cc5695aa (P5), + this commit (P6 closeout / adherence). Build deps: 339e8ee7, bb7820e9. |
 | Plan author       | Routing-table refactor request (2026-05-17) |
 | Source motivation | The Ethernet TX next-hop decision is the single-gateway-per-`IfAddr` Phase-1 shortcut flagged in CLAUDE.md ("Per-destination routing state must be representable"). The memory-tracked `IfAddr.gateway` removal blocks on a real FIB. This track lands the host-mode routing table and the Phase-3 Route API. |
 | Target branch     | `PyTCP_3_0__pre_release` (cut from current `PyTCP_3_0_5`) |
