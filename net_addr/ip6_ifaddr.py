@@ -104,7 +104,11 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
             if isinstance(network_or_mask, Ip6Network):
                 self._network = network_or_mask
             elif isinstance(network_or_mask, Ip6Mask):
-                self._network = Ip6Network((tuple_address, network_or_mask))
+                # RFC 4007 §6: the zone qualifies the address,
+                # not the prefix. Derive the network from a
+                # scope-stripped copy so a zoned link-local
+                # interface address is accepted.
+                self._network = Ip6Network((Ip6Address(int(tuple_address)), network_or_mask))
             else:
                 raise Ip6IfAddrFormatError(host)
             if self._address not in self._network:
@@ -113,9 +117,13 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
 
         if isinstance(host, str):
             try:
-                address, _ = host.split("/")
+                # RFC 4007 §6: the zone qualifies the address,
+                # not the prefix. Split the zoned address off
+                # and derive the network from a scope-stripped
+                # copy of it.
+                address, _, mask = host.partition("/")
                 self._address = Ip6Address(address)
-                self._network = Ip6Network(host)
+                self._network = Ip6Network((Ip6Address(int(self._address)), Ip6Mask("/" + mask)))
                 return
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
                 pass

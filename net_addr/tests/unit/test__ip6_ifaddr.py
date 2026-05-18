@@ -966,3 +966,113 @@ class TestNetAddrIp6IfAddrFormat(TestCase):
         self.assertEqual(f"{a}", "2001:db8::5/64", msg="Default format must equal str().")
         with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
             format(a, "zz")
+
+
+class TestNetAddrIp6IfAddrScoped(TestCase):
+    """
+    The NetAddr IPv6 interface-address RFC 4007 scoped
+    (zone-identifier) construction tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__scoped__forms_consistent(self) -> None:
+        """
+        Ensure a scoped link-local interface address builds
+        identically from the (address, mask) tuple, the
+        (address, network) tuple, and the string form, with the
+        zone kept on the address and stripped from the derived
+        network.
+
+        Reference: RFC 4007 §6 (zone qualifies the address, not the prefix).
+        """
+
+        from_mask = Ip6IfAddr((Ip6Address("fe80::1%tap0"), Ip6Mask("/64")))
+        from_network = Ip6IfAddr((Ip6Address("fe80::1%tap0"), Ip6Network("fe80::/64")))
+        from_string = Ip6IfAddr("fe80::1%tap0/64")
+
+        for label, ifaddr in (
+            ("(address, mask)", from_mask),
+            ("(address, network)", from_network),
+            ("string", from_string),
+        ):
+            with self.subTest(form=label):
+                self.assertEqual(
+                    str(ifaddr),
+                    "fe80::1%tap0/64",
+                    msg=f"Scoped ifaddr from {label} must render with its zone.",
+                )
+                self.assertEqual(
+                    repr(ifaddr),
+                    "Ip6IfAddr('fe80::1%tap0/64')",
+                    msg=f"Scoped ifaddr from {label} repr must round-trip.",
+                )
+                self.assertEqual(
+                    ifaddr.address,
+                    Ip6Address("fe80::1%tap0"),
+                    msg=f"Scoped ifaddr from {label} must keep the zoned address.",
+                )
+                self.assertEqual(
+                    ifaddr.address.scope_id,
+                    "tap0",
+                    msg=f"Scoped ifaddr from {label} must preserve the RFC 4007 zone.",
+                )
+                self.assertEqual(
+                    ifaddr.network,
+                    Ip6Network("fe80::/64"),
+                    msg=f"Scoped ifaddr from {label} must derive an unscoped network.",
+                )
+
+        self.assertEqual(
+            from_mask,
+            from_network,
+            msg="Scoped ifaddr must compare equal across the mask and network tuple forms.",
+        )
+        self.assertEqual(
+            from_mask,
+            from_string,
+            msg="Scoped ifaddr must compare equal across the tuple and string forms.",
+        )
+        self.assertEqual(
+            len({from_mask, from_network, from_string}),
+            1,
+            msg="Equal scoped ifaddr values must collapse to a single set element.",
+        )
+
+    def test__net_addr__ip6_ifaddr__scoped__network_drops_zone(self) -> None:
+        """
+        Ensure the derived network never carries the RFC 4007
+        zone even though the interface address does.
+
+        Reference: RFC 4007 §6 (a prefix has no zone identifier).
+        """
+
+        ifaddr = Ip6IfAddr("fe80::abcd%eth2/64")
+
+        self.assertIsNone(
+            ifaddr.network.address.scope_id,
+            msg="The derived network address must not carry a zone identifier.",
+        )
+        self.assertEqual(
+            ifaddr.address.scope_id,
+            "eth2",
+            msg="The interface address must retain its zone identifier.",
+        )
+
+    def test__net_addr__ip6_ifaddr__scoped__string_without_prefix_raises(self) -> None:
+        """
+        Ensure a scoped address string with no prefix length is
+        rejected with 'Ip6IfAddrFormatError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(
+            Ip6IfAddrFormatError,
+            msg="A scoped address with no '/prefix' must be rejected.",
+        ) as error:
+            Ip6IfAddr("fe80::1%tap0")
+
+        self.assertEqual(
+            str(error.exception),
+            "The IPv6 interface address format is invalid: 'fe80::1%tap0'",
+            msg="The rejected scoped string must be reported verbatim.",
+        )
