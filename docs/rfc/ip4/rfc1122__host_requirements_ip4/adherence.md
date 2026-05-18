@@ -36,15 +36,17 @@ boilerplate are omitted.
 ## Top-line adherence
 
 PyTCP **meets** the host-requirements MUSTs for §3.2.1 (IP-layer
-RX and TX). Routing-table material in §3.3.1 is implemented as a
-single-gateway-per-interface Phase-1 simplification (Linux's
-default-route shape); the route-cache pattern (§3.3.1.3) is not
-implemented because PyTCP has no Phase-1 consumer for it. ICMP
-Redirect processing (§3.3.1.5) is **not** implemented — host
-mode doesn't honour Redirects today, gated for Phase 2 when the
-full route cache lands. The broadcast / multicast / error-
-reporting rules are honoured. Source-route forwarding (§3.3.5)
-is Phase 2.
+RX and TX). Routing-table material in §3.3.1 is now backed by a
+real host-mode FIB (`pytcp/runtime/fib.py` `RouteTable`,
+longest-prefix lookup; Phase-3 `RouteApi` in
+`pytcp/stack/route.py`) — the next hop is destination-keyed
+routing-table state, no longer a single-gateway-per-`IfAddr`
+shortcut (`IfAddr.gateway` was deleted). A learned/aged route
+*cache* and ICMP-Redirect-driven entries (§3.3.1.x) remain
+**not** implemented — gated for Phase 2 — though the FIB
+reserves `RouteProtocol.REDIRECT` for that path. The broadcast
+/ multicast / error-reporting rules are honoured. Source-route
+forwarding (§3.3.5) is Phase 2.
 
 | Section | Topic                                       | Status |
 |---------|---------------------------------------------|--------|
@@ -56,10 +58,10 @@ is Phase 2.
 | §3.2.1.6 | Type-of-Service handling                   | met (redefined as DSCP+ECN per RFC 2474+3168) |
 | §3.2.1.7 | TTL MUST NOT send=0, MUST be configurable  | met    |
 | §3.2.1.8 | Options (pass to transport, specific options) | met for pass-through; LSRR/SSRR origination not implemented (Phase 2) |
-| §3.3.1   | Routing outbound (default-gateway / route cache) | partial — Phase 1 single-gateway-per-host model |
+| §3.3.1   | Routing outbound (FIB next-hop / default route / route cache) | partial — FIB longest-prefix table met; learned/aged cache + Redirect entries Phase 2 |
 | §3.3.2   | Reassembly                                  | met (audited separately under RFC 815) |
 | §3.3.3   | Fragmentation                               | met (see RFC 791 §3.2) |
-| §3.3.4   | Local multihoming                           | partial — Phase 1 single-interface assumption |
+| §3.3.4   | Local multihoming                           | partial — L3 routing destination-keyed (multihoming-correct); single physical interface |
 | §3.3.5   | Source-route forwarding                     | not implemented (Phase 2) |
 | §3.3.6   | Broadcasts                                  | met    |
 | §3.3.7   | IP multicasting                             | partial — reception met (§3.3.7), IGMP group management deferred |
@@ -303,37 +305,56 @@ Timestamp slots (that's router-side behaviour).
 > network environment, and in particular, when there are no
 > gateways."
 
-**Adherence:** met. The TX path handles "no gateway configured"
-naturally — on-link destinations resolve via ARP directly;
-off-link destinations with no gateway end up at the
-`DROPPED__ETHERNET__DST_NO_GATEWAY_IP4` exit
-(`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`).
-The stack starts up and operates on a single subnet without a
-gateway entry.
+**Adherence:** met. The next hop is resolved by a host-mode
+routing table (FIB): the Ethernet-TX path calls
+`stack.ip4_fib.lookup(dst, connected=[...])`
+(`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py:265-306`,
+table at `pytcp/runtime/fib.py` `RouteTable.lookup`). With no
+default route, on-link destinations still resolve via a
+*connected* route synthesized per-lookup from each assigned
+interface address (`RouteTable.lookup` `connected=` arg), and
+an off-link destination with no matching route returns the
+`DROPPED__ETHERNET__DST_NO_GATEWAY_IP4` exit (now meaning "no
+route to host"). The stack starts up and operates on a single
+subnet with an empty FIB.
 
 > "To efficiently route a series of datagrams to the same
 > destination, the source host MUST keep a 'route cache' of
 > mappings to next-hop gateways."
 
-**Adherence:** partial — Phase 1 simplification. PyTCP uses a
-flat "single gateway per Ip4IfAddr" model (`Ip4IfAddr.gateway`
-attribute) rather than a route cache. For Phase 1 host stacks
-with a single uplink this is sufficient (Linux operates this
-way by default with `ip route show default` showing a single
-entry until ICMP Redirects or routing daemons add more).
+**Adherence:** met. PyTCP keeps a real per-address-family
+routing table (`pytcp/runtime/fib.py` `RouteTable`) holding
+explicit routes (default + operator/protocol static) plus
+per-lookup-synthesized connected routes; `lookup` is a
+longest-prefix match (`Route.destination.prefixlen`, then
+lowest `metric`, then direct-over-gatewayed). This is the
+RFC's intent — a deterministic next-hop mapping consulted per
+datagram — exposed through the Phase-3 Route API
+(`pytcp/stack/route.py` `RouteApi`). It is a routing *table*,
+not a learned/aged *cache*: there is no per-destination cached
+entry created from observed traffic or Redirects.
 
-**`# Phase 2:`** A true route cache (per-destination next-hop
-mapping, Type-of-Service-aware, ageing) is Phase-2 work tied
-to the forwarding plane. The fix point is a new
-`pytcp/protocols/ip/ip4_route_cache.py` Subsystem.
+**`# Phase 2:`** A learned/aged route *cache* (per-destination
+next-hop entries populated from ICMP Redirects, with ageing)
+is Phase-2 work tied to the forwarding plane and Redirect
+processing; the `RouteProtocol.REDIRECT` enum value is already
+reserved in `pytcp/runtime/fib.py` for that path.
 
 > "The IP layer MUST pick a gateway from its list of 'default'
 > gateways. The IP layer MUST support multiple default gateways."
 
-**Adherence:** not met — Phase 1 simplification. PyTCP supports
-exactly one gateway per `Ip4IfAddr`. Multiple default gateways
-(equal-cost or scored) is Phase-2 work. Marked here so the
-upgrade path is greppable.
+**Adherence:** partial. The data model now *supports* multiple
+default routes: `RouteApi.add_ip4_route` accepts any number of
+`0.0.0.0/0` `Route`s and `RouteTable.lookup` selects among
+equal-prefix candidates by lowest `metric` (then
+direct-over-gatewayed, then stable order), so a metric-ordered
+default-gateway list is representable and the preferred one is
+picked (`pytcp/runtime/fib.py` `RouteTable.lookup`). What is
+still Phase-2 is *dead-gateway failover* — detecting an
+unreachable default router (NUD / Redirect) and demoting it —
+which needs the reachability machinery the forwarding plane
+brings. `replace_default_ip4` (the boot/DHCP/RA path)
+deliberately keeps a single default for the common host case.
 
 > "When it receives a Redirect, the host updates the next-hop
 > gateway in the appropriate route cache entry."
@@ -341,7 +362,10 @@ upgrade path is greppable.
 **Adherence:** not implemented (Phase 2). ICMP Redirect parsing
 exists in the ICMPv4 protocol package, but the RX handler does
 not mutate routing state on Redirect — it logs the message and
-moves on. Cross-reference:
+moves on. The FIB is ready to receive such entries
+(`RouteProtocol.REDIRECT`); the missing piece is the RX-path
+`RouteApi.add_ip4_route(..., protocol=RouteProtocol.REDIRECT)`
+call. Cross-reference:
 `docs/rfc/icmp4/rfc1122__host_requirements_icmp/adherence.md`
 which audits the Redirect-message side of this same gap.
 
@@ -370,19 +394,25 @@ This is the PMTUD feedback path — audited under
 
 > "A host MAY be multihomed."
 
-**Adherence:** partial — Phase 1 single-interface design.
-PyTCP runs on a single TAP/TUN interface today. The
-multihoming requirements (3.3.4.2 (a)-(j)) presume multiple
-interfaces and a route-cache / source-selection layer that
-threads through them. The §6724 source-selection logic
-(`packet_handler__ip4__tx.py:372-416`) is structured to be
-multihoming-aware (it scans `_ip4_ifaddr` which is already a
-`list[Ip4IfAddr]`), but the rest of the stack assumes a single
-`_interface_mtu`, single `_mac_unicast`, etc.
+**Adherence:** partial — single physical interface, but the
+L3 routing/next-hop layer is now multihoming-correct. Routing
+is destination-keyed: `RouteTable.lookup` resolves the next
+hop from the destination against the FIB plus the connected
+routes of *all* assigned interface addresses, independent of
+which interface address the packet's source belongs to. This
+landed the Linux-correct fix where a destination on-link for
+one interface address is sent directly even when the source
+is a different interface address (the old source-coupled scan
+would have sent it to the default gateway) — pinned by
+`pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop::test__ip4__routing__multihomed_on_link_dst_resolved_directly`.
+What remains single-interface is the link layer (one
+`_interface_mtu`, one `_mac_unicast`, one TAP/TUN fd) and the
+multihoming sub-requirements 3.3.4.2 (a)-(j) that presume
+multiple physical interfaces.
 
-**`# Phase 2:`** Multihoming is on the project north-star
-(Phase 2 router). The selection logic is ready; the rest of
-the stack will catch up.
+**`# Phase 2:`** Multi-physical-interface support is on the
+project north-star (Phase 2 router); the routing/source-
+selection half is done, the link layer will catch up.
 
 ## §3.3.5 Source Route Forwarding
 
@@ -548,14 +578,36 @@ transient network condition.
 
 **Status:** locked in.
 
-### §3.3.1 Routing (default-gateway path)
+### §3.3.1 Routing (FIB next-hop / default route / longest-prefix)
 
+- **Unit:**
+  `pytcp/tests/unit/runtime/test__runtime__fib.py::TestRouteTableLookupIp4`
+  / `TestRouteTableLookupTiebreaks` — longest-prefix match,
+  metric tiebreak, connected-over-gatewayed, default route
+  matches anything, no-route returns `None`.
+- **Unit:**
+  `pytcp/tests/unit/stack/test__stack__route.py::TestRouteApiRead`
+  / `TestRouteApiMutation` /
+  `TestInstallBootDefaultRoutes` — copy-by-value read,
+  add/remove/replace-default, boot default install.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
-  Covers off-link sends through the gateway lookup.
+  `pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop`
+  — on-link direct, off-link via default gateway, no-route
+  drop, and the destination-keyed multihoming behaviour.
+- **Integration:**
+  `pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingStaticRoute`
+  — a static non-default `/16` beats the `/0` default
+  (longest-prefix), default used outside it, on-link
+  unaffected.
+- **Integration:**
+  `pytcp/tests/integration/protocols/ethernet/test__ethernet__tx.py`
+  — the parametrized Ethernet-TX matrix exercises the
+  FIB-driven next-hop counters/statuses end to end.
 
-**Status:** locked in for the single-gateway path. Phase-2 route
-cache is `n/a (gap not closed; add test with fix)`.
+**Status:** locked in for the FIB longest-prefix next-hop,
+default route, and static-route paths. The learned/aged route
+*cache* and Redirect-driven entries are
+`n/a (gap not closed; add test with fix)` (Phase 2).
 
 ### §3.3.3 Fragmentation on send (no overlap)
 
@@ -587,9 +639,11 @@ cache is `n/a (gap not closed; add test with fix)`.
 
 - **§3.3.1.5 ICMP Redirect → route-cache update** — not
   implemented (Phase 2); no test surface today.
-- **§3.3.4 Multihoming** — single-interface assumption; the
-  source-selection logic is multihoming-ready but the broader
-  multihoming behaviour is Phase 2.
+- **§3.3.4 Multihoming** — the L3 routing/next-hop layer is
+  destination-keyed and multihoming-correct (pinned by
+  `test__ip4__routing.py::TestIp4RoutingNextHop::test__ip4__routing__multihomed_on_link_dst_resolved_directly`);
+  what remains Phase 2 is multiple *physical* interfaces (one
+  `_interface_mtu` / `_mac_unicast` / TAP-TUN fd today).
 - **§3.3.5 Source-route forwarding** — not implemented
   (Phase 2).
 - **§3.3.8 Link-layer error → IP-layer notification** —
@@ -607,10 +661,10 @@ cache is `n/a (gap not closed; add test with fix)`.
 | §3.2.1.6 TOS / DSCP / ECN propagation                 | locked in (via separate DSCP / ECN audits) |
 | §3.2.1.7 TTL=0 reject + default + configurable        | locked in (sysctl `ip4.default_ttl`) |
 | §3.2.1.8 Options pass-through + LSRR/SSRR gate        | locked in |
-| §3.3.1 Single-gateway routing                         | locked in (Phase 1 simplification) |
-| §3.3.1.5 ICMP Redirect → route update                 | n/a (Phase 2) |
+| §3.3.1 FIB longest-prefix next-hop / default / static | locked in |
+| §3.3.1 Learned/aged route cache + Redirect entries    | n/a (Phase 2) |
 | §3.3.3 Fragmentation correctness (no overlap)         | locked in |
-| §3.3.4 Multihoming                                    | n/a (Phase 2) |
+| §3.3.4 Multihoming (L3 destination-keyed routing)     | locked in; multi-physical-interface n/a (Phase 2) |
 | §3.3.5 Source-route forwarding                        | n/a (Phase 2) |
 | §3.3.6 Broadcast send / receive                       | locked in |
 | §3.3.7 Multicast reception (no IGMP)                  | locked in |
@@ -626,10 +680,11 @@ cache is `n/a (gap not closed; add test with fix)`.
 | §3.2.1 IP source/destination validity rules         | met    |
 | §3.2.1 TTL / TOS / Identification host-side rules   | met (semantics redefined where superseded) |
 | §3.2.1 Options pass-through and LSRR/SSRR gate      | met    |
-| §3.3.1 Routing — single gateway path                | met (Phase 1) |
+| §3.3.1 Routing — FIB longest-prefix next-hop / default / static | met |
+| §3.3.1 Multiple default gateways (representable, metric-ordered) | partial — failover Phase 2 |
 | §3.3.1.5 ICMP Redirect route update                 | not met (Phase 2) |
 | §3.3.2/3.3.3 Reassembly + fragmentation             | met (cross-referenced)  |
-| §3.3.4 Multihoming                                  | not met (Phase 2) |
+| §3.3.4 Multihoming — L3 routing destination-keyed   | met; multi-physical-interface not met (Phase 2) |
 | §3.3.5 Source-route forwarding                      | not met (Phase 2) |
 | §3.3.6 Broadcast handling                           | met    |
 | §3.3.7 Multicast reception (no IGMP)                | partial — reception met, group management deferred |

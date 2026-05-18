@@ -178,7 +178,26 @@ specializes the generic NUD framework for IPv6 +
 
 **Adherence:** met. Stored at
 `pytcp/protocols/icmp6/nd/nd__router_state.py:53` and
-updated by the RA RX handler.
+maintained by the single chokepoint
+`pytcp.runtime.packet_handler.__init__._update_icmp6_default_router`.
+That chokepoint also drives the host-mode routing table
+(RFC 1122 §3.3.1 equivalent for v6): on RA Router
+Lifetime > 0 it installs the FIB `::/0` default route via
+`stack.route.replace_default_ip6(gateway=<RA src LL>,
+protocol=RouteProtocol.RA)`, and on Lifetime == 0 for a
+known router it withdraws it via
+`stack.route.remove_default_ip6()`
+(`pytcp/runtime/fib.py` `RouteTable`,
+`pytcp/stack/route.py` `RouteApi`). The next hop for an
+off-link IPv6 destination is therefore resolved by an FIB
+longest-prefix `lookup`, not a per-`IfAddr` gateway
+(`IfAddr.gateway` was deleted). Pinned by
+`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_default_route.py`
+(RA lifetime > 0 installs the `protocol=RA` `::/0` route;
+lifetime 0 withdraws it) and
+`pytcp/tests/integration/protocols/ip6/test__ip6__routing.py::TestIp6RoutingNextHop`
+(on-link direct, off-link via the RA router, no-route
+drop).
 
 > "Prefix List: prefixes from RA Prefix Information
 >  options."
@@ -357,11 +376,21 @@ the target's link-layer address. The
 entirely" behaviour).
 
 The destination-cache update (RFC 4861's §5.2-style
-per-destination next-hop override) is **partial** — PyTCP
-does not yet maintain a separate destination cache; the
-override is reflected only via the ND cache TLLA update.
-Full destination-cache support pairs with the Phase-2
-forwarding plane.
+per-destination next-hop override) is **partial**. PyTCP
+now has the routing-table substrate a Redirect-installed
+more-specific route would live in — `pytcp/runtime/fib.py`
+`RouteTable` (longest-prefix; a Redirect would add a
+host/prefix `Route` with `RouteProtocol.REDIRECT`, the
+enum value already reserved) — and §5.2 next-hop
+determination itself is now FIB-driven
+(`stack.ip6_fib.lookup` in the Ethernet-TX path). What
+remains Phase-2 is the Redirect RX handler actually
+calling `stack.route.add_ip6_route(...,
+protocol=RouteProtocol.REDIRECT)`; today the override is
+reflected only via the ND-cache TLLA update. Symmetric
+with the IPv4 side — see
+`docs/rfc/ip4/rfc1122__host_requirements_ip4/adherence.md`
+§3.3.1.
 
 ### §8.3 Sending Redirect
 
@@ -450,7 +479,8 @@ the §-clauses above:
 | NUD state machine (§7.3)                            | locked in (unit + integration) |
 | Address resolution (§7.2.2 / §7.2.3)                | locked in (cache + cross-protocol fixture) |
 | Redirect RX (§8.2)                                  | locked in |
-| Redirect destination-cache override                 | partial — ND cache TLLA update covered; per-destination override deferred with forwarding plane |
+| §5.2 next-hop / RA default route (FIB)              | locked in (`test__icmp6__nd__ra_default_route.py`, `test__ip6__routing.py`, `test__runtime__fib.py`, `test__stack__route.py`) |
+| Redirect destination-cache override                 | partial — FIB substrate + `RouteProtocol.REDIRECT` exist; ND-cache TLLA update covered; Redirect→route wiring deferred with forwarding plane |
 | Router-side TX (§6, §8.3)                           | n/a (Phase-2 deferred) |
 
 ---
@@ -463,6 +493,7 @@ the §-clauses above:
 | §4.6 ND options (SLLA / TLLA / PI / MTU)              | met    |
 | §4.6 Redirected Header option                         | n/a (no Redirect TX consumer; Phase-2 router) |
 | §5 Conceptual host model (ND cache / router list / prefix list) | met |
+| §5.2 Next-hop determination (FIB longest-prefix; RA router → `::/0` default route) | met |
 | §6 Router specification                               | deferred (Phase-2 router) |
 | §7.1 Validation rules                                 | met    |
 | §7.2.1 Interface initialization                       | met    |
