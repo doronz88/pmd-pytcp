@@ -384,7 +384,10 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             new_prefix = prefixlen + prefixlen_diff
 
         if new_prefix > self.max_prefixlen:
-            raise ValueError(f"prefixlen_diff {prefixlen_diff} is invalid for a /{prefixlen} network")
+            raise ValueError(
+                f"resulting prefix /{new_prefix} exceeds the maximum /{self.max_prefixlen} "
+                f"for a /{prefixlen} network"
+            )
 
         network_type = type(self)
         address_type = type(self._address)
@@ -417,7 +420,9 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             new_prefix = prefixlen - prefixlen_diff
 
         if new_prefix < 0:
-            raise ValueError(f"prefixlen_diff {prefixlen_diff} is invalid for a /{prefixlen} network")
+            raise ValueError(
+                f"resulting prefix /{new_prefix} is shorter than the minimum /0 " f"for a /{prefixlen} network"
+            )
 
         return type(self)((type(self._address)(int(self._address)), type(self._mask)(self._mask_int(new_prefix))))
 

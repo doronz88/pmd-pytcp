@@ -1068,6 +1068,42 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
             msg="supernet(prefixlen_diff=...) of /0 must still return the /0 itself.",
         )
 
+    def test__net_addr__ip4_network__subnetting__boundary_message(self) -> None:
+        """
+        Ensure the subnets / supernet out-of-range boundary
+        errors report the resulting prefix length rather than a
+        'prefixlen_diff' the caller never supplied (the new_prefix
+        code path).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError) as subnets_error:
+            list(Ip4Network("10.0.0.0/8").subnets(new_prefix=33))
+        self.assertIn(
+            "/33",
+            str(subnets_error.exception),
+            msg="subnets(new_prefix=33) message must reference the requested /33.",
+        )
+        self.assertNotIn(
+            "prefixlen_diff",
+            str(subnets_error.exception),
+            msg="subnets(new_prefix=...) message must not mention prefixlen_diff.",
+        )
+
+        with self.assertRaises(ValueError) as supernet_error:
+            Ip4Network("10.0.0.0/8").supernet(new_prefix=-1)
+        self.assertIn(
+            "/-1",
+            str(supernet_error.exception),
+            msg="supernet(new_prefix=-1) message must reference the requested /-1.",
+        )
+        self.assertNotIn(
+            "prefixlen_diff",
+            str(supernet_error.exception),
+            msg="supernet(new_prefix=...) message must not mention prefixlen_diff.",
+        )
+
     def test__net_addr__ip4_network__subnetting__errors(self) -> None:
         """
         Ensure invalid subnets / supernet arguments raise
