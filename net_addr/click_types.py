@@ -21,9 +21,6 @@
 ##                                                                            ##
 ################################################################################
 
-# pylint: disable=inconsistent-return-statements
-
-
 """
 This module contains Click type classes related to network addresses.
 
@@ -32,7 +29,7 @@ net_addr/click_types.py
 ver 3.0.5
 """
 
-from typing import override
+from typing import NoReturn, override
 
 from click import ParamType
 from click.core import Context, Parameter
@@ -45,6 +42,24 @@ from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_ifaddr import Ip6IfAddr
 from net_addr.ip6_network import Ip6Network
 from net_addr.mac_address import MacAddress
+
+
+def _fail[T](
+    param_type: ParamType[T],
+    /,
+    *,
+    message: str,
+    param: Parameter | None,
+    ctx: Context | None,
+) -> NoReturn:
+    """
+    Raise the Click usage error for an invalid argument. Never
+    returns: 'ParamType.fail' raises, and the trailing assert
+    makes the no-return contract provable to every linter.
+    """
+
+    param_type.fail(message=message, param=param, ctx=ctx)
+    raise AssertionError("unreachable: ParamType.fail() does not return")
 
 
 class ClickTypeMacAddress(ParamType[MacAddress]):
@@ -69,7 +84,8 @@ class ClickTypeMacAddress(ParamType[MacAddress]):
             return MacAddress(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid MAC address argument '{value}'. Make sure to use format 'xx:xx:xx:xx:xx:xx'.",
                 param=param,
                 ctx=ctx,
@@ -102,7 +118,8 @@ class ClickTypeIpAddress(ParamType[Ip6Address | Ip4Address]):
                 return Ip4Address(value)
 
             except NetAddrError:
-                self.fail(
+                _fail(
+                    self,
                     message=(
                         f"Invalid IP address argument '{value}'. Make sure to use "
                         f"format 'x:x:x:x::x' for IPv6 or 'x.x.x.x' for IPv4."
@@ -134,7 +151,8 @@ class ClickTypeIp6Address(ParamType[Ip6Address]):
             return Ip6Address(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv6 address argument '{value}'. Make sure to use format 'x:x:x:x::x'.",
                 param=param,
                 ctx=ctx,
@@ -163,7 +181,8 @@ class ClickTypeIp4Address(ParamType[Ip4Address]):
             return Ip4Address(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv4 address argument '{value}'. Make sure to use format 'x.x.x.x'.",
                 param=param,
                 ctx=ctx,
@@ -196,7 +215,8 @@ class ClickTypeIpNetwork(ParamType[Ip6Network | Ip4Network]):
                 return Ip4Network(value)
 
             except NetAddrError:
-                self.fail(
+                _fail(
+                    self,
                     message=(
                         f"Invalid IP network argument '{value}'. Make sure to use "
                         f"format 'x:x:x:x::x/n' for IPv6 or 'x.x.x.x/n' for IPv4."
@@ -228,7 +248,8 @@ class ClickTypeIp6Network(ParamType[Ip6Network]):
             return Ip6Network(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv6 network argument '{value}'. Make sure to use format 'x:x:x:x::x/n'.",
                 param=param,
                 ctx=ctx,
@@ -257,7 +278,8 @@ class ClickTypeIp4Network(ParamType[Ip4Network]):
             return Ip4Network(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv4 network argument '{value}'. Make sure to use format 'x.x.x.x/n'.",
                 param=param,
                 ctx=ctx,
@@ -290,7 +312,8 @@ class ClickTypeIfAddr(ParamType[Ip6IfAddr | Ip4IfAddr]):
                 return Ip4IfAddr(value)
 
             except NetAddrError:
-                self.fail(
+                _fail(
+                    self,
                     message=(
                         f"Invalid IP host argument '{value}'. Make sure to use "
                         f"format 'x:x:x:x::x/n' for IPv6 or 'x.x.x.x/n' for IPv4."
@@ -322,7 +345,8 @@ class ClickTypeIp6IfAddr(ParamType[Ip6IfAddr]):
             return Ip6IfAddr(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv6 host argument '{value}'. Make sure to use format 'x:x:x:x::x/n'.",
                 param=param,
                 ctx=ctx,
@@ -351,7 +375,8 @@ class ClickTypeIp4IfAddr(ParamType[Ip4IfAddr]):
             return Ip4IfAddr(value)
 
         except NetAddrError:
-            self.fail(
+            _fail(
+                self,
                 message=f"Invalid IPv4 host argument '{value}'. Make sure to use format 'x.x.x.x/n'.",
                 param=param,
                 ctx=ctx,
