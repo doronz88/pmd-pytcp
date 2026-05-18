@@ -52,7 +52,7 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
 
     __slots__ = ()
 
-    _version = IpVersion.IP4
+    _version: IpVersion = IpVersion.IP4
 
     def __init__(
         self,

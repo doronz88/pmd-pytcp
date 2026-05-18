@@ -63,9 +63,12 @@ class Base(ABC):
 
         raise NotImplementedError
 
+    @abstractmethod
     def __hash__(self) -> int:
         """
-        Get the network object hash value.
+        Get the network object hash value. Concrete value types
+        define this consistently with their own '__eq__' (every
+        subclass overrides it).
         """
 
-        return hash(str(self))
+        raise NotImplementedError

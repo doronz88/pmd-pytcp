@@ -66,15 +66,15 @@ class Ip6Mask(IpMask):
             return
 
         if isinstance(mask, int):
-            if 0 <= mask <= IP6__MASK:
+            if 0 <= mask <= IP6__MASK and self._is_contiguous_mask(mask, IP6__ADDRESS_LEN * 8):
                 self._mask = mask
-                if self._validate_bits(IP6__ADDRESS_LEN * 8):
-                    return
+                return
 
         if isinstance(mask, (memoryview, bytes, bytearray)):
             if len(mask) == IP6__ADDRESS_LEN:
-                self._mask = int.from_bytes(mask)
-                if self._validate_bits(IP6__ADDRESS_LEN * 8):
+                candidate = int.from_bytes(mask)
+                if self._is_contiguous_mask(candidate, IP6__ADDRESS_LEN * 8):
+                    self._mask = candidate
                     return
 
         if isinstance(mask, str) and re.search(r"^/(0|[1-9][0-9]{0,2})$", mask):

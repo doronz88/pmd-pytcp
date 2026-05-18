@@ -117,7 +117,7 @@ class Ip4Address(IpAddress):
             self.is_multicast
         ), f"The IPv4 address must be a multicast address to get a multicast MAC address. Got: {self}"
 
-        return MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x0000_007F_FFFF)
+        return MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x7F_FFFF)
 
     @property
     @override

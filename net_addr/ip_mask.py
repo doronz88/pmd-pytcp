@@ -119,10 +119,13 @@ class IpMask(Base, Ip, ABC):
 
         return hash((type(self), self._mask))
 
-    def _validate_bits(self, bytes_len: int, /) -> bool:
+    @staticmethod
+    def _is_contiguous_mask(value: int, bits: int, /) -> bool:
         """
-        Validate that mask is made of consecutive bits.
+        Check that a candidate mask value is made of consecutive
+        high-order one bits (validated before assignment, so an
+        invalid candidate never reaches '_mask').
         """
 
-        inverted = (~self._mask) & ((1 << bytes_len) - 1)
+        inverted = (~value) & ((1 << bits) - 1)
         return inverted & (inverted + 1) == 0

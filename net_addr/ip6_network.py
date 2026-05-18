@@ -101,7 +101,7 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
 
         if isinstance(network, str):
             try:
-                address, mask = network.split("/")
+                address, _, mask = network.partition("/")
                 self._mask = Ip6Mask("/" + mask)
                 address_obj = Ip6Address(address)
                 # A prefix has no RFC 4007 zone; reject a scoped

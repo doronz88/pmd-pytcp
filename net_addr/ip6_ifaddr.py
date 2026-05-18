@@ -123,6 +123,10 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 # copy of it.
                 address, _, mask = host.partition("/")
                 self._address = Ip6Address(address)
+                # No 'address in network' sanity check here (unlike
+                # the tuple form): the network is derived by masking
+                # this same address, so containment holds by
+                # construction.
                 self._network = Ip6Network((Ip6Address(int(self._address)), Ip6Mask("/" + mask)))
                 return
             except ValueError, Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
@@ -217,7 +221,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         (16 bytes); shorter keys are rejected. PyTCP regenerates
         the secret per process at stack init; persistent
         per-machine keys (Linux's 'stable_secret') are out of
-        scope for a libray-style stack.
+        scope for a library-style stack.
 
         Reference: RFC 7217 §5 (Algorithm Specification).
         """
