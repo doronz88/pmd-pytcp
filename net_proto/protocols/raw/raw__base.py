@@ -82,13 +82,24 @@ class Raw(Proto):
 
         buffer = bytearray(self._payload)
 
-        # Automatically calculate checksum if IpProto is ICMPv6 packet and checksum is not set.
-        if self._ip_proto == IpProto.ICMP6 and self._payload[2:4] == b"\x00\x00":
+        # ICMPv6 raw sockets: the kernel ALWAYS computes and inserts
+        # the ICMPv6 checksum, overwriting whatever the application
+        # supplied (RFC 3542 §3.1 — the checksum is mandatory and
+        # covers the IPv6 pseudo-header, which the application does
+        # not control; Linux forces it on for IPPROTO_ICMPV6 raw
+        # sockets unconditionally). Zero the field before summing so
+        # an app-supplied value cannot poison the result. A payload
+        # too short to hold the 2-byte checksum at offset 2 is left
+        # untouched (a malformed ICMPv6 message has no checksum slot).
+        if self._ip_proto == IpProto.ICMP6 and len(buffer) >= 4:
+            buffer[2:4] = b"\x00\x00"
             buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
 
-        # Automatically calculate checksum if IpProto is ICMPv4 packet and checksum is not set.
-        if self._ip_proto == IpProto.ICMP4 and self._payload[2:4] == b"\x00\x00":
-            buffer[2:4] = inet_cksum(buffer).to_bytes(2)
+        # ICMPv4 (and every other) raw payload is emitted verbatim:
+        # Linux SOCK_RAW / IPPROTO_ICMP does NOT compute the IPv4
+        # transport checksum — the application owns it. (See
+        # 'examples/client__icmp_echo.py', which computes its own
+        # ICMPv4 checksum accordingly.)
 
         return memoryview(buffer)
 
