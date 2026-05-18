@@ -40,6 +40,7 @@ from net_addr import (
     Ip6Address,
     Ip6Network,
 )
+from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket__bind_helpers import (
     is_address_in_use,
@@ -58,20 +59,20 @@ class TestPickLocalIp6Address(TestCase):
 
     def test__ip_helper__pick_local_ip6__remote_in_local_network(self) -> None:
         """
-        Ensure the helper returns the local host's own address when the
-        remote address falls inside one of the configured local IPv6
-        networks. This is the first (and preferred) branch of the
-        selector.
+        Ensure the helper returns the local host's own address when
+        the remote falls inside a configured local IPv6 network —
+        the first (preferred) on-link branch of the selector.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         local_host = SimpleNamespace(
             address=Ip6Address("2001:db8::100"),
             network=Ip6Network("2001:db8::/64"),
-            gateway=None,
         )
         fake_handler = SimpleNamespace(ip6_host=[local_host])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2001:db8::5"))
 
         self.assertEqual(
@@ -80,49 +81,88 @@ class TestPickLocalIp6Address(TestCase):
             msg="pick_local_ip6_address() must return the matching local address for an in-network remote.",
         )
 
-    def test__ip_helper__pick_local_ip6__remote_external_uses_gateway_host(self) -> None:
+    def test__ip_helper__pick_local_ip6__external_with_default_route_uses_first_host(self) -> None:
         """
-        Ensure the helper falls back to the address of the first host
-        that has a gateway configured when the remote is outside every
-        local network.
+        Ensure that for an off-link remote covered by a FIB
+        default route (no route prefsrc) the helper returns the
+        first configured host's address.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
         """
 
-        no_gw = SimpleNamespace(
-            address=Ip6Address("fd00::1"),
-            network=Ip6Network("fd00::/8"),
-            gateway=None,
+        host_a = SimpleNamespace(address=Ip6Address("fd00::1"), network=Ip6Network("fd00::/8"))
+        host_b = SimpleNamespace(address=Ip6Address("2001:db8::100"), network=Ip6Network("2001:db8::/64"))
+        fake_handler = SimpleNamespace(ip6_host=[host_a, host_b])
+        fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        fib.add(
+            route=Route(
+                destination=Ip6Network("::/0"),
+                gateway=Ip6Address("fe80::1"),
+                protocol=RouteProtocol.RA,
+            )
         )
-        with_gw = SimpleNamespace(
-            address=Ip6Address("2001:db8::100"),
-            network=Ip6Network("2001:db8::/64"),
-            gateway=Ip6Address("2001:db8::1"),
-        )
-        fake_handler = SimpleNamespace(ip6_host=[no_gw, with_gw])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
+        ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
 
         self.assertEqual(
             result,
-            Ip6Address("2001:db8::100"),
-            msg="pick_local_ip6_address() must return the first gateway-bearing host for an external remote.",
+            Ip6Address("fd00::1"),
+            msg="An off-link remote with a default route must use the first host's address.",
         )
 
-    def test__ip_helper__pick_local_ip6__no_match_returns_unspecified(self) -> None:
+    def test__ip_helper__pick_local_ip6__route_prefsrc_preferred(self) -> None:
         """
-        Ensure the helper returns the unspecified '::' address when the
-        remote does not match any local network and no host has a
-        gateway configured.
+        Ensure a route's preferred source is used in preference to
+        the first host when the matched route carries a prefsrc.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
         """
 
-        orphan = SimpleNamespace(
-            address=Ip6Address("2001:db8::100"),
-            network=Ip6Network("2001:db8::/64"),
-            gateway=None,
+        host = SimpleNamespace(address=Ip6Address("2001:db8::100"), network=Ip6Network("2001:db8::/64"))
+        fake_handler = SimpleNamespace(ip6_host=[host])
+        fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        fib.add(
+            route=Route(
+                destination=Ip6Network("::/0"),
+                gateway=Ip6Address("fe80::1"),
+                prefsrc=Ip6Address("2001:db8::abcd"),
+                protocol=RouteProtocol.STATIC,
+            )
         )
+
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
+        ):
+            result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
+
+        self.assertEqual(
+            result,
+            Ip6Address("2001:db8::abcd"),
+            msg="A route prefsrc must take precedence over the first-host fallback.",
+        )
+
+    def test__ip_helper__pick_local_ip6__no_route_returns_unspecified(self) -> None:
+        """
+        Ensure the helper returns the unspecified '::' address when
+        the remote matches no local network and no FIB route
+        covers it.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
+        """
+
+        orphan = SimpleNamespace(address=Ip6Address("2001:db8::100"), network=Ip6Network("2001:db8::/64"))
         fake_handler = SimpleNamespace(ip6_host=[orphan])
+        fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
+        ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
 
         self.assertEqual(
@@ -139,18 +179,19 @@ class TestPickLocalIp4Address(TestCase):
 
     def test__ip_helper__pick_local_ip4__remote_in_local_network(self) -> None:
         """
-        Ensure the helper returns the matching local host address when
-        the remote is inside one of the configured IPv4 networks.
+        Ensure the helper returns the matching local host address
+        when the remote is inside a configured IPv4 network.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         local_host = SimpleNamespace(
             address=Ip4Address("10.0.0.100"),
             network=Ip4Network("10.0.0.0/24"),
-            gateway=None,
         )
         fake_handler = SimpleNamespace(ip4_host=[local_host])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
@@ -159,49 +200,88 @@ class TestPickLocalIp4Address(TestCase):
             msg="pick_local_ip4_address() must return the matching local address for an in-network remote.",
         )
 
-    def test__ip_helper__pick_local_ip4__remote_external_uses_gateway_host(self) -> None:
+    def test__ip_helper__pick_local_ip4__external_with_default_route_uses_first_host(self) -> None:
         """
-        Ensure the helper falls back to the address of the first host
-        that has a gateway configured when the remote is outside every
-        local network.
+        Ensure that for an off-link remote covered by a FIB
+        default route (no route prefsrc) the helper returns the
+        first configured host's address.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
         """
 
-        no_gw = SimpleNamespace(
-            address=Ip4Address("172.16.0.1"),
-            network=Ip4Network("172.16.0.0/16"),
-            gateway=None,
+        host_a = SimpleNamespace(address=Ip4Address("172.16.0.1"), network=Ip4Network("172.16.0.0/16"))
+        host_b = SimpleNamespace(address=Ip4Address("10.0.0.100"), network=Ip4Network("10.0.0.0/24"))
+        fake_handler = SimpleNamespace(ip4_host=[host_a, host_b])
+        fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.0.1"),
+                protocol=RouteProtocol.DHCP,
+            )
         )
-        with_gw = SimpleNamespace(
-            address=Ip4Address("10.0.0.100"),
-            network=Ip4Network("10.0.0.0/24"),
-            gateway=Ip4Address("10.0.0.1"),
-        )
-        fake_handler = SimpleNamespace(ip4_host=[no_gw, with_gw])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
+        ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
 
         self.assertEqual(
             result,
-            Ip4Address("10.0.0.100"),
-            msg="pick_local_ip4_address() must return the first gateway-bearing host for an external remote.",
+            Ip4Address("172.16.0.1"),
+            msg="An off-link remote with a default route must use the first host's address.",
         )
 
-    def test__ip_helper__pick_local_ip4__no_match_returns_unspecified(self) -> None:
+    def test__ip_helper__pick_local_ip4__route_prefsrc_preferred(self) -> None:
         """
-        Ensure the helper returns the unspecified '0.0.0.0' address when
-        the remote does not match any local network and no host has a
-        gateway configured.
+        Ensure a route's preferred source is used in preference to
+        the first host when the matched route carries a prefsrc.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
         """
 
-        orphan = SimpleNamespace(
-            address=Ip4Address("10.0.0.100"),
-            network=Ip4Network("10.0.0.0/24"),
-            gateway=None,
+        host = SimpleNamespace(address=Ip4Address("10.0.0.100"), network=Ip4Network("10.0.0.0/24"))
+        fake_handler = SimpleNamespace(ip4_host=[host])
+        fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.0.1"),
+                prefsrc=Ip4Address("10.0.0.200"),
+                protocol=RouteProtocol.STATIC,
+            )
         )
+
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
+        ):
+            result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
+
+        self.assertEqual(
+            result,
+            Ip4Address("10.0.0.200"),
+            msg="A route prefsrc must take precedence over the first-host fallback.",
+        )
+
+    def test__ip_helper__pick_local_ip4__no_route_returns_unspecified(self) -> None:
+        """
+        Ensure the helper returns the unspecified '0.0.0.0'
+        address when the remote matches no local network and no
+        FIB route covers it.
+
+        Reference: RFC 1122 §3.3.1 (next-hop / source selection for off-link).
+        """
+
+        orphan = SimpleNamespace(address=Ip4Address("10.0.0.100"), network=Ip4Network("10.0.0.0/24"))
         fake_handler = SimpleNamespace(ip4_host=[orphan])
+        fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler):
+        with (
+            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
+        ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
 
         self.assertEqual(
@@ -222,6 +302,8 @@ class TestPickLocalIpAddressDispatch(TestCase):
         propagates its return value when the remote is an IPv6 address.
         The generic signature is type-parametrized, so the return type
         must match the input type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         expected = Ip6Address("2001:db8::cafe")
@@ -245,6 +327,8 @@ class TestPickLocalIpAddressDispatch(TestCase):
         """
         Ensure the generic helper forwards to the IPv4 helper and
         propagates its return value when the remote is an IPv4 address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         expected = Ip4Address("10.0.0.100")
@@ -275,6 +359,8 @@ class TestPickLocalPort(TestCase):
         Ensure the helper returns a port drawn from
         'stack.EPHEMERAL_PORT_RANGE' when no socket has claimed anything
         yet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -294,6 +380,8 @@ class TestPickLocalPort(TestCase):
         Ensure ports currently used by any open socket are excluded from
         the pool. If every port-but-one is taken, the helper must pick
         that last remaining port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         sockets = {
@@ -357,6 +445,8 @@ class TestPickLocalPort(TestCase):
         Ensure 'pick_local_port()' raises 'OSError' with the canonical
         '[Errno 98] Address already in use' message when every port in
         the ephemeral range is claimed.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(10000, 10006, 2)}
@@ -584,6 +674,8 @@ class TestIsAddressInUse(TestCase):
         """
         Ensure an open socket bound to exactly the same
         (family, type, IP, port) tuple flags the address as in use.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -611,6 +703,8 @@ class TestIsAddressInUse(TestCase):
         Ensure a socket bound to the unspecified address (e.g. 0.0.0.0)
         blocks subsequent binds on any specific address using the same
         port/family/type — the BSD 'bound to ANY' semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -638,6 +732,8 @@ class TestIsAddressInUse(TestCase):
         Ensure a new bind request on the unspecified address is blocked
         by any existing socket bound to a specific IP on the same port,
         family, and socket type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -664,6 +760,8 @@ class TestIsAddressInUse(TestCase):
         """
         Ensure a different port is considered free even when the family,
         type, and local IP match an existing socket.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -690,6 +788,8 @@ class TestIsAddressInUse(TestCase):
         """
         Ensure sockets in a different address family are ignored so an
         IPv4 bind is not blocked by an IPv6 listener on the same port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -716,6 +816,8 @@ class TestIsAddressInUse(TestCase):
         """
         Ensure sockets of a different type (STREAM vs DGRAM) are ignored
         so a TCP bind is not blocked by a UDP listener on the same port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -743,6 +845,8 @@ class TestIsAddressInUse(TestCase):
         Ensure a different specific local IP on the same port/family/type
         is considered free — BSD sockets allow multiple binds at the
         same port as long as the specific addresses differ.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         opened = self._make_socket(
@@ -768,6 +872,8 @@ class TestIsAddressInUse(TestCase):
     def test__ip_helper__is_address_in_use__empty_sockets_returns_false(self) -> None:
         """
         Ensure a completely empty socket table always resolves to free.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}):

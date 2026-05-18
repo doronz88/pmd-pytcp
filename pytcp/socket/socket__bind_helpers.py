@@ -73,17 +73,31 @@ def pick_local_ip6_address(
     Pick an appropriate source IPv6 address based on the provided destination IPv6 address.
 
     Selection policy: prefer the address of a local network the destination belongs to;
-    otherwise fall back to the first local network with a default gateway set;
+    otherwise consult the FIB — if a route covers the destination, use the route's
+    preferred source when set, else the first configured host's address;
     otherwise return the unspecified address.
     """
 
-    for ip6_host in stack.packet_handler.ip6_host:
+    ip6_hosts = stack.packet_handler.ip6_host
+
+    for ip6_host in ip6_hosts:
         if remote_ip6_address in ip6_host.network:
             return ip6_host.address
 
-    for ip6_host in stack.packet_handler.ip6_host:
-        if ip6_host.gateway:
-            return ip6_host.address
+    # Off-link: the next hop is the FIB's job, not a per-IfAddr
+    # gateway. 'hasattr' guards reduced test contexts with no
+    # Route plane bound (same pattern as the RA chokepoint).
+    ip6_fib = stack.ip6_fib if hasattr(stack, "ip6_fib") else None
+    if ip6_fib is not None:
+        route = ip6_fib.lookup(
+            remote_ip6_address,
+            connected=[ip6_host.network for ip6_host in ip6_hosts],
+        )
+        if route is not None:
+            if route.prefsrc is not None:
+                return route.prefsrc
+            if ip6_hosts:
+                return ip6_hosts[0].address
 
     return Ip6Address()
 
@@ -96,17 +110,31 @@ def pick_local_ip4_address(
     Pick an appropriate source IPv4 address based on the provided destination IPv4 address.
 
     Selection policy: prefer the address of a local network the destination belongs to;
-    otherwise fall back to the first local network with a default gateway set;
+    otherwise consult the FIB — if a route covers the destination, use the route's
+    preferred source when set, else the first configured host's address;
     otherwise return the unspecified address.
     """
 
-    for ip4_host in stack.packet_handler.ip4_host:
+    ip4_hosts = stack.packet_handler.ip4_host
+
+    for ip4_host in ip4_hosts:
         if remote_ip4_address in ip4_host.network:
             return ip4_host.address
 
-    for ip4_host in stack.packet_handler.ip4_host:
-        if ip4_host.gateway:
-            return ip4_host.address
+    # Off-link: the next hop is the FIB's job, not a per-IfAddr
+    # gateway. 'hasattr' guards reduced test contexts with no
+    # Route plane bound (same pattern as the RA chokepoint).
+    ip4_fib = stack.ip4_fib if hasattr(stack, "ip4_fib") else None
+    if ip4_fib is not None:
+        route = ip4_fib.lookup(
+            remote_ip4_address,
+            connected=[ip4_host.network for ip4_host in ip4_hosts],
+        )
+        if route is not None:
+            if route.prefsrc is not None:
+                return route.prefsrc
+            if ip4_hosts:
+                return ip4_hosts[0].address
 
     return Ip4Address()
 
