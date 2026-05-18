@@ -75,7 +75,7 @@ class MacAddress(Address):
             return
 
         if isinstance(address, int):
-            if 0 <= address <= 0xFFFF_FFFF_FFFF:
+            if 0 <= address <= MAC__BROADCAST:
                 self._address = address
                 return
 
