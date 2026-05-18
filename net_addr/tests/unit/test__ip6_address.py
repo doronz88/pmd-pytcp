@@ -1664,6 +1664,48 @@ class TestNetAddrIp6AddressArithmetic(TestCase):
             msg="An unscoped operand must yield an unscoped result.",
         )
 
+    def test__net_addr__ip6_address__arithmetic__drops_scope_when_result_not_zoneable(self) -> None:
+        """
+        Ensure 'address + int' / 'address - int' drop the RFC
+        4007 zone when the offset carries the address out of a
+        zoneable scope, so a scoped Ip6Address is always one the
+        constructor would accept and equality / hashing stay
+        consistent with the plainly-constructed form.
+
+        Reference: RFC 4007 §6 (zone meaningful only for non-global scopes).
+        """
+
+        # fe80::1%eth0 (link-local, zoneable) + 2**120 -> ff80::1
+        # (multicast, scop nibble 0 -> not zoneable).
+        crossed_up = Ip6Address("fe80::1%eth0") + (1 << 120)
+        self.assertIsNone(
+            crossed_up.scope_id,
+            msg="A result outside any zoneable scope must not carry a zone.",
+        )
+        self.assertEqual(
+            crossed_up,
+            Ip6Address("ff80::1"),
+            msg="The zone-dropped result must equal the plainly-constructed address.",
+        )
+        self.assertEqual(
+            hash(crossed_up),
+            hash(Ip6Address("ff80::1")),
+            msg="The zone-dropped result must hash as the plainly-constructed address.",
+        )
+
+        # fe80:: (link-local, zoneable) - 1 -> fe7f:ffff:...:ffff
+        # (no longer link-local/loopback/multicast -> not zoneable).
+        crossed_down = Ip6Address("fe80::%eth0") - 1
+        self.assertIsNone(
+            crossed_down.scope_id,
+            msg="Retreating out of the zoneable range must drop the zone.",
+        )
+        self.assertEqual(
+            int(crossed_down),
+            int(Ip6Address("fe80::")) - 1,
+            msg="Dropping the zone must not perturb the 128 address bits.",
+        )
+
     def test__net_addr__ip6_address__arithmetic__overflow_raises(self) -> None:
         """
         Ensure arithmetic past the IPv6 address space raises the

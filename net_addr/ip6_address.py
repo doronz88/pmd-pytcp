@@ -271,7 +271,12 @@ class Ip6Address(IpAddress):
             return NotImplemented
 
         result = type(self)(self._address + other)
-        result._scope_id = self._scope_id
+        # RFC 4007 §6: a zone is meaningful only for a non-global
+        # scope. If the offset left the zoneable range, drop it so
+        # a scoped Ip6Address always satisfies the constructor's
+        # invariant (and stays consistent under __eq__ / __hash__).
+        if result._is_zoneable:
+            result._scope_id = self._scope_id
         return result
 
     @override
@@ -285,7 +290,12 @@ class Ip6Address(IpAddress):
             return NotImplemented
 
         result = type(self)(self._address - other)
-        result._scope_id = self._scope_id
+        # RFC 4007 §6: a zone is meaningful only for a non-global
+        # scope. If the offset left the zoneable range, drop it so
+        # a scoped Ip6Address always satisfies the constructor's
+        # invariant (and stays consistent under __eq__ / __hash__).
+        if result._is_zoneable:
+            result._scope_id = self._scope_id
         return result
 
     @property
