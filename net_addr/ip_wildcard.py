@@ -83,7 +83,9 @@ class IpWildcard(Base, Ip, ABC):
         every don't-care bit (wildcard=1) forced high, every
         care bit unchanged, so '(a | w) == (b | w)' is the
         ACL-equivalence test. A non-address or cross-version
-        operand is undefined and raises TypeError.
+        operand returns 'NotImplemented' so Python falls back
+        to the reflected operand and ultimately raises
+        TypeError if unsupported.
         """
 
         if isinstance(other, Ip4Address) and self.version == other.version:

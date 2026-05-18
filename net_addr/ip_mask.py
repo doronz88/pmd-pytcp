@@ -83,8 +83,9 @@ class IpMask(Base, Ip, ABC):
         Get the network address of an address under this mask:
         every host bit (mask=0) cleared, every network bit
         unchanged, so '(a & m) == (b & m)' is the same-subnet
-        test. A non-address or cross-version operand is
-        undefined and raises TypeError.
+        test. A non-address or cross-version operand returns
+        'NotImplemented' so Python falls back to the reflected
+        operand and ultimately raises TypeError if unsupported.
         """
 
         if isinstance(other, Ip4Address) and self.version == other.version:
