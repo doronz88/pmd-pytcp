@@ -154,7 +154,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
 
         return cls(
             (
-                Ip6Address(int(ip6_network.address) | interface_id),
+                Ip6Address((int(ip6_network.address) & ((1 << 128) - (1 << 64))) | interface_id),
                 Ip6Mask("/64"),
             )
         )
