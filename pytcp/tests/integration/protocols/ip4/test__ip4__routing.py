@@ -40,12 +40,23 @@ from pytcp import stack
 from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.fib import Route, RouteProtocol
 from pytcp.tests.lib.network_testcase import (
+    HOST_A__IP4_ADDRESS,
+    HOST_A__MAC_ADDRESS,
     STACK__IP4_GATEWAY,
     STACK__IP4_GATEWAY_MAC_ADDRESS,
     STACK__IP4_HOST,
     STACK__IP6_GATEWAY,
     NetworkTestCase,
 )
+
+# Static-route fixture — a non-default prefix reached via a
+# second on-link router (Linux 'ip route add 10.9.0.0/16 via
+# 10.0.1.254').
+_STATIC_NET = Ip4Network("10.9.0.0/16")
+_STATIC_GW = Ip4Address("10.0.1.254")
+_STATIC_GW__MAC = MacAddress("02:00:00:00:00:fe")
+_DST_IN_STATIC = Ip4Address("10.9.1.1")
+_DST_DEFAULT_ONLY = Ip4Address("8.8.8.8")
 
 # Second interface address for the multihoming pin — a host
 # with a working ARP entry on a subnet that is NOT the source
@@ -256,4 +267,125 @@ class TestIp4RoutingNextHop(NetworkTestCase):
             self._packet_handler.packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop,
             1,
             msg="A no-route drop must bump the extnet no-gateway drop counter.",
+        )
+
+
+class TestIp4RoutingStaticRoute(NetworkTestCase):
+    """
+    The host-mode FIB static non-default-route tests.
+    """
+
+    def _install_static_route_and_arp(self) -> None:
+        """
+        Add a static 10.9.0.0/16 route via an on-link router
+        alongside the harness default route, and wire the ARP
+        mock for the three relevant next hops.
+        """
+
+        stack.route.add_ip4_route(
+            route=Route(
+                destination=_STATIC_NET,
+                gateway=_STATIC_GW,
+                protocol=RouteProtocol.STATIC,
+            )
+        )
+
+        def _arp(*, ip4_address: Ip4Address) -> MacAddress | None:
+            return {
+                _STATIC_GW: _STATIC_GW__MAC,
+                STACK__IP4_GATEWAY: STACK__IP4_GATEWAY_MAC_ADDRESS,
+                HOST_A__IP4_ADDRESS: HOST_A__MAC_ADDRESS,
+            }.get(ip4_address)
+
+        cast(MagicMock, stack.arp_cache).find_entry.side_effect = _arp
+
+    def test__ip4__routing__static_route_beats_default(self) -> None:
+        """
+        Ensure a destination inside the static /16 prefix
+        resolves via the static route's gateway, not the /0
+        default — longest-prefix match.
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / longest-prefix match).
+        """
+
+        self._install_static_route_and_arp()
+
+        status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=_DST_IN_STATIC,
+        )
+
+        self.assertEqual(
+            status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="A destination inside the static prefix must be sent.",
+        )
+        self.assertEqual(
+            _eth_dst(self._frames_tx[0]),
+            _STATIC_GW__MAC,
+            msg="The static /16 route's gateway MAC must win over the default route.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send,
+            1,
+            msg="The static-route destination must take the extnet-gateway path.",
+        )
+
+    def test__ip4__routing__default_used_outside_static_prefix(self) -> None:
+        """
+        Ensure a destination matched only by the /0 default
+        route (outside the static /16) resolves via the default
+        gateway.
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / default route).
+        """
+
+        self._install_static_route_and_arp()
+
+        status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=_DST_DEFAULT_ONLY,
+        )
+
+        self.assertEqual(
+            status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="A destination outside the static prefix must be sent via the default route.",
+        )
+        self.assertEqual(
+            _eth_dst(self._frames_tx[0]),
+            STACK__IP4_GATEWAY_MAC_ADDRESS,
+            msg="A destination outside the static prefix must use the default gateway MAC.",
+        )
+
+    def test__ip4__routing__on_link_unaffected_by_static_route(self) -> None:
+        """
+        Ensure an on-link destination still resolves directly
+        (connected route) when a static non-default route is
+        also installed.
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / connected over routed).
+        """
+
+        self._install_static_route_and_arp()
+
+        status = self._packet_handler._phtx_ip4(
+            ip4__src=STACK__IP4_HOST.address,
+            ip4__dst=HOST_A__IP4_ADDRESS,
+        )
+
+        self.assertEqual(
+            status,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="An on-link destination must be sent.",
+        )
+        self.assertEqual(
+            _eth_dst(self._frames_tx[0]),
+            HOST_A__MAC_ADDRESS,
+            msg="An on-link destination must resolve directly, unaffected by the static route.",
+        )
+        self.assertEqual(
+            self._packet_handler.packet_stats_tx.ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send,
+            1,
+            msg="An on-link destination must take the locnet (direct) path.",
         )
