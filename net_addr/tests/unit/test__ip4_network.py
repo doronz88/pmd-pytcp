@@ -1083,6 +1083,7 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
             ("supernet new_prefix >= prefixlen", lambda: Ip4Network("10.0.0.0/8").supernet(new_prefix=8)),
             ("supernet below /0", lambda: Ip4Network("10.0.0.0/8").supernet(prefixlen_diff=9)),
             ("supernet negative prefixlen_diff", lambda: Ip4Network("10.0.0.0/24").supernet(prefixlen_diff=-2)),
+            ("supernet zero prefixlen_diff", lambda: Ip4Network("10.0.0.0/24").supernet(prefixlen_diff=0)),
         ]
         for label, thunk in cases:
             with self.subTest(case=label):

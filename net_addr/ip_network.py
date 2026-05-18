@@ -412,7 +412,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             if new_prefix >= prefixlen:
                 raise ValueError(f"new prefix must be shorter than {prefixlen}; got {new_prefix}")
         else:
-            if prefixlen_diff < 0:
+            if prefixlen_diff < 1:
                 raise ValueError(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
             new_prefix = prefixlen - prefixlen_diff
 
