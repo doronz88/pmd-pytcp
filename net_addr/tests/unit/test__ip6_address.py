@@ -35,7 +35,14 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_addr import Ip4Address, Ip6Address, Ip6AddressFormatError, IpVersion, MacAddress
+from net_addr import (
+    Ip4Address,
+    Ip6Address,
+    Ip6AddressFormatError,
+    Ip6AddressSanityError,
+    IpVersion,
+    MacAddress,
+)
 
 
 @parameterized_class(
@@ -1294,13 +1301,13 @@ class TestNetAddrIp6AddressMulticastMac(TestCase):
 
     def test__net_addr__ip6_address__multicast_mac__non_multicast_raises(self) -> None:
         """
-        Ensure 'multicast_mac' raises AssertionError for a non-multicast address.
+        Ensure 'multicast_mac' raises Ip6AddressSanityError for a non-multicast address.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6AddressSanityError,
             msg="multicast_mac must reject a non-multicast address.",
         ):
             _ = Ip6Address("2001:db8::1").multicast_mac
@@ -1346,7 +1353,7 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
         """
 
         with self.assertRaises(
-            AssertionError,
+            Ip6AddressSanityError,
             msg="solicited_node_multicast must reject a multicast address.",
         ):
             _ = Ip6Address("ff02::1").solicited_node_multicast

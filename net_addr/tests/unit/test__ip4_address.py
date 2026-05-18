@@ -38,6 +38,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 from net_addr import (
     Ip4Address,
     Ip4AddressFormatError,
+    Ip4AddressSanityError,
     Ip6Address,
     IpVersion,
     MacAddress,
@@ -1756,13 +1757,13 @@ class TestNetAddrIp4AddressMulticastMacError(TestCase):
 
     def test__net_addr__ip4_address__multicast_mac__error(self) -> None:
         """
-        Ensure 'multicast_mac' raises AssertionError with the expected
-        message when called on a non-multicast address.
+        Ensure 'multicast_mac' raises Ip4AddressSanityError with the
+        expected message when called on a non-multicast address.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(AssertionError) as error:
+        with self.assertRaises(Ip4AddressSanityError) as error:
             _ = Ip4Address("192.168.1.1").multicast_mac
 
         self.assertEqual(
@@ -2259,12 +2260,12 @@ class TestNetAddrIp4AddressFormat(TestCase):
 
     def test__net_addr__ip4_address__format__invalid_spec_raises(self) -> None:
         """
-        Ensure an unsupported format code raises ValueError.
+        Ensure an unsupported format code raises Ip4AddressSanityError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError, msg="An unknown format code must raise ValueError."):
+        with self.assertRaises(Ip4AddressSanityError, msg="An unknown format code must raise Ip4AddressSanityError."):
             format(Ip4Address("1.2.3.4"), "q")
 
 

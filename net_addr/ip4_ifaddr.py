@@ -30,7 +30,7 @@ net_addr/ip4_ifaddr.py
 ver 3.0.5
 """
 
-from typing import Self
+from typing import ClassVar, Self
 
 from net_addr.errors import (
     Ip4AddressFormatError,
@@ -38,6 +38,7 @@ from net_addr.errors import (
     Ip4IfAddrSanityError,
     Ip4MaskFormatError,
     Ip4NetworkFormatError,
+    NetAddrError,
 )
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
@@ -54,6 +55,8 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
     __slots__ = ()
 
     _version: IpVersion = IpVersion.IP4
+
+    _sanity_error: ClassVar[type[NetAddrError]] = Ip4IfAddrSanityError
 
     def __init__(
         self,
@@ -79,7 +82,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
             else:
                 raise Ip4IfAddrFormatError(host)
             if self._address not in self._network:
-                raise Ip4IfAddrSanityError(host)
+                raise Ip4IfAddrSanityError(f"The IPv4 address doesn't belong to the provided network: {host!r}")
             return
 
         if isinstance(host, str):
@@ -98,7 +101,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
                 # construction.
                 self._network = Ip4Network(text)
                 return
-            except ValueError, Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError:
+            except Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError:
                 pass
 
         raise Ip4IfAddrFormatError(host)

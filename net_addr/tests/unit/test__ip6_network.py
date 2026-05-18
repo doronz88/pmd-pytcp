@@ -44,8 +44,10 @@ from net_addr import (
     Ip6Mask,
     Ip6Network,
     Ip6NetworkFormatError,
+    Ip6NetworkSanityError,
     Ip6Wildcard,
     IpNetwork,
+    IpNetworkSanityError,
     IpVersion,
 )
 
@@ -1022,7 +1024,7 @@ class TestNetAddrIp6NetworkWithForms(TestCase):
         """
         Ensure __format__ renders the pl / nm / hm notations;
         the default and 'pl' equal str(); an unknown spec
-        raises ValueError.
+        raises Ip6NetworkSanityError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1041,7 +1043,7 @@ class TestNetAddrIp6NetworkWithForms(TestCase):
             msg=f"Default format must equal the prefixlen form for: {self._description}",
         )
 
-        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+        with self.assertRaises(Ip6NetworkSanityError, msg="An unknown format spec must raise Ip6NetworkSanityError."):
             format(self._net, "zz")
 
 
@@ -1074,7 +1076,7 @@ class TestNetAddrIp6NetworkGetitem(TestCase):
         """
         Ensure 'network[i]' returns the i-th address (negative
         indexes count from the last address); out-of-range
-        raises IndexError.
+        raises Ip6NetworkSanityError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1091,7 +1093,7 @@ class TestNetAddrIp6NetworkGetitem(TestCase):
 
         for bad in (4, -5):
             with self.subTest(index=bad):
-                with self.assertRaises(IndexError, msg=f"net[{bad}] must raise IndexError."):
+                with self.assertRaises(Ip6NetworkSanityError, msg=f"net[{bad}] must raise Ip6NetworkSanityError."):
                     _ = net[bad]
 
 
@@ -1120,7 +1122,7 @@ class TestNetAddrIp6NetworkAddressExclude(TestCase):
             [],
             msg="Excluding self must yield nothing.",
         )
-        with self.assertRaises(ValueError, msg="A non-contained operand must raise ValueError."):
+        with self.assertRaises(Ip6NetworkSanityError, msg="A non-contained operand must raise Ip6NetworkSanityError."):
             list(n.address_exclude(Ip6Network("2001:dead::/32")))
 
 
@@ -1162,14 +1164,14 @@ class TestNetAddrIp6NetworkSummarize(TestCase):
 
     def test__net_addr__ip6_network__summarize_mixed_version_raises(self) -> None:
         """
-        Ensure 'summarize' raises 'TypeError' on a mixed-version
-        input set.
+        Ensure 'summarize' raises 'IpNetworkSanityError' on a
+        mixed-version input set.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mixed = [Ip6Network("2001:db8::/64"), Ip4Network("10.0.0.0/24")]
-        with self.assertRaises(TypeError):
+        with self.assertRaises(IpNetworkSanityError):
             list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]
 
 

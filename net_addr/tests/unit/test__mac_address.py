@@ -39,6 +39,7 @@ from net_addr import (
     MacAddress,
     MacAddressError,
     MacAddressFormatError,
+    MacAddressSanityError,
     NetAddrError,
 )
 
@@ -1118,12 +1119,12 @@ class TestNetAddrMacAddressFormat(TestCase):
 
     def test__net_addr__mac_address__format_unknown_raises(self) -> None:
         """
-        Ensure an unrecognised format code raises 'ValueError'.
+        Ensure an unrecognised format code raises 'MacAddressSanityError'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(MacAddressSanityError):
             format(MacAddress("0a:1b:2c:3d:4e:5f"), "zz")
 
 

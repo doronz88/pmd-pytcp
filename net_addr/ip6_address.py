@@ -32,9 +32,9 @@ ver 3.0.5
 
 import re
 import socket
-from typing import Self, override
+from typing import ClassVar, Self, override
 
-from net_addr.errors import Ip6AddressFormatError
+from net_addr.errors import Ip6AddressFormatError, Ip6AddressSanityError, NetAddrError
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
@@ -110,6 +110,8 @@ class Ip6Address(IpAddress):
     __slots__ = ("_scope_id",)
 
     _version: IpVersion = IpVersion.IP6
+
+    _sanity_error: ClassVar[type[NetAddrError]] = Ip6AddressSanityError
 
     _scope_id: str | None
 
@@ -335,9 +337,10 @@ class Ip6Address(IpAddress):
         Get the IPv6 multicast MAC address.
         """
 
-        assert (
-            self.is_multicast
-        ), f"The IPv6 address must be a multicast address to get a multicast MAC address. Got: {self}"
+        if not self.is_multicast:
+            raise Ip6AddressSanityError(
+                f"The IPv6 address must be a multicast address to get a multicast MAC address. Got: {self}"
+            )
 
         return MacAddress(MAC__IP6_MULTICAST_PREFIX | self._address & 0x0000_FFFF_FFFF)
 
@@ -411,10 +414,11 @@ class Ip6Address(IpAddress):
         Create IPv6 solicited node multicast address.
         """
 
-        assert self.is_unicast or self.is_unspecified, (
-            "The IPv6 address must be a unicast or unspecified address "
-            f"to get a solicited node multicast address. Got: {self}"
-        )
+        if not (self.is_unicast or self.is_unspecified):
+            raise Ip6AddressSanityError(
+                "The IPv6 address must be a unicast or unspecified address "
+                f"to get a solicited node multicast address. Got: {self}"
+            )
 
         return type(self)(self._address & IP6__SOLICITED_NODE_HOST_MASK | IP6__SOLICITED_NODE_PREFIX)
 

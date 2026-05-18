@@ -610,7 +610,7 @@ class TestNetAddrIp4IfAddrFormat(TestCase):
                 self.assertEqual(format(a, spec), expected, msg=f"format({spec!r}) must be {expected!r}.")
 
         self.assertEqual(f"{a}", "192.0.2.5/24", msg="Default format must equal str().")
-        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+        with self.assertRaises(Ip4IfAddrSanityError, msg="An unknown format spec must raise Ip4IfAddrSanityError."):
             format(a, "zz")
 
 

@@ -42,11 +42,13 @@ from net_addr import (
     Ip4Mask,
     Ip4Network,
     Ip4NetworkFormatError,
+    Ip4NetworkSanityError,
     Ip4Wildcard,
     Ip6Address,
     Ip6IfAddr,
     Ip6Network,
     IpNetwork,
+    IpNetworkSanityError,
     IpVersion,
 )
 
@@ -1078,7 +1080,7 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(ValueError) as subnets_error:
+        with self.assertRaises(Ip4NetworkSanityError) as subnets_error:
             list(Ip4Network("10.0.0.0/8").subnets(new_prefix=33))
         self.assertIn(
             "/33",
@@ -1091,7 +1093,7 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
             msg="subnets(new_prefix=...) message must not mention prefixlen_diff.",
         )
 
-        with self.assertRaises(ValueError) as supernet_error:
+        with self.assertRaises(Ip4NetworkSanityError) as supernet_error:
             Ip4Network("10.0.0.0/8").supernet(new_prefix=-1)
         self.assertIn(
             "/-1",
@@ -1107,7 +1109,7 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
     def test__net_addr__ip4_network__subnetting__errors(self) -> None:
         """
         Ensure invalid subnets / supernet arguments raise
-        ValueError, mirroring the standard library.
+        Ip4NetworkSanityError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1123,7 +1125,7 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
         ]
         for label, thunk in cases:
             with self.subTest(case=label):
-                with self.assertRaises(ValueError, msg=f"{label} must raise ValueError"):
+                with self.assertRaises(Ip4NetworkSanityError, msg=f"{label} must raise Ip4NetworkSanityError"):
                     thunk()
 
 
@@ -1268,7 +1270,7 @@ class TestNetAddrIp4NetworkWithForms(TestCase):
             msg=f"Default format must equal the prefixlen form for: {self._description}",
         )
 
-        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+        with self.assertRaises(Ip4NetworkSanityError, msg="An unknown format spec must raise Ip4NetworkSanityError."):
             format(self._net, "zz")
 
 
@@ -1301,7 +1303,7 @@ class TestNetAddrIp4NetworkGetitem(TestCase):
         """
         Ensure 'network[i]' returns the i-th address (negative
         indexes count from the last address); out-of-range
-        raises IndexError; slices are not supported.
+        raises Ip4NetworkSanityError; slices are not supported.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1319,13 +1321,13 @@ class TestNetAddrIp4NetworkGetitem(TestCase):
 
         for bad in (256, -257):
             with self.subTest(index=bad):
-                with self.assertRaises(IndexError, msg=f"net[{bad}] must raise IndexError."):
+                with self.assertRaises(Ip4NetworkSanityError, msg=f"net[{bad}] must raise Ip4NetworkSanityError."):
                     _ = net[bad]
 
         single = Ip4Network("192.0.2.5/32")
         self.assertEqual(single[0], Ip4Address("192.0.2.5"), msg="single[0] must be the host.")
         self.assertEqual(single[-1], Ip4Address("192.0.2.5"), msg="single[-1] must be the host.")
-        with self.assertRaises(IndexError, msg="single[1] must raise IndexError."):
+        with self.assertRaises(Ip4NetworkSanityError, msg="single[1] must raise Ip4NetworkSanityError."):
             _ = single[1]
 
         with self.assertRaises(TypeError, msg="Slicing must not be supported."):
@@ -1375,15 +1377,15 @@ class TestNetAddrIp4NetworkAddressExclude(TestCase):
     def test__net_addr__ip4_network__address_exclude__errors(self) -> None:
         """
         Ensure excluding a non-contained or cross-version
-        network raises ValueError.
+        network raises Ip4NetworkSanityError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         n = Ip4Network("192.0.2.0/24")
-        with self.assertRaises(ValueError, msg="A non-contained operand must raise ValueError."):
+        with self.assertRaises(Ip4NetworkSanityError, msg="A non-contained operand must raise Ip4NetworkSanityError."):
             list(n.address_exclude(Ip4Network("198.51.100.0/25")))
-        with self.assertRaises(ValueError, msg="A cross-version operand must raise ValueError."):
+        with self.assertRaises(Ip4NetworkSanityError, msg="A cross-version operand must raise Ip4NetworkSanityError."):
             list(n.address_exclude(Ip6Network("2001:db8::/32")))  # type: ignore[arg-type]
 
 
@@ -1428,25 +1430,25 @@ class TestNetAddrIp4NetworkSummarize(TestCase):
 
     def test__net_addr__ip4_network__summarize_mixed_version_raises(self) -> None:
         """
-        Ensure 'summarize' raises 'TypeError' on a mixed-version
-        input set.
+        Ensure 'summarize' raises 'IpNetworkSanityError' on a
+        mixed-version input set.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         mixed = [Ip4Network("10.0.0.0/24"), Ip6Network("2001:db8::/64")]
-        with self.assertRaises(TypeError):
+        with self.assertRaises(IpNetworkSanityError):
             list(IpNetwork.summarize(mixed))  # type: ignore[arg-type]
 
     def test__net_addr__ip4_network__summarize_bad_item_raises(self) -> None:
         """
-        Ensure 'summarize' raises 'TypeError' when an item is
-        neither an IP address nor an IP network.
+        Ensure 'summarize' raises 'IpNetworkSanityError' when an
+        item is neither an IP address nor an IP network.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(TypeError):
+        with self.assertRaises(IpNetworkSanityError):
             list(IpNetwork.summarize([5]))  # type: ignore[list-item]
 
 

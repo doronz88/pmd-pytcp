@@ -31,9 +31,9 @@ ver 3.0.5
 """
 
 import socket
-from typing import Self, override
+from typing import ClassVar, Self, override
 
-from net_addr.errors import Ip4AddressFormatError
+from net_addr.errors import Ip4AddressFormatError, Ip4AddressSanityError, NetAddrError
 from net_addr.ip_address import IpAddress
 from net_addr.ip_version import IpVersion
 from net_addr.mac_address import MAC__IP4_MULTICAST_PREFIX, MacAddress
@@ -50,6 +50,8 @@ class Ip4Address(IpAddress):
     __slots__ = ()
 
     _version: IpVersion = IpVersion.IP4
+
+    _sanity_error: ClassVar[type[NetAddrError]] = Ip4AddressSanityError
 
     def __init__(
         self,
@@ -117,9 +119,10 @@ class Ip4Address(IpAddress):
         Get the IPv4 multicast MAC address.
         """
 
-        assert (
-            self.is_multicast
-        ), f"The IPv4 address must be a multicast address to get a multicast MAC address. Got: {self}"
+        if not self.is_multicast:
+            raise Ip4AddressSanityError(
+                f"The IPv4 address must be a multicast address to get a multicast MAC address. Got: {self}"
+            )
 
         return MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x7F_FFFF)
 

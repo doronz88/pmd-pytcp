@@ -31,9 +31,10 @@ ver 3.0.5
 """
 
 from abc import ABC
-from typing import override
+from typing import ClassVar, override
 
 from net_addr.base import Base
+from net_addr.errors import NetAddrError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_network import Ip4Network
@@ -56,6 +57,10 @@ class IfAddr[
 
     _address: A
     _network: N
+
+    # The concrete interface-address type's free-message sanity
+    # error (net_addr raises only NetAddrError subclasses).
+    _sanity_error: ClassVar[type[NetAddrError]]
 
     @override
     def __str__(self) -> str:
@@ -103,7 +108,9 @@ class IfAddr[
         if format_spec[-1:] == "s":
             return format(str(self), format_spec)
 
-        raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
+        raise type(self)._sanity_error(
+            f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
+        )
 
     @property
     def address(self) -> A:

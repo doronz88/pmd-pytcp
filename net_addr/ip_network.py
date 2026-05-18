@@ -32,9 +32,10 @@ ver 3.0.5
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, Self, overload, override
+from typing import TYPE_CHECKING, ClassVar, Self, overload, override
 
 from net_addr.base import Base
+from net_addr.errors import IpNetworkSanityError, NetAddrError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
@@ -60,6 +61,10 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
     _address: A
     _mask: M
+
+    # The concrete network type's free-message sanity error
+    # (net_addr raises only NetAddrError subclasses).
+    _sanity_error: ClassVar[type[NetAddrError]]
 
     @abstractmethod
     def __init__(self, network: Self | tuple[A, M] | str | None = None, /) -> None:
@@ -121,7 +126,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         networks — overlapping and adjacent entries aggregated,
         gaps preserved. All items must be the same IP version
         (a mixed-version or non-address/network item raises
-        TypeError); an empty input yields nothing.
+        IpNetworkSanityError); an empty input yields nothing.
         """
 
         from net_addr.ip4_network import Ip4Network
@@ -140,10 +145,10 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             elif isinstance(item, Ip6Network):
                 spans6.append((int(item.address), int(item.last)))
             else:
-                raise TypeError(f"summarize() requires IP addresses or networks; got {item!r}")
+                raise IpNetworkSanityError(f"summarize() requires IP addresses or networks; got {item!r}")
 
         if spans4 and spans6:
-            raise TypeError("summarize() requires a single IP version; got a mix of IPv4 and IPv6")
+            raise IpNetworkSanityError("summarize() requires a single IP version; got a mix of IPv4 and IPv6")
 
         for lo, hi in IpNetwork._merge_spans(spans4):
             for network_int, prefixlen in IpNetwork._summarize_ints(lo, hi, 32):
@@ -306,7 +311,9 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         if format_spec[-1:] == "s":
             return format(str(self), format_spec)
 
-        raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
+        raise type(self)._sanity_error(
+            f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
+        )
 
     @property
     def max_prefixlen(self) -> int:
@@ -340,8 +347,8 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         """
         Get the address at the given index within the network.
         A negative index counts back from the last address; an
-        out-of-range index raises IndexError. Slicing is not
-        supported.
+        out-of-range index raises the network's sanity error.
+        Slicing is not supported.
         """
 
         count = self.num_addresses
@@ -350,7 +357,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
             index += count
 
         if not 0 <= index < count:
-            raise IndexError(f"network index out of range: {index}")
+            raise type(self)._sanity_error(f"network index out of range: {index}")
 
         return type(self._address)(int(self._address) + index)
 
@@ -376,15 +383,15 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         if new_prefix is not None:
             if new_prefix <= prefixlen:
-                raise ValueError(f"new prefix must be longer than {prefixlen}; got {new_prefix}")
+                raise type(self)._sanity_error(f"new prefix must be longer than {prefixlen}; got {new_prefix}")
             prefixlen_diff = new_prefix - prefixlen
         else:
             if prefixlen_diff < 1:
-                raise ValueError(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
+                raise type(self)._sanity_error(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
             new_prefix = prefixlen + prefixlen_diff
 
         if new_prefix > self.max_prefixlen:
-            raise ValueError(
+            raise type(self)._sanity_error(
                 f"resulting prefix /{new_prefix} exceeds the maximum /{self.max_prefixlen} "
                 f"for a /{prefixlen} network"
             )
@@ -413,14 +420,14 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         if new_prefix is not None:
             if new_prefix >= prefixlen:
-                raise ValueError(f"new prefix must be shorter than {prefixlen}; got {new_prefix}")
+                raise type(self)._sanity_error(f"new prefix must be shorter than {prefixlen}; got {new_prefix}")
         else:
             if prefixlen_diff < 1:
-                raise ValueError(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
+                raise type(self)._sanity_error(f"prefixlen_diff must be a positive integer; got {prefixlen_diff}")
             new_prefix = prefixlen - prefixlen_diff
 
         if new_prefix < 0:
-            raise ValueError(
+            raise type(self)._sanity_error(
                 f"resulting prefix /{new_prefix} is shorter than the minimum /0 " f"for a /{prefixlen} network"
             )
 
@@ -430,12 +437,13 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         """
         Iterate over the minimal set of aggregate networks
         covering this network with 'other' removed. 'other'
-        must be fully contained in this network (else
-        ValueError); an equal operand yields nothing.
+        must be fully contained in this network (else the
+        network's sanity error); an equal operand yields
+        nothing.
         """
 
         if not other.subnet_of(self):
-            raise ValueError(f"{other} is not contained in {self}")
+            raise type(self)._sanity_error(f"{other} is not contained in {self}")
 
         if other == self:
             return
@@ -450,7 +458,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
                 yield s1
                 s1, s2 = s2.subnets()
             else:
-                raise ValueError(f"{other} is not contained in {self}")
+                raise type(self)._sanity_error(f"{other} is not contained in {self}")
 
         if s1 == other:
             yield s2

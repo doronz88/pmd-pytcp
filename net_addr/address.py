@@ -31,9 +31,10 @@ ver 3.0.5
 """
 
 from abc import ABC, abstractmethod
-from typing import Self, override
+from typing import ClassVar, Self, override
 
 from net_addr.base import Base
+from net_addr.errors import NetAddrError
 
 
 class Address(Base, ABC):
@@ -44,6 +45,11 @@ class Address(Base, ABC):
     __slots__ = ("_address",)
 
     _address: int
+
+    # The concrete value type's free-message sanity error,
+    # raised for operation-precondition / invalid-argument
+    # failures (net_addr raises only NetAddrError subclasses).
+    _sanity_error: ClassVar[type[NetAddrError]]
 
     @abstractmethod
     def __init__(
@@ -98,7 +104,9 @@ class Address(Base, ABC):
         flags = format_spec[:-1]
 
         if set(flags) - {"#", "_"} or code not in {"b", "x", "X", "n"}:
-            raise ValueError(f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}")
+            raise type(self)._sanity_error(
+                f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
+            )
 
         bits = len(memoryview(self)) * 8
 

@@ -123,8 +123,8 @@ class Ip4IfAddrSanityError(IfAddrSanityError):
     Exception raised when IPv4 interface address doesn't belong to provided network.
     """
 
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 address doesn't belong to the provided network: {value!r}")
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
 
 
 class Ip6AddressFormatError(IpAddressFormatError):
@@ -177,8 +177,8 @@ class Ip6IfAddrSanityError(IfAddrSanityError):
     Exception raised when IPv6 interface address doesn't belong to provided network.
     """
 
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv6 address doesn't belong to the provided network: {value!r}")
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
 
 
 class MacAddressError(NetAddrError):
@@ -194,3 +194,57 @@ class MacAddressFormatError(MacAddressError):
 
     def __init__(self, value: object, /) -> None:
         super().__init__(f"The MAC address format is invalid: {value!r}")
+
+
+class MacAddressSanityError(MacAddressError):
+    """
+    Exception raised when a MAC address operation precondition is violated.
+    """
+
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
+
+
+class IpAddressSanityError(NetAddrError):
+    """
+    Base class for all IP address sanity exceptions.
+    """
+
+
+class Ip4AddressSanityError(IpAddressSanityError):
+    """
+    Exception raised when an IPv4 address operation precondition is violated.
+    """
+
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
+
+
+class Ip6AddressSanityError(IpAddressSanityError):
+    """
+    Exception raised when an IPv6 address operation precondition is violated.
+    """
+
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
+
+
+class IpNetworkSanityError(NetAddrError):
+    """
+    Base class for all IP network sanity exceptions.
+    """
+
+    def __init__(self, message: str, /) -> None:
+        super().__init__(message)
+
+
+class Ip4NetworkSanityError(IpNetworkSanityError):
+    """
+    Exception raised when an IPv4 network operation argument or invariant is invalid.
+    """
+
+
+class Ip6NetworkSanityError(IpNetworkSanityError):
+    """
+    Exception raised when an IPv6 network operation argument or invariant is invalid.
+    """

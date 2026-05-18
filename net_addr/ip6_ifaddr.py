@@ -32,7 +32,7 @@ ver 3.0.5
 
 import hashlib
 import secrets
-from typing import Self
+from typing import ClassVar, Self
 
 from net_addr.errors import (
     Ip6AddressFormatError,
@@ -40,6 +40,7 @@ from net_addr.errors import (
     Ip6IfAddrSanityError,
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
+    NetAddrError,
 )
 from net_addr.ip6_address import Ip6Address
 from net_addr.ip6_mask import Ip6Mask
@@ -84,6 +85,8 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
 
     _version: IpVersion = IpVersion.IP6
 
+    _sanity_error: ClassVar[type[NetAddrError]] = Ip6IfAddrSanityError
+
     def __init__(
         self,
         host: Self | tuple[Ip6Address, Ip6Network] | tuple[Ip6Address, Ip6Mask] | str,
@@ -112,7 +115,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
             else:
                 raise Ip6IfAddrFormatError(host)
             if self._address not in self._network:
-                raise Ip6IfAddrSanityError(host)
+                raise Ip6IfAddrSanityError(f"The IPv6 address doesn't belong to the provided network: {host!r}")
             return
 
         if isinstance(host, str):
@@ -131,7 +134,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 # construction.
                 self._network = Ip6Network((Ip6Address(int(self._address)), Ip6Mask("/" + mask)))
                 return
-            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
+            except Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
                 pass
 
         raise Ip6IfAddrFormatError(host)
@@ -190,7 +193,7 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                     )
                 )
 
-        raise RuntimeError(
+        raise Ip6IfAddrSanityError(
             f"RFC 8981 temp-IID generator failed to produce a non-reserved IID after "
             f"{_RFC8981__MAX_RETRIES} retries — random source may be broken."
         )

@@ -31,10 +31,10 @@ ver 3.0.5
 """
 
 import re
-from typing import Self, override
+from typing import ClassVar, Self, override
 
 from net_addr.address import Address
-from net_addr.errors import MacAddressFormatError
+from net_addr.errors import MacAddressFormatError, MacAddressSanityError, NetAddrError
 
 MAC__ADDRESS_LEN = 6
 
@@ -54,6 +54,8 @@ class MacAddress(Address):
     """
 
     __slots__ = ()
+
+    _sanity_error: ClassVar[type[NetAddrError]] = MacAddressSanityError
 
     def __init__(
         self,

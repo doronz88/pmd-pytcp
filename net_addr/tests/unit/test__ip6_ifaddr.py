@@ -843,8 +843,8 @@ class TestNetAddrIp6HostFromRfc8981Temp(TestCase):
             return_value=(0).to_bytes(8, "big"),
         ):
             with self.assertRaises(
-                RuntimeError,
-                msg="Exhausting reserved-IID retries must raise RuntimeError.",
+                Ip6IfAddrSanityError,
+                msg="Exhausting reserved-IID retries must raise Ip6IfAddrSanityError.",
             ):
                 Ip6IfAddr.from_rfc8981_temp(ip6_network=prefix)
 
@@ -964,7 +964,7 @@ class TestNetAddrIp6IfAddrFormat(TestCase):
                 self.assertEqual(format(a, spec), expected, msg=f"format({spec!r}) must be {expected!r}.")
 
         self.assertEqual(f"{a}", "2001:db8::5/64", msg="Default format must equal str().")
-        with self.assertRaises(ValueError, msg="An unknown format spec must raise ValueError."):
+        with self.assertRaises(Ip6IfAddrSanityError, msg="An unknown format spec must raise Ip6IfAddrSanityError."):
             format(a, "zz")
 
 

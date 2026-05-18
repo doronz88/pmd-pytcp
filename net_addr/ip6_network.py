@@ -31,12 +31,14 @@ ver 3.0.5
 """
 
 from collections.abc import Iterator
-from typing import Self, override
+from typing import ClassVar, Self, override
 
 from net_addr.errors import (
     Ip6AddressFormatError,
     Ip6MaskFormatError,
     Ip6NetworkFormatError,
+    Ip6NetworkSanityError,
+    NetAddrError,
 )
 from net_addr.ip6_address import IP6__MASK, Ip6Address
 from net_addr.ip6_mask import Ip6Mask
@@ -53,6 +55,8 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
     __slots__ = ()
 
     _version: IpVersion = IpVersion.IP6
+
+    _sanity_error: ClassVar[type[NetAddrError]] = Ip6NetworkSanityError
 
     def __init__(
         self,
@@ -115,7 +119,7 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
                     raise Ip6NetworkFormatError(network)
                 self._address = Ip6Address(raw_address & int(self._mask))
                 return
-            except ValueError, Ip6AddressFormatError, Ip6MaskFormatError:
+            except Ip6AddressFormatError, Ip6MaskFormatError:
                 pass
 
         raise Ip6NetworkFormatError(network)

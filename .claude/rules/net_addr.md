@@ -408,6 +408,84 @@ Exception
   the error class formats the message with `repr(value)` so
   the wire input is preserved in the traceback.
 
+### 7.1 `net_addr/` raises ONLY `NetAddrError` subclasses (MUST)
+
+Every `raise` statement reachable at runtime in `net_addr/`
+**MUST** raise a subclass of `NetAddrError`. A bare builtin
+exception (`ValueError`, `TypeError`, `IndexError`,
+`RuntimeError`, `KeyError`, `OverflowError`, …) is
+**forbidden** — a consumer that does `except NetAddrError:`
+around any net_addr call must catch *every* failure the
+library can produce. This is normative; a reviewer is
+entitled to bounce a PR that adds a bare-builtin `raise`
+under `net_addr/`.
+
+PyTCP does **not** chase stdlib-`ipaddress` exception
+parity. There is **no** multiple-inheritance-with-a-builtin
+pattern (`class X(NetAddrError, ValueError)`): the goal is a
+single clean `NetAddrError` tree, not protocol mirroring. A
+caller that wants the old behaviour catches `NetAddrError`.
+
+If no existing `NetAddrError` subclass fits the failure, a
+**new one MUST be created** in `net_addr/errors.py` and
+exported from `net_addr/__init__.py` `__all__` — never
+reach for a builtin because "there is no matching error
+yet." Reuse before inventing: most failures map onto the
+existing two-axis vocabulary.
+
+### 7.2 Format vs Sanity — the two-axis mapping (MUST)
+
+Every `net_addr/` failure is one of exactly two kinds, and
+each maps onto the existing per-type hierarchy:
+
+| Failure kind | Error family | Examples |
+|---|---|---|
+| **Construction** — a value cannot be built from the given input | `<Type>FormatError` | bad address / mask / network / ifaddr literal |
+| **Everything else** — a precondition, invariant, invalid operation argument, unsupported `__format__` code, out-of-range index, or a generator that cannot satisfy its contract | `<Type>SanityError` | `multicast_mac` on a non-multicast address; bad `subnets` / `supernet` / `address_exclude` argument; `IpNetwork.__getitem__` out of range; unknown `__format__` code; RFC 8981 retry exhaustion |
+
+Per-type Sanity classes exist for every family
+(`Ip4/Ip6AddressSanityError`, `Ip4/Ip6NetworkSanityError`,
+`Ip4/Ip6IfAddrSanityError`, `MacAddressSanityError`); the
+`IpAddressSanityError` / `IpNetworkSanityError` bases are
+used directly only by version-agnostic code (e.g. the
+`IpNetwork.summarize` staticmethod, which has no concrete
+version in hand). Construction stays on the existing
+`*FormatError` classes — do not reclassify constructor
+input rejection as Sanity.
+
+Consequence accepted by this project: `__format__` no
+longer raises `ValueError` and `IpNetwork.__getitem__` no
+longer raises `IndexError`. `IpNetwork.__iter__` is defined
+explicitly so iteration does not depend on the
+`__getitem__`/`IndexError` sequence protocol; the parity
+loss is intentional.
+
+### 7.3 No bare `assert` for user-reachable preconditions; `NotImplementedError` exemption
+
+- A user-reachable precondition check (e.g.
+  `Ip6Address.solicited_node_multicast` requiring a
+  unicast/unspecified address) **MUST** raise the relevant
+  `*SanityError`, not `assert` (which raises the builtin
+  `AssertionError` and is stripped under `python -O`).
+  `assert` remains acceptable only for genuinely
+  unreachable internal invariants and for the mypy-narrowing
+  idiom.
+- `raise NotImplementedError` inside an `@abstractmethod`
+  body is the **one exemption** to §7.1 — it is the
+  idiomatic abstract-stub marker, the ABC machinery makes
+  the path unreachable, and it is not a `NetAddrError`. Do
+  not "fix" these to a net_addr error.
+
+### 7.4 Catching is symmetric with raising
+
+Because §7.1 guarantees net_addr never raises a bare builtin,
+a `try` around a net_addr call **MUST NOT** catch bare
+builtins (`except ValueError`) to mop up sub-constructor
+failures — catch the precise `NetAddrError` subclass. A
+lingering `except ValueError` next to `except Ip6MaskFormatError`
+is the asymmetry this rule exists to remove; delete the
+builtin arm once the raising side is `NetAddrError`-only.
+
 ## 8. Module structure inside `net_addr/`
 
 Each value type lives in its own module:
@@ -468,8 +546,21 @@ anti-patterns live in [`source_files.md`](source_files.md)
   `expiration_time` carve-outs in §4.3; `gateway` is no
   longer one of them). The single positional-only
   `address: Self | str | bytes | ... | None` is the contract.
-- **Raising `ValueError` / `TypeError`** on constructor
-  failure. Use `<Type>FormatError` — see §7.
+- **Raising a bare builtin exception anywhere in
+  `net_addr/`** — `ValueError`, `TypeError`, `IndexError`,
+  `RuntimeError`, `KeyError`, etc. Raise a `NetAddrError`
+  subclass (creating one if none fits), multiply-inheriting
+  the builtin only where a Python protocol requires it
+  (§7.1–§7.2). The `@abstractmethod` `NotImplementedError`
+  stub is the sole exemption (§7.3).
+- **`assert` for a user-reachable precondition.** Raise the
+  relevant `*SanityError` instead; `assert` is stripped
+  under `python -O` and raises the builtin `AssertionError`
+  (§7.3).
+- **`except ValueError` (or any bare builtin) around a
+  net_addr call** to catch sub-constructor failures. Catch
+  the precise `NetAddrError` subclass — the raising side
+  never produces a bare builtin (§7.4).
 - **Importing `net_proto` or `pytcp`** from `net_addr/`.
   `net_addr/` is the bottom of the dependency graph; the
   reverse direction is the only legal flow.
