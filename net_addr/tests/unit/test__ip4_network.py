@@ -549,17 +549,6 @@ class TestNetAddrIp4NetworkContains(TestCase):
             },
         },
         {
-            "_description": "Test the IPv4 network format: '192.168.1.0' (missing mask)",
-            "_args": [
-                "192.168.1.0",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip4NetworkFormatError,
-                "error_message": "The IPv4 network format is invalid: '192.168.1.0'",
-            },
-        },
-        {
             "_description": "Test the IPv4 network format: '256.168.1.0/24' (invalid address)",
             "_args": [
                 "256.168.1.0/24",
@@ -1535,3 +1524,48 @@ class TestNetAddrIp4NetworkWhitespace(TestCase):
                         expected,
                         msg=f"Ip4Network({wrapped!r}) must equal Ip4Network({value!r}).",
                     )
+
+
+class TestNetAddrIp4NetworkStdlibParity(TestCase):
+    """
+    The NetAddr Ip4Network stdlib-ipaddress parity tests.
+    """
+
+    def test__net_addr__ip4_network__bare_address_is_host_route(self) -> None:
+        """
+        Ensure a prefix-less address parses as a /32 host route.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        net = Ip4Network("10.0.0.1")
+        self.assertEqual(str(net), "10.0.0.1/32", msg="A bare address must parse as /32.")
+        self.assertEqual(net.address, Ip4Address("10.0.0.1"), msg="The host address must be preserved.")
+        self.assertEqual(net.mask, Ip4Mask("/32"), msg="The mask must be /32.")
+
+    def test__net_addr__ip4_network__dotted_netmask_form(self) -> None:
+        """
+        Ensure the 'address/d.d.d.d' dotted-netmask form parses.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        net = Ip4Network("192.168.1.100/255.255.255.0")
+        self.assertEqual(str(net), "192.168.1.0/24", msg="Dotted netmask must be honoured and host bits masked.")
+        self.assertEqual(net.mask, Ip4Mask("255.255.255.0"), msg="The mask must be /24.")
+
+    def test__net_addr__ip4_network__dotted_netmask_strict(self) -> None:
+        """
+        Ensure strict=True with the dotted-netmask form rejects
+        host bits and accepts an aligned network.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        self.assertEqual(
+            str(Ip4Network("10.0.0.0/255.0.0.0", strict=True)),
+            "10.0.0.0/8",
+            msg="An aligned dotted-netmask network must pass strict=True.",
+        )
+        with self.assertRaises(Ip4NetworkFormatError, msg="Host bits with strict=True must raise."):
+            Ip4Network("10.1.2.3/255.0.0.0", strict=True)

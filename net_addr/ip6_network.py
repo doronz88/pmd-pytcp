@@ -106,9 +106,11 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
         if isinstance(network, str):
             try:
                 # Surrounding whitespace is stripped uniformly
-                # across every net_addr string constructor.
-                address, _, mask = network.strip().partition("/")
-                self._mask = Ip6Mask("/" + mask)
+                # across every net_addr string constructor; a
+                # prefix-less address is a /128 host route
+                # (stdlib ipaddress parity).
+                address, sep, mask = network.strip().partition("/")
+                self._mask = Ip6Mask("/" + mask) if sep else Ip6Mask("/128")
                 address_obj = Ip6Address(address)
                 # A prefix has no RFC 4007 zone; reject a scoped
                 # address rather than silently dropping the zone.

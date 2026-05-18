@@ -99,31 +99,36 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
             self._address = Ip4Address(int(tuple_address) & int(tuple_mask))
             return
 
-        # Known deliberate divergence: the only RFC-backed textual
-        # network form is 'address/prefixlen' (RFC 4632 §3.1), which
-        # is fully supported here. The dotted-netmask textual form
-        # 'a.b.c.d/m.m.m.m' that stdlib `ipaddress` also accepts is
-        # NOT RFC-defined (only the mask *value* is, RFC 950); the
-        # space-separated 'address netmask' form is supported instead.
-        # Closing this stdlib-parity-only gap is intentionally NOT
-        # done: it is RFC-silent and has no PyTCP consumer — same
-        # disposition as the is_global divergences.
+        # Accepted textual forms (stdlib `ipaddress` parity):
+        #   'a.b.c.d/prefixlen'  (RFC 4632 §3.1 CIDR)
+        #   'a.b.c.d/m.m.m.m'    (RFC 950 dotted netmask)
+        #   'a.b.c.d m.m.m.m'    (space-separated netmask)
+        #   'a.b.c.d'            (prefix-less -> /32 host route)
+        # Surrounding whitespace is stripped uniformly across every
+        # net_addr string constructor; a mask token that is all
+        # digits is a prefix length, otherwise a dotted netmask.
         if isinstance(network, str):
-            # Surrounding whitespace is stripped uniformly across
-            # every net_addr string constructor.
             text = network.strip()
-            parts = text.split("/", 1) if "/" in text else text.split(" ", 1)
-            if len(parts) == 2:
-                try:
-                    address_str, mask_str = parts
-                    self._mask = Ip4Mask(f"/{mask_str}" if "/" in text else mask_str)
-                    raw_address = int(Ip4Address(address_str))
-                    if strict and raw_address & ~int(self._mask) & IP4__MASK:
+            try:
+                if "/" in text:
+                    address_str, _, mask_str = text.partition("/")
+                    if "/" in mask_str:
                         raise Ip4NetworkFormatError(network)
-                    self._address = Ip4Address(raw_address & int(self._mask))
-                    return
-                except Ip4AddressFormatError, Ip4MaskFormatError:
-                    pass
+                    mask = Ip4Mask("/" + mask_str if mask_str.isdigit() else mask_str)
+                elif " " in text:
+                    address_str, _, mask_str = text.partition(" ")
+                    mask = Ip4Mask(mask_str)
+                else:
+                    address_str = text
+                    mask = Ip4Mask("/32")
+                self._mask = mask
+                raw_address = int(Ip4Address(address_str))
+                if strict and raw_address & ~int(self._mask) & IP4__MASK:
+                    raise Ip4NetworkFormatError(network)
+                self._address = Ip4Address(raw_address & int(self._mask))
+                return
+            except Ip4AddressFormatError, Ip4MaskFormatError:
+                pass
 
         raise Ip4NetworkFormatError(network)
 

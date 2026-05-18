@@ -423,17 +423,6 @@ class TestNetAddrIp6NetworkContains(TestCase):
             },
         },
         {
-            "_description": "Test the IPv6 network format: '2001::64'",
-            "_args": [
-                "2001::64",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip6NetworkFormatError,
-                "error_message": "The IPv6 network format is invalid: '2001::64'",
-            },
-        },
-        {
             "_description": "Test the IPv6 network format: '1:2:3:4:5:6:7:8:9/64'",
             "_args": [
                 "1:2:3:4:5:6:7:8:9/64",
@@ -453,17 +442,6 @@ class TestNetAddrIp6NetworkContains(TestCase):
             "_results": {
                 "error": Ip6NetworkFormatError,
                 "error_message": "The IPv6 network format is invalid: '1:2:3:4:5:6:7:8/129'",
-            },
-        },
-        {
-            "_description": "Test the IPv6 network format: '2001:db8::' (missing mask)",
-            "_args": [
-                "2001:db8::",
-            ],
-            "_kwargs": {},
-            "_results": {
-                "error": Ip6NetworkFormatError,
-                "error_message": "The IPv6 network format is invalid: '2001:db8::'",
             },
         },
         {
@@ -1250,3 +1228,21 @@ class TestNetAddrIp6NetworkWhitespace(TestCase):
                         expected,
                         msg=f"Ip6Network({wrapped!r}) must equal Ip6Network({value!r}).",
                     )
+
+
+class TestNetAddrIp6NetworkStdlibParity(TestCase):
+    """
+    The NetAddr Ip6Network stdlib-ipaddress parity tests.
+    """
+
+    def test__net_addr__ip6_network__bare_address_is_host_route(self) -> None:
+        """
+        Ensure a prefix-less address parses as a /128 host route.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        net = Ip6Network("2001:db8::1")
+        self.assertEqual(str(net), "2001:db8::1/128", msg="A bare address must parse as /128.")
+        self.assertEqual(net.address, Ip6Address("2001:db8::1"), msg="The host address must be preserved.")
+        self.assertEqual(int(net.mask), (1 << 128) - 1, msg="The mask must be /128.")

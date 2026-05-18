@@ -1057,24 +1057,27 @@ class TestNetAddrIp6IfAddrScoped(TestCase):
             msg="The interface address must retain its zone identifier.",
         )
 
-    def test__net_addr__ip6_ifaddr__scoped__string_without_prefix_raises(self) -> None:
+    def test__net_addr__ip6_ifaddr__scoped__string_without_prefix_is_host(self) -> None:
         """
-        Ensure a scoped address string with no prefix length is
-        rejected with 'Ip6IfAddrFormatError'.
+        Ensure a scoped address string with no prefix length is a
+        /128 interface address that retains its zone while the
+        derived network drops it.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 4007 §6 (a prefix has no zone identifier).
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
         """
 
-        with self.assertRaises(
-            Ip6IfAddrFormatError,
-            msg="A scoped address with no '/prefix' must be rejected.",
-        ) as error:
-            Ip6IfAddr("fe80::1%tap0")
+        ifaddr = Ip6IfAddr("fe80::1%tap0")
 
+        self.assertEqual(str(ifaddr), "fe80::1%tap0/128", msg="A bare scoped address must parse as /128.")
         self.assertEqual(
-            str(error.exception),
-            "The IPv6 interface address format is invalid: 'fe80::1%tap0'",
-            msg="The rejected scoped string must be reported verbatim.",
+            ifaddr.address.scope_id,
+            "tap0",
+            msg="The interface address must retain its zone identifier.",
+        )
+        self.assertIsNone(
+            ifaddr.network.address.scope_id,
+            msg="The derived network address must not carry a zone identifier.",
         )
 
 
@@ -1101,3 +1104,20 @@ class TestNetAddrIp6IfAddrWhitespace(TestCase):
                         expected,
                         msg=f"Ip6IfAddr({wrapped!r}) must equal Ip6IfAddr({value!r}).",
                     )
+
+
+class TestNetAddrIp6IfAddrStdlibParity(TestCase):
+    """
+    The NetAddr Ip6IfAddr stdlib-ipaddress parity tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__bare_address_is_host(self) -> None:
+        """
+        Ensure a prefix-less address parses as a /128 interface
+        address.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        ifaddr = Ip6IfAddr("2001:db8::5")
+        self.assertEqual(str(ifaddr), "2001:db8::5/128", msg="A bare address must parse as /128.")

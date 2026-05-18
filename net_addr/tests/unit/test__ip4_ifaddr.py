@@ -637,3 +637,30 @@ class TestNetAddrIp4IfAddrWhitespace(TestCase):
                         expected,
                         msg=f"Ip4IfAddr({wrapped!r}) must equal Ip4IfAddr({value!r}).",
                     )
+
+
+class TestNetAddrIp4IfAddrStdlibParity(TestCase):
+    """
+    The NetAddr Ip4IfAddr stdlib-ipaddress parity tests.
+    """
+
+    def test__net_addr__ip4_ifaddr__bare_address_is_host(self) -> None:
+        """
+        Ensure a prefix-less address parses as a /32 interface
+        address.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        ifaddr = Ip4IfAddr("10.0.0.5")
+        self.assertEqual(str(ifaddr), "10.0.0.5/32", msg="A bare address must parse as /32.")
+
+    def test__net_addr__ip4_ifaddr__dotted_netmask_form(self) -> None:
+        """
+        Ensure the 'address/d.d.d.d' dotted-netmask form parses.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        ifaddr = Ip4IfAddr("10.0.0.5/255.255.255.0")
+        self.assertEqual(str(ifaddr), "10.0.0.5/24", msg="Dotted netmask must yield /24 with the host preserved.")

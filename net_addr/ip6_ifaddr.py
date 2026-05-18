@@ -125,14 +125,16 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 # and derive the network from a scope-stripped
                 # copy of it. Surrounding whitespace is stripped
                 # uniformly across every net_addr string
-                # constructor.
-                address, _, mask = host.strip().partition("/")
+                # constructor; a prefix-less address is a /128
+                # host (stdlib ipaddress parity).
+                address, sep, mask = host.strip().partition("/")
                 self._address = Ip6Address(address)
+                netmask = Ip6Mask("/" + mask) if sep else Ip6Mask("/128")
                 # No 'address in network' sanity check here (unlike
                 # the tuple form): the network is derived by masking
                 # this same address, so containment holds by
                 # construction.
-                self._network = Ip6Network((Ip6Address(int(self._address)), Ip6Mask("/" + mask)))
+                self._network = Ip6Network((Ip6Address(int(self._address)), netmask))
                 return
             except Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
                 pass
