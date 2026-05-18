@@ -95,6 +95,15 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
             self._address = Ip4Address(int(tuple_address) & int(tuple_mask))
             return
 
+        # Known deliberate divergence: the only RFC-backed textual
+        # network form is 'address/prefixlen' (RFC 4632 §3.1), which
+        # is fully supported here. The dotted-netmask textual form
+        # 'a.b.c.d/m.m.m.m' that stdlib `ipaddress` also accepts is
+        # NOT RFC-defined (only the mask *value* is, RFC 950); the
+        # space-separated 'address netmask' form is supported instead.
+        # Closing this stdlib-parity-only gap is intentionally NOT
+        # done: it is RFC-silent and has no PyTCP consumer — same
+        # disposition as the is_global divergences.
         if isinstance(network, str):
             parts = network.split("/", 1) if "/" in network else network.split(" ", 1)
             if len(parts) == 2:
