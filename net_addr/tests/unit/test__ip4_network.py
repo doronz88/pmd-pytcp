@@ -1046,6 +1046,28 @@ class TestNetAddrIp4NetworkSubnettingArgs(TestCase):
             msg="supernet(new_prefix=0) must collapse to the default route.",
         )
 
+    def test__net_addr__ip4_network__supernet__default_route_idempotent(self) -> None:
+        """
+        Ensure 'supernet' on a /0 returns the network itself
+        regardless of the arguments, since the default route has
+        no shorter-prefix container, matching the standard
+        library.
+
+        Reference: PyTCP test infrastructure (stdlib ipaddress parity, no RFC clause).
+        """
+
+        default = Ip4Network("0.0.0.0/0")
+        self.assertEqual(
+            default.supernet(),
+            default,
+            msg="supernet() of /0 must return the /0 itself.",
+        )
+        self.assertEqual(
+            default.supernet(prefixlen_diff=8),
+            default,
+            msg="supernet(prefixlen_diff=...) of /0 must still return the /0 itself.",
+        )
+
     def test__net_addr__ip4_network__subnetting__errors(self) -> None:
         """
         Ensure invalid subnets / supernet arguments raise

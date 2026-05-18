@@ -401,6 +401,13 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         prefixlen = len(self._mask)
 
+        # The /0 default route has no shorter-prefix container;
+        # return it unchanged regardless of the arguments (stdlib
+        # ipaddress parity, symmetric with the subnets() boundary
+        # short-circuit at max_prefixlen).
+        if prefixlen == 0:
+            return self
+
         if new_prefix is not None:
             if new_prefix >= prefixlen:
                 raise ValueError(f"new prefix must be shorter than {prefixlen}; got {new_prefix}")
