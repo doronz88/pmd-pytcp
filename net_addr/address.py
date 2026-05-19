@@ -34,7 +34,7 @@ from abc import ABC, abstractmethod
 from typing import ClassVar, Self, override
 
 from net_addr.base import Base
-from net_addr.errors import NetAddrError
+from net_addr.errors import IpAddressSanityError, NetAddrError
 
 
 class Address(Base, ABC):
@@ -49,7 +49,12 @@ class Address(Base, ABC):
     # The concrete value type's free-message sanity error,
     # raised for operation-precondition / invalid-argument
     # failures (net_addr raises only NetAddrError subclasses).
-    _sanity_error: ClassVar[type[NetAddrError]]
+    # Every concrete subclass overrides this with its specific
+    # Sanity error; the default is a NetAddrError-subclass
+    # safety net so a subclass that omits the override still
+    # honours the §7.1 "no bare builtin escapes" contract
+    # rather than raising AttributeError.
+    _sanity_error: ClassVar[type[NetAddrError]] = IpAddressSanityError
 
     @abstractmethod
     def __init__(
@@ -196,29 +201,46 @@ class Address(Base, ABC):
 
         return self._address >= other._address
 
+    def _with_offset(self, delta: int, /) -> Self:
+        """
+        Get this address shifted by an integer offset. An
+        out-of-range result is an invalid-operation outcome, not
+        a malformed literal, so it raises the address type's
+        sanity error naming the operation (net_addr.md §7.2).
+        """
+
+        result = self._address + delta
+
+        if not 0 <= result <= (1 << (len(memoryview(self)) * 8)) - 1:
+            raise type(self)._sanity_error(
+                f"{type(self).__name__} offset out of range: " f"{self} {'+' if delta >= 0 else '-'} {abs(delta)}"
+            )
+
+        return type(self)(result)
+
     def __add__(self, other: object, /) -> Self:
         """
         Get the network address advanced by an integer offset.
-        An out-of-range result raises the address-type format
-        error (delegated to the constructor).
+        An out-of-range result raises the address-type sanity
+        error.
         """
 
         if not isinstance(other, int):
             return NotImplemented
 
-        return type(self)(self._address + other)
+        return self._with_offset(other)
 
     def __sub__(self, other: object, /) -> Self:
         """
         Get the network address retreated by an integer offset.
-        An out-of-range result raises the address-type format
-        error (delegated to the constructor).
+        An out-of-range result raises the address-type sanity
+        error.
         """
 
         if not isinstance(other, int):
             return NotImplemented
 
-        return type(self)(self._address - other)
+        return self._with_offset(-other)
 
     @property
     def unspecified(self) -> Self:

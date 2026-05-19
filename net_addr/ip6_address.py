@@ -30,7 +30,6 @@ net_addr/ip6_address.py
 ver 3.0.5
 """
 
-import re
 import socket
 from typing import ClassVar, Self, override
 
@@ -89,18 +88,6 @@ IP6__6TO4_PREFIX_MASK = 0xFFFF_0000_0000_0000_0000_0000_0000_0000
 IP6__TEREDO_PREFIX = 0x2001_0000_0000_0000_0000_0000_0000_0000
 IP6__TEREDO_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
 
-IP6__REGEX = (
-    r"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-    r"([0-9a-fA-F]{1,4}:){1,7}:|"
-    r"([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-    r"([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-    r"([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-    r"([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-    r"([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-    r"[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-    r":((:[0-9a-fA-F]{1,4}){1,7}|:))"
-)
-
 
 class Ip6Address(IpAddress):
     """
@@ -151,9 +138,12 @@ class Ip6Address(IpAddress):
             # absent, or present with a non-empty zone containing
             # no further '%'. Surrounding whitespace is stripped
             # uniformly across every net_addr string constructor.
+            # 'socket.inet_pton' is the strict POSIX parser and
+            # the sole address validator (mirrors the IPv4
+            # constructor); no pre-filter regex.
             addr_part, sep, zone = address.strip().partition("%")
             zone_ok = not sep or (bool(zone) and "%" not in zone)
-            if zone_ok and re.search(IP6__REGEX, addr_part):
+            if zone_ok:
                 try:
                     self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part))
                 except OSError:
@@ -267,39 +257,51 @@ class Ip6Address(IpAddress):
     def __add__(self, other: object, /) -> Self:
         """
         Get the IPv6 address advanced by an integer offset, with
-        the RFC 4007 zone identifier carried onto the result.
+        the RFC 4007 zone identifier carried onto the result. An
+        out-of-range result raises 'Ip6AddressSanityError'.
         """
 
         if not isinstance(other, int):
             return NotImplemented
 
-        result = type(self)(self._address + other)
+        result = self._with_offset(other)
         # RFC 4007 §6: a zone is meaningful only for a non-global
-        # scope. If the offset left the zoneable range, drop it so
+        # scope. Carry the zone onto the result only when the
+        # offset address is still zoneable; otherwise drop it so
         # a scoped Ip6Address always satisfies the constructor's
         # invariant (and stays consistent under __eq__ / __hash__).
-        if result._is_zoneable:
-            result._scope_id = self._scope_id
-        return result
+        # The scoped result is produced through the string
+        # constructor rather than by mutating a freshly built
+        # instance, keeping the value-type "construct fresh, never
+        # mutate" contract literal.
+        if self._scope_id is None or not result._is_zoneable:
+            return result
+        return type(self)(f"{result}%{self._scope_id}")
 
     @override
     def __sub__(self, other: object, /) -> Self:
         """
         Get the IPv6 address retreated by an integer offset, with
-        the RFC 4007 zone identifier carried onto the result.
+        the RFC 4007 zone identifier carried onto the result. An
+        out-of-range result raises 'Ip6AddressSanityError'.
         """
 
         if not isinstance(other, int):
             return NotImplemented
 
-        result = type(self)(self._address - other)
+        result = self._with_offset(-other)
         # RFC 4007 §6: a zone is meaningful only for a non-global
-        # scope. If the offset left the zoneable range, drop it so
+        # scope. Carry the zone onto the result only when the
+        # offset address is still zoneable; otherwise drop it so
         # a scoped Ip6Address always satisfies the constructor's
         # invariant (and stays consistent under __eq__ / __hash__).
-        if result._is_zoneable:
-            result._scope_id = self._scope_id
-        return result
+        # The scoped result is produced through the string
+        # constructor rather than by mutating a freshly built
+        # instance, keeping the value-type "construct fresh, never
+        # mutate" contract literal.
+        if self._scope_id is None or not result._is_zoneable:
+            return result
+        return type(self)(f"{result}%{self._scope_id}")
 
     @property
     def _is_zoneable(self) -> bool:

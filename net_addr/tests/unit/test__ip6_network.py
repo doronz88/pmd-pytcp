@@ -1103,6 +1103,29 @@ class TestNetAddrIp6NetworkAddressExclude(TestCase):
         with self.assertRaises(Ip6NetworkSanityError, msg="A non-contained operand must raise Ip6NetworkSanityError."):
             list(n.address_exclude(Ip6Network("2001:dead::/32")))
 
+    def test__net_addr__ip6_network__address_exclude__single_address_only_raises_netaddrerror(self) -> None:
+        """
+        Ensure 'address_exclude' on a single-address (/128)
+        network only ever escapes a NetAddrError subclass: an
+        equal operand yields nothing and a non-contained operand
+        raises Ip6NetworkSanityError, never a bare ValueError
+        from the internal subnet split.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n = Ip6Network("2001:db8::1/128")
+        self.assertEqual(
+            list(n.address_exclude(Ip6Network("2001:db8::1/128"))),
+            [],
+            msg="Excluding a /128 from itself must yield nothing.",
+        )
+        with self.assertRaises(
+            Ip6NetworkSanityError,
+            msg="A non-contained operand against a /128 must raise Ip6NetworkSanityError, never ValueError.",
+        ):
+            list(n.address_exclude(Ip6Network("2001:db8::/32")))
+
 
 class TestNetAddrIp6NetworkSummarize(TestCase):
     """

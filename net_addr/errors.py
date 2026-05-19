@@ -123,9 +123,6 @@ class Ip4IfAddrSanityError(IfAddrSanityError):
     Exception raised when IPv4 interface address doesn't belong to provided network.
     """
 
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
-
 
 class Ip6AddressFormatError(IpAddressFormatError):
     """
@@ -177,9 +174,6 @@ class Ip6IfAddrSanityError(IfAddrSanityError):
     Exception raised when IPv6 interface address doesn't belong to provided network.
     """
 
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
-
 
 class MacAddressError(NetAddrError):
     """
@@ -201,9 +195,6 @@ class MacAddressSanityError(MacAddressError):
     Exception raised when a MAC address operation precondition is violated.
     """
 
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
-
 
 class IpAddressSanityError(NetAddrError):
     """
@@ -216,26 +207,17 @@ class Ip4AddressSanityError(IpAddressSanityError):
     Exception raised when an IPv4 address operation precondition is violated.
     """
 
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
-
 
 class Ip6AddressSanityError(IpAddressSanityError):
     """
     Exception raised when an IPv6 address operation precondition is violated.
     """
 
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
-
 
 class IpNetworkSanityError(NetAddrError):
     """
     Base class for all IP network sanity exceptions.
     """
-
-    def __init__(self, message: str, /) -> None:
-        super().__init__(message)
 
 
 class Ip4NetworkSanityError(IpNetworkSanityError):

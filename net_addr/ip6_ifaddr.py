@@ -147,8 +147,12 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Create IPv6 EUI64 interface address.
         """
 
+        # A non-/64 network is a valid network but an invalid
+        # argument for this generator (the IID width is fixed at
+        # 64 bits), so this is a Sanity (not Format) failure per
+        # net_addr.md §7.2.
         if len(ip6_network.mask) != 64:
-            raise Ip6IfAddrFormatError(ip6_network)
+            raise Ip6IfAddrSanityError(f"network mask must be /64 for an EUI-64 IID; got /{len(ip6_network.mask)}")
 
         interface_id = (
             ((int(mac_address) & 0xFFFFFF000000) << 16) | int(mac_address) & 0xFFFFFF | 0xFFFE000000
@@ -182,8 +186,14 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Reference: RFC 5453 (reserved IIDs).
         """
 
+        # A non-/64 network is a valid network but an invalid
+        # argument for this generator (the IID width is fixed at
+        # 64 bits), so this is a Sanity (not Format) failure per
+        # net_addr.md §7.2.
         if len(ip6_network.mask) != 64:
-            raise Ip6IfAddrFormatError(ip6_network)
+            raise Ip6IfAddrSanityError(
+                f"network mask must be /64 for an RFC 8981 temporary IID; got /{len(ip6_network.mask)}"
+            )
 
         for _ in range(_RFC8981__MAX_RETRIES):
             iid = int.from_bytes(secrets.token_bytes(8), byteorder="big")
@@ -233,13 +243,20 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
         Reference: RFC 7217 §5 (Algorithm Specification).
         """
 
+        # A non-/64 network is a valid network but an invalid
+        # argument for this generator (the IID width is fixed at
+        # 64 bits), so this is a Sanity (not Format) failure per
+        # net_addr.md §7.2.
         if len(ip6_network.mask) != 64:
-            raise Ip6IfAddrFormatError(ip6_network)
+            raise Ip6IfAddrSanityError(f"network mask must be /64 for an RFC 7217 IID; got /{len(ip6_network.mask)}")
 
-        # Do not echo the key bytes into the exception (it ends
-        # up in logs / tracebacks); report only its length.
+        # A too-short key is an invalid operation argument, not a
+        # malformed interface address, so this is a Sanity (not
+        # Format) failure per net_addr.md §7.2. Do not echo the
+        # key bytes into the exception (it ends up in logs /
+        # tracebacks); report only its length.
         if len(secret_key) < 16:
-            raise Ip6IfAddrFormatError(f"secret_key length {len(secret_key)} < 16 bytes (RFC 7217 §5 minimum)")
+            raise Ip6IfAddrSanityError(f"secret_key length {len(secret_key)} < 16 bytes (RFC 7217 §5 minimum)")
 
         # Concatenate the PRF inputs in the order specified by
         # RFC 7217 §5. Net_Iface = MAC bytes; DAD_Counter =

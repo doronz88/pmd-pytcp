@@ -63,8 +63,12 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
     _mask: M
 
     # The concrete network type's free-message sanity error
-    # (net_addr raises only NetAddrError subclasses).
-    _sanity_error: ClassVar[type[NetAddrError]]
+    # (net_addr raises only NetAddrError subclasses). Concrete
+    # subclasses override with the version-specific Sanity
+    # error; the default is a NetAddrError-subclass safety net
+    # so a subclass that omits the override still honours the
+    # §7.1 contract rather than raising AttributeError.
+    _sanity_error: ClassVar[type[NetAddrError]] = IpNetworkSanityError
 
     @abstractmethod
     def __init__(self, network: Self | tuple[A, M] | str | None = None, /) -> None:
@@ -448,15 +452,28 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         if other == self:
             return
 
-        s1, s2 = self.subnets()
+        def _halve(network: Self, /) -> tuple[Self, Self]:
+            # 'other' is strictly contained in every network
+            # passed here, so it is never a single-address
+            # (max-prefix) network and subnets() always yields
+            # exactly two halves. Convert the structurally
+            # unreachable one-element case into the network's
+            # sanity error rather than letting the tuple unpack
+            # raise a bare ValueError (net_addr.md §7.1).
+            halves = list(network.subnets())
+            if len(halves) != 2:
+                raise type(self)._sanity_error(f"{other} is not contained in {self}")
+            return halves[0], halves[1]
+
+        s1, s2 = _halve(self)
 
         while s1 != other and s2 != other:
             if other.subnet_of(s1):
                 yield s2
-                s1, s2 = s1.subnets()
+                s1, s2 = _halve(s1)
             elif other.subnet_of(s2):
                 yield s1
-                s1, s2 = s2.subnets()
+                s1, s2 = _halve(s2)
             else:
                 raise type(self)._sanity_error(f"{other} is not contained in {self}")
 

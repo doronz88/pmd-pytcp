@@ -34,7 +34,7 @@ from abc import ABC
 from typing import ClassVar, override
 
 from net_addr.base import Base
-from net_addr.errors import NetAddrError
+from net_addr.errors import IfAddrSanityError, NetAddrError
 from net_addr.ip import Ip
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_network import Ip4Network
@@ -60,7 +60,12 @@ class IfAddr[
 
     # The concrete interface-address type's free-message sanity
     # error (net_addr raises only NetAddrError subclasses).
-    _sanity_error: ClassVar[type[NetAddrError]]
+    # Concrete subclasses override with the version-specific
+    # Sanity error; the default is a NetAddrError-subclass
+    # safety net so a subclass that omits the override still
+    # honours the §7.1 contract rather than raising
+    # AttributeError.
+    _sanity_error: ClassVar[type[NetAddrError]] = IfAddrSanityError
 
     @override
     def __str__(self) -> str:

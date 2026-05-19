@@ -1042,15 +1042,27 @@ class TestNetAddrMacAddressArithmetic(TestCase):
     def test__net_addr__mac_address__arithmetic__overflow_raises(self) -> None:
         """
         Ensure arithmetic past the MAC address space raises the
-        net_addr format error.
+        net_addr sanity error (an out-of-range operation result,
+        not a malformed literal) with an operation-naming message.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(MacAddressFormatError, msg="Overflow past ff:ff:ff:ff:ff:ff must raise."):
+        with self.assertRaises(MacAddressSanityError) as over:
             _ = MacAddress("ff:ff:ff:ff:ff:ff") + 1
-        with self.assertRaises(MacAddressFormatError, msg="Underflow below 00:00:00:00:00:00 must raise."):
+        self.assertEqual(
+            str(over.exception),
+            "MacAddress offset out of range: ff:ff:ff:ff:ff:ff + 1",
+            msg="Overflow past ff:ff:ff:ff:ff:ff must raise MacAddressSanityError naming the operation.",
+        )
+
+        with self.assertRaises(MacAddressSanityError) as under:
             _ = MacAddress("00:00:00:00:00:00") - 1
+        self.assertEqual(
+            str(under.exception),
+            "MacAddress offset out of range: 00:00:00:00:00:00 - 1",
+            msg="Underflow below 00:00:00:00:00:00 must raise MacAddressSanityError naming the operation.",
+        )
 
     def test__net_addr__mac_address__arithmetic__non_int_raises(self) -> None:
         """

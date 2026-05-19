@@ -1377,6 +1377,29 @@ class TestNetAddrIp4NetworkAddressExclude(TestCase):
         with self.assertRaises(Ip4NetworkSanityError, msg="A cross-version operand must raise Ip4NetworkSanityError."):
             list(n.address_exclude(Ip6Network("2001:db8::/32")))  # type: ignore[arg-type]
 
+    def test__net_addr__ip4_network__address_exclude__single_address_only_raises_netaddrerror(self) -> None:
+        """
+        Ensure 'address_exclude' on a single-address (/32)
+        network only ever escapes a NetAddrError subclass: an
+        equal operand yields nothing and a non-contained operand
+        raises Ip4NetworkSanityError, never a bare ValueError
+        from the internal subnet split.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n = Ip4Network("192.0.2.1/32")
+        self.assertEqual(
+            list(n.address_exclude(Ip4Network("192.0.2.1/32"))),
+            [],
+            msg="Excluding a /32 from itself must yield nothing.",
+        )
+        with self.assertRaises(
+            Ip4NetworkSanityError,
+            msg="A non-contained operand against a /32 must raise Ip4NetworkSanityError, never ValueError.",
+        ):
+            list(n.address_exclude(Ip4Network("192.0.2.0/24")))
+
 
 class TestNetAddrIp4NetworkSummarize(TestCase):
     """

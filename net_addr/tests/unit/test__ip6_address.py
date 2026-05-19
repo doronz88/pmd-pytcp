@@ -1716,15 +1716,27 @@ class TestNetAddrIp6AddressArithmetic(TestCase):
     def test__net_addr__ip6_address__arithmetic__overflow_raises(self) -> None:
         """
         Ensure arithmetic past the IPv6 address space raises the
-        net_addr format error (over- and under-flow).
+        net_addr sanity error (an out-of-range operation result,
+        not a malformed literal) with an operation-naming message.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(Ip6AddressFormatError, msg="Overflow past the max IPv6 address must raise."):
+        with self.assertRaises(Ip6AddressSanityError) as over:
             _ = Ip6Address("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff") + 1
-        with self.assertRaises(Ip6AddressFormatError, msg="Underflow below :: must raise."):
+        self.assertEqual(
+            str(over.exception),
+            "Ip6Address offset out of range: ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff + 1",
+            msg="Overflow past the max IPv6 address must raise Ip6AddressSanityError naming the operation.",
+        )
+
+        with self.assertRaises(Ip6AddressSanityError) as under:
             _ = Ip6Address("::") - 1
+        self.assertEqual(
+            str(under.exception),
+            "Ip6Address offset out of range: :: - 1",
+            msg="Underflow below :: must raise Ip6AddressSanityError naming the operation.",
+        )
 
     def test__net_addr__ip6_address__arithmetic__non_int_raises(self) -> None:
         """

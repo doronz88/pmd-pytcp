@@ -30,12 +30,11 @@ net_addr/ip6_wildcard.py
 ver 3.0.5
 """
 
-import re
 import socket
 from typing import Self, override
 
 from net_addr.errors import Ip6WildcardFormatError
-from net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK, IP6__REGEX
+from net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK
 from net_addr.ip_version import IpVersion
 from net_addr.ip_wildcard import IpWildcard
 
@@ -81,14 +80,16 @@ class Ip6Wildcard(IpWildcard):
 
         if isinstance(wildcard, str):
             # Surrounding whitespace is stripped uniformly across
-            # every net_addr string constructor.
+            # every net_addr string constructor. 'socket.inet_pton'
+            # is the strict POSIX parser and the sole validator
+            # (mirrors the IPv4 wildcard constructor); no
+            # pre-filter regex.
             text = wildcard.strip()
-            if re.search(IP6__REGEX, text):
-                try:
-                    self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, text))
-                    return
-                except OSError:
-                    pass
+            try:
+                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, text))
+                return
+            except OSError:
+                pass
 
         raise Ip6WildcardFormatError(wildcard)
 

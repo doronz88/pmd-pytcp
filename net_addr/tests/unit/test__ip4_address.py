@@ -2130,15 +2130,27 @@ class TestNetAddrIp4AddressArithmetic(TestCase):
     def test__net_addr__ip4_address__arithmetic__overflow_raises(self) -> None:
         """
         Ensure arithmetic past the IPv4 address space raises the
-        net_addr format error (over- and under-flow).
+        net_addr sanity error (an out-of-range operation result,
+        not a malformed literal) with an operation-naming message.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(Ip4AddressFormatError, msg="Overflow past 255.255.255.255 must raise."):
+        with self.assertRaises(Ip4AddressSanityError) as over:
             _ = Ip4Address("255.255.255.255") + 1
-        with self.assertRaises(Ip4AddressFormatError, msg="Underflow below 0.0.0.0 must raise."):
+        self.assertEqual(
+            str(over.exception),
+            "Ip4Address offset out of range: 255.255.255.255 + 1",
+            msg="Overflow past 255.255.255.255 must raise Ip4AddressSanityError naming the operation.",
+        )
+
+        with self.assertRaises(Ip4AddressSanityError) as under:
             _ = Ip4Address("0.0.0.0") - 1
+        self.assertEqual(
+            str(under.exception),
+            "Ip4Address offset out of range: 0.0.0.0 - 1",
+            msg="Underflow below 0.0.0.0 must raise Ip4AddressSanityError naming the operation.",
+        )
 
     def test__net_addr__ip4_address__arithmetic__non_int_raises(self) -> None:
         """

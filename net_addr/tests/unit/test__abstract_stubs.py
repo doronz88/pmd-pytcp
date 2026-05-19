@@ -35,11 +35,13 @@ from unittest import TestCase
 
 from net_addr.address import Address
 from net_addr.base import Base
+from net_addr.errors import NetAddrError
 from net_addr.ip4_address import Ip4Address
 from net_addr.ip4_mask import Ip4Mask
 from net_addr.ip4_network import Ip4Network
 from net_addr.ip4_wildcard import Ip4Wildcard
 from net_addr.ip_address import IpAddress
+from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_mask import IpMask
 from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
@@ -258,3 +260,27 @@ class TestNetAddrIpVersion(TestCase):
 
         self.assertEqual(int(IpVersion.IP4), 4)
         self.assertEqual(int(IpVersion.IP6), 6)
+
+
+class TestNetAddrSanityErrorDefault(TestCase):
+    """
+    The NetAddr value-type base '_sanity_error' default tests.
+    """
+
+    def test__net_addr__base_classes_default_sanity_error_to_netaddrerror(self) -> None:
+        """
+        Ensure every value-type base binds a '_sanity_error'
+        defaulting to a NetAddrError subclass, so a subclass
+        that omits the override still raises a NetAddrError —
+        never a bare AttributeError — from '__format__' /
+        '__getitem__' / 'subnets'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for base in (Address, IpNetwork, IfAddr):
+            with self.subTest(base=base.__name__):
+                self.assertTrue(
+                    issubclass(base._sanity_error, NetAddrError),
+                    msg=f"{base.__name__}._sanity_error must default to a NetAddrError subclass.",
+                )

@@ -85,8 +85,11 @@ class MacAddress(Address):
                 return
 
         if isinstance(address, str):
-            if re.search(
-                r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$" r"|^([0-9A-Fa-f]{4}\.){2}([0-9A-Fa-f]{4})$",
+            # Two accepted notations: six ':'/'-'-separated octets
+            # (e.g. 02:00:00:00:00:07) or three '.'-separated
+            # 16-bit groups (Cisco, e.g. 0200.0000.0007).
+            if re.fullmatch(
+                r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}",
                 address.strip(),
             ):
                 self._address = int.from_bytes(
