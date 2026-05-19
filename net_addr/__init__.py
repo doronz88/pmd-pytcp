@@ -30,18 +30,8 @@ net_addr/__init__.py
 ver 3.0.5
 """
 
-from net_addr.click_types import (
-    ClickTypeIfAddr,
-    ClickTypeIp4Address,
-    ClickTypeIp4IfAddr,
-    ClickTypeIp4Network,
-    ClickTypeIp6Address,
-    ClickTypeIp6IfAddr,
-    ClickTypeIp6Network,
-    ClickTypeIpAddress,
-    ClickTypeIpNetwork,
-    ClickTypeMacAddress,
-)
+from typing import TYPE_CHECKING
+
 from net_addr.errors import (
     IfAddrError,
     IfAddrFormatError,
@@ -104,6 +94,67 @@ from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 from net_addr.ip_wildcard import IpWildcard
 from net_addr.mac_address import MAC__ADDRESS_LEN, MacAddress
+
+# The 'click'-typed CLI helpers are an opt-in extra: importing
+# 'net_addr' (or any value type) must not drag in 'click'. The
+# names below are re-exported lazily via the module '__getattr__'
+# so 'from net_addr import ClickTypeIp4Address' still works but
+# imports 'click' only on first access. The TYPE_CHECKING block
+# gives static checkers (mypy strict, with no_implicit_reexport)
+# the real bindings, and listing the names in '__all__' marks
+# them as the explicit public surface.
+if TYPE_CHECKING:
+    from net_addr.click_types import (
+        ClickTypeIfAddr,
+        ClickTypeIp4Address,
+        ClickTypeIp4IfAddr,
+        ClickTypeIp4Network,
+        ClickTypeIp6Address,
+        ClickTypeIp6IfAddr,
+        ClickTypeIp6Network,
+        ClickTypeIpAddress,
+        ClickTypeIpNetwork,
+        ClickTypeMacAddress,
+    )
+
+_LAZY_CLICK_TYPES: frozenset[str] = frozenset(
+    {
+        "ClickTypeIfAddr",
+        "ClickTypeIp4Address",
+        "ClickTypeIp4IfAddr",
+        "ClickTypeIp4Network",
+        "ClickTypeIp6Address",
+        "ClickTypeIp6IfAddr",
+        "ClickTypeIp6Network",
+        "ClickTypeIpAddress",
+        "ClickTypeIpNetwork",
+        "ClickTypeMacAddress",
+    }
+)
+
+
+def __getattr__(name: str, /) -> object:
+    """
+    Lazily resolve the opt-in 'click'-typed CLI helpers so the
+    'click' import is deferred to first access.
+    """
+
+    if name in _LAZY_CLICK_TYPES:
+        from net_addr import click_types
+
+        return getattr(click_types, name)
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    """
+    List the public names, including the lazily-exposed CLI
+    helpers.
+    """
+
+    return sorted(__all__)
+
 
 __all__ = [
     "ClickTypeIfAddr",
