@@ -88,11 +88,16 @@ class MacAddress(Address):
                 return
 
         if isinstance(address, str):
-            # Two accepted notations: six ':'/'-'-separated octets
-            # (e.g. 02:00:00:00:00:07) or three '.'-separated
-            # 16-bit groups (Cisco, e.g. 0200.0000.0007).
+            # Two accepted notations: six octets joined by a
+            # single, consistent ':' or '-' (e.g. 02:00:00:00:00:07
+            # or 02-00-00-00-00-07) or three '.'-separated 16-bit
+            # groups (Cisco, e.g. 0200.0000.0007). The '\1'
+            # backreference pins every separator in the octet form
+            # to the first one, so a hybrid like '02:00-00:00-00:07'
+            # is rejected (matching the strict-POSIX stance the IPv4
+            # constructors take).
             if re.fullmatch(
-                r"([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|([0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}",
+                r"[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}|(?:[0-9A-Fa-f]{4}\.){2}[0-9A-Fa-f]{4}",
                 address.strip(),
             ):
                 self._address = int.from_bytes(

@@ -623,6 +623,28 @@ class TestNetAddrMacAddress(TestCase):
             },
         },
         {
+            "_description": "Test the MAC address format: '02:00-00:00-00:07' (hybrid colon/dash)",
+            "_args": [
+                "02:00-00:00-00:07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": MacAddressFormatError,
+                "error_message": ("The MAC address format is invalid: '02:00-00:00-00:07'"),
+            },
+        },
+        {
+            "_description": "Test the MAC address format: '02-00:00:00:00:07' (hybrid dash/colon)",
+            "_args": [
+                "02-00:00:00:00:07",
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": MacAddressFormatError,
+                "error_message": ("The MAC address format is invalid: '02-00:00:00:00:07'"),
+            },
+        },
+        {
             "_description": "Test the MAC address format: b'\x01\x23\x45\xab\xcd'",
             "_args": [
                 b"\x01\x23\x45\xab\xcd",
