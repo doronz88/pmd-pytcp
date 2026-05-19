@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 from collections.abc import Iterator
-from typing import ClassVar, Self, override
+from typing import ClassVar, Self, final, override
 
 from net_addr.errors import (
     Ip6AddressFormatError,
@@ -47,6 +47,7 @@ from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 
 
+@final
 class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
     """
     IPv6 network support class.

@@ -32,7 +32,7 @@ ver 3.0.5
 
 import re
 import socket
-from typing import Self, override
+from typing import Self, final, override
 
 from net_addr.errors import Ip4MaskFormatError
 from net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
@@ -40,6 +40,7 @@ from net_addr.ip_mask import IpMask
 from net_addr.ip_version import IpVersion
 
 
+@final
 class Ip4Mask(IpMask):
     """
     IPv4 mask support class.

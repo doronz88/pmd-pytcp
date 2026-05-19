@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 import socket
-from typing import ClassVar, Self, override
+from typing import ClassVar, Self, final, override
 
 from net_addr.errors import Ip6AddressFormatError, Ip6AddressSanityError, NetAddrError
 from net_addr.ip4_address import Ip4Address
@@ -89,6 +89,7 @@ IP6__TEREDO_PREFIX = 0x2001_0000_0000_0000_0000_0000_0000_0000
 IP6__TEREDO_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
 
 
+@final
 class Ip6Address(IpAddress):
     """
     IPv6 address support class.

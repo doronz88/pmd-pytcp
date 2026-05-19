@@ -32,7 +32,7 @@ ver 3.0.5
 
 import hashlib
 import secrets
-from typing import ClassVar, Self
+from typing import ClassVar, Self, final
 
 from net_addr.errors import (
     Ip6AddressFormatError,
@@ -76,6 +76,7 @@ def _is_reserved_iid(iid: int) -> bool:
     return _RESERVED_SUBNET_ANYCAST_LO <= iid <= _RESERVED_SUBNET_ANYCAST_HI
 
 
+@final
 class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
     """
     IPv6 interface address support class.

@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 import re
-from typing import ClassVar, Self, override
+from typing import ClassVar, Self, final, override
 
 from net_addr.address import Address
 from net_addr.errors import MacAddressFormatError, MacAddressSanityError, NetAddrError
@@ -48,6 +48,7 @@ MAC__IP6_SOLICITED_NODE_PREFIX = 0x3333_FF00_0000  # RFC 4291
 MAC__IP6_SOLICITED_NODE_PREFIX_MASK = 0xFFFF_FF00_0000
 
 
+@final
 class MacAddress(Address):
     """
     Ethernet MAC address support class.

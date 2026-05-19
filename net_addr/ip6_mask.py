@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 import re
-from typing import Self, override
+from typing import Self, final, override
 
 from net_addr.errors import Ip6MaskFormatError
 from net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK
@@ -39,6 +39,7 @@ from net_addr.ip_mask import IpMask
 from net_addr.ip_version import IpVersion
 
 
+@final
 class Ip6Mask(IpMask):
     """
     IPv6 network mask support class.

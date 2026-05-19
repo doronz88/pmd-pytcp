@@ -30,7 +30,7 @@ net_addr/ip4_ifaddr.py
 ver 3.0.5
 """
 
-from typing import ClassVar, Self
+from typing import ClassVar, Self, final
 
 from net_addr.errors import (
     Ip4AddressFormatError,
@@ -47,6 +47,7 @@ from net_addr.ip_ifaddr import IfAddr
 from net_addr.ip_version import IpVersion
 
 
+@final
 class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
     """
     IPv4 interface address support class.

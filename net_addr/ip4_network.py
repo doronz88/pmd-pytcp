@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 from collections.abc import Iterator
-from typing import ClassVar, Self, override
+from typing import ClassVar, Self, final, override
 
 from net_addr.errors import (
     Ip4AddressFormatError,
@@ -47,6 +47,7 @@ from net_addr.ip_network import IpNetwork
 from net_addr.ip_version import IpVersion
 
 
+@final
 class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
     """
     IPv4 network support class.

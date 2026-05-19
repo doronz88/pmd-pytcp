@@ -31,7 +31,7 @@ ver 3.0.5
 """
 
 import socket
-from typing import ClassVar, Self, override
+from typing import ClassVar, Self, final, override
 
 from net_addr.errors import Ip4AddressFormatError, Ip4AddressSanityError, NetAddrError
 from net_addr.ip_address import IpAddress
@@ -42,6 +42,7 @@ IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
 
 
+@final
 class Ip4Address(IpAddress):
     """
     IPv4 address support class.
