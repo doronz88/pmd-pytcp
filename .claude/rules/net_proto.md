@@ -511,10 +511,12 @@ route options through the container.
   concrete protocol object. Use early returns and
   `isinstance` checks; end with `assert False, f"Unknown
   protocol: {type(proto)}"` for the unreachable fallback.
-- Unknown values at runtime are injected via
-  `aenum.extend_enum(...)` inside `ProtoEnumByte` /
-  `ProtoEnumWord`'s `_missing_` hook — do not re-implement
-  it per enum.
+- Unknown wire values at runtime are materialised natively
+  by the stdlib `enum.Enum._missing_` hook on the
+  `ProtoEnum` base: it builds an `UNKNOWN_<value>`
+  pseudo-member and caches it in `_value2member_map_` so
+  every later `cls(value)` is identity-stable. No third-party
+  `aenum`; do not re-implement `_missing_` per enum.
 
 ## 12. Validation helpers (`packages/net_proto/net_proto/lib/int_checks.py`)
 

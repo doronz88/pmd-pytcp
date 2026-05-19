@@ -37,7 +37,8 @@ version pin).
 pip install PyTCP
 ```
 
-Brings in `PyTCP-net_proto` and `PyTCP-net_addr` (and `aenum`).
+Brings in `PyTCP-net_proto` and `PyTCP-net_addr` — no other
+runtime dependencies (the whole stack is stdlib-only).
 Fully typed (ships `py.typed`, PEP 561).
 
 ## Requirements

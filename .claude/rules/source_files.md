@@ -36,12 +36,16 @@ Test files are governed by
 ## 1. Runtime dependencies
 
 The stack itself has **zero runtime dependencies outside the
-standard library**. The only permitted non-stdlib imports in
-non-test source are:
+standard library**. The only permitted non-stdlib import in
+non-test source is:
 
-- `aenum` — used by `packages/net_proto/net_proto/lib/proto_enum.py` to
-  dynamically extend enums with unknown values.
-- `click` — used by `net_addr` CLI helpers only.
+- `click` — used by `net_addr` CLI helpers only, and gated
+  behind the optional `PyTCP-net_addr[cli]` extra (lazily
+  imported, so importing `net_addr` stays stdlib-only).
+
+(`aenum` was removed: `ProtoEnum` extends unknown wire
+codepoints natively via a stdlib `enum.Enum._missing_` hook —
+see [`net_proto.md`](net_proto.md) §11.)
 
 If you need anything else at runtime, stop and justify it
 before adding it.
@@ -172,8 +176,7 @@ Order (each group separated by one blank line):
    [`typing.md`](typing.md) §20 for the audit rule).
 2. Standard library: plain `import …` lines first, then
    `from … import …` lines.
-3. `aenum` / `click` (on the rare occasions they are allowed
-   per §1).
+3. `click` (only in `net_addr`'s CLI helpers, per §1).
 4. Local packages in dependency order: `net_addr` →
    `net_proto` → `pytcp`.
 

@@ -31,8 +31,9 @@ protocol enums.
 pip install PyTCP-net_proto
 ```
 
-Depends only on `PyTCP-net_addr` (the address value-type library)
-and `aenum`. Fully typed (ships `py.typed`, PEP 561).
+Depends only on `PyTCP-net_addr` (the address value-type
+library) — no other runtime dependencies. Fully typed (ships
+`py.typed`, PEP 561).
 
 ## Requirements
 

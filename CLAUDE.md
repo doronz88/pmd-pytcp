@@ -122,9 +122,11 @@ all `--config-settings editable_mode=compat` so mypy can follow
 them); imports are unchanged (`from net_addr import ...`,
 `from net_proto import ...`, `from pytcp import ...`). The
 `PyTCP` dist depends on `PyTCP-net_proto==<ver>` +
-`PyTCP-net_addr==<ver>` (lockstep); `net_proto` depends on
-`PyTCP-net_addr` + `aenum`; `net_addr`'s `click`-typed CLI
-helpers are an opt-in `[cli]` extra, lazily imported, so
+`PyTCP-net_addr==<ver>` (lockstep); `net_proto` depends only
+on `PyTCP-net_addr` (the former `aenum` dependency was removed
+— `ProtoEnum` extends unknown wire codepoints via a native
+stdlib `enum.Enum._missing_` hook); `net_addr`'s `click`-typed
+CLI helpers are an opt-in `[cli]` extra, lazily imported, so
 importing `net_addr` is stdlib-only.
 
 ### Packet flow

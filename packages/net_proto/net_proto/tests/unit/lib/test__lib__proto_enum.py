@@ -30,9 +30,114 @@ net_proto/tests/unit/lib/test__lib__proto_enum.py
 ver 3.0.6
 """
 
+import enum
+import os
+import subprocess
+import sys
 from unittest import TestCase
 
 from net_proto.lib.proto_enum import ProtoEnum, ProtoEnumByte, ProtoEnumWord
+
+
+class TestNetProtoLibProtoEnumNoAenum(TestCase):
+    """
+    The NetProto ProtoEnum stdlib-only (no 'aenum') contract tests.
+    """
+
+    def test__net_proto__lib__proto_enum__import_does_not_pull_aenum(self) -> None:
+        """
+        Ensure importing net_proto (hence proto_enum) does not import
+        the third-party 'aenum' package — the unknown-codepoint
+        mechanism is native stdlib 'enum'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        env = {**os.environ, "PYTHONPATH": ""}
+        result = subprocess.run(
+            [sys.executable, "-c", "import sys, net_proto; print('aenum' in sys.modules)"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"Probe interpreter must exit cleanly. stderr: {result.stderr!r}",
+        )
+        self.assertEqual(
+            result.stdout.strip(),
+            "False",
+            msg="Importing net_proto must not pull in the 'aenum' dependency.",
+        )
+
+    def test__net_proto__lib__proto_enum__base_is_stdlib_enum(self) -> None:
+        """
+        Ensure 'ProtoEnum' is built on the standard-library
+        'enum.Enum', not a third-party enum implementation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIn(
+            enum.Enum,
+            ProtoEnum.__mro__,
+            msg="ProtoEnum must subclass the stdlib enum.Enum.",
+        )
+        self.assertEqual(
+            type(ProtoEnum).__module__,
+            "enum",
+            msg="ProtoEnum's metaclass must be the stdlib enum metaclass.",
+        )
+
+    def test__net_proto__lib__proto_enum__direct_call_stays_strict(self) -> None:
+        """
+        Ensure the strict 'cls(value)' constructor still raises for
+        an unrecognised value — only 'from_int' is tolerant. This
+        preserves the aenum-era contract that parsers rely on to
+        reject invalid codes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        class WordEnum(ProtoEnumWord):
+            KNOWN = 0x0800
+
+        with self.assertRaises(ValueError):
+            WordEnum(0x4242)
+
+    def test__net_proto__lib__proto_enum__from_int_unknown_then_cached(self) -> None:
+        """
+        Ensure that once 'from_int' has materialised an unknown,
+        the strict 'cls(value)' resolves to that same cached
+        member (mirrors aenum post-'extend_enum' behaviour) and
+        the member is a genuine instance of the enum class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        class WordEnum(ProtoEnumWord):
+            KNOWN = 0x0800
+
+        member = WordEnum.from_int(0x4242)
+
+        self.assertIsInstance(
+            member,
+            WordEnum,
+            msg="An unknown member must be a genuine instance of the enum class.",
+        )
+        self.assertIs(
+            WordEnum(0x4242),
+            member,
+            msg="After from_int(), strict WordEnum(value) must return the same cached member.",
+        )
+        self.assertIs(
+            WordEnum.from_int(0x4242),
+            member,
+            msg="Repeated from_int() on the same unknown must be identity-stable.",
+        )
 
 
 class TestNetProtoLibProtoEnumHierarchy(TestCase):

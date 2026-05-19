@@ -218,7 +218,7 @@ class PacketHandlerEthernet8023Rx(ABC):
         handler matching the encoded EtherType.
         """
 
-        # EtherType is an aenum member, not an IntEnum;
+        # EtherType is a stdlib ProtoEnum member, not an IntEnum;
         # comparisons go through 'int(...)' so equality is
         # well-defined against the int 'ether_type' value.
         if ether_type == int(EtherType.IP4):

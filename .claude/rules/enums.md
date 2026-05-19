@@ -145,8 +145,9 @@ would silently match `IP_TTL=2` if both are bare ints).
 ### 2.3 Protocol wire enum — already a ProtoEnum, no bare alias
 
 Used for protocol wire codepoints under `packages/net_proto/net_proto/`.
-`ProtoEnum` is the existing PyTCP base (subclasses
-`aenum.Enum` with `from_int` / `from_bytes` machinery).
+`ProtoEnum` is the existing PyTCP base (subclasses the
+stdlib `enum.Enum` with `from_int` / `from_bytes` machinery
+and a native `_missing_` hook for unknown wire codepoints).
 Members are accessed via enum-member syntax; no bare
 module-level aliases.
 

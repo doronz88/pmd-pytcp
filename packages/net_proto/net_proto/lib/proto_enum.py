@@ -30,16 +30,10 @@ net_proto/lib/proto_enum.py
 ver 3.0.6
 """
 
-from typing import TYPE_CHECKING, Self
-
-from aenum import extend_enum  # type: ignore[import-untyped]
+from enum import Enum
+from typing import Self
 
 from net_proto.lib.buffer import Buffer
-
-if TYPE_CHECKING:
-    from enum import Enum
-else:
-    from aenum import Enum
 
 
 class ProtoEnum(Enum):
@@ -69,15 +63,48 @@ class ProtoEnum(Enum):
         return value in self.get_known_values()
 
     @classmethod
+    def _register_unknown(cls, value: int, /) -> Self:
+        """
+        Build, cache and return an 'UNKNOWN_<value>' pseudo-member
+        for an unrecognised wire codepoint, idempotently.
+        Registering it in '_value2member_map_' makes every later
+        'cls(value)' resolve to the same object (identity-stable)
+        — the native stdlib-'enum' replacement for the former
+        'aenum.extend_enum'.
+        """
+
+        cached = cls._value2member_map_.get(value)
+        if isinstance(cached, cls):
+            return cached
+
+        member = object.__new__(cls)
+        member._name_ = f"UNKNOWN_{value}"
+        member._value_ = value
+        cls._value2member_map_[value] = member
+
+        return member
+
+    @classmethod
     def from_int(cls, value: int, /) -> Self:
         """
-        Extract the enum value from the provided int.
+        Resolve a wire codepoint to its enum member. A known value
+        returns its canonical member; an unrecognised value is
+        materialised as a cached 'UNKNOWN_<value>' member.
+
+        Deliberately tolerant — unlike the strict 'cls(value)',
+        which still raises for an unknown value (a contract several
+        parsers rely on to reject invalid codes). This mirrors the
+        former aenum behaviour exactly: only 'from_int' extends.
+        'ValueError' is the unknown-value case on a member-bearing
+        enum; 'TypeError' is the stdlib refusing 'cls(value)' on a
+        member-less enum (the abstract code bases, e.g.
+        'Icmp6Code', are declared empty — aenum allowed this).
         """
 
-        if value not in cls:
-            extend_enum(cls, f"UNKNOWN_{value}", value)
-
-        return cls(value)
+        try:
+            return cls(value)
+        except ValueError, TypeError:
+            return cls._register_unknown(value)
 
     @classmethod
     def _from_bytes(cls, data: Buffer, /, size: int) -> Self:
