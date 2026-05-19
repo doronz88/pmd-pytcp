@@ -1133,6 +1133,43 @@ class TestNetAddrMacAddressFormat(TestCase):
             msg="The 'd' code must be the plain decimal value with no padding or grouping.",
         )
 
+    def test__net_addr__mac_address__format__string_specs_delegate_to_str(self) -> None:
+        """
+        Ensure a spec carrying no recognised presentation code
+        is treated as a string-presentation spec and renders
+        the canonical text exactly as str() would (fill /
+        align / width / precision), with no trailing 's'
+        required.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("0a:1b:2c:3d:4e:5f")
+        for spec in (">25", "<25", "^25", "25", ".8", ">25.8", "*>25"):
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    format(str(a), spec),
+                    msg=f"format(MacAddress, {spec!r}) must match format(str(addr), {spec!r}).",
+                )
+
+    def test__net_addr__mac_address__format__unknown_code_raises(self) -> None:
+        """
+        Ensure an unsupported format code raises
+        MacAddressSanityError and preserves the underlying
+        stdlib ValueError as '__cause__'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(MacAddressSanityError) as ctx:
+            format(MacAddress("0a:1b:2c:3d:4e:5f"), "q")
+        self.assertIsInstance(
+            ctx.exception.__cause__,
+            ValueError,
+            msg="The unknown-code SanityError must chain the stdlib ValueError as __cause__.",
+        )
+
     def test__net_addr__mac_address__format_notation(self) -> None:
         """
         Ensure the popular MAC notation codes render correctly:

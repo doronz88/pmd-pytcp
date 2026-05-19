@@ -87,16 +87,19 @@ class Address(Base, ABC):
 
     def __format__(self, format_spec: str, /) -> str:
         """
-        Format the address. An empty spec or one ending in 's'
-        yields the text form (str-style width / alignment
-        applied); a type-specific text code ('ex' for the
-        expanded IP form, 'hy' / 'ci' for MAC notations) is
-        rendered by '_format_alt'; 'b' / 'x' / 'X' yield the
-        integer zero-padded to the address-family bit width,
-        accepting the '#' (radix prefix) and '_' (4-digit
-        grouping) modifiers; 'd' (plain decimal) and 'n'
-        (locale-aware decimal) delegate verbatim to the stdlib
-        integer formatter and take no modifiers.
+        Format the address. A type-specific text code ('ex'
+        for the expanded IP form, 'hy' / 'ci' for MAC
+        notations) is rendered by '_format_alt'; 'b' / 'x' /
+        'X' yield the integer zero-padded to the
+        address-family bit width, accepting the '#' (radix
+        prefix) and '_' (4-digit grouping) modifiers; 'd'
+        (plain decimal) and 'n' (locale-aware decimal)
+        delegate verbatim to the stdlib integer formatter and
+        take no modifiers. Any other spec — including an empty
+        spec or a bare fill / align / width / precision with
+        no presentation code — is delegated to str(self), so
+        the canonical text form supports the full string
+        mini-language without a trailing 's'.
         """
 
         if not format_spec or format_spec[-1] == "s":
@@ -109,31 +112,48 @@ class Address(Base, ABC):
         code = format_spec[-1]
         flags = format_spec[:-1]
 
-        # 'b' / 'x' / 'X' are the address-family-width zero-padded
-        # radix forms ('#' radix-prefix and '_' 4-digit grouping
-        # modifiers apply); 'd' / 'n' delegate verbatim to the
-        # stdlib integer formatter ('d' plain decimal, 'n'
-        # locale-aware decimal) and take no modifiers.
-        if not ((code in {"b", "x", "X"} and not (set(flags) - {"#", "_"})) or (code in {"d", "n"} and not flags)):
+        if code in {"b", "x", "X", "d", "n"}:
+            # 'b' / 'x' / 'X' are the address-family-width
+            # zero-padded radix forms ('#' radix-prefix and '_'
+            # 4-digit grouping modifiers apply); 'd' / 'n'
+            # delegate verbatim to the stdlib integer formatter
+            # ('d' plain decimal, 'n' locale-aware decimal) and
+            # take no modifiers.
+            if not ((code in {"b", "x", "X"} and not (set(flags) - {"#", "_"})) or (code in {"d", "n"} and not flags)):
+                raise type(self)._sanity_error(
+                    f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
+                )
+
+            if code in {"d", "n"}:
+                return format(self._address, code)
+
+            bits = len(memoryview(self)) * 8
+
+            digit_width = bits if code == "b" else bits // 4
+            digits = format(self._address, f"0{digit_width}{code}")
+
+            if "_" in flags:
+                digits = "_".join(digits[i : i + 4] for i in range(0, len(digits), 4))
+
+            if "#" in flags:
+                digits = ("0b" if code == "b" else "0x") + digits
+
+            return digits
+
+        # No recognised custom code: the spec is a
+        # string-presentation spec (bare fill / align / width /
+        # precision, no trailing 's' required). Delegate to
+        # str(self), converting the builtin ValueError that an
+        # unknown presentation code raises into this type's
+        # sanity error (net_addr.md §7.1 — no bare builtin
+        # escapes; chain the cause so the offending code is
+        # greppable in the traceback).
+        try:
+            return format(str(self), format_spec)
+        except ValueError as error:
             raise type(self)._sanity_error(
                 f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
-            )
-
-        if code in {"d", "n"}:
-            return format(self._address, code)
-
-        bits = len(memoryview(self)) * 8
-
-        digit_width = bits if code == "b" else bits // 4
-        digits = format(self._address, f"0{digit_width}{code}")
-
-        if "_" in flags:
-            digits = "_".join(digits[i : i + 4] for i in range(0, len(digits), 4))
-
-        if "#" in flags:
-            digits = ("0b" if code == "b" else "0x") + digits
-
-        return digits
+            ) from error
 
     @abstractmethod
     def __buffer__(self, _: int) -> memoryview:

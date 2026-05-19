@@ -2274,13 +2274,40 @@ class TestNetAddrIp4AddressFormat(TestCase):
 
     def test__net_addr__ip4_address__format__invalid_spec_raises(self) -> None:
         """
-        Ensure an unsupported format code raises Ip4AddressSanityError.
+        Ensure an unsupported format code raises
+        Ip4AddressSanityError and preserves the underlying
+        stdlib ValueError as '__cause__'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with self.assertRaises(Ip4AddressSanityError, msg="An unknown format code must raise Ip4AddressSanityError."):
+        with self.assertRaises(Ip4AddressSanityError) as ctx:
             format(Ip4Address("1.2.3.4"), "q")
+        self.assertIsInstance(
+            ctx.exception.__cause__,
+            ValueError,
+            msg="The unknown-code SanityError must chain the stdlib ValueError as __cause__.",
+        )
+
+    def test__net_addr__ip4_address__format__string_specs_delegate_to_str(self) -> None:
+        """
+        Ensure a spec carrying no recognised presentation code
+        is treated as a string-presentation spec and renders
+        the canonical text exactly as str() would (fill /
+        align / width / precision), with no trailing 's'
+        required.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Address("1.2.3.4")
+        for spec in (">20", "<20", "^20", "20", ".7", ">20.7", "*>20"):
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    format(str(a), spec),
+                    msg=f"format(Ip4Address, {spec!r}) must match format(str(addr), {spec!r}).",
+                )
 
     def test__net_addr__ip4_address__format__decimal_codes_delegate_to_int(self) -> None:
         """

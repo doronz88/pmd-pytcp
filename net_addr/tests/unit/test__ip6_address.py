@@ -1924,6 +1924,43 @@ class TestNetAddrIp6AddressFormat(TestCase):
             msg="The 'd' code must be the plain decimal value with no padding or grouping.",
         )
 
+    def test__net_addr__ip6_address__format__string_specs_delegate_to_str(self) -> None:
+        """
+        Ensure a spec carrying no recognised presentation code
+        is treated as a string-presentation spec and renders
+        the canonical text exactly as str() would (fill /
+        align / width / precision), with no trailing 's'
+        required.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("2001:db8::1")
+        for spec in (">30", "<30", "^30", "30", ".11", ">30.11", "*>30"):
+            with self.subTest(spec=spec):
+                self.assertEqual(
+                    format(a, spec),
+                    format(str(a), spec),
+                    msg=f"format(Ip6Address, {spec!r}) must match format(str(addr), {spec!r}).",
+                )
+
+    def test__net_addr__ip6_address__format__unknown_code_raises(self) -> None:
+        """
+        Ensure an unsupported format code raises
+        Ip6AddressSanityError and preserves the underlying
+        stdlib ValueError as '__cause__'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(Ip6AddressSanityError) as ctx:
+            format(Ip6Address("2001:db8::1"), "q")
+        self.assertIsInstance(
+            ctx.exception.__cause__,
+            ValueError,
+            msg="The unknown-code SanityError must chain the stdlib ValueError as __cause__.",
+        )
+
 
 class TestNetAddrIp6AddressTransitional(TestCase):
     """
