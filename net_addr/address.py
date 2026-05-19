@@ -46,6 +46,13 @@ class Address(Base, ABC):
 
     _address: int
 
+    # The address-family width in bytes, bound once per concrete
+    # leaf (class-level constant, same pattern as '_version').
+    # Hot paths ('_with_offset', '__format__', 'max_prefixlen')
+    # read this instead of 'len(memoryview(self))', which would
+    # allocate a fresh bytearray + memoryview on every call.
+    _address_len: ClassVar[int]
+
     # The concrete value type's free-message sanity error,
     # raised for operation-precondition / invalid-argument
     # failures (net_addr raises only NetAddrError subclasses).
@@ -127,7 +134,7 @@ class Address(Base, ABC):
             if code in {"d", "n"}:
                 return format(self._address, code)
 
-            bits = len(memoryview(self)) * 8
+            bits = self._address_len * 8
 
             digit_width = bits if code == "b" else bits // 4
             digits = format(self._address, f"0{digit_width}{code}")
@@ -237,7 +244,7 @@ class Address(Base, ABC):
 
         result = self._address + delta
 
-        if not 0 <= result <= (1 << (len(memoryview(self)) * 8)) - 1:
+        if not 0 <= result <= (1 << (self._address_len * 8)) - 1:
             raise type(self)._sanity_error(
                 f"{type(self).__name__} offset out of range: " f"{self} {'+' if delta >= 0 else '-'} {abs(delta)}"
             )

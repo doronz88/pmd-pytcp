@@ -56,6 +56,8 @@ class MacAddress(Address):
 
     __slots__ = ()
 
+    _address_len: ClassVar[int] = MAC__ADDRESS_LEN
+
     _sanity_error: ClassVar[type[NetAddrError]] = MacAddressSanityError
 
     def __init__(

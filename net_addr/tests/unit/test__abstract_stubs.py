@@ -329,3 +329,28 @@ class TestNetAddrConcreteTypesFinal(TestCase):
                     True,
                     msg=f"{cls.__name__} must be decorated '@final'.",
                 )
+
+
+class TestNetAddrAddressLenConstant(TestCase):
+    """
+    The NetAddr 'Address._address_len' wire-width tests.
+    """
+
+    def test__net_addr__address_len_matches_buffer_width(self) -> None:
+        """
+        Ensure each concrete address type's '_address_len'
+        class constant equals its real serialized width, so the
+        allocation-free hot-path reads ('_with_offset',
+        '__format__', 'max_prefixlen') stay consistent with
+        'len(memoryview(self))'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for instance in (Ip4Address(), Ip6Address(), MacAddress()):
+            with self.subTest(cls=type(instance).__name__):
+                self.assertEqual(
+                    type(instance)._address_len,
+                    len(memoryview(instance)),
+                    msg=(f"{type(instance).__name__}._address_len must equal " f"the serialized byte width."),
+                )

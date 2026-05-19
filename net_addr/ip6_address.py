@@ -99,6 +99,8 @@ class Ip6Address(IpAddress):
 
     _version: IpVersion = IpVersion.IP6
 
+    _address_len: ClassVar[int] = IP6__ADDRESS_LEN
+
     _sanity_error: ClassVar[type[NetAddrError]] = Ip6AddressSanityError
 
     _scope_id: str | None

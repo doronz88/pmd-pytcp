@@ -52,6 +52,8 @@ class Ip4Address(IpAddress):
 
     _version: IpVersion = IpVersion.IP4
 
+    _address_len: ClassVar[int] = IP4__ADDRESS_LEN
+
     _sanity_error: ClassVar[type[NetAddrError]] = Ip4AddressSanityError
 
     def __init__(

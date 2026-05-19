@@ -69,7 +69,7 @@ class IpAddress(Address, Ip, ABC):
         128 for IPv6).
         """
 
-        return len(memoryview(self)) * 8
+        return self._address_len * 8
 
     @property
     def is_unicast(self) -> bool:

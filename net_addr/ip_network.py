@@ -326,7 +326,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         128 for IPv6).
         """
 
-        return len(memoryview(self._address)) * 8
+        return self._address.max_prefixlen
 
     @property
     def num_addresses(self) -> int:
