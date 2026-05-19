@@ -144,7 +144,7 @@ would silently match `IP_TTL=2` if both are bare ints).
 
 ### 2.3 Protocol wire enum — already a ProtoEnum, no bare alias
 
-Used for protocol wire codepoints under `net_proto/`.
+Used for protocol wire codepoints under `packages/net_proto/net_proto/`.
 `ProtoEnum` is the existing PyTCP base (subclasses
 `aenum.Enum` with `from_int` / `from_bytes` machinery).
 Members are accessed via enum-member syntax; no bare
@@ -265,10 +265,10 @@ noise without type-safety value:
 
 | Enum class | Module | Style |
 |---|---|---|
-| `Icmp4Type`, `Icmp6Type` | `net_proto/protocols/icmp{4,6}/message/icmp{4,6}__message.py` | `ProtoEnum`; member access only |
-| `IpProto` | `net_proto/lib/enums.py` | `ProtoEnum`; member access only |
-| `EtherType` | `net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
-| `ArpHardwareType`, `ArpOperation` | `net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
+| `Icmp4Type`, `Icmp6Type` | `packages/net_proto/net_proto/protocols/icmp{4,6}/message/icmp{4,6}__message.py` | `ProtoEnum`; member access only |
+| `IpProto` | `packages/net_proto/net_proto/lib/enums.py` | `ProtoEnum`; member access only |
+| `EtherType` | `packages/net_proto/net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
+| `ArpHardwareType`, `ArpOperation` | `packages/net_proto/net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
 | `IpVersion` | `packages/net_addr/net_addr/ip_version.py` | `IntEnum`; member access only |
 | `AddressFamily`, `SocketType` | `pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
 | `SocketOption` (TCP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
@@ -282,7 +282,7 @@ noise without type-safety value:
 
 | Constant | Module | Why scalar |
 |---|---|---|
-| `UDP__HEADER__LEN = 8` | `net_proto/protocols/udp/udp__header.py` | byte length |
+| `UDP__HEADER__LEN = 8` | `packages/net_proto/net_proto/protocols/udp/udp__header.py` | byte length |
 | `ARP_CACHE__ENTRY_MAX_AGE__SEC = 60` | `pytcp/protocols/arp/arp__constants.py` | timeout |
 | `ERROR_QUEUE__MAX_LEN = 32` | `pytcp/socket/error_queue.py` | capacity |
 | `INADDR_ANY = 0` | `pytcp/socket/__init__.py` | sentinel address (stdlib-mirrored) |

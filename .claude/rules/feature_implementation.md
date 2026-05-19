@@ -24,7 +24,7 @@ rule references:
   mechanics (file skeleton, copyright block, module
   docstring, imports, naming, formatting, inline comments).
 - [`net_proto.md`](net_proto.md) —
-  `net_proto/` per-protocol six-file layout (`*Header` /
+  `packages/net_proto/net_proto/` per-protocol six-file layout (`*Header` /
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`), options, enums, validation helpers, error
   templates, buffer/struct conventions.
@@ -161,8 +161,8 @@ integration test before claiming done.
 
 | Source location                                | Test path                                                                                                              |
 |------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| `net_proto/protocols/<proto>/*.py`             | `net_proto/tests/unit/protocols/<proto>/test__<proto>__<aspect>.py`                                                    |
-| `net_proto/lib/*.py`                           | `net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
+| `packages/net_proto/net_proto/protocols/<proto>/*.py`             | `packages/net_proto/net_proto/tests/unit/protocols/<proto>/test__<proto>__<aspect>.py`                                                    |
+| `packages/net_proto/net_proto/lib/*.py`                           | `packages/net_proto/net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
 | `packages/net_addr/net_addr/*.py`                                | `packages/net_addr/net_addr/tests/unit/test__<source>.py`                                                                                |
 | `pytcp/lib/*.py`                               | `pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
 | `pytcp/socket/*.py`                            | `pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
@@ -357,7 +357,7 @@ pinned before.
   [`net_addr.md`](net_addr.md) — ABC hierarchy,
   slot-based value types, multi-form `__init__`,
   equality / hashing, `click` CLI helpers.
-- Protocol authoring (under `net_proto/protocols/`):
+- Protocol authoring (under `packages/net_proto/net_proto/protocols/`):
   [`net_proto.md`](net_proto.md) —
   the per-protocol six-file layout, dataclass shape,
   parser three-phase pipeline, assembler kw-only ctor,

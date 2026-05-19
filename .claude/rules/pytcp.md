@@ -8,7 +8,7 @@ stack-wide configuration. It complements
 applied to every subpackage) and the two sibling subpackage
 rules — [`net_addr.md`](net_addr.md) for the value-type
 library `packages/net_addr/net_addr/` and [`net_proto.md`](net_proto.md) for
-the per-protocol packet authoring under `net_proto/`.
+the per-protocol packet authoring under `packages/net_proto/net_proto/`.
 
 The Project North Star's Phase 3 (kernel/userspace boundary —
 see `CLAUDE.md`) makes the architectural seams in this file
@@ -294,7 +294,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   `pytcp/` consumes for addresses, networks, hosts, and
   masks.
 - [`net_proto.md`](net_proto.md) —
-  per-protocol six-file pattern under `net_proto/`. The
+  per-protocol six-file pattern under `packages/net_proto/net_proto/`. The
   parsers and assemblers documented there are dispatched by
   the packet-handler mixins documented here.
 - [`python_features.md`](python_features.md) — Python

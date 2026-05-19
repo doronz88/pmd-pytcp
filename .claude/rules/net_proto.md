@@ -1,7 +1,7 @@
-# PyTCP — `net_proto/` Authoring Rule
+# PyTCP — `packages/net_proto/net_proto/` Authoring Rule
 
 This rule codifies the architecture of every protocol family
-under `net_proto/protocols/<proto>/`: the per-protocol
+under `packages/net_proto/net_proto/protocols/<proto>/`: the per-protocol
 six-file pattern (`*Header` / `*HeaderProperties` / `*Base` /
 `*Parser` / `*Assembler` / `*Errors`), options-bearing
 protocols, enums, dataclass shape, validation helpers, error
@@ -22,7 +22,7 @@ protocol layout — it is a pure value-type library. See
 
 ## 1. Per-protocol file layout
 
-Every protocol at `net_proto/protocols/<proto>/` contains the
+Every protocol at `packages/net_proto/net_proto/protocols/<proto>/` contains the
 same file set, double-underscore-separated:
 
 | File                        | Role                                                  |
@@ -35,9 +35,9 @@ same file set, double-underscore-separated:
 | `<proto>__enums.py`         | Protocol-specific enums (optional; only if the protocol has them). |
 | `options/<proto>__option.py`, `options/<proto>__option__<name>.py`, `options/<proto>__options.py` | TLV option support (optional; only for TCP, IPv4 options, IPv6 HBH/DO, etc.). |
 
-Reference (canonical minimum): `net_proto/protocols/udp/` (no
+Reference (canonical minimum): `packages/net_proto/net_proto/protocols/udp/` (no
 options, no enums — the simplest possible protocol).
-Reference (full): `net_proto/protocols/tcp/` (options
+Reference (full): `packages/net_proto/net_proto/protocols/tcp/` (options
 container, per-option files, enums).
 
 ## 2. Dataclasses
@@ -135,7 +135,7 @@ Every header file defines two classes in this order:
 ### 4.1 `<Proto>Header(ProtoStruct)` — the frozen dataclass
 
 - Inherits from `ProtoStruct` (defined in
-  `net_proto/lib/proto_struct.py`).
+  `packages/net_proto/net_proto/lib/proto_struct.py`).
 - Fields listed in wire order (matches the ASCII diagram
   above).
 - Implements, always with `@override`:
@@ -427,7 +427,7 @@ class TcpSanityError(PacketSanityError):
 
 - One file per protocol, containing exactly two classes:
   `<Proto>IntegrityError` and `<Proto>SanityError`.
-- Base classes from `net_proto/lib/errors.py`:
+- Base classes from `packages/net_proto/net_proto/lib/errors.py`:
   `PacketIntegrityError` prepends `"[INTEGRITY ERROR]"` (no
   trailing space); `PacketSanityError` prepends `"[SANITY
   ERROR]"` (no trailing space). Do not duplicate those
@@ -477,7 +477,7 @@ route options through the container.
 ## 11. Enums
 
 - Inherit from `ProtoEnumByte` (8-bit) or `ProtoEnumWord`
-  (16-bit), from `net_proto/lib/proto_enum.py`. Do not
+  (16-bit), from `packages/net_proto/net_proto/lib/proto_enum.py`. Do not
   subclass stdlib `Enum` directly for protocol fields.
 - Members listed in the order they appear in the relevant
   RFC / wire enumeration.
@@ -516,7 +516,7 @@ route options through the container.
   `ProtoEnumWord`'s `_missing_` hook — do not re-implement
   it per enum.
 
-## 12. Validation helpers (`net_proto/lib/int_checks.py`)
+## 12. Validation helpers (`packages/net_proto/net_proto/lib/int_checks.py`)
 
 - `is_uint6`, `is_uint8`, `is_uint16`, `is_uint32`,
   `is_uint64` — use these in header `__post_init__` asserts
@@ -611,27 +611,27 @@ novel variant.
 
 When in doubt, mirror the structure of:
 
-- `net_proto/protocols/udp/udp__header.py` — minimal header
+- `packages/net_proto/net_proto/protocols/udp/udp__header.py` — minimal header
   class, the `*HeaderProperties` mixin, RFC diagram style.
-- `net_proto/protocols/udp/udp__base.py` — the simplest
+- `packages/net_proto/net_proto/protocols/udp/udp__base.py` — the simplest
   `*Base` shape (dunders + `header` / `payload` properties).
-- `net_proto/protocols/udp/udp__parser.py` — canonical
+- `packages/net_proto/net_proto/protocols/udp/udp__parser.py` — canonical
   three-phase pipeline, parent-layer prefix idiom, walrus
   sanity checks.
-- `net_proto/protocols/udp/udp__assembler.py` — kw-only
+- `packages/net_proto/net_proto/protocols/udp/udp__assembler.py` — kw-only
   ctor, `TX` tracker, checksum injection in `assemble()`.
-- `net_proto/protocols/udp/udp__errors.py` — the two-class
+- `packages/net_proto/net_proto/protocols/udp/udp__errors.py` — the two-class
   template for protocol errors (identical shape: `[UDP] `
   prefix in both).
-- `net_proto/protocols/tcp/` — full pattern including
+- `packages/net_proto/net_proto/protocols/tcp/` — full pattern including
   options container, per-option files, enums, PEP 695
   generics on the assembler.
-- `net_proto/lib/proto.py` — `Proto` ABC with the default
+- `packages/net_proto/net_proto/lib/proto.py` — `Proto` ABC with the default
   dunder set every protocol inherits.
-- `net_proto/lib/errors.py` — the canonical
+- `packages/net_proto/net_proto/lib/errors.py` — the canonical
   `PacketIntegrityError` / `PacketSanityError` chain and how
   the tag prefixes compose.
-- `net_proto/lib/enums.py` + `net_proto/lib/proto_enum.py`
+- `packages/net_proto/net_proto/lib/enums.py` + `packages/net_proto/net_proto/lib/proto_enum.py`
   — `ProtoEnumByte` / `ProtoEnumWord` pattern, match/case
   `__str__`, `from_proto` factory.
 
@@ -673,11 +673,11 @@ typing anti-patterns live in
 
 ## 18. Workflow when adding a new protocol
 
-1. Create `net_proto/protocols/<proto>/` with the six-file
+1. Create `packages/net_proto/net_proto/protocols/<proto>/` with the six-file
    skeleton (§1). Copy a lean reference (`udp/`) and rename.
 2. Fill the RFC diagram + constants in `<proto>__header.py`.
 3. Fill the dataclass + `*HeaderProperties`. Get
-   `python -m compileall net_proto/protocols/<proto>` clean.
+   `python -m compileall packages/net_proto/net_proto/protocols/<proto>` clean.
 4. Fill `<proto>__base.py` (dunders, `header` / `payload`
    properties).
 5. Fill `<proto>__errors.py`.
@@ -686,7 +686,7 @@ typing anti-patterns live in
 7. Fill `<proto>__assembler.py` — kw-only ctor,
    `assemble()`.
 8. Wire the protocol into the dispatch tables
-   (`net_proto/lib/enums.py`'s `from_proto`, the relevant
+   (`packages/net_proto/net_proto/lib/enums.py`'s `from_proto`, the relevant
    packet handler in `pytcp/runtime/packet_handler/`).
 9. Write tests per
    [`unit_testing.md`](unit_testing.md). Do **not** skip

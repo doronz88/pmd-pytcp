@@ -11,3 +11,5 @@ ipython
 pyupgrade
 parameterized
 coverage
+setuptools
+wheel

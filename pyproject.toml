@@ -43,7 +43,7 @@ target-version = ["py314"]
 
 [tool.isort]
 profile = "black"
-src_paths = ["pytcp", "examples", "packages/net_addr", "net_proto"]
+src_paths = ["pytcp", "examples", "packages/net_addr", "packages/net_proto"]
 line_length = 120
 honor_noqa = true
 
@@ -99,14 +99,15 @@ disable = """
 """
 
 [tool.setuptools.packages.find]
-# net_addr is now its own PyTCP-net_addr dist (packages/net_addr/),
-# so it is no longer discovered here. Everything else about this
-# umbrella build is intentionally left as-is: the PyTCP wheel is
-# known-broken independently of the split (exact non-glob patterns
-# + PEP 420 namespace subpackages -> the wheel ships almost no
-# code; pre-existing on PyPI 3.0.4). That remediation, and whether
-# the umbrella should depend on PyTCP-net_addr, is tracked
-# separately in docs/refactor/umbrella_wheel_packaging.md and is
-# deliberately NOT entangled with the net_addr release.
-include = ["pytcp", "net_proto"]
+# net_addr and net_proto are now their own dists
+# (packages/net_addr/, packages/net_proto/), so neither is
+# discovered here. The umbrella PyTCP build is intentionally left
+# as-is: this exact non-glob "pytcp" pattern ships almost no code
+# (pre-existing, broken on PyPI 3.0.4 — the fix is the trailing
+# '*', empirically isolated during the net_proto split). That
+# remediation, and whether the umbrella should depend on
+# PyTCP-net_addr / PyTCP-net_proto, is tracked separately in
+# docs/refactor/umbrella_wheel_packaging.md and is deliberately
+# NOT entangled with the net_addr / net_proto releases.
+include = ["pytcp"]
 

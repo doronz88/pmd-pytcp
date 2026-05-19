@@ -86,10 +86,10 @@ make clean                # remove venv, caches, build artifacts
 
 ```bash
 # unittest is the test framework — run a specific test file directly
-PYTHONPATH=. python -m unittest net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
+PYTHONPATH=. python -m unittest packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
 
 # Or run an entire suite via the find-glob the Makefile uses
-PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
+PYTHONPATH=. python -m unittest $(find packages/net_proto/net_proto/tests/unit -name 'test__*.py')
 ```
 
 ## Architecture
@@ -99,25 +99,30 @@ PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
 | Package | Role |
 |---|---|
 | `packages/net_addr/net_addr/` | Standalone address library: `Ip4Address`, `Ip6Address`, `MacAddress`, etc. No dependency on the other packages. Published as its own dist (see below). |
-| `net_proto/` | Protocol packet library: parse/assemble/validate. Depends on `net_addr` only. |
+| `packages/packages/net_proto/net_proto/packages/net_proto/net_proto/` | Protocol packet library: parse/assemble/validate. Depends on `net_addr` only. Published as its own dist (see below). |
 | `pytcp/` | Running stack: threads, sockets, ARP/ND caches, RX/TX rings. Depends on both. |
 
-`net_addr` has been extracted into its own PEP 517 project under
-`packages/` for independent PyPI publication; `net_proto` / `pytcp`
-will follow the same mould. The folder ↔ dist ↔ import mapping (one
-invariant: project folder == import name, no exceptions):
+`net_addr` and `net_proto` have been extracted into their own
+PEP 517 projects under `packages/` for independent PyPI
+publication; `pytcp` will follow the same mould. The folder ↔ dist
+↔ import mapping (one invariant: project folder == import name, no
+exceptions):
 
 | Project folder | PyPI dist | Import |
 |---|---|---|
 | `packages/net_addr` | `PyTCP-net_addr` | `net_addr` |
-| `net_proto` (→ `packages/net_proto`, later) | `PyTCP-net_proto` | `net_proto` |
+| `packages/net_proto` | `PyTCP-net_proto` | `net_proto` |
 | `pytcp` (→ `packages/pytcp`, later) | `PyTCP` | `pytcp` |
 
-`net_addr` is resolved in development via an editable install
-(`make venv` runs `pip install -e packages/net_addr`); imports are
-unchanged (`from net_addr import ...`). Its `click`-typed CLI
+`net_addr` and `net_proto` are resolved in development via
+editable installs (`make venv` runs `pip install -e
+packages/net_addr` then `... packages/net_proto`, both
+`--config-settings editable_mode=compat` so mypy can follow
+them); imports are unchanged (`from net_addr import ...`,
+`from net_proto import ...`). `net_addr`'s `click`-typed CLI
 helpers are an opt-in extra (`pip install "PyTCP-net_addr[cli]"`)
 and are lazily imported, so importing `net_addr` is stdlib-only.
+`net_proto` depends on `PyTCP-net_addr` and `aenum`.
 
 ### Packet flow
 
@@ -153,7 +158,7 @@ PyTCP has ten canonical rule files in `.claude/rules/`. They are auto-loaded int
 | [`enums.md`](.claude/rules/enums.md) | enum discipline — protocol codepoints / socket-option numbers / flag bits as IntEnum/ProtoEnum members; stdlib-socket-parity bare-alias pattern; forbidden bare-int-as-enum constants | Any new constant representing one of a set |
 | [`source_files.md`](.claude/rules/source_files.md) | general source-file mechanics — file skeleton, copyright block, module docstring, imports, naming, formatting, inline comments, source docstrings | Any new source file |
 | [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library (at `packages/net_addr/net_addr/`) — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `packages/net_addr/net_addr/` |
-| [`net_proto.md`](.claude/rules/net_proto.md) | `net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `net_proto/protocols/` |
+| [`net_proto.md`](.claude/rules/net_proto.md) | `packages/net_proto/net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `packages/net_proto/net_proto/protocols/` |
 | [`pytcp.md`](.claude/rules/pytcp.md) | `pytcp/` runtime services — `Subsystem` base, packet-handler mixins, BSD socket facade, sysctl registry, stack configuration | Any new runtime service under `pytcp/` |
 | [`unit_testing.md`](.claude/rules/unit_testing.md) | unit tests (framework, mocking discipline §6a, isolation §10a, modern Python features §10b, the §7.2 docstring audit) | Any new unit test |
 | [`integration_testing.md`](.claude/rules/integration_testing.md) | integration tests (harness hierarchy, drive_rx / probe / fluent-assert pattern, stat-counter assertions) | Any new integration test |

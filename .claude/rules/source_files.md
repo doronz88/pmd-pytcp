@@ -6,7 +6,7 @@ copyright block, module docstring, imports, naming,
 formatting, inline comments, source docstrings.
 
 It is the **general** rule that applies across all three
-subpackages (`packages/net_addr/net_addr/`, `net_proto/`, `pytcp/`). Two
+subpackages (`packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, `pytcp/`). Two
 companion rules layer protocol- and runtime-specific
 conventions on top:
 
@@ -39,7 +39,7 @@ The stack itself has **zero runtime dependencies outside the
 standard library**. The only permitted non-stdlib imports in
 non-test source are:
 
-- `aenum` — used by `net_proto/lib/proto_enum.py` to
+- `aenum` — used by `packages/net_proto/net_proto/lib/proto_enum.py` to
   dynamically extend enums with unknown values.
 - `click` — used by `net_addr` CLI helpers only.
 
@@ -60,7 +60,7 @@ scripts only — per standard Python convention, library modules
 carry neither.
 
 Known scripts in this repo: `tests_runner.py` and every file
-in `examples/`. Everything under `packages/net_addr/net_addr/`, `net_proto/`, or
+in `examples/`. Everything under `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, or
 `pytcp/` is a library module.
 
 ### 2.1 Library module layout (no shebang)
@@ -98,7 +98,7 @@ The file must be marked executable (`chmod +x`).
 
 No code, comments, or `__all__` between the docstring and the
 first import. `__all__` lives **only in package `__init__.py`
-files** (see `net_proto/__init__.py`); source modules never
+files** (see `packages/net_proto/net_proto/__init__.py`); source modules never
 declare it.
 
 ## 3. Copyright / license block (MANDATORY, verbatim)
@@ -158,7 +158,7 @@ ver 3.0.x
   `This package contains ...` (for `__init__.py` files).
 - The relative path uses `/` separators and matches the
   file's real location (e.g.
-  `net_proto/protocols/udp/udp__header.py`).
+  `packages/net_proto/net_proto/protocols/udp/udp__header.py`).
 - The version string tracks the package version and is
   bumped in lockstep with `pyproject.toml`. Use the current
   value (e.g. `ver 3.0.4`); do not leave `3.0.x` literal.

@@ -26,7 +26,7 @@ annotation style, signature shape, generic syntax, or where
   PEP 484 through PEP 750 is unconditionally available;
   there is no fallback for older interpreters.
 - **Coverage.** Every PyTCP source file under `packages/net_addr/net_addr/`,
-  `net_proto/`, `pytcp/` (excluding generated and vendored
+  `packages/net_proto/net_proto/`, `pytcp/` (excluding generated and vendored
   code, of which PyTCP has none today) MUST be fully typed.
   Test files under `*/tests/` MUST also pass mypy strict.
 - **Authority over runtime cost.** Type annotations are
@@ -1057,7 +1057,7 @@ file an issue and reference it in the ignore comment.
 `bytes`, `bytearray`, or `memoryview`:
 
 ```python
-# Defined in net_proto/lib/buffer.py
+# Defined in packages/net_proto/net_proto/lib/buffer.py
 type Buffer = bytes | bytearray | memoryview
 ```
 

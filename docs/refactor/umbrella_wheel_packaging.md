@@ -30,21 +30,30 @@ has `requires_dist: None`). The `net_addr` split neither caused nor
 worsened it; the split's own dist (`PyTCP-net_addr`) is verified
 correct via a clean-venv install.
 
-## Root causes (three, independent)
+## Root causes (two, independent)
 
-1. **Exact, non-glob `include` patterns.** setuptools matches
-   `"pytcp"` against the dotted package name `pytcp` only — never
-   `pytcp.socket` etc. Subpackages are filtered out by pattern.
-   Needs `["pytcp*", "net_proto*"]`.
-2. **PEP 420 namespace subpackages.** `pytcp`: 4 regular / 17
-   namespace; `net_proto`: 2 regular / 28 namespace
-   (`pytcp/lib`, `pytcp/runtime`, `pytcp/protocols`,
-   `net_proto/protocols`, … have no `__init__.py`). setuptools'
-   default `find` is regular-only; even after fixing (1) these 45
-   subpackages stay invisible. Needs namespace discovery
-   (`[tool.setuptools.packages.find] namespaces = true`, verified
-   against an actual build).
-3. **Undeclared runtime dependency.** The bundled `net_proto`
+1. **Exact, non-glob `include` patterns** — the dominant cause.
+   setuptools matches `"pytcp"` against the dotted package name
+   `pytcp` only — never `pytcp.socket` etc. Subpackages are
+   filtered out by pattern. Fix: `["pytcp*", "net_proto*"]`.
+
+   **Empirically isolated** during the net_proto split
+   (`packages/net_proto`, 2 regular / 28 PEP 420 namespace
+   subpackages): with the per-package pyproject,
+   `include = ["net_proto*"]` → wheel ships **193** `.py`
+   (all namespace subpackages included);
+   `include = ["net_proto"]` → wheel ships **1** `.py`. So the
+   glob alone is sufficient and the prior "needs
+   `namespaces = true`" hypothesis is **disproven**:
+   `[tool.setuptools.packages.find]` in `pyproject.toml` already
+   performs namespace discovery (`find_namespace`) by default —
+   `find_namespace_packages('.', include=['pytcp*'])` returns 58
+   packages vs. 1 for `include=['pytcp']`. No `namespaces = true`
+   key is required; only the trailing `*`. Pinned for net_proto
+   by `packages/net_proto/net_proto/tests/unit/
+   test__packaging__dist_wheels.py` (umbrella-style exact pattern
+   → 6 failing assertions).
+2. **Undeclared runtime dependency.** The bundled `net_proto`
    does `from aenum import …` at import time, but the umbrella
    declares `dependencies = []`. A correct umbrella needs
    `aenum` (and must decide whether to also depend on
@@ -63,12 +72,16 @@ correct via a clean-venv install.
 
 ## Remediation plan (its own phase, not the net_addr split)
 
-1. Add `setuptools` + `wheel` to `requirements_dev.txt` so the
-   wheel can be built offline (`--no-isolation`) and asserted.
-2. `[tool.setuptools.packages.find]`: `namespaces = true` +
-   `include = ["pytcp*", "net_proto*"]`; decide
-   `exclude = ["*.tests*"]` (the net_addr dist excludes its
-   tests; the umbrella historically shipped none of anything).
+1. `setuptools` + `wheel` are now in `requirements_dev.txt` (done
+   during the net_proto split) so the wheel builds offline
+   (`--no-isolation`) and can be asserted.
+2. `[tool.setuptools.packages.find]`: `include = ["pytcp*",
+   "net_proto*"]` (the trailing `*` is the whole fix — see Root
+   cause 1; **no `namespaces = true` needed**, pyproject `find`
+   already does namespace discovery); decide
+   `exclude = ["*.tests*"]` (the net_addr / net_proto dists
+   exclude their tests; the umbrella historically shipped almost
+   nothing).
 3. Declare runtime deps: at least `aenum`; decide whether the
    umbrella should `dependencies += ["PyTCP-net_addr==<ver>"]`
    (and stop being a superset) or remain independent.

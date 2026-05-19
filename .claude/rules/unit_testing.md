@@ -2,7 +2,7 @@
 
 This rule codifies how unit tests are written in PyTCP. It is distilled
 from the tests under `packages/net_addr/net_addr/tests/unit/` and
-`net_proto/tests/unit/protocols/` after they were rewritten to native
+`packages/net_proto/net_proto/tests/unit/protocols/` after they were rewritten to native
 `unittest`. Every new test file in this project MUST follow it.
 
 The rule covers: framework, file layout, naming, parameterization
@@ -97,9 +97,9 @@ and which aspect is under test:
 ```
 SOURCE                                       TEST
 ────────────────────────────────────────     ─────────────────────────────────────────────────────────────
-net_proto/protocols/udp/udp__parser.py    →  net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py
-net_proto/protocols/udp/udp__header.py    →  net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
-net_proto/lib/inet_cksum.py               →  net_proto/tests/unit/lib/test__lib__inet_cksum.py
+packages/net_proto/net_proto/protocols/udp/udp__parser.py    →  packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py
+packages/net_proto/net_proto/protocols/udp/udp__header.py    →  packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
+packages/net_proto/net_proto/lib/inet_cksum.py               →  packages/net_proto/net_proto/tests/unit/lib/test__lib__inet_cksum.py
 pytcp/lib/ip6_source_selection.py         →  pytcp/tests/unit/lib/test__lib__ip6_source_selection.py
 pytcp/socket/raw__socket.py               →  pytcp/tests/unit/socket/test__socket__raw__socket.py
 pytcp/protocols/tcp/tcp__session.py       →  pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
@@ -110,9 +110,9 @@ pytcp/protocols/tcp/tcp__session.py       →  pytcp/tests/unit/protocols/tcp/te
 Rules:
 
 - Files go under `<package>/tests/unit/…` mirroring the source layout.
-  For a protocol at `net_proto/protocols/<proto>/`, tests live at
-  `net_proto/tests/unit/protocols/<proto>/`. For a subpackage like
-  `net_proto/lib/` or `pytcp/socket/`, tests live at
+  For a protocol at `packages/net_proto/net_proto/protocols/<proto>/`, tests live at
+  `packages/net_proto/net_proto/tests/unit/protocols/<proto>/`. For a subpackage like
+  `packages/net_proto/net_proto/lib/` or `pytcp/socket/`, tests live at
   `<package>/tests/unit/<subpkg>/`.
 - Double-underscore separators, same as source files.
 - **Subdirectory prefix**: when the source subpackage is **not** the
@@ -122,7 +122,7 @@ Rules:
 
   | Source location                       | Test filename pattern                         |
   | ------------------------------------- | --------------------------------------------- |
-  | `net_proto/protocols/<proto>/*.py`    | `test__<proto>__<component>__<aspect>.py`     |
+  | `packages/net_proto/net_proto/protocols/<proto>/*.py`    | `test__<proto>__<component>__<aspect>.py`     |
   | `pytcp/protocols/<proto>/*.py`        | `test__<proto>__<source>__<aspect>.py`        |
   | `<pkg>/lib/*.py`                      | `test__lib__<source>.py`                      |
   | `pytcp/socket/*.py`                   | `test__socket__<source>.py`                   |
@@ -142,7 +142,7 @@ Rules:
   of the codebase).
 
 - **Protocol aspect splits**: for per-protocol files under
-  `net_proto/protocols/<proto>/`, per-aspect splitting is mandatory:
+  `packages/net_proto/net_proto/protocols/<proto>/`, per-aspect splitting is mandatory:
 
   | Source artifact          | Test file                                                            |
   | ------------------------ | -------------------------------------------------------------------- |
@@ -718,7 +718,7 @@ audit caught them.
 
 ## 8. Required test matrix per protocol
 
-For every protocol `<proto>` under `net_proto/protocols/`, the
+For every protocol `<proto>` under `packages/net_proto/net_proto/protocols/`, the
 following files must exist and cover the following aspects. Miss none
 of these; coverage targets 100% line/branch for the component under
 test.
@@ -1348,23 +1348,23 @@ exactly as in production.
 
 When in doubt, mirror the structure of:
 
-- `net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py`
   (header asserts)
-- `net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py`
   (integrity matrix + boundary class, `SimpleNamespace` IP stub)
-- `net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py`
   (sanity matrix)
-- `net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py`
   (parser operation matrix)
-- `net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py`
   (assembler operation matrix + Misc class)
-- `net_proto/tests/unit/protocols/tcp/test__tcp__assembler__asserts.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__assembler__asserts.py`
   (assembler constructor asserts with boundary-accepted cases)
-- `net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py`
   (single option: asserts + assembler matrix)
-- `net_proto/tests/unit/protocols/tcp/test__tcp__options.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__options.py`
   (options container composition)
-- `net_proto/tests/unit/protocols/arp/test__arp__parser__operation.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__operation.py`
   (multi-line protocol-summary frame annotation style)
 - `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   (value-class parameterized matrix: per-property assertions,
@@ -1396,6 +1396,6 @@ novel patterns introduced in a new file.
 - [`net_addr.md`](net_addr.md),
   [`net_proto.md`](net_proto.md), and
   [`pytcp.md`](pytcp.md) — what the SUT is shaped like for
-  `packages/net_addr/net_addr/`, `net_proto/`, and `pytcp/` respectively; read
+  `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, and `pytcp/` respectively; read
   the relevant one when writing tests for the corresponding
   source files.

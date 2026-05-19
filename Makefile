@@ -2,7 +2,7 @@ VENV := venv
 ROOT_PATH:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 PYTCP_PATH := pytcp
 NET_ADDR_PATH := packages/net_addr/net_addr
-NET_PROTO_PATH := net_proto
+NET_PROTO_PATH := packages/net_proto/net_proto
 EXAMPLES_PATH := examples
 PYTCP_FILES := $(shell find ${PYTCP_PATH} -name '*.py')
 NET_ADDR_FILES := $(shell find ${NET_ADDR_PATH} -name '*.py')
@@ -42,6 +42,7 @@ $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 	@./$(VENV)/bin/pip install -r requirements.txt
 	@./$(VENV)/bin/pip install -r requirements_dev.txt
 	@./$(VENV)/bin/pip install -e packages/net_addr --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/net_proto --config-settings editable_mode=compat
 	@touch $(VENV)/bin/activate
 
 venv: $(VENV)/bin/activate
@@ -91,7 +92,7 @@ test__net_addr__unit: venv
 
 test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_proto/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_proto/net_proto/tests/unit' -name 'test__*.py')
 
 test__examples__unit: venv
 	@echo '<<< UNITTEST EXAMPLES UNIT'
@@ -99,7 +100,7 @@ test__examples__unit: venv
 
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests' 'net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests' 'packages/net_proto/net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
 
 validate: lint test
 
@@ -162,6 +163,12 @@ build__net_addr: venv
 	@./$(VENV)/bin/python -m build packages/net_addr
 	@./$(VENV)/bin/twine check packages/net_addr/dist/*
 
+# Build + validate the standalone PyTCP-net_proto dist. Publishing
+# is via the OIDC publish.yml workflow on a GitHub Release.
+build__net_proto: venv
+	@./$(VENV)/bin/python -m build packages/net_proto
+	@./$(VENV)/bin/twine check packages/net_proto/dist/*
+
 tun3:
 	@ip tuntap add name tun3 mode tun
 	@ip addr add 172.16.1.1/24 dev tun3
@@ -200,5 +207,5 @@ remove_interfaces:
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \
-	bridge install package dist pypi build__net_addr \
+	bridge install package dist pypi build__net_addr build__net_proto \
 	tun3 tun5 tap7 tap9 add_interfaces remove_interfaces

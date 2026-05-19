@@ -3,7 +3,7 @@
 This rule codifies the conventions for the `packages/net_addr/net_addr/`
 subpackage — PyTCP's pure value-type library for network
 addresses, networks, interface addresses, and masks. The library has no
-dependency on `net_proto/` or `pytcp/`; it sits at the
+dependency on `packages/net_proto/net_proto/` or `pytcp/`; it sits at the
 bottom of the dependency graph and is consumed by the other
 two subpackages.
 
@@ -17,7 +17,7 @@ hashing, and the deliberate `click` exception to the
 zero-runtime-deps mandate.
 
 The two sibling subpackage rules — protocol authoring under
-`net_proto/` and the runtime services under `pytcp/` — live
+`packages/net_proto/net_proto/` and the runtime services under `pytcp/` — live
 in [`net_proto.md`](net_proto.md) and
 [`pytcp.md`](pytcp.md) respectively.
 
@@ -48,12 +48,12 @@ It does **not** contain:
 
 - Anything stateful (timers, caches, threads, sockets).
 - Protocol parsers, assemblers, or wire-format packing.
-- Anything that imports from `net_proto/` or `pytcp/`.
+- Anything that imports from `packages/net_proto/net_proto/` or `pytcp/`.
 
 If you find yourself writing stateful code in `packages/net_addr/net_addr/`,
 stop — that work belongs in `pytcp/` (per
 [`pytcp.md`](pytcp.md)). If you find yourself writing wire
-parsing, stop — that's `net_proto/` (per
+parsing, stop — that's `packages/net_proto/net_proto/` (per
 [`net_proto.md`](net_proto.md)).
 
 ## 2. Runtime dependencies
@@ -111,7 +111,7 @@ When adding a new value-type concept:
 
 `packages/net_addr/net_addr/` classes are value types but they are **not
 @dataclass**. The codebase predates the @dataclass-everywhere
-pattern that `net_proto/` adopted, and the value-type
+pattern that `packages/net_proto/net_proto/` adopted, and the value-type
 contract requires explicit control over `__init__`'s
 multi-form input parsing (str / bytes / int / Self / None)
 that `@dataclass` does not offer ergonomically.
@@ -327,7 +327,7 @@ Every `Address` subclass implements:
 The `__buffer__` protocol (PEP 688) means `bytes(addr)`,
 `memoryview(addr)`, and `struct.pack_into("4s", buf, 0, addr)`
 all work without an explicit conversion. Consumers in
-`net_proto/` packs addresses into headers via this
+`packages/net_proto/net_proto/` packs addresses into headers via this
 protocol; do not add a separate `to_bytes()` method.
 
 ### 4.7 `typing.Self` for self-returning methods
@@ -656,7 +656,7 @@ file.
   conventions (file skeleton, copyright block, imports,
   naming, formatting). Apply identically to `packages/net_addr/net_addr/`.
 - [`net_proto.md`](net_proto.md) — the per-protocol six-file
-  pattern for `net_proto/protocols/<proto>/`. Consumes
+  pattern for `packages/net_proto/net_proto/protocols/<proto>/`. Consumes
   `packages/net_addr/net_addr/` value types in header dataclasses.
 - [`pytcp.md`](pytcp.md) — the runtime services in `pytcp/`.
   Consumes `packages/net_addr/net_addr/` value types for stack configuration
