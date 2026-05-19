@@ -13,7 +13,7 @@ wire-level + stat-counter observable state.
 
 Unit-test rules continue to apply unless overridden here. When
 the two rules disagree, this rule wins for files under
-`pytcp/tests/integration/...`.
+`packages/pytcp/pytcp/tests/integration/...`.
 
 ---
 
@@ -22,7 +22,7 @@ the two rules disagree, this rule wins for files under
 | Layer | Path | What it covers |
 |---|---|---|
 | **Unit** | `<pkg>/tests/unit/...` | Pure-function helpers, dataclass invariants, parser/assembler wire format, header asserts. Imports the SUT in isolation; mocks every dependency. |
-| **Integration** | `pytcp/tests/integration/...` | FSM transitions, multi-segment wire-level interactions, timer-driven behaviour, packet-handler RX/TX paths, socket-API plumbing. Constructs the real `PacketHandler`; mocks only the OS-facing edges (`TxRing` for outbound bytes, `ArpCache` / `NdCache` for resolution). |
+| **Integration** | `packages/pytcp/pytcp/tests/integration/...` | FSM transitions, multi-segment wire-level interactions, timer-driven behaviour, packet-handler RX/TX paths, socket-API plumbing. Constructs the real `PacketHandler`; mocks only the OS-facing edges (`TxRing` for outbound bytes, `ArpCache` / `NdCache` for resolution). |
 
 Integration tests verify **observable behaviour across module
 boundaries** — what the stack actually emits when given an
@@ -56,19 +56,19 @@ Integration tests use the same toolchain as unit tests
 ## 3. File structure and placement
 
 **Canonical pattern (memorise this).** Integration tests
-live under `pytcp/tests/integration/`. Per-handler smoke
+live under `packages/pytcp/pytcp/tests/integration/`. Per-handler smoke
 tests sit at the integration root; mechanism-focused tests
 sit under `protocols/<proto>/` mirroring the source tree:
 
 ```
 SOURCE                                                     TEST
 ─────────────────────────────────────────────────          ──────────────────────────────────────────────────────────────────────────
-pytcp/runtime/packet_handler/packet_handler__ip6__tx.py   →  pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py
-pytcp/runtime/packet_handler/packet_handler__arp__rx.py   →  pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py
-pytcp/protocols/icmp6/nd/nd__cache.py                   →  pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py
-pytcp/protocols/tcp/tcp__session.py                     →  pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py
-pytcp/socket/tcp__socket.py                             →  (driven via TcpSessionTestCase under protocols/tcp/...)
-RFC 6724 IPv6 source-address selection                  →  pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py
+packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py   →  packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py
+packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py   →  packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py
+packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py                   →  packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py
+packages/pytcp/pytcp/protocols/tcp/tcp__session.py                     →  packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py
+packages/pytcp/pytcp/socket/tcp__socket.py                             →  (driven via TcpSessionTestCase under protocols/tcp/...)
+RFC 6724 IPv6 source-address selection                  →  packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py
 ```
 
 Subdirectories use PEP 420 namespace packages — **no
@@ -78,12 +78,12 @@ Subdirectories use PEP 420 namespace packages — **no
 
 | Source area | Test path |
 |---|---|
-| `pytcp/runtime/packet_handler/<file>.py` (per-protocol RX/TX handler) | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` |
-| `pytcp/protocols/<proto>/<file>.py` (protocol runtime — FSM, caches) | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<scenario>.py` |
-| Cross-cutting RFC mechanism that spans handler + protocol | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py` |
-| Socket-API behaviour | integration cases via `TcpSessionTestCase` under `pytcp/tests/integration/protocols/tcp/...` |
+| `packages/pytcp/pytcp/runtime/packet_handler/<file>.py` (per-protocol RX/TX handler) | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` |
+| `packages/pytcp/pytcp/protocols/<proto>/<file>.py` (protocol runtime — FSM, caches) | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<scenario>.py` |
+| Cross-cutting RFC mechanism that spans handler + protocol | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py` |
+| Socket-API behaviour | integration cases via `TcpSessionTestCase` under `packages/pytcp/pytcp/tests/integration/protocols/tcp/...` |
 
-The `pytcp/tests/integration/` tree mirrors the source tree
+The `packages/pytcp/pytcp/tests/integration/` tree mirrors the source tree
 where the line is clean. The per-handler tests
 (`test__packet_handler__<proto>__<rx|tx>.py`) sit at the
 integration root because they're the smoke-test surface for
@@ -111,12 +111,12 @@ guard unless the file has a genuine circular import.
 
 | Source artefact | Test filename pattern |
 |---|---|
-| `pytcp/runtime/packet_handler/packet_handler__<proto>__rx.py` | `test__packet_handler__<proto>__rx.py` |
-| `pytcp/runtime/packet_handler/packet_handler__<proto>__tx.py` | `test__packet_handler__<proto>__tx.py` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__<proto>__rx.py` | `test__packet_handler__<proto>__rx.py` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__<proto>__tx.py` | `test__packet_handler__<proto>__tx.py` |
 | RFC-mechanism focus on a protocol | `test__<proto>__<rfc-mechanism>.py` (e.g. `test__icmp6__nd__optimistic_dad.py`) |
 | TCP session scenarios | `test__tcp__session__<scenario>.py` (e.g. `test__tcp__session__handshake__passive.py`) |
 | ICMP demux behaviour | `test__icmp<4\|6>__<scenario>.py` |
-| ARP wire-level RX/TX | `test__packet_handler__arp__<rx\|tx>.py` for the per-handler smoke; per-mechanism files under `pytcp/tests/integration/protocols/arp/` |
+| ARP wire-level RX/TX | `test__packet_handler__arp__<rx\|tx>.py` for the per-handler smoke; per-mechanism files under `packages/pytcp/pytcp/tests/integration/protocols/arp/` |
 
 Class names: `TestPacketHandler<Proto><RxTx>__<Scenario>`
 (e.g. `TestPacketHandlerEthernetTxIp6Lookup`) or
@@ -132,14 +132,14 @@ script can identify which protocol family the method tests.
 
 ```
 unittest.TestCase
-└── NetworkTestCase             (pytcp/tests/lib/network_testcase.py)
+└── NetworkTestCase             (packages/pytcp/pytcp/tests/lib/network_testcase.py)
     │   ├── mock TxRing / ArpCache / NdCache (create_autospec, spec_set=True)
     │   ├── pre-populated routing table (STACK / HOST_A / HOST_B / HOST_C / ROUTER)
     │   ├── stack.__dict__ snapshot+restore for LOG__CHANNEL, *_SUPPORT, MTU sysctls
     │   ├── deterministic IPv6 frag-id counter
     │   └── self._packet_handler = PacketHandlerL2(...)
     │
-    ├── IcmpTestCase            (pytcp/tests/lib/icmp_testcase.py)
+    ├── IcmpTestCase            (packages/pytcp/pytcp/tests/lib/icmp_testcase.py)
     │   │   Adds: FakeTimer over stack.timer + snapshot of
     │   │   stack.sockets / stack.tcp_stack / stack.pmtu_cache /
     │   │   icmp4_error_rate_limiter / icmp6_error_rate_limiter
@@ -147,16 +147,16 @@ unittest.TestCase
     │   │   _drive_rx, _advance, _start_patch, _assert_no_tx,
     │   │   _assert_packet_stats_rx / _tx
     │   │
-    │   └── NdTestCase          (pytcp/tests/lib/nd_testcase.py)
+    │   └── NdTestCase          (packages/pytcp/pytcp/tests/lib/nd_testcase.py)
     │           Adds: ND-specific frame builders, NA-driven
     │           cache-entry installers, RA / NS / NA helpers.
     │
-    ├── ArpTestCase             (pytcp/tests/lib/arp_testcase.py)
+    ├── ArpTestCase             (packages/pytcp/pytcp/tests/lib/arp_testcase.py)
     │       Adds: time.monotonic patching for ARP-FSM timer
     │       tests, ARP frame builders, ARP-Request /
     │       Gratuitous-ARP / DAD drivers.
     │
-    └── TcpSessionTestCase      (pytcp/tests/lib/tcp_session_testcase.py)
+    └── TcpSessionTestCase      (packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py)
             Adds: TCP-specific _drive_rx / _advance / _assert_segment,
             TCP segment factory, FSM-aware state assertions.
 ```
@@ -222,10 +222,10 @@ guarantees the following invariants. **Do not bypass them.**
 - `self._patches: list` — slot for `_start_patch(target, new)`
   to register per-test patches; all auto-stopped in `tearDown`.
 
-### 5.4 Adding module-level state to `pytcp/stack/__init__.py`
+### 5.4 Adding module-level state to `packages/pytcp/pytcp/stack/__init__.py`
 
 **MANDATORY** — any commit that adds a new module-level
-attribute to `pytcp/stack/__init__.py` MUST update the
+attribute to `packages/pytcp/pytcp/stack/__init__.py` MUST update the
 relevant testcase's `setUp` / `tearDown` to snapshot and
 restore the attribute. The "passes-alone, fails-in-suite"
 bug class this rule prevents:
@@ -530,7 +530,7 @@ import re, sys
 from pathlib import Path
 
 FILES = [
-    "pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
+    "packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
     # ... list every integration-test file you wrote or modified.
 ]
 
@@ -724,29 +724,29 @@ Same as `unit_testing.md §10`:
 When in doubt, mirror the structure of:
 
 - **Per-handler smoke (parametric, golden frames):**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py`
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
 - **Mechanism-focused (probe + fluent assert):**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py`
 - **TCP FSM scenario:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py`
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
 - **Harness sources** (read these when extending or
   subclassing):
-  `pytcp/tests/lib/network_testcase.py` (base — TxRing /
+  `packages/pytcp/pytcp/tests/lib/network_testcase.py` (base — TxRing /
   ArpCache / NdCache mocks, stack snapshot/restore, fixture
   topology)
-  `pytcp/tests/lib/icmp_testcase.py` (FakeTimer + ICMP
+  `packages/pytcp/pytcp/tests/lib/icmp_testcase.py` (FakeTimer + ICMP
   probes + fluent message assert)
-  `pytcp/tests/lib/nd_testcase.py` (ND-specific builders)
-  `pytcp/tests/lib/arp_testcase.py` (monotonic-clock
+  `packages/pytcp/pytcp/tests/lib/nd_testcase.py` (ND-specific builders)
+  `packages/pytcp/pytcp/tests/lib/arp_testcase.py` (monotonic-clock
   patching, ARP frame builders, DAD drivers)
-  `pytcp/tests/lib/tcp_session_testcase.py` (TCP segment
+  `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` (TCP segment
   factory, FSM-aware assertions)
-  `pytcp/tests/lib/fake_timer.py` (the virtual clock itself)
+  `packages/pytcp/pytcp/tests/lib/fake_timer.py` (the virtual clock itself)
 
 These files are the canonical examples. Any deviation from
 this rule should be justified by something that appears in

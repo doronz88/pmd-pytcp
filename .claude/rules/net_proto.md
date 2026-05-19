@@ -12,7 +12,7 @@ It complements [`source_files.md`](source_files.md) (general
 file mechanics applied to every subpackage) and the two
 sibling subpackage rules — [`net_addr.md`](net_addr.md) for
 the value-type library `packages/net_addr/net_addr/` and
-[`pytcp.md`](pytcp.md) for the runtime services in `pytcp/`.
+[`pytcp.md`](pytcp.md) for the runtime services in `packages/pytcp/pytcp/`.
 
 The `packages/net_addr/net_addr/` package does **not** follow the six-file
 protocol layout — it is a pure value-type library. See
@@ -217,7 +217,7 @@ Every header file defines two classes in this order:
   `frozen=True` via `object.__setattr__`. The TX packet
   handlers rewrite these two fields at send time after route
   lookup (see
-  `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
   so the setters are load-bearing and must remain. Every
   such setter must carry the inline comment `# Hack to
   bypass the 'frozen=True' dataclass decorator.` so the
@@ -687,7 +687,7 @@ typing anti-patterns live in
    `assemble()`.
 8. Wire the protocol into the dispatch tables
    (`packages/net_proto/net_proto/lib/enums.py`'s `from_proto`, the relevant
-   packet handler in `pytcp/runtime/packet_handler/`).
+   packet handler in `packages/pytcp/pytcp/runtime/packet_handler/`).
 9. Write tests per
    [`unit_testing.md`](unit_testing.md). Do **not** skip
    the header-asserts / parser-integrity / parser-sanity /
@@ -703,7 +703,7 @@ typing anti-patterns live in
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, imports,
   naming, formatting).
-- [`pytcp.md`](pytcp.md) — `pytcp/` runtime
+- [`pytcp.md`](pytcp.md) — `packages/pytcp/pytcp/` runtime
   services (`Subsystem`, packet handlers, sockets, sysctls).
 - [`python_features.md`](python_features.md) — modern Python
   features (PEP 604 / 585 / 695 / 696 / 698 / 649) consumed

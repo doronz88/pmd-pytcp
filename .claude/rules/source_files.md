@@ -6,7 +6,7 @@ copyright block, module docstring, imports, naming,
 formatting, inline comments, source docstrings.
 
 It is the **general** rule that applies across all three
-subpackages (`packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, `pytcp/`). Two
+subpackages (`packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, `packages/pytcp/pytcp/`). Two
 companion rules layer protocol- and runtime-specific
 conventions on top:
 
@@ -15,7 +15,7 @@ conventions on top:
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`) plus options, enums, dataclass shape, validation
   helpers, error templates, buffer/struct conventions.
-- [`pytcp.md`](pytcp.md) — the `pytcp/`
+- [`pytcp.md`](pytcp.md) — the `packages/pytcp/pytcp/`
   runtime: `Subsystem`, packet-handler mixins, BSD socket
   facade, sysctl registry, stack configuration.
 
@@ -61,7 +61,7 @@ carry neither.
 
 Known scripts in this repo: `tests_runner.py` and every file
 in `examples/`. Everything under `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, or
-`pytcp/` is a library module.
+`packages/pytcp/pytcp/` is a library module.
 
 ### 2.1 Library module layout (no shebang)
 

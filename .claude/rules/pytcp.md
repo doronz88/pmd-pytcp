@@ -1,6 +1,6 @@
-# PyTCP — `pytcp/` Authoring Rule
+# PyTCP — `packages/pytcp/pytcp/` Authoring Rule
 
-This rule codifies how the `pytcp/` package's runtime
+This rule codifies how the `packages/pytcp/pytcp/` package's runtime
 services are authored: the `Subsystem` base class, packet
 handlers, the BSD-socket facade, the sysctl registry, and
 stack-wide configuration. It complements
@@ -18,7 +18,7 @@ attribute on a running instance.
 
 ---
 
-## 1. Module-level constants in `pytcp/`
+## 1. Module-level constants in `packages/pytcp/pytcp/`
 
 Naming follows the general convention from
 [`source_files.md`](source_files.md) §7 — `ALL_CAPS` with
@@ -32,7 +32,7 @@ defined as module constants — never inlined — per
 
 ## 2. Runtime-tunable constants (sysctls)
 
-Every module-level constant in `pytcp/` falls into one of
+Every module-level constant in `packages/pytcp/pytcp/` falls into one of
 two buckets; the classification matters because it
 determines whether the constant is **mutable at runtime
 through the public API** or not.
@@ -53,7 +53,7 @@ walk back than a wrong "keep this static" decision.
 ### 2.1 Policy constants — qualified-module-access pattern
 
 Policy constants are registered with the central registry at
-`pytcp/stack/sysctl.py` so the operator can mutate them at
+`packages/pytcp/pytcp/stack/sysctl.py` so the operator can mutate them at
 runtime via `pytcp.stack.sysctl["arp.cache.max_age"] = 60`
 and at boot via `stack.init(arp_cache_max_age=60)`. The
 underlying ALL_CAPS module attribute remains the canonical
@@ -142,8 +142,8 @@ multi-interface support lands.
 
 ## 3. The `Subsystem` base class
 
-Every background service in `pytcp/` extends `Subsystem`
-from `pytcp/runtime/subsystem.py`.
+Every background service in `packages/pytcp/pytcp/` extends `Subsystem`
+from `packages/pytcp/pytcp/runtime/subsystem.py`.
 
 - Implement `_subsystem_loop()` (abstract) with the
   per-iteration work. The base class wraps it in a loop
@@ -165,12 +165,12 @@ from `pytcp/runtime/subsystem.py`.
   does not block on the wait.
 
 Subsystem subclasses include the `ArpCache` / `NdCache`
-neighbor caches (`pytcp/lib/neighbor.py` + adapters), the
+neighbor caches (`packages/pytcp/pytcp/lib/neighbor.py` + adapters), the
 `TxRing`, and any future timer-driven service.
 
 ## 4. Packet handlers
 
-RX / TX handlers live under `pytcp/runtime/packet_handler/`,
+RX / TX handlers live under `packages/pytcp/pytcp/runtime/packet_handler/`,
 named `packet_handler__<proto>__<rx|tx>.py`.
 
 - Each file contributes methods to the `PacketHandler` class
@@ -190,7 +190,7 @@ named `packet_handler__<proto>__<rx|tx>.py`.
 
 ## 5. The BSD socket facade
 
-`pytcp/socket/__init__.py` exposes an abstract `socket`
+`packages/pytcp/pytcp/socket/__init__.py` exposes an abstract `socket`
 class with a `__new__` factory that returns `TcpSocket`,
 `UdpSocket`, or `RawSocket` based on the `type_` argument.
 Mirror BSD socket semantics — method names (`bind`,
@@ -198,7 +198,7 @@ Mirror BSD socket semantics — method names (`bind`,
 match the stdlib `socket` module.
 
 TCP's FSM is implemented in
-`pytcp/protocols/tcp/tcp__session.py` using `FsmState` and
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py` using `FsmState` and
 `SysCall` enums. Keep state transitions inside the session
 object; the socket class is a thin BSD-API shim over it.
 
@@ -215,7 +215,7 @@ wrong layer.
 
 Stack-wide constants (IP / MAC addresses, ARP / ND cache
 timers, MTU, port ranges, logger channels) live in
-`pytcp/stack/__init__.py`. Add new tunables there,
+`packages/pytcp/pytcp/stack/__init__.py`. Add new tunables there,
 following the §1 naming convention (`STACK__MAC_ADDRESS`,
 `ARP_CACHE__ENTRY_MAX_AGE__SEC`, etc.).
 
@@ -231,7 +231,7 @@ Phase-3 design implications:
   ordinary function calls.
 - Adding a new stack-wide singleton means extending that
   boundary, not piggy-backing on import-time module state.
-- **Adding module-level state to `pytcp/stack/__init__.py`
+- **Adding module-level state to `packages/pytcp/pytcp/stack/__init__.py`
   REQUIRES the same commit to update
   `NetworkTestCase`/`IcmpTestCase`/`TcpSessionTestCase`
   `setUp`/`tearDown`** to snapshot and restore the new
@@ -252,7 +252,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
 [`net_proto.md`](net_proto.md) §17.
 
 - **Creating a subsystem without extending `Subsystem`** —
-  ad-hoc threading in `pytcp/` is a red flag. Background
+  ad-hoc threading in `packages/pytcp/pytcp/` is a red flag. Background
   work goes through the `Subsystem` lifecycle.
 - **Direct attribute assignment to read a sysctl-backed
   value.** Use qualified module access
@@ -269,7 +269,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   using `NetworkTestCase` / `IcmpTestCase`. The harness
   wires the mocks consistently; ad-hoc construction breaks
   the test-isolation contract.
-- **Adding module-level state to `pytcp/stack/__init__.py`
+- **Adding module-level state to `packages/pytcp/pytcp/stack/__init__.py`
   without updating the test harness in the same commit.**
   See §6.1 above and
   [`integration_testing.md`](integration_testing.md) §5.4.
@@ -291,7 +291,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   mechanics (file skeleton, copyright block, module
   docstring, imports, naming, formatting).
 - [`net_addr.md`](net_addr.md) — value-type library that
-  `pytcp/` consumes for addresses, networks, hosts, and
+  `packages/pytcp/pytcp/` consumes for addresses, networks, hosts, and
   masks.
 - [`net_proto.md`](net_proto.md) —
   per-protocol six-file pattern under `packages/net_proto/net_proto/`. The
@@ -303,8 +303,8 @@ anti-patterns live in [`source_files.md`](source_files.md)
   generics, `Self` / `@override`, the protected-hook
   pattern, `cast` and `# type: ignore` policy.
 - [`unit_testing.md`](unit_testing.md) — unit-test
-  authoring for `pytcp/lib/` helpers and other isolated
-  pytcp/ source files.
+  authoring for `packages/pytcp/pytcp/lib/` helpers and other isolated
+  packages/pytcp/pytcp/ source files.
 - [`integration_testing.md`](integration_testing.md) — the
   test harness hierarchy that mocks the runtime services
   described here.

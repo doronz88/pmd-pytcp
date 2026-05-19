@@ -39,10 +39,12 @@ jobs:
           python -m pip install build
 
       - name: Build package
-        run: python -m build
+        run: python -m build packages/pytcp
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/pytcp/dist
 
   # Standalone PyTCP-net_addr dist (single repo, multi-dist),
   # decoupled from the umbrella: it publishes ONLY on a

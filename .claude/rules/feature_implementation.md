@@ -28,7 +28,7 @@ rule references:
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`), options, enums, validation helpers, error
   templates, buffer/struct conventions.
-- [`pytcp.md`](pytcp.md) — `pytcp/` runtime
+- [`pytcp.md`](pytcp.md) — `packages/pytcp/pytcp/` runtime
   services (`Subsystem`, packet-handler mixins, BSD socket
   facade, sysctl registry, stack configuration).
 
@@ -118,7 +118,7 @@ coverage at **every layer that applies**, not just one:
 | Layer       | Path                                                     | Harness                                                                | What it covers                                                                                |
 |-------------|----------------------------------------------------------|------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | Unit        | `<pkg>/tests/unit/...`                                   | `unittest.TestCase`                                                    | Pure-function helpers, dataclass invariants, parser / assembler wire format, header asserts   |
-| Integration | `pytcp/tests/integration/...`                            | `NetworkTestCase` / `IcmpTestCase` / `NdTestCase` / `ArpTestCase` / `TcpSessionTestCase` (see [`integration_testing.md`](integration_testing.md) §4) | FSM transitions, wire-level RX→TX interactions, timer-driven behaviour, socket-API plumbing  |
+| Integration | `packages/pytcp/pytcp/tests/integration/...`                            | `NetworkTestCase` / `IcmpTestCase` / `NdTestCase` / `ArpTestCase` / `TcpSessionTestCase` (see [`integration_testing.md`](integration_testing.md) §4) | FSM transitions, wire-level RX→TX interactions, timer-driven behaviour, socket-API plumbing  |
 
 Heuristic for which layer(s) apply:
 
@@ -164,12 +164,12 @@ integration test before claiming done.
 | `packages/net_proto/net_proto/protocols/<proto>/*.py`             | `packages/net_proto/net_proto/tests/unit/protocols/<proto>/test__<proto>__<aspect>.py`                                                    |
 | `packages/net_proto/net_proto/lib/*.py`                           | `packages/net_proto/net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
 | `packages/net_addr/net_addr/*.py`                                | `packages/net_addr/net_addr/tests/unit/test__<source>.py`                                                                                |
-| `pytcp/lib/*.py`                               | `pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
-| `pytcp/socket/*.py`                            | `pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
-| `pytcp/protocols/tcp/*.py`                     | `pytcp/tests/unit/protocols/tcp/...` (unit) **and** `pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
-| `pytcp/protocols/icmp6/nd/*.py`                | `pytcp/tests/unit/protocols/icmp6/nd/...` (unit) **and** `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py` (integration) |
-| `pytcp/runtime/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` (per-handler smoke)              |
-| Cross-cutting RFC mechanism                    | `pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py`                                          |
+| `packages/pytcp/pytcp/lib/*.py`                               | `packages/pytcp/pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
+| `packages/pytcp/pytcp/socket/*.py`                            | `packages/pytcp/pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
+| `packages/pytcp/pytcp/protocols/tcp/*.py`                     | `packages/pytcp/pytcp/tests/unit/protocols/tcp/...` (unit) **and** `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
+| `packages/pytcp/pytcp/protocols/icmp6/nd/*.py`                | `packages/pytcp/pytcp/tests/unit/protocols/icmp6/nd/...` (unit) **and** `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py` (integration) |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` (per-handler smoke)              |
+| Cross-cutting RFC mechanism                    | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py`                                          |
 
 The full per-aspect splits for `net_proto` per-protocol
 files (header / parser / assembler / options) live in
@@ -293,7 +293,7 @@ emphasis here:
   socket-API change MUST land with an integration test —
   see §2.1. Unit-only coverage of session-touching code
   routinely misses real bugs.
-- **Adding module-level state to `pytcp/stack/__init__.py`
+- **Adding module-level state to `packages/pytcp/pytcp/stack/__init__.py`
   without updating the test harness in the same commit.**
   Snapshots and restores live in
   `NetworkTestCase` / `IcmpTestCase` setUp/tearDown — see
@@ -363,7 +363,7 @@ pinned before.
   parser three-phase pipeline, assembler kw-only ctor,
   error / options / enums patterns, validation helpers,
   error message templates, buffer / struct conventions.
-- Stack-runtime authoring (under `pytcp/`):
+- Stack-runtime authoring (under `packages/pytcp/pytcp/`):
   [`pytcp.md`](pytcp.md) — `Subsystem`
   base, packet-handler mixin composition, BSD socket
   facade, sysctl registry, stack configuration.

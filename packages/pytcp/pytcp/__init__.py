@@ -32,6 +32,8 @@ ver 3.0.5
 
 from pytcp import socket, stack
 
+__version__: str = "3.0.5"
+
 __all__ = [
     "stack",
     "socket",

@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyTCP"
+description = "Pure-Python, zero-dependency TCP/IP stack — Ethernet through RFC 9293 TCP — running in user space on a TAP/TUN interface, with a Berkeley-sockets API."
+readme = "README.md"
+authors = [{ name = "Sebastian Majewski", email = "ccie18643@gmail.com" }]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3.14",
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX :: Linux",
+    "Natural Language :: English",
+    "Environment :: Console",
+    "Topic :: System :: Networking",
+    "Typing :: Typed",
+]
+keywords = [
+    "pytcp",
+    "stack",
+    "networking",
+    "tcp",
+    "ip",
+    "ipv4",
+    "ipv6",
+    "arp",
+    "ethernet",
+    "icmp",
+]
+dependencies = ["PyTCP-net_addr==3.0.5", "PyTCP-net_proto==3.0.5"]
+requires-python = ">=3.14"
+dynamic = ["version"]
+
+[project.urls]
+"Homepage" = "https://github.com/ccie18643/PyTCP"
+"Bug Tracker" = "https://github.com/ccie18643/PyTCP/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "pytcp.__version__" }
+
+[tool.setuptools.packages.find]
+# The trailing '*' is load-bearing: an exact "pytcp" pattern ships
+# ONLY the top-level package (the historical umbrella-wheel bug,
+# pre-existing on PyPI 3.0.4). pyproject find already does
+# namespace discovery, so this glob pulls in the pytcp.protocols.* /
+# pytcp.runtime.* PEP 420 namespace subpackages. Pinned by
+# packages/net_proto/net_proto/tests/unit/test__packaging__dist_wheels.py.
+include = ["pytcp*"]
+exclude = ["pytcp.tests*"]
+
+[tool.setuptools.package-data]
+pytcp = ["py.typed"]

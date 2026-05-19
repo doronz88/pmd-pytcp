@@ -26,7 +26,7 @@ annotation style, signature shape, generic syntax, or where
   PEP 484 through PEP 750 is unconditionally available;
   there is no fallback for older interpreters.
 - **Coverage.** Every PyTCP source file under `packages/net_addr/net_addr/`,
-  `packages/net_proto/net_proto/`, `pytcp/` (excluding generated and vendored
+  `packages/net_proto/net_proto/`, `packages/pytcp/pytcp/` (excluding generated and vendored
   code, of which PyTCP has none today) MUST be fully typed.
   Test files under `*/tests/` MUST also pass mypy strict.
 - **Authority over runtime cost.** Type annotations are

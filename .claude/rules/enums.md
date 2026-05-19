@@ -270,24 +270,24 @@ noise without type-safety value:
 | `EtherType` | `packages/net_proto/net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
 | `ArpHardwareType`, `ArpOperation` | `packages/net_proto/net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
 | `IpVersion` | `packages/net_addr/net_addr/ip_version.py` | `IntEnum`; member access only |
-| `AddressFamily`, `SocketType` | `pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
-| `SocketOption` (TCP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `SolSocketOption` (SO_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `IpOption` (IP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `IpV6Option` (IPV6_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `MsgFlag` (MSG_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `SoEeOrigin` | `pytcp/socket/error_queue.py` | IntEnum, member access only (§2.1 — not in stdlib socket) |
+| `AddressFamily`, `SocketType` | `packages/pytcp/pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
+| `SocketOption` (TCP_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `SolSocketOption` (SO_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `IpOption` (IP_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `IpV6Option` (IPV6_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `MsgFlag` (MSG_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `SoEeOrigin` | `packages/pytcp/pytcp/socket/error_queue.py` | IntEnum, member access only (§2.1 — not in stdlib socket) |
 
 ### 7.2 Existing bare ints that are scalars (correctly NOT enums)
 
 | Constant | Module | Why scalar |
 |---|---|---|
 | `UDP__HEADER__LEN = 8` | `packages/net_proto/net_proto/protocols/udp/udp__header.py` | byte length |
-| `ARP_CACHE__ENTRY_MAX_AGE__SEC = 60` | `pytcp/protocols/arp/arp__constants.py` | timeout |
-| `ERROR_QUEUE__MAX_LEN = 32` | `pytcp/socket/error_queue.py` | capacity |
-| `INADDR_ANY = 0` | `pytcp/socket/__init__.py` | sentinel address (stdlib-mirrored) |
-| `IPPROTO_IP = 0` | `pytcp/socket/__init__.py` | default-protocol sentinel (stdlib-mirrored; conceptually NOT an `IpProto` value because IANA next-header 0 is HOPOPT) |
-| `SOL_SOCKET = 1` | `pytcp/socket/__init__.py` | setsockopt level sentinel; only one value in this "domain" today, so no enum |
+| `ARP_CACHE__ENTRY_MAX_AGE__SEC = 60` | `packages/pytcp/pytcp/protocols/arp/arp__constants.py` | timeout |
+| `ERROR_QUEUE__MAX_LEN = 32` | `packages/pytcp/pytcp/socket/error_queue.py` | capacity |
+| `INADDR_ANY = 0` | `packages/pytcp/pytcp/socket/__init__.py` | sentinel address (stdlib-mirrored) |
+| `IPPROTO_IP = 0` | `packages/pytcp/pytcp/socket/__init__.py` | default-protocol sentinel (stdlib-mirrored; conceptually NOT an `IpProto` value because IANA next-header 0 is HOPOPT) |
+| `SOL_SOCKET = 1` | `packages/pytcp/pytcp/socket/__init__.py` | setsockopt level sentinel; only one value in this "domain" today, so no enum |
 
 `IPPROTO_IP` and `SOL_SOCKET` are borderline — they're
 each effectively single-value "domains" today
@@ -346,7 +346,7 @@ don't need to round-trip through the enum.
 - [`source_files.md`](source_files.md) §7 — general
   naming convention (`ALL_CAPS` for constants applies
   to the bare aliases in §2.2).
-- [`pytcp.md`](pytcp.md) — `pytcp/socket/` is where the
+- [`pytcp.md`](pytcp.md) — `packages/pytcp/pytcp/socket/` is where the
   bulk of the stdlib-parity bare-alias surface lives.
 - Linux numeric reference: `/usr/include/linux/in.h`,
   `/usr/include/linux/in6.h`, `/usr/include/linux/errqueue.h`,

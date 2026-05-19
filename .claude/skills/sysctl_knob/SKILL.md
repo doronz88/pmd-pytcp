@@ -38,7 +38,7 @@ audit, commit.
   a test, the test can patch the module attribute directly
   without registering a public knob.
 - Before the registry exists — Phase 0 of the framework
-  (`pytcp/stack/sysctl.py`) must be in place. If `_register`
+  (`packages/pytcp/pytcp/stack/sysctl.py`) must be in place. If `_register`
   is not importable, the framework hasn't been built yet;
   start there instead.
 
@@ -68,10 +68,10 @@ Before touching code:
 A new knob lands as a single tests-first commit touching:
 
 ```
-pytcp/protocols/<package>/<proto>__constants.py     # registration call
-pytcp/stack/sysctl.py                                  # (if a new validator helper)
-pytcp/stack/__init__.py                              # (if explicit kwarg)
-pytcp/tests/unit/<package>/test__<...>.py            # behavior pin
+packages/pytcp/pytcp/protocols/<package>/<proto>__constants.py     # registration call
+packages/pytcp/pytcp/stack/sysctl.py                                  # (if a new validator helper)
+packages/pytcp/pytcp/stack/__init__.py                              # (if explicit kwarg)
+packages/pytcp/pytcp/tests/unit/<package>/test__<...>.py            # behavior pin
 docs/rfc/<group>/<rfcXXXX__name>/adherence.md        # Reference + status flip if RFC-driven
 docs/refactor/sysctl_framework.md                    # add to §1 example table
 ```
@@ -115,7 +115,7 @@ dependency first.
 ### 3. Add the validator (if novel)
 
 If the validator function doesn't already exist in
-`pytcp/stack/sysctl.py`, add it next to the existing helpers:
+`packages/pytcp/pytcp/stack/sysctl.py`, add it next to the existing helpers:
 
 ```python
 def _is_positive_int(name: str) -> Callable[[Any], None]:
@@ -135,7 +135,7 @@ runs after every kwarg is applied — see
 ### 4. (Optional) Promote to explicit `stack.init()` kwarg
 
 If the knob is one most users will tune, add it to
-`pytcp/stack/__init__.py::init()`:
+`packages/pytcp/pytcp/stack/__init__.py::init()`:
 
 ```python
 def init(
@@ -172,8 +172,8 @@ single-knob addition, the failing test typically pins:
 
 Test file location follows
 `.claude/rules/unit_testing.md` §3 — typically
-`pytcp/tests/unit/<package>/test__<...>.py` or a new
-`pytcp/tests/unit/lib/test__lib__sysctl.py` for registry-level
+`packages/pytcp/pytcp/tests/unit/<package>/test__<...>.py` or a new
+`packages/pytcp/pytcp/tests/unit/lib/test__lib__sysctl.py` for registry-level
 behavior.
 
 Run before adding the implementation. Verify failures are for
@@ -215,7 +215,7 @@ python3 << 'EOF'
 import re, sys
 from pathlib import Path
 
-FILES = ["pytcp/tests/unit/<...>.py"]  # list every modified test file
+FILES = ["packages/pytcp/pytcp/tests/unit/<...>.py"]  # list every modified test file
 violations = []
 for path in FILES:
     text = Path(path).read_text()

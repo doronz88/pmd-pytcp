@@ -197,7 +197,7 @@ primitive is always available.
 
 ```python
 # Good
-clean = path.removeprefix("pytcp/")
+clean = path.removeprefix("packages/pytcp/pytcp/")
 trimmed = name.removesuffix(".py")
 ```
 
@@ -206,8 +206,8 @@ length:
 
 ```python
 # Forbidden
-if path.startswith("pytcp/"):
-    clean = path[len("pytcp/"):]
+if path.startswith("packages/pytcp/pytcp/"):
+    clean = path[len("packages/pytcp/pytcp/"):]
 if name.endswith(".py"):
     trimmed = name[:-3]
 ```

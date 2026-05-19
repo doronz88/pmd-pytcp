@@ -1,7 +1,23 @@
 # Umbrella `PyTCP` wheel packaging — tracked defect
 
-Status: **open / tracked** (decoupled from the `PyTCP-net_addr`
-split, which is complete and correct on its own).
+Status: **RESOLVED** (2026-05-19) — **by dissolution, not repair**.
+`pytcp` was extracted into its own PEP 517 project
+`packages/pytcp/` (`include = ["pytcp*"]`, namespace discovery,
+tests excluded, `py.typed`); the `PyTCP` dist is now the `pytcp`
+package depending on `PyTCP-net_proto==3.0.5` +
+`PyTCP-net_addr==3.0.5`, and the repo-root `pyproject.toml` is
+tooling-only. The first correct `PyTCP` wheel ships **130 `.py`**
+incl. all `pytcp.runtime.*` / `pytcp.protocols.*` namespace
+subpackages (vs. the historical 3-file wheel), twine-clean,
+pinned by `test__packaging__dist_wheels.py::TestPackagingPytcpWheel`.
+The monolithic umbrella build that exhibited this defect no longer
+exists. Remaining text below is kept as the historical record.
+
+---
+
+Original status: open / tracked (decoupled from the
+`PyTCP-net_addr` split, which is complete and correct on its
+own).
 
 ## Symptom
 

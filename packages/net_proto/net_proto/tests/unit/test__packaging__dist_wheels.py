@@ -45,6 +45,7 @@ from unittest import TestCase
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _PKG_NET_PROTO = _REPO_ROOT / "packages" / "net_proto"
 _PKG_NET_ADDR = _REPO_ROOT / "packages" / "net_addr"
+_PKG_PYTCP = _REPO_ROOT / "packages" / "pytcp"
 
 
 def _build_wheel_payload(project_dir: Path, /) -> set[str]:
@@ -206,4 +207,65 @@ class TestPackagingNetAddrWheel(TestCase):
             "@py.typed",
             self._payload,
             msg="net_addr wheel must ship 'py.typed' (PEP 561).",
+        )
+
+
+class TestPackagingPytcpWheel(TestCase):
+    """
+    The PyTCP (umbrella -> pytcp) wheel-payload packaging tests.
+    """
+
+    _payload: ClassVar[set[str]]
+
+    @classmethod
+    @override
+    def setUpClass(cls) -> None:
+        """
+        Build the pytcp wheel once for the whole class.
+        """
+
+        cls._payload = _build_wheel_payload(_PKG_PYTCP)
+
+    def test__pytcp__ships_namespace_subpackages(self) -> None:
+        """
+        Ensure the PyTCP wheel ships its PEP 420 namespace
+        subpackages (pytcp.runtime.*, pytcp.protocols.*) — the
+        exact defect that left the historical umbrella wheel
+        non-functional; this is the umbrella fix realised by
+        dissolving it into the per-package pytcp dist.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for prefix in (
+            "pytcp/runtime/packet_handler/",
+            "pytcp/protocols/tcp/",
+            "pytcp/protocols/ip6/",
+            "pytcp/socket/",
+            "pytcp/stack/",
+            "pytcp/lib/",
+        ):
+            with self.subTest(prefix=prefix):
+                self.assertTrue(
+                    any(p.startswith(prefix) for p in self._payload),
+                    msg=f"PyTCP wheel must ship the {prefix!r} subpackage; payload is missing it.",
+                )
+
+    def test__pytcp__excludes_tests_and_ships_py_typed(self) -> None:
+        """
+        Ensure the PyTCP wheel excludes the test tree and ships
+        the PEP 561 'py.typed' marker.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertNotIn(
+            True,
+            {p.startswith("pytcp/tests/") for p in self._payload},
+            msg="PyTCP wheel must NOT ship the test tree.",
+        )
+        self.assertIn(
+            "@py.typed",
+            self._payload,
+            msg="PyTCP wheel must ship 'py.typed' (PEP 561).",
         )

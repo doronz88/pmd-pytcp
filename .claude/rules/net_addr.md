@@ -3,7 +3,7 @@
 This rule codifies the conventions for the `packages/net_addr/net_addr/`
 subpackage — PyTCP's pure value-type library for network
 addresses, networks, interface addresses, and masks. The library has no
-dependency on `packages/net_proto/net_proto/` or `pytcp/`; it sits at the
+dependency on `packages/net_proto/net_proto/` or `packages/pytcp/pytcp/`; it sits at the
 bottom of the dependency graph and is consumed by the other
 two subpackages.
 
@@ -17,7 +17,7 @@ hashing, and the deliberate `click` exception to the
 zero-runtime-deps mandate.
 
 The two sibling subpackage rules — protocol authoring under
-`packages/net_proto/net_proto/` and the runtime services under `pytcp/` — live
+`packages/net_proto/net_proto/` and the runtime services under `packages/pytcp/pytcp/` — live
 in [`net_proto.md`](net_proto.md) and
 [`pytcp.md`](pytcp.md) respectively.
 
@@ -48,10 +48,10 @@ It does **not** contain:
 
 - Anything stateful (timers, caches, threads, sockets).
 - Protocol parsers, assemblers, or wire-format packing.
-- Anything that imports from `packages/net_proto/net_proto/` or `pytcp/`.
+- Anything that imports from `packages/net_proto/net_proto/` or `packages/pytcp/pytcp/`.
 
 If you find yourself writing stateful code in `packages/net_addr/net_addr/`,
-stop — that work belongs in `pytcp/` (per
+stop — that work belongs in `packages/pytcp/pytcp/` (per
 [`pytcp.md`](pytcp.md)). If you find yourself writing wire
 parsing, stop — that's `packages/net_proto/net_proto/` (per
 [`net_proto.md`](net_proto.md)).
@@ -610,7 +610,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   `address.setter`)** to make a value mutable. Construct a
   fresh instance instead.
 - **Putting stateful behaviour in `packages/net_addr/net_addr/`** — timers,
-  caches, threads, sockets. That's `pytcp/`. If a helper
+  caches, threads, sockets. That's `packages/pytcp/pytcp/`. If a helper
   has any state that outlives a single value, it belongs
   somewhere else.
 - **Reaching into `packages/net_addr/net_addr/_*.py` modules** from consumers.
@@ -658,7 +658,7 @@ file.
 - [`net_proto.md`](net_proto.md) — the per-protocol six-file
   pattern for `packages/net_proto/net_proto/protocols/<proto>/`. Consumes
   `packages/net_addr/net_addr/` value types in header dataclasses.
-- [`pytcp.md`](pytcp.md) — the runtime services in `pytcp/`.
+- [`pytcp.md`](pytcp.md) — the runtime services in `packages/pytcp/pytcp/`.
   Consumes `packages/net_addr/net_addr/` value types for stack configuration
   and runtime address bookkeeping.
 - [`python_features.md`](python_features.md) — modern

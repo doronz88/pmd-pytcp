@@ -100,10 +100,10 @@ SOURCE                                       TEST
 packages/net_proto/net_proto/protocols/udp/udp__parser.py    →  packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__operation.py
 packages/net_proto/net_proto/protocols/udp/udp__header.py    →  packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
 packages/net_proto/net_proto/lib/inet_cksum.py               →  packages/net_proto/net_proto/tests/unit/lib/test__lib__inet_cksum.py
-pytcp/lib/ip6_source_selection.py         →  pytcp/tests/unit/lib/test__lib__ip6_source_selection.py
-pytcp/socket/raw__socket.py               →  pytcp/tests/unit/socket/test__socket__raw__socket.py
-pytcp/protocols/tcp/tcp__session.py       →  pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
-                                             pytcp/tests/unit/protocols/tcp/test__tcp__session__fsm.py
+packages/pytcp/pytcp/lib/ip6_source_selection.py         →  packages/pytcp/pytcp/tests/unit/lib/test__lib__ip6_source_selection.py
+packages/pytcp/pytcp/socket/raw__socket.py               →  packages/pytcp/pytcp/tests/unit/socket/test__socket__raw__socket.py
+packages/pytcp/pytcp/protocols/tcp/tcp__session.py       →  packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
+                                             packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__fsm.py
                                              ... (one file per aspect; see §3.3)
 ```
 
@@ -112,7 +112,7 @@ Rules:
 - Files go under `<package>/tests/unit/…` mirroring the source layout.
   For a protocol at `packages/net_proto/net_proto/protocols/<proto>/`, tests live at
   `packages/net_proto/net_proto/tests/unit/protocols/<proto>/`. For a subpackage like
-  `packages/net_proto/net_proto/lib/` or `pytcp/socket/`, tests live at
+  `packages/net_proto/net_proto/lib/` or `packages/pytcp/pytcp/socket/`, tests live at
   `<package>/tests/unit/<subpkg>/`.
 - Double-underscore separators, same as source files.
 - **Subdirectory prefix**: when the source subpackage is **not** the
@@ -123,20 +123,20 @@ Rules:
   | Source location                       | Test filename pattern                         |
   | ------------------------------------- | --------------------------------------------- |
   | `packages/net_proto/net_proto/protocols/<proto>/*.py`    | `test__<proto>__<component>__<aspect>.py`     |
-  | `pytcp/protocols/<proto>/*.py`        | `test__<proto>__<source>__<aspect>.py`        |
+  | `packages/pytcp/pytcp/protocols/<proto>/*.py`        | `test__<proto>__<source>__<aspect>.py`        |
   | `<pkg>/lib/*.py`                      | `test__lib__<source>.py`                      |
-  | `pytcp/socket/*.py`                   | `test__socket__<source>.py`                   |
+  | `packages/pytcp/pytcp/socket/*.py`                   | `test__socket__<source>.py`                   |
 
   Examples: `test__lib__inet_cksum.py`, `test__lib__proto_parser.py`,
   `test__socket__raw__socket.py`,
-  `test__tcp__session__lifecycle.py` (a `pytcp/protocols/tcp/`
+  `test__tcp__session__lifecycle.py` (a `packages/pytcp/pytcp/protocols/tcp/`
   source file). The one accepted exception is the stutter case
   `test__socket__socket_id.py` (source file `socket_id.py` already
   contains the subdir name) — still prefix it; do not drop the
   leading `socket__` to avoid the stutter.
 
-  Tests for `pytcp/protocols/<proto>/*.py` source files live
-  under `pytcp/tests/{unit,integration}/protocols/<proto>/`
+  Tests for `packages/pytcp/pytcp/protocols/<proto>/*.py` source files live
+  under `packages/pytcp/pytcp/tests/{unit,integration}/protocols/<proto>/`
   mirroring the source layout. The directory has no
   `__init__.py` (PEP 420 namespace package, matching the rest
   of the codebase).
@@ -160,7 +160,7 @@ Rules:
   `test__tcp__option__mss.py`.
 
 - **Large non-protocol source splits**: if a single source file is
-  large enough to warrant splitting (e.g. `pytcp/socket/tcp__session.py`),
+  large enough to warrant splitting (e.g. `packages/pytcp/pytcp/socket/tcp__session.py`),
   fan out by aspect after the `test__<subdir>__<source>` prefix:
   `test__socket__tcp__session__enums.py`,
   `test__socket__tcp__session__lifecycle.py`,
@@ -663,8 +663,8 @@ import re, sys
 from pathlib import Path
 
 FILES = [
-    "pytcp/tests/unit/protocols/<proto>/test__<...>.py",
-    "pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
+    "packages/pytcp/pytcp/tests/unit/protocols/<proto>/test__<...>.py",
+    "packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<...>.py",
     # ... list every test file you wrote or modified.
 ]
 
@@ -992,7 +992,7 @@ def tearDown(self) -> None:
 The integration `NetworkTestCase` already snapshots
 `stack.__dict__`; new fixtures touching module state MUST
 follow the pattern. **Adding module-level state to
-`pytcp/stack/__init__.py` REQUIRES the same commit to update
+`packages/pytcp/pytcp/stack/__init__.py` REQUIRES the same commit to update
 `TcpSessionTestCase` `setUp`/`tearDown` (or `NetworkTestCase`
 where applicable)** — otherwise the "passes alone, fails in
 suite" bug leaks in.
@@ -1396,6 +1396,6 @@ novel patterns introduced in a new file.
 - [`net_addr.md`](net_addr.md),
   [`net_proto.md`](net_proto.md), and
   [`pytcp.md`](pytcp.md) — what the SUT is shaped like for
-  `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, and `pytcp/` respectively; read
+  `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, and `packages/pytcp/pytcp/` respectively; read
   the relevant one when writing tests for the corresponding
   source files.
