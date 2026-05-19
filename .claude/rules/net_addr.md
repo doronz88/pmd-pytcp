@@ -387,19 +387,38 @@ Each value type has its own error hierarchy in
 `net_addr/errors.py`:
 
 ```
-Exception
-├── Ip4AddressError
-│   ├── Ip4AddressFormatError       (constructor input rejected)
-│   └── Ip4AddressSanityError       (post-construction invariant violated)
-├── Ip6AddressError
-│   ...
-└── MacAddressError
-    ...
+NetAddrError
+├── IpAddressError                       (concept umbrella: any version, any axis)
+│   ├── IpAddressFormatError             (axis base: any version, Format)
+│   ├── IpAddressSanityError             (axis base: any version, Sanity)
+│   ├── Ip4AddressError                  (per-type umbrella: any axis)
+│   └── Ip6AddressError
+│       ├── Ip6AddressFormatError  →  (Ip6AddressError, IpAddressFormatError)
+│       └── Ip6AddressSanityError  →  (Ip6AddressError, IpAddressSanityError)
+├── IpMaskError / IpWildcardError / IpNetworkError / IfAddrError
+│       … same concept/axis/per-type/leaf shape …
+└── MacAddressError                      (single concrete type → no version split)
+    ├── MacAddressFormatError
+    └── MacAddressSanityError
 ```
 
 - Constructor input validation raises `*FormatError`.
 - Cross-field invariants (e.g. an interface address not contained
   by its own network) raise `*SanityError`.
+- **Every concrete leaf has three catchable supersets**: its
+  version-agnostic axis base (`IpAddressFormatError` — any
+  version, that axis), its per-type umbrella (`Ip4AddressError`
+  — that concrete type, both axes; the MAC-parallel grouping),
+  and its concept umbrella (`IpAddressError` — any version, any
+  axis). A leaf reaches both the per-type and the axis lineage
+  by **multiple inheritance among `NetAddrError` subclasses**
+  (`class Ip6AddressFormatError(Ip6AddressError,
+  IpAddressFormatError)`). The umbrellas carry no `__init__`,
+  so they are transparent in the MRO and the message-formatting
+  `__init__` resolves unchanged. This MI is the sanctioned
+  two-axis expression and is **distinct from** the §7.1
+  prohibition on MI **with a builtin** (`class X(NetAddrError,
+  ValueError)`), which remains forbidden.
 - The base `<Type>Error` is unused as a direct raise — it's
   the catch-all for consumers that want to handle "any
   problem with this value type."

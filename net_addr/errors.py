@@ -37,43 +37,179 @@ class NetAddrError(Exception):
     """
 
 
-class IpAddressFormatError(NetAddrError):
+#
+# Concept umbrellas — "any error of this value-type concept,
+# any version, any axis". The catch-all a consumer uses to
+# handle "any problem with this kind of value".
+#
+
+
+class IpAddressError(NetAddrError):
+    """
+    Base class for all IP address exceptions.
+    """
+
+
+class IpMaskError(NetAddrError):
+    """
+    Base class for all IP mask exceptions.
+    """
+
+
+class IpWildcardError(NetAddrError):
+    """
+    Base class for all IP wildcard exceptions.
+    """
+
+
+class IpNetworkError(NetAddrError):
+    """
+    Base class for all IP network exceptions.
+    """
+
+
+class IfAddrError(NetAddrError):
+    """
+    Base class for all IP interface address exceptions.
+    """
+
+
+#
+# Axis bases — the version-agnostic Format / Sanity grouping
+# (e.g. "any IP address format error, v4 or v6"). Retained as
+# the second parent of every concrete leaf via multiple
+# inheritance so the pre-existing axis grouping stays
+# catchable.
+#
+
+
+class IpAddressFormatError(IpAddressError):
     """
     Base class for all IP address format exceptions.
     """
 
 
-class IpMaskFormatError(NetAddrError):
+class IpAddressSanityError(IpAddressError):
+    """
+    Base class for all IP address sanity exceptions.
+    """
+
+
+class IpMaskFormatError(IpMaskError):
     """
     Base class for all IP mask format exceptions.
     """
 
 
-class IpWildcardFormatError(NetAddrError):
+class IpWildcardFormatError(IpWildcardError):
     """
     Base class for all IP wildcard format exceptions.
     """
 
 
-class IpNetworkFormatError(NetAddrError):
+class IpNetworkFormatError(IpNetworkError):
     """
     Base class for all IP network format exceptions.
     """
 
 
-class IfAddrFormatError(NetAddrError):
+class IpNetworkSanityError(IpNetworkError):
+    """
+    Base class for all IP network sanity exceptions.
+    """
+
+
+class IfAddrFormatError(IfAddrError):
     """
     Base class for all IP interface address format exceptions.
     """
 
 
-class IfAddrSanityError(NetAddrError):
+class IfAddrSanityError(IfAddrError):
     """
     Base class for all IP interface address sanity exceptions.
     """
 
 
-class Ip4AddressFormatError(IpAddressFormatError):
+#
+# Per-type umbrellas — "any error of this concrete type, both
+# axes" (the MAC-parallel grouping; cf. MacAddressError).
+#
+
+
+class Ip4AddressError(IpAddressError):
+    """
+    Base class for all IPv4 address exceptions.
+    """
+
+
+class Ip6AddressError(IpAddressError):
+    """
+    Base class for all IPv6 address exceptions.
+    """
+
+
+class Ip4MaskError(IpMaskError):
+    """
+    Base class for all IPv4 mask exceptions.
+    """
+
+
+class Ip6MaskError(IpMaskError):
+    """
+    Base class for all IPv6 mask exceptions.
+    """
+
+
+class Ip4WildcardError(IpWildcardError):
+    """
+    Base class for all IPv4 wildcard exceptions.
+    """
+
+
+class Ip6WildcardError(IpWildcardError):
+    """
+    Base class for all IPv6 wildcard exceptions.
+    """
+
+
+class Ip4NetworkError(IpNetworkError):
+    """
+    Base class for all IPv4 network exceptions.
+    """
+
+
+class Ip6NetworkError(IpNetworkError):
+    """
+    Base class for all IPv6 network exceptions.
+    """
+
+
+class Ip4IfAddrError(IfAddrError):
+    """
+    Base class for all IPv4 interface address exceptions.
+    """
+
+
+class Ip6IfAddrError(IfAddrError):
+    """
+    Base class for all IPv6 interface address exceptions.
+    """
+
+
+#
+# Concrete leaves — each sits in both its per-type umbrella
+# and its version-agnostic axis base via multiple inheritance
+# (MI within the NetAddrError tree only; this is the sanctioned
+# two-axis expression and is distinct from the net_addr.md §7.1
+# prohibition on MI with a builtin). The umbrellas carry no
+# '__init__', so they are transparent in the MRO and the
+# message-formatting '__init__' below resolves to Exception
+# unchanged.
+#
+
+
+class Ip4AddressFormatError(Ip4AddressError, IpAddressFormatError):
     """
     Exception raised when IPv4 address format is invalid.
     """
@@ -82,49 +218,13 @@ class Ip4AddressFormatError(IpAddressFormatError):
         super().__init__(f"The IPv4 address format is invalid: {value!r}")
 
 
-class Ip4MaskFormatError(IpMaskFormatError):
+class Ip4AddressSanityError(Ip4AddressError, IpAddressSanityError):
     """
-    Exception raised when IPv4 mask format is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 mask format is invalid: {value!r}")
-
-
-class Ip4WildcardFormatError(IpWildcardFormatError):
-    """
-    Exception raised when IPv4 wildcard format is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 wildcard format is invalid: {value!r}")
-
-
-class Ip4NetworkFormatError(IpNetworkFormatError):
-    """
-    Exception raised when IPv4 network format is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 network format is invalid: {value!r}")
-
-
-class Ip4IfAddrFormatError(IfAddrFormatError):
-    """
-    Exception raised when IPv4 interface address format is invalid.
-    """
-
-    def __init__(self, value: object, /) -> None:
-        super().__init__(f"The IPv4 interface address format is invalid: {value!r}")
-
-
-class Ip4IfAddrSanityError(IfAddrSanityError):
-    """
-    Exception raised when IPv4 interface address doesn't belong to provided network.
+    Exception raised when an IPv4 address operation precondition is violated.
     """
 
 
-class Ip6AddressFormatError(IpAddressFormatError):
+class Ip6AddressFormatError(Ip6AddressError, IpAddressFormatError):
     """
     Exception raised when IPv6 address format is invalid.
     """
@@ -133,7 +233,22 @@ class Ip6AddressFormatError(IpAddressFormatError):
         super().__init__(f"The IPv6 address format is invalid: {value!r}")
 
 
-class Ip6MaskFormatError(IpMaskFormatError):
+class Ip6AddressSanityError(Ip6AddressError, IpAddressSanityError):
+    """
+    Exception raised when an IPv6 address operation precondition is violated.
+    """
+
+
+class Ip4MaskFormatError(Ip4MaskError, IpMaskFormatError):
+    """
+    Exception raised when IPv4 mask format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 mask format is invalid: {value!r}")
+
+
+class Ip6MaskFormatError(Ip6MaskError, IpMaskFormatError):
     """
     Exception raised when IPv6 mask format is invalid.
     """
@@ -142,7 +257,16 @@ class Ip6MaskFormatError(IpMaskFormatError):
         super().__init__(f"The IPv6 mask format is invalid: {value!r}")
 
 
-class Ip6WildcardFormatError(IpWildcardFormatError):
+class Ip4WildcardFormatError(Ip4WildcardError, IpWildcardFormatError):
+    """
+    Exception raised when IPv4 wildcard format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 wildcard format is invalid: {value!r}")
+
+
+class Ip6WildcardFormatError(Ip6WildcardError, IpWildcardFormatError):
     """
     Exception raised when IPv6 wildcard format is invalid.
     """
@@ -151,7 +275,22 @@ class Ip6WildcardFormatError(IpWildcardFormatError):
         super().__init__(f"The IPv6 wildcard format is invalid: {value!r}")
 
 
-class Ip6NetworkFormatError(IpNetworkFormatError):
+class Ip4NetworkFormatError(Ip4NetworkError, IpNetworkFormatError):
+    """
+    Exception raised when IPv4 network format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 network format is invalid: {value!r}")
+
+
+class Ip4NetworkSanityError(Ip4NetworkError, IpNetworkSanityError):
+    """
+    Exception raised when an IPv4 network operation argument or invariant is invalid.
+    """
+
+
+class Ip6NetworkFormatError(Ip6NetworkError, IpNetworkFormatError):
     """
     Exception raised when IPv6 network format is invalid.
     """
@@ -160,7 +299,28 @@ class Ip6NetworkFormatError(IpNetworkFormatError):
         super().__init__(f"The IPv6 network format is invalid: {value!r}")
 
 
-class Ip6IfAddrFormatError(IfAddrFormatError):
+class Ip6NetworkSanityError(Ip6NetworkError, IpNetworkSanityError):
+    """
+    Exception raised when an IPv6 network operation argument or invariant is invalid.
+    """
+
+
+class Ip4IfAddrFormatError(Ip4IfAddrError, IfAddrFormatError):
+    """
+    Exception raised when IPv4 interface address format is invalid.
+    """
+
+    def __init__(self, value: object, /) -> None:
+        super().__init__(f"The IPv4 interface address format is invalid: {value!r}")
+
+
+class Ip4IfAddrSanityError(Ip4IfAddrError, IfAddrSanityError):
+    """
+    Exception raised when IPv4 interface address doesn't belong to provided network.
+    """
+
+
+class Ip6IfAddrFormatError(Ip6IfAddrError, IfAddrFormatError):
     """
     Exception raised when IPv6 interface address format is invalid.
     """
@@ -169,10 +329,17 @@ class Ip6IfAddrFormatError(IfAddrFormatError):
         super().__init__(f"The IPv6 interface address format is invalid: {value!r}")
 
 
-class Ip6IfAddrSanityError(IfAddrSanityError):
+class Ip6IfAddrSanityError(Ip6IfAddrError, IfAddrSanityError):
     """
     Exception raised when IPv6 interface address doesn't belong to provided network.
     """
+
+
+#
+# MAC — a single concrete type with no version split, so its
+# per-type umbrella 'MacAddressError' already joins both axes
+# directly (the shape the IP families above now mirror).
+#
 
 
 class MacAddressError(NetAddrError):
@@ -193,40 +360,4 @@ class MacAddressFormatError(MacAddressError):
 class MacAddressSanityError(MacAddressError):
     """
     Exception raised when a MAC address operation precondition is violated.
-    """
-
-
-class IpAddressSanityError(NetAddrError):
-    """
-    Base class for all IP address sanity exceptions.
-    """
-
-
-class Ip4AddressSanityError(IpAddressSanityError):
-    """
-    Exception raised when an IPv4 address operation precondition is violated.
-    """
-
-
-class Ip6AddressSanityError(IpAddressSanityError):
-    """
-    Exception raised when an IPv6 address operation precondition is violated.
-    """
-
-
-class IpNetworkSanityError(NetAddrError):
-    """
-    Base class for all IP network sanity exceptions.
-    """
-
-
-class Ip4NetworkSanityError(IpNetworkSanityError):
-    """
-    Exception raised when an IPv4 network operation argument or invariant is invalid.
-    """
-
-
-class Ip6NetworkSanityError(IpNetworkSanityError):
-    """
-    Exception raised when an IPv6 network operation argument or invariant is invalid.
     """
