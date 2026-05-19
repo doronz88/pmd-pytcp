@@ -32,7 +32,7 @@ absence: the codebase does not define ICMPv4 Source Quench
 
 This compliance is regression-pinned by the test class
 `TestIcmp4Rx__SourceQuench__Rfc6633` in
-`pytcp/tests/integration/protocols/icmp4/test__icmp4__rx.py`,
+`packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__rx.py`,
 which verifies an inbound Type 4 frame produces no TX,
 bumps only the `icmp4__unknown` counter, and never
 reaches a transport handler.
@@ -151,7 +151,7 @@ gap.
 | §3 Type 4 RX silently discarded — no TX response                | shipped — `test__icmp4__rx__source_quench__no_tx` |
 | §3 Type 4 RX increments `icmp4__unknown` counter                | shipped — `test__icmp4__rx__source_quench__packet_stats_rx` |
 | §3 Type 4 RX does not reach transport demux (no TX counters)    | shipped — `test__icmp4__rx__source_quench__packet_stats_tx` |
-| §3 host MUST NOT send Source Quench (TX-side structural)        | shipped — verified by codebase grep (`grep -r SOURCE_QUENCH net_proto/ pytcp/` returns no hits) |
+| §3 host MUST NOT send Source Quench (TX-side structural)        | shipped — verified by codebase grep (`grep -r SOURCE_QUENCH packages/net_proto/net_proto/ packages/pytcp/pytcp/` returns no hits) |
 | §4 router MUST ignore Source Quench                             | n/a (Phase 1 host-stack scope) |
 | §5 UDP MUST silently discard                                    | shipped — covered by RX-side path; UDP demux unreachable |
 | §6 other transports MUST silently ignore                        | n/a (no other transports implemented) |
@@ -159,7 +159,7 @@ gap.
 | §8 SHOULD log discard as security fault                         | partial — debug log present, not security-tier (Phase-2 polish) |
 
 The regression-pinning tests live at
-`pytcp/tests/integration/protocols/icmp4/test__icmp4__rx.py`,
+`packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__rx.py`,
 class `TestIcmp4Rx__SourceQuench__Rfc6633`. They exercise
 the full ICMPv4 RX path (Ethernet → IPv4 → ICMPv4) so a
 future change that re-introduces Source Quench at any

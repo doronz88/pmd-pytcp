@@ -23,12 +23,12 @@ deployment series tracked at `docs/refactor/ipv6_extension_headers_plan.md`.
 
 | Section | Topic                                              | Status      | Implementing commits / files |
 |---------|----------------------------------------------------|-------------|-------------------------------|
-| §4.1    | Extension-header chain order                       | shipped     | `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py` (`_phrx_ip6__walk_chain`) |
-| §4.2    | TLV options + action-on-unrecognized (00/01/10/11) | shipped     | `net_proto/protocols/ip6_hbh/options/ip6_hbh__options.py`, `net_proto/protocols/ip6_dest_opts/options/ip6_dest_opts__options.py` |
-| §4.3    | Hop-by-Hop Options Header                          | shipped     | `net_proto/protocols/ip6_hbh/` (full package) |
-| §4.4    | Routing Header                                     | shipped     | `net_proto/protocols/ip6_routing/` (full package) |
-| §4.5    | Fragment Header                                    | shipped     | `net_proto/protocols/ip6_frag/` (pre-existing) |
-| §4.6    | Destination Options Header                         | shipped     | `net_proto/protocols/ip6_dest_opts/` (full package) |
+| §4.1    | Extension-header chain order                       | shipped     | `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py` (`_phrx_ip6__walk_chain`) |
+| §4.2    | TLV options + action-on-unrecognized (00/01/10/11) | shipped     | `packages/net_proto/net_proto/protocols/ip6_hbh/options/ip6_hbh__options.py`, `packages/net_proto/net_proto/protocols/ip6_dest_opts/options/ip6_dest_opts__options.py` |
+| §4.3    | Hop-by-Hop Options Header                          | shipped     | `packages/net_proto/net_proto/protocols/ip6_hbh/` (full package) |
+| §4.4    | Routing Header                                     | shipped     | `packages/net_proto/net_proto/protocols/ip6_routing/` (full package) |
+| §4.5    | Fragment Header                                    | shipped     | `packages/net_proto/net_proto/protocols/ip6_frag/` (pre-existing) |
+| §4.6    | Destination Options Header                         | shipped     | `packages/net_proto/net_proto/protocols/ip6_dest_opts/` (full package) |
 | §4.7    | No Next Header                                     | shipped     | chain walker silent-drop branch |
 
 Header-content options shipped: Pad1 / PadN (RFC 8200 §4.2),
@@ -47,7 +47,7 @@ covered by the separate RFC 5095 audit.
 > Destination Options header (note 2), Upper-Layer header."
 
 **Adherence:** shipped. The chain walker in
-`pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
 (`_phrx_ip6__walk_chain`) walks the chain in the on-the-wire
 order. Order is enforced by the §4.3 HBH-must-be-first rule
 (below); other extension headers are processed in whatever
@@ -103,7 +103,7 @@ can plumb the multicast bit through cleanly.
 `Ip6DestOptsOptionPad1`, `Ip6DestOptsOptionPadN` — typed
 dataclasses for both extension headers. Wire-frame round-trip
 identity verified by
-`net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py`
+`packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py`
 and `..__option__padn.py` (and the matching `ip6_dest_opts`
 test files).
 
@@ -116,8 +116,8 @@ test files).
 > header."
 
 **Adherence:** shipped. `IpProto.IP6_HBH = 0` in
-`net_proto/lib/enums.py`. The full HBH package lives at
-`net_proto/protocols/ip6_hbh/` with header / base / parser /
+`packages/net_proto/net_proto/lib/enums.py`. The full HBH package lives at
+`packages/net_proto/net_proto/protocols/ip6_hbh/` with header / base / parser /
 assembler / errors / options-subdir following the canonical
 six-file shape.
 
@@ -150,7 +150,7 @@ Round-trip pinned by `test__ip6_hbh__parser__operation.py`.
 > of 43."
 
 **Adherence:** shipped. `IpProto.IP6_ROUTING = 43`. Full
-package at `net_proto/protocols/ip6_routing/`. The four
+package at `packages/net_proto/net_proto/protocols/ip6_routing/`. The four
 canonical wire fields (Next Header, Hdr Ext Len, Routing Type,
 Segments Left) are typed; type-specific data is preserved as
 opaque bytes (Phase-2-aware re-emission).
@@ -178,13 +178,13 @@ routing types with Segments Left > 0.
 
 **Adherence:** shipped. PyTCP has had IPv6 fragmentation
 reassembly since before the extension-header deployment.
-The Fragment header lives at `net_proto/protocols/ip6_frag/`
+The Fragment header lives at `packages/net_proto/net_proto/protocols/ip6_frag/`
 and is wired through the chain walker via the re-entry
 pattern in
-`pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`.
 
 Reassembly state lives in the shared `IpFragTable` at
-`pytcp/protocols/ip/ip_frag_table.py` (shared with the IPv4
+`packages/pytcp/pytcp/protocols/ip/ip_frag_table.py` (shared with the IPv4
 reassembly path so the RFC 3168 §5.3 ECN aggregator works
 identically for both families). The table enforces:
 
@@ -212,7 +212,7 @@ adherence records for the per-RFC walk-throughs.
 > of 60 in the immediately preceding header."
 
 **Adherence:** shipped. `IpProto.IP6_DEST_OPTS = 60`. Full
-package at `net_proto/protocols/ip6_dest_opts/` mirroring the
+package at `packages/net_proto/net_proto/protocols/ip6_dest_opts/` mirroring the
 HBH package layout — header / base / parser / assembler /
 errors plus options-subdir with Pad1, PadN, Unknown, and the
 Tunnel Encapsulation Limit (RFC 2473) option.
@@ -239,7 +239,7 @@ walker dispatches to nothing and returns; the trailing bytes
 are never read.
 
 Pinned by the integration test
-`pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__NoNextHeader::test__ip6__rx__no_next_header_silent_drop`.
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__NoNextHeader::test__ip6__rx__no_next_header_silent_drop`.
 
 ---
 
@@ -249,17 +249,17 @@ The §4 clauses above are pinned by the following test files:
 
 | Clause | Test file(s) |
 |--------|--------------|
-| §4.2 TLV format | `net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py`, `..__option__padn.py`, plus the `ip6_dest_opts` mirrors |
-| §4.2 action-on-unrecognized | `net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__options.py::TestIp6HbhOptionsValidateSanity` (full 00/01/10/11 unicast/11 multicast matrix) |
-| §4.3 HBH wire format | `net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__parser__operation.py` |
+| §4.2 TLV format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py`, `..__option__padn.py`, plus the `ip6_dest_opts` mirrors |
+| §4.2 action-on-unrecognized | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__options.py::TestIp6HbhOptionsValidateSanity` (full 00/01/10/11 unicast/11 multicast matrix) |
+| §4.3 HBH wire format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__parser__operation.py` |
 | §4.3 HBH must be first | (chain-walker enforcement; integration coverage tracked but not yet shipped) |
-| §4.4 Routing wire format | `net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` |
-| §4.5 Fragment | (pre-existing `net_proto/tests/unit/protocols/ip6_frag/`) |
-| §4.6 DestOpts wire format | `net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__parser__operation.py` |
-| §4.7 No Next Header | `pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__NoNextHeader` |
+| §4.4 Routing wire format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` |
+| §4.5 Fragment | (pre-existing `packages/net_proto/net_proto/tests/unit/protocols/ip6_frag/`) |
+| §4.6 DestOpts wire format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__parser__operation.py` |
+| §4.7 No Next Header | `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__NoNextHeader` |
 
 Chain-walker integration coverage:
-`pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py`
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py`
 covers HBH parse + dispatch, RH0 hard-drop (RFC 5095 §3),
 action-10 unrecognized-option Param Problem code 2 emission,
 and IP6_NO_NEXT_HEADER silent drop.

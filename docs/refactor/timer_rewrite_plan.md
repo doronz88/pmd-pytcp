@@ -4,9 +4,9 @@
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Status            | **SHIPPED** 2026-05-15 — Phase 0 `c0d1366f`, Phase 1 `b8350a76`, Phase 2 `cd567d1c`, Phase 3 `07eb6a7b`, Phase 4 `77753d59`, Phase 5 (this commit)                     |
 | Plan author       | Post-restructure timer-architecture review                                                                                                                           |
-| Source motivation | Current `pytcp/runtime/timer.py` uses a 1 ms tick-and-decrement loop with O(N)-per-tick scans and ~1000 idle-wakeups/sec. Six structural issues identified in review |
+| Source motivation | Current `packages/pytcp/pytcp/runtime/timer.py` uses a 1 ms tick-and-decrement loop with O(N)-per-tick scans and ~1000 idle-wakeups/sec. Six structural issues identified in review |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                             |
-| Touch points      | `pytcp/runtime/timer.py`, `pytcp/tests/lib/fake_timer.py`, `pytcp/tests/unit/runtime/test__runtime__timer.py`, ~25 consumer call-site rewrites in `pytcp/protocols/tcp/` + `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` |
+| Touch points      | `packages/pytcp/pytcp/runtime/timer.py`, `packages/pytcp/pytcp/tests/lib/fake_timer.py`, `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py`, ~25 consumer call-site rewrites in `packages/pytcp/pytcp/protocols/tcp/` + `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` |
 | Risk              | **Medium-High** — wide consumer surface (25+ call sites), test-harness behavior change (FakeTimer semantics shift), TCP integration tests rely on tick-by-tick `advance(ms=N)` semantics |
 | Phases            | 0 (decisions) → 1 (heap-based core w/ legacy shims) → 2 (FakeTimer rewrite) → 3 (consumer migration) → 4 (drop legacy shims) → 5 (docs + close-out)                  |
 
@@ -101,15 +101,15 @@ Grepped 2026-05-14 against `PyTCP_3_0__pre_release`:
 
 | Site | Form | Mapped to new API |
 |------|------|-------------------|
-| `pytcp/protocols/tcp/tcp__session.py:488` | `stack.timer.register_method(method=self.tcp_fsm, kwargs={"timer": True})` — default `delay=1`, `repeat_count=-1` (infinite) | `stack.timer.call_periodic(period_ms=1, method=self.tcp_fsm, kwargs={"timer": True})` — store handle on `self._tcp_fsm_handle` |
-| `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:1275` | `stack.timer.register_method(method=self._mld2_query__deferred_send, delay=delay_ms, repeat_count=0)` — one-shot | `stack.timer.call_later(delay_ms=delay_ms, method=self._mld2_query__deferred_send)` — store handle on `self._mld2_query__handle` |
+| `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:488` | `stack.timer.register_method(method=self.tcp_fsm, kwargs={"timer": True})` — default `delay=1`, `repeat_count=-1` (infinite) | `stack.timer.call_periodic(period_ms=1, method=self.tcp_fsm, kwargs={"timer": True})` — store handle on `self._tcp_fsm_handle` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:1275` | `stack.timer.register_method(method=self._mld2_query__deferred_send, delay=delay_ms, repeat_count=0)` — one-shot | `stack.timer.call_later(delay_ms=delay_ms, method=self._mld2_query__deferred_send)` — store handle on `self._mld2_query__handle` |
 
 ### 4.2 `unregister_method` (2 production callers)
 
 | Site | Migration |
 |------|-----------|
-| `pytcp/protocols/tcp/tcp__session.py:950` | `stack.timer.unregister_method(self.tcp_fsm)` → `stack.timer.cancel(self._tcp_fsm_handle)` |
-| `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:1271` | `stack.timer.unregister_method(self._mld2_query__deferred_send)` → `stack.timer.cancel(self._mld2_query__handle)` |
+| `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:950` | `stack.timer.unregister_method(self.tcp_fsm)` → `stack.timer.cancel(self._tcp_fsm_handle)` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:1271` | `stack.timer.unregister_method(self._mld2_query__deferred_send)` → `stack.timer.cancel(self._mld2_query__handle)` |
 
 ### 4.3 `register_timer` (20+ call sites in tcp__session + 4 fsm states)
 
@@ -127,13 +127,13 @@ follow-up track, out of scope for this plan.
 
 ### 4.4 `is_expired` (10+ call sites)
 
-All in `pytcp/protocols/tcp/tcp__session.py`. Same as 4.3
+All in `packages/pytcp/pytcp/protocols/tcp/tcp__session.py`. Same as 4.3
 — stays on the legacy API via shim.
 
 ### 4.5 `unregister_timers_with_prefix` (2 call sites)
 
-- `pytcp/protocols/tcp/tcp__session.py:939` (CLOSED transition)
-- `pytcp/protocols/tcp/tcp__session.py:1968` (cleanup)
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:939` (CLOSED transition)
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1968` (cleanup)
 
 Stays on legacy API via shim.
 
@@ -403,7 +403,7 @@ returns immediately (Event was set). Correct.
 
 ## 6. File-by-file changes
 
-### 6.1 `pytcp/runtime/timer.py` — rewrite
+### 6.1 `packages/pytcp/pytcp/runtime/timer.py` — rewrite
 
 Full replacement. Old `TimerTask` + tick-decrement logic
 deleted. New file:
@@ -419,7 +419,7 @@ deleted. New file:
 Line budget: ~250 lines including legacy shims, vs. ~260
 in the current file. Net neutral.
 
-### 6.2 `pytcp/tests/lib/fake_timer.py` — rewrite
+### 6.2 `packages/pytcp/pytcp/tests/lib/fake_timer.py` — rewrite
 
 Existing FakeTimer maintains parallel `_tasks` + `_timers`
 matching the legacy Timer's structure. New FakeTimer
@@ -447,7 +447,7 @@ it fires in the same `advance()` call. Match production
 behaviour (where the worker re-pops a 0-delay entry on
 the next loop iteration almost immediately).
 
-### 6.3 `pytcp/tests/unit/runtime/test__runtime__timer.py` — rewrite
+### 6.3 `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py` — rewrite
 
 Existing tests cover the old `TimerTask` tick logic, the
 old `_tasks` / `_timers` mutation paths, and the §7.2
@@ -476,7 +476,7 @@ Target: 100% line coverage on the new `timer.py` and full
 
 ### 6.4 Consumer migrations (Phase 3)
 
-**`pytcp/protocols/tcp/tcp__session.py`** — line 488 and
+**`packages/pytcp/pytcp/protocols/tcp/tcp__session.py`** — line 488 and
 line 950:
 ```python
 # OLD
@@ -492,7 +492,7 @@ self._tcp_fsm_handle = self.stack.timer.call_periodic(
 self.stack.timer.cancel(self._tcp_fsm_handle)
 ```
 
-**`pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`**
+**`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`**
 — line 1271 and 1275:
 ```python
 # OLD
@@ -514,7 +514,7 @@ self._mld2_query__handle = stack.timer.call_later(
 
 The 24+ `register_timer` / `is_expired` /
 `unregister_timers_with_prefix` call sites in
-`pytcp/protocols/tcp/` STAY on the legacy shim
+`packages/pytcp/pytcp/protocols/tcp/` STAY on the legacy shim
 through this plan. Migrating them to event-driven
 callbacks is a follow-up.
 
@@ -538,12 +538,12 @@ follows `unit_testing.md` §7 — opens with `Ensure ...` +
 trailing `Reference: PyTCP test infrastructure (no RFC clause).`
 line (every test in this domain is plumbing — no RFC clause
 applies). All file paths assume the canonical
-`pytcp/tests/unit/runtime/test__runtime__timer.py`.
+`packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py`.
 
 ### 6a.1 Tests to DELETE in Phase 1
 
 Currently 29 tests in
-`pytcp/tests/unit/runtime/test__runtime__timer.py` (post
+`packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py` (post
 commit `fd6db020`). The following 9 test `TimerTask`
 internals or dropped features:
 
@@ -691,7 +691,7 @@ the contract carefully.
 ### 6a.11 FakeTimer test plan (Phase 2)
 
 The FakeTimer rewrite lands its own test file at
-`pytcp/tests/unit/lib/test__lib__fake_timer.py`. Currently
+`packages/pytcp/pytcp/tests/unit/lib/test__lib__fake_timer.py`. Currently
 this file does not exist (FakeTimer's coverage is
 incidental, via TCP integration tests using
 `advance(ms=N)`). Phase 2 adds direct tests:
@@ -797,7 +797,7 @@ Per `unit_testing.md` §6a:
 
 ### 6a.14 Coverage target
 
-Phase 1 must land with `pytcp/runtime/timer.py` at 100%
+Phase 1 must land with `packages/pytcp/pytcp/runtime/timer.py` at 100%
 line coverage. Coverage is measured via:
 
 ```bash
@@ -809,7 +809,7 @@ coverage report -m
 If any line is uncovered, the corresponding test gap is
 a blocker for the Phase 1 commit.
 
-Phase 2 must land with `pytcp/tests/lib/fake_timer.py` at
+Phase 2 must land with `packages/pytcp/pytcp/tests/lib/fake_timer.py` at
 100% line coverage measured against the new
 `test__lib__fake_timer.py`.
 
@@ -843,7 +843,7 @@ no consumer needs `delay_exp` / `stop_condition` / finite
 
 ### Phase 1 — New core + legacy shims
 
-Rewrite `pytcp/runtime/timer.py` with:
+Rewrite `packages/pytcp/pytcp/runtime/timer.py` with:
 - New `Timer.call_later` / `.call_periodic` / `.cancel` /
   `.now_ms` (§5.4).
 - Legacy `register_method` / `register_timer` / `is_expired`
@@ -868,7 +868,7 @@ end-to-end tests since they exercise the shim contract.
 
 ### Phase 2 — FakeTimer rewrite
 
-Rewrite `pytcp/tests/lib/fake_timer.py` to:
+Rewrite `packages/pytcp/pytcp/tests/lib/fake_timer.py` to:
 - Maintain a heap matching the production Timer.
 - Expose both the new API (call_later/call_periodic/cancel)
   and the legacy shim API.
@@ -894,8 +894,8 @@ Migrate the 2 production `register_method` / `unregister_method`
 call sites to `call_periodic` / `call_later` / `cancel`
 (see §6.4):
 
-- `pytcp/protocols/tcp/tcp__session.py` — TCP FSM periodic.
-- `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` — TCP FSM periodic.
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
   — MLD2 one-shot.
 
 Add a `TimerHandle | None` instance attribute on each
@@ -950,7 +950,7 @@ Each phase MUST pass before commit:
    so the total drops by ~7. Phase 2 + 3 should not
    reduce the count further.
 3. §7.2 docstring audit on every new test file.
-4. Per-phase coverage check on `pytcp/runtime/timer.py`
+4. Per-phase coverage check on `packages/pytcp/pytcp/runtime/timer.py`
    stays at 100%.
 
 ## 9. Risks and mitigations
@@ -1048,7 +1048,7 @@ Read the entire plan first. Then proceed phase by phase:
   c0d1366f. (All phases SHIPPED 2026-05-15 — see the
   Status row at the top of this document for per-phase
   SHAs. This resumption prompt is retained for archaeology.)
-- Phase 1 next: rewrite pytcp/runtime/timer.py with the
+- Phase 1 next: rewrite packages/pytcp/pytcp/runtime/timer.py with the
   heap-based core (§5.1, §5.2) + the legacy shims (§5.5).
   Test work in Phase 1 is COMPLETELY SPECIFIED in §6a —
   follow it exactly. §6a.1 names the 9 tests to delete,
@@ -1069,13 +1069,13 @@ Read the entire plan first. Then proceed phase by phase:
   §6a.14 requires 100% line coverage on the rewritten
   timer.py. §6a.15 the §7.2 docstring audit (Reference:
   line, Ensure opener, no inline RFC citations).
-- Phase 2: rewrite pytcp/tests/lib/fake_timer.py to match
+- Phase 2: rewrite packages/pytcp/pytcp/tests/lib/fake_timer.py to match
   the production heap-based Timer (§6.2). CRITICAL: every
   TCP integration test calling fake_timer.advance(ms=N)
   must observe the same fire sequence as before. Run the
   full integration suite immediately after the FakeTimer
   commit and roll back if anything fails. Phase 2 also
-  adds a NEW pytcp/tests/unit/lib/test__lib__fake_timer.py
+  adds a NEW packages/pytcp/pytcp/tests/unit/lib/test__lib__fake_timer.py
   with 15 direct tests (currently FakeTimer's coverage
   is incidental via TCP integration tests); §6a.11 lists
   all 15 test names, intents, and key fixtures. The 100%
@@ -1141,17 +1141,17 @@ validation gates.
 
 ## 14. Cross-references
 
-- `pytcp/runtime/timer.py` — current implementation.
-- `pytcp/tests/unit/runtime/test__runtime__timer.py` —
+- `packages/pytcp/pytcp/runtime/timer.py` — current implementation.
+- `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py` —
   current tests (29 methods after commit fd6db020).
-- `pytcp/tests/lib/fake_timer.py` — current FakeTimer.
-- `pytcp/runtime/subsystem.py` — the `Subsystem` base;
+- `packages/pytcp/pytcp/tests/lib/fake_timer.py` — current FakeTimer.
+- `packages/pytcp/pytcp/runtime/subsystem.py` — the `Subsystem` base;
   unchanged by this plan. The `start()` / `stop()`
   lifecycle and the `_subsystem_loop()` abstract method
   are the contract `Timer` implements.
 - `docs/refactor/pytcp_directory_restructure.md` — the
   recently-completed restructure; established the
-  `pytcp/runtime/` namespace this plan operates in.
+  `packages/pytcp/pytcp/runtime/` namespace this plan operates in.
 - `unit_testing.md` §7 / §7.2 — the docstring audit
   pattern every new test must satisfy.
 - `.claude/rules/pytcp.md` §3 — the `Subsystem`

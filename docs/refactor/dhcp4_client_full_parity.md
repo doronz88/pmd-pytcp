@@ -6,7 +6,7 @@
 | Plan author     | Audit pass (2026-05-11)                              |
 | Source audit    | `docs/rfc/dhcp4/rfcXXXX__*/adherence.md` (11 records)|
 | Target branch   | `PyTCP_3_0__pre_release`                             |
-| Touch points    | `pytcp/protocols/dhcp4/dhcp4__client.py`, `net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
+| Touch points    | `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`, `packages/net_proto/net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
 
 This document is the implementation plan for taking
 PyTCP's minimal one-shot DHCPv4 client to full Linux
@@ -23,7 +23,7 @@ analysis across 11 RFCs).
 
 ## 1. Goal
 
-Bring `pytcp/protocols/dhcp4/dhcp4__client.py` (229 lines, linear
+Bring `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (229 lines, linear
 DISCOVER → OFFER → REQUEST → ACK) into compliance with
 the dominant client-relevant DHCPv4 RFCs (2131, 2132,
 4361, 3442, 4436, 6842) and partial compliance with the
@@ -124,13 +124,13 @@ run without the next.
 ### Phase 0 — Quick wins (1 commit; ~1 hour)
 
 Five tiny fixes, each gated by a single-file change in
-`pytcp/protocols/dhcp4/dhcp4__client.py` plus minimal additions to
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` plus minimal additions to
 the options accessor.
 
 **0.1 Client Identifier in REQUEST** (RFC 2131 §2 MUST)
 
 ```python
-# pytcp/protocols/dhcp4/dhcp4__client.py — _send_request, ~line 195
+# packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py — _send_request, ~line 195
 Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address)),
 ```
 
@@ -147,7 +147,7 @@ if dhcp4_packet_rx.xid != xid:
 **0.3 CID echo validation** (RFC 6842 §3 MUST)
 
 Add `client_id` accessor to `Dhcp4Options`
-(`net_proto/protocols/dhcp4/options/dhcp4__options.py`)
+(`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`)
 mirroring `server_id` / `subnet_mask` etc.
 
 Then in `_recv_offer` / `_recv_ack`:
@@ -191,10 +191,10 @@ class Dhcp4Lease:
 
 `Dhcp4Client.fetch()` returns `Dhcp4Lease | None`
 instead of `Ip4IfAddr | None`. Update the one call site
-in `pytcp/runtime/packet_handler/__init__.py` to read
+in `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` to read
 `lease.ip4_host`.
 
-**Tests** (extend `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`):
+**Tests** (extend `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`):
 
 - CID present in REQUEST.
 - Wrong-xid OFFER silently dropped.
@@ -324,7 +324,7 @@ DAD-verified inside `Dhcp4Client.fetch()`).
 
 ### Phase 3 — DUID / IAID Client Identifier (RFC 4361) (1 commit; ~4 hours)
 
-**3.1 New helper** `pytcp/lib/dhcp_uid.py`:
+**3.1 New helper** `packages/pytcp/pytcp/lib/dhcp_uid.py`:
 
 ```python
 class DhcpUniqueIdentifier:
@@ -387,7 +387,7 @@ diagram.
 
 **4.1 `Dhcp4Lifecycle(Subsystem)` skeleton**
 
-New file `pytcp/lib/dhcp4_lifecycle.py`:
+New file `packages/pytcp/pytcp/lib/dhcp4_lifecycle.py`:
 
 ```python
 class Dhcp4State(Enum):
@@ -484,7 +484,7 @@ Introduce a minimal Phase-1 address-API stub that the
 DHCP client is the first consumer of:
 
 ```python
-# pytcp/stack/address.py — NEW
+# packages/pytcp/pytcp/stack/address.py — NEW
 class Ip4AddressApi:
     """
     Phase-1 IPv4 address-control surface. Mirrors Linux
@@ -640,7 +640,7 @@ dhcpcd's per-lease route-tracking list.
   THEN `remove_ifaddr` + abort.
 
 **Tests for §4.4 (extended):** new integration
-harness `pytcp/tests/lib/dhcp4_testcase.py`:
+harness `packages/pytcp/pytcp/tests/lib/dhcp4_testcase.py`:
 
 - Boot path: stub server replies → BOUND.
 - T1 fires → RENEWING → unicast REQUEST → BOUND
@@ -658,7 +658,7 @@ note about the Linux deviation.
 **5.1 Cached lease persistence**
 
 New sysctl `dhcp.lease_cache_path` (default
-`/var/lib/pytcp/dhcp4_lease` or in-memory if empty).
+`/var/lib/packages/pytcp/pytcp/dhcp4_lease` or in-memory if empty).
 On successful BOUND, the lifecycle serialises the
 lease (IP, mask, gateway, server-id, lease-time,
 acquired-at) to the cache file. On boot, the cache
@@ -716,7 +716,7 @@ arrives.
 
 Requires ARP cache to support unicast probe emission
 (currently only broadcast — single function addition
-to `pytcp/protocols/arp/arp__cache.py`).
+to `packages/pytcp/pytcp/protocols/arp/arp__cache.py`).
 
 **New sysctl:** `dhcp.dnav4` (default 1; set 0 to
 disable).
@@ -735,7 +735,7 @@ PyTCP's `Ip4IfAddr` carries a single gateway field; a
 real routing table is needed for multiple routes.
 
 **7.1 Wire codec** — `Dhcp4OptionClasslessStaticRoute`
-at `net_proto/protocols/dhcp4/options/`. Compact
+at `packages/net_proto/net_proto/protocols/dhcp4/options/`. Compact
 encoding per RFC 3442 ("Destination descriptors
 describe..."): width byte + significant octets + 4-byte
 router.
@@ -843,42 +843,42 @@ invocation per knob, classify as policy.
 
 ### New source files
 
-- `pytcp/stack/address.py` (Phase 4) —
+- `packages/pytcp/pytcp/stack/address.py` (Phase 4) —
   `Ip4AddressApi` (and `Ip6AddressApi` skeleton for
   symmetry); the Phase-3 north-star address-control
   surface. DHCP client is the first consumer; future
   operator-config code (manual `ip addr add`-like
   surfaces) layers on top.
-- `pytcp/lib/route_api.py` (Phase 7 prereq) —
+- `packages/pytcp/pytcp/lib/route_api.py` (Phase 7 prereq) —
   `Ip4RouteApi` mirroring `RTM_NEWROUTE` /
   `RTM_DELROUTE`. Phase 4 uses
   `Ip4AddressApi`-implicit single-gateway only; Phase 7
   introduces N-route tracking.
-- `pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
+- `packages/pytcp/pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
   `Dhcp4Lifecycle(Subsystem)` FSM. Consumes
   `stack.address` exclusively; never touches
   `_ip4_ifaddr` directly.
-- `pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
-- `pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
+- `packages/pytcp/pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
+- `packages/pytcp/pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
   serialised lease cache.
-- `net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
   (Phase 7).
-- `net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
   (Phase 9, deferred).
-- `net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`
   (Phase 8).
-- `pytcp/lib/dhcp4_constants.py` — sysctl-backed
+- `packages/pytcp/pytcp/lib/dhcp4_constants.py` — sysctl-backed
   policy constants (per `pytcp.md` §2).
 
 ### Touched source files
 
-- `pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
   8) — every phase.
-- `pytcp/runtime/packet_handler/__init__.py` (Phase 4,
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` (Phase 4,
   5) — replace `_create_stack_ip4_addressing` DHCP
   block with `dhcp4_lifecycle` integration; harness
   snapshot/restore.
-- `pytcp/stack/__init__.py` (Phase 4) — add
+- `packages/pytcp/pytcp/stack/__init__.py` (Phase 4) — add
   `stack.address: Ip4AddressApi` and
   `stack.dhcp4_lifecycle: Dhcp4Lifecycle` singletons;
   update `stack.init()`, `stack.start()`,
@@ -886,42 +886,42 @@ invocation per knob, classify as policy.
   contract (`integration_testing.md` §5.4 — any new
   module-level state requires snapshot/restore in
   `NetworkTestCase` setUp/tearDown).
-- `net_proto/protocols/dhcp4/options/dhcp4__option.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option.py`
   (Phase 7) — extend `Dhcp4OptionType` enum.
-- `net_proto/protocols/dhcp4/options/dhcp4__options.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`
   (Phase 0.3, 7, 8) — new accessors: `client_id`,
   `classless_static_routes`, etc.
-- `pytcp/protocols/arp/arp__cache.py` (Phase 6) —
+- `packages/pytcp/pytcp/protocols/arp/arp__cache.py` (Phase 6) —
   unicast ARP Request emission for DNAv4 probe.
-- `pytcp/stack/sysctl.py` registry — populated via the
+- `packages/pytcp/pytcp/stack/sysctl.py` registry — populated via the
   `sysctl_knob` skill per Phase.
 
 ### New test files
 
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__fsm.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__fsm.py`
   (Phase 4) — full FSM state-by-state.
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__retransmission.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__retransmission.py`
   (Phase 1).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__decline.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__decline.py`
   (Phase 2).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__init_reboot.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__init_reboot.py`
   (Phase 5).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__dnav4.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__dnav4.py`
   (Phase 6).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__classless_routes.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__classless_routes.py`
   (Phase 7).
-- `pytcp/tests/unit/lib/test__lib__dhcp_uid.py` (Phase 3).
-- `pytcp/tests/unit/lib/test__lib__dhcp4_lease_cache.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp_uid.py` (Phase 3).
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_lease_cache.py`
   (Phase 5).
-- `pytcp/tests/lib/dhcp4_testcase.py` (Phase 4) — new
+- `packages/pytcp/pytcp/tests/lib/dhcp4_testcase.py` (Phase 4) — new
   integration test harness extending `NetworkTestCase`
   with stub server + FakeTimer + lease helpers.
 
 ### Touched test files
 
-- `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   (Phases 0, 1, 2, 3) — extend with new contract tests.
-- `pytcp/tests/lib/network_testcase.py` (Phase 4) —
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py` (Phase 4) —
   snapshot/restore `stack.dhcp4_lifecycle` per the
   `integration_testing.md` §5.4 contract.
 
@@ -934,7 +934,7 @@ re-confirm with the user before implementing the
 relevant phase.
 
 1. **Lease cache storage format.** JSON in
-   `/var/lib/pytcp/dhcp4_lease`? Or a small sysctl-
+   `/var/lib/packages/pytcp/pytcp/dhcp4_lease`? Or a small sysctl-
    serialised blob? Phase 5.
 2. **DUID flavour.** RFC 3315 lists DUID-LL, DUID-LLT,
    DUID-UUID. Plan defaults to DUID-LL (link-layer);
@@ -998,7 +998,7 @@ relevant phase.
 The wire-format library already has ~8 900 unit-test
 lines. The plan does not add to that; instead, every
 phase adds **integration tests** under
-`pytcp/tests/integration/protocols/dhcp4/` exercising
+`packages/pytcp/pytcp/tests/integration/protocols/dhcp4/` exercising
 the client end-to-end via the new
 `Dhcp4TestCase` harness (Phase 4 prerequisite).
 

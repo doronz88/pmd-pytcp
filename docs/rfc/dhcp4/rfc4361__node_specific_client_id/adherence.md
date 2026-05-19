@@ -13,14 +13,14 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 4361. The audit was performed by reading
 the RFC text fresh and inspecting the codebase under
-`pytcp/` and `net_proto/` directly.
+`packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 4361 modernises the DHCPv4 Client Identifier (option
 61) by mandating a DUID + IAID construction (matching
 DHCPv6 / RFC 3315) instead of the RFC 2131 legacy
 hardware-address form. **PyTCP uses the legacy
 MAC-based form** (`b"\x01" + bytes(mac_address)`) at
-`pytcp/protocols/dhcp4/dhcp4__client.py:141` —
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:141` —
 RFC 4361's MUST clauses are not implemented.
 
 Sections without normative content (§1 Introduction, §2
@@ -45,7 +45,7 @@ References, §12 Author's Addresses) are omitted.
 
 **Adherence:** met (Phase 3). PyTCP emits the RFC 4361
 type-0xff Client Identifier (type byte 0xff + 4-byte
-IAID + DUID-LL) via 'pytcp/lib/dhcp_uid.build_client_id',
+IAID + DUID-LL) via 'packages/pytcp/pytcp/lib/dhcp_uid.build_client_id',
 called from 'Dhcp4Client._expected_client_id'
 (now a property that re-resolves on every emission so
 operator overrides of 'dhcp.duid' take effect
@@ -58,7 +58,7 @@ gone.
 >  Unique Identifier, as defined in section 9 of
 >  RFC 3315."
 
-**Adherence:** met (Phase 3). 'pytcp/lib/dhcp_uid.py'
+**Adherence:** met (Phase 3). 'packages/pytcp/pytcp/lib/dhcp_uid.py'
 provides 'build_duid_ll' (RFC 3315 §9.4 — 2-byte
 type=3 + 2-byte hardware-type=1 + 6-byte MAC =
 10 bytes for Ethernet), 'get_iaid' (RFC 3315 §10 —
@@ -176,20 +176,20 @@ RFC 2131 §9.14 form is no longer emitted.
 
 ### §6.1 / §6.4 / §6.5 — DUID-based Client Identifier (Phase 3)
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp_uid.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp_uid.py`
   — DUID-LL wire format (10 bytes = 2-byte type-3 +
   2-byte hardware-type-1 + 6-byte MAC), IAID encoding
   (4-byte big-endian), RFC 4361 Client Identifier
   layout (1+4+10 = 15 bytes), MAC-derived fallback,
   sysctl-override precedence (compact + colon-separated
   hex), stability across successive calls.
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchRfc4361Cid`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchRfc4361Cid`
   — every DISCOVER and REQUEST carries the RFC 4361
   form; operator override of 'dhcp.duid' propagates
   through to the emitted CID; two consecutive fetches
   emit byte-identical CIDs; a server echoing the legacy
   type-0x01 form fails RFC 6842 echo validation.
-- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — 'dhcp.duid' default empty, accepts compact +
   colon-separated hex, rejects non-hex / odd-length /
   non-string.
@@ -233,8 +233,8 @@ file-backed persistence is folded into Phase 5
 (cached-lease persistence).
 
 The fix delivered in Phase 3 was a single-file change in
-the client plus the new 'pytcp/lib/dhcp_uid.py' helper;
+the client plus the new 'packages/pytcp/pytcp/lib/dhcp_uid.py' helper;
 the wire-format codec (`Dhcp4OptionClientId` at
-`net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`)
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`)
 already accepted arbitrary bytes, so no codec change was
 required.

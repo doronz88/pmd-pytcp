@@ -55,7 +55,7 @@ stack.route.set_default_gateway(version=IpVersion.IP4, gateway=Ip4Address(...))
 ```
 
 The `Ip4Route` / `Ip6Route` value types are not designed
-yet; they will live in `net_addr/` alongside `Ip4IfAddr` /
+yet; they will live in `packages/net_addr/net_addr/` alongside `Ip4IfAddr` /
 `Ip6IfAddr`.
 
 ## Linux equivalents the API needs to cover

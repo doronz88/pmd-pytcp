@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how
 the current PyTCP codebase relates to each normative
 statement in RFC 9406. The audit was performed by
 reading the RFC text fresh and inspecting the
-codebase under `pytcp/protocols/tcp/` directly; no
+codebase under `packages/pytcp/pytcp/protocols/tcp/` directly; no
 prior memory or rule-file content was reused.
 Sections without normative content (Abstract, §1
 Introduction, §2 Terminology, §3 Definitions, §5
@@ -29,7 +29,7 @@ IANA, §8 References, Acknowledgments) are omitted.
 > to SND.NXT. When windowEnd is ACKed, the current
 > round ends and windowEnd is set to SND.NXT."
 
-**Adherence:** met. `pytcp/protocols/tcp/tcp__session.py`
+**Adherence:** met. `packages/pytcp/pytcp/protocols/tcp/tcp__session.py`
 maintains `_hystart_state.window_end_seq` (a Seq32
 field on the `HyStartState` dataclass). The session's
 cum-ACK branch in `_process_ack_packet` bootstraps
@@ -141,7 +141,7 @@ sets `self._ssthresh = self._cwnd` and calls
 > L = infinity if paced, L = 8 if non-paced"
 
 **Adherence:** met. The §4.3 RECOMMENDED constants
-are encoded in `pytcp/protocols/tcp/tcp__hystart.py`
+are encoded in `packages/pytcp/pytcp/protocols/tcp/tcp__hystart.py`
 as module-level integers:
 `HYSTART__MIN_RTT_THRESH_MS = 4`,
 `HYSTART__MAX_RTT_THRESH_MS = 16`,
@@ -162,7 +162,7 @@ this audit covers).
 ### §4.2 algorithm helpers
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__hystart.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__hystart.py`
   contains 22 tests covering every helper in
   `tcp__hystart.py`: the §4.3 constants, the
   `rtt_thresh_ms` clamp formula across small / mid /
@@ -180,7 +180,7 @@ this audit covers).
 ### §4.2 session integration
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__hystart.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__hystart.py`
   contains 5 tests pinning the session-level wiring:
   - `test__hystart__initial_state_is_slow_start` —
     post-handshake state is in slow-start, no CSS,

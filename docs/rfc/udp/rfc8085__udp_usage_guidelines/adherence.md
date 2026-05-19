@@ -97,7 +97,7 @@ but the stack's job is to expose PMTU.
   [RFC 8201 audit](../../ip6/rfc8201__pmtud_ip6/adherence.md).
 - **DF=1 on outbound UDP IPv4:** the UDP TX path sets
   `ip4__flag_df=True` at
-  `pytcp/runtime/packet_handler/packet_handler__udp__tx.py:124-132`,
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__tx.py:124-132`,
   which forces ICMP-Frag-Needed feedback rather than
   silent in-network fragmentation.
 - **PLPMTUD (RFC 8899) for UDP:** not implemented; a
@@ -133,7 +133,7 @@ would make it not-UDP).
 >  use, by setting a zero checksum value."
 
 **Adherence:** met. PyTCP's assembler at
-`net_proto/protocols/udp/udp__assembler.py:79-83`
+`packages/net_proto/net_proto/protocols/udp/udp__assembler.py:79-83`
 unconditionally computes the checksum. There is no socket
 option to disable UDP cksum on TX. The "applications
 SHOULD enable" is therefore satisfied by construction —
@@ -148,7 +148,7 @@ zero-cksum-mode escape hatch (which the next subsection
 RFC 8085 §3.4.1 would allow for tunnel protocols).
 
 On RX side: PyTCP's parser at
-`net_proto/protocols/udp/udp__parser.py` distinguishes
+`packages/net_proto/net_proto/protocols/udp/udp__parser.py` distinguishes
 IPv4 (RFC 768 cksum=0 means "no cksum"; accept) from
 IPv6 (RFC 8200 §8.1 / RFC 6935 §5 default-discard;
 raise `UdpZeroCksumIp6Error` + bump
@@ -240,7 +240,7 @@ multicast / IPv6 ND / MLDv2 audits.
 **Adherence:** **not met (TX default)**.
 
 The assembler at
-`net_proto/protocols/udp/udp__assembler.py:50-71`
+`packages/net_proto/net_proto/protocols/udp/udp__assembler.py:50-71`
 defaults `udp__sport=0`. The UDP TX path
 (`packet_handler__udp__tx.py:101-106`) does NOT impose a
 non-zero source port — it passes whatever the caller
@@ -251,7 +251,7 @@ datagram with `sport=0`, violating §5.1's SHOULD NOT.
 The **BSD socket facade saves this in practice**: when
 an application uses `socket.sendto(...)` on an unbound
 socket, the socket layer calls `pick_local_port()`
-(`pytcp/socket/udp__socket.py:266`) to assign an
+(`packages/pytcp/pytcp/socket/udp__socket.py:266`) to assign an
 ephemeral port. So end-user UDP traffic goes out with
 sport != 0. But the bare `_phtx_udp` API allows the
 violation — internal stack callers must remember to set
@@ -272,7 +272,7 @@ on port 0." The SHOULD NOT is honoured.
 >  technique."
 
 **Adherence:** met (Phase-1 fix). PyTCP's
-`pick_local_port()` at `pytcp/socket/socket__bind_helpers.py:140-163`
+`pick_local_port()` at `packages/pytcp/pytcp/socket/socket__bind_helpers.py:140-163`
 draws from a Linux-parity ephemeral range
 (`range(32768, 61000)` — 28,232 ports) via
 `secrets.choice`, satisfying both RFC 6056 §3.1 (CSPRNG
@@ -323,9 +323,9 @@ state aggregation — all app concerns.
 
 **Stack obligation (UDP layer passes ICMP errors up):**
 met. The classifier at
-`pytcp/protocols/icmp/icmp__inbound_classifier.py` plus
+`packages/pytcp/pytcp/protocols/icmp/icmp__inbound_classifier.py` plus
 the per-socket `notify_*` callbacks
-(`pytcp/socket/udp__socket.py:519-553`) deliver ICMP
+(`packages/pytcp/pytcp/socket/udp__socket.py:519-553`) deliver ICMP
 errors to the matching UDP socket via the embedded-
 datagram 4-tuple. This is documented in the
 [RFC 1122 §4.1 audit](../rfc1122__host_requirements_udp/adherence.md)
@@ -359,7 +359,7 @@ audits — this section enumerates the cross-references.
 | §5.1    | Sender SHOULD NOT use sport=0                | gap — see [RFC 6056 audit](../rfc6056__port_randomization/adherence.md) (task #572) |
 | §5.1    | Randomized source port                       | gap — see RFC 6056 audit (task #572) |
 | §5.1.1  | IPv6 Flow Label set                          | [RFC 6437 audit](../../ip6/rfc6437__flow_label/adherence.md); `test__ip6__rfc6437_flow_label.py` |
-| §5.2    | UDP layer passes ICMP errors up              | [RFC 1122 §4.1 audit](../rfc1122__host_requirements_udp/adherence.md) §4.1.3.3; `pytcp/tests/unit/socket/test__socket__udp__socket.py` |
+| §5.2    | UDP layer passes ICMP errors up              | [RFC 1122 §4.1 audit](../rfc1122__host_requirements_udp/adherence.md) §4.1.3.3; `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py` |
 
 This audit's own test surface is **n/a** — RFC 8085 is
 guidance, not protocol behaviour. No standalone tests

@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 5562. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §2
 Conventions, §4–§9 discussion / related work /
@@ -35,7 +35,7 @@ Appendices) are omitted.
 
 **Adherence:** not implemented. PyTCP's outbound IP
 ECN codepoint at
-`pytcp/protocols/tcp/tcp__session.py:1500`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1500`:
 
 ```python
 ip__ecn = 2 if (self._ecn_enabled and data) else 0

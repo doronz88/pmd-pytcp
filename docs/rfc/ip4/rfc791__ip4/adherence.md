@@ -13,8 +13,8 @@ This document records the PyTCP codebase's adherence to RFC 791
 §3.1 (Internet Header Format) and the immediately related
 algorithmic sections (§3.2 Fragmentation discussion). The audit
 was performed by reading the RFC text fresh and inspecting the
-codebase under `net_proto/protocols/ip4/` and
-`pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
+codebase under `packages/net_proto/net_proto/protocols/ip4/` and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
 no prior memory or rule-file content was reused. Sections that
 contain no normative wire-format / algorithm content
 (§1 Introduction, §2 Overview, §3.3 Interfaces process-level
@@ -38,11 +38,11 @@ forwarding is Phase 2.
 
 | Section | Topic                              | Status      | Implementing file(s) |
 |---------|------------------------------------|-------------|----------------------|
-| §3.1    | Header format / each wire field    | shipped     | `net_proto/protocols/ip4/ip4__header.py` |
-| §3.1    | Header checksum                    | shipped     | `net_proto/lib/inet_cksum.py` + `ip4__parser.py:108` / `ip4__assembler.py:118` |
-| §3.1    | Options framework + nine options   | shipped     | `net_proto/protocols/ip4/options/` (10 files) |
-| §3.2    | Fragmentation on send              | shipped     | `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:179-208` |
-| §3.2    | Reassembly on receive              | shipped     | `pytcp/protocols/ip/ip_frag.py`, `ip_frag_table.py`, plus RFC 815 audit |
+| §3.1    | Header format / each wire field    | shipped     | `packages/net_proto/net_proto/protocols/ip4/ip4__header.py` |
+| §3.1    | Header checksum                    | shipped     | `packages/net_proto/net_proto/lib/inet_cksum.py` + `ip4__parser.py:108` / `ip4__assembler.py:118` |
+| §3.1    | Options framework + nine options   | shipped     | `packages/net_proto/net_proto/protocols/ip4/options/` (10 files) |
+| §3.2    | Fragmentation on send              | shipped     | `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:179-208` |
+| §3.2    | Reassembly on receive              | shipped     | `packages/pytcp/pytcp/protocols/ip/ip_frag.py`, `ip_frag_table.py`, plus RFC 815 audit |
 | §3.2    | TTL decrement / TTL=0 drop         | partial     | RX enforces `ttl > 0`; forwarding decrement is Phase 2 |
 | Appendix B | Network byte order              | shipped     | `struct` format strings prefixed `! `                |
 
@@ -55,7 +55,7 @@ forwarding is Phase 2.
 
 **Adherence:** shipped. `Ip4Header.ver` is a non-init `IpVersion`
 field pinned to `IpVersion.IP4`
-(`net_proto/protocols/ip4/ip4__header.py:93-97`). The parser
+(`packages/net_proto/net_proto/protocols/ip4/ip4__header.py:93-97`). The parser
 rejects any frame whose first nibble is not 4 at integrity
 (`ip4__parser.py:94-97`).
 
@@ -188,7 +188,7 @@ land with the router track.
 > protocol used in the data portion of the internet datagram."
 
 **Adherence:** shipped. `Ip4Header.proto: IpProto` is a typed
-enum (`net_proto/lib/enums.py::IpProto`). RX dispatches via
+enum (`packages/net_proto/net_proto/lib/enums.py::IpProto`). RX dispatches via
 `match packet_rx.ip4.proto` to the per-protocol handler
 (`packet_handler__ip4__rx.py:198-211`); unknown protocols are
 dropped and trigger an ICMPv4 Destination Unreachable code 2
@@ -204,7 +204,7 @@ gates and the error rate limiter (lines 213-256).
 > one's complement sum of all 16 bit words in the header."
 
 **Adherence:** shipped. `inet_cksum` is implemented in
-`net_proto/lib/inet_cksum.py` as the canonical one's-complement
+`packages/net_proto/net_proto/lib/inet_cksum.py` as the canonical one's-complement
 sum. RX integrity check rejects any header where
 `inet_cksum(self._frame[:hlen])` evaluates to non-zero
 (`ip4__parser.py:108-111`). TX path injects the freshly-
@@ -218,7 +218,7 @@ rewrite).
 > "Source Address: 32 bits. ... Destination Address: 32 bits."
 
 **Adherence:** shipped. Both stored as `Ip4Address` value-type
-instances (`net_addr/ip4_address.py`); the parser's
+instances (`packages/net_addr/net_addr/ip4_address.py`); the parser's
 `from_buffer` constructs them via the integer constructor
 form (`ip4__header.py:228-229`).
 
@@ -244,7 +244,7 @@ for src=0.0.0.0 (lines 322-338).
 > option-data octets."
 
 **Adherence:** shipped. The `Ip4Options` container at
-`net_proto/protocols/ip4/options/ip4__options.py` parses the
+`packages/net_proto/net_proto/protocols/ip4/options/ip4__options.py` parses the
 TLV stream into a typed object per option, then exposes
 typed accessors (`options.lsrr`, `options.ssrr`,
 `options.router_alert`, etc.). Per-option files cover each
@@ -271,7 +271,7 @@ first fragment carries the full original options and every
 subsequent fragment carries only the copy_flag=1 subset
 (`options.with_copy_flag(True)` padded to a 4-byte boundary
 with NOPs). The `Ip4Option.copy_flag` property in
-`net_proto/protocols/ip4/options/ip4__option.py` extracts
+`packages/net_proto/net_proto/protocols/ip4/options/ip4__option.py` extracts
 bit 7 of the option-type byte. RX reassembly preserves the
 first fragment's full options per RFC 815 §6 — see the
 RFC 815 audit's §6 entry.
@@ -383,7 +383,7 @@ ICMPv4-Frag-Needed feedback path is audited under RFC 1191.
 
 **Adherence:** shipped, audited separately. The four-tuple
 flow key is encoded as `IpFragFlowId(src, dst, id, proto)` in
-`pytcp/protocols/ip/ip_frag.py`; the reassembly state machine
+`packages/pytcp/pytcp/protocols/ip/ip_frag.py`; the reassembly state machine
 (timer, oversize handling, overlap rejection) is audited
 under RFC 815 (`docs/rfc/ip4/rfc815__ip4_reassembly/adherence.md`).
 
@@ -406,12 +406,12 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Header wire format
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   Constructor boundary asserts on every field (under_min /
   over_max for integer fields, type-mismatch for `flag_df` /
   `flag_mf` / `proto` / `src` / `dst`).
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
   Parametrised round-trip matrix covering minimum and
   maximum values for every field plus typical configurations.
 
@@ -420,7 +420,7 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Parser integrity (frame too short, wrong version, hlen/plen, checksum)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
   Per-branch matrix raising `Ip4IntegrityError` for each
   integrity rule (frame too short, version != 4,
   `hlen < 20` / `hlen > plen` / `plen > len(frame)`, bad
@@ -431,11 +431,11 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Parser sanity (TTL=0, src multicast/reserved/broadcast, DF+MF / DF+offset)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
   Each `Ip4SanityError` branch covered with its expected
   `pointer` value.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   exercises the ICMPv4 Parameter Problem emission gates and
   rate limiter behaviour.
 
@@ -444,7 +444,7 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Header checksum
 
 - **Unit:**
-  `net_proto/tests/unit/lib/test__lib__inet_cksum.py`
+  `packages/net_proto/net_proto/tests/unit/lib/test__lib__inet_cksum.py`
   one's-complement algorithm against RFC 1071 sample vectors.
 - **Integration:** every `Ip4Parser` happy-path round-trip
   test implicitly verifies checksum acceptance and rejection.
@@ -454,13 +454,13 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Options framework
 
 - **Unit:** one file per option:
-  `net_proto/tests/unit/protocols/ip4/options/test__ip4__option__{eol,nop,rr,lsrr,ssrr,timestamp,router_alert,cipso,unknown}.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__option__{eol,nop,rr,lsrr,ssrr,timestamp,router_alert,cipso,unknown}.py`
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/options/test__ip4__options.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__options.py`
   Container composition + integrity (max length, padding,
   alignment).
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   exercises the `IP4__ACCEPT_SOURCE_ROUTE` gate (LSRR / SSRR
   drop matrix with and without the override).
 
@@ -469,7 +469,7 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.2 Fragmentation on send
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   contains a fragmentation matrix (DF=0 over MTU produces
   the expected fragment chain; DF=1 over MTU drops with the
   documented counter).
@@ -488,10 +488,10 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 TTL host enforcement
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
   case.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   covers ICMPv4 Parameter Problem emission with `pointer=8`.
 
 **Status:** locked in.
@@ -499,7 +499,7 @@ octet field in PyTCP wire codecs is network-order.
 ### TX source-address selection (Linux-parallel RFC 6724 application)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
   Rule-by-rule selection matrix.
 
 **Status:** locked in.
@@ -507,16 +507,16 @@ octet field in PyTCP wire codecs is network-order.
 ### §3.1 Options — copy-flag on fragmentation
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__options.py::TestIp4OptionCopyFlag`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__options.py::TestIp4OptionCopyFlag`
   (10 cases — every defined option type plus unknown high-
   bit-set / clear), `TestIp4OptionsWithCopyFlag` (4 cases —
   copy_flag=True / False filter, empty input, non-mutating).
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation`
   (3 cases — mixed copy-flag fragmentation, copy_flag=0
   only, no-options regression).
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
   (2 cases — options preserved on reassembly, no-options
   regression).
 

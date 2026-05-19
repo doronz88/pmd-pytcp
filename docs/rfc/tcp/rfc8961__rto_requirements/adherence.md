@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 8961. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 §2 Context, §3 Scope statements (S.1)–(S.4), §5
@@ -37,7 +37,7 @@ that PyTCP's RTO meets the §4 BCP requirements.
 
 **Adherence:** met. The RTO module defines
 `INITIAL_RTO_MS = 1000`
-(`pytcp/protocols/tcp/tcp__rto.py:66`) with an inline
+(`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:66`) with an inline
 citation of both RFC 6298 §2.1 and RFC 8961. The
 `initial_state()` factory at line 115 returns
 `RtoState(srtt_ms=None, rttvar_ms=None,
@@ -57,7 +57,7 @@ either.
 > 'smoothed RTT'."
 
 **Adherence:** met. The `update()` function at
-`pytcp/protocols/tcp/tcp__rto.py:126-157` implements
+`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:126-157` implements
 the canonical RFC 6298 §2.3 EWMA:
 
 ```python
@@ -83,7 +83,7 @@ explicitly endorses this stronger form.
 **Adherence:** met. PyTCP samples once per RTT via the
 `_rtt_sample_seq` / `_rtt_sample_send_time_ms` /
 `_rtt_sample_retransmitted` triple
-(`pytcp/protocols/tcp/tcp__session.py:570-586`). When
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:570-586`). When
 RFC 7323 timestamps are bilateral, the more aggressive
 once-per-ACK timestamp-based sampling kicks in (audited
 under the RFC 7323 adherence record); both modes
@@ -111,7 +111,7 @@ PyTCP — but the MAY does not require them to.
 
 **Adherence:** met. PyTCP implements Karn's algorithm
 (RFC 6298 §3) via the `_rtt_sample_retransmitted` flag
-(`pytcp/protocols/tcp/tcp__session.py:586`). When a
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:586`). When a
 segment carrying an in-flight RTT sample is
 retransmitted, the flag is set; the sample-harvest
 path in `_process_ack_packet` skips the `update()` call
@@ -137,7 +137,7 @@ this.
 > [RFC5681])."
 
 **Adherence:** met. The RTO timeout handler at
-`pytcp/protocols/tcp/tcp__session.py:_retransmit_packet_timeout`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:_retransmit_packet_timeout`
 (line 2540 area) collapses cwnd to 1 SMSS via:
 
 ```python
@@ -168,7 +168,7 @@ reverses the congestion control action — exactly the
 > interval."
 
 **Adherence:** met. The `back_off()` function at
-`pytcp/protocols/tcp/tcp__rto.py:160-174` doubles
+`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:160-174` doubles
 `rto_ms` and clamps to `MAX_RTO_MS`:
 
 ```python
@@ -215,7 +215,7 @@ relies on (a) being the common case.
 > specified in [RFC6298])."
 
 **Adherence:** met. `MAX_RTO_MS = 60_000`
-(`pytcp/protocols/tcp/tcp__rto.py:73`) — exactly the
+(`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:73`) — exactly the
 60-second floor specified by §4(4) and RFC 6298 §2.5.
 The clamp is applied both in `update()` (via
 `clamp_rto`) and in `back_off()` (via the explicit
@@ -228,7 +228,7 @@ The clamp is applied both in `update()` (via
 ### Requirement (1) — Initial RTO = 1 s
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__rto.py::TestInitialState::test__rto__initial_state_rto_ms_is_initial_rto_ms`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__rto.py::TestInitialState::test__rto__initial_state_rto_ms_is_initial_rto_ms`
   pins `initial_state().rto_ms == INITIAL_RTO_MS`.
 - **Unit:** `test__rto__initial_rto_ms_is_one_second`
   pins the constant value.
@@ -245,7 +245,7 @@ The clamp is applied both in `update()` (via
   subsequent-sample EWMA with various sample-vs-SRTT
   deltas, and the variance term contribution.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py`
   exercises the EWMA across multiple ACKs.
 
 **Status:** locked in.
@@ -271,7 +271,7 @@ The MAY is permissive, so absence is conformant.
   non-tainted samples (the function itself is
   unconditional).
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoSampling::test__rto__retransmit_marks_pending_sample_as_karn_tainted`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoSampling::test__rto__retransmit_marks_pending_sample_as_karn_tainted`
   and
   `test__rto__ack_of_karn_tainted_sample_clears_but_does_not_update_state`
   pin the Karn skip path: a retransmit sets the
@@ -283,12 +283,12 @@ The MAY is permissive, so absence is conformant.
 ### Requirement (3) — RTO triggers CC adaptation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase2::test__cwnd__rto_resets_cwnd_to_loss_window`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase2::test__cwnd__rto_resets_cwnd_to_loss_window`
   and
   `test__cwnd__rto_sets_ssthresh_to_half_flight_size`
   pin the cwnd → 1 SMSS and ssthresh halving on RTO.
 - **Integration (CUBIC):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cubic.py::TestTcpCubicPhase3::test__cubic__rto_uses_beta_cubic`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cubic.py::TestTcpCubicPhase3::test__cubic__rto_uses_beta_cubic`
   pins the CUBIC mode's beta_cubic = 0.7 ssthresh
   reduction.
 
@@ -299,7 +299,7 @@ The MAY is permissive, so absence is conformant.
 - **Unit:** `test__tcp__rto.py::TestBackOff` covers
   the doubling logic and the MAX_RTO_MS clamp.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__rto__retransmit_timeout_backs_off_rto_state`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__rto__retransmit_timeout_backs_off_rto_state`
   drives an RTO and asserts `rto_ms` doubles.
 
 **Status:** locked in.

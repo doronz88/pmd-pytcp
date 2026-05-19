@@ -40,7 +40,7 @@ ICMP feeds in via direct methods on `TcpSession`:
 
 | Method | File | Triggered from | Behavior |
 |---|---|---|---|
-| `on_unreachable(icmp_type, icmp_code)` | `pytcp/protocols/tcp/tcp__session.py:799` | `packet_handler__icmp[46]__rx.py` Dest-Unreachable demux | Sets `_connection_error`, releases blocked syscalls; SYN_SENT + Code 3 (Port) aborts to CLOSED |
+| `on_unreachable(icmp_type, icmp_code)` | `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:799` | `packet_handler__icmp[46]__rx.py` Dest-Unreachable demux | Sets `_connection_error`, releases blocked syscalls; SYN_SENT + Code 3 (Port) aborts to CLOSED |
 | `on_time_exceeded(icmp_type, icmp_code)` | `tcp__session.py:746` | β.2 / β.4 Time Exceeded demux | Logs only (RFC 5927 §6 soft) |
 | `on_parameter_problem(icmp_type, icmp_code)` | `tcp__session.py:776` | β.3 / β.5 Param Problem demux | Logs only (RFC 5927 §6 soft) |
 | `on_pmtu(next_hop_mtu, ip_version)` | `tcp__session.py:768` | Frag-Needed (v4) / PTB (v6) | Updates `_win.snd_mss`, writes `stack.pmtu_cache` |
@@ -55,16 +55,16 @@ handlers BEFORE dispatching, not part of FSM.
 ## Target state (post-refactor)
 
 Naming follows the existing `UdpMetadata` / `RawMetadata`
-convention (`pytcp/socket/udp__metadata.py`,
-`pytcp/socket/raw__metadata.py`) — the dataclass that flows from
+convention (`packages/pytcp/pytcp/socket/udp__metadata.py`,
+`packages/pytcp/pytcp/socket/raw__metadata.py`) — the dataclass that flows from
 the packet handler to the upper-layer consumer is suffixed
 `Metadata`. ICMP-into-TCP-FSM follows the same shape: the
 metadata describes a normalized inbound ICMP event, and the FSM
 is its consumer. The file lives next to the FSM that consumes
-it, under `pytcp/protocols/tcp/`.
+it, under `packages/pytcp/pytcp/protocols/tcp/`.
 
 ```python
-# pytcp/protocols/tcp/tcp__icmp_metadata.py (new)
+# packages/pytcp/pytcp/protocols/tcp/tcp__icmp_metadata.py (new)
 class IcmpCategory(IntEnum):
     DEST_UNREACHABLE = 1
     TIME_EXCEEDED    = 2
@@ -87,7 +87,7 @@ session.tcp_fsm(icmp=IcmpMetadata(category=IcmpCategory.DEST_UNREACHABLE,
                                icmp_type=3, icmp_code=3, ip_version=4))
 
 # Per-state handler (one per state file):
-# pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py
+# packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py
 def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
     """SYN_SENT: hard-error (Port Unreachable) aborts; soft-errors diagnostic."""
     if event.category is IcmpCategory.DEST_UNREACHABLE and event.icmp_code == 3:
@@ -112,12 +112,12 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 **Commit subject:** `tcp: add IcmpMetadata + tcp_fsm(icmp=...) additive dispatch`
 
 **New files:**
-- `pytcp/protocols/tcp/tcp__icmp_metadata.py` — `IcmpMetadata` dataclass + `IcmpCategory` enum
-- `pytcp/tests/unit/protocols/tcp/test__tcp__icmp_metadata.py` — dataclass invariants
+- `packages/pytcp/pytcp/protocols/tcp/tcp__icmp_metadata.py` — `IcmpMetadata` dataclass + `IcmpCategory` enum
+- `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__icmp_metadata.py` — dataclass invariants
 
 **Modified files:**
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — `tcp_fsm()` signature: add `icmp: IcmpMetadata | None = None  # follows UdpMetadata / RawMetadata convention`
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — top of dispatch: if `icmp is not None`, call `_dispatch_icmp(icmp)`
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` — `tcp_fsm()` signature: add `icmp: IcmpMetadata | None = None  # follows UdpMetadata / RawMetadata convention`
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` — top of dispatch: if `icmp is not None`, call `_dispatch_icmp(icmp)`
 - `_dispatch_icmp` (new internal): for now, translates back to existing `on_*` calls. This keeps the additive contract — both old API and new API work.
 
 **Exit criteria:**
@@ -130,17 +130,17 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 **Commit subject:** `tcp/fsm: factor ICMP handling into per-state modules (closes RFC 5927 §6)`
 
 **Modified files:**
-- `pytcp/protocols/tcp/fsm/tcp__fsm__listen.py` — add `handle_icmp` (essentially no-op; nothing to abort)
-- `pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py` — hard error → ConnError + CLOSED
-- `pytcp/protocols/tcp/fsm/tcp__fsm__syn_rcvd.py` — RFC 9293: ICMP errors are advisory
-- `pytcp/protocols/tcp/fsm/tcp__fsm__established.py` — soft errors only; PMTU = update MSS
-- `pytcp/protocols/tcp/fsm/tcp__fsm__fin_wait_1.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm__fin_wait_2.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm__close_wait.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm__closing.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm__last_ack.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm__time_wait.py` — soft only
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — `_dispatch_icmp` routes to per-state `handle_icmp` instead of legacy `on_*`
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__listen.py` — add `handle_icmp` (essentially no-op; nothing to abort)
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py` — hard error → ConnError + CLOSED
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__syn_rcvd.py` — RFC 9293: ICMP errors are advisory
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__established.py` — soft errors only; PMTU = update MSS
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__fin_wait_1.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__fin_wait_2.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__close_wait.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__closing.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__last_ack.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__time_wait.py` — soft only
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` — `_dispatch_icmp` routes to per-state `handle_icmp` instead of legacy `on_*`
 
 **RFC 5927 §6 hard-vs-soft taxonomy applied:**
 - **Hard** (per RFC 5927 §6): Dest-Unreachable codes 0 (Net), 1 (Host), 3 (Port — but only in SYN_SENT), Time-Exceeded code 0 in SYN_SENT (RFC 5927 §6.1.5).
@@ -149,7 +149,7 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 - **PMTU** is special: not "hard" or "soft" — it's an MSS-update event, applicable in any synchronized state.
 
 **New unit tests** (one file per FSM state for `handle_icmp`):
-- `pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm__syn_sent__handle_icmp.py`
+- `packages/pytcp/pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm__syn_sent__handle_icmp.py`
 - ... etc per state, covering hard/soft/PMTU paths
 
 **Exit criteria:**
@@ -164,13 +164,13 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 **Commit subject:** `icmp: route ICMP errors through tcp_fsm(icmp=...) dispatch`
 
 **Modified files:**
-- `pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpMetadata(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
-- `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` — same (5 call sites)
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` — rename to `test__tcp__session__icmp__dest_unreachable.py`, drive via `tcp_fsm(icmp=...)`
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py` — rename to `..__icmp__time_exceeded.py`, drive via FSM
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded__ip6.py` — same
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem.py` — same
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem__ip6.py` — same
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py` — replace `socket._tcp_session.on_unreachable(...)` with `socket._tcp_session.tcp_fsm(icmp=IcmpMetadata(...))` (5 call sites: dest-unreachable, time-exceeded, param-problem, pmtu — × the dispatch_tcp helpers)
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` — same (5 call sites)
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__on_unreachable.py` — rename to `test__tcp__session__icmp__dest_unreachable.py`, drive via `tcp_fsm(icmp=...)`
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded.py` — rename to `..__icmp__time_exceeded.py`, drive via FSM
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__on_time_exceeded__ip6.py` — same
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem.py` — same
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__on_parameter_problem__ip6.py` — same
 
 **Exit criteria:**
 - All ICMP→TCP integration tests routing through FSM dispatch
@@ -182,9 +182,9 @@ def handle_icmp(session: "TcpSession", metadata: IcmpMetadata) -> None:
 **Commit subject:** `tcp/session: drop legacy on_* ICMP methods (now go through FSM)`
 
 **Modified files:**
-- `pytcp/protocols/tcp/tcp__session.py` — delete `on_unreachable`, `on_time_exceeded`, `on_parameter_problem`, `on_pmtu`
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` — `_dispatch_icmp` no longer needs the legacy fallback; pure per-state dispatch
-- `pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py` (or similar) — drop any tests that referenced the legacy methods directly
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` — delete `on_unreachable`, `on_time_exceeded`, `on_parameter_problem`, `on_pmtu`
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` — `_dispatch_icmp` no longer needs the legacy fallback; pure per-state dispatch
+- `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py` (or similar) — drop any tests that referenced the legacy methods directly
 
 **Exit criteria:**
 - `grep -r 'on_unreachable\|on_time_exceeded\|on_parameter_problem\|on_pmtu' pytcp net_proto` returns empty
@@ -217,7 +217,7 @@ After Phase 4:
   - §6 hard-vs-soft: explicitly walked per-state (Phase 2)
 - `docs/rfc/tcp/rfc1122__host_requirements/adherence.md`
   - §4.2.3.9 (TCP MUST react to ICMP) updated with FSM dispatch references (Phase 4)
-- `pytcp/protocols/tcp/tcp__session.py` docstring update (Phase 4)
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` docstring update (Phase 4)
 
 ## Risk register
 

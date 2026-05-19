@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6191. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 §3 Interaction with Various Timestamp Generation
@@ -45,7 +45,7 @@ Timestamps; each branch has 2-4 sub-cases.
 > (creating a connection in the SYN-RECEIVED state)."
 
 **Adherence:** met. The TIME-WAIT FSM handler at
-`pytcp/protocols/tcp/tcp__fsm__time_wait.py:106-135`
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__time_wait.py:106-135`
 implements exactly this branch:
 
 ```python
@@ -75,7 +75,7 @@ The check requires:
   `_ts_recent` (modular comparison via `gt32`).
 
 When all conditions hold, `_reinit_for_rfc6191_reuse`
-(`pytcp/protocols/tcp/tcp__session.py:1866-1925+`)
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1866-1925+`)
 resets the session to a fresh state, transitions to
 SYN_RCVD, and emits the SYN+ACK. This is the canonical
 RFC 6191 §2 sub-case A.1 acceptance branch.
@@ -211,7 +211,7 @@ strength of §2 permits this conservative subset.
 ### §2 sub-case A.1 — Fresh TSval acceptance
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc6191::test__rfc6191__fresh_tsval_syn_terminates_time_wait_and_emits_syn_ack`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc6191::test__rfc6191__fresh_tsval_syn_terminates_time_wait_and_emits_syn_ack`
   drives a session into TIME-WAIT, captures
   `_ts_recent`, then injects a SYN with TSval >
   `_ts_recent` and asserts:

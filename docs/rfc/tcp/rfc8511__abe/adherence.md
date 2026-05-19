@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 8511. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections without
 normative content (Abstract, §1 Introduction, §2
 Definitions, §4 Discussion narrative, §5 Deployment
@@ -36,9 +36,9 @@ omitted.
 
 **Adherence:** met (with a different ABE multiplier —
 see §3.1 below). The `_process_ack_packet` ECE branch
-at `pytcp/protocols/tcp/tcp__session.py:3594-3610`
+at `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3594-3610`
 calls `compute_ecn_event_ssthresh()` from
-`pytcp/protocols/tcp/tcp__cwnd.py:145-175`, which
+`packages/pytcp/pytcp/protocols/tcp/tcp__cwnd.py:145-175`, which
 computes:
 
 ```python
@@ -187,7 +187,7 @@ loss-event path drives `compute_loss_event_ssthresh()`
 
 ### §3 ssthresh = max(FlightSize * beta_ecn, 2*SMSS)
 
-- **Unit:** `pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py` covers
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py` covers
   `compute_ecn_event_ssthresh` across:
   - `flight_size=0` floor → 2*SMSS
   - `flight_size=1*SMSS` floor → 2*SMSS (since 17/20 < 2)
@@ -197,7 +197,7 @@ loss-event path drives `compute_loss_event_ssthresh()`
   - Defensive asserts on negative / zero inputs.
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ecn.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ecn.py`
   drives ECE-bearing inbound ACKs and verifies the
   ssthresh ends up at flight_size * 17 // 20 with
   the 2*SMSS floor applied. Asserts the cwnd is

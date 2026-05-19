@@ -27,7 +27,7 @@ Unreachable. What's missing is enumerated explicitly below.
 | ICMPv4 Type 11 / ICMPv6 Type 3 (Time Exceeded)   | Not wired (log only)            | Not wired       |
 
 The UDP Dest-Unreachable demux paths in
-`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
 (`__phrx_icmp4__destination_unreachable`, lines 147-203) and
 `packet_handler__icmp6__rx.py` (`__phrx_icmp6__destination_unreachable`,
 lines 142-198) parse the embedded IP+UDP header out of the ICMP
@@ -68,7 +68,7 @@ and call `socket.notify_unreachable()`.
 
 ### 2.1 Where does `pmtu_cache` live?
 
-**Decision: stack module level (`pytcp/stack/__init__.py`), NOT
+**Decision: stack module level (`packages/pytcp/pytcp/stack/__init__.py`), NOT
 under `TcpStack`.**
 
 Reason: UDP needs it too. UDP datagrams over an IPv4 path with
@@ -90,7 +90,7 @@ snapshot+clear+restore `stack.pmtu_cache` (per the
 ### 2.2 Where does the embedded-header parser live?
 
 **Decision: a new module
-`pytcp/runtime/packet_handler/_icmp_error_demux.py`.**
+`packages/pytcp/pytcp/runtime/packet_handler/_icmp_error_demux.py`.**
 
 Provides:
 - `parse_embedded_l4(frame: bytes, ip_version: IpVersion) -> EmbeddedL4 | None`
@@ -143,7 +143,7 @@ place.
 **Decision: set in the IPv4 packet handler at the L4-protocol
 gate.**
 
-`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py` already
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py` already
 constructs the outbound IPv4 header. Add a parameter
 `df: bool = False` to the existing `_phtx_ip4` (or whatever the
 exact callable is — confirm via `grep`) and set it from:
@@ -181,7 +181,7 @@ Mirrors `TcpSessionTestCase` so subsequent ICMP-related work
 fluent integration tests instead of golden-byte parametrized
 matrices.
 
-- New file `pytcp/tests/lib/icmp_testcase.py`:
+- New file `packages/pytcp/pytcp/tests/lib/icmp_testcase.py`:
   - `Icmp4Probe` frozen dataclass — decoded snapshot of one
     outbound IPv4/ICMPv4 frame: `ip_src`, `ip_dst`, `ip_df`,
     `ip_mf`, `ip_offset`, `icmp_type`, `icmp_code`, `icmp_id`,
@@ -201,10 +201,10 @@ matrices.
     `_parse_tx_icmp6`, `_assert_icmp4_message`,
     `_assert_icmp6_message`, `_assert_no_tx`.
 - Migration: reshape the existing parametrized
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp4__rx.py`
   and `test__packet_handler__icmp6__rx.py` (and the `tx`
   counterparts) into per-scenario files under
-  `pytcp/tests/integration/protocols/icmp4/` and
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/` and
   `protocols/icmp6/` using `IcmpTestCase`. Keep one fluent
   test per existing parametrized case so coverage parity is
   obvious in the diff. Delete the old monolithic files only
@@ -213,9 +213,9 @@ matrices.
 
 ### Phase 1 — Embedded-header parser helper (1 commit)
 
-- New file `pytcp/runtime/packet_handler/_icmp_error_demux.py`
+- New file `packages/pytcp/pytcp/runtime/packet_handler/_icmp_error_demux.py`
   with `EmbeddedL4` dataclass + `parse_embedded_l4` function.
-- New unit tests `pytcp/tests/unit/stack/packet_handler/test___icmp_error_demux.py`
+- New unit tests `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test___icmp_error_demux.py`
   covering: IPv4+UDP, IPv4+TCP, IPv6+UDP, IPv6+TCP; rejection
   paths (truncated, unknown proto, malformed); both Dest-Unreachable
   and Frag-Needed/PTB embedding shapes.
@@ -232,13 +232,13 @@ matrices.
 
 ### Phase 3 — Add `pmtu_cache` module-level state (1 commit)
 
-- Add `pytcp/stack/__init__.py` line near other module-level
+- Add `packages/pytcp/pytcp/stack/__init__.py` line near other module-level
   state: `pmtu_cache: "dict[Ip4Address | Ip6Address, int]" = {}`.
-- Extend `pytcp/tests/lib/tcp_session_testcase.py` `setUp` /
+- Extend `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` `setUp` /
   `tearDown` with snapshot+clear+restore of `stack.pmtu_cache`
   (mandatory per the project rule).
 - New unit test
-  `pytcp/tests/unit/stack/test__pmtu_cache.py` pinning that the
+  `packages/pytcp/pytcp/tests/unit/stack/test__pmtu_cache.py` pinning that the
   module-level dict exists and is empty by default.
 - No production logic reads it yet — this is just the substrate.
 
@@ -255,7 +255,7 @@ matrices.
 - New ICMPv6 dispatch: extend the type-match in
   `__phrx_icmp6` to route Type 2 to a new
   `__phrx_icmp6__packet_too_big` handler.
-- Integration tests in `pytcp/tests/integration/stack/test__udp__pmtud.py`
+- Integration tests in `packages/pytcp/pytcp/tests/integration/stack/test__udp__pmtud.py`
   pinning that an ICMP Frag-Needed/PTB with a `UdpSocket`
   matching 4-tuple lands in the cache and `notify_pmtu` fires.
 
@@ -294,13 +294,13 @@ matrices.
 - Wire ICMPv4 Type 3 Code 4 + ICMPv6 Type 2 into TCP demux
   alongside the UDP path from phase 4.
 - Integration tests in
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py`
   driving the full path: outbound segment, ICMP Frag-Needed /
   PTB inbound, MSS recompute, smaller retransmit on the wire.
 
 ### Phase 8 — DF=1 on outbound IPv4 (1 commit)
 
-- Audit `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
+- Audit `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
   to find the IPv4 TX entry point (likely `_phtx_ip4` or
   `send_ip4_packet`).
 - Add `df: bool = True` parameter (default True per modern
@@ -349,12 +349,12 @@ and (for the test commits) in test docstring `Reference:` lines.
 
 | File | Coverage |
 |---|---|
-| `pytcp/tests/unit/stack/packet_handler/test___icmp_error_demux.py` | `parse_embedded_l4` happy path + every rejection branch |
-| `pytcp/tests/unit/stack/test__pmtu_cache.py` | Module-level dict exists + isolation hook works |
-| `pytcp/tests/unit/socket/test__udp__socket__pmtu.py` | `UdpSocket.notify_pmtu` updates the cache |
-| `pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | `on_unreachable` per-code routing |
-| `pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__pmtu.py` | `on_pmtu` MSS recompute + retransmit walkback |
-| `pytcp/tests/unit/protocols/tcp/test__tcp__session__is_seq_in_window.py` | RFC 5927 seq guard predicate |
+| `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test___icmp_error_demux.py` | `parse_embedded_l4` happy path + every rejection branch |
+| `packages/pytcp/pytcp/tests/unit/stack/test__pmtu_cache.py` | Module-level dict exists + isolation hook works |
+| `packages/pytcp/pytcp/tests/unit/socket/test__udp__socket__pmtu.py` | `UdpSocket.notify_pmtu` updates the cache |
+| `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | `on_unreachable` per-code routing |
+| `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__icmp__pmtu.py` | `on_pmtu` MSS recompute + retransmit walkback |
+| `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__is_seq_in_window.py` | RFC 5927 seq guard predicate |
 
 ### 5.2 New integration tests
 
@@ -362,22 +362,22 @@ All built on top of the new `IcmpTestCase` harness from Phase 0.
 
 | File | Coverage |
 |---|---|
-| `pytcp/tests/integration/protocols/icmp4/test__icmp4__error_demux.py` | ICMPv4 Type 3 + Type 11 RX paths into UDP/TCP demux |
-| `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` | ICMPv4 Type 3 Code 4 → `pmtu_cache` update + UDP/TCP callbacks |
-| `pytcp/tests/integration/protocols/icmp6/test__icmp6__error_demux.py` | ICMPv6 Type 1 + Type 2 + Type 3 RX paths |
-| `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` | ICMPv6 Type 2 (Packet Too Big) → `pmtu_cache` update + UDP/TCP callbacks |
-| `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py` | End-to-end PMTUD signal for TCP — outbound segment, ICMP Frag-Needed inbound, MSS recompute, smaller retransmit observable on the mock TAP |
-| `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | End-to-end SYN_SENT ICMP-Port-Unreachable → ConnectionRefused abort |
+| `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__error_demux.py` | ICMPv4 Type 3 + Type 11 RX paths into UDP/TCP demux |
+| `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` | ICMPv4 Type 3 Code 4 → `pmtu_cache` update + UDP/TCP callbacks |
+| `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__error_demux.py` | ICMPv6 Type 1 + Type 2 + Type 3 RX paths |
+| `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` | ICMPv6 Type 2 (Packet Too Big) → `pmtu_cache` update + UDP/TCP callbacks |
+| `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtud.py` | End-to-end PMTUD signal for TCP — outbound segment, ICMP Frag-Needed inbound, MSS recompute, smaller retransmit observable on the mock TAP |
+| `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py` | End-to-end SYN_SENT ICMP-Port-Unreachable → ConnectionRefused abort |
 
 ### 5.3 Existing tests that may need updates
 
-- `pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp4__rx.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp4__rx.py`
   and `test__packet_handler__icmp6__rx.py` — Phase 0 migrates
   these into per-scenario files under
-  `pytcp/tests/integration/protocols/icmp4/` and
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/` and
   `protocols/icmp6/` using `IcmpTestCase`. Coverage parity
   is the migration acceptance gate.
-- `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp4__rx.py`
+- `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp4__rx.py`
   — already exercises the existing UDP Dest-Unreachable demux
   unit-level; Phase 2's refactor must keep this green.
 - Every integration test that exact-bytes-matches outbound v4
@@ -470,10 +470,10 @@ walkback subtlety.
   `docs/refactor/tcp_codebase_improvement_plan.md` Concern #5
   (corrected in commit `5d8f8daa`).
 - ICMP RX handlers to be touched:
-  - `pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
-  - `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
+  - `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
+  - `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
 - Test framework isolation: extend
-  `pytcp/tests/lib/tcp_session_testcase.py` per
+  `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` per
   `feedback_stack_module_state_test_isolation.md`.
 - Test counts at this plan's authoring: 8482 passing, 0 skipped,
   lint clean, branch `PyTCP_3_0__pre_release`.

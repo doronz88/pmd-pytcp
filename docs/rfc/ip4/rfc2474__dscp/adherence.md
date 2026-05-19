@@ -11,7 +11,7 @@
 
 This document records the PyTCP codebase's adherence to RFC 2474
 clause by clause. The audit was performed by reading the RFC
-text fresh and inspecting `net_proto/protocols/ip4/ip4__header.py`
+text fresh and inspecting `packages/net_proto/net_proto/protocols/ip4/ip4__header.py`
 and the IPv4 RX/TX handlers directly; no prior memory or
 rule-file content was reused. Non-normative content
 (§1 Introduction, §2 Terminology, §6 IANA, §7 Security, §8/§9)
@@ -55,7 +55,7 @@ target routers and DS-domain boundaries — n/a for host scope.
 
 **Adherence:** met (with CU bits redefined). `Ip4Header.dscp:
 int` is a 6-bit field
-(`net_proto/protocols/ip4/ip4__header.py:99,128`) and
+(`packages/net_proto/net_proto/protocols/ip4/ip4__header.py:99,128`) and
 `Ip4Header.ecn: int` is the 2-bit field that occupies the
 former CU slot
 (`ip4__header.py:100,130`). The TOS-byte pack at
@@ -73,7 +73,7 @@ post-3168 split.
 > entire 6-bit DSCP field."
 
 **Adherence:** n/a. PyTCP has no PHB-mapping layer — there is
-a single FIFO output (`pytcp/lib/tx_ring.py`) and no
+a single FIFO output (`packages/pytcp/pytcp/lib/tx_ring.py`) and no
 priority queueing. DSCP is preserved across the stack but does
 not drive any local forwarding-class decision because there is
 no forwarding plane. Phase 2 forwarding may grow PHB-aware
@@ -132,15 +132,15 @@ behaviour is implemented.
 ### §3 Wire codec — DSCP/ECN split, 6+2 bit width
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   Boundary asserts: `dscp` must be uint6 (under_min, over_max),
   `ecn` must be uint2.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
   Round-trip matrix includes non-zero DSCP and ECN values
   across the full 6+2 bit range.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
   Assembler round-trip parametric over DSCP / ECN settings.
 
 **Status:** locked in.
@@ -148,7 +148,7 @@ behaviour is implemented.
 ### §3 Default DSCP=0 on TX absent caller override
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Default TX cases ship with `dscp=0`. A dedicated case
   pinning "no caller override → dscp == 0" is trivial.
 

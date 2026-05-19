@@ -17,8 +17,8 @@ RFC 1122 §3.2.1.8 silent-ignore baseline for most options plus
 the LSRR/SSRR drop-by-default gate already in place.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_proto/protocols/ip4/options/` and
-`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
+inspecting `packages/net_proto/net_proto/protocols/ip4/options/` and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
 directly. Non-normative content (§1 Introduction, §2 IP Options
 background, §3 General Security Implications, §6 IANA, §7
 Security boilerplate, §8 References) is omitted.
@@ -62,7 +62,7 @@ alignment) are enforced uniformly across all option kinds.
 
 **Adherence:** met. `Ip4OptionEol` is a typed dataclass; the
 options-stream parser stops at the EOL marker
-(`net_proto/protocols/ip4/options/ip4__options.py`). The
+(`packages/net_proto/net_proto/protocols/ip4/options/ip4__options.py`). The
 remaining bytes within the IHL-bounded option area are treated
 as padding (no further options parsed).
 
@@ -83,7 +83,7 @@ parsed normally and ignored (used for alignment padding).
 **Adherence:** met. PyTCP applies the drop-by-default policy
 to **both** LSRR and SSRR jointly via the
 `stack.IP4__ACCEPT_SOURCE_ROUTE` flag
-(`pytcp/stack/__init__.py:136`, default `False`). The RX
+(`packages/pytcp/pytcp/stack/__init__.py:136`, default `False`). The RX
 handler (`packet_handler__ip4__rx.py:130-144`) drops any
 LSRR/SSRR-bearing frame with the
 `ip4__source_route__drop` counter and a `<WARN>` log message
@@ -181,7 +181,7 @@ would land in `Ip4OptionUnknown` on receive.
 > infinite loops." (RFC 1122 §3.2.1.8, reiterated by RFC 7126)
 
 **Adherence:** met. `Ip4Options.validate_integrity`
-(`net_proto/protocols/ip4/options/ip4__options.py`) walks the
+(`packages/net_proto/net_proto/protocols/ip4/options/ip4__options.py`) walks the
 option stream during the integrity phase and rejects any
 frame whose option-length declarations would extend past the
 IHL-bounded options area. This is invoked from
@@ -197,7 +197,7 @@ options stream.
 ### §4.3 / §4.4 LSRR / SSRR drop-by-default
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   Matrix: LSRR with gate off → drop, LSRR with gate on → accept,
   SSRR with gate off → drop, SSRR with gate on → accept. Counter
   `ip4__source_route__drop` verified.
@@ -207,7 +207,7 @@ options stream.
 ### Per-option wire codec (every option kind)
 
 - **Unit:** one file per option in
-  `net_proto/tests/unit/protocols/ip4/options/`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/`
   (`test__ip4__option__eol.py`, `..__nop.py`, `..__rr.py`,
   `..__lsrr.py`, `..__ssrr.py`, `..__timestamp.py`,
   `..__router_alert.py`, `..__cipso.py`, `..__unknown.py`).
@@ -217,7 +217,7 @@ options stream.
 ### Option-length sanity (anti-infinite-loop)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
   Cases that set deliberately wrong option lengths and verify
   `Ip4IntegrityError` is raised before any per-option
   iteration runs.

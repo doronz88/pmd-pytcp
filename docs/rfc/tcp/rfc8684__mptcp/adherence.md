@@ -21,7 +21,7 @@ are summarized rather than enumerated.
 ## Top-line adherence
 
 PyTCP has **zero MPTCP support**. A grep across
-`pytcp/`, `net_proto/`, and `net_addr/` returns no
+`packages/pytcp/pytcp/`, `packages/net_proto/net_proto/`, and `packages/net_addr/net_addr/` returns no
 references to MPTCP, Multipath TCP, MP_CAPABLE, MP_JOIN,
 DSS, ADD_ADDR, or any other RFC 8684 wire-format
 identifier. No `subflow`, `MPTCP`, or `mp_*` symbols
@@ -37,7 +37,7 @@ rather than a paragraph-by-paragraph evaluation.
 ### §3.1 Connection Initiation: MP_CAPABLE option (Kind=30, Subtype=0)
 
 **Adherence:** not implemented. PyTCP's
-`net_proto/protocols/tcp/options/` does not include a
+`packages/net_proto/net_proto/protocols/tcp/options/` does not include a
 `tcp__option__mp_capable.py`. SYN exchanges are
 single-subflow only.
 
@@ -91,7 +91,7 @@ support).
 No MPTCP tests exist. The closest single-subflow tests
 are the standard handshake / data-transfer integration
 tests under
-`pytcp/tests/integration/protocols/tcp/`.
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/`.
 
 ### Test coverage summary
 

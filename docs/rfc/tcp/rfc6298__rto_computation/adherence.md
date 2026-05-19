@@ -14,7 +14,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6298. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 §6 Security Considerations boilerplate, §7 Changes from
@@ -34,7 +34,7 @@ Appendix A rationale) are omitted.
 > discussed in (5.5) still applies."
 
 **Adherence:** met. `INITIAL_RTO_MS = 1000`
-(`pytcp/protocols/tcp/tcp__rto.py:66`); `initial_state()`
+(`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:66`); `initial_state()`
 (line 115) constructs the RtoState with `rto_ms =
 INITIAL_RTO_MS`. The backoff machinery still applies to
 this initial value via `back_off()` (line 160) on RTO
@@ -52,7 +52,7 @@ events.
 > where K = 4."
 
 **Adherence:** met. The `update()` function at
-`pytcp/protocols/tcp/tcp__rto.py:126-157` handles
+`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:126-157` handles
 `state.srtt_ms is None` (first sample) at line 145-148:
 
 ```python
@@ -107,7 +107,7 @@ SRTT MUST be computed in the above order" mandate.
 > second."
 
 **Adherence:** met. `MIN_RTO_MS = 1000`
-(`pytcp/protocols/tcp/tcp__rto.py:69`); `clamp_rto()`
+(`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:69`); `clamp_rto()`
 at line 177 enforces `max(MIN_RTO_MS, min(rto_ms,
 MAX_RTO_MS))`. Both `update()` and `back_off()` route
 their results through this clamp (or its inline
@@ -119,7 +119,7 @@ equivalent), so any computed RTO < 1 s is rounded up.
 > at least 60 seconds."
 
 **Adherence:** met. `MAX_RTO_MS = 60_000`
-(`pytcp/protocols/tcp/tcp__rto.py:73`) — exactly the
+(`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:73`) — exactly the
 60-second floor specified by §2.5. The clamp is
 applied in `update()` via `clamp_rto` and in
 `back_off()` via the inline `min(state.rto_ms * 2,
@@ -138,7 +138,7 @@ MAX_RTO_MS)`.
 > instance of the packet or a later instance)."
 
 **Adherence:** met. The `_rtt_sample_retransmitted`
-flag (`pytcp/protocols/tcp/tcp__session.py:586`) is set
+flag (`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:586`) is set
 in `_retransmit_packet_timeout` whenever the in-flight
 sample's segment is retransmitted. The covering-ACK
 harvest path in `_process_ack_packet` checks this flag
@@ -170,7 +170,7 @@ exception path implemented exactly as specified.
 **Adherence:** met. PyTCP samples once per RTT via the
 `_rtt_sample_seq` / `_rtt_sample_send_time_ms` /
 `_rtt_sample_retransmitted` triple
-(`pytcp/protocols/tcp/tcp__session.py:570-586`). When
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:570-586`). When
 RFC 7323 timestamps are bilateral, the sampling
 cadence increases to once-per-ACK (also satisfying
 "at least one per RTT"). The Karn-skip path correctly
@@ -206,7 +206,7 @@ yielding RTTVAR = 0).
 `CLOCK_GRANULARITY_MS = 1` is two orders of magnitude
 finer than the 100 ms threshold the RFC suggests. The
 underlying timer subsystem advances in 1 ms ticks
-(`pytcp/stack/__init__.py` and the FakeTimer in tests
+(`packages/pytcp/pytcp/stack/__init__.py` and the FakeTimer in tests
 both use 1 ms resolution).
 
 ---
@@ -245,7 +245,7 @@ gate is the canonical "arm-once" semantic.
 > turn off the retransmission timer."
 
 **Adherence:** met.
-`pytcp/protocols/tcp/tcp__session.py:3256-3257`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3256-3257`:
 
 ```python
 if self._snd_una == self._snd_max:
@@ -292,7 +292,7 @@ segment.
 > doubling operation."
 
 **Adherence:** met. `back_off()` at
-`pytcp/protocols/tcp/tcp__rto.py:160-174` doubles
+`packages/pytcp/pytcp/protocols/tcp/tcp__rto.py:160-174` doubles
 `rto_ms` and clamps to `MAX_RTO_MS`. Invoked from
 `_retransmit_packet_timeout` on every RTO firing.
 
@@ -319,7 +319,7 @@ timer; the new registration uses the doubled
 paths implement this:
 
 - Active open
-  (`pytcp/protocols/tcp/tcp__fsm__syn_sent.py:218`):
+  (`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_sent.py:218`):
 
   ```python
   if session._syn_retransmit_count > 0 and session._rto_state.rto_ms < 3000:
@@ -327,11 +327,11 @@ paths implement this:
   ```
 
 - Passive open
-  (`pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:128`):
+  (`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:128`):
   same shape.
 
 The `_syn_retransmit_count` field
-(`pytcp/protocols/tcp/tcp__session.py:599`) is
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:599`) is
 incremented in `_retransmit_packet_timeout` whenever
 the retransmitted segment is a SYN. The 3000 ms
 threshold matches the §5.7 "3 seconds" specification
@@ -362,7 +362,7 @@ result.
 
 **Adherence:** the MAY is permissive. PyTCP does have
 an "estimator reset on idle" path at
-`pytcp/protocols/tcp/tcp__session.py:1239-1251`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1239-1251`:
 
 ```python
 if (
@@ -390,7 +390,7 @@ not a behavioural defect.
 ### (2.1) Initial RTO ≥ 1 s
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__rto.py::TestInitialState`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__rto.py::TestInitialState`
   pins `initial_state().rto_ms == INITIAL_RTO_MS == 1000`.
 - **Constants:**
   `test__rto__initial_rto_ms_is_one_second` and
@@ -437,7 +437,7 @@ not a behavioural defect.
 ### §3 Karn's algorithm
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoSampling::test__rto__retransmit_marks_pending_sample_as_karn_tainted`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoSampling::test__rto__retransmit_marks_pending_sample_as_karn_tainted`
   drives a retransmit and asserts the in-flight
   sample is flagged.
 - **Integration:**
@@ -474,7 +474,7 @@ Covered by RFC 7323 audit (separately).
 ### §5.1 Arm timer on data send
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__data_transmit_arms_session_level_retransmit_timer`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__data_transmit_arms_session_level_retransmit_timer`
   pins the "if not running, arm" semantic.
 
 **Status:** locked in.
@@ -526,7 +526,7 @@ Covered by RFC 7323 audit (separately).
 ### §5.7 SYN-RTO 3 s floor
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__active.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__active.py`
   and `__handshake__passive.py` contain dedicated
   tests that drive a SYN retransmit before handshake
   completion and assert the post-handshake `rto_ms >=
@@ -595,7 +595,7 @@ behaviour to pin).
 PyTCP fully implements every RFC 6298 normative
 requirement. The single observation is documentation:
 the inline comment at
-`pytcp/protocols/tcp/tcp__session.py:1229` claims the
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1229` claims the
 idle-reset path is "RFC 6298 §5.7", but RFC 6298 §5.7
 is the SYN-RTO 3 s floor (which is implemented
 elsewhere). The idle-reset behaviour is permissible

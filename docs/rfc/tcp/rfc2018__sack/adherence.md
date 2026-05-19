@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 2018. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/`, `net_proto/protocols/tcp/`,
-and `pytcp/lib/` directly; no prior memory or rule-file
+under `packages/pytcp/pytcp/protocols/tcp/`, `packages/net_proto/net_proto/protocols/tcp/`,
+and `packages/pytcp/pytcp/lib/` directly; no prior memory or rule-file
 content was reused. Sections that contain no normative
 content (Abstract, §1 Introduction narrative, §6
 Efficiency / Worst Case discussion, §7 Examples,
@@ -32,10 +32,10 @@ Efficiency / Worst Case discussion, §7 Examples,
 >     Length: 2"
 
 **Adherence:** met. PyTCP implements the SACK-Permitted
-option at `net_proto/protocols/tcp/options/tcp__option__sackperm.py`
+option at `packages/net_proto/net_proto/protocols/tcp/options/tcp__option__sackperm.py`
 with kind=4 and length=2 exactly per the wire format.
 Emission is gated on the SYN flag at
-`pytcp/protocols/tcp/tcp__session.py:1315-1322`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1315-1322`:
 
 ```python
 if flag_syn and not flag_ack:           # active-open SYN
@@ -67,10 +67,10 @@ TX path skips the option. The MUST NOT is enforced.
 > case."
 
 **Adherence:** met. The wire format is implemented at
-`net_proto/protocols/tcp/options/tcp__option__sack.py`:
+`packages/net_proto/net_proto/protocols/tcp/options/tcp__option__sack.py`:
 kind=5, length=8*n+2, blocks as (left, right) 32-bit
 unsigned integer pairs. The 4-block cap is enforced at
-`pytcp/protocols/tcp/tcp__session.py:1701-1703`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1701-1703`:
 
 ```python
 for seq, packet_rx_md in self._ooo_packet_queue.items():
@@ -107,7 +107,7 @@ blocks when `_send_ts` is True. ~3 LOC fix.
 > connection."
 
 **Adherence:** met. The `_send_sack` flag at
-`pytcp/protocols/tcp/tcp__session.py:194` is set only
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:194` is set only
 when bilateral SACK was negotiated:
 
 ```python
@@ -209,9 +209,9 @@ deviation.
 > acknowledgment for future reference."
 
 **Adherence:** met. The `_sack_scoreboard` field at
-`pytcp/protocols/tcp/tcp__session.py:267` is a
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:267` is a
 `SackScoreboard` instance (defined in
-`pytcp/protocols/tcp/tcp__sack.py`) that records SACK
+`packages/pytcp/pytcp/protocols/tcp/tcp__sack.py`) that records SACK
 blocks across cum-ACK boundaries. Inbound SACK blocks
 are added at `tcp__session.py:2194-2198` whenever
 the cum-ACK advances or an ACK carries new SACK info.
@@ -308,7 +308,7 @@ RFC 5681 §3.2 three-dup-ACK threshold (or the RFC
 6675 §3 byte rule). A single SACK-bearing dup-ACK
 does NOT trigger recovery; the count_trigger /
 sack_trigger gates at
-`pytcp/protocols/tcp/tcp__session.py:2764-2789`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2764-2789`
 require either the third dup-ACK or the
 "more-than-(dup_thresh - 1)*SMSS bytes SACKed"
 condition. RFC 6937 PRR caps the per-ACK send budget
@@ -349,11 +349,11 @@ gap which also applies here.
 ### §2 SACK-Permitted negotiation
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__sackperm.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__sackperm.py`
   covers the 2-byte option assembler / parser /
   asserts.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py`
   contains tests pinning bilateral negotiation
   (`outbound_syn_advertises_sack_permitted`,
   `bilateral_sack_negotiation_sets_send_sack`,
@@ -365,7 +365,7 @@ gap which also applies here.
 ### §3 SACK option wire format
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__sack.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__sack.py`
   covers the variable-length option assembler /
   parser with parameterised block-count cases.
 
@@ -443,7 +443,7 @@ gap which also applies here.
 ### §5 Sender records SACK info
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
   covers the `SackScoreboard` data structure (49+
   unit tests).
 - **Integration:**

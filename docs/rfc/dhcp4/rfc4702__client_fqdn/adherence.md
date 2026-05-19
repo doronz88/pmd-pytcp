@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 4702. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 4702 defines option 81 (Client FQDN) which a DHCP
 client uses to publish its fully-qualified domain name
@@ -20,13 +20,13 @@ to the server, primarily so the server can update the
 PTR (reverse) DNS record on the client's behalf.
 **PyTCP does not implement option 81** — the codec is
 not in `Dhcp4OptionType` at
-`net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`,
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`,
 and the client never emits or consumes the option.
 
 PyTCP does emit a Host Name option (code 12,
-`net_proto/protocols/dhcp4/options/dhcp4__option__host_name.py`)
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__host_name.py`)
 with the literal value "PyTCP" at
-`pytcp/protocols/dhcp4/dhcp4__client.py:148`, `:203` —
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:148`, `:203` —
 but option 12 carries an unqualified host name, not
 the FQDN-format option 81 with Flags/RCODE control.
 
@@ -181,7 +181,7 @@ sketch:
 
 1. Add `Dhcp4OptionType.CLIENT_FQDN = 81` to the enum.
 2. Add the codec under
-   `net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
+   `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
    parsing the 4-byte fixed prefix (Flags, RCODE1,
    RCODE2) plus the variable-length FQDN.
 3. Decide PyTCP's update policy: the conservative
@@ -189,7 +189,7 @@ sketch:
    to update both" — set Flags to `E=1, S=1, N=0, O=0`
    so the server handles A and PTR.
 4. Emit the option in DISCOVER and REQUEST
-   (`pytcp/protocols/dhcp4/dhcp4__client.py:139-150`,
+   (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:139-150`,
    `:193-205`). The FQDN value would need a sysctl
    (`dhcp.fqdn`, default "pytcp" or operator-set).
 

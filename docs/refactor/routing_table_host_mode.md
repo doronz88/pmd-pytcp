@@ -6,7 +6,7 @@
 | Plan author       | Routing-table refactor request (2026-05-17) |
 | Source motivation | The Ethernet TX next-hop decision is the single-gateway-per-`IfAddr` Phase-1 shortcut flagged in CLAUDE.md ("Per-destination routing state must be representable"). The memory-tracked `IfAddr.gateway` removal blocks on a real FIB. This track lands the host-mode routing table and the Phase-3 Route API. |
 | Target branch     | `PyTCP_3_0__pre_release` (cut from current `PyTCP_3_0_5`) |
-| Touch points      | new `pytcp/runtime/fib.py`, new `pytcp/stack/route.py`, `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py` (next-hop rewrite), `pytcp/stack/__init__.py` (singleton + slot), `pytcp/stack/lifecycle.py` (boot route install + wiring), `pytcp/protocols/dhcp4/dhcp4__client.py` (default route via API), `pytcp/runtime/packet_handler/__init__.py` (RA/SLAAC default route via API), `net_addr/ip_ifaddr.py` + `ip4_ifaddr.py` + `ip6_ifaddr.py` + `errors.py` (gateway removal), `pytcp/tests/lib/network_testcase.py` (snapshot + topology) |
+| Touch points      | new `packages/pytcp/pytcp/runtime/fib.py`, new `packages/pytcp/pytcp/stack/route.py`, `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py` (next-hop rewrite), `packages/pytcp/pytcp/stack/__init__.py` (singleton + slot), `packages/pytcp/pytcp/stack/lifecycle.py` (boot route install + wiring), `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (default route via API), `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` (RA/SLAAC default route via API), `packages/net_addr/net_addr/ip_ifaddr.py` + `ip4_ifaddr.py` + `ip6_ifaddr.py` + `errors.py` (gateway removal), `packages/pytcp/pytcp/tests/lib/network_testcase.py` (snapshot + topology) |
 | Linux analogue    | `ip route` / RTNETLINK `RTM_NEWROUTE` / `RTM_DELROUTE` / `RTM_GETROUTE`; `/proc/net/route`; `net/ipv4/fib_*`, `net/ipv6/route.c` |
 
 This document is the implementation plan for the **host-mode
@@ -20,8 +20,8 @@ North Star:
 
 The track is structurally a sibling of the shipped
 `Ip4AddressApi` work: a runtime-private data structure
-(`pytcp/runtime/fib.py`, the FIB) wrapped by a
-`pytcp/stack/route.py` consumer surface; backed today by an
+(`packages/pytcp/pytcp/runtime/fib.py`, the FIB) wrapped by a
+`packages/pytcp/pytcp/stack/route.py` consumer surface; backed today by an
 in-process table, with the Phase-3 swap to a real IPC channel
 deferred but unblocked.
 
@@ -75,7 +75,7 @@ cache, `rp_filter`, ECMP/multipath.
 
 ### The next-hop decision is inline, duplicated, source-keyed
 
-`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
 makes the entire routing decision inside `_phtx_ethernet`,
 once for IPv6 (lines 109-190) and once for IPv4 (lines
 193-306). There is **no routing-table abstraction anywhere**
@@ -113,7 +113,7 @@ Three structural problems for the routing-table target:
    from the source's subnet.
 
 2. **Single gateway, attached to the address.**
-   `IfAddr.gateway` (`net_addr/ip_ifaddr.py:60,135-150`,
+   `IfAddr.gateway` (`packages/net_addr/net_addr/ip_ifaddr.py:60,135-150`,
    abstract `_validate_gateway` at `:111-116`) stores exactly
    one default-router IP per interface address. No non-default
    static route is representable.
@@ -128,21 +128,21 @@ Three structural problems for the routing-table target:
 
 | Site | What it does today |
 |---|---|
-| `pytcp/stack/lifecycle.py:164,168` | `Ip4IfAddr(addr, gateway=_stack.IP4_GATEWAY)` / `Ip6IfAddr(...)` at boot |
-| `pytcp/protocols/dhcp4/dhcp4__client.py:603-605, 837-839, 1268-1270` | `ip4_host.gateway = ack.router[0]` on lease ACK / RENEW / INIT-REBOOT |
-| `pytcp/runtime/packet_handler/__init__.py:656,661,754,774,892,916,1191-1192` | `ip6_host.gateway = router_address` from RA on SLAAC stable + RFC 8981 temp + RFC 7217 regen |
+| `packages/pytcp/pytcp/stack/lifecycle.py:164,168` | `Ip4IfAddr(addr, gateway=_stack.IP4_GATEWAY)` / `Ip6IfAddr(...)` at boot |
+| `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:603-605, 837-839, 1268-1270` | `ip4_host.gateway = ack.router[0]` on lease ACK / RENEW / INIT-REBOOT |
+| `packages/pytcp/pytcp/runtime/packet_handler/__init__.py:656,661,754,774,892,916,1191-1192` | `ip6_host.gateway = router_address` from RA on SLAAC stable + RFC 8981 temp + RFC 7217 regen |
 
 ### Existing Phase-3 surfaces (precedent to mirror)
 
-- `pytcp/stack/address.py` (`Ip4AddressApi`) — the canonical
+- `packages/pytcp/pytcp/stack/address.py` (`Ip4AddressApi`) — the canonical
   template: runtime state owned by `PacketHandler`, wrapped by
-  a `pytcp/stack/*.py` API; copy-by-value introspection
+  a `packages/pytcp/pytcp/stack/*.py` API; copy-by-value introspection
   (`list_ip4_ifaddrs() -> tuple[...]`, `:228-238`); mutations
   documented as the RTNETLINK seam (`:121-138`).
-- `pytcp/stack/link.py` (`LinkApi`) — sibling read+mutate
+- `packages/pytcp/pytcp/stack/link.py` (`LinkApi`) — sibling read+mutate
   surface, snapshot/restore in the test harness.
-- `pytcp/stack/sysctl.py` — dict-like policy registry.
-- `pytcp/stack/lifecycle.py` `init()` / `mock__init()` — where
+- `packages/pytcp/pytcp/stack/sysctl.py` — dict-like policy registry.
+- `packages/pytcp/pytcp/stack/lifecycle.py` `init()` / `mock__init()` — where
   singletons are constructed and wired; the test harness
   snapshots `stack.__dict__`.
 
@@ -175,7 +175,7 @@ is proven, behind a dual-write shim.
 Pure data structure and lookup, fully unit-tested, **not yet
 wired** — zero behaviour change.
 
-New `pytcp/runtime/fib.py`:
+New `packages/pytcp/pytcp/runtime/fib.py`:
 
 ```python
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -221,7 +221,7 @@ rule; values mirror Linux `rtnetlink.h` `RT_SCOPE_*` /
 `RTPROT_*` so `ip route show` parity and Phase-3 IPC are
 free.
 
-**Tests-first** (`pytcp/tests/unit/runtime/test__runtime__fib.py`):
+**Tests-first** (`packages/pytcp/pytcp/tests/unit/runtime/test__runtime__fib.py`):
 longest-prefix wins over default; metric tiebreak; connected
 beats gateway'd at equal prefix; no-route returns `None`;
 default route (`0.0.0.0/0` / `::/0`) matches anything;
@@ -232,22 +232,22 @@ the table); IPv6 link-local gateway accepted; remove by
 
 ### Phase 1 — Wire FIB singleton + introspection-only Route API + dual-write (1 commit; ~1.5 h)
 
-- `pytcp/stack/__init__.py`: add `ip4_fib` / `ip6_fib`
+- `packages/pytcp/pytcp/stack/__init__.py`: add `ip4_fib` / `ip6_fib`
   singleton slots (`RouteTable[...]`) and a `route:
   RouteApi` Phase-3 slot.
-- `pytcp/stack/route.py` (`RouteApi`) — **read-only this
+- `packages/pytcp/pytcp/stack/route.py` (`RouteApi`) — **read-only this
   phase**, mirroring `Ip4AddressApi`'s introspection shape:
   `list_ip4_routes() -> tuple[Route, ...]`,
   `list_ip6_routes() -> tuple[Route, ...]` (copy-by-value
   snapshot — Phase-3 "introspection is read-only" constraint).
-- `pytcp/stack/lifecycle.py` `init()`: construct the two
+- `packages/pytcp/pytcp/stack/lifecycle.py` `init()`: construct the two
   FIBs; when `IP4_GATEWAY` / `IP6_GATEWAY` is set, install a
   **default route** (`0.0.0.0/0` / `::/0` via gateway,
   `protocol=BOOT`) into the FIB **in addition to** the
   existing `Ip{4,6}IfAddr(gateway=...)` write (dual-write).
   Nothing reads the FIB yet, so this is inert.
 - `mock__init()`: accept/construct mock FIBs.
-- `pytcp/tests/lib/network_testcase.py`: snapshot/restore
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py`: snapshot/restore
   `ip4_fib` / `ip6_fib` / `route` in `setUp`/`tearDown`
   (mandatory per pytcp.md §6.1 — module-level stack state).
   Pre-install the fixture default routes
@@ -305,7 +305,7 @@ are preserved verbatim. They remain semantically accurate
 under the FIB: `locnet__*` = on-link (connected route, no
 gateway), `extnet__gw_*` = off-link via gateway route,
 `extnet__no_gw__drop` + `DST_NO_GATEWAY_IP{4,6}` = no route
-to host. `pytcp/lib/packet_stats.py` is untouched and none of
+to host. `packages/pytcp/pytcp/lib/packet_stats.py` is untouched and none of
 the 222 counter assertions across 17 integration files needed
 editing — the rewrite is observably identical for every
 single-interface topology case.
@@ -333,11 +333,11 @@ References: `RFC 1122 §3.3.1 (next-hop selection).`,
   `IfAddr.gateway = X` to
   `stack.route.replace_default_ip{4,6}(gateway=X,
   protocol=...)`:
-  - `pytcp/stack/lifecycle.py` boot config (drop the
+  - `packages/pytcp/pytcp/stack/lifecycle.py` boot config (drop the
     dual-write; install only the FIB route).
-  - `pytcp/protocols/dhcp4/dhcp4__client.py` (3 sites;
+  - `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (3 sites;
     `protocol=DHCP`).
-  - `pytcp/runtime/packet_handler/__init__.py` RA/SLAAC
+  - `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` RA/SLAAC
     (6 sites; `protocol=RA`; the link-local gateway from RA
     is a valid FIB gateway — scope handling unchanged).
 - `IfAddr.gateway` setter still exists but is now written by
@@ -360,15 +360,15 @@ The memory-tracked `IfAddr` gateway removal, now unblocked:
 
 - Delete `_gateway` slot, `gateway` property + setter,
   abstract `_validate_gateway`
-  (`net_addr/ip_ifaddr.py:55,60,110-116,134-150`).
+  (`packages/net_addr/net_addr/ip_ifaddr.py:55,60,110-116,134-150`).
 - Delete the concrete `_validate_gateway` in
   `ip4_ifaddr.py` / `ip6_ifaddr.py` and the
   `Ip4IfAddrGatewayError` / `Ip6IfAddrGatewayError` classes
-  in `net_addr/errors.py`; drop the `gateway=` ctor kwarg.
+  in `packages/net_addr/net_addr/errors.py`; drop the `gateway=` ctor kwarg.
 - `lifecycle.py:164,168`: `Ip4IfAddr(_stack.IP4_ADDRESS)` /
   `Ip6IfAddr(...)` — no `gateway=`.
 - Delete or migrate every gateway-validation test under
-  `net_addr/tests/unit/` (the RFC 3021 /31 edge etc. — per
+  `packages/net_addr/net_addr/tests/unit/` (the RFC 3021 /31 edge etc. — per
   the `ifaddr_gateway_removal` memory, these are *moot*, not
   ported; the routing semantics they tested now live in the
   FIB unit tests).
@@ -447,34 +447,34 @@ skill this track.
 
 | File | Phase | Purpose |
 |---|---|---|
-| `pytcp/runtime/fib.py` | 0 | `Route`, `RouteScope`, `RouteProtocol`, `RouteTable`, lookup |
-| `pytcp/stack/route.py` | 1/3 | `RouteApi` — Phase-3 consumer surface (read in P1, mutate in P3) |
+| `packages/pytcp/pytcp/runtime/fib.py` | 0 | `Route`, `RouteScope`, `RouteProtocol`, `RouteTable`, lookup |
+| `packages/pytcp/pytcp/stack/route.py` | 1/3 | `RouteApi` — Phase-3 consumer surface (read in P1, mutate in P3) |
 
 ### Touched source files
 
 | File | Phases | Why |
 |---|---|---|
-| `pytcp/stack/__init__.py` | 1 | `ip4_fib` / `ip6_fib` / `route` slots |
-| `pytcp/stack/lifecycle.py` | 1,3,4 | construct FIBs; boot default route; drop `gateway=` |
-| `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py` | 2 | next-hop rewrite to `fib.lookup` |
-| `pytcp/lib/packet_stats.py` | 2 | renamed/new route stat counters |
-| `pytcp/protocols/dhcp4/dhcp4__client.py` | 3 | default route via `RouteApi` (3 sites) |
-| `pytcp/runtime/packet_handler/__init__.py` | 3 | RA/SLAAC default route via `RouteApi` (6 sites) |
-| `net_addr/ip_ifaddr.py` | 4 | delete `gateway` / `_validate_gateway` |
-| `net_addr/ip4_ifaddr.py`, `ip6_ifaddr.py` | 4 | delete concrete `_validate_gateway`, ctor kwarg |
-| `net_addr/errors.py` | 4 | delete `Ip{4,6}IfAddrGatewayError` |
-| `pytcp/tests/lib/network_testcase.py` | 1,2 | FIB snapshot/restore; fixture default routes; counter re-pin |
+| `packages/pytcp/pytcp/stack/__init__.py` | 1 | `ip4_fib` / `ip6_fib` / `route` slots |
+| `packages/pytcp/pytcp/stack/lifecycle.py` | 1,3,4 | construct FIBs; boot default route; drop `gateway=` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py` | 2 | next-hop rewrite to `fib.lookup` |
+| `packages/pytcp/pytcp/lib/packet_stats.py` | 2 | renamed/new route stat counters |
+| `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` | 3 | default route via `RouteApi` (3 sites) |
+| `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` | 3 | RA/SLAAC default route via `RouteApi` (6 sites) |
+| `packages/net_addr/net_addr/ip_ifaddr.py` | 4 | delete `gateway` / `_validate_gateway` |
+| `packages/net_addr/net_addr/ip4_ifaddr.py`, `ip6_ifaddr.py` | 4 | delete concrete `_validate_gateway`, ctor kwarg |
+| `packages/net_addr/net_addr/errors.py` | 4 | delete `Ip{4,6}IfAddrGatewayError` |
+| `packages/pytcp/pytcp/tests/lib/network_testcase.py` | 1,2 | FIB snapshot/restore; fixture default routes; counter re-pin |
 
 ### New test files
 
 | File | Phase | Cases (target) |
 |---|---|---|
-| `pytcp/tests/unit/runtime/test__runtime__fib.py` | 0 | lookup matrix, prefix/metric/scope tiebreaks, snapshot |
-| `pytcp/tests/unit/stack/test__stack__route.py` | 1,3 | RouteApi read snapshot, mutation, replace-default atomicity |
-| `pytcp/tests/integration/protocols/ip4/test__ip4__routing.py` | 2,5 | on-link/off-link/no-route, multihoming change, static route |
-| `pytcp/tests/integration/protocols/ip6/test__ip6__routing.py` | 2,5 | IPv6 equivalents incl. link-local gateway |
-| `pytcp/tests/integration/protocols/dhcp4/...` (extend) | 3 | DHCP ACK installs `protocol=DHCP` default route |
-| `pytcp/tests/integration/protocols/icmp6/nd/...` (extend) | 3 | RA installs `protocol=RA` default route |
+| `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__fib.py` | 0 | lookup matrix, prefix/metric/scope tiebreaks, snapshot |
+| `packages/pytcp/pytcp/tests/unit/stack/test__stack__route.py` | 1,3 | RouteApi read snapshot, mutation, replace-default atomicity |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__routing.py` | 2,5 | on-link/off-link/no-route, multihoming change, static route |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__routing.py` | 2,5 | IPv6 equivalents incl. link-local gateway |
+| `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/...` (extend) | 3 | DHCP ACK installs `protocol=DHCP` default route |
+| `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/...` (extend) | 3 | RA installs `protocol=RA` default route |
 
 ---
 
@@ -508,11 +508,11 @@ flip is unblocked. The one observable consequence — the
 multihoming case in Phase 2 — is the Linux-correct behaviour
 and is tested + cited as a deliberate fix.
 
-### 6.3 FIB location — `runtime/` not `net_addr/`
+### 6.3 FIB location — `runtime/` not `packages/net_addr/net_addr/`
 
-**Decision: `pytcp/runtime/fib.py`.** The FIB is mutable stack
+**Decision: `packages/pytcp/pytcp/runtime/fib.py`.** The FIB is mutable stack
 state with a lifecycle, not a value type — it belongs in
-`runtime/` next to the neighbor caches, not in `net_addr/`
+`runtime/` next to the neighbor caches, not in `packages/net_addr/net_addr/`
 (net_addr.md §1 forbids stateful code there). It consumes
 `net_addr` value types (`Ip4Network` etc.) the way the
 neighbor caches do.
@@ -667,13 +667,13 @@ Status field updated with the commit hashes.
 
 ### PyTCP internal references
 
-- `pytcp/stack/address.py` — `Ip4AddressApi`, the precedent
+- `packages/pytcp/pytcp/stack/address.py` — `Ip4AddressApi`, the precedent
   template (copy-by-value reads, RTNETLINK-seam docstrings).
-- `pytcp/stack/link.py` — sibling Phase-3 surface.
-- `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
+- `packages/pytcp/pytcp/stack/link.py` — sibling Phase-3 surface.
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
   — the rewrite site.
-- `net_addr/ip_ifaddr.py` — `IfAddr.gateway` (to be removed).
-- `pytcp/tests/lib/network_testcase.py` — harness topology +
+- `packages/net_addr/net_addr/ip_ifaddr.py` — `IfAddr.gateway` (to be removed).
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py` — harness topology +
   snapshot/restore.
 - `.claude/rules/pytcp.md` §6.1 (stack-state snapshot rule),
   §2 (sysctl classification), `net_addr.md` §1 (no stateful

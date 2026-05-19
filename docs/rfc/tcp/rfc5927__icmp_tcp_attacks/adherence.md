@@ -26,7 +26,7 @@ code path:
   `IcmpMetadata` and calls `session.tcp_fsm(icmp=
   metadata)`, which routes through
   `FSM_ICMP_HANDLERS` to per-state handlers in
-  `pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`.
+  `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`.
   Per-state handlers decide hard-vs-soft on a
   per-state basis: SYN_SENT is the only state
   allowed to abort (covering all four canonical
@@ -84,7 +84,7 @@ The production ICMPv4 / ICMPv6 RX path
 (`packet_handler__icmp{4,6}__rx.py`) builds an
 `IcmpMetadata` and calls
 `session.tcp_fsm(icmp=metadata)`. The FSM dispatcher
-in `pytcp/protocols/tcp/fsm/tcp__fsm.py` routes via
+in `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` routes via
 `FSM_ICMP_HANDLERS` to the per-state handler:
 
 - **SYN_SENT** (`fsm__syn_sent__icmp`): the only
@@ -108,7 +108,7 @@ event path on `TcpSession`. The legacy
 `on_unreachable / on_time_exceeded /
 on_parameter_problem / on_pmtu` methods are deleted
 and `grep` confirms no remaining references in
-`pytcp/` or `net_proto/`.
+`packages/pytcp/pytcp/` or `packages/net_proto/net_proto/`.
 
 ## §5 PMTUD Attacks
 
@@ -128,8 +128,8 @@ ICMP signals are forged.
 
 | Aspect                                                       | Coverage                                                                                                                                                                                                                                                                                                                                                                              |
 |--------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| §4 seq-in-window guard (drop on out-of-window)               | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py::test__icmp4__seq_out_of_window__drops` and `test__tcp__session__icmp__pmtu.py::test__icmp4__frag_needed__seq_out_of_window__drops`                                                                                                                                                     |
-| §5.2 SYN_SENT hard-error abort (4 canonical codes)           | shipped — `pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm.py::TestTcpFsmSynSentHandleIcmp::test__tcp_session__syn_sent_icmp_v4_port_unreachable_aborts` / `..__v4_protocol_unreachable_aborts` / `..__v6_admin_prohibited_aborts` / `..__v6_port_unreachable_aborts`                                                                                                                |
+| §4 seq-in-window guard (drop on out-of-window)               | shipped — `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py::test__icmp4__seq_out_of_window__drops` and `test__tcp__session__icmp__pmtu.py::test__icmp4__frag_needed__seq_out_of_window__drops`                                                                                                                                                     |
+| §5.2 SYN_SENT hard-error abort (4 canonical codes)           | shipped — `packages/pytcp/pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm.py::TestTcpFsmSynSentHandleIcmp::test__tcp_session__syn_sent_icmp_v4_port_unreachable_aborts` / `..__v4_protocol_unreachable_aborts` / `..__v6_admin_prohibited_aborts` / `..__v6_port_unreachable_aborts`                                                                                                                |
 | §5.2 SYN_SENT soft-code advisory (Net / Host)                | shipped — `TestTcpFsmSynSentHandleIcmp::test__tcp_session__syn_sent_icmp_v4_host_unreachable_is_advisory` / `..__v4_net_unreachable_is_advisory`                                                                                                                                                                                                                                       |
 | §5.2 synchronized-state hard→soft downgrade                  | shipped — `TestTcpFsmSynchronizedHandleIcmp::test__tcp_session__synchronized_icmp_hard_codes_are_soft` (8 states × 4 hard codes via subTest)                                                                                                                                                                                                                                           |
 | §5.2 PMTU updates `snd_mss` in any synchronized state        | shipped — `TestTcpFsmSynchronizedHandleIcmp::test__tcp_session__synchronized_icmp_pmtu_updates_snd_mss`                                                                                                                                                                                                                                                                                |

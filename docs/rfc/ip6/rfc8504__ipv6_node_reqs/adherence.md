@@ -84,10 +84,10 @@ today, router scope tomorrow" splits.
 > e.g., Ethernet, Wi-Fi, PPP, ..."
 
 **Adherence: N/A.** PyTCP runs over a TAP/TUN file
-descriptor (`pytcp/lib/interface_layer.py`); the underlying
+descriptor (`packages/pytcp/pytcp/lib/interface_layer.py`); the underlying
 link layer is the OS's responsibility. Ethernet framing is
-implemented in `net_proto/protocols/ethernet/`; 802.3 is
-implemented in `net_proto/protocols/ethernet_802_3/`.
+implemented in `packages/net_proto/net_proto/protocols/ethernet/`; 802.3 is
+implemented in `packages/net_proto/net_proto/protocols/ethernet_802_3/`.
 
 ---
 
@@ -100,7 +100,7 @@ implemented in `net_proto/protocols/ethernet_802_3/`.
 > be silently discarded."
 
 **Adherence:** shipped. Overlap detection lands in the
-shared `pytcp/lib/ip_frag_table.py::IpFragTable.add_fragment`
+shared `packages/pytcp/pytcp/lib/ip_frag_table.py::IpFragTable.add_fragment`
 with strict-reading policy (RFC 5722 §3); duplicate
 fragments are also dropped. See the
 [RFC 5722 audit](../rfc5722__overlapping_fragments/adherence.md)
@@ -123,7 +123,7 @@ fragments in isolation per RFC 6946 §4 (commit `909c3e06`).
 > Flow Label field as defined in [RFC6437]."
 
 **Adherence:** partial. The IPv6 header carries a Flow
-Label field (`net_proto/protocols/ip6/ip6__header.py`); the
+Label field (`packages/net_proto/net_proto/protocols/ip6/ip6__header.py`); the
 TX path defaults to `flow=0`. A discrete-uniform Flow Label
 generator per the RFC 6437 recommendation is not yet wired.
 
@@ -177,9 +177,9 @@ padding, and PyTCP matches that behaviour. Setting any cap
 to 0 disables that check.
 
 The cap-check helper lives at
-`pytcp/lib/ip6_ext_hdr_limits.py::check_ext_hdr_option_caps`;
+`packages/pytcp/pytcp/lib/ip6_ext_hdr_limits.py::check_ext_hdr_option_caps`;
 the RX wiring is at
-`pytcp/runtime/packet_handler/packet_handler__ip6__rx.py::_phrx_ip6_hbh`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py::_phrx_ip6_hbh`
 and `::_phrx_ip6_dest_opts`. A cap violation drops the
 packet silently (the §5.3 caps are resource-exhaustion
 defences; the receiver is not obliged to emit ICMPv6
@@ -203,9 +203,9 @@ the §5.3 caps layer on top.
 | Neighbor Solicitation (RX)          | shipped + RFC 4861 §7.2.3 DAD validity (commit `88d09251`) |
 | Neighbor Advertisement (TX/RX)      | shipped                                    |
 | Duplicate Address Detection         | shipped                                    |
-| Solicited-Node multicast address    | shipped (`net_addr/ip6_address.py`)        |
+| Solicited-Node multicast address    | shipped (`packages/net_addr/net_addr/ip6_address.py`)        |
 | Redirect (RX/TX)                    | deferred (host scope; RX would be Phase-1, TX is Phase-2 router) |
-| NUD timers (RFC 4861 §7.3)          | shipped (`pytcp/lib/neighbor.py` NUD framework; `neighbor.*` sysctls) |
+| NUD timers (RFC 4861 §7.3)          | shipped (`packages/pytcp/pytcp/lib/neighbor.py` NUD framework; `neighbor.*` sysctls) |
 | RFC 6980 ND fragmentation rejection | partial — RX shipped (`packet_handler__icmp6__rx.py:175-191`); TX-side refuse-to-fragment-ND gate is a Phase-1 follow-up |
 | RFC 7559 RS exponential backoff     | shipped (`_send_icmp6_nd_router_solicitations_with_backoff` at `packet_handler/__init__.py:1431`; truncated binary exponential with ±10% jitter) |
 | RFC 4311 host-to-router load share  | shipped (`_get_icmp6_default_router_for_destination` at `packet_handler/__init__.py:974`; per-destination modulo over highest-pref equivalence class) |
@@ -240,11 +240,11 @@ clause coverage.
 
 ### §5.8 RFC 4443 ICMPv6 — shipped
 
-**Adherence:** shipped. `net_proto/protocols/icmp6/`
+**Adherence:** shipped. `packages/net_proto/net_proto/protocols/icmp6/`
 implements the full RFC 4443 message set (Destination
 Unreachable, Packet Too Big, Time Exceeded, Parameter
 Problem, Echo Request/Reply). RX dispatch is in
-`pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`.
 RFC 4884 multi-part extension is **deferred** — no
 consumer at present.
 
@@ -275,13 +275,13 @@ single `_ip6_ifaddr` model does not yet expose.
   yet handled** — falls into `__phrx_icmp6__unknown`. A
   full Query → Report responder is a Phase-1 polish item.
   The querier role itself is Phase-2 (router-grade). See
-  `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py::__phrx_icmp6__mld2_report`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py::__phrx_icmp6__mld2_report`
   (commit `3459cddf`) for the documented Phase-2 marker.
 
 ### §5.12 RFC 3168 ECN — partial
 
 **Adherence:** partial. TCP-side ECN echo (CE detection,
-ECE/CWR signalling) is wired in `pytcp/protocols/tcp/`
+ECE/CWR signalling) is wired in `packages/pytcp/pytcp/protocols/tcp/`
 (see TCP RFC adherence records). The IP-layer side — host
 upper layers asking the IP stack to set the ECT codepoint
 on outbound packets — is not yet exposed via the socket
@@ -293,8 +293,8 @@ API. Phase-1 polish.
 
 ### §6.1 RFC 4291 Addressing Architecture — shipped
 
-**Adherence:** shipped. `net_addr/ip6_address.py` and
-`net_addr/ip6_network.py` implement the RFC 4291 address
+**Adherence:** shipped. `packages/net_addr/net_addr/ip6_address.py` and
+`packages/net_addr/net_addr/ip6_network.py` implement the RFC 4291 address
 model with /64 subnet boundary. RFC 7371 multicast flag
 updates: covered by the multicast scope/transient flag
 handling in `Ip6Address`. RFC 7421 /64 boundary: enforced
@@ -332,7 +332,7 @@ path.
 ### §6.5 RFC 3315 DHCPv6 — deferred
 
 **Adherence:** deferred. PyTCP implements DHCPv4 client
-(`pytcp/protocols/dhcp4/dhcp4__client.py`); a DHCPv6 client is a future
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`); a DHCPv6 client is a future
 Phase-1 item, paired with RFC 7844 anonymity profile
 support. The RFC marks DHCPv6 as SHOULD.
 
@@ -395,8 +395,8 @@ application-layer protocols outside the stack scope.
 ## §10 IPv4 Support and Transition — shipped
 
 **Adherence:** shipped. PyTCP runs a full IPv4 stack
-alongside IPv6 (`net_proto/protocols/ip4/`,
-`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`,
+alongside IPv6 (`packages/net_proto/net_proto/protocols/ip4/`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`,
 etc.). Tunnelling (RFC 4213) is **deferred** — PyTCP runs
 both stacks natively, not as a transition mechanism.
 
@@ -409,12 +409,12 @@ both stacks natively, not as a transition mechanism.
 **Adherence:** partial. `Ip6Address.__str__` produces a
 canonical short-form representation; full RFC 5952
 canonicalization (suppress leading zeros, longest run of
-zero groups, etc.) is implemented in `net_addr/ip6_address.py`.
+zero groups, etc.) is implemented in `packages/net_addr/net_addr/ip6_address.py`.
 Operator input parsing accepts the long form too.
 
 ### §11.2 APIs — partial
 
-**Adherence:** partial. `pytcp/socket/` implements a BSD-
+**Adherence:** partial. `packages/pytcp/pytcp/socket/` implements a BSD-
 socket facade with `TcpSocket`, `UdpSocket`, `RawSocket`.
 Advanced socket APIs (RFC 3542) are not implemented; RFC
 5014 Source-Address-Selection control is not exposed; RFC
@@ -495,7 +495,7 @@ profile (no 6LoWPAN, no RPL); applies as-stated.
 
 **Adherence:** deferred. PyTCP exposes per-counter
 telemetry via `PacketStatsRx` / `PacketStatsTx` for
-operational observability (see `pytcp/lib/packet_stats.py`).
+operational observability (see `packages/pytcp/pytcp/lib/packet_stats.py`).
 SNMP MIB integration is not implemented; would be a
 deferred operational-tooling item.
 
@@ -511,7 +511,7 @@ deferred operational-tooling item.
 ### §5.3 option-count cap
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__option_count_cap_drops_packet`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__option_count_cap_drops_packet`
   — drives an HBH with 22 consecutive Pad1 options and
   asserts the packet is dropped + the
   `ip6_hbh__option_cap_exceeded__drop` counter bumps once.
@@ -521,7 +521,7 @@ deferred operational-tooling item.
 ### §5.3 pad-byte cap
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__pad_bytes_cap_drops_packet`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__pad_bytes_cap_drops_packet`
   — drives an HBH whose total Pad-byte budget (PadN data +
   trailing Pad1s) exceeds the cap; asserts drop + counter.
 
@@ -530,7 +530,7 @@ deferred operational-tooling item.
 ### §5.3 unknown-option cap
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__unknown_count_cap_drops_packet`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__unknown_count_cap_drops_packet`
   — drives an HBH carrying three unrecognized options
   (action-bit pattern "skip on unrecognized"); asserts
   drop + counter.
@@ -540,7 +540,7 @@ deferred operational-tooling item.
 ### §5.3 positive control (within caps)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__within_caps_passes`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps.py::TestIp6Rfc8504ExtHdrOptionCaps::test__ip6__rfc8504_5_3__within_caps_passes`
   — drives an HBH well under every cap and asserts the
   `cap_exceeded` counter does NOT bump while the parser
   runs to completion.
@@ -572,7 +572,7 @@ features would be conspicuous in the diff.
 | IPsec AH / ESP     | No `IpProto.AH` / `IpProto.ESP` consumers — `IpProto.from_proto` would `assert False` on construction |
 | SEND / CGA         | No `Icmp6NdOptionType.RSA_SIGNATURE` consumers              |
 | MIPv6 RH2          | RH parser hard-drops RH0; RH2 falls into the unknown-routing-type ICMP path (per RFC 8200 §4.4) |
-| mDNS / DNS-SD      | No application-layer code in `pytcp/`                       |
+| mDNS / DNS-SD      | No application-layer code in `packages/pytcp/pytcp/`                       |
 | Mobility (RFC 6275) | No mobility-aware ND options (RA Flags, Mobile IPv6 BU)    |
 
 ---

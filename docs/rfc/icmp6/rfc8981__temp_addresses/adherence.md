@@ -13,7 +13,7 @@
 ### What ships now (§18a + §18b)
 
 **§18a** — `Ip6IfAddr.from_rfc8981_temp(*, ip6_network)` at
-`net_addr/ip6_ifaddr.py`. Each call produces a fresh 64-bit
+`packages/net_addr/net_addr/ip6_ifaddr.py`. Each call produces a fresh 64-bit
 random IID via `secrets.token_bytes(8)`, regenerates if the
 draw lands in the RFC 5453 / RFC 2526 §3 reserved range
 (Subnet-Router Anycast IID==0 or
@@ -103,7 +103,7 @@ adds additional unlinkability for outbound flows once
 
 ### Tests
 
-`net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc8981Temp`
+`packages/net_addr/net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc8981Temp`
 (§18a wire generator — already shipped):
 - Output keeps source /64 prefix.
 - Two consecutive calls yield different IIDs.
@@ -111,7 +111,7 @@ adds additional unlinkability for outbound flows once
 - Reserved-IID values regenerated to non-reserved.
 - Retry exhaustion raises RuntimeError.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
 (§18b wire-state + RX-driven claim — this commit):
 - `TestIcmp6Nd__Rfc8981Temp__SysctlRegistration` —
   `icmp6.use_tempaddr` registered with default 0,

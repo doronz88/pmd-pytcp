@@ -53,7 +53,7 @@ spurious-detection signal — NOT the Eifel timestamp
 comparison.
 
 The codebase does have a comment at
-`pytcp/protocols/tcp/tcp__fsm__established.py:198`
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py:198`
 that mentions RFC 3522/4015 Eifel as the *receiver*-
 side beneficiary of DSACK case-2 reporting (PyTCP
 emits DSACK so a peer running Eifel can detect a
@@ -85,7 +85,7 @@ not run Eifel; it only emits the DSACK so a peer can.
 No Eifel-specific tests exist. The DSACK-emission
 path (which a peer running Eifel would consume) is
 tested in
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py`
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py`
 case-2 scenarios.
 
 ### Test coverage summary

@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 3042. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 §3 Related Work, §4 Security Considerations narrative,
@@ -41,7 +41,7 @@ References) are omitted.
 >     (cwnd)."
 
 **Adherence:** met. The dup-ACK handler at
-`pytcp/protocols/tcp/tcp__session.py:2771-2787` (inside
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2771-2787` (inside
 `_retransmit_packet_request`) implements the algorithm:
 
 ```python
@@ -117,7 +117,7 @@ SACK info is present.
 ### §2 Core algorithm — first dup-ACK
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py::TestTcpRetransmitDupack::test__dupack__limited_transmit_sends_new_segment_on_first_dup_ack`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py::TestTcpRetransmitDupack::test__dupack__limited_transmit_sends_new_segment_on_first_dup_ack`
   drives a session that has unsent data, injects a
   single dup-ACK, and asserts a new (not retransmitted)
   segment is emitted on the next tick.

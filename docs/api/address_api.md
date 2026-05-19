@@ -22,9 +22,9 @@ land when an IPv6-specific address-control consumer
 materialises.
 
 Per CLAUDE.md Phase-3: **the surface IS the Phase-3
-seam**. The DHCPv4 client (`pytcp/protocols/dhcp4/`)
+seam**. The DHCPv4 client (`packages/pytcp/pytcp/protocols/dhcp4/`)
 and the RFC 3927 link-local autoconfig client
-(`pytcp/protocols/ip4/link_local/`) consume the API
+(`packages/pytcp/pytcp/protocols/ip4/link_local/`) consume the API
 without reaching into `packet_handler._ip4_ifaddr`.
 
 ## Address-list management
@@ -165,13 +165,13 @@ the Phase-3 "introspection is read-only" constraint.
 
 ## Examples in the repo
 
-- `pytcp/protocols/dhcp4/dhcp4__client.py` — DHCP DAD via
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` — DHCP DAD via
   `address.probe(address=...)`; gratuitous announce via
   `address.announce(address=...)` at BOUND.
-- `pytcp/protocols/ip4/link_local/link_local__client.py`
+- `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`
   — RFC 3927 §2.1.1 probe + §2.4 announce + §2.5 defend /
   abandon via the conflict-subscription surface.
-- `pytcp/stack/__init__.py::init` — constructs the
+- `packages/pytcp/pytcp/stack/__init__.py::init` — constructs the
   singleton `address: Ip4AddressApi` after
   `packet_handler` is built.
 
@@ -198,7 +198,7 @@ the Phase-3 "introspection is read-only" constraint.
 - Refactor plan: `docs/refactor/rfc3927_link_local_autoconfig.md`
   (Phase 0.5 extracted the ACD API from inline DHCP /
   link-local code).
-- Source: `pytcp/stack/address.py`.
+- Source: `packages/pytcp/pytcp/stack/address.py`.
 - Adherence: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`.
 - Per-RFC: `docs/rfc/ip4/rfc5227__address_conflict_detection/`
   (when authored).

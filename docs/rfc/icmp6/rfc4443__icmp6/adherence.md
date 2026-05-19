@@ -10,7 +10,7 @@
 
 This adherence record is currently a stub. The host-requirements
 ICMP error-generation rules apply symmetrically to v4 and v6 via
-the shared `pytcp/protocols/icmp/` runtime layer; the per-clause
+the shared `packages/pytcp/pytcp/protocols/icmp/` runtime layer; the per-clause
 audit of those gates is mirrored from
 [`../../icmp4/rfc1122__host_requirements_icmp/adherence.md`](../../icmp4/rfc1122__host_requirements_icmp/adherence.md)
 and applies here under §2.4(e/f).
@@ -37,7 +37,7 @@ parser carries the offending field's byte offset on
 `__phrx_ip6__emit_parameter_problem`, which routes through
 `try_emit_icmp_error` and emits ICMPv6 Type 4 Code 0 (erroneous
 header field encountered) with the canonical pointer. Pointers
-per `net_proto/protocols/ip6/ip6__header.py`:
+per `packages/net_proto/net_proto/protocols/ip6/ip6__header.py`:
 
 | Sanity branch       | Pointer |
 | ------------------- | :-----: |
@@ -53,7 +53,7 @@ unsupported-proto path stays unchanged. Counters:
 receiving" — the five rules (error message, redirect, multicast
 destination with PTB / Param-Problem-code-2 exceptions, and the
 implicit "single host" source rule) are wired through the shared
-`pytcp/protocols/icmp/icmp__error_emitter.py` module via
+`packages/pytcp/pytcp/protocols/icmp/icmp__error_emitter.py` module via
 `IcmpErrorContext.is_pmtud_response` /
 `IcmpErrorContext.is_param_problem_code_2`. The UDP closed-port
 emitter consumes the v6 rate limiter at
@@ -64,7 +64,7 @@ shared `IcmpErrorRateLimiter`.
 
 §4.2 — Echo Reply may be sent in response to multicast — the v6
 echo handler delegates to
-[`pytcp/protocols/icmp6/icmp6__echo_gate.py`](../../../../pytcp/protocols/icmp6/icmp6__echo_gate.py)
+[`packages/pytcp/pytcp/protocols/icmp6/icmp6__echo_gate.py`](../../../../packages/pytcp/pytcp/protocols/icmp6/icmp6__echo_gate.py)
 which currently permits unconditionally (no Smurf gate, by spec
 design — multicast Echo replies are explicitly permitted).
 

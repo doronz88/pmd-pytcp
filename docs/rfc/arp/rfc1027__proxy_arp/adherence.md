@@ -14,8 +14,8 @@ PyTCP codebase relates to each normative statement of RFC 1027
 Requests for hosts on a different physical network).
 
 The audit was performed by reading the RFC text fresh and
-inspecting the codebase under `pytcp/stack/` and
-`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
+inspecting the codebase under `packages/pytcp/pytcp/stack/` and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
 directly.
 
 Adherence levels use the canonical descriptive language:
@@ -166,7 +166,7 @@ restricted-subset proxy ARP that is widely deployed.
 **Adherence:** **met (host-side, by accident of cache
 overwrite)**. PyTCP's `ArpCache.add_entry` always
 overwrites an existing entry
-(`pytcp/stack/arp_cache.py:144-159`). The first reply
+(`packages/pytcp/pytcp/stack/arp_cache.py:144-159`). The first reply
 populates the cache; subsequent replies from other gateways
 overwrite it. This is the §2.3 "first reply wins" semantic
 in practice: the host commits to whichever gateway answered
@@ -216,7 +216,7 @@ replies to Requests whose `tpa` matches one of `self._ip4_unicast`
 address (e.g. `255.255.255.255` or a directed broadcast
 like `192.168.1.255`) is not in `self._ip4_unicast` (PyTCP
 treats limited-broadcast as a sanity error on RX:
-`net_proto/protocols/arp/arp__parser.py:135-138`). When
+`packages/net_proto/net_proto/protocols/arp/arp__parser.py:135-138`). When
 Phase 2 router-side proxy ARP lands, this rule must be
 preserved at the proxy-reply gate explicitly.
 
@@ -285,7 +285,7 @@ behaviour — "PyTCP does not silently behave as a proxy-ARP
 gateway" — is locked in by:
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — case "Ethernet/ARP - request, unknown TPA on local
   network" asserts that an ARP Request whose TPA is **not**
   one of our IPs is dropped silently (no Reply emitted).
@@ -344,7 +344,7 @@ deliberate feature, the natural test matrix is:
 
 PyTCP's Phase 1 host stack does not implement proxy ARP and
 correctly does not behave as one. The two tests at
-`pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
 that pin "drop ARP Requests for non-local TPA" are the
 primary regression guard against any accidental proxy-like
 behaviour creeping in.

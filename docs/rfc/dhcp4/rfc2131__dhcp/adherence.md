@@ -12,8 +12,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 2131. The audit was performed by reading the RFC
-text fresh and inspecting the codebase under `pytcp/` and
-`net_proto/` directly; no prior memory or rule-file content
+text fresh and inspecting the codebase under `packages/pytcp/pytcp/` and
+`packages/net_proto/net_proto/` directly; no prior memory or rule-file content
 was reused. Adherence levels are described in plain
 language. Sections that contain no normative content
 (§1 Introduction, §1.1–§1.3, §1.6 Design goals, §2.1–§2.2
@@ -25,7 +25,7 @@ boilerplate, §8 Author's Address) are omitted.
 PyTCP's DHCPv4 implementation has shipped through Phases
 0-8.x into a full RFC 2131 §4.4 client. The class
 `Dhcp4Client` at
-`pytcp/protocols/dhcp4/dhcp4__client.py` subclasses
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` subclasses
 `Subsystem` and runs as a long-lived background thread
 under `stack.start()` / `stack.stop()`. The FSM models
 INIT / SELECTING / REQUESTING / BOUND / RENEWING /
@@ -63,13 +63,13 @@ A two-step `sync` API (`fetch()` / `release(lease)` /
 primitives for tests and operator CLI tools.
 
 A separate kernel/userspace boundary surface at
-`pytcp/stack/address.py` (`Ip4AddressApi`) mediates
+`packages/pytcp/pytcp/stack/address.py` (`Ip4AddressApi`) mediates
 every address mutation; the lifecycle never writes
 `_ip4_ifaddr` directly. The Phase 4.5 FSM → API mutation
 table is wired end-to-end (see the table in the Overall
 assessment section).
 
-The wire-format library at `net_proto/protocols/dhcp4/`
+The wire-format library at `packages/net_proto/net_proto/protocols/dhcp4/`
 is comprehensive — full BOOTP-shape header, 15+ option
 codecs (including the Phase-8 polish set: max_msg_size,
 lease_time_hint, option_overload, renewal_time,
@@ -104,7 +104,7 @@ Remaining items against the per-RFC adherence catalogue:
 constructed from `stack.init` only when the L2 packet
 handler's `ip4_dhcp` flag is true and no static address
 is configured. `_create_stack_ip4_addressing` at
-`pytcp/runtime/packet_handler/__init__.py:1830-1880`
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1830-1880`
 handles statically configured candidates; the DHCPv4 path
 is owned by `stack.dhcp4_client` (a `Subsystem` that
 `stack.start()` brings up after the packet handler and
@@ -135,7 +135,7 @@ strict-RFC "e.g. the first DHCPOFFER message" path.
 >  options."
 
 **Adherence:** met. The header dataclass at
-`net_proto/protocols/dhcp4/dhcp4__header.py:136-168`
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:136-168`
 defines every field at the wire offsets in Figure 1.
 Wire layout is `! BBBB L HH L L L L 16s 64s 128s 4s`
 (`dhcp4__header.py:129`), totalling 240 bytes
@@ -160,7 +160,7 @@ asserts the cookie on every inbound frame
 
 **Adherence:** met by the client. Both DISCOVER and
 REQUEST emit `Dhcp4OptionMessageType(...)` as the first
-option (`pytcp/protocols/dhcp4/dhcp4__client.py:140`, `:194`). RX
+option (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:140`, `:194`). RX
 validation does not enforce its presence — a malformed
 inbound without Message Type would parse and surface
 `message_type = None`; the client checks for the
@@ -178,7 +178,7 @@ emits `Dhcp4OptionClientId(self._expected_client_id)`
 in DISCOVER, REQUEST, and DECLINE. As of Phase 3 the
 CID wire form is the RFC 4361 §6.1 layout —
 type=0xff + 4-byte IAID + DUID — built via
-'pytcp/lib/dhcp_uid.build_client_id'. The MAC-derived
+'packages/pytcp/pytcp/lib/dhcp_uid.build_client_id'. The MAC-derived
 DUID-LL is the default; operator override via the
 'dhcp.duid' sysctl takes precedence on every
 emission. See `rfc4361__node_specific_client_id` for
@@ -195,7 +195,7 @@ RFC 6842 §3 (see `rfc6842__client_id_echo`).
 **Adherence:** met. The integrity check at
 `dhcp4__parser.py:69-72` accepts any
 frame ≥ 240 bytes (header). The options-parsing loop at
-`net_proto/protocols/dhcp4/options/dhcp4__options.py`
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`
 walks until END or end-of-frame. The 576-byte minimum is
 satisfied trivially.
 
@@ -210,7 +210,7 @@ REBIND REQUEST, and the INIT-REBOOT REQUEST. The value
 is sourced from the `dhcp.max_msg_size` sysctl
 (default 1500 = standard Ethernet MTU; floor 576 per
 RFC 2132 §9.10). The wire codec is at
-`net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
 
 > "The leftmost bit is defined as the BROADCAST (B)
 >  flag. ... The remaining bits of the flags field are
@@ -234,7 +234,7 @@ is decoded back into a bool
 >  from a server to a client."
 
 **Adherence:** met. The enum at
-`net_proto/protocols/dhcp4/dhcp4__enums.py` defines
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__enums.py` defines
 `Dhcp4Operation.REQUEST = 0x01` and
 `Dhcp4Operation.REPLY = 0x02`. Every outbound TX —
 `_send_discover` (`dhcp4_client.py:1004`),
@@ -426,9 +426,9 @@ equivalent).
 filesystem path, `Dhcp4Client._on_bound` serialises
 the active lease to JSON (atomic write via
 `tempfile.mkstemp` + `os.replace`) at
-`pytcp/protocols/dhcp4/dhcp4__lease_cache.py:88-122`.
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__lease_cache.py:88-122`.
 The constructor at
-`pytcp/protocols/dhcp4/dhcp4__client.py:160-243` reads
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:160-243` reads
 the cache; if a still-valid lease is present (wall-
 clock age < lease_time), the FSM starts in INIT-REBOOT
 instead of INIT — skipping DISCOVER/OFFER and going
@@ -449,10 +449,10 @@ operator opts in.
 
 **Adherence:** met by wire format. The Lease Time
 option at
-`net_proto/protocols/dhcp4/options/dhcp4__option__lease_time.py`
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__lease_time.py`
 stores `lease_time: int` as `uint32`. The PyTCP client
 surfaces the value through `Dhcp4Lease.lease_time__sec`
-(`pytcp/protocols/dhcp4/dhcp4__client.py` `_discover_request_once`)
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` `_discover_request_once`)
 alongside `acquired_at_monotonic = time.monotonic()` so
 the Phase-4 lifecycle thread can schedule T1/T2 against
 absolute monotonic deadlines. The Phase-0 client now
@@ -495,7 +495,7 @@ REQUEST (`:1052-1057`), and the RENEW/REBIND REQUEST
 **Adherence:** met (Phase 8.1). See §2 above for the
 Maximum DHCP Message Size emission entry — included in
 every outbound DHCP message. Codec:
-`net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`.
 
 > "The 'requested IP address' option is to be filled in
 >  only in a DHCPREQUEST message when the client is
@@ -544,7 +544,7 @@ with `Dhcp4OptionEnd()` —
 `_send_decline:1095`, `_send_request_renew:603`,
 `_send_release:633`. The header packs the magic cookie
 as the final fixed field
-(`net_proto/protocols/dhcp4/dhcp4__header.py`).
+(`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py`).
 
 > "DHCP uses UDP as its transport protocol. DHCP
 >  messages from a client to a server are sent to the
@@ -575,7 +575,7 @@ RELEASE path likewise unicasts to `lease.server_id`
 
 **Adherence:** met. Every DHCPv4 client socket binds to
 `("0.0.0.0", 68)`; the UDP layer's `_get_ip_addresses`
-(`pytcp/socket/udp__socket.py:148-195`) deliberately
+(`packages/pytcp/pytcp/socket/udp__socket.py:148-195`) deliberately
 skips `pick_local_ip_address` for the DHCP-client
 (sport=68/dport=67) connect path so the local address
 stays unspecified for the whole FSM lifecycle. Outbound
@@ -601,7 +601,7 @@ client by `chaddr` and ciaddr, which suffices).
 >  maximum of 64 seconds."
 
 **Adherence:** met (Phase 1). `_recv_with_backoff` in
-`pytcp/protocols/dhcp4/dhcp4__client.py` runs the canonical RFC 2131
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` runs the canonical RFC 2131
 §4.1 backoff: initial delay 4 s, doubled on each timeout
 (8 / 16 / 32 / 64 s), capped at 64 s, jittered uniform
 ±1 s, up to 5 total recv attempts (~124 s worst-case
@@ -620,7 +620,7 @@ populated by `_elapsed_secs` per RFC 1542 §3.2; see
 The four delay parameters are operator-tunable via the
 'dhcp.retrans_initial_ms' / `_max_ms` /
 `_max_attempts` / `_jitter_ms` sysctls registered in
-`pytcp/protocols/dhcp4/dhcp4__constants.py`. Setting
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__constants.py`. Setting
 `retrans_jitter_ms` to 0 disables jitter — useful for
 deterministic test pinning. A finalize-validator
 rejects `initial_ms > max_ms` so a misconfigured pair
@@ -742,7 +742,7 @@ draws a delay from
 sleeps for it, with `min_ms` / `max_ms` sourced live
 from the 'dhcp.init_delay_min_ms' (default 1000) and
 'dhcp.init_delay_max_ms' (default 10000) sysctls in
-`pytcp/protocols/dhcp4/dhcp4__constants.py`. Defaults
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__constants.py`. Defaults
 match the RFC's [1, 10]-second SHOULD range exactly.
 Setting both bounds to 0 disables the delay — the
 canonical configuration for unit tests, short-lived
@@ -829,7 +829,7 @@ valid lease, the `_on_bound` transition
 (`dhcp4_client.py:269-284`) invokes the
 `arp_dad_announcer` callback wired by the packet handler
 to `_arp_dad_announce_address`
-(`pytcp/runtime/packet_handler/__init__.py:1815-1828`),
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1815-1828`),
 which emits the RFC 5227 §2.3
 ANNOUNCE_NUM=2 gratuitous ARP Announcements. The trigger
 is technically RFC 5227, not the DHCP path directly, but
@@ -969,13 +969,13 @@ handler then checks the '_t2_deadline' (factor
 REBINDING; the REBINDING handler checks the lease-
 expiry deadline. Both factors are operator-tunable
 via the 'dhcp.t1_factor' / 'dhcp.t2_factor' sysctls
-in 'pytcp/protocols/dhcp4/dhcp4__constants.py', with
+in 'packages/pytcp/pytcp/protocols/dhcp4/dhcp4__constants.py', with
 a cross-knob finalize validator enforcing 't1 ≤ t2'.
 
 Server-supplied option 58 (T1) / option 59 (T2)
 overrides are honoured as of the Phase 8.x server-T1/T2
 commit. Typed codecs at
-'net_proto/protocols/dhcp4/options/dhcp4__option__renewal_time.py'
+'packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__renewal_time.py'
 and `..__rebinding_time.py' parse the wire-format
 values; '_extract_t1_t2_overrides' validates them
 against the RFC 2131 §4.4.5 'T1 < T2 < lease_time'
@@ -1029,14 +1029,14 @@ unicast replies (server → leased IP) and REBIND
 broadcast replies (server → 255.255.255.255 to a host
 that owns a different unicast IP) had no listening
 socket to match and were silently dropped at UDP RX. The
-fix at `pytcp/socket/udp__socket.py:148-195` skips
+fix at `packages/pytcp/pytcp/socket/udp__socket.py:148-195` skips
 `pick_local_ip_address` for DHCPv4/v6 client sockets and
 keeps their local at 0.0.0.0 / :: across the whole FSM
 lifecycle; the fix at
-`pytcp/socket/udp__metadata.py:67-93` enumerates both
+`packages/pytcp/pytcp/socket/udp__metadata.py:67-93` enumerates both
 (sender-unicast) and (limited-broadcast) shapes so RENEW
 and REBIND replies both find the listener. Locked in by
-`pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`
+`packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`
 (three tests covering INIT/RENEW/REBIND reception via a
 real `UdpSocket` driven through
 `PacketHandlerL2._phrx_ethernet`).
@@ -1060,22 +1060,22 @@ is expected from the server.
 ### §2 Message format
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
   Pin field-level invariants on every header field
   (under_min / over_max for integer fields; type checks
   for enums and addresses).
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py` (155 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py` (155 lines)
   Pin integrity error paths (frame too short, bad
   magic cookie, bad hardware type, bad hardware
   length).
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py` (690 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py` (690 lines)
   Pin parser happy path: full round-trip of a DISCOVER
   / OFFER / REQUEST / ACK frame through Dhcp4Parser
   exposing every header field and option.
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py` (441 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py` (441 lines)
   Pin assembler happy path: every field round-trips
   byte-for-byte.
 
@@ -1084,7 +1084,7 @@ is expected from the server.
 ### §3.1 DISCOVER → REQUEST flow
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   Exercises `fetch()` end-to-end with a mocked socket:
   the client emits a DISCOVER with the right options,
   receives a stubbed OFFER, emits a REQUEST with the
@@ -1095,7 +1095,7 @@ is expected from the server.
 
 ### §2 / §4.4.1 / §3.1 step 4 — Phase 0 Client Identifier + xid + NAK
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   - `TestDhcp4ClientFetchClientIdInRequest` —
     round-trips the emitted REQUEST through the real
     Dhcp4Parser and asserts `request.client_id` equals
@@ -1120,7 +1120,7 @@ is expected from the server.
 
 ### §3.1 step 5 — DHCPDECLINE on ARP conflict (Phase 2.2)
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchArpDad`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchArpDad`
   - `invokes_arp_dad_verifier_with_leased_address` — the
     'arp_dad_verifier' callback is called exactly once
     with the offered 'yiaddr' after a valid ACK.
@@ -1139,7 +1139,7 @@ is expected from the server.
     = 12 emissions, fetch returns None.
   - `decline_path_honours_decline_backoff_sleep` —
     time.sleep called with decline_backoff_ms/1000.0.
-- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — 'dhcp.decline_backoff_ms' default 10000 ms, accepts
   0, rejects negatives.
 - **Integration:** existing `test__arp__dad.py` suite (13
@@ -1151,7 +1151,7 @@ is expected from the server.
 
 ### §4.4.1 — Initial 1-10 s random delay (Phase 2.1)
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchInitialDelay`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientFetchInitialDelay`
   - `initial_delay_uses_default_bounds` — `random.uniform(1.0, 10.0)`
     is the canonical draw at the default sysctl values; the
     drawn value flows to `time.sleep(...)`.
@@ -1162,7 +1162,7 @@ is expected from the server.
   - `initial_delay_disabled_when_max_ms_zero` — the
     fixture-default 0/0 configuration bypasses the sleep
     entirely.
-- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — `dhcp.init_delay_{min,max}_ms` defaults, validators (accept 0,
   reject negatives), live-module read-through, and the
   cross-knob `min ≤ max` finalize validator.
@@ -1171,7 +1171,7 @@ is expected from the server.
 
 ### §4.1 — Retransmission backoff (Phase 1)
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   - `TestDhcp4ClientFetchBackoffSilence` —
     `silent_server_runs_5_attempts` pins 5 recv +
     5 send (1 initial + 4 retransmits) under server
@@ -1192,7 +1192,7 @@ is expected from the server.
   - `TestDhcp4ClientFetchBackoffJitter::fetch_jitter_draws_from_pm_jitter_ms`
     — pins the ±jitter_ms call shape on
     `random.uniform`.
-- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — defaults, validator rejection cases, and the
   cross-knob `initial_ms ≤ max_ms` finalize validator
   for every retransmission sysctl.
@@ -1201,7 +1201,7 @@ is expected from the server.
 
 ### §4.4 / §4.4.5 — Client FSM (Phase 4 commit C)
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientLeaseLifecycle`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py::TestDhcp4ClientLeaseLifecycle`
   - `do_bound_transitions_to_renewing_when_t1_elapsed`
     — BOUND → RENEWING fires at T1 (= 0.5 × lease).
   - `do_bound_stays_bound_when_t1_not_elapsed`
@@ -1221,7 +1221,7 @@ is expected from the server.
   - `renewing_emits_unicast_request_with_ciaddr`
     — RENEW REQUEST wire shape: ciaddr=current IP, no
     server-id, no requested-ip.
-- **Unit:** `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__constants.py`
   — 'dhcp.t1_factor' / 'dhcp.t2_factor' defaults +
   cross-knob 't1 ≤ t2' finalize validator.
 
@@ -1230,7 +1230,7 @@ is expected from the server.
 ### §4.4.5 — RENEW/REBIND wire-level RX (post-Phase-4 fix)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py::TestDhcp4ClientSocketRxDelivery`
+  `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py::TestDhcp4ClientSocketRxDelivery`
   - `test__dhcp4__rx__init_broadcast_reply_delivered`
     — pre-lease broadcast reply lands at the listening
     socket via the special-case lookup.
@@ -1244,7 +1244,7 @@ is expected from the server.
     `pick_local_ip4_address` latching bug fixed
     post-Phase-4).
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__metadata.py::TestUdpMetadataSocketIdsDhcp::test__udp_metadata__socket_ids_dhcp4`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__metadata.py::TestUdpMetadataSocketIdsDhcp::test__udp_metadata__socket_ids_dhcp4`
   — pins the two-entry shape returned by
   `UdpMetadata.socket_ids` for the DHCPv4 client.
 
@@ -1253,7 +1253,7 @@ is expected from the server.
 ### §3.2 / §4.4.2 — INIT-REBOOT + cached lease (Phase 5)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
   - `TestDhcp4LeaseCacheRoundTrip` — write-then-read
     round-trips the address / mask / gateway / server-
     id / lease-time fields; gateway=None survives the
@@ -1267,7 +1267,7 @@ is expected from the server.
   - `TestDhcp4LeaseCacheDelete` — delete removes existing
     file; missing-file and empty-path are silent no-ops.
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientInitReboot`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientInitReboot`
   - `init_starts_in_init_when_no_cache` — empty cache
     path → INIT, no preloaded lease.
   - `init_starts_in_init_reboot_when_cache_present`
@@ -1292,22 +1292,22 @@ is expected from the server.
 ### §4.4.5 / RFC 2132 §9.7 / §9.8 — Server T1/T2 overrides (Phase 8.x)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__renewal_time.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__renewal_time.py`
   (13 tests) — Renewal Time (option 58) codec
   round-trip + integrity checks.
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__rebinding_time.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__rebinding_time.py`
   (13 tests) — Rebinding Time (option 59) codec
   round-trip + integrity checks.
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientServerT1T2Overrides`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientServerT1T2Overrides`
   (6 tests) — ACK options populate
   `Dhcp4Lease.t1_override` / `t2_override`; deadlines
   honour the lease overrides; missing options fall back
   to factor defaults; invalid T1 ≥ lease_time is
   dropped; invalid T1 ≥ T2 drops both.
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py::TestDhcp4LeaseCacheT1T2Overrides`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py::TestDhcp4LeaseCacheT1T2Overrides`
   (2 tests) — cache v3 round-trips both overrides;
   null values round-trip cleanly.
 
@@ -1316,7 +1316,7 @@ is expected from the server.
 ### §1.4 / §4.4.1 — Multi-OFFER collection window (Phase 8.x)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientMultiOfferCollection`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientMultiOfferCollection`
   - `collection_window_disabled_picks_first_offer` —
     `dhcp.offer_collection_ms = 0` → DISCOVER + REQUEST
     only (strict-RFC behaviour preserved).
@@ -1332,24 +1332,24 @@ is expected from the server.
 ### §2 / §3.5 / §9.10 — Polish options (Phase 8)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__max_msg_size.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__max_msg_size.py`
   (16 tests) — Max DHCP Message Size codec round-trip,
   under-min / over-max integrity checks, wrong-type
   buffer rejection.
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
   (20 tests) — Option Overload codec round-trip for all
   three legal values (1/2/3), `includes_file` /
   `includes_sname` decoders, integrity checks (bad
   length, bad value, wrong type).
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__option_overload.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__option_overload.py`
   (4 tests) — parser-side merge of options from BOOTP
   'sname' / 'file' fields for overload=1/2/3, plus the
   negative case that those fields stay inert without
   option 52.
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientPhase8Polish`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientPhase8Polish`
   (5 tests) — DISCOVER + SELECTING REQUEST carry
   Max-Msg-Size = 1500; DISCOVER carries Lease-Time
   hint = 86400 by default; sysctl override propagates;
@@ -1471,10 +1471,10 @@ setting the sysctl to 0.
 the UDP socket layer was silently dropping every RENEW
 unicast and REBIND broadcast reply once a lease was in
 place; the fixes at
-`pytcp/socket/udp__socket.py:148-195` and
-`pytcp/socket/udp__metadata.py:67-93` are pinned by the
+`packages/pytcp/pytcp/socket/udp__socket.py:148-195` and
+`packages/pytcp/pytcp/socket/udp__metadata.py:67-93` are pinned by the
 new integration test
-`pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`.
+`packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py`.
 Verified end-to-end against a live DHCP server — eight
 consecutive RENEWs at the 1800 s T1 boundary all
 received an ACK and logged `Lease renewed: same IP

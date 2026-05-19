@@ -12,8 +12,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 6691. The audit was performed by reading the RFC
-text fresh and inspecting the codebase under `pytcp/` and
-`net_proto/` directly; no prior memory or rule-file content
+text fresh and inspecting the codebase under `packages/pytcp/pytcp/` and
+`packages/net_proto/net_proto/` directly; no prior memory or rule-file content
 was reused. Adherence levels are described in plain
 language. Sections that contain no normative content
 (Introduction, Terminology, References, historical
@@ -35,7 +35,7 @@ This is the central normative section.
 
 **Adherence:** fully met. The MSS value advertised on
 outbound SYN / SYN+ACK is computed in
-`pytcp/protocols/tcp/tcp__session.py:144-147`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:144-147`:
 
 ```python
 self._ip_tcp_overhead = (40 if isinstance(local_ip_address, Ip6Address) else 20) + 20
@@ -47,7 +47,7 @@ fixed IPv6 (40) header plus the fixed TCP header (20). No
 TCP option overhead (timestamps, SACK, WSCALE, etc.) is
 subtracted from this value. The `_rcv_mss` field is then
 emitted on the SYN via the MSS option assembler at
-`pytcp/protocols/tcp/tcp__session.py:1524`.
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1524`.
 
 **Requirement B — sender reduces data length for options:**
 
@@ -86,9 +86,9 @@ even SACK-heavy retransmits stay within MTU. Pinned by
 > [RFC2460]."
 
 **Adherence:** met. The constants are encoded in
-`pytcp/protocols/tcp/tcp__session.py:144` (20+20=40 for
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:144` (20+20=40 for
 IPv4, 40+20=60 for IPv6) and reaffirmed in
-`pytcp/protocols/tcp/tcp__fsm__syn_sent.py:136-141`
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_sent.py:136-141`
 ("at most 'mtu - 40'").
 
 ---
@@ -118,7 +118,7 @@ artificially constrain a peer's PMTUD attempts.
 
 **Adherence:** vacuously satisfied. `stack.interface_mtu`
 is a single integer set at startup
-(`pytcp/stack/__init__.py:189`) and not subsequently
+(`packages/pytcp/pytcp/stack/__init__.py:189`) and not subsequently
 varied. There is no ROHC-style compression layer or
 variable-MSS interface abstraction, so "use smallest"
 holds trivially because there is only one value.
@@ -135,7 +135,7 @@ holds trivially because there is only one value.
 
 **Adherence:** not implemented. PyTCP does not support
 IPv6 jumbograms — there is no Hop-by-Hop jumbogram option
-support under `net_proto/protocols/ip6/`, no path-MTU
+support under `packages/net_proto/net_proto/protocols/ip6/`, no path-MTU
 discovery, and no segment-emission path for payloads
 larger than 64K. The MSS option emitter does cap at
 `min(self._rcv_mss, 0xFFFF)` (`tcp__session.py:1524`),
@@ -161,7 +161,7 @@ Requirement B gap. With timestamps or SACK negotiated, a
 full-MSS segment becomes `fixed_headers + options + MSS
 data`, which exceeds the link MTU by `len(options)` bytes
 and triggers IPv4 fragmentation at
-`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:156-169`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:156-169`.
 PyTCP never sets the IPv4 DF bit on outbound packets (no
 `flag_df=` assignment anywhere in the TX path), so the
 "or dropped" alternative does not occur — every option-
@@ -183,9 +183,9 @@ fragments.
 
 **Adherence:** met. The MSS-option container's `mss`
 property at
-`net_proto/protocols/tcp/options/tcp__options.py:247-253`
+`packages/net_proto/net_proto/protocols/tcp/options/tcp__options.py:247-253`
 returns `TCP__MIN_MSS` (= 536, defined at
-`net_proto/protocols/tcp/tcp__header.py:67` with the RFC
+`packages/net_proto/net_proto/protocols/tcp/tcp__header.py:67` with the RFC
 879 citation) when the parsed peer's SYN does not include
 an MSS option. The `_snd_mss` clamp at
 `tcp__fsm__syn_sent.py:142-145` then runs
@@ -216,17 +216,17 @@ have no test surface to audit.
 ### §2 Req A — MSS option value uses fixed-header sizes
 
 - **Integration (IPv4 active):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__active.py::test__active_open__outbound_syn_carries_tsopt_wscale_sackperm_together`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__active.py::test__active_open__outbound_syn_carries_tsopt_wscale_sackperm_together`
   asserts `syn.mss == 1460` on a 1500-MTU IPv4 link
   (= MTU − 20 IPv4 − 20 TCP, fixed-headers only, no
   option subtraction even though the SYN also carries
   WSCALE / TSopt / SACK-Permitted).
 - **Integration (IPv6 active):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ipv6.py::test__ipv6__outbound_syn_advertises_mss_mtu_minus_60`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ipv6.py::test__ipv6__outbound_syn_advertises_mss_mtu_minus_60`
   asserts the IPv6 outbound SYN advertises 1440 = 1500 −
   40 IPv6 − 20 TCP.
 - **Wire-level option encoding:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py::TestTcpOptionMssAssembler` (parameterised over the 0 / 0xFFFF / mid-range matrix) covers the option's `__bytes__`, `__len__`, `__str__`, `__repr__` shape.
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py::TestTcpOptionMssAssembler` (parameterised over the 0 / 0xFFFF / mid-range matrix) covers the option's `__bytes__`, `__len__`, `__str__`, `__repr__` shape.
 
 **Status: locked in.** The two protocol-level tests cover
 both address families and the four-option co-emission
@@ -268,11 +268,11 @@ because `_rcv_mss < 65535` for any realistic MTU).
 ### Appendix A — default send MSS = 536
 
 - **Integration (passive open, no MSS option):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py::test__passive_open__syn_without_mss_option_defaults_send_mss_to_536`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py::test__passive_open__syn_without_mss_option_defaults_send_mss_to_536`
   drives a peer SYN that omits the MSS option entirely
   and asserts the child session's `_snd_mss == 536`.
 - **Integration (peer MSS=0 clamped to floor):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__options.py::test__options__peer_mss_zero_clamped_to_tcp_min_mss`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__options.py::test__options__peer_mss_zero_clamped_to_tcp_min_mss`
   drives a peer SYN+ACK with MSS=0 and asserts
   `_snd_mss` is clamped to `TCP__MIN_MSS` (536), not
   accepted verbatim.
@@ -284,11 +284,11 @@ pinned.
 ### Appendix A — `MSS = MTU − fixed_ip − fixed_tcp`
 
 - **Integration (peer MSS above local MTU, IPv4):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__options.py::test__options__peer_mss_above_local_mtu_clamped_to_mtu_minus_40`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__options.py::test__options__peer_mss_above_local_mtu_clamped_to_mtu_minus_40`
   drives a peer SYN+ACK with MSS=9000 on a 1500-MTU
   IPv4 link and asserts `_snd_mss == 1460`.
 - **Integration (peer MSS above local MTU, IPv6):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ipv6.py::test__ipv6__active_handshake_completes_to_established_with_ipv6_correct_snd_mss`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ipv6.py::test__ipv6__active_handshake_completes_to_established_with_ipv6_correct_snd_mss`
   drives a peer SYN+ACK with MSS=9000 on a 1500-MTU
   IPv6 link and asserts `_snd_mss == 1440`.
 
@@ -297,7 +297,7 @@ explicit ceiling-clamp test.
 
 ### MSS option asserts and wire format
 
-`net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py`
+`packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__mss.py`
 contains `TestTcpOptionMssAsserts` (rejects under-min /
 over-max integers via the dataclass `__post_init__`)
 and `TestTcpOptionMssAssembler` (parameterised matrix

@@ -13,7 +13,7 @@
 PyTCP generates SLAAC IIDs via the RFC 7217 §5 algorithm by
 default, mirroring Linux's modern `addr_gen_mode = 2`. The
 helper is `Ip6IfAddr.from_rfc7217(...)` at
-`net_addr/ip6_ifaddr.py`; the packet handler exposes it through
+`packages/net_addr/net_addr/ip6_ifaddr.py`; the packet handler exposes it through
 `_derive_ip6_host(ip6_network=...)` which gates on the
 `icmp6.use_rfc7217` sysctl (default 1; 0 falls back to EUI-64).
 
@@ -68,7 +68,7 @@ embedded addresses for legacy interop.
 
 ### Tests
 
-`net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc7217`:
+`packages/net_addr/net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc7217`:
 - Deterministic output for identical inputs.
 - Different prefix → different IID (cross-network unlinkability).
 - Different MAC → different IID.
@@ -77,7 +77,7 @@ embedded addresses for legacy interop.
 - /64 mask required.
 - Constructor rejects secret_key < 128 bits.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py`:
 - Default sysctl produces RFC 7217 form (not EUI-64).
 - `use_rfc7217=0` reverts to EUI-64.
 - Handler initialises secret_key to exactly 16 bytes.

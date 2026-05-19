@@ -85,7 +85,7 @@ inline `const`, it is invariant.
 
 ## §2 Registry shape
 
-Single file: `pytcp/stack/sysctl.py`. Exposes:
+Single file: `packages/pytcp/pytcp/stack/sysctl.py`. Exposes:
 
 ```python
 # Public API
@@ -310,7 +310,7 @@ the slow drift of pure-lazy migration.
 
 ### Phase 0 — Build registry ✅ shipped `8eb94ccb`
 
-Write `pytcp/stack/sysctl.py` with:
+Write `packages/pytcp/pytcp/stack/sysctl.py` with:
 - `_register`, `get`, `set`, `list_keys`, `describe`,
   `snapshot`, `reset_to_defaults`, `override` (cm).
 - `_SysctlRegistry` class (the dict-like sugar; binds
@@ -318,7 +318,7 @@ Write `pytcp/stack/sysctl.py` with:
 - A `_finalize_validators` pass that runs the cross-knob
   constraint list at end of `init()`.
 
-Unit tests at `pytcp/tests/unit/lib/test__lib__sysctl.py`:
+Unit tests at `packages/pytcp/pytcp/tests/unit/lib/test__lib__sysctl.py`:
 - `register` then `get` returns the default.
 - `set` updates both the module attr and the registry.
 - `set` with a failing validator raises `ValueError` with
@@ -333,7 +333,7 @@ No source migration in this commit. Pure infrastructure.
 
 ### Phase 1 — Migrate `arp__constants.py` policy knobs (#16 retrofit + #17 prep) ✅ shipped (this commit)
 
-Walk every constant in `pytcp/protocols/arp/arp__constants.py`,
+Walk every constant in `packages/pytcp/pytcp/protocols/arp/arp__constants.py`,
 classify each, register the policy ones with the registry.
 Update `stack.init()` to forward kwargs through the registry
 instead of writing to the module attribute directly. Existing
@@ -389,19 +389,19 @@ doc's §10 Tier 3 #17.
 
 When the next feature touches:
 
-- `pytcp/protocols/icmp4/` constants → migrate ICMP4 package.
-- `pytcp/protocols/icmp6/` constants → migrate ICMP6 package.
-- `pytcp/protocols/ip4/` constants → migrate IP4 package
+- `packages/pytcp/pytcp/protocols/icmp4/` constants → migrate ICMP4 package.
+- `packages/pytcp/pytcp/protocols/icmp6/` constants → migrate ICMP6 package.
+- `packages/pytcp/pytcp/protocols/ip4/` constants → migrate IP4 package
   (default TTL, fragment timeouts, MTU, send-redirects,
   forwarding flag).
-- `pytcp/protocols/ip6/` constants → migrate IP6 package
+- `packages/pytcp/pytcp/protocols/ip6/` constants → migrate IP6 package
   (hop limit, MTU, frag timeouts).
-- `pytcp/protocols/tcp/tcp__constants.py` → migrate TCP
+- `packages/pytcp/pytcp/protocols/tcp/tcp__constants.py` → migrate TCP
   package (RTO bounds, retry counts, MSS minimums,
   delayed-ACK timer, keep-alive intervals, CC defaults).
-- `pytcp/protocols/udp/` → minimal (mostly invariants;
+- `packages/pytcp/pytcp/protocols/udp/` → minimal (mostly invariants;
   port-range overlaps with stack-level knobs).
-- `pytcp/stack/__init__.py` constants → migrate stack-wide
+- `packages/pytcp/pytcp/stack/__init__.py` constants → migrate stack-wide
   policy (ND cache timers, ephemeral port range, fragment
   timeouts).
 
@@ -465,8 +465,8 @@ plan with §0 motivation, §1 classification rule, §2-§7 design,
   4. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` §6.1 (sysctl pattern)
   5. .claude/skills/sysctl_knob/SKILL.md (workflow for adding
      a knob)
-  6. The current state of pytcp/stack/sysctl.py if it exists,
-     plus pytcp/protocols/arp/arp__constants.py.
+  6. The current state of packages/pytcp/pytcp/stack/sysctl.py if it exists,
+     plus packages/pytcp/pytcp/protocols/arp/arp__constants.py.
 
 After reading, confirm:
 

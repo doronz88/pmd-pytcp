@@ -104,14 +104,14 @@ posture:
 > corresponding registry."
 
 **Adherence:** **shipped (structural).** PyTCP's `Icmp4Type`
-enum (`net_proto/protocols/icmp4/message/icmp4__message.py`)
+enum (`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message.py`)
 contains exactly five members: `ECHO_REPLY` (0),
 `DESTINATION_UNREACHABLE` (3), `ECHO_REQUEST` (8),
 `TIME_EXCEEDED` (11), `PARAMETER_PROBLEM` (12). None of the 15
 deprecated types appears. A grep-level audit confirms no
 references to any deprecated type name (`grep -r "INFORMATION_R"
 "ADDRESS_MASK" "DOMAIN_NAME" "MOBILE_HOST" "ALTERNATE_HOST"
-"DATAGRAM_CONVERSION" "TRACEROUTE" "SKIP" net_proto/ pytcp/`
+"DATAGRAM_CONVERSION" "TRACEROUTE" "SKIP" packages/net_proto/net_proto/ packages/pytcp/pytcp/`
 returns no implementation hits).
 
 The note at the end of §3 ("The ICMPv4 Source Quench Message

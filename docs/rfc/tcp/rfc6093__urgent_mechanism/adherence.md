@@ -13,8 +13,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6093. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `net_proto/protocols/tcp/`, `pytcp/protocols/tcp/`,
-and `pytcp/socket/` directly; no prior memory or
+under `packages/net_proto/net_proto/protocols/tcp/`, `packages/pytcp/pytcp/protocols/tcp/`,
+and `packages/pytcp/pytcp/socket/` directly; no prior memory or
 rule-file content was reused. Sections that contain no
 normative content (Abstract, Introduction narrative, §2
 historical specification overview, §3 implementation-
@@ -39,12 +39,12 @@ urgent pointer point to the LAST octet of urgent data
 (per RFC 793 §3.1, which §4 endorses as the de facto
 reality). PyTCP's wire layer emits and parses the
 URG flag and `urg` field as opaque 16-bit values
-(`net_proto/protocols/tcp/tcp__header.py:84` flag bit
+(`packages/net_proto/net_proto/protocols/tcp/tcp__header.py:84` flag bit
 + `urg` field) without any session-level urgent-data
 semantics that would require the stack to interpret
 the pointer's meaning. The TCP session at
-`pytcp/protocols/tcp/tcp__session.py` and every FSM
-state handler in `pytcp/protocols/tcp/tcp__fsm__*.py`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py` and every FSM
+state handler in `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__*.py`
 contain no code paths that read `flag_urg` or `urg` —
 the bits travel through unaltered. With no
 implementation choice to make about the pointer's
@@ -126,16 +126,16 @@ same byte stream on both.
 ### §4 Urgent pointer wire semantics
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__assembler__operation.py::test__tcp__assembler__flag_urg`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__assembler__operation.py::test__tcp__assembler__flag_urg`
   and `test__tcp__assembler__urg` cover the assembler's
   handling of the URG flag and 16-bit urgent-pointer
   field.
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__parser__operation.py`
   parameterised matrix exercises parsing both
   flag-set and flag-clear cases.
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__header__asserts.py`
   pins the `flag_urg: bool` and `urg: int` field
   asserts.
 

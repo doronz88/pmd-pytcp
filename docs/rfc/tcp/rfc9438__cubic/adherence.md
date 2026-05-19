@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 9438. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §2
 Conventions, §3 Design Principles, §5 Discussion,
@@ -29,7 +29,7 @@ Conventions, §3 Design Principles, §5 Discussion,
 > "C: 0.4 / β_cubic: 0.7 / α_cubic: 3 * (1-β)/(1+β)"
 
 **Adherence:** met. PyTCP encodes the constants as
-integer ratios at `pytcp/protocols/tcp/tcp__cubic.py`:
+integer ratios at `packages/pytcp/pytcp/protocols/tcp/tcp__cubic.py`:
 
 ```python
 C_NUM, C_DEN = 2, 5         # C = 0.4
@@ -71,7 +71,7 @@ from `_cubic_w_last_max` directly.
 > "K = cubicroot((W_max - cwnd_epoch) / C)"
 
 **Adherence:** met. `cubic_w` at
-`pytcp/protocols/tcp/tcp__cubic.py:151-189` and
+`packages/pytcp/pytcp/protocols/tcp/tcp__cubic.py:151-189` and
 `cubic_compute_K` at line 103-148 implement the
 formulas. The cube-root uses Python's
 `pow(x, 1/3.0)` then `int(round(...))` (the one
@@ -231,7 +231,7 @@ CUBIC takes over only when cwnd >= ssthresh.
 ### §4.1 Constants
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__cubic.py::TestCubicConstants`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__cubic.py::TestCubicConstants`
   pins `C_NUM/DEN`, `BETA_CUBIC_NUM/DEN`,
   `ALPHA_CUBIC_NUM/DEN`, `FAST_CONV_NUM/DEN`.
 
@@ -248,7 +248,7 @@ CUBIC takes over only when cwnd >= ssthresh.
 
 - **Unit:** `TestCubicWEst` pins the formula.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cubic.py::TestTcpCubicPhase3::test__cubic__reno_friendly_w_est_tracks_cwnd_on_ca_growth`.
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cubic.py::TestTcpCubicPhase3::test__cubic__reno_friendly_w_est_tracks_cwnd_on_ca_growth`.
 
 **Status:** locked in.
 

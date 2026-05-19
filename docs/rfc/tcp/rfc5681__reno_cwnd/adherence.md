@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 5681. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §2
 Definitions boilerplate, §4.3 advisory mechanisms, §5
@@ -66,7 +66,7 @@ audit's "Refrain from resetting IW to 1" section.
 > possible advertised window)."
 
 **Adherence:** met. `ssthresh = 0x7FFF_FFFF`
-(`pytcp/protocols/tcp/tcp__session.py:709` —
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:709` —
 `self._ssthresh: int = 0x7FFF_FFFF`) — the canonical
 "INT32_MAX" choice that's well above any realistic
 peer-advertised window. PyTCP enters slow-start
@@ -82,7 +82,7 @@ cleanly post-handshake.
 >     cwnd += min (N, SMSS)                      (2)"
 
 **Adherence:** met. The slow-start branch in
-`pytcp/protocols/tcp/tcp__cwnd.py:111-112`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__cwnd.py:111-112`:
 
 ```python
 if cwnd < ssthresh:
@@ -132,7 +132,7 @@ TCP_CONGESTION, "reno")`.)
 >     ssthresh = max (FlightSize / 2, 2*SMSS)            (4)"
 
 **Adherence:** met. `compute_loss_event_ssthresh` at
-`pytcp/protocols/tcp/tcp__cwnd.py:117-142`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__cwnd.py:117-142`:
 
 ```python
 return max(flight_size // 2, 2 * smss)
@@ -178,7 +178,7 @@ below what RFC 5681 strict would yield, never above.
 > (regardless of the value of IW)."
 
 **Adherence:** met. Post-RTO at
-`pytcp/protocols/tcp/tcp__session.py:2672`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2672`:
 
 ```python
 self._cwnd = self._snd_mss
@@ -196,7 +196,7 @@ Sets cwnd to exactly 1 SMSS, matching LW.
 > ACK when an out-of-order segment arrives."
 
 **Adherence:** met. The OOO-arrival path at
-`pytcp/protocols/tcp/tcp__fsm__established.py:227`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py:227`:
 
 ```python
 session._transmit_packet(flag_ack=True)
@@ -225,7 +225,7 @@ delayed-ACK).
 
 **Adherence:** met. RFC 3042 Limited Transmit is
 implemented at
-`pytcp/protocols/tcp/tcp__session.py:2771-2787` (see
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2771-2787` (see
 RFC 3042 audit).
 
 ### Sender step 2: ssthresh per Eq 4 on 3rd dup-ACK
@@ -235,7 +235,7 @@ RFC 3042 audit).
 > in equation (4)."
 
 **Adherence:** met.
-`pytcp/protocols/tcp/tcp__session.py:2789-2822`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2789-2822`
 (Reno branch at line 2822):
 
 ```python
@@ -299,7 +299,7 @@ in `_tx_buffer` and `_snd_ewn` permits, it fires.
 > termed 'deflating' the window."
 
 **Adherence:** met. The recovery-exit branch at
-`pytcp/protocols/tcp/tcp__session.py:3382-3390`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3382-3390`:
 
 ```python
 if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
@@ -346,7 +346,7 @@ segment.
 > ACK for at least every second segment."
 
 **Adherence:** met. PyTCP's delayed-ACK at
-`pytcp/protocols/tcp/tcp__constants.py` (the
+`packages/pytcp/pytcp/protocols/tcp/tcp__constants.py` (the
 `DELAYED_ACK_DELAY` constant) is set to a value less
 than 500 ms (typically ~200 ms), and the FSM
 established handler emits an immediate ACK on every
@@ -364,11 +364,11 @@ Already covered above in §3.2 audit.
 ### §3.1 Slow start (Eq 2)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py::TestCwndGrowPerAck__SlowStart`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py::TestCwndGrowPerAck__SlowStart`
   parameterised cases pin `cwnd += min(bytes_acked,
   smss)` for various input combinations.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase1::test__cwnd__slow_start_grows_cwnd_by_one_mss_per_cum_ack`.
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase1::test__cwnd__slow_start_grows_cwnd_by_one_mss_per_cum_ack`.
 
 **Status:** locked in.
 
@@ -446,7 +446,7 @@ has its own test surface).
 ### §4.2 Delayed ACK
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__recv.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__recv.py`
   contains delayed-ACK timing tests.
 
 **Status:** locked in.

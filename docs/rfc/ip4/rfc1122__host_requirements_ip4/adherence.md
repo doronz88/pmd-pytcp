@@ -12,8 +12,8 @@
 This document records the PyTCP codebase's adherence to RFC 1122
 **§3 (Internet Layer)** clause by clause. The audit was performed
 by reading the RFC text fresh and inspecting the codebase under
-`net_proto/protocols/ip4/` and
-`pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
+`packages/net_proto/net_proto/protocols/ip4/` and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__*.py` directly;
 no prior memory or rule-file content was reused.
 
 Scope:
@@ -37,9 +37,9 @@ boilerplate are omitted.
 
 PyTCP **meets** the host-requirements MUSTs for §3.2.1 (IP-layer
 RX and TX). Routing-table material in §3.3.1 is now backed by a
-real host-mode FIB (`pytcp/runtime/fib.py` `RouteTable`,
+real host-mode FIB (`packages/pytcp/pytcp/runtime/fib.py` `RouteTable`,
 longest-prefix lookup; Phase-3 `RouteApi` in
-`pytcp/stack/route.py`) — the next hop is destination-keyed
+`packages/pytcp/pytcp/stack/route.py`) — the next hop is destination-keyed
 routing-table state, no longer a single-gateway-per-`IfAddr`
 shortcut (`IfAddr.gateway` was deleted). A learned/aged route
 *cache* and ICMP-Redirect-driven entries (§3.3.1.x) remain
@@ -76,7 +76,7 @@ forwarding (§3.3.5) is Phase 2.
 
 **Adherence:** met. `Ip4Parser._validate_integrity` rejects any
 frame whose first nibble is not 4 with `Ip4IntegrityError`
-(`net_proto/protocols/ip4/ip4__parser.py:94-97`). The RX handler
+(`packages/net_proto/net_proto/protocols/ip4/ip4__parser.py:94-97`). The RX handler
 catches `Ip4IntegrityError`, increments `ip4__failed_parse__drop`,
 and silently drops the frame
 (`packet_handler__ip4__rx.py:120-126`).
@@ -110,7 +110,7 @@ Parameter Problem with pointer=12
 on the same lines extend the rule to (B), (D), and the (g)
 loopback class via `Ip4Address.is_reserved` — loopback addresses
 sit in 127/8 which is classified reserved in
-`net_addr/ip4_address.py`.
+`packages/net_addr/net_addr/ip4_address.py`.
 
 > "When a host sends any datagram, the IP source address MUST be
 > one of its own IP addresses (but not a broadcast or multicast
@@ -229,7 +229,7 @@ handler resolves the default through qualified-module access
 to `ip4_const.IP4__DEFAULT_TTL`
 (`packet_handler__ip4__tx.py:122`) so every emission picks up
 the live `ip4.default_ttl` sysctl value. The knob is
-registered at `pytcp/protocols/ip4/ip4__constants.py` with a
+registered at `packages/pytcp/pytcp/protocols/ip4/ip4__constants.py` with a
 validator that rejects TTL=0 (the same value §3.2.1.7
 forbids on the wire) and values outside the uint8 wire field.
 Operators tune it via `stack.init(sysctls={"ip4.default_ttl":
@@ -247,7 +247,7 @@ sysctl is the host default the transport layers fall back to.
 `ip4__options: Ip4Options = Ip4Options()`
 (`packet_handler__ip4__tx.py:103`). Callers (today, mostly
 tests and one DHCP-client path) construct the options via the
-typed dataclasses under `net_proto/protocols/ip4/options/`.
+typed dataclasses under `packages/net_proto/net_proto/protocols/ip4/options/`.
 
 > "All IP options (except NOP or END-OF-LIST) received in
 > datagrams MUST be passed to the transport layer (or to ICMP
@@ -308,8 +308,8 @@ Timestamp slots (that's router-side behaviour).
 **Adherence:** met. The next hop is resolved by a host-mode
 routing table (FIB): the Ethernet-TX path calls
 `stack.ip4_fib.lookup(dst, connected=[...])`
-(`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py:265-306`,
-table at `pytcp/runtime/fib.py` `RouteTable.lookup`). With no
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py:265-306`,
+table at `packages/pytcp/pytcp/runtime/fib.py` `RouteTable.lookup`). With no
 default route, on-link destinations still resolve via a
 *connected* route synthesized per-lookup from each assigned
 interface address (`RouteTable.lookup` `connected=` arg), and
@@ -323,14 +323,14 @@ subnet with an empty FIB.
 > mappings to next-hop gateways."
 
 **Adherence:** met. PyTCP keeps a real per-address-family
-routing table (`pytcp/runtime/fib.py` `RouteTable`) holding
+routing table (`packages/pytcp/pytcp/runtime/fib.py` `RouteTable`) holding
 explicit routes (default + operator/protocol static) plus
 per-lookup-synthesized connected routes; `lookup` is a
 longest-prefix match (`Route.destination.prefixlen`, then
 lowest `metric`, then direct-over-gatewayed). This is the
 RFC's intent — a deterministic next-hop mapping consulted per
 datagram — exposed through the Phase-3 Route API
-(`pytcp/stack/route.py` `RouteApi`). It is a routing *table*,
+(`packages/pytcp/pytcp/stack/route.py` `RouteApi`). It is a routing *table*,
 not a learned/aged *cache*: there is no per-destination cached
 entry created from observed traffic or Redirects.
 
@@ -338,7 +338,7 @@ entry created from observed traffic or Redirects.
 next-hop entries populated from ICMP Redirects, with ageing)
 is Phase-2 work tied to the forwarding plane and Redirect
 processing; the `RouteProtocol.REDIRECT` enum value is already
-reserved in `pytcp/runtime/fib.py` for that path.
+reserved in `packages/pytcp/pytcp/runtime/fib.py` for that path.
 
 > "The IP layer MUST pick a gateway from its list of 'default'
 > gateways. The IP layer MUST support multiple default gateways."
@@ -349,7 +349,7 @@ default routes: `RouteApi.add_ip4_route` accepts any number of
 equal-prefix candidates by lowest `metric` (then
 direct-over-gatewayed, then stable order), so a metric-ordered
 default-gateway list is representable and the preferred one is
-picked (`pytcp/runtime/fib.py` `RouteTable.lookup`). What is
+picked (`packages/pytcp/pytcp/runtime/fib.py` `RouteTable.lookup`). What is
 still Phase-2 is *dead-gateway failover* — detecting an
 unreachable default router (NUD / Redirect) and demoting it —
 which needs the reachability machinery the forwarding plane
@@ -404,7 +404,7 @@ landed the Linux-correct fix where a destination on-link for
 one interface address is sent directly even when the source
 is a different interface address (the old source-coupled scan
 would have sent it to the default gateway) — pinned by
-`pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop::test__ip4__routing__multihomed_on_link_dst_resolved_directly`.
+`packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop::test__ip4__routing__multihomed_on_link_dst_resolved_directly`.
 What remains single-interface is the link layer (one
 `_interface_mtu`, one `_mac_unicast`, one TAP/TUN fd) and the
 multihoming sub-requirements 3.3.4.2 (a)-(j) that presume
@@ -466,7 +466,7 @@ RAW socket.
 at boot with the all-hosts (224.0.0.1) entry; the destination
 filter (`packet_handler__ip4__rx.py:149-153`) admits anything
 in this set. The Ethernet MAC mapping is implemented in
-`net_addr/ip4_address.py` (`Ip4Address.multicast_mac`).
+`packages/net_addr/net_addr/ip4_address.py` (`Ip4Address.multicast_mac`).
 
 > "Hosts SHOULD implement IGMPv1 ..."
 
@@ -496,7 +496,7 @@ transient network condition.
 ### §3.2.1.1 / §3.2.1.2 Version + Checksum integrity
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__integrity_checks.py`
   Covers `ver != 4` and bad-checksum branches with
   `Ip4IntegrityError`.
 
@@ -505,10 +505,10 @@ transient network condition.
 ### §3.2.1.3 Source-address sanity (multicast / reserved / limited-broadcast)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
   Each branch exercised with the expected `pointer` value.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with the documented
   rate-limit / DHCP-mode gates.
 
@@ -517,7 +517,7 @@ transient network condition.
 ### §3.2.1.3 Destination filtering (own / broadcast / multicast)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Covers the three accept paths + the dst-unknown drop.
 
 **Status:** locked in.
@@ -525,13 +525,13 @@ transient network condition.
 ### §3.2.1.3 TX source-address validation + replacement (multicast / broadcast / unspec)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Matrix of src=owned, src=multicast (replaced), src=limited-
   broadcast (replaced), src=network-broadcast (replaced),
   src=unspec+DHCP (passthrough), src=unspec+other (selector or
   drop).
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
   RFC 6724 rule-by-rule selection.
 
 **Status:** locked in.
@@ -539,7 +539,7 @@ transient network condition.
 ### §3.2.1.6 TOS / DSCP / ECN propagation
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   Field-level boundary asserts.
 - **Integration:** ECN-relevant TCP flows covered in TCP audits.
 
@@ -548,19 +548,19 @@ transient network condition.
 ### §3.2.1.7 TTL=0 rejection + default + configurability
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py::ttl == 0`
   pins the RX-side ban.
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4Constants`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4Constants`
   pins `IP4__DEFAULT_TTL = 64`; `TestIp4DefaultTtlSysctl` pins
   the `ip4.default_ttl` registration, the validator's
   range-and-type rejections (TTL=0, overflow > 255, non-int),
   and that `sysctl.set` updates the backing module attribute.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with `pointer=8`.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl`
   Drives the sysctl override and verifies the wire TTL of an
   outbound unicast datagram reflects the live value; verifies
   multicast destinations stay at TTL=1 regardless of the
@@ -571,9 +571,9 @@ transient network condition.
 ### §3.2.1.8 Options pass-through + LSRR/SSRR gate
 
 - **Unit:** one file per option in
-  `net_proto/tests/unit/protocols/ip4/options/`.
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/`.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx__source_route.py`
   Drives the `IP4__ACCEPT_SOURCE_ROUTE` matrix.
 
 **Status:** locked in.
@@ -581,26 +581,26 @@ transient network condition.
 ### §3.3.1 Routing (FIB next-hop / default route / longest-prefix)
 
 - **Unit:**
-  `pytcp/tests/unit/runtime/test__runtime__fib.py::TestRouteTableLookupIp4`
+  `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__fib.py::TestRouteTableLookupIp4`
   / `TestRouteTableLookupTiebreaks` — longest-prefix match,
   metric tiebreak, connected-over-gatewayed, default route
   matches anything, no-route returns `None`.
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__route.py::TestRouteApiRead`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__route.py::TestRouteApiRead`
   / `TestRouteApiMutation` /
   `TestInstallBootDefaultRoutes` — copy-by-value read,
   add/remove/replace-default, boot default install.
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingNextHop`
   — on-link direct, off-link via default gateway, no-route
   drop, and the destination-keyed multihoming behaviour.
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingStaticRoute`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__routing.py::TestIp4RoutingStaticRoute`
   — a static non-default `/16` beats the `/0` default
   (longest-prefix), default used outside it, on-link
   unaffected.
 - **Integration:**
-  `pytcp/tests/integration/protocols/ethernet/test__ethernet__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/ethernet/test__ethernet__tx.py`
   — the parametrized Ethernet-TX matrix exercises the
   FIB-driven next-hop counters/statuses end to end.
 
@@ -612,7 +612,7 @@ default route, and static-route paths. The learned/aged route
 ### §3.3.3 Fragmentation on send (no overlap)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Fragmentation matrix asserts that fragment offsets cover the
   payload without overlap and that the last fragment carries
   MF=0.
@@ -622,7 +622,7 @@ default route, and static-route paths. The learned/aged route
 ### §3.3.6 Broadcasts (TX replacement, RX acceptance)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   + `..__rx.py` cover broadcast send / receive.
 
 **Status:** locked in.
@@ -630,7 +630,7 @@ default route, and static-route paths. The learned/aged route
 ### §3.3.7 IP multicasting (reception)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies the all-hosts 224.0.0.1 RX path.
 
 **Status:** locked in.

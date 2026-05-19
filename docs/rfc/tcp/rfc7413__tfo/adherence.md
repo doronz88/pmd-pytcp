@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 7413. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/`, `pytcp/socket/`,
-`pytcp/stack/`, and `net_proto/protocols/tcp/options/`
+under `packages/pytcp/pytcp/protocols/tcp/`, `packages/pytcp/pytcp/socket/`,
+`packages/pytcp/pytcp/stack/`, and `packages/net_proto/net_proto/protocols/tcp/options/`
 directly; no prior memory or rule-file content was
 reused. Sections that contain no normative content
 (Abstract, §1 Introduction narrative, §2 motivation,
@@ -29,7 +29,7 @@ references) are omitted.
 > 6 to 18 / Cookie: 0, or 4 to 16 bytes"
 
 **Adherence:** met. The wire-level encoding at
-`net_proto/protocols/tcp/options/tcp__option__fastopen.py`
+`packages/net_proto/net_proto/protocols/tcp/options/tcp__option__fastopen.py`
 implements kind=34 and the variable-length cookie
 field (4-16 bytes) per the RFC.
 
@@ -37,7 +37,7 @@ field (4-16 bytes) per the RFC.
 > SYN flag set MUST be ignored."
 
 **Adherence:** met. The TFO option emission at
-`pytcp/protocols/tcp/tcp__session.py:1465-1474` only
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1465-1474` only
 produces the option on SYN-bearing segments (the
 gates `flag_syn and flag_ack` for SYN+ACK and
 `flag_syn and not flag_ack` for active-open SYN).
@@ -62,7 +62,7 @@ established-state segments.
 
 **Adherence:** met. PyTCP's
 `generate_cookie` at
-`pytcp/protocols/tcp/tcp__fastopen.py:45-65`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__fastopen.py:45-65`:
 
 ```python
 digest = hmac.new(secret, bytes(peer_address), "sha256").digest()
@@ -74,7 +74,7 @@ return digest[:TCP__FASTOPEN__COOKIE_LEN]
   IP".
 - Property 2: HMAC-SHA256 with a server-secret key
   (16-byte `TCP__FASTOPEN_SECRET` from
-  `pytcp/stack/__init__.py:91`) — unforgeable
+  `packages/pytcp/pytcp/stack/__init__.py:91`) — unforgeable
   without the secret.
 - Property 3: HMAC-SHA256 is fast (microseconds on
   modern CPUs).
@@ -107,7 +107,7 @@ uses the per-process secret approach.
 > cookie is valid..."
 
 **Adherence:** met. `validate_cookie` at
-`pytcp/protocols/tcp/tcp__fastopen.py:69-79` uses
+`packages/pytcp/pytcp/protocols/tcp/tcp__fastopen.py:69-79` uses
 `hmac.compare_digest` for constant-time comparison
 to prevent timing side-channels.
 
@@ -222,7 +222,7 @@ result in `_fastopen_cookie_to_emit`.
 > bytes."
 
 **Adherence:** met. The client connect() at
-`pytcp/socket/tcp__socket.py:464-470` accepts a
+`packages/pytcp/pytcp/socket/tcp__socket.py:464-470` accepts a
 `data` argument; when `data` is non-empty AND a
 cookie is cached, the SYN carries both the cookie
 and the data. The pre-load goes into
@@ -261,7 +261,7 @@ SYN-piggybacked data.
 ### §4.1.1 Fast Open option wire format
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__fastopen.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__fastopen.py`
   covers the assembler / parser / asserts.
 
 **Status:** locked in.
@@ -269,7 +269,7 @@ SYN-piggybacked data.
 ### §4.1.2 Cookie generation and validation
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__fastopen.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__fastopen.py`
   covers `generate_cookie` / `validate_cookie` with
   parameterised IP addresses.
 
@@ -311,7 +311,7 @@ needed.
 - **Integration:** the
   `setsockopt(TCP_FASTOPEN, qlen)` flow is tested
   via the keepalive-style socket-API tests in
-  `pytcp/tests/unit/socket/test__socket__tcp__socket.py`.
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__tcp__socket.py`.
 
 **Status:** locked in.
 

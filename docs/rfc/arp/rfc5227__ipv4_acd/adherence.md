@@ -24,7 +24,7 @@ current code state without re-using prior content.
 The ACD machinery is exposed to consumers (DHCPv4 client,
 RFC 3927 link-local autoconfig client, future operator-config
 tools) via the sanctioned `Ip4AddressApi` surface in
-`pytcp/stack/address.py`:
+`packages/pytcp/pytcp/stack/address.py`:
 
 - `probe(*, address)` — runs the §2.1.1 probe sequence and
   returns success / conflict + peer info.
@@ -74,15 +74,15 @@ inform a normative §2 requirement, and otherwise omitted.
 
 **Adherence:** **met**. PyTCP's claim path —
 `Ip4AddressApi.claim_with_acd`
-(`pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
+(`packages/pytcp/pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
 sequence via `_arp_dad_probe_address` before admitting a
 candidate address to `self._ip4_ifaddr`. Same primitive backs
 the DHCPv4 DAD path
-(`pytcp/protocols/dhcp4/dhcp4__client.py` via the
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` via the
 `arp_dad_verifier` callback wired in
-`pytcp/stack/__init__.py:476`) and the RFC 3927 link-local
+`packages/pytcp/pytcp/stack/__init__.py:476`) and the RFC 3927 link-local
 candidate-probe loop
-(`pytcp/protocols/ip4/link_local/link_local__client.py`).
+(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`).
 
 > "A host MUST NOT perform this check periodically as a
 > matter of course."
@@ -105,7 +105,7 @@ static-host configure). There is no scheduled re-probe path.
 > the address being probed."
 
 **Adherence:** **met**. `_send_arp_probe`
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:194-218`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:194-218`)
 sets every field exactly as required:
 - `arp__oper = ArpOperation.REQUEST`
 - `arp__sha = self._mac_unicast`
@@ -122,7 +122,7 @@ sets every field exactly as required:
 > seconds apart."
 
 **Adherence:** **met**. `_arp_dad_probe_address`
-(`pytcp/runtime/packet_handler/__init__.py:1796-1833`)
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1796-1833`)
 implements the full sequence:
 
 1. `time.sleep(random.uniform(0, ARP__PROBE_WAIT))` at
@@ -132,7 +132,7 @@ implements the full sequence:
 3. `time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))`
    at `:1825` — uniform inter-probe spacing.
 
-Default constants from `pytcp/protocols/arp/arp__constants.py`:
+Default constants from `packages/pytcp/pytcp/protocols/arp/arp__constants.py`:
 `ARP__PROBE_WAIT = 1`, `ARP__PROBE_NUM = 3`, `ARP__PROBE_MIN
 = 1`, `ARP__PROBE_MAX = 2`. All four are sysctl-registered at
 `arp__constants.py:154-194` so operators can tune them at
@@ -148,11 +148,11 @@ boot or runtime.
 
 **Adherence:** **met**. The probe-window conflict surface
 runs through a per-candidate `DadSlotRegistry` slot
-(`pytcp/lib/dad_slot_registry.py:102-198`): the claim path
+(`packages/pytcp/pytcp/lib/dad_slot_registry.py:102-198`): the claim path
 installs a slot before the first probe, the RX path signals
 conflicts atomically via `try_signal_conflict`, and the
 post-probe check at
-`pytcp/runtime/packet_handler/__init__.py:1833` returns False
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1833` returns False
 if any conflict was signalled during the probe + ANNOUNCE_WAIT
 window. The historical RX-vs-DAD "two unrelated sets" bug
 that prior audit text described is closed by the registry
@@ -210,11 +210,11 @@ counters are bumped on each drop.
 **Adherence:** **met (in the RFC 3927 link-local
 subsystem)**. The MAX_CONFLICTS / RATE_LIMIT_INTERVAL gate
 is enforced in the link-local candidate-rotation loop
-(`pytcp/protocols/ip4/link_local/link_local__client.py:242-249`):
+(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py:242-249`):
 after `MAX_CONFLICTS` conflicts within a tracking window,
 the subsystem inserts a `RATE_LIMIT_INTERVAL` sleep before
 the next probe attempt. The constants live in
-`pytcp/protocols/ip4/link_local/link_local__constants.py:45,51`
+`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py:45,51`
 and are sysctl-registered at `:75-90`
 (`ip4_link_local.max_conflicts` default 10;
 `ip4_link_local.rate_limit_interval_s` default 60).
@@ -232,7 +232,7 @@ DHCPv4 Phase 9 backlog).
 
 **Adherence:** **met**. `_arp_dad_probe_address` sleeps
 `ARP__ANNOUNCE_WAIT` seconds after the last Probe at
-`pytcp/runtime/packet_handler/__init__.py:1831` before
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1831` before
 returning the success / conflict verdict. Late conflicting
 ARPs arriving within this window still feed the registry
 slot via the RX paths above; only after the quiet period
@@ -250,7 +250,7 @@ does `has_signal(...)` at `:1833` decide the outcome.
 
 **Adherence:** **met (no deviation; all timing tunable)**.
 PyTCP uses RFC-default constants from
-`pytcp/protocols/arp/arp__constants.py`. Every timing
+`packages/pytcp/pytcp/protocols/arp/arp__constants.py`. Every timing
 constant (PROBE_WAIT, PROBE_NUM, PROBE_MIN, PROBE_MAX,
 ANNOUNCE_NUM, ANNOUNCE_INTERVAL, ANNOUNCE_WAIT,
 DEFEND_INTERVAL) is registered with `pytcp.stack.sysctl` so
@@ -272,7 +272,7 @@ timing parameters across hosts are non-disruptive.
 > ANNOUNCE_INTERVAL seconds apart."
 
 **Adherence:** **met**. `_arp_dad_announce_address`
-(`pytcp/runtime/packet_handler/__init__.py:1835-1847`) loops
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1835-1847`) loops
 `ARP__ANNOUNCE_NUM` times with `time.sleep(ARP__ANNOUNCE_INTERVAL)`
 between successive sends:
 
@@ -404,7 +404,7 @@ of the previous defense.
 equals the abandoned IP — the RFC 9293 ABORT primitive
 emits RST and tears the session down. The public surface
 `Ip4AddressApi.abort_bound_tcp_sessions(address=...)` at
-`pytcp/stack/address.py:329-339` exposes the same
+`packages/pytcp/pytcp/stack/address.py:329-339` exposes the same
 primitive to consumers running their own abandon logic
 (e.g. DHCPDECLINE flows when they land).
 
@@ -475,7 +475,7 @@ runs the cache learn.
 ### §2.1 / §2.1.1 — ARP Probe wire format
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
   — `_send_arp_probe` case asserts the exact 28-byte ARP
   Probe wire form (`spa=0.0.0.0`, `tha=unspecified`,
   `tpa=candidate IP`, broadcast L2).
@@ -485,7 +485,7 @@ runs the cache learn.
 ### §2.1.1 — Probe count, PROBE_WAIT initial delay, inter-probe spacing
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadProbeSequence`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadProbeSequence`
   (cases at `:394-427`) — asserts the initial PROBE_WAIT
   random delay, the PROBE_NUM count, and the
   PROBE_MIN..PROBE_MAX inter-probe spacing.
@@ -495,7 +495,7 @@ runs the cache learn.
 ### §2.1.1 — RX-side conflict detection (probe window)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py`
   (cases at `:109-312`) — drives an inbound conflicting ARP
   during the probe window and asserts the claim aborts.
   Covers all four conflict shapes:
@@ -504,7 +504,7 @@ runs the cache learn.
   - direct Reply to our probe (`spa=candidate`, `tpa=0`)
   - gratuitous Reply (broadcast Reply with SPA=candidate)
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad__ConflictDuringAnnounceWait`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad__ConflictDuringAnnounceWait`
   — drives a conflict in the post-probe ANNOUNCE_WAIT window
   and asserts the claim still aborts.
 
@@ -513,7 +513,7 @@ runs the cache learn.
 ### §2.1.1 — MAX_CONFLICTS / RATE_LIMIT_INTERVAL
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
   — drives `MAX_CONFLICTS` conflicts in succession, asserts
   the next probe is gated by a `RATE_LIMIT_INTERVAL` sleep.
 
@@ -524,7 +524,7 @@ there).
 ### §2.3 — Announcement wire format
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
   — `_send_arp_announcement` case asserts the wire bytes
   (REQUEST opcode, `spa=tpa=our IP`, broadcast L2).
 
@@ -533,7 +533,7 @@ there).
 ### §2.3 — ANNOUNCE_NUM=2 + ANNOUNCE_INTERVAL spacing
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadAnnounceSequence`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadAnnounceSequence`
   (cases at `:313-388`) — asserts two Announcements are
   emitted, separated by `ARP__ANNOUNCE_INTERVAL`.
 
@@ -542,7 +542,7 @@ there).
 ### §2.4 — Conflict detection (Request and Reply)
 
 - **Unit:**
-  `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__conflict_defend`
+  `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__conflict_defend`
   — asserts a Request with SPA = our IP and SHA != our MAC
   triggers the defense path.
 - **Unit:**
@@ -554,7 +554,7 @@ there).
 ### §2.4(b) — DEFEND_INTERVAL rate-limit + first-defense behaviour
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__FirstConflict`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__FirstConflict`
   (cases at `:122-232`) — asserts first conflict triggers
   exactly one gratuitous Announcement.
 - **Integration:**
@@ -566,7 +566,7 @@ there).
 ### §2.4(b) — Abandon after second conflict in DEFEND_INTERVAL
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__SecondConflictAbandons`
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__SecondConflictAbandons`
   — asserts the second conflict within `DEFEND_INTERVAL`
   drops the address from `_ip4_ifaddr` and ABORTs bound
   sessions.
@@ -576,12 +576,12 @@ there).
 ### §2.4-final — Reset connections before abandoning (SHOULD)
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__RemoveHost`
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__RemoveHost`
   (cases at `:188-225`) — asserts `remove_ifaddr` issues
   `SysCall.ABORT` to every `TcpSession` bound to the
   removed address.
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__AbortBoundTcpSessions`
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__AbortBoundTcpSessions`
   (cases at `:394-469`) — asserts the standalone primitive
   is consumer-callable for RFC 3927 §2.5(a) abandon paths.
 
@@ -590,7 +590,7 @@ there).
 ### §2.5 — Continuing operation (Reply to Request)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — "request for stack MAC, broadcasted" and "request for
   stack MAC, unicasted" both verify a Reply is emitted
   with the correct field swap.
@@ -610,7 +610,7 @@ the §2.6 broadcast form either.
 ### §1.2.1 — Broadcast Reply handling
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — gratuitous-Reply (broadcast L2, SPA=SPA=peer-IP) case
   asserts the cache-learn path runs.
 

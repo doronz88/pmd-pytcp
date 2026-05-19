@@ -12,15 +12,15 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 951. The audit was performed by reading the RFC
-text fresh and inspecting the codebase under `pytcp/` and
-`net_proto/` directly.
+text fresh and inspecting the codebase under `packages/pytcp/pytcp/` and
+`packages/net_proto/net_proto/` directly.
 
 RFC 951 is the foundational Bootstrap Protocol that DHCP
 (RFC 2131) was built on. PyTCP implements RFC 2131, not
 RFC 951 — PyTCP is a DHCP client, not a BOOTP client. The
 two share a wire-format header (RFC 951 §3 + the 'options'
 extension RFC 2131 §2 layered on top), and PyTCP's
-`net_proto/protocols/dhcp4/dhcp4__header.py` implements
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py` implements
 that shared header faithfully. The audit therefore
 focuses on header-format compliance and explicitly marks
 the BOOTP-specific semantics (boot file load, TFTP
@@ -41,10 +41,10 @@ Implementations, §11 Author's Address) are omitted.
 >  packet is never fragmented."
 
 **Adherence:** met. PyTCP sends DHCP messages over
-UDP via the BSD-socket facade (`pytcp/protocols/dhcp4/dhcp4__client.py:89-92`).
+UDP via the BSD-socket facade (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:89-92`).
 The minimum-MTU constraint
 `DHCP4__OPTIONS__MAX_LEN = 576 - 20 - 8 - 240 = 308`
-(`net_proto/protocols/dhcp4/options/dhcp4__options.py:85`)
+(`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py:85`)
 keeps DHCP datagrams within the unfragmented-IPv4
 576-byte ceiling.
 
@@ -53,7 +53,7 @@ keeps DHCP datagrams within the unfragmented-IPv4
 >  first."
 
 **Adherence:** met. The header struct format begins
-with `"! "` (`net_proto/protocols/dhcp4/dhcp4__header.py:129`)
+with `"! "` (`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:129`)
 which is `struct`'s network-byte-order marker.
 
 > "In the IP header of a bootrequest, the client fills
@@ -63,10 +63,10 @@ which is `struct`'s network-byte-order marker.
 >  255.255.255.255."
 
 **Adherence:** met. The client binds the socket to
-`("0.0.0.0", 68)` (`pytcp/protocols/dhcp4/dhcp4__client.py:91`)
+`("0.0.0.0", 68)` (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:91`)
 so the source IP is zero, and connects to
 `("255.255.255.255", 67)`
-(`pytcp/protocols/dhcp4/dhcp4__client.py:92`).
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:92`).
 
 > "The UDP header contains source and destination port
 >  numbers. The BOOTP protocol uses two reserved port
@@ -104,7 +104,7 @@ so the source IP is zero, and connects to
 >  overhead in a PROM implementation."
 
 **Adherence:** N/A. PyTCP's UDP layer at
-`net_proto/protocols/udp/udp__base.py` always emits
+`packages/net_proto/net_proto/protocols/udp/udp__base.py` always emits
 checksums; the optional-zero-checksum allowance is not
 exploited.
 
@@ -161,12 +161,12 @@ would unpack 4 bytes as magic cookie and read garbage.
 
 **Adherence:** PyTCP relies on option (b) — broadcast
 reply. The client sets the BROADCAST flag
-(`pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`)
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`)
 so the server emits replies to
 255.255.255.255 / link-layer broadcast. PyTCP's UDP RX
 gate accepts unicast and broadcast destinations on the
 bound port equivalently
-(see `pytcp/socket/udp__socket.py`).
+(see `packages/pytcp/pytcp/socket/udp__socket.py`).
 
 ---
 
@@ -178,7 +178,7 @@ bound port equivalently
 
 **Adherence:** met by stack-wide ARP, not by the DHCP
 client. The PyTCP stack's ARP cache is at
-`pytcp/protocols/arp/arp__cache.py` (full NUD machinery,
+`packages/pytcp/pytcp/protocols/arp/arp__cache.py` (full NUD machinery,
 not a single-entry PROM cache). DHCP-time ARP
 resolution happens transparently — the BSD-socket
 `send` call goes through the standard TX path.
@@ -202,22 +202,22 @@ implemented (boot-from-net is out of scope).
 
 **Adherence:** met by dataclass-default semantics. The
 `Dhcp4Assembler` constructor at
-`net_proto/protocols/dhcp4/dhcp4__assembler.py`
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__assembler.py`
 populates each field with a zero / default value and
 the `Dhcp4Header.__buffer__` packs into a freshly
 zeroed `bytearray(len(self))` of 240 bytes
-(`net_proto/protocols/dhcp4/dhcp4__header.py:236-238`).
+(`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:236-238`).
 Unused fields are zero.
 
 > "Set 'op' to BOOTREQUEST."
 
 **Adherence:** met
-(`pytcp/protocols/dhcp4/dhcp4__client.py:135`, `:189`).
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:135`, `:189`).
 
 > "Set 'xid' to a 'random' transaction id, as discussed
 >  above."
 
-**Adherence:** met (`pytcp/protocols/dhcp4/dhcp4__client.py:87`).
+**Adherence:** met (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:87`).
 
 > "If the client wishes to restrict booting to a
 >  particular server name, it may place a null-
@@ -239,7 +239,7 @@ on TX (assembler default).
 >  that it does know, namely 'chaddr' and 'htype'."
 
 **Adherence:** met. `chaddr=self._mac_address`
-(`pytcp/protocols/dhcp4/dhcp4__client.py:138`, `:192`);
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:138`, `:192`);
 htype defaulted to ETHERNET in the dataclass
 (`dhcp4__header.py:145-147`).
 
@@ -266,13 +266,13 @@ htype defaulted to ETHERNET in the dataclass
 ### §3 Header layout
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
   Field-level invariants for every header field.
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py` (690 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py` (690 lines)
   Header round-trip parse on real-shaped wire frames.
 - **Unit:**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py` (441 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py` (441 lines)
   Header round-trip emit on real-shaped wire frames.
 
 **Status:** locked in (BOOTP-shape header wire format).
@@ -288,7 +288,7 @@ htype defaulted to ETHERNET in the dataclass
 ### §4 BROADCAST reply path
 
 - **Unit (DHCP client):**
-  `pytcp/tests/unit/lib/test__lib__dhcp4_client.py` (681 lines)
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py` (681 lines)
   Pins that the emitted DISCOVER/REQUEST carry
   `flag_b=True`.
 

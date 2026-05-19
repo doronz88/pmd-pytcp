@@ -6,7 +6,7 @@
 | Plan author     | Audit pass (2026-05-12)                                              |
 | Source audit    | `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`                  |
 | Target branch   | `PyTCP_3_0__pre_release`                                             |
-| Touch points    | new `pytcp/protocols/ip4/link_local/`, `pytcp/stack/address.py` (new ACD API surface), DHCP client (migrates to new API), `packet_handler__ip4__tx.py`, `packet_handler__ethernet__tx.py`, sysctl framework, RFC 3927 / 5227 / 2131 adherence records |
+| Touch points    | new `packages/pytcp/pytcp/protocols/ip4/link_local/`, `packages/pytcp/pytcp/stack/address.py` (new ACD API surface), DHCP client (migrates to new API), `packet_handler__ip4__tx.py`, `packet_handler__ethernet__tx.py`, sysctl framework, RFC 3927 / 5227 / 2131 adherence records |
 | Coupled records | RFC 1122 §3.3.4 (multihoming — out of scope), RFC 2131 (DHCP client — coordination + migration to new API), RFC 5227 (ACD — extracted into sanctioned API), RFC 6724 (IPv4 source selection — already in place) |
 | Design option   | **Option B** — extract a Phase-3-clean ACD API on `Ip4AddressApi`; both DHCP and link-local consume it. Cleans up DHCP's existing `_arp_dad_probe_address` reach-through as a side effect. See §12.2 for the alignment rationale. |
 
@@ -63,8 +63,8 @@ The 2026-05-11 RFC 3927 audit
 ### What's already in place — load-bearing for this track
 
 - **`Ip4Address.is_link_local`** predicate covers 169.254/16
-  (`net_addr/ip4_address.py`).
-- **IP4 scope ordering** in `pytcp/lib/ip4_source_selection.py`
+  (`packages/net_addr/net_addr/ip4_address.py`).
+- **IP4 scope ordering** in `packages/pytcp/pytcp/lib/ip4_source_selection.py`
   recognises `IP4__SCOPE__LINK_LOCAL = 0x2`; RFC 6724 rule-2
   picks a link-local source when the destination is
   link-local.
@@ -72,17 +72,17 @@ The 2026-05-11 RFC 3927 audit
   Announce) is implemented as `_arp_dad_probe_address` /
   `_arp_dad_announce_address` on the packet handler and
   reused by the DHCPv4 client + static-host claim path
-  (`pytcp/runtime/packet_handler/__init__.py:1776-1828`).
-- **`DadSlotRegistry`** (`pytcp/lib/dad_slot_registry.py`)
+  (`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1776-1828`).
+- **`DadSlotRegistry`** (`packages/pytcp/pytcp/lib/dad_slot_registry.py`)
   provides the per-candidate conflict-signal slot the probe
   loop polls.
-- **`Ip4AddressApi`** (`pytcp/stack/address.py`) exposes
+- **`Ip4AddressApi`** (`packages/pytcp/pytcp/stack/address.py`) exposes
   `add_ifaddr` / `remove_ifaddr` / `replace_ifaddr` as the
   kernel/userspace boundary for address installs — the
   Phase-3-clean surface link-local autoconfig writes to.
-- **`Subsystem` base class** (`pytcp/runtime/subsystem.py`) and
+- **`Subsystem` base class** (`packages/pytcp/pytcp/runtime/subsystem.py`) and
   the `Dhcp4Client` reference implementation
-  (`pytcp/protocols/dhcp4/dhcp4__client.py`) — the structural
+  (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`) — the structural
   template for the new `Ip4LinkLocal` subsystem.
 
 ### Unmet (the gap this plan closes)
@@ -237,7 +237,7 @@ PyTCP equivalent is the in-process API on `Ip4AddressApi`.
 **0.5.1 New API: `claim_with_acd`**
 
 ```python
-# pytcp/stack/address.py
+# packages/pytcp/pytcp/stack/address.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ClaimResult:
     """
@@ -275,7 +275,7 @@ class Ip4AddressApi:
 **0.5.2 New API: `subscribe_conflicts`**
 
 ```python
-# pytcp/stack/address.py
+# packages/pytcp/pytcp/stack/address.py
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ConflictEvent:
     """
@@ -361,13 +361,13 @@ copies the list under a lock.
 DHCPv4's reach-through wasn't in the client itself — the client
 holds `arp_dad_verifier` / `arp_dad_announcer` callbacks; the
 reach-through lived at the WIRING point in
-`pytcp/stack/__init__.py`, which bound the callbacks directly
+`packages/pytcp/pytcp/stack/__init__.py`, which bound the callbacks directly
 to `packet_handler._arp_dad_probe_address` /
 `_arp_dad_announce_address`. Phase 0.5 changes the wiring to
 route through the API:
 
 ```python
-# pytcp/stack/__init__.py
+# packages/pytcp/pytcp/stack/__init__.py
 dhcp4_client = Dhcp4Client(
     mac_address=packet_handler._mac_unicast,
     arp_dad_verifier=lambda addr: address.probe(address=addr).success,
@@ -389,7 +389,7 @@ reach-through closure.
 
 **0.5.6 Migrate static-host claim path**
 
-`pytcp/runtime/packet_handler/__init__.py::_create_stack_ip4_addressing`
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py::_create_stack_ip4_addressing`
 currently has:
 
 ```python
@@ -449,7 +449,7 @@ to the DHCP track's ordering.
 
 **Tests-first:**
 
-- Unit: `pytcp/tests/unit/lib/test__lib__address_api.py`
+- Unit: `packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py`
   extends with:
   - `TestIp4AddressApiClaimWithAcd` — clean claim succeeds,
     conflicting claim returns `success=False` with
@@ -489,12 +489,12 @@ The first half of the autoconfig state machine. Lands the new
 (`INIT`) that picks a candidate but does not yet probe — the
 probe wiring lands in Phase 2.
 
-**1.1 New package `pytcp/protocols/ip4/link_local/`**
+**1.1 New package `packages/pytcp/pytcp/protocols/ip4/link_local/`**
 
 PEP 420 namespace package — no `__init__.py`. Files:
 
 ```
-pytcp/protocols/ip4/link_local/
+packages/pytcp/pytcp/protocols/ip4/link_local/
   link_local__client.py     # Subsystem + FSM driver
   link_local__constants.py  # sysctl registrations
   link_local__rng.py        # MAC-seeded address selector
@@ -547,7 +547,7 @@ class Ip4LinkLocal(Subsystem):
 
 **1.4 MAC-seeded address generator (§2.1)**
 
-`pytcp/protocols/ip4/link_local/link_local__rng.py`:
+`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__rng.py`:
 
 ```python
 import struct
@@ -589,7 +589,7 @@ ceiling triggers the rate-limit phase.
 **Phase 1 commit note:** the in-flight Phase 1 commit
 trims the §1.5 cached-candidate persistence and §1.6 stack
 integration to the minimum: the
-`pytcp/protocols/ip4/link_local/` package ships with
+`packages/pytcp/pytcp/protocols/ip4/link_local/` package ships with
 `link_local__rng.py` (the MAC-seeded RNG) +
 `link_local__constants.py` (file scaffolding only —
 sysctls land in subsequent phases) +
@@ -610,7 +610,7 @@ available. Mirror the DHCP plan's `lease_cache_path` sysctl
 pattern with a Phase-1.5 sub-knob:
 
 ```python
-# pytcp/protocols/ip4/link_local/link_local__constants.py
+# packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py
 IP4_LINK_LOCAL__CACHE_PATH = ""  # empty → no persistent cache
 
 register(
@@ -630,7 +630,7 @@ in Phase 5 cleanup.
 
 **1.6 Stack integration**
 
-`pytcp/stack/__init__.py` gains a `link_local` slot:
+`packages/pytcp/pytcp/stack/__init__.py` gains a `link_local` slot:
 
 ```python
 link_local: Ip4LinkLocal | None = None
@@ -652,7 +652,7 @@ do not leak.
 
 **Tests-first:**
 
-- Unit: `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`
+- Unit: `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`
   - same MAC → same candidate (idempotency)
   - different MAC → different candidate
   - `attempt` rolls the sequence forward
@@ -725,7 +725,7 @@ def _on_claim_conflict(self, result: ClaimResult, /) -> None:
 Spec-pinned constants (registered as sysctls in Phase 1):
 
 ```python
-# pytcp/protocols/ip4/link_local/link_local__constants.py
+# packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py
 IP4_LINK_LOCAL__MAX_CONFLICTS = 10        # §9
 IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL = 60  # §9 (seconds)
 ```
@@ -816,7 +816,7 @@ on `Ip4AddressApi`. The link-local client never touches
 
 Per §9 `DEFEND_INTERVAL = 10` matches RFC 5227's defend
 interval. PyTCP already has `ARP__DEFEND_INTERVAL = 10` in
-`pytcp/protocols/arp/arp__constants.py` registered as the
+`packages/pytcp/pytcp/protocols/arp/arp__constants.py` registered as the
 `arp.defend_interval` sysctl. The link-local subsystem reads
 the same constant via qualified-module access — no new
 sysctl needed.
@@ -921,7 +921,7 @@ cross-reference the new behaviour.
 | §2.11   | n/a (no autoconfig)       | met (DHCP-watcher fallback / replace pattern) |
 
 Test-coverage audit section adds an entry per test file
-under `pytcp/tests/integration/protocols/ip4_link_local/`.
+under `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/`.
 
 **5.2 IPv4 audit punch-list refresh**
 
@@ -959,7 +959,7 @@ cache-hit-respects-recent-conflict semantics.
 
 ## 4. Sysctl knobs to add
 
-All registered in `pytcp/protocols/ip4/link_local/link_local__constants.py`
+All registered in `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py`
 with the canonical pattern from `arp__constants.py`. Phase
 where each lands in parentheses.
 
@@ -980,49 +980,49 @@ No new finalize_validator constraints — knobs are independent.
 
 | File                                                                 | Purpose |
 |----------------------------------------------------------------------|---------|
-| `pytcp/protocols/ip4/link_local/link_local__client.py`           | `Ip4LinkLocal(Subsystem)` FSM driver |
-| `pytcp/protocols/ip4/link_local/link_local__constants.py`        | sysctl registrations + RFC 3927 §9 constants |
-| `pytcp/protocols/ip4/link_local/link_local__rng.py`              | MAC-seeded address selector |
+| `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`           | `Ip4LinkLocal(Subsystem)` FSM driver |
+| `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py`        | sysctl registrations + RFC 3927 §9 constants |
+| `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__rng.py`              | MAC-seeded address selector |
 
 ### Touched source files
 
 | File                                                                 | Why |
 |----------------------------------------------------------------------|-----|
-| `pytcp/stack/address.py`                                           | Phase 0.5 — add `claim_with_acd` / `subscribe_conflicts` / `unsubscribe_conflicts` / `send_gratuitous_arp` / `abort_bound_tcp_sessions` |
-| `pytcp/runtime/packet_handler/__init__.py`                             | Phase 0.5 — `_arp_dad_probe_address` / `_arp_dad_announce_address` / `_send_gratuitous_arp` become private (called from the API impl); static-host claim path migrates to `claim_with_acd` |
-| `pytcp/runtime/packet_handler/packet_handler__arp__rx.py`              | Phase 0.5 — conflict-detection RX path routes events to the API's subscription registry instead of writing the `DadSlotRegistry` directly |
-| `pytcp/protocols/dhcp4/dhcp4__client.py`                             | Phase 0.5 — migrate `_arp_dad_probe_address` / `_arp_dad_announce_address` call sites to `stack.address.claim_with_acd` |
-| `pytcp/stack/__init__.py`                                            | new `link_local` singleton, init kwarg, import `link_local__constants` to populate the sysctl registry, snapshot/restore in `mock__init` |
-| `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`              | Phase-0 §2.6 scope-mismatch gate |
-| `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`         | Phase-0 §2.8 link-local destination → bypass gateway lookup |
-| `pytcp/lib/tx_status.py`                                             | new `DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH` variant |
-| `pytcp/lib/packet_stats.py`                                          | new counters: `ip4__link_local_scope_mismatch__drop`, `ip4__acd_claimed`, `ip4__acd_conflict_during_probe`, `ip4__acd_defended`, `ip4_link_local__claimed`, `ip4_link_local__defended`, `ip4_link_local__reconfigured`, `ip4_link_local__conflict_during_probe` |
-| `pytcp/tests/lib/network_testcase.py`                                | snapshot `stack.link_local` + the ACD subscription registry in `setUp`; restore in `tearDown` |
+| `packages/pytcp/pytcp/stack/address.py`                                           | Phase 0.5 — add `claim_with_acd` / `subscribe_conflicts` / `unsubscribe_conflicts` / `send_gratuitous_arp` / `abort_bound_tcp_sessions` |
+| `packages/pytcp/pytcp/runtime/packet_handler/__init__.py`                             | Phase 0.5 — `_arp_dad_probe_address` / `_arp_dad_announce_address` / `_send_gratuitous_arp` become private (called from the API impl); static-host claim path migrates to `claim_with_acd` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py`              | Phase 0.5 — conflict-detection RX path routes events to the API's subscription registry instead of writing the `DadSlotRegistry` directly |
+| `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`                             | Phase 0.5 — migrate `_arp_dad_probe_address` / `_arp_dad_announce_address` call sites to `stack.address.claim_with_acd` |
+| `packages/pytcp/pytcp/stack/__init__.py`                                            | new `link_local` singleton, init kwarg, import `link_local__constants` to populate the sysctl registry, snapshot/restore in `mock__init` |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`              | Phase-0 §2.6 scope-mismatch gate |
+| `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`         | Phase-0 §2.8 link-local destination → bypass gateway lookup |
+| `packages/pytcp/pytcp/lib/tx_status.py`                                             | new `DROPPED__IP4__LINK_LOCAL_SCOPE_MISMATCH` variant |
+| `packages/pytcp/pytcp/lib/packet_stats.py`                                          | new counters: `ip4__link_local_scope_mismatch__drop`, `ip4__acd_claimed`, `ip4__acd_conflict_during_probe`, `ip4__acd_defended`, `ip4_link_local__claimed`, `ip4_link_local__defended`, `ip4_link_local__reconfigured`, `ip4_link_local__conflict_during_probe` |
+| `packages/pytcp/pytcp/tests/lib/network_testcase.py`                                | snapshot `stack.link_local` + the ACD subscription registry in `setUp`; restore in `tearDown` |
 
 ### New test files
 
 | File                                                                                                | Layer       | Cases (target) |
 |-----------------------------------------------------------------------------------------------------|-------------|-----------------|
-| `pytcp/tests/unit/lib/test__lib__address_api.py` (extend)                                           | unit        | Phase 0.5 — `claim_with_acd` clean / conflict / address-not-installed-on-failure; `subscribe_conflicts` fan-out / unsubscribe; `send_gratuitous_arp` wire-emission; `abort_bound_tcp_sessions` per-address scoping |
-| `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`                            | unit        | MAC determinism, attempt counter, range bounds, reserved blocks |
-| `pytcp/tests/unit/protocols/ip4/link_local/test__ip4_link_local__constants.py`                      | unit        | sysctl registration, validators, defaults |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__init_to_claiming.py` | integration | INIT → CLAIMING transition |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__happy_path.py`      | integration | full INIT → BOUND with no conflict |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__conflict_regenerates.py` | integration | conflict-during-probe → regenerate |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__rate_limit_pause.py` | integration | 10-conflict cool-down |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__defend_on_first_conflict.py` | integration | §2.5(b) defend |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__reconfigure_on_second_conflict.py` | integration | §2.5(a) abandon |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_fallback_trigger.py` | integration | DHCP-fail → link-local INIT |
-| `pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_success_halts.py` | integration | DHCP-bind → link-local HALTED + remove |
-| `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py` (extend)                                 | integration | Phase-0 `TestPacketHandlerIp4TxRfc3927ScopeGate` (4 cases) |
-| `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py` (extend)                            | integration | Phase-0 `Test*Rfc3927DstLinkLocalBypassGateway` |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py` (extend)                                           | unit        | Phase 0.5 — `claim_with_acd` clean / conflict / address-not-installed-on-failure; `subscribe_conflicts` fan-out / unsubscribe; `send_gratuitous_arp` wire-emission; `abort_bound_tcp_sessions` per-address scoping |
+| `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`                            | unit        | MAC determinism, attempt counter, range bounds, reserved blocks |
+| `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__ip4_link_local__constants.py`                      | unit        | sysctl registration, validators, defaults |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__init_to_claiming.py` | integration | INIT → CLAIMING transition |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__happy_path.py`      | integration | full INIT → BOUND with no conflict |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__conflict_regenerates.py` | integration | conflict-during-probe → regenerate |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__rate_limit_pause.py` | integration | 10-conflict cool-down |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__defend_on_first_conflict.py` | integration | §2.5(b) defend |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__reconfigure_on_second_conflict.py` | integration | §2.5(a) abandon |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_fallback_trigger.py` | integration | DHCP-fail → link-local INIT |
+| `packages/pytcp/pytcp/tests/integration/protocols/ip4_link_local/test__ip4_link_local__client__dhcp_success_halts.py` | integration | DHCP-bind → link-local HALTED + remove |
+| `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py` (extend)                                 | integration | Phase-0 `TestPacketHandlerIp4TxRfc3927ScopeGate` (4 cases) |
+| `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py` (extend)                            | integration | Phase-0 `Test*Rfc3927DstLinkLocalBypassGateway` |
 
 ### Touched test files
 
 | File                                                  | Why |
 |-------------------------------------------------------|-----|
-| `pytcp/tests/unit/lib/test__lib__tx_status.py`        | `_EXPECTED_MEMBERS` tuple grows by 1 |
-| `pytcp/tests/unit/lib/test__lib__packet_stats.py`     | field_count for `PacketStatsTx` and `PacketStatsRx` updated |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__tx_status.py`        | `_EXPECTED_MEMBERS` tuple grows by 1 |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__packet_stats.py`     | field_count for `PacketStatsTx` and `PacketStatsRx` updated |
 
 ---
 
@@ -1117,7 +1117,7 @@ clarity (long-form mirrors `arp.` /
 
 ### 7.1 Unit layer
 
-`pytcp/tests/unit/protocols/ip4/link_local/`:
+`packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/`:
 
 - **`test__ip4_link_local__rng.py`** — every property of the
   MAC-seeded RNG: determinism, range bounds, reserved-block
@@ -1282,13 +1282,13 @@ After Phase 5:
   framework.
 - `docs/refactor/ip4_audit_punchlist.md` — track D placement
   in the broader IPv4 audit roadmap.
-- `pytcp/protocols/dhcp4/dhcp4__client.py` — reference
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` — reference
   implementation of the `Subsystem`-based FSM pattern.
-- `pytcp/runtime/packet_handler/__init__.py::_arp_dad_probe_address`
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py::_arp_dad_probe_address`
   / `_arp_dad_announce_address` — the RFC 5227 probe /
   announce machinery; Phase 0.5 hides these behind
   `Ip4AddressApi.claim_with_acd`.
-- `pytcp/stack/address.py` — Phase-3-clean address-control
+- `packages/pytcp/pytcp/stack/address.py` — Phase-3-clean address-control
   surface; gains the ACD API in Phase 0.5.
 
 ### External library references (Linux Phase-3 analogues)

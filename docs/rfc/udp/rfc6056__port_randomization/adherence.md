@@ -12,9 +12,9 @@
 RFC 6056 applies to **both TCP and UDP** ephemeral
 source-port selection. In PyTCP the implementation is
 shared: a single helper `pick_local_port` at
-`pytcp/socket/socket__bind_helpers.py:140-152` services both
-`pytcp/socket/udp__socket.py` and
-`pytcp/socket/tcp__socket.py`. This audit lives under
+`packages/pytcp/pytcp/socket/socket__bind_helpers.py:140-152` services both
+`packages/pytcp/pytcp/socket/udp__socket.py` and
+`packages/pytcp/pytcp/socket/tcp__socket.py`. This audit lives under
 `docs/rfc/udp/` because the UDP audit campaign surfaced
 the gap, but the findings apply equally to TCP — see
 cross-references at the bottom.
@@ -56,7 +56,7 @@ Ephemeral Ports — background, §5 Security boilerplate,
 >  attacked."
 
 **Adherence:** met. `pick_local_port` at
-`pytcp/socket/socket__bind_helpers.py:140-163`:
+`packages/pytcp/pytcp/socket/socket__bind_helpers.py:140-163`:
 
 ```python
 def pick_local_port() -> int:
@@ -89,7 +89,7 @@ pool. The §3.1 obfuscation SHOULD is satisfied.
 >  selected port numbers."
 
 **Adherence:** met. `stack.EPHEMERAL_PORT_RANGE` at
-`pytcp/stack/__init__.py:174-183` is now
+`packages/pytcp/pytcp/stack/__init__.py:174-183` is now
 `range(32768, 61000)` — a 28,232-port pool matching the
 Linux `net.ipv4.ip_local_port_range = 32768 60999`
 default. Step=1, so every port in the window is a valid
@@ -102,7 +102,7 @@ bound stops short of 65535 to leave `61000-65535`
 available for operator-pinned static allocation.
 
 The conformance test at
-`pytcp/tests/unit/stack/test__stack__init.py::test__stack__ephemeral_port_range__rfc6056_conformant`
+`packages/pytcp/pytcp/tests/unit/stack/test__stack__init.py::test__stack__ephemeral_port_range__rfc6056_conformant`
 asserts step=1 and pool size ≥ 16384 (the IANA dynamic
 range minimum cited in RFC 6056 §3.2).
 
@@ -202,7 +202,7 @@ unpredictability.
 When it eventually does (Algorithm 3 is the natural
 target), the key would follow the `IP6__FLOW_SECRET` /
 `TCP__ISS_SECRET` / `TCP__FASTOPEN_SECRET` pattern at
-`pytcp/stack/__init__.py` — `secrets.token_bytes(16)` at
+`packages/pytcp/pytcp/stack/__init__.py` — `secrets.token_bytes(16)` at
 process start, never persisted.
 
 ---
@@ -265,7 +265,7 @@ RFC 6056 §3.5 recommends for TCP.
 ### §3.1 Obfuscation of port selection
 
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__bind_helpers.py::TestPickLocalPort::test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__bind_helpers.py::TestPickLocalPort::test__ip_helper__pick_local_port__uses_secrets_choice_for_entropy`
   — patches `secrets.choice` and asserts the picker
   delegates final selection to it, invoking it with the
   full unused-port pool from `EPHEMERAL_PORT_RANGE`.
@@ -275,7 +275,7 @@ RFC 6056 §3.5 recommends for TCP.
 ### §3.2 Port range
 
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__init.py::TestStackModuleConstants::test__stack__ephemeral_port_range__rfc6056_conformant`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__init.py::TestStackModuleConstants::test__stack__ephemeral_port_range__rfc6056_conformant`
   — asserts step=1 (contiguous range) and pool size
   ≥ 16384 (IANA dynamic-range floor per RFC 6056 §3.2).
 - **Unit:** existing

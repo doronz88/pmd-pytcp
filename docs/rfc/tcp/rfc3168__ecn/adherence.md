@@ -14,7 +14,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 3168. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` and `net_proto/protocols/`
+under `packages/pytcp/pytcp/protocols/tcp/` and `packages/net_proto/net_proto/protocols/`
 directly; no prior memory or rule-file content was
 reused. Sections that contain no normative content
 (Abstract, §1 Introduction, §2 Conventions, §3
@@ -41,10 +41,10 @@ and behaviour).
 >   11  CE (Congestion Experienced)"
 
 **Adherence:** met. The IPv4 header at
-`net_proto/protocols/ip4/ip4__header.py` reserves
+`packages/net_proto/net_proto/protocols/ip4/ip4__header.py` reserves
 the 2-bit ECN field (`ecn` field). PyTCP's TX path
 emits the codepoint via `ip__ecn = 2`
-(ECT(0) — `pytcp/protocols/tcp/tcp__session.py:1500`)
+(ECT(0) — `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1500`)
 when `_ecn_enabled` is True and the segment carries
 data. RX path parses the codepoint and surfaces it
 to the TCP layer for ECE feedback generation.
@@ -74,7 +74,7 @@ out of scope.
 > flag set but the CWR flag is clear."
 
 **Adherence:** met. The outbound SYN ECN-setup is at
-`pytcp/protocols/tcp/tcp__session.py:1393` (gated on
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1393` (gated on
 `_advertise_ecn` and not `_advertise_accecn` which
 would emit the AccECN AE+CWR+ECE form). The
 SYN+ACK ECN-echo at line 1433 sets ECE without CWR.
@@ -99,7 +99,7 @@ opt-out.
 > halve its congestion window cwnd."
 
 **Adherence:** met. The ECN-event handling at
-`pytcp/protocols/tcp/tcp__session.py:3563-3595`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3563-3595`
 detects ECE on inbound, applies
 `compute_ecn_event_ssthresh` (RFC 8511 ABE: 17/20
 multiplier) which is more conservative than RFC
@@ -187,7 +187,7 @@ Not-ECT (0).
 ### §5 IP ECN field encoding
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   covers the `ecn: int` field assert (0-3 valid).
 - **Wire-level unit:** assembler/parser matrix for
   the ECN codepoint round-trip.

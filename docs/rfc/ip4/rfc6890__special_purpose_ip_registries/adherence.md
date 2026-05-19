@@ -20,7 +20,7 @@ multicast, reserved, limited broadcast). Block-by-block audit
 below.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py` directly. Non-normative
+inspecting `packages/net_addr/net_addr/ip4_address.py` directly. Non-normative
 content (§1 Introduction, §2.1 / §2.2 procedural metadata, §3
 Security boilerplate, §4 Acknowledgements, §5 References) is
 omitted.
@@ -71,9 +71,9 @@ for a host.
 **Adherence:** met. `Ip4Address.is_unspecified` is the
 zero-address case (the address is 0.0.0.0 by construction
 when no argument is supplied to the constructor — see
-`net_addr/ip4_address.py:_address = 0` branch). The
+`packages/net_addr/net_addr/ip4_address.py:_address = 0` branch). The
 non-zero 0.0.0.0/8 range is classified via
-`Ip4Address.is_invalid` (`net_addr/ip4_address.py:203-210`):
+`Ip4Address.is_invalid` (`packages/net_addr/net_addr/ip4_address.py:203-210`):
 
 ```python
 return (
@@ -124,7 +124,7 @@ behaviour.
 > False."
 
 **Adherence:** met. `Ip4Address.is_reserved` recognises
-240.0.0.0 - 255.255.255.254 (`net_addr/ip4_address.py:185-192`).
+240.0.0.0 - 255.255.255.254 (`packages/net_addr/net_addr/ip4_address.py:185-192`).
 The RX sanity check rejects reserved sources
 (`ip4__parser.py:148-152`).
 
@@ -192,7 +192,7 @@ behaviour; 192.88.99.0/24 is deprecated by RFC 7526.
 ### Per-block predicate correctness
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Parametric matrix covering each predicate
   (`is_loopback`, `is_link_local`, `is_multicast`,
   `is_private`, `is_reserved`, `is_limited_broadcast`,
@@ -204,11 +204,11 @@ behaviour; 192.88.99.0/24 is deprecated by RFC 7526.
 ### Source-sanity rules at parser level
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
   Per-branch rejection for multicast / reserved / limited-
   broadcast sources.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   ICMP Parameter Problem emission verification.
 
 **Status:** locked in.

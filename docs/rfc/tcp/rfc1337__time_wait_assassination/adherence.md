@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 1337. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` and
-`pytcp/tests/integration/protocols/tcp/` directly; no
+under `packages/pytcp/pytcp/protocols/tcp/` and
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/` directly; no
 prior memory or rule-file content was reused.
 Sections that contain no normative content (Abstract,
 Introduction, Conclusions narrative, References,
@@ -69,7 +69,7 @@ them is normative and is audited under §3.
 > not be truncated by a RST segment."
 
 **Adherence:** met. The TIME-WAIT FSM handler
-`pytcp/protocols/tcp/tcp__fsm__time_wait.py` does not
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__time_wait.py` does not
 contain any RST-handling branch. The handler matches
 explicitly on:
 
@@ -173,7 +173,7 @@ refreshed.
 ### §3 F1 — Ignore RST in TIME-WAIT
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc1337::test__rfc1337__rst_in_time_wait_does_not_terminate`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc1337::test__rfc1337__rst_in_time_wait_does_not_terminate`
   drives a session into TIME-WAIT, injects a peer RST
   (with both `seq` and `ack` chosen so a naive
   acceptability check would otherwise admit it), and
@@ -188,10 +188,10 @@ refreshed.
 
 - **Integration:** the broader RFC 7323 §5 PAWS
   coverage in
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py`
   (TestTcpTimestampsPhase4) and the RFC 6191 §3
   reuse coverage in
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc6191`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc6191`
   exercise the PAWS check at
   `tcp__fsm__time_wait.py:97-104` indirectly.
 
@@ -248,7 +248,7 @@ audited in the same TIME-WAIT FSM handler and
 referenced from the RFC 1337 test class:
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc1337::test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py::TestTcpClose__TimeWaitRfc1337::test__rfc1337__syn_in_time_wait_elicits_challenge_ack_without_state_change`
 
 **Status:** locked in. Cross-referenced in the RFC
 9293 audit when written.

@@ -13,17 +13,17 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 3442. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 3442 defines option 121 (Classless Static Routes),
 the modern replacement for option 33 (Static Routes,
 RFC 2132 §5.8) which assumed classful routing. **PyTCP
 does not implement either option** — neither code 121
 nor code 33 appears in the `Dhcp4OptionType` enum at
-`net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`.
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`.
 The client requests only `SUBNET_MASK` and `ROUTER`
 (option 3) in its Parameter Request List
-(`pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
 `:195-200`).
 
 Sections without normative content (Introduction,
@@ -92,7 +92,7 @@ ROUTER (option 3); option 121 is not requested.
 
 **Adherence:** not met (but vacuous in current code).
 PyTCP's `_recv_ack` reads `ack.router[0]` unconditionally
-(`pytcp/protocols/dhcp4/dhcp4__client.py:122-123`). If
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:122-123`). If
 a server returns both option 3 (Router) and option 121
 (Classless Static Routes), PyTCP would consume the
 Router option as the default gateway — this is exactly
@@ -138,7 +138,7 @@ sizing concern doesn't apply).
 is fixed, the natural test plan:
 
 1. Add a `Dhcp4OptionClasslessStaticRoute` codec under
-   `net_proto/protocols/dhcp4/options/`
+   `packages/net_proto/net_proto/protocols/dhcp4/options/`
    parsing the compact-encoding destination descriptor
    format from the RFC (width byte + significant
    octets, plus 4-byte router IP).
@@ -187,7 +187,7 @@ fetches classless routes by default. Fix sketch:
 1. Add `Dhcp4OptionType.CLASSLESS_STATIC_ROUTE = 121`
    to the enum.
 2. Add the codec under
-   `net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
+   `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
    parsing the compact-encoding format (RFC 3442
    "Destination descriptors describe..." paragraph).
 3. Add option 121 to the client's Param Req List

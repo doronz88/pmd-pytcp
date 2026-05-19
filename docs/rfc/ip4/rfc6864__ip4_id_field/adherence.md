@@ -12,8 +12,8 @@
 This document records the PyTCP codebase's adherence to RFC 6864
 clause by clause. The audit was performed by reading the RFC
 text fresh and inspecting the codebase under
-`net_proto/protocols/ip4/`, `pytcp/runtime/packet_handler/`, and
-`pytcp/protocols/ip/ip_frag*.py` directly; no prior memory or
+`packages/net_proto/net_proto/protocols/ip4/`, `packages/pytcp/pytcp/runtime/packet_handler/`, and
+`packages/pytcp/pytcp/protocols/ip/ip_frag*.py` directly; no prior memory or
 rule-file content was reused. Non-normative sections (§1
 Introduction, §2 Conventions, §3 Background, §5 Impact discussion,
 §7 IANA, §8 Security boilerplate) are omitted.
@@ -66,7 +66,7 @@ the entire codebase is the reassembly flow-key constructor
 `IpFragFlowId(src=..., dst=..., id=packet_rx.ip4.id, proto=...)`).
 There is no de-duplication cache keyed on ID, no ICMP-rate-limit
 keyed on ID, no NAT or middlebox use. `grep -nE
-"packet_rx\.ip4\.id|self\._header\.id" pytcp/ net_proto/`
+"packet_rx\.ip4\.id|self\._header\.id" packages/pytcp/pytcp/ packages/net_proto/net_proto/`
 returns only the flow-key site.
 
 > "Originating sources MAY set the IPv4 ID field of atomic
@@ -74,7 +74,7 @@ returns only the flow-key site.
 
 **Adherence:** met. PyTCP's atomic-datagram path does not set
 `ip4__id` on the `Ip4Assembler` constructor, so it defaults to
-`ip4__id: int = 0` (`net_proto/protocols/ip4/ip4__assembler.py:69`).
+`ip4__id: int = 0` (`packages/net_proto/net_proto/protocols/ip4/ip4__assembler.py:69`).
 Atomic datagrams ship with ID=0 uniformly. This matches Linux
 3.16+ (`net/ipv4/ip_output.c::ip_select_ident` returns 0 when
 `!skb_is_gso(skb) && skb->local_df == 0` for DF=1 datagrams).
@@ -110,7 +110,7 @@ path and bumps `_ip4_id` again, producing a fresh ID.
 
 **Adherence:** met. Fragment overlap is handled by the
 reassembly state machine in
-`pytcp/protocols/ip/ip_frag_table.py` (overlap → discard) —
+`packages/pytcp/pytcp/protocols/ip/ip_frag_table.py` (overlap → discard) —
 audited under RFC 815.
 
 ## §4.3 IPv4 ID Requirements That Persist
@@ -121,7 +121,7 @@ audited under RFC 815.
 
 **Adherence:** met. PyTCP uses a single monotonic counter
 shared across all outbound flows
-(`pytcp/runtime/packet_handler/__init__.py:184`,
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:184`,
 `self._ip4_id: int = 0`, bumped at
 `packet_handler__ip4__tx.py:193`). The counter rolls over
 modulo 2¹⁶ implicitly via the `Ip4Header.id` 16-bit field.
@@ -181,13 +181,13 @@ new ID (not the original).
 ### §4.1 Atomic datagram ID=0 on send
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc6864AtomicId::test__phtx_ip4__atomic_datagram__ip4_id_is_zero`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc6864AtomicId::test__phtx_ip4__atomic_datagram__ip4_id_is_zero`
   Dedicated assertion: drive `_phtx_ip4` with a unicast
   destination and a one-byte RAW payload; parse byte offsets
   18-19 of the captured Ethernet frame (= IPv4 header bytes
   4-5 = Identification field) and assert ID == 0.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Every non-fragmented happy-path case in the parametric
   matrix also pins the `id` field of the expected outbound
   frame to 0.
@@ -197,7 +197,7 @@ new ID (not the original).
 ### §4.1 ID readers consult only the reassembly path
 
 **Verification by code grep, not by test.** A `grep -rn
-"\.id\b" pytcp/protocols/ pytcp/stack/` against the IPv4
+"\.id\b" packages/pytcp/pytcp/protocols/ packages/pytcp/pytcp/stack/` against the IPv4
 RX/TX path returns only the flow-key constructor at
 `packet_handler__ip4__rx.py:318`.
 
@@ -207,7 +207,7 @@ non-reassembly reader.
 ### §4.2 ID bump on every non-atomic emission (no reuse on retransmit)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   fragmentation cases pin the ID stamped on each fragment;
   re-entering the TX path with the same payload pins the
   ID-bump on each call.
@@ -217,7 +217,7 @@ non-reassembly reader.
 ### §4.3 DF=1 over MTU is dropped (not fragmented)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   has a dedicated case that constructs a packet with DF=1
   and payload > MTU, asserting `TxStatus.DROPPED__IP4__MTU_EXCEED_DF`
   and the matching `ip4__mtu_exceed__df_set__drop` counter.

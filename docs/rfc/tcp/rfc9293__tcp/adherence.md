@@ -14,8 +14,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 9293. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/`, `net_proto/protocols/tcp/`,
-and `pytcp/socket/` directly; no prior memory or
+under `packages/pytcp/pytcp/protocols/tcp/`, `packages/net_proto/net_proto/protocols/tcp/`,
+and `packages/pytcp/pytcp/socket/` directly; no prior memory or
 rule-file content was reused. Sections that contain no
 normative content (Abstract, §1 Purpose and Scope,
 §2 Introduction, §2.1 Requirements Language, §2.2
@@ -40,7 +40,7 @@ duplicating the content.
 > options, with the wire-level format..."
 
 **Adherence:** met. The wire format is implemented at
-`net_proto/protocols/tcp/tcp__header.py` (parser /
+`packages/net_proto/net_proto/protocols/tcp/tcp__header.py` (parser /
 assembler / asserts). Fields:
 
 - Source port, destination port (16-bit each)
@@ -63,7 +63,7 @@ All fields parsed and assembled correctly.
 > Kind 5: SACK / Kind 8: Timestamps / Kind 34: TFO"
 
 **Adherence:** met. PyTCP implements all listed
-options at `net_proto/protocols/tcp/options/`:
+options at `packages/net_proto/net_proto/protocols/tcp/options/`:
 - `tcp__option__nop.py` (kind 1)
 - `tcp__option__eol.py` (kind 0)
 - `tcp__option__mss.py` (kind 2)
@@ -116,7 +116,7 @@ level urgent semantics — see RFC 6093 audit.
 **Adherence:** met. PyTCP's `FsmState` enum
 (`tcp__enums.py`) defines all 11 states. Each state
 has a dedicated FSM handler at
-`pytcp/protocols/tcp/tcp__fsm__<state>.py`. The
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__<state>.py`. The
 state machine transitions match the RFC 9293 §3.3.2
 diagram.
 
@@ -159,7 +159,7 @@ collision resistance.
 > "Three-way handshake: SYN, SYN+ACK, ACK"
 
 **Adherence:** met. The active-open path is at
-`pytcp/protocols/tcp/tcp__fsm__syn_sent.py` and the
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_sent.py` and the
 passive-open path is at `tcp__fsm__listen.py` /
 `tcp__fsm__syn_rcvd.py`. The handshake transitions
 match the RFC 9293 §3.5 sequence.
@@ -198,7 +198,7 @@ in place.
 > sends FIN but allows continued read."
 
 **Adherence:** met. The `shutdown(SHUT_WR)` socket-
-API at `pytcp/socket/tcp__socket.py` triggers FIN
+API at `packages/pytcp/pytcp/socket/tcp__socket.py` triggers FIN
 emission while keeping the read-half open
 (CLOSE-WAIT or FIN-WAIT-1 transitions).
 
@@ -325,7 +325,7 @@ RECEIVE / CLOSE / STATUS / ABORT / FLUSH user-API
 calls.
 
 **Adherence:** met via the `TcpSocket` BSD-API
-facade at `pytcp/socket/tcp__socket.py`:
+facade at `packages/pytcp/pytcp/socket/tcp__socket.py`:
 
 | §3.9.1 call    | PyTCP method                   |
 |----------------|--------------------------------|
@@ -450,16 +450,16 @@ state-machine rules.
 
 RFC 9293 conformance is verified by the entire TCP
 test suite — every test in
-`pytcp/tests/integration/protocols/tcp/` exercises
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/` exercises
 some §3.x clause directly or indirectly. The audit
 table below cross-references the per-clause test
 locations:
 
 | §3.x clause                         | Test location / cross-ref                                |
 |-------------------------------------|----------------------------------------------------------|
-| §3.1 Header format                  | `net_proto/tests/unit/protocols/tcp/test__tcp__*.py`     |
-| §3.2 Option definitions             | `net_proto/tests/unit/protocols/tcp/options/`            |
-| §3.3.2 State machine                | `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__*.py` + close tests |
+| §3.1 Header format                  | `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__*.py`     |
+| §3.2 Option definitions             | `packages/net_proto/net_proto/tests/unit/protocols/tcp/options/`            |
+| §3.3.2 State machine                | `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__*.py` + close tests |
 | §3.4 Sequence numbers               | `test__tcp__session__seq_wraparound.py` + `tcp__seq.py` unit |
 | §3.4.1 ISS                          | RFC 6528 audit                                           |
 | §3.5 Connection establishment       | handshake tests                                          |

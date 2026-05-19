@@ -6,7 +6,7 @@
 | Plan author       | Timer-rewrite follow-up (the deliberately-deferred §12 track from `docs/refactor/timer_rewrite_plan.md`)                                                                               |
 | Source motivation | The heap-based `Timer` is event-driven, but every TCP timer still uses the polling `register_timer` / `is_expired` named-flag shim, driven by a 1 ms `call_periodic(tcp_fsm, timer=True)` tick that exists only to scan flags |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                                              |
-| Touch points      | `pytcp/protocols/tcp/tcp__session.py` (~30 call sites), `pytcp/protocols/tcp/fsm/tcp__fsm__*.py` (7 state timer handlers + the TIME_WAIT poll), `pytcp/tests/lib/fake_timer.py` (no API change; behaviour-parity only), TCP integration suite |
+| Touch points      | `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` (~30 call sites), `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__*.py` (7 state timer handlers + the TIME_WAIT poll), `packages/pytcp/pytcp/tests/lib/fake_timer.py` (no API change; behaviour-parity only), TCP integration suite |
 | Risk              | **High** — wide surface, FSM thread/ordering invariants are implicit in the single locked tick, `is_expired` conflation is load-bearing at several sites, the integration suite pins exact wire timing |
 | Phases            | 0 (this plan) → 1 (deadline-map helper, still 1 ms-driven, zero behaviour change) → 2 (migrate independent timers' *checks* to the helper) → 3 (migrate the coupled retransmit/rack/tlp cluster) → 4 (flip the trigger: 1 ms periodic → coalesced `call_later`) → 5 (delete the periodic, teardown via handle registry) → 6 (docs + close-out) |
 
@@ -192,7 +192,7 @@ thread**. Cancelled on CLOSED via
 
 Grepped: `register_timer` / `is_expired` /
 `unregister_timers_with_prefix` appeared only under
-`pytcp/protocols/tcp/`. The shim went dead at Phase 5 and
+`packages/pytcp/pytcp/protocols/tcp/`. The shim went dead at Phase 5 and
 **Phase 6 (SHIPPED) deleted it from `Timer` / `FakeTimer`
 outright** along with `pending_timers` /
 `_legacy_named_flags` / `_PRIO__NAMED_FLAG`.
@@ -554,7 +554,7 @@ commits without `make lint` + full `make test` + §7.2 audit
 > not acceptable — it must be shown, per timer, before the
 > code moves.
 
-### 6.1 `pytcp/protocols/tcp/tcp__session.py`
+### 6.1 `packages/pytcp/pytcp/protocols/tcp/tcp__session.py`
 
 - Add `_timer_deadlines`, `_service_handle` attributes
   (declared in the class annotation block, initialised in
@@ -588,7 +588,7 @@ commits without `make lint` + full `make test` + §7.2 audit
   §4.2 swap) — confirm `_tcp_fsm_handle` is gone and only
   `_service_handle` remains.
 
-### 6.2 `pytcp/protocols/tcp/fsm/tcp__fsm__*.py`
+### 6.2 `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__*.py`
 
 - `fsm__time_wait.py:58`: `is_expired` →
   `session._timer_expired("time_wait")` (Phase 2 pilot).
@@ -598,7 +598,7 @@ commits without `make lint` + full `make test` + §7.2 audit
 - No state-handler *body* reordering — the §4.3 sequence is
   the contract and stays verbatim.
 
-### 6.3 `pytcp/tests/lib/fake_timer.py`
+### 6.3 `packages/pytcp/pytcp/tests/lib/fake_timer.py`
 
 - **No API change.** FakeTimer already exposes
   `call_later` / `cancel` / `now_ms`. The migrated session
@@ -618,7 +618,7 @@ commits without `make lint` + full `make test` + §7.2 audit
 ### 6.4 Test plan
 
 The TCP integration suite under
-`pytcp/tests/integration/protocols/tcp/` is the primary
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/` is the primary
 spec-pin and **must stay 100% green at every phase**. It
 already exercises RTO, persist, keepalive, TIME_WAIT,
 delayed-ACK, TLP, RACK, challenge-ACK at wire level via
@@ -627,7 +627,7 @@ delayed-ACK, TLP, RACK, challenge-ACK at wire level via
 New tests (added in the phase that introduces the behaviour):
 
 **Phase 1 — helper unit tests**
-(`pytcp/tests/unit/protocols/tcp/test__tcp__session__timers.py`,
+(`packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__session__timers.py`,
 new file):
 - `test__tcp__timers__arm_sets_absolute_deadline`
 - `test__tcp__timers__expired_false_when_unarmed` (the
@@ -884,7 +884,7 @@ have caught attempt #1's 392-failure cascade:
   measured against a pinned baseline.
 
 These go in a new
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__fsm_pump.py`.
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__fsm_pump.py`.
 They are green on Phase-3 code (characterization pins, §6.0
 Rule 3). Commit:
 `pytcp.tests.integration.tcp: FSM-pump characterization pins
@@ -1232,15 +1232,15 @@ Resume from the latest phase-N commit; pick up at N+1.
 
 - `docs/refactor/timer_rewrite_plan.md` — the SHIPPED
   heap-scheduler rewrite; its §12 deferred this plan.
-- `pytcp/protocols/tcp/tcp__session.py` — the ~30 call
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` — the ~30 call
   sites + `tcp_fsm` dispatcher (`:4095`) + `_lock__fsm`.
-- `pytcp/protocols/tcp/fsm/tcp__fsm.py` —
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm.py` —
   `FSM_TIMER_HANDLERS` (`:156`), `dispatch_timer` (`:212`).
-- `pytcp/protocols/tcp/fsm/tcp__fsm__*.py` — the 7 per-state
+- `packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__*.py` — the 7 per-state
   timer handlers (the §4.3 ordering contract).
-- `pytcp/runtime/timer.py` — `call_later` / `cancel` /
+- `packages/pytcp/pytcp/runtime/timer.py` — `call_later` / `cancel` /
   `now_ms`; the named-flag shim deleted in Phase 6.
-- `pytcp/tests/lib/fake_timer.py` — unchanged API; the
+- `packages/pytcp/pytcp/tests/lib/fake_timer.py` — unchanged API; the
   integration-parity oracle.
 - `.claude/rules/pytcp.md` §2/§6 — Subsystem + per-session
   vs stack state; `feature_implementation.md` §2 —

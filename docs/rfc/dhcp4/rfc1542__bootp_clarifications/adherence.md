@@ -12,8 +12,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 1542. The audit was performed by reading the RFC
-text fresh and inspecting the codebase under `pytcp/` and
-`net_proto/` directly.
+text fresh and inspecting the codebase under `packages/pytcp/pytcp/` and
+`packages/net_proto/net_proto/` directly.
 
 RFC 1542 clarifies several ambiguous areas of RFC 951
 (BOOTP) and defines the BROADCAST flag in the previously-
@@ -43,7 +43,7 @@ Address) are omitted.
 **Adherence:** met. PyTCP's header dataclass models the
 field as `flag_b: bool` (single boolean — the top bit)
 plus implicit 15-bit MBZ
-(`net_proto/protocols/dhcp4/dhcp4__header.py:156`).
+(`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:156`).
 Pack and unpack at
 `dhcp4__header.py:246, 301` use
 `flag_b << 15` so the bit is in the MSB position of the
@@ -106,7 +106,7 @@ make this clear.)
 
 **Adherence:** met. The client emits `flag_b=True` in
 both DISCOVER and REQUEST
-(`pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`).
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:137`, `:191`).
 PyTCP's UDP RX path can in principle receive unicast
 on the bound socket before the IPv4 address is fully
 configured (the socket is bound on `0.0.0.0:68`), so a
@@ -177,9 +177,9 @@ field.
 **Adherence:** met. The client always emits
 `ciaddr=Ip4Address()` (default value 0.0.0.0) — see
 `Dhcp4Assembler` default field value at
-`net_proto/protocols/dhcp4/dhcp4__assembler.py` and the
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__assembler.py` and the
 fact that `_send_discover` / `_send_request` at
-`pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`
 never set `dhcp4__ciaddr=...` (the default applies).
 
 > "The BOOTP server is free to assign a different IP
@@ -188,7 +188,7 @@ never set `dhcp4__ciaddr=...` (the default applies).
 >  IP address specified in 'yiaddr'."
 
 **Adherence:** met. The client always uses
-`ack.yiaddr` (`pytcp/protocols/dhcp4/dhcp4__client.py:121`)
+`ack.yiaddr` (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:121`)
 as the assigned IPv4 address.
 
 ---
@@ -200,7 +200,7 @@ as the assigned IPv4 address.
 
 **Adherence:** met. The client never sets
 `dhcp4__giaddr=...` on outbound assemblers
-(`pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`);
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:134-151`, `:188-205`);
 the assembler default of `Ip4Address()` = 0.0.0.0
 applies.
 
@@ -212,7 +212,7 @@ applies.
 
 **Adherence:** met. The client reads only `yiaddr`,
 `subnet_mask`, and `router[0]` from the ACK
-(`pytcp/protocols/dhcp4/dhcp4__client.py:111-125`).
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:111-125`).
 The `giaddr` field is exposed via the parser's
 `Dhcp4HeaderProperties` but the client never reads it.
 
@@ -229,7 +229,7 @@ The `giaddr` field is exposed via the parser's
 `b"\x63\x82\x53\x63"` (99.130.83.99) is packed as the
 final 4-byte field of the BOOTP header (which RFC 2131
 treats as separate from the variable-length options)
-at `net_proto/protocols/dhcp4/dhcp4__header.py:254`.
+at `packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:254`.
 
 > "If a special vendor-specific magic cookie is not
 >  being used, a BOOTP client SHOULD use the dotted
@@ -261,10 +261,10 @@ messages between subnets.
 ### §2.2 / §3.1.1 / §3.1.2 BROADCAST flag
 
 - **Unit (header):**
-  `net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py` (785 lines)
   Pins `flag_b: bool` round-trip and `<< 15` packing.
 - **Unit (client):**
-  `pytcp/tests/unit/lib/test__lib__dhcp4_client.py` (681 lines)
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py` (681 lines)
   Asserts that emitted DISCOVER/REQUEST carry
   `flag_b=True`.
 

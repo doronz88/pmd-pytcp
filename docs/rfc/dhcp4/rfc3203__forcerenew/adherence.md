@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 3203. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 3203 introduces the DHCPFORCERENEW message — a
 server-to-client signal that tells a BOUND client to
@@ -23,7 +23,7 @@ re-discover). **PyTCP does not implement FORCERENEW**
 at any level:
 
 - The `Dhcp4MessageType` enum at
-  `net_proto/protocols/dhcp4/dhcp4__enums.py:58-95`
+  `packages/net_proto/net_proto/protocols/dhcp4/dhcp4__enums.py:58-95`
   declares DISCOVER through INFORM (codes 1–8) but
   not FORCERENEW (code 9).
 - The PyTCP client has no BOUND state to be reconfigured
@@ -96,15 +96,15 @@ has no scaffolding.
 >  extended with a new value: DHCPFORCERENEW (9)"
 
 **Adherence:** not met. The `Dhcp4MessageType` enum at
-`net_proto/protocols/dhcp4/dhcp4__enums.py:58-95`
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__enums.py:58-95`
 declares codes 1 (DISCOVER) through 8 (INFORM).
 Code 9 (FORCERENEW) is absent. An inbound DHCP message
 with message-type 9 would parse the option (via
 `Dhcp4OptionMessageType` and the `ProtoEnumByte`
 unknown-value extension at
-`net_proto/lib/proto_enum.py`) into an "unknown"
+`packages/net_proto/net_proto/lib/proto_enum.py`) into an "unknown"
 enum member, but the client filter at
-`pytcp/protocols/dhcp4/dhcp4__client.py:167-172`, `:222-227`
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:167-172`, `:222-227`
 treats unknown message types as errors and returns
 None.
 

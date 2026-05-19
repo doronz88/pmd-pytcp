@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6842. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 6842 overrides the RFC 2131 §4.3.1 prohibition on
 servers echoing the Client Identifier option back in
@@ -27,7 +27,7 @@ PyTCP's compliance status:
 - **Server-side requirement (MUST echo):** N/A — PyTCP
   is a DHCP client only.
 - **Client-side requirement (MUST validate echo):**
-  met (Phase 0). `pytcp/protocols/dhcp4/dhcp4__client.py`'s
+  met (Phase 0). `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`'s
   `_cid_echo_ok(...)` compares the inbound
   `client_id` against the client's locally cached
   `self._expected_client_id` and returns False on
@@ -66,7 +66,7 @@ Addresses) are omitted.
 >  the client MUST silently discard the message."
 
 **Adherence:** met. `_recv_offer` and `_recv_ack` in
-`pytcp/protocols/dhcp4/dhcp4__client.py` both invoke
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` both invoke
 `self._cid_echo_ok(packet)` after the message-type +
 xid checks. The helper extracts `packet.client_id`
 (surfaced by the new `Dhcp4Options.client_id`
@@ -79,7 +79,7 @@ NAK path, so a stray NAK for an unrelated transaction
 cannot kick the client into a restart loop.
 
 The `Dhcp4OptionClientId` codec at
-`net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__client_id.py`
 parses the inbound option; the
 `Dhcp4Options.client_id` accessor (added in this Phase 0
 commit) surfaces it on the parsed message.
@@ -90,7 +90,7 @@ commit) surfaces it on the parsed message.
 
 ### §3 — Client-side echo validation
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   - `TestDhcp4ClientFetchCidEcho::test__dhcp4_client__fetch_returns_none_on_offer_cid_mismatch`
     — OFFER echoes a CID built from a different MAC;
     `fetch()` returns None.

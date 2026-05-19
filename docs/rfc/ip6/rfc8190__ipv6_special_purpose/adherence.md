@@ -26,7 +26,7 @@ predicate set on `Ip6Address`.
 
 The audit was performed by reading RFC 8190 + the IANA
 IPv6 Special-Purpose Address Registry (current as of
-2026-05-12) and inspecting `net_addr/ip6_address.py`
+2026-05-12) and inspecting `packages/net_addr/net_addr/ip6_address.py`
 directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
@@ -109,7 +109,7 @@ def is_reserved(self) -> bool:
     )
 ```
 
-(`net_addr/ip6_address.py`). Consumers that need a finer
+(`packages/net_addr/net_addr/ip6_address.py`). Consumers that need a finer
 classification call `is_documentation` directly.
 
 ---
@@ -205,7 +205,7 @@ predicate at that time.
 ### is_documentation
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsDocumentation`
+  `packages/net_addr/net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsDocumentation`
   — boundary cases (2001:db8::1, 2001:db8::ffff:..., upper
   edge), neighbour rejection (2001:db7::, 2001:db9::), and
   global-unrelated rejection.
@@ -215,7 +215,7 @@ predicate at that time.
 ### is_reserved
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsReserved`
+  `packages/net_addr/net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsReserved`
   — positive cases for each recognised prefix (100::/64
   discard, ::ffff:0:0/96 IPv4-mapped, 2001:2::/48
   benchmark, 2001:db8::/32 documentation); negative cases

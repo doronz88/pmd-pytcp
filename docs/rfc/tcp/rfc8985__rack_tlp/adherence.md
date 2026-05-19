@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 8985. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §2
 Terminology, §3 High-Level Design, §3.1–§3.6 design
@@ -78,7 +78,7 @@ RACK state being populated).
 > Segment.end_seq"
 
 **Adherence:** met. The `RackSegment` dataclass at
-`pytcp/protocols/tcp/tcp__rack.py:77-110`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__rack.py:77-110`:
 
 ```python
 @dataclass(frozen=True)
@@ -280,7 +280,7 @@ simultaneously fire.
 ### §5.2 Per-segment variables
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__rack.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__rack.py`
   contains `RackSegment` construction tests.
 
 **Status:** locked in.
@@ -288,7 +288,7 @@ simultaneously fire.
 ### §6.1 Transmit recording
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rack.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rack.py`
   pins the `_rack_segments` populate-on-tx flow.
 
 **Status:** locked in.
@@ -339,7 +339,7 @@ simultaneously fire.
   `TestTlpProcessAck` cover the PTO formula and
   ACK-processing logic.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__tlp.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__tlp.py`
   pins the TLP probe emission, single-loss-repair
   CC response, and timer arbitration.
 

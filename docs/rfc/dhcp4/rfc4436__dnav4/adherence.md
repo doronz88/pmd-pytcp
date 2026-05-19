@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 4436. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 4436 specifies DNAv4 — a performance optimization
 that lets a DHCPv4 client with a previously-leased
@@ -25,7 +25,7 @@ re-activate the cached lease without DHCP traffic.
 **PyTCP implements DNAv4** as of Phase 6 (built on the
 Phase 5 cached-lease persistence layer):
 
-- Cached-lease state — `pytcp/protocols/dhcp4/dhcp4__lease_cache.py`
+- Cached-lease state — `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__lease_cache.py`
   persists every BOUND lease (including the gateway IP +
   gateway link-layer address) to a JSON file at
   `dhcp.lease_cache_path` for the next boot to consume.
@@ -117,7 +117,7 @@ constructor's cache-read path.
 >  operation."
 
 **Adherence:** met (Phase 6). The cache reader at
-`pytcp/protocols/dhcp4/dhcp4__lease_cache.py:read_cached_lease`
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__lease_cache.py:read_cached_lease`
 returns `None` when the cache file is missing, malformed,
 unknown-version, or the lease has expired by wall-clock
 time — every "discard and proceed with DHCP" failure
@@ -251,7 +251,7 @@ there.
 ### §4 / §5 — DNAv4 probe + INIT-REBOOT integration (Phase 6)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientDnav4`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientDnav4`
   - `dnav4_disabled_by_default_for_lease_without_mac` —
     no recorded `gateway_mac` → probe returns False, no
     ARP traffic.
@@ -275,7 +275,7 @@ there.
 ### Cache format v2 — gateway_mac round-trip
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
   - `round_trip_persists_gateway_mac` — explicit
     `gateway_mac` survives the JSON serialisation.
   - `round_trip_with_no_gateway_mac` — None / missing

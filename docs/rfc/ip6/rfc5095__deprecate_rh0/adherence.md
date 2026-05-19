@@ -21,11 +21,11 @@ Type byte.
 Implementation:
 
 - The RH0 hard-drop logic lives in
-  `net_proto/protocols/ip6_routing/ip6_routing__parser.py`
+  `packages/net_proto/net_proto/protocols/ip6_routing/ip6_routing__parser.py`
   (`_validate_integrity` raises
   `Ip6RoutingIntegrityError(pointer=2)`).
 - The chain-walker dispatch in
-  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
   catches the integrity error, computes the absolute IPv6-
   packet pointer (40 + chain_offset + 2), and emits ICMPv6
   Param Problem code 0 via the existing
@@ -33,7 +33,7 @@ Implementation:
 - Counter: `ip6_routing__rh0__drop`.
 
 Regression-pinned by
-`pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__Rh0::test__ip6__rx__rh0_emits_param_problem_code_0`,
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__Rh0::test__ip6__rx__rh0_emits_param_problem_code_0`,
 which drives an Ethernet/IPv6/RH0 frame and asserts the
 outbound ICMPv6 Param Problem code 0 with pointer 42 (40
 IPv6 header + 2 within the Routing Header).
@@ -49,7 +49,7 @@ IPv6 header + 2 within the Routing Header).
 
 **Adherence:** shipped. The IANA-assigned routing type 0 is
 defined in PyTCP's `Ip6RoutingType` enum
-(`net_proto/protocols/ip6_routing/ip6_routing__enums.py`)
+(`packages/net_proto/net_proto/protocols/ip6_routing/ip6_routing__enums.py`)
 solely so the parser can recognise and reject it. There is
 no encode path, no opaque-bytes preserve path — RH0 is hard-
 dropped during the integrity-check phase.
@@ -110,7 +110,7 @@ RFC 5095 §3 example.
 
 The Param Problem emission is gated by the existing host-
 requirements machinery
-(`pytcp/protocols/icmp/icmp__error_emitter.py`): rate-
+(`packages/pytcp/pytcp/protocols/icmp/icmp__error_emitter.py`): rate-
 limiting, src/dst eligibility checks, and packet-stats
 counters all run unchanged.
 
@@ -143,11 +143,11 @@ The §3 clauses above are pinned by:
 
 | Clause | Test file / class |
 |--------|-------------------|
-| RH0 hard-drop on receipt | `net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__integrity_checks.py::TestIp6RoutingParserIntegrity::test__ip6_routing__parser__integrity__rh0_hard_drop` |
-| RH0 ICMP Param Problem code 0 emission | `pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__Rh0::test__ip6__rx__rh0_emits_param_problem_code_0` |
+| RH0 hard-drop on receipt | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__integrity_checks.py::TestIp6RoutingParserIntegrity::test__ip6_routing__parser__integrity__rh0_hard_drop` |
+| RH0 ICMP Param Problem code 0 emission | `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__Rh0::test__ip6__rx__rh0_emits_param_problem_code_0` |
 | Pointer = 42 (absolute) | Same integration test asserts `probe.message.pointer == 42` for the RH-immediately-after-IPv6-header case. |
 | Counter `ip6_routing__rh0__drop` | Same integration test. |
-| Non-RH0 routing types pass through | `net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` (RH3, RH4, unknown via dynamic-extend) |
+| Non-RH0 routing types pass through | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` (RH3, RH4, unknown via dynamic-extend) |
 
 A regression that broke the RH0 hard-drop would fail the
 integrity-check unit test loudly (the hard-drop is the very

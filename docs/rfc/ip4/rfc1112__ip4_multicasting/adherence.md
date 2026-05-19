@@ -24,8 +24,8 @@ group (224.0.0.1) is preconfigured at boot. Group join / leave
 beyond the all-hosts default is Phase 2.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py`,
-`pytcp/stack/__init__.py`, and the IPv4 packet handlers
+inspecting `packages/net_addr/net_addr/ip4_address.py`,
+`packages/pytcp/pytcp/stack/__init__.py`, and the IPv4 packet handlers
 directly. Non-normative content (§1 Status, §2 Introduction,
 §9 ICMP, §10 IANA / Appendices) is omitted.
 
@@ -51,7 +51,7 @@ directly. Non-normative content (§1 Status, §2 Introduction,
 > those with '1110' as their high-order four bits."
 
 **Adherence:** met. `Ip4Address.is_multicast` recognises 224/4
-(`net_addr/ip4_address.py:164-169`):
+(`packages/net_addr/net_addr/ip4_address.py:164-169`):
 
 ```python
 return self._address & 0xF0_00_00_00 == 0xE0_00_00_00
@@ -62,7 +62,7 @@ return self._address & 0xF0_00_00_00 == 0xE0_00_00_00
 
 **Adherence:** met. The all-hosts group is preconfigured in
 the stack's `_ip4_multicast` list at boot
-(`pytcp/runtime/packet_handler/__init__.py`).
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py`).
 
 ## §6.1 Sending — IP Service Interface
 
@@ -106,7 +106,7 @@ network" half of the §6.1 contract is also honoured.
 
 **Adherence:** met. `Ip4Address.multicast_mac` maps the
 high-23-bits of the IPv4 multicast address into the
-`01:00:5E:` MAC prefix (`net_addr/ip4_address.py:108-126`). The
+`01:00:5E:` MAC prefix (`packages/net_addr/net_addr/ip4_address.py:108-126`). The
 Ethernet TX path consumes this when resolving the destination
 MAC for multicast frames
 (`packet_handler__ethernet__tx.py`).
@@ -119,7 +119,7 @@ MAC for multicast frames
 > 01-00-5E-00-00-00 (hex)."
 
 **Adherence:** met. `Ip4Address.multicast_mac`
-(`net_addr/ip4_address.py:108-125`) returns
+(`packages/net_addr/net_addr/ip4_address.py:108-125`) returns
 `MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x0000_007F_FFFF)`
 which is exactly the high-23-bits mapping.
 
@@ -157,7 +157,7 @@ RFC 1122 §3.2.2 and the ICMP audit
 (`docs/rfc/icmp4/rfc1122__host_requirements_icmp/adherence.md`)
 cover the canonical "do not emit ICMP error to a multicast
 source / multicast destination" rules. PyTCP's
-`pytcp/protocols/icmp/icmp__inbound_classifier.py` enforces
+`packages/pytcp/pytcp/protocols/icmp/icmp__inbound_classifier.py` enforces
 these gates.
 
 ---
@@ -167,7 +167,7 @@ these gates.
 ### §4 Class D multicast predicate
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Parametric matrix verifying `is_multicast` for addresses
   inside and outside 224/4.
 
@@ -176,7 +176,7 @@ these gates.
 ### §6.4 IP-to-Ethernet multicast MAC mapping
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Multicast MAC mapping cases (e.g., 224.0.0.1 →
   01:00:5e:00:00:01).
 
@@ -185,7 +185,7 @@ these gates.
 ### §7 RX admission of joined multicast groups
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   All-hosts (224.0.0.1) admission path.
 
 **Status:** locked in.
@@ -193,13 +193,13 @@ these gates.
 ### §6.1 Multicast outbound TTL default = 1
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
   Three cases: multicast dst + no caller TTL → TTL=1;
   multicast dst + caller-supplied TTL → caller value
   preserved; unicast dst + no caller TTL → TTL=64
   regression net.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
   `Ethernet/IPv4 - dst multicast address` case pins the
   full TX frame including TTL=1 in the IPv4 header byte 8.
 

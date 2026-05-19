@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 9768. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused.
 
 > **Note on RFC numbering**: PyTCP source comments
@@ -39,7 +39,7 @@ References, Appendices) are omitted.
 > (AE,CWR,ECE) = (1,1,1) in the initial SYN segment."
 
 **Adherence:** met. The active-open path in
-`pytcp/protocols/tcp/tcp__session.py:1409-1412` sets
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1409-1412` sets
 all three flags (`flag_ns = flag_cwr = flag_ece =
 True`) when `_advertise_accecn` is True and the
 segment is a SYN-only:
@@ -408,7 +408,7 @@ of all three on a single connection is supported.
 ### §3.1.1 active-open AccECN-setup SYN
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__accecn.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__accecn.py`
   drives an active-open with `_advertise_accecn = True`
   and verifies the outbound SYN carries (NS, CWR, ECE)
   = (1, 1, 1).

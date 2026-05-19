@@ -14,7 +14,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 8910. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 8910 defines three Captive-Portal option codepoints:
 
@@ -26,11 +26,11 @@ Each carries a URI to the captive-portal API endpoint
 (RFC 8908). PyTCP implements none of the three:
 
 - DHCPv4 option 114 not in `Dhcp4OptionType`
-  (`net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`).
+  (`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option.py:43-54`).
 - DHCPv6 option 103 not implemented (PyTCP has no
   DHCPv6 client at all).
 - RA option 37 not in `Icmp6NdOption*` codecs under
-  `net_proto/protocols/icmp6/message/nd/options/`.
+  `packages/net_proto/net_proto/protocols/icmp6/message/nd/options/`.
 
 This audit covers only the DHCPv4 piece (option 114),
 which falls in the DHCP4 RFC family. The DHCPv6 piece
@@ -78,7 +78,7 @@ parses into `Dhcp4OptionUnknown`.
 
 **Adherence:** not met. PyTCP's PRL contains only
 SUBNET_MASK and ROUTER
-(`pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:142-147`,
 `:195-200`).
 
 > "In all variants of this option, the URI MUST be that

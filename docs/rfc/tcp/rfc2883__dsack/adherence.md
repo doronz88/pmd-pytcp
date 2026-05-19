@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 2883. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Conventions, §2 / §3
 RFC 2018 background, §4 examples 4.1.1–4.2.3, §5
@@ -39,13 +39,13 @@ by the next outbound ACK. Three detection sites,
 each scoped to "most recent packet":
 
 - Full duplicate below RCV.NXT —
-  `pytcp/protocols/tcp/tcp__session.py:1772-1780`
+  `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1772-1780`
   (in `_check_segment_acceptability`).
 - Overlap with OOO-queued segment —
-  `pytcp/protocols/tcp/tcp__fsm__established.py:206-216`
+  `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py:206-216`
   (in the OOO-receive branch).
 - Partial-overlap prefix below RCV.NXT —
-  `pytcp/protocols/tcp/tcp__session.py:3441-3449`
+  `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3441-3449`
   (in the in-sequence enqueue path).
 
 In all three sites, `_pending_dsack` is overwritten
@@ -160,7 +160,7 @@ specific test (see Test coverage).
 ### §4 rule 1 — Most recent duplicate
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::test__sack__dsack__fully_duplicate_segment_elicits_dsack_in_outbound_ack`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::test__sack__dsack__fully_duplicate_segment_elicits_dsack_in_outbound_ack`
   drives a fully-duplicate retransmit and asserts the
   outbound ACK carries a DSACK block reporting the
   duplicate range.

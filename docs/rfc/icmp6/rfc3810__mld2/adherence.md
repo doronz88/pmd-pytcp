@@ -13,8 +13,8 @@ current PyTCP codebase relates to each normative statement
 in RFC 3810 (MLDv2 — IPv6 multicast listener-side and
 querier-side protocol). The audit was performed by reading
 the RFC text fresh and inspecting the codebase under
-`pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
-plus `net_proto/protocols/icmp6/` directly.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
+plus `packages/net_proto/net_proto/protocols/icmp6/` directly.
 
 MLDv2 has two roles: **listener** (every host that joins a
 non-trivial IPv6 multicast group) and **querier** (typically
@@ -83,9 +83,9 @@ fall into `__phrx_icmp6__unknown`.
 the ICMPv6 demux:
 
 - Type 130 (`MULTICAST_LISTENER_QUERY`) — declared in
-  `Icmp6Type` at `net_proto/protocols/icmp6/message/icmp6__message.py`
+  `Icmp6Type` at `packages/net_proto/net_proto/protocols/icmp6/message/icmp6__message.py`
   with the codec class `Icmp6Mld2MessageQuery` at
-  `net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__query.py`
+  `packages/net_proto/net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__query.py`
   (RX-only parser: 28-byte fixed header + N × 16-byte
   source-address list; the `assemble` / `_pack_header`
   methods raise NotImplementedError because Phase-1 PyTCP
@@ -95,7 +95,7 @@ the ICMPv6 demux:
   dispatches to `__phrx_icmp6__mld2_query` per §5.1.10.
 - Type 143 (`MULTICAST_LISTENER_REPORT_V2`) — full codec
   at
-  `net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__report.py`
+  `packages/net_proto/net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__report.py`
   (Header / Base / Parser / Assembler + multi-record
   payload). The RX path at
   `packet_handler__icmp6__rx.py:218` dispatches to
@@ -110,7 +110,7 @@ the ICMPv6 demux:
 
 **Adherence:** met. The
 `Icmp6Mld2MulticastAddressRecord` dataclass at
-`net_proto/protocols/icmp6/message/mld2/` carries Record
+`packages/net_proto/net_proto/protocols/icmp6/message/mld2/` carries Record
 Type, Aux Data Length, Number of Sources, Multicast
 Address, and optional source addresses. The
 `Icmp6Mld2MulticastAddressRecordType` enum covers all six
@@ -183,7 +183,7 @@ hbh_packet_tx = Ip6HbhAssembler(
 ```
 
 The `Ip6HbhOptionRouterAlert` codec lives at
-`net_proto/protocols/ip6_hbh/options/ip6_hbh__option__router_alert.py`
+`packages/net_proto/net_proto/protocols/ip6_hbh/options/ip6_hbh__option__router_alert.py`
 and supports the canonical RFC 2711 RA values
 (`MLD`, `RSVP`, `ACTIVE_NETWORKS`, etc.). The
 PadN-to-8-octet alignment is computed inline (2-byte HBH
@@ -338,11 +338,11 @@ processing) remain Phase-2 router work.
 ### §4 Report wire format
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/icmp6/message/mld2/test__icmp6__mld2__message__report__assembler__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/icmp6/message/mld2/test__icmp6__mld2__message__report__assembler__operation.py`
   — pins the type-143 wire form, multi-record payload,
   per-record-type encoding (1-6).
 - **Unit:**
-  `net_proto/tests/unit/protocols/icmp6/message/mld2/test__icmp6__mld2__message__report__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/icmp6/message/mld2/test__icmp6__mld2__message__report__parser__operation.py`
   — pins the RX-side parse path.
 
 **Status:** locked in.
@@ -350,7 +350,7 @@ processing) remain Phase-2 router work.
 ### §5 Listener-side Report emission
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp6__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__icmp6__tx.py`
   — MLDv2 Report cases verify: Hop Limit = 1, source =
   link-local, destination = `ff02::16`, HBH RA-option
   carrier with value = MLD, `CHANGE_TO_EXCLUDE` record
@@ -361,7 +361,7 @@ processing) remain Phase-2 router work.
 ### §6 Address-change triggers Report
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
   and `test__icmp6__nd__optimistic_dad.py` — every SLAAC
   address-claim sequence ends with an MLDv2 Report,
   verifying the trigger fires from the addressing path.
@@ -373,7 +373,7 @@ end-to-end behaviour via wire observation).
 ### §5.1.10 Query → Report response (wire-format)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_response.py::TestIcmp6Mld2QueryResponse`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_response.py::TestIcmp6Mld2QueryResponse`
   — 4 tests with the delay-picker patched to 0 (immediate
   emission): General Query elicits exactly one TX frame;
   `icmp6__mld2_query` counter increments on Query receipt;
@@ -386,7 +386,7 @@ end-to-end behaviour via wire observation).
 ### §5.1.3 MRC → MRD decoder
 
 - **Integration (unit-style):**
-  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2MrcEncodingDecode`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2MrcEncodingDecode`
   — 2 tests: linear mapping for MRC < 32768;
   floating-point decoding for MRC ≥ 32768 across exp/mant
   corner cases (0x8000, 0x8FFF, 0xFFFF).
@@ -396,7 +396,7 @@ end-to-end behaviour via wire observation).
 ### §5.1.10 MRC random-delay window
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2QueryDelayWindow`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__mld2_query_delay_window.py::TestIcmp6Mld2QueryDelayWindow`
   — 5 tests covering the full deferred-send lifecycle:
   (a) non-zero delay defers the Report (no synchronous
   TX; FakeTimer advance triggers the fire);

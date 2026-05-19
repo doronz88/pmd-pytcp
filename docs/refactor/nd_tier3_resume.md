@@ -65,20 +65,20 @@ read each section before tackling it.
 
 ## Key files Tier 3 will touch
 
-- `pytcp/protocols/icmp6/nd/` — new files for
+- `packages/pytcp/pytcp/protocols/icmp6/nd/` — new files for
   `nd__router_state.py` (§11/§12 state machine), grow
   `nd__constants.py` for `accept_ra_*` knobs.
-- `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` —
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py` —
   `__phrx_icmp6__nd_router_advertisement` becomes the RA
   consumer hub. Currently appends to `_icmp6_ra__prefixes`;
   rewrite to use the new router-state machine.
-- `pytcp/runtime/packet_handler/__init__.py` —
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` —
   `_icmp6_default_routers` attribute, init in setUp,
   background ageing in a Subsystem loop (consider a new
   `Icmp6NdRouterStateSubsystem` analogous to NeighborCache).
-- `net_proto/protocols/icmp6/message/nd/option/` — new option
+- `packages/net_proto/net_proto/protocols/icmp6/message/nd/option/` — new option
   modules for §15 (RDNSS, DNSSL).
-- `pytcp/lib/packet_stats.py` — new counters per item:
+- `packages/pytcp/pytcp/lib/packet_stats.py` — new counters per item:
   `icmp6__nd_router_advertisement__update_router`,
   `icmp6__nd_router_advertisement__expired_router`,
   `icmp6__nd_router_advertisement__rdnss_dnssl__drop` (gated
@@ -86,7 +86,7 @@ read each section before tackling it.
 
 ## Test harness extensions needed
 
-The `NdTestCase` in `pytcp/tests/lib/nd_testcase.py` currently
+The `NdTestCase` in `packages/pytcp/pytcp/tests/lib/nd_testcase.py` currently
 has `_make_nd_redirect_frame()` and `_make_nd_ns_frame()`.
 Tier 3 tests will need:
 

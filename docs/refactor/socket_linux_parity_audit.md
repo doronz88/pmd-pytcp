@@ -765,7 +765,7 @@ Read these in order before any code:
   4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script blocks every commit)
   5. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` (source-authoring rule)
-  6. The current pytcp/socket/ tree
+  6. The current packages/pytcp/pytcp/socket/ tree
 
 After reading, confirm you understand:
 

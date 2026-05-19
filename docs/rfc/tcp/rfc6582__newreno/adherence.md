@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6582. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 §3.1 Protocol Overview, §6 implementation-issues
@@ -45,7 +45,7 @@ loss-recovery behaviour. PyTCP takes this latitude.
 **Adherence:** met, with a renamed variable. PyTCP
 exposes the same concept as `_recovery_point: Seq32`
 on `TcpSession`
-(`pytcp/protocols/tcp/tcp__session.py:277`); a value of
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:277`); a value of
 `0` means "not in recovery", any non-zero value records
 the SND.MAX-at-fast-retransmit-entry seq that must be
 crossed by SND.UNA before recovery exits. Functionally
@@ -96,7 +96,7 @@ fast recovery.
 **Adherence:** met for the in-recovery case; deviates
 for the post-RTO case. The
 `_retransmit_packet_request` handler at
-`pytcp/protocols/tcp/tcp__session.py:2750-2751`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2750-2751`
 implements:
 
 ```python
@@ -111,7 +111,7 @@ recovery (cum-ACK has not yet crossed the prior
 recovery point).
 
 The post-RTO branch
-(`pytcp/protocols/tcp/tcp__session.py:2683`) clears
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2683`) clears
 `_recovery_point = 0` rather than recording
 SND.MAX-at-RTO into it (per §3.2 step 4 below). This
 means three subsequent dup-ACKs after the RTO WILL
@@ -133,7 +133,7 @@ step 2 / §3.2 step 4 / §4 interaction.
 
 **Adherence:** met (option 2). The recovery exit
 branch at
-`pytcp/protocols/tcp/tcp__session.py:3382-3390`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3382-3390`:
 
 ```python
 if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
@@ -169,7 +169,7 @@ not run the §3.2 step 3 partial-ACK formula. Instead,
 during recovery (`_recovery_point != 0` AND
 `SND.UNA < recovery_point`), the cwnd is computed by
 RFC 6937 Proportional Rate Reduction at
-`pytcp/protocols/tcp/tcp__session.py:3145-3169`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3145-3169`:
 
 - PRR proper (when `pipe > ssthresh`):
   `target = ceil(prr_delivered * ssthresh / RecoverFS)`,
@@ -188,7 +188,7 @@ ssthresh bytes are outstanding when recovery ends. RFC
 preamble disclaims RFC 2119 keyword strength.
 
 A standalone `partial_cum_ack_deflate` helper exists at
-`pytcp/protocols/tcp/tcp__newreno.py:59-92` implementing
+`packages/pytcp/pytcp/protocols/tcp/tcp__newreno.py:59-92` implementing
 the literal §3.2 step 3b formula, but it is NOT called
 from production code (verified by grep). It is preserved
 as a reference implementation for tests and as a
@@ -267,7 +267,7 @@ favour of the more modern algorithm.
 **Adherence:** met. PyTCP emits an immediate ACK on
 out-of-order data segments per RFC 5681 §4.2; the
 receive-side ACK generation in
-`pytcp/protocols/tcp/tcp__fsm__established.py` does not
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py` does not
 defer ACK emission for OOO data through the delayed-ACK
 timer. This is the same code path that satisfies RFC
 5681 §4.2 (audited under that RFC's adherence record).
@@ -280,7 +280,7 @@ timer. This is the same code path that satisfies RFC
 
 - **Indirect:** every fast-retransmit integration test
   in
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
   asserts `_recovery_point == 0` post-handshake (or
   equivalently asserts that the first dup-ACK after
   handshake doesn't fire fast retransmit before three
@@ -293,11 +293,11 @@ timer. This is the same code path that satisfies RFC
 ### §3.2 step 2 — Three dup-ACK fast-retransmit gate
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`
   contains the dup-ACK threshold tests; the broader
   count-trigger logic is exercised by the SACK
   integration tests at
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::three_dup_sacks_above_gap_trigger_fast_retransmit`.
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::three_dup_sacks_above_gap_trigger_fast_retransmit`.
 - **One-shot guard:** the
   `if self._recovery_point != 0: return` gate is pinned
   by tests that drive multiple back-to-back dup-ACK
@@ -310,7 +310,7 @@ guard.
 ### §3.2 step 3 — Full ACK: cwnd = ssthresh deflation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase3::test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase3::test__cwnd__cum_ack_exiting_recovery_deflates_cwnd_to_ssthresh`
   drives a fast-retransmit recovery, advances SND.UNA
   past `_recovery_point`, and asserts `cwnd == ssthresh`
   on recovery exit.
@@ -320,10 +320,10 @@ guard.
 ### §3.2 step 3 — Partial ACK (PRR substitute)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr::test__cwnd__prr__cum_ack_during_recovery_sets_cwnd_per_prr_formula`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr::test__cwnd__prr__cum_ack_during_recovery_sets_cwnd_per_prr_formula`
   pins the PRR formula on partial cum-ACKs.
 - **Unit (helper, unused in production):**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__newreno.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__newreno.py`
   contains 10 unit tests for the
   `partial_cum_ack_deflate` helper — useful as a
   reference implementation pinned against the §3.2
@@ -365,7 +365,7 @@ coverage is audited under the RFC 8985 record.
 ### §5 Receiver immediate ACK on OOO
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__out_of_order.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__out_of_order.py`
   pins the "immediate ACK on OOO segment" behaviour
   per RFC 5681 §4.2 (which RFC 6582 §5 echoes).
 

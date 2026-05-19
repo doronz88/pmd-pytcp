@@ -17,7 +17,7 @@ audited under
 [`docs/rfc/tcp/rfc1122__host_requirements/`](../../tcp/rfc1122__host_requirements/adherence.md).
 
 The audit was performed by reading the RFC text fresh and
-inspecting the codebase under `pytcp/` and `net_proto/` directly.
+inspecting the codebase under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 Adherence levels use the canonical descriptive language: **met**,
 **not met**, **partial**, **not implemented**, **vacuous**, or
 **deliberate non-implementation** (for paragraphs whose subject was
@@ -37,10 +37,10 @@ PyTCP currently models.
 
 **Adherence:** **met**. `Icmp4Parser._message_class()` resolves
 unknown type bytes to `Icmp4MessageUnknown`
-(`net_proto/protocols/icmp4/icmp4__parser.py:85-103`); the RX
+(`packages/net_proto/net_proto/protocols/icmp4/icmp4__parser.py:85-103`); the RX
 handler routes to `__phrx_icmp4__unknown` which logs and bumps the
 `icmp4__unknown` counter
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:121,590-599`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:121,590-599`).
 No reply is emitted.
 
 > "Every ICMP error message includes the Internet header and at
@@ -52,12 +52,12 @@ No reply is emitted.
 dataclass truncates `data` to
 `IP4__MIN_MTU - IP4__HEADER__LEN - ICMP4__DESTINATION_UNREACHABLE__LEN`
 = 548 bytes
-(`net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py:163-168`),
+(`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py:163-168`),
 which is the full original IP header + at least 8 octets of payload
 up to the 576-byte MIN_MTU cap mandated by RFC 1812 §4.3.2.3. The
 UDP closed-port emitter passes `packet_rx.ip.packet_bytes`
 verbatim, so the bytes are unchanged
-(`pytcp/runtime/packet_handler/packet_handler__udp__rx.py:201`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py:201`).
 
 > "In those cases where the Internet layer is required to pass an
 > ICMP error message to the transport layer, the IP protocol number
@@ -67,12 +67,12 @@ verbatim, so the bytes are unchanged
 **Adherence:** **met** for all three carrier message types
 (Destination Unreachable, Time Exceeded, Parameter Problem) on
 both v4 and v6. The shared embedded-L4 demux at
-`pytcp/runtime/packet_handler/_icmp_error_demux.py::parse_embedded_l4`
+`packages/pytcp/pytcp/runtime/packet_handler/_icmp_error_demux.py::parse_embedded_l4`
 extracts the L4 protocol from the embedded IP header and routes
 UDP to `UdpSocket.notify_*` and TCP via
 `TcpSession.tcp_fsm(icmp=IcmpMetadata(...))`, which dispatches
 through `FSM_ICMP_HANDLERS` to the per-state ICMP handlers in
-`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` (see RFC 5927 §6
+`packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` (see RFC 5927 §6
 hard-vs-soft semantics in
 `docs/rfc/tcp/rfc5927__icmp_tcp_attacks/adherence.md`).
 
@@ -81,7 +81,7 @@ hard-vs-soft semantics in
 
 **Adherence:** **vacuous**. PyTCP does not model TOS variation on
 outbound ICMP errors; the IPv4 TX path emits TOS=0 by default
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__tx.py:126-131`,
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__tx.py:126-131`,
 delegating to `_phtx_ip4` without a non-zero `ip4__ecn` /
 `ip4__dscp`).
 
@@ -96,13 +96,13 @@ delegating to `_phtx_ip4` without a non-zero `ip4__ecn` /
 **Adherence:** **met** (post-α1.1). The five gates are encoded as
 `IcmpErrorBlockReason` values and applied via `should_emit_icmp_error()`
 + `try_emit_icmp_error()` in
-`pytcp/protocols/icmp/icmp__error_emitter.py`. The inbound classifier
-at `pytcp/protocols/icmp/icmp__inbound_classifier.py::classify_inbound`
+`packages/pytcp/pytcp/protocols/icmp/icmp__error_emitter.py`. The inbound classifier
+at `packages/pytcp/pytcp/protocols/icmp/icmp__inbound_classifier.py::classify_inbound`
 extracts the IP-layer state (limited-broadcast destination,
 multicast destination, loopback/multicast/Class-E source, non-
 initial fragment) into an `IcmpErrorContext`. The UDP closed-port
 Port-Unreachable emitter routes through the gate at
-`pytcp/runtime/packet_handler/packet_handler__udp__rx.py:179-194`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py:179-194`.
 The "datagram sent as a link-layer broadcast" sub-rule is not
 explicitly modeled — the closest proxy is `is_limited_broadcast` on
 the IP destination, since the test harness and the production stack
@@ -122,7 +122,7 @@ will fire correctly when future error generators (§3.2.2.4 /
 
 **Adherence:** **met**. `Icmp4DestinationUnreachableCode` enum
 covers all 16 codes (0-15)
-(`net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py:79-99`),
+(`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py:79-99`),
 including the seven RFC 1122 additions (NETWORK_UNKNOWN,
 HOST_UNKNOWN, SOURCE_HOST_ISOLATED, NETWORK_PROHIBITED,
 HOST_PROHIBITED, NETWORK_TOS, HOST_TOS) plus the RFC 1812
@@ -137,7 +137,7 @@ PRECEDENCE_CUTOFF).
 protocol with `ip4__no_proto_support__drop` and then emits an
 ICMPv4 Destination Unreachable code 2 via
 `__phrx_ip4__emit_protocol_unreachable`
-(`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`), routed
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`), routed
 through `try_emit_icmp_error()` so the §3.2.2 host-requirements
 gates and RFC 1812 §4.3.2.8 rate limit apply uniformly with the
 other ICMP error generators.
@@ -146,14 +146,14 @@ The IPv6 mirror is RFC 4443 §3.4 Parameter Problem code 1
 ("Unrecognized Next Header type"), not Destination Unreachable —
 the v6 wire format expresses the same semantic via Param Problem.
 Wired symmetrically at
-`pytcp/runtime/packet_handler/packet_handler__ip6__rx.py::__phrx_ip6__emit_unrecognized_next_header`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py::__phrx_ip6__emit_unrecognized_next_header`
 per RFC 8200 §4.
 
 > "A host SHOULD generate Destination Unreachable messages with
 > code: 3 (Port Unreachable), when the designated transport
 > protocol (e.g., UDP) is unable to demultiplex the datagram"
 
-**Adherence:** **met**. `pytcp/runtime/packet_handler/packet_handler__udp__rx.py:194-204`
+**Adherence:** **met**. `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py:194-204`
 emits `Icmp4DestinationUnreachableCode.PORT` when no UDP socket
 matches, subject to the §3.2.2 gates above.
 
@@ -165,7 +165,7 @@ matches, subject to the §3.2.2 gates above.
 routes to either `UdpSocket.notify_*` or
 `TcpSession.tcp_fsm(icmp=IcmpMetadata(category=DEST_UNREACHABLE,
 ...))`
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`).
 
 > "A transport protocol that has its own mechanism for notifying
 > the sender that a port is unreachable (e.g., TCP, which sends RST
@@ -176,8 +176,8 @@ routes to either `UdpSocket.notify_*` or
 in SYN_SENT routes through `tcp_fsm(icmp=...)` →
 `fsm__syn_sent__icmp` (RFC 5927 §5.2 hard-error path), which
 surfaces `ConnError.REFUSED` to the socket layer
-(`pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py`); the
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
+(`packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__syn_sent.py`); the
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
 suite pins this behaviour.
 
 > "A Destination Unreachable message that is received with code
@@ -251,9 +251,9 @@ gap.
 
 **Adherence:** **met** (post Phase β.2). ICMPv4 type 11 routes
 through `Icmp4MessageTimeExceeded` parsing
-(`net_proto/protocols/icmp4/message/icmp4__message__time_exceeded.py`),
+(`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message__time_exceeded.py`),
 and the `__phrx_icmp4__time_exceeded` packet-handler arm
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:315`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:315`)
 runs `parse_embedded_l4` on the carried original-datagram bytes
 and dispatches to either
 `TcpSession.tcp_fsm(icmp=IcmpMetadata(category=TIME_EXCEEDED, ...))`
@@ -263,7 +263,7 @@ guard before notifying the session.
 
 Per RFC 5927 §6, Time Exceeded is a soft error: the per-state
 ICMP handlers (in
-`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`) log the
+`packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py`) log the
 diagnostic and return without mutating FSM state or ConnError.
 The existing retransmission machinery handles the actual loss
 reported by the message; the notification's value is purely
@@ -283,7 +283,7 @@ from other validation errors and (when `pointer` is set) calls
 `try_emit_icmp_error` (host-requirements gates + RFC 1812 §4.3.2.8
 rate limiter) and emits ICMPv4 Type 12 Code 0 (pointer indicates
 error) with the canonical pointer value. Pointers per
-`net_proto/protocols/ip4/ip4__header.py`:
+`packages/net_proto/net_proto/protocols/ip4/ip4__header.py`:
 
 | Sanity branch                          | Pointer |
 | -------------------------------------- | :-----: |
@@ -301,7 +301,7 @@ Counters: `ip4__sanity_error__respond_icmp4_param_problem` and
 
 **Adherence:** **met** (post Phase β.3). ICMPv4 type 12 routes
 through `Icmp4MessageParameterProblem` parsing
-(`net_proto/protocols/icmp4/message/icmp4__message__parameter_problem.py`),
+(`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message__parameter_problem.py`),
 and the `__phrx_icmp4__parameter_problem` packet-handler arm runs
 `parse_embedded_l4` on the carried original-datagram bytes and
 dispatches to either
@@ -325,7 +325,7 @@ packet_stats counter and log line.
 
 **Adherence:** **met**.
 `__phrx_icmp4__echo_request`
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:548-588`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:548-588`)
 emits an `Icmp4MessageEchoReply` for every accepted Echo Request.
 
 > "An ICMP Echo Request destined to an IP broadcast or IP multicast
@@ -333,9 +333,9 @@ emits an `Icmp4MessageEchoReply` for every accepted Echo Request.
 
 **Adherence:** **met** (we exercise the MAY as a drop). The Smurf-
 mitigation gate at
-`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:558-569`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:558-569`
 calls
-`pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`
+`packages/pytcp/pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`
 with the destination's broadcast/multicast flags. The MUST form of
 this rule appears as RFC 1812 §4.3.3.6 (router requirements);
 PyTCP applies the stricter router-grade rule even though it is a
@@ -347,7 +347,7 @@ host, because the same Smurf-amplification attack vector applies.
 
 **Adherence:** **met**. The TX call uses
 `ip4__src=packet_rx.ip4.dst`
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:579-580`),
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:579-580`),
 reflecting the Echo Request destination back as the Reply source.
 
 > "Data received in an ICMP Echo Request MUST be entirely included
@@ -355,7 +355,7 @@ reflecting the Echo Request destination back as the Reply source.
 
 **Adherence:** **met**. The Reply construction copies
 `packet_rx.icmp4.message.data` verbatim
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:582-586`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:582-586`).
 
 > "However, if sending the Echo Reply requires intentional
 > fragmentation that is not implemented, the datagram MUST be
@@ -371,7 +371,7 @@ fragmentation (post the RFC 791 §3.1 DF-honoring change in commit
 
 **Adherence:** **shipped** (SHOULD #4). Data is echoed verbatim;
 IPv4 options are also echoed via
-`pytcp/protocols/icmp4/icmp4__echo_options.py::echo_reply_options`,
+`packages/pytcp/pytcp/protocols/icmp4/icmp4__echo_options.py::echo_reply_options`,
 which `__phrx_icmp4__echo_request` calls before threading the
 result into `_phtx_icmp4(..., ip4__options=...)`. The helper:
 
@@ -458,22 +458,22 @@ for the deprecation audit.
 ### §3.2.2 General gates (5 MUST NOT rules)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__gates.py::TestShouldEmitIcmpError__Block`
+  `packages/pytcp/pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__gates.py::TestShouldEmitIcmpError__Block`
   — 5 parametrized cases, one per gate (`INBOUND_WAS_ICMP_ERROR`,
   `INBOUND_DST_IS_BROADCAST`, `INBOUND_DST_IS_MULTICAST`,
   `INBOUND_SRC_INVALID`, `INBOUND_NON_INITIAL_FRAGMENT`), pinning
   the verdict reason returned by `should_emit_icmp_error()`.
 - **Unit:**
-  `pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__try_emit.py::TestTryEmitIcmpError__GateBlock`
+  `packages/pytcp/pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__try_emit.py::TestTryEmitIcmpError__GateBlock`
   — gate-block returns the gate reason, does not consume a
   rate-limiter token.
 - **Unit:**
-  `pytcp/tests/unit/protocols/icmp/test__icmp__inbound_classifier.py::TestClassifyInbound__Ip4SrcInvalid`,
+  `packages/pytcp/pytcp/tests/unit/protocols/icmp/test__icmp__inbound_classifier.py::TestClassifyInbound__Ip4SrcInvalid`,
   `TestClassifyInbound__Ip4DstClassification`,
   `TestClassifyInbound__Ip4Fragment`
   — pin the IP-layer to context-flag mapping.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__error_gates.py::TestIcmp4ErrorGates__Suppressed`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__error_gates.py::TestIcmp4ErrorGates__Suppressed`
   — drives a forged UDP-to-closed-port frame with broadcast dst /
   loopback src and asserts no Port-Unreachable emerges.
 
@@ -492,7 +492,7 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2 Embedded-original-datagram unchanged
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRx_*` (golden-frame cases)
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRx_*` (golden-frame cases)
   — pin the byte-for-byte content of the emitted Port-Unreachable,
   including the embedded IP header + first 8 octets of the
   triggering UDP segment.
@@ -502,11 +502,11 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.1 Destination Unreachable — Code 3 emission
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py` (the
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py` (the
   v4 closed-port golden) — full byte-equality on the emitted ICMPv4
   Port-Unreachable.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__error_gates.py::TestIcmp4ErrorGates__CleanUnicast`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__error_gates.py::TestIcmp4ErrorGates__CleanUnicast`
   — pins that clean unicast still emits Port-Unreachable post-α1.1.
 
 **Status:** **locked in**.
@@ -514,7 +514,7 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.1 Destination Unreachable — TCP MUST accept
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`
   — drives an ICMPv4 Port Unreachable matching a SYN_SENT and pins
   `ConnError.REFUSED`.
 
@@ -523,16 +523,16 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.1 Code 2 (Protocol Unreachable) generation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__CleanUnicast`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__CleanUnicast`
   — drives an IPv4 datagram with proto=42 and pins that the stack
   emits a Destination Unreachable type 3 / code 2 response with
   the success counter bumped.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__GateSuppressed`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py::TestIcmp4ProtocolUnreachable__GateSuppressed`
   — drives the same probe to a broadcast destination and pins
   that the §3.2.2 host-requirements gate suppresses the emission.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/test__icmp6__parameter_problem_unrecognized_next_header.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__parameter_problem_unrecognized_next_header.py`
   — IPv6 mirror via Parameter Problem code 1.
 
 **Status:** **locked in**.
@@ -540,7 +540,7 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.6 Echo server (unicast)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__echo_request_smurf.py::TestIcmp4EchoSmurf__UnicastRegression`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__echo_request_smurf.py::TestIcmp4EchoSmurf__UnicastRegression`
   — drives a unicast Echo Request and pins that the Echo Reply
   reflects the request id / data.
 
@@ -549,11 +549,11 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.6 Echo Smurf-mitigation drop
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/icmp4/test__icmp4__echo_gate.py::TestShouldEmitEchoReply__Block`
+  `packages/pytcp/pytcp/tests/unit/protocols/icmp4/test__icmp4__echo_gate.py::TestShouldEmitEchoReply__Block`
   — 3 cases pinning that broadcast / multicast / both destination
   flags suppress the reply at the gate level.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__echo_request_smurf.py::TestIcmp4EchoSmurf__BroadcastSuppressed`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__echo_request_smurf.py::TestIcmp4EchoSmurf__BroadcastSuppressed`
   — drives a forged limited-broadcast Echo Request and pins that no
   reply is emitted, the suppression counter bumps, and the success
   counter stays zero.
@@ -563,12 +563,12 @@ test, but the surrounding parser dispatch is fully exercised).
 ### §3.2.2.4 — Time Exceeded inbound (closed in β.2)
 
 - **Unit (parser):**
-  `net_proto/tests/unit/protocols/icmp4/test__icmp4__message__time_exceeded__parser.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/icmp4/test__icmp4__message__time_exceeded__parser.py`
   — pins that type-11 frames route to `Icmp4MessageTimeExceeded`
   rather than `Icmp4MessageUnknown`, with code 0/1 round-tripping
   cleanly.
 - **Integration (TCP demux):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__time_exceeded.py::TestTcpOnTimeExceeded`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__time_exceeded.py::TestTcpOnTimeExceeded`
   — pins that a Time Exceeded carrying an in-window embedded TCP
   SYN dispatches via `tcp_fsm(icmp=...)` to the per-state ICMP
   handler, bumps the `tcp__notify` counter, and does NOT mutate
@@ -582,12 +582,12 @@ arm; a dedicated UDP integration test is a future polish.
 ### §3.2.2.5 — Parameter Problem inbound (closed in β.3)
 
 - **Unit (parser):**
-  `net_proto/tests/unit/protocols/icmp4/test__icmp4__message__parameter_problem__parser.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/icmp4/test__icmp4__message__parameter_problem__parser.py`
   — pins that type-12 frames route to
   `Icmp4MessageParameterProblem`, with codes 0/1 and pointer field
   round-tripping cleanly.
 - **Integration (TCP demux):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__param_problem.py::TestTcpOnParameterProblem`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__param_problem.py::TestTcpOnParameterProblem`
   — pins that a Parameter Problem carrying an in-window embedded
   TCP SYN dispatches via `tcp_fsm(icmp=...)` to the per-state
   ICMP handler, bumps the `tcp__notify` counter, and does NOT

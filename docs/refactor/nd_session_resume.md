@@ -55,12 +55,12 @@ boot flow is sequential per-address. §20 needs that to
 become async — fairly invasive.
 
 Files involved:
-- `pytcp/runtime/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
   `_create_stack_ip6_addressing`)
-- `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   (`send_icmp6_neighbor_advertisement` — Override flag handling)
-- `net_addr/ip6_ifaddr.py` or sidecar (state field)
-- `pytcp/protocols/icmp6/nd/nd__router_state.py` or
+- `packages/net_addr/net_addr/ip6_ifaddr.py` or sidecar (state field)
+- `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py` or
   `nd__constants.py` (sysctl `icmp6.optimistic_dad`)
 
 ### §12c / §18d — RFC 6724 source-address selection

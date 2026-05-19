@@ -49,9 +49,9 @@ What still **does not happen**:
 > message."
 
 **Adherence:** **shipped** (Phase 8). The TCP TX
-(`pytcp/runtime/packet_handler/packet_handler__tcp__tx.py`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__tcp__tx.py`)
 and UDP TX
-(`pytcp/runtime/packet_handler/packet_handler__udp__tx.py`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__tx.py`)
 paths now pass `ip4__flag_df=True` to `_phtx_ip4`. ICMPv4
 TX paths and other internally-generated v4 frames keep
 `ip4__flag_df=False` so error replies preserve the
@@ -65,14 +65,14 @@ inbound DF semantics.
 > in the Next-Hop MTU field (RFC 1191 §4)."
 
 **Adherence:** **shipped**. The ICMPv4 RX handler at
-`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
 demuxes Type 3 Code 4 (Frag-Needed) on the embedded
 4-tuple. UDP sockets see the update via
 `UdpSocket.notify_pmtu`; TCP sessions see it via
 `TcpSession.tcp_fsm(icmp=IcmpMetadata(category=PMTU,
 ...))`, which routes through the per-state ICMP
 handlers in
-`pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` to the
+`packages/pytcp/pytcp/protocols/tcp/fsm/tcp__fsm__<state>.py` to the
 session's private `_apply_pmtu_update` helper. The
 helper records the Next-Hop MTU into `stack.pmtu_cache`
 keyed by remote address, shrinks `self._win.snd_mss`,
@@ -91,7 +91,7 @@ TCP.
 
 **Adherence:** **shipped**.
 `TcpSession._apply_pmtu_update` (in
-`pytcp/protocols/tcp/tcp__session.py`) detects the
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py`) detects the
 case where the inbound Frag-Needed shrinks `snd_mss`
 AND in-flight RACK segments exceed the new MSS. When
 both conditions hold, it marks every in-flight RACK
@@ -142,11 +142,11 @@ follow-up.
 
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
-| §3 outbound DF=1 on TCP segments                    | shipped — `pytcp/tests/integration/protocols/<proto>/test__<proto>__tcp__tx.py` golden frames |
-| §3 outbound DF=1 on UDP datagrams                   | shipped — `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__tx.py` golden frames |
-| §4 ICMP Frag-Needed Next-Hop MTU update for UDP     | shipped — `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` |
-| §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` |
-| §6.5 retransmit walkback (snd_nxt rewind on shrink) | shipped — `pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtu_walkback.py` |
+| §3 outbound DF=1 on TCP segments                    | shipped — `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__tcp__tx.py` golden frames |
+| §3 outbound DF=1 on UDP datagrams                   | shipped — `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__tx.py` golden frames |
+| §4 ICMP Frag-Needed Next-Hop MTU update for UDP     | shipped — `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py` |
+| §4 ICMP Frag-Needed Next-Hop MTU update for TCP     | shipped — `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` |
+| §6.5 retransmit walkback (snd_nxt rewind on shrink) | shipped — `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__pmtu_walkback.py` |
 | §6.5 fallback for non-RFC-1191 routers              | n/a (gap) |
 | §7 PMTU aging                                       | n/a (gap) |
 

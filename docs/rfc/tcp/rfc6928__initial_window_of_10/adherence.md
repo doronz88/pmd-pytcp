@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6928. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, Introduction narrative,
 Background, Advantages and Disadvantages discussion,
@@ -33,7 +33,7 @@ Acknowledgments, References, Appendix A) are omitted.
 
 **Adherence:** met. The formula is implemented exactly in
 the helper at
-`pytcp/protocols/tcp/tcp__cwnd.py:177-197`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__cwnd.py:177-197`:
 
 ```python
 def initial_window(smss: int) -> int:
@@ -56,14 +56,14 @@ match RFC 6928 §2 verbatim.
 **Adherence:** met. The IW is applied at the post-
 handshake transition point in two places:
 
-- `pytcp/protocols/tcp/tcp__fsm__syn_sent.py:198-204`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_sent.py:198-204`
   (active-open SYN+ACK arrival): `_cwnd =
   initial_window(_snd_mss)` runs AFTER
   `_process_ack_packet` has fired the §3.1 slow-start
   growth on the SYN+ACK ack-advance, then unconditionally
   overwrites cwnd to the IW value. The inline comment
   cites RFC 6928 §2 explicitly.
-- `pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:108-118`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:108-118`
   (passive- and simultaneous-open third-leg ACK
   arrival): same shape — IW is overwritten after
   `_process_ack_packet`, so the "neither the SYN/ACK
@@ -83,7 +83,7 @@ applies the IW10 formula unconditionally on handshake
 completion regardless of how many SYN or SYN+ACK
 retransmissions occurred. The `_syn_retransmit_count`
 field
-(`pytcp/protocols/tcp/tcp__session.py:599`) is consulted
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:599`) is consulted
 only by the RFC 6298 §5.7 SYN-RTO 3-second floor
 (line 2598); it does NOT influence the IW computation.
 This is more permissive than the SHOULD requires
@@ -99,7 +99,7 @@ resetting after >1 retransmits, it does not require it.
 > congestion)."
 
 **Adherence:** met. The post-RTO loss-window collapse
-at `pytcp/protocols/tcp/tcp__session.py:2672`:
+at `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2672`:
 
 ```python
 self._cwnd = self._snd_mss
@@ -156,7 +156,7 @@ without distinguishing IW loss from steady-state loss.
 
 **Adherence:** met (with margin). The advertised
 receive window is bounded by `_rcv_wnd_max = 65535`
-(`pytcp/protocols/tcp/tcp__session.py:155`), and the
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:155`), and the
 default WSCALE shift of 7 raises the maximum
 advertised receive window to ~8 MB. For a 1500-MTU
 link with `_rcv_mss = 1460`, 65535 bytes is ~45
@@ -172,7 +172,7 @@ segments — well above the 10-segment recommendation.
 
 **Adherence:** met. PyTCP implements the RFC 6298 §5.3
 restart-on-cum-ACK rule at
-`pytcp/protocols/tcp/tcp__session.py` (the
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py` (the
 `_process_ack_packet` post-cum-ACK timer-restart block;
 covered in detail in the RFC 6298 audit). The behaviour
 is gated on "advances SND.UNA" (the canonical "ACK
@@ -195,7 +195,7 @@ not stack-level conformance). The §12 SHOULD is
 addressed at human operators of large-scale TCP
 deployments, not at the stack implementation. PyTCP
 exposes packet-level telemetry via `packet_stats`
-counters (`pytcp/lib/packet_stats.py`) including
+counters (`packages/pytcp/pytcp/lib/packet_stats.py`) including
 retransmission counts; an operator who chose to
 deploy PyTCP at scale could build the §12 monitoring
 on top of those counters. PyTCP's scope is research
@@ -265,7 +265,7 @@ consensus and not revived by any successor RFC).
 ### §2 IW formula
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py::TestInitialWindow`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py::TestInitialWindow`
   contains five parametrised tests:
   - `test__iw__canonical_1460_mss_yields_14600` —
     canonical 1500-MTU MSS=1460 → IW=14600.
@@ -283,7 +283,7 @@ consensus and not revived by any successor RFC).
   and `test__cwnd__initial_window_bytes_is_14600` pin
   the constants themselves.
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase4::test__cwnd__post_handshake_initialises_cwnd_to_iw_10`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase4::test__cwnd__post_handshake_initialises_cwnd_to_iw_10`
   drives the active-open handshake and asserts
   `_cwnd == min(10 * MSS, max(2 * MSS, 14600))`
   post-handshake.
@@ -307,7 +307,7 @@ final cwnd-equals-IW assertion.
 ### §2 Loss window = 1 SMSS
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase2::test__cwnd__rto_resets_cwnd_to_loss_window`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPhase2::test__cwnd__rto_resets_cwnd_to_loss_window`
   drives an RTO and asserts `_cwnd == _snd_mss` post-
   RTO.
 
@@ -345,7 +345,7 @@ matches the expected value.
 ### §9 RTO restart on cum-ACK
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__cumulative_ack_draining_in_flight_stops_retransmit_timer`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__rto.py::TestTcpRtoRetransmitTimer::test__cumulative_ack_draining_in_flight_stops_retransmit_timer`
   and the broader RFC 6298 audit's test surface cover
   this. RFC 6928 §9 is a strict cross-reference to
   RFC 6298, so the RFC 6298 adherence record's test

@@ -100,7 +100,7 @@ a rule-based candidate sort.
 
 ### Current state
 
-`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
 the source-validation logic lives in
 `__validate_src_ip6_address` (around line 173, ~115 lines).
 Today it does:
@@ -115,7 +115,7 @@ Today it does:
   (src=::).
 
 Verify the current line range with
-`grep -n "def __validate_src_ip6_address" pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
+`grep -n "def __validate_src_ip6_address" packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
 before editing — the file has been growing.
 
 ### Target shape
@@ -162,7 +162,7 @@ Cover each rule in isolation:
   with the longest common prefix to `ip6__dst`.
 
 Tests live at
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc6724_source_selection_rules_1_2_3_8.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc6724_source_selection_rules_1_2_3_8.py`
 (or split into multiple files per rule if cleaner).
 
 ## §12c.2 — Rule 7 (temp-address preference)
@@ -197,7 +197,7 @@ Rule 6 — match label of source to label of destination.
 Rule 8 also uses precedence as a secondary sort key.
 
 Ships:
-- New `pytcp/lib/ip6_policy_table.py` exposing the default
+- New `packages/pytcp/pytcp/lib/ip6_policy_table.py` exposing the default
   table plus a `lookup(address) → (precedence, label)`
   function.
 - Optional sysctl-driven override (deferred to §12c.3.b
@@ -209,7 +209,7 @@ Ships:
 RFC 6724 §6 covers IPv4-mapped IPv6 addresses; PyTCP's
 IPv4 path is currently a separate "first host with
 gateway" heuristic in
-`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
 This phase aligns the IPv4 selection with the same rule
 structure.
 

@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to the normative
 statements in RFC 1122 §4.2 (TCP). The audit was
 performed by reading the RFC text fresh and inspecting
-the codebase under `pytcp/protocols/tcp/` directly; no
+the codebase under `packages/pytcp/pytcp/protocols/tcp/` directly; no
 prior memory or rule-file content was reused. RFC 1122
 is a host-requirements document covering TCP, UDP, IP,
 and applications; this audit is scoped to §4.2 (TCP).
@@ -34,7 +34,7 @@ and this document references it.
 
 **Adherence:** met. PyTCP sets `flag_psh=True` on the
 last segment of a write at
-`pytcp/protocols/tcp/tcp__session.py:2399-2406`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2399-2406`:
 
 ```python
 is_last_segment_of_write = transmit_data_len == remaining_data_len
@@ -328,7 +328,7 @@ the modern RFC's record:
 ### PSH on last segment of write (§4.2.2.2)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__send.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__send.py`
   contains the PSH-on-last-segment test.
 
 **Status:** locked in.
@@ -350,7 +350,7 @@ the modern RFC's record:
 ### §4.2.3.9 ICMP error propagation (FSM + IP_RECVERR)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`,
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py`,
   `test__tcp__session__icmp__time_exceeded.py`,
   `test__tcp__session__icmp__param_problem.py`,
   `test__tcp__session__icmp__pmtu.py` (+ the `__ip6`
@@ -358,7 +358,7 @@ the modern RFC's record:
   routing, RFC 5927 §4 sequence-in-window guard, PMTU
   cache update, ConnError surfacing.
 - **Integration (Linux IP_RECVERR parity):**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
   locks the socket-API error-queue path: get/set
   round-trip, ICMPv4 dest-unreachable / frag-needed /
   time-exceeded / parameter-problem enqueues, ICMPv6

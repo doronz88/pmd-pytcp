@@ -13,9 +13,9 @@ PyTCP codebase relates to each normative statement in
 RFC 4861 — the foundational IPv6 Neighbor Discovery
 specification. The audit was performed by reading the RFC
 text fresh and inspecting the implementation under
-`pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`,
-`pytcp/lib/neighbor.py`, `pytcp/protocols/icmp6/nd/`, and
-`net_proto/protocols/icmp6/message/nd/` directly. No prior
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`,
+`packages/pytcp/pytcp/lib/neighbor.py`, `packages/pytcp/pytcp/protocols/icmp6/nd/`, and
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/` directly. No prior
 audit content was reused.
 
 Sections without normative content — §1 Introduction, §2
@@ -36,7 +36,7 @@ Advertisement, Neighbor Solicitation, Neighbor
 Advertisement, Redirect) are parsed and consumed; NS and
 NA are emitted from the host. The Neighbor Unreachability
 Detection (NUD) state machine is shipped at
-`pytcp/lib/neighbor.py` and runs as a `Subsystem` that
+`packages/pytcp/pytcp/lib/neighbor.py` and runs as a `Subsystem` that
 ages and re-probes cache entries.
 
 Router-side specifications — §6 (router behaviour), §8.3
@@ -80,7 +80,7 @@ spec.
 >  has been assigned. Hop Limit MUST be 255."
 
 **Adherence:** met. RS codec at
-`net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_solicitation.py:80`.
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_solicitation.py:80`.
 TX path at
 `packet_handler__icmp6__tx.py:313` forces `ip6__hop=255`
 and `ip6__src=Ip6Address()` (unspecified) when the
@@ -93,7 +93,7 @@ interface has not yet completed DAD.
 >  include SLLA / MTU / Prefix Information options."
 
 **Adherence:** met (RX). Codec at
-`net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_advertisement.py:87`;
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__router_advertisement.py:87`;
 RX handler at
 `packet_handler__icmp6__rx.py:741` consumes Cur Hop Limit
 (§6.3.4), M/O flags, Router Lifetime, Reachable Time,
@@ -108,7 +108,7 @@ TX (router-side emission of unsolicited RAs) is
 >  resolved or DAD-probed). May include SLLA option."
 
 **Adherence:** met. Codec at
-`net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_solicitation.py:89`.
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_solicitation.py:89`.
 Multicast NS (address resolution) emitted at
 `packet_handler__icmp6__tx.py:340`; unicast NS (NUD probe)
 at `:376`.
@@ -120,7 +120,7 @@ at `:376`.
 >  announced)."
 
 **Adherence:** met. Codec at
-`net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_advertisement.py:88`.
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_advertisement.py:88`.
 Solicited NA emitted at `packet_handler__icmp6__tx.py:427`;
 unsolicited / gratuitous NA at `:480` (RFC 9131 cross-
 reference).
@@ -131,7 +131,7 @@ reference).
 >  + (optional) TLLA + (optional) Redirected Header."
 
 **Adherence:** met (RX). Codec at
-`net_proto/protocols/icmp6/message/nd/icmp6__nd__message__redirect.py:96`.
+`packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__redirect.py:96`.
 RX handler at `packet_handler__icmp6__rx.py:998` consumes
 Redirects and updates the ND cache. TX (router-side
 Redirect emission) is **deferred to Phase-2 router work**.
@@ -168,16 +168,16 @@ Nonce (RFC 7527 Enhanced DAD — met), Route Information
 >  pending packet queue."
 
 **Adherence:** met. The Neighbor Cache lives at
-`pytcp/lib/neighbor.py:191` (`find_entry`) /
-`pytcp/lib/neighbor.py:236` (`add_entry`). The ND-flavour
-adapter at `pytcp/protocols/icmp6/nd/nd__cache.py:51`
+`packages/pytcp/pytcp/lib/neighbor.py:191` (`find_entry`) /
+`packages/pytcp/pytcp/lib/neighbor.py:236` (`add_entry`). The ND-flavour
+adapter at `packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py:51`
 specializes the generic NUD framework for IPv6 +
 `MacAddress` keys.
 
 > "Default Router List: a list of routers from RAs."
 
 **Adherence:** met. Stored at
-`pytcp/protocols/icmp6/nd/nd__router_state.py:53` and
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py:53` and
 maintained by the single chokepoint
 `pytcp.runtime.packet_handler.__init__._update_icmp6_default_router`.
 That chokepoint also drives the host-mode routing table
@@ -187,15 +187,15 @@ Lifetime > 0 it installs the FIB `::/0` default route via
 protocol=RouteProtocol.RA)`, and on Lifetime == 0 for a
 known router it withdraws it via
 `stack.route.remove_default_ip6()`
-(`pytcp/runtime/fib.py` `RouteTable`,
-`pytcp/stack/route.py` `RouteApi`). The next hop for an
+(`packages/pytcp/pytcp/runtime/fib.py` `RouteTable`,
+`packages/pytcp/pytcp/stack/route.py` `RouteApi`). The next hop for an
 off-link IPv6 destination is therefore resolved by an FIB
 longest-prefix `lookup`, not a per-`IfAddr` gateway
 (`IfAddr.gateway` was deleted). Pinned by
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_default_route.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_default_route.py`
 (RA lifetime > 0 installs the `protocol=RA` `::/0` route;
 lifetime 0 withdraws it) and
-`pytcp/tests/integration/protocols/ip6/test__ip6__routing.py::TestIp6RoutingNextHop`
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__routing.py::TestIp6RoutingNextHop`
 (on-link direct, off-link via the RA router, no-route
 drop).
 
@@ -203,7 +203,7 @@ drop).
 >  options."
 
 **Adherence:** met. Stored at
-`pytcp/protocols/icmp6/nd/nd__router_state.py:87` and
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py:87` and
 populated by the RA RX handler when consuming the PI
 option (per RFC 4862 §5.5.3).
 
@@ -327,9 +327,9 @@ via `send_icmp6_neighbor_advertisement_gratuitous` at
 >  REACHABLE, STALE, DELAY, PROBE."
 
 **Adherence:** met. `NudState` enum at
-`pytcp/lib/neighbor.py:71` declares the five states; the
+`packages/pytcp/pytcp/lib/neighbor.py:71` declares the five states; the
 state machine runs in the `NeighborCache` subsystem loop
-at `pytcp/lib/neighbor.py:125`. State transitions:
+at `packages/pytcp/pytcp/lib/neighbor.py:125`. State transitions:
 
 - New entry → INCOMPLETE; multicast NS to resolve.
 - NS resolved → REACHABLE; lifetime = `REACHABLE_TIME`.
@@ -341,7 +341,7 @@ at `pytcp/lib/neighbor.py:125`. State transitions:
 - All probes failed → FAILED; entry purged.
 
 The state-machine logic is shared between IPv6 ND and
-IPv4 ARP (`pytcp/lib/neighbor.py` is the generic
+IPv4 ARP (`packages/pytcp/pytcp/lib/neighbor.py` is the generic
 `NeighborCache[A, P]` framework; the ARP and ND adapters
 are thin specialisations).
 
@@ -378,7 +378,7 @@ entirely" behaviour).
 The destination-cache update (RFC 4861's §5.2-style
 per-destination next-hop override) is **partial**. PyTCP
 now has the routing-table substrate a Redirect-installed
-more-specific route would live in — `pytcp/runtime/fib.py`
+more-specific route would live in — `packages/pytcp/pytcp/runtime/fib.py`
 `RouteTable` (longest-prefix; a Redirect would add a
 host/prefix `Route` with `RouteProtocol.REDIRECT`, the
 enum value already reserved) — and §5.2 next-hop
@@ -411,7 +411,7 @@ non-optimal next-hop; PyTCP is host-only.
 
 **Adherence:** met (sysctl-backed). The
 `neighbor.*` namespace at
-`pytcp/lib/neighbor__constants.py` declares the NUD
+`packages/pytcp/pytcp/lib/neighbor__constants.py` declares the NUD
 constants:
 
 | RFC 4861 §10 constant       | PyTCP sysctl                              | Default |
@@ -423,7 +423,7 @@ constants:
 | MAX_UNICAST_SOLICIT         | `neighbor.max_unicast_solicit`            | 3       |
 
 RFC 4861 §10 RS-related constants live in
-`pytcp/protocols/icmp6/nd/nd__constants.py`:
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__constants.py`:
 
 | RFC 4861 §10 constant       | PyTCP sysctl                              | Default  |
 |-----------------------------|-------------------------------------------|----------|
@@ -447,7 +447,7 @@ Linux-parity host knobs:
 
 ## Test coverage audit
 
-The `pytcp/tests/integration/protocols/icmp6/nd/`
+The `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/`
 directory contains 23 integration test files covering
 the §-clauses above:
 
@@ -458,7 +458,7 @@ the §-clauses above:
 | §4.3 NS wire  | `test__icmp6__nd__accept_dad.py` (DAD shape)                    |
 | §4.4 NA wire  | `test__icmp6__nd__async_dad.py`                                  |
 | §4.5 Redirect | `test__icmp6__nd__redirect.py`                                   |
-| §5.1 cache    | `pytcp/tests/unit/lib/test__lib__neighbor.py` (NUD framework)    |
+| §5.1 cache    | `packages/pytcp/pytcp/tests/unit/lib/test__lib__neighbor.py` (NUD framework)    |
 | §5.2 routers  | `test__icmp6__nd__default_router_list.py`                        |
 | §5.3 prefixes | `test__icmp6__nd__multi_prefix_router.py`                        |
 | §6 router     | n/a (Phase-2 deferred)                                           |
@@ -535,8 +535,8 @@ Star §Phase 2.
 - IPv4 parallel: `docs/rfc/arp/rfc826__arp/adherence.md` +
   `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md` (ARP / ACD
   are the IPv4 equivalent of ND + DAD).
-- Source: `pytcp/lib/neighbor.py` (NUD framework),
-  `pytcp/protocols/icmp6/nd/nd__cache.py` (IPv6 cache
-  adapter), `pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
+- Source: `packages/pytcp/pytcp/lib/neighbor.py` (NUD framework),
+  `packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` (IPv6 cache
+  adapter), `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__{rx,tx}.py`
   (ND message dispatch),
-  `net_proto/protocols/icmp6/message/nd/` (wire codecs).
+  `packages/net_proto/net_proto/protocols/icmp6/message/nd/` (wire codecs).

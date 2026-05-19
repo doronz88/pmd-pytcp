@@ -19,8 +19,8 @@ link-local address. The full RFC 3927 state machine is **not
 implemented**.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py`,
-`pytcp/lib/ip4_source_selection.py`, and the IPv4 packet
+inspecting `packages/net_addr/net_addr/ip4_address.py`,
+`packages/pytcp/pytcp/lib/ip4_source_selection.py`, and the IPv4 packet
 handlers directly. Non-normative content (§1 Introduction,
 §1.1-§1.9 Requirements / Applicability, §3 Considerations, §4
 Security, §5 Acknowledgements) is omitted.
@@ -31,7 +31,7 @@ Security, §5 Acknowledgements) is omitted.
 
 PyTCP **met (Phase 1 complete)**: the RFC 3927 IPv4 link-local
 autoconfig client ships as a `Subsystem` in
-`pytcp/protocols/ip4/link_local/`. Operators opt in via
+`packages/pytcp/pytcp/protocols/ip4/link_local/`. Operators opt in via
 `stack.init(ip4_link_local=True)` and tune the DHCP-fallback
 window via the `ip4_link_local.dhcp_fallback_timeout_ms`
 sysctl. The §2.1 MAC-seeded RNG, §2.2 ARP probe, §2.4 ARP
@@ -90,7 +90,7 @@ to the fallback policy.
 > 169.254.1.0 to 169.254.254.255 inclusive."
 
 **Adherence:** met.
-`pytcp/protocols/ip4/link_local/link_local__rng.py::candidate_from_mac`
+`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__rng.py::candidate_from_mac`
 implements a MAC-seeded Linear Congruential Generator that
 maps any (MAC, attempt) pair to a uniformly-distributed
 address in `169.254.1.0..169.254.254.255` (65024 addresses).
@@ -235,7 +235,7 @@ reaching the gateway-selection logic.
 
 **Adherence:** met (one-way state poll). The DHCPv4 client
 is unchanged by the link-local subsystem —
-`pytcp/protocols/dhcp4/dhcp4__client.py` runs its own FSM
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` runs its own FSM
 independently. The link-local subsystem reads `dhcp4_client.state`
 via a dependency-injected `is_dhcp_bound: Callable[[], bool]`
 predicate, wired in `stack.init()` as `lambda:
@@ -261,7 +261,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### Link-local predicate (Ip4Address.is_link_local)
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Parametric cases verifying `is_link_local` on
   169.254.0.0, 169.254.255.255, and boundary addresses just
   outside.
@@ -271,10 +271,10 @@ RFC 3927 track was adding a read-only `state` property on
 ### Link-local scope in IPv4 source selection (RFC 6724-style)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
   Verifies that the link-local scope value
   `IP4__SCOPE__LINK_LOCAL = 0x2`
-  (`pytcp/lib/ip4_source_selection.py:49`) is consulted by
+  (`packages/pytcp/pytcp/lib/ip4_source_selection.py:49`) is consulted by
   the rule-2 source-scope sort key.
 
 **Status:** locked in.
@@ -282,7 +282,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.6 TX-side scope-mismatch gate
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
   Five cases: link-local src + global dst → drop with new
   TxStatus + counter bump; symmetric global src + link-
   local dst → same drop; link-local src + link-local dst →
@@ -295,7 +295,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.1 MAC-seeded candidate generator
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py`
   Seven cases: same-MAC determinism, different-MAC
   divergence, attempt-counter rolls the sequence, every
   candidate in [169.254.1.0, 169.254.254.255], reserved
@@ -307,7 +307,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.2 / §2.4 ARP Probe + Announce via the ACD API
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py`
   Six FSM cases: clean claim → BOUND with candidate
   installed; conflict → INIT + counter bump + candidate
   cleared; retry picks a different candidate via attempt-
@@ -322,7 +322,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.5 Defend / abandon decision
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py`
   Five cases: BOUND transition subscribes for conflicts;
   first conflict in window → defend (single gratuitous
   ARP); second conflict in window → abandon (abort TCP,
@@ -336,7 +336,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §1.9 / §2.11 DHCPv4 coordination
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__dhcp.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__dhcp.py`
   Ten cases: feature disabled (timeout=0) → eager INIT;
   feature enabled + DHCP getter → initial HALTED; DHCP-bind
   while BOUND → release + halt; DHCP-unbound continuously
@@ -350,7 +350,7 @@ RFC 3927 track was adding a read-only `state` property on
 ### §2.6 TX-side scope-mismatch gate
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc3927ScopeGate`
   Five cases: link-local src + global dst → drop with new
   TxStatus + counter bump; symmetric global src + link-
   local dst → same drop; link-local src + link-local dst →
@@ -391,7 +391,7 @@ RFC 3927 track was adding a read-only `state` property on
 PyTCP **fully implements** the RFC 3927 IPv4 link-local
 autoconfig mechanism for the host-stack case (Phase 1 of the
 project north-star). The implementation lives in
-`pytcp/protocols/ip4/link_local/` as a `Subsystem` instantiated
+`packages/pytcp/pytcp/protocols/ip4/link_local/` as a `Subsystem` instantiated
 by `stack.init(ip4_link_local=True)`. Operators opt in via the
 `ip4_link_local` boot kwarg and tune the DHCP-fallback window
 via `ip4_link_local.dhcp_fallback_timeout_ms`. The Linux
