@@ -77,12 +77,14 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
             self._address = tuple_address
             if isinstance(network_or_mask, Ip4Network):
                 self._network = network_or_mask
+                if self._address not in self._network:
+                    raise Ip4IfAddrSanityError(f"The IPv4 address doesn't belong to the provided network: {host!r}")
             elif isinstance(network_or_mask, Ip4Mask):
+                # Containment holds by construction: the network
+                # is derived by masking this same address.
                 self._network = Ip4Network((tuple_address, network_or_mask))
             else:
                 raise Ip4IfAddrFormatError(host)
-            if self._address not in self._network:
-                raise Ip4IfAddrSanityError(f"The IPv4 address doesn't belong to the provided network: {host!r}")
             return
 
         if isinstance(host, str):

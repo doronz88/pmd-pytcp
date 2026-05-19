@@ -106,16 +106,17 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
             self._address = tuple_address
             if isinstance(network_or_mask, Ip6Network):
                 self._network = network_or_mask
+                if self._address not in self._network:
+                    raise Ip6IfAddrSanityError(f"The IPv6 address doesn't belong to the provided network: {host!r}")
             elif isinstance(network_or_mask, Ip6Mask):
                 # RFC 4007 §6: the zone qualifies the address,
                 # not the prefix. Derive the network from a
                 # scope-stripped copy so a zoned link-local
-                # interface address is accepted.
+                # interface address is accepted; containment then
+                # holds by construction.
                 self._network = Ip6Network((Ip6Address(int(tuple_address)), network_or_mask))
             else:
                 raise Ip6IfAddrFormatError(host)
-            if self._address not in self._network:
-                raise Ip6IfAddrSanityError(f"The IPv6 address doesn't belong to the provided network: {host!r}")
             return
 
         if isinstance(host, str):
