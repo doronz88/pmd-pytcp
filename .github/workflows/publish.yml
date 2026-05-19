@@ -14,10 +14,15 @@ jobs:
   deploy:
     if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
+    # GitHub Environment 'pypi' is tag-restricted (deployment
+    # policy: 'v*') — a second, independent guard on top of the
+    # 'if:' gate, and its name MUST match the Environment field in
+    # the PyTCP PyPI trusted-publisher config.
+    environment: pypi
     # Trusted Publishing (OIDC) — no API token. Requires a
     # matching PyPI "trusted publisher" registered for this repo
-    # + workflow, and id-token: write so GitHub can mint the OIDC
-    # token pypi.org verifies.
+    # + workflow + environment, and id-token: write so GitHub can
+    # mint the OIDC token pypi.org verifies.
     permissions:
       id-token: write
     steps:
@@ -47,6 +52,9 @@ jobs:
   deploy-net_addr:
     if: startsWith(github.event.release.tag_name, 'net_addr-v')
     runs-on: ubuntu-latest
+    # Tag-restricted ('net_addr-v*'); name MUST match the
+    # Environment field in the PyTCP-net_addr trusted publisher.
+    environment: pypi-net_addr
     permissions:
       id-token: write
     steps:
@@ -78,6 +86,9 @@ jobs:
   deploy-net_proto:
     if: startsWith(github.event.release.tag_name, 'net_proto-v')
     runs-on: ubuntu-latest
+    # Tag-restricted ('net_proto-v*'); name MUST match the
+    # Environment field in the PyTCP-net_proto trusted publisher.
+    environment: pypi-net_proto
     permissions:
       id-token: write
     steps:
