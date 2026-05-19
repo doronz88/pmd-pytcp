@@ -155,6 +155,13 @@ pypi: dist
 	@./$(VENV)/bin/twine check dist/*
 	@./$(VENV)/bin/twine upload dist/*
 
+# Build + validate the standalone PyTCP-net_addr dist. Publishing
+# is via the OIDC publish.yml workflow on a GitHub Release (no
+# local twine upload), mirroring the umbrella PyTCP flow.
+build__net_addr: venv
+	@./$(VENV)/bin/python -m build packages/net_addr
+	@./$(VENV)/bin/twine check packages/net_addr/dist/*
+
 tun3:
 	@ip tuntap add name tun3 mode tun
 	@ip addr add 172.16.1.1/24 dev tun3
@@ -193,5 +200,5 @@ remove_interfaces:
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \
-	bridge install package dist pypi \
+	bridge install package dist pypi build__net_addr \
 	tun3 tun5 tap7 tap9 add_interfaces remove_interfaces

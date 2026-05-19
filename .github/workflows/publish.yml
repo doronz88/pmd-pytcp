@@ -31,3 +31,34 @@ jobs:
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Separate dist: net_addr is published as its own PyTCP-net_addr
+  # project (single repo, multi-dist). Independent job so a failure
+  # publishing one dist does not block the other; each PyPI project
+  # has its own trusted-publisher entry pointing at this workflow.
+  # Dormant until a Release is published AND the PyTCP-net_addr
+  # trusted publisher is registered (Phase-4 cutover).
+  deploy-net_addr:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install build backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build package
+        run: python -m build packages/net_addr
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/net_addr/dist
