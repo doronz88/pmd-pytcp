@@ -244,6 +244,71 @@ class TestNetAddrIpNetworkAbstractStubs(TestCase):
             IpNetwork.hostmask.fget(Ip4Network())  # type: ignore[attr-defined]
 
 
+class TestNetAddrIfAddrAbstractStubs(TestCase):
+    """
+    The NetAddr 'IfAddr' abstract stub body tests.
+    """
+
+    def test__net_addr__if_addr__init_stub_raises(self) -> None:
+        """
+        Ensure the abstract 'IfAddr.__init__()' stub body raises
+        'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(NotImplementedError):
+            IfAddr.__init__(Ip4IfAddr("10.0.0.1/24"), "10.0.0.1/24")
+
+    def test__net_addr__if_addr__not_directly_instantiable(self) -> None:
+        """
+        Ensure the abstract 'IfAddr' base cannot be instantiated
+        directly, mirroring the 'Address' and 'IpNetwork' bases
+        which both declare an abstract '__init__'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIn(
+            "__init__",
+            IfAddr.__abstractmethods__,
+            msg="IfAddr.__init__ must be abstract so the base is not directly instantiable.",
+        )
+        with self.assertRaises(TypeError):
+            IfAddr()  # type: ignore[abstract, call-arg]
+
+
+class TestNetAddrIfAddrInitContract(TestCase):
+    """
+    The NetAddr 'IfAddr.__init__' base-contract tests.
+    """
+
+    def test__net_addr__if_addr__init_first_param_positional_only_host(self) -> None:
+        """
+        Ensure the abstract 'IfAddr.__init__' and the concrete
+        Ip4IfAddr / Ip6IfAddr overrides all declare a
+        positional-only first parameter named 'host', so the
+        base contract stays in lockstep with the subclasses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for cls in (IfAddr, Ip4IfAddr, Ip6IfAddr):
+            with self.subTest(cls=cls.__name__):
+                params = list(inspect.signature(cls.__init__).parameters.values())
+                first = params[1]
+                self.assertEqual(
+                    first.name,
+                    "host",
+                    msg=f"{cls.__name__}.__init__ first parameter must be named 'host'.",
+                )
+                self.assertIs(
+                    first.kind,
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    msg=f"{cls.__name__}.__init__ 'host' must be positional-only.",
+                )
+
+
 class TestNetAddrIpVersion(TestCase):
     """
     The NetAddr 'IpVersion' enum tests.

@@ -30,8 +30,8 @@ net_addr/ip_ifaddr.py
 ver 3.0.5
 """
 
-from abc import ABC
-from typing import ClassVar, override
+from abc import ABC, abstractmethod
+from typing import ClassVar, Self, override
 
 from net_addr.base import Base
 from net_addr.errors import IfAddrSanityError, NetAddrError
@@ -66,6 +66,20 @@ class IfAddr[
     # honours the §7.1 contract rather than raising
     # AttributeError.
     _sanity_error: ClassVar[type[NetAddrError]] = IfAddrSanityError
+
+    @abstractmethod
+    def __init__(
+        self,
+        host: Self | tuple[A, N] | str,
+        /,
+    ) -> None:
+        """
+        Initialize the IP interface address object. Concrete
+        subclasses bind the version-specific address / network /
+        mask types and the accepted input forms.
+        """
+
+        raise NotImplementedError
 
     @override
     def __str__(self) -> str:
