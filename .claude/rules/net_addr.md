@@ -119,6 +119,7 @@ that `@dataclass` does not offer ergonomically.
 The canonical shape:
 
 ```python
+@final                                   # see §4.4 — seals the leaf
 class Ip4Address(IpAddress):
     """
     IPv4 address support class.
@@ -278,9 +279,23 @@ Rules:
 - **Identity fast path.** The leading `other is self` check
   avoids the isinstance / equality work for the common
   same-object case (very frequent in cache lookups).
-- **Symmetric.** No need to delegate to `other.__eq__` —
-  the type-equality requirement makes equality symmetric by
-  construction.
+- **Symmetric — enforced by `@final`, not assumed.**
+  `isinstance(other, type(self))` + a `type(self)`-keyed hash
+  is symmetric and hash-consistent *only* for leaf classes: a
+  subclass instance compares unequal to a base instance in
+  one direction and equal in the other (Python's reflected-
+  `__eq__` subclass priority), and the two hashes diverge.
+  Every concrete value type is therefore decorated `@final`
+  (`Ip4Address`, `Ip6Address`, `MacAddress`, `Ip4Network`,
+  `Ip6Network`, `Ip4Mask`, `Ip6Mask`, `Ip4Wildcard`,
+  `Ip6Wildcard`, `Ip4IfAddr`, `Ip6IfAddr`) so mypy strict
+  rejects any subclass that would reintroduce the asymmetry.
+  The ABCs (`Address`, `IpAddress`, `IpNetwork`, `IfAddr`,
+  `IpMask`, `IpWildcard`) stay subclassable — only the leaves
+  are sealed. `@final` is a type-checker contract (it sets a
+  runtime-introspectable `__final__`, which the
+  `test__abstract_stubs.py` leaf-finality test pins); do not
+  rely on it for runtime enforcement.
 - **Never compare across versions.** `Ip4Address("0.0.0.0")
   != Ip6Address("::")` even though both are
   "the unspecified address."
@@ -554,6 +569,14 @@ anti-patterns live in [`source_files.md`](source_files.md)
   explicit `__init__` for the multi-form input parsing.
   Match the existing pattern — do not introduce a
   dataclass branch.
+- **A concrete value type without `@final`.** Every concrete
+  leaf (address / network / mask / wildcard / interface
+  address) MUST be `@final` — the `isinstance`-based
+  `__eq__` / `__hash__` contract (§4.4) is symmetric only
+  for leaves. The ABCs stay open; the leaves are sealed.
+  Adding a new concrete type means adding `@final` and a
+  case to the `test__abstract_stubs.py` leaf-finality test
+  in the same commit.
 - **Single-input `__init__` signature.** Every value-type
   constructor must accept `None` (unspecified), `Self`
   (copy), `int` (raw value), `bytes` / `bytearray` /
