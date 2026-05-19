@@ -27,7 +27,7 @@ This module contains Ethernet MAC address manipulation class.
 
 net_addr/mac_address.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import re

@@ -28,7 +28,7 @@ This module contains the class supporting TCP finite state machine.
 
 pytcp/protocols/tcp/tcp__session.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from __future__ import annotations

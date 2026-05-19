@@ -31,7 +31,7 @@ creating a circular import with tcp__session.py.
 
 pytcp/protocols/tcp/tcp__constants.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 PACKET_RETRANSMIT_TIMEOUT = 1000  # Initial RTO in milliseconds (RFC 6298 §2.1).

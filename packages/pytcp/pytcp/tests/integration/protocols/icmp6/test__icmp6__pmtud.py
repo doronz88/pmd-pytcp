@@ -35,7 +35,7 @@ bumps observable on the packet handler.
 
 pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_proto import (

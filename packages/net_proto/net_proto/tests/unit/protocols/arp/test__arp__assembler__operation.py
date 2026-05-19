@@ -27,7 +27,7 @@ This module contains tests for the ARP protocol packet assembling functionality.
 
 net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

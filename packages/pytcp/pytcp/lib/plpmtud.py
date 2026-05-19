@@ -38,7 +38,7 @@ docs/refactor/plpmtud_unified_engine.md
 
 pytcp/lib/plpmtud.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from enum import auto

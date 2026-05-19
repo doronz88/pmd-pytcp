@@ -27,7 +27,7 @@ This module contains the ICMPv6 Time Exceeded message support class.
 
 net_proto/protocols/icmp6/message/icmp6__message__time_exceeded.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import struct

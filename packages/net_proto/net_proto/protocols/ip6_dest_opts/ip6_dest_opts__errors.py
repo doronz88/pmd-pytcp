@@ -27,7 +27,7 @@ This module contains the IPv6 Destination Options protocol error classes.
 
 net_proto/protocols/ip6_dest_opts/ip6_dest_opts__errors.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import override

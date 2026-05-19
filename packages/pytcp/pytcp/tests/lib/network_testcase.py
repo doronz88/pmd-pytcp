@@ -31,7 +31,7 @@ This module contains base testcase for PyTCP Packet Handler tests.
 
 pytcp/tests/lib/network_testcase.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import cast

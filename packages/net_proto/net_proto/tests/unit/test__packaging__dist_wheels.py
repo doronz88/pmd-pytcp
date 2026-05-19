@@ -30,7 +30,7 @@ that breaks the umbrella PyTCP wheel).
 
 packages/net_proto/net_proto/tests/unit/test__packaging__dist_wheels.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import shutil

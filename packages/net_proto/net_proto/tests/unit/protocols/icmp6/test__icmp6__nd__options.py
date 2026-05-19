@@ -27,7 +27,7 @@ Module contains tests for the ICMPv6 ND options container.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__options.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

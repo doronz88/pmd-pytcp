@@ -27,7 +27,7 @@ This module contains unit tests for the 'PacketHandlerIp6FragRx' mixin.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6_frag__rx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

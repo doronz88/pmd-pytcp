@@ -27,7 +27,7 @@ This module contains tests for the ICMPv4 Echo Reply emission gate.
 
 pytcp/tests/unit/protocols/icmp4/test__icmp4__echo_gate.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

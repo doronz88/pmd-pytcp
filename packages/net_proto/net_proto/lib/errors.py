@@ -27,7 +27,7 @@ This module contains stack error classes.
 
 net_proto/lib/errors.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 

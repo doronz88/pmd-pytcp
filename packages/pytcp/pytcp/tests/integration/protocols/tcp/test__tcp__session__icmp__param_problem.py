@@ -33,7 +33,7 @@ no FSM mutation.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__param_problem.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip4Address

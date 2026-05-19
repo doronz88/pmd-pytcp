@@ -27,7 +27,7 @@ This module contains simple payload generators used in the examples.
 
 examples/lib/payload.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 

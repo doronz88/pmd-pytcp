@@ -29,7 +29,7 @@ NetAddr package: importing 'net_addr' must not pull in 'click', yet the
 
 net_addr/tests/unit/test__lazy_click.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import os

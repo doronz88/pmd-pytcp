@@ -32,7 +32,7 @@ crashes the RX subsystem.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__parser__nd_code_validation.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from types import SimpleNamespace

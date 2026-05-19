@@ -33,7 +33,7 @@ on top of 'NetworkTestCase'.
 
 pytcp/tests/lib/udp_testcase.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

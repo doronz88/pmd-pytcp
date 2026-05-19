@@ -28,7 +28,7 @@ packet context from the IP parser to a 'RawSocket'.
 
 pytcp/tests/unit/socket/test__socket__raw__metadata.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import FrozenInstanceError

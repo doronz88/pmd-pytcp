@@ -27,7 +27,7 @@ This module contains the unknown ICMPv6 ND option support code.
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__unknown.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import struct

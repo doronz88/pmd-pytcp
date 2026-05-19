@@ -45,7 +45,7 @@ lifetime table.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_runtime_claim.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import time

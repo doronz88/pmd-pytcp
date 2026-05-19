@@ -31,7 +31,7 @@ This module contains unit tests for the Packet Handler IPv6 Frag RX operations.
 
 pytcp/tests/integration/packet_handler/test__packet_handler__ip6_frag__rx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]

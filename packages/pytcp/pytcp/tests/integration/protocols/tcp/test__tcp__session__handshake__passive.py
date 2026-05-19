@@ -61,7 +61,7 @@ Reference RFCs:
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__passive.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip4Address

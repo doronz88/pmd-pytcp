@@ -27,7 +27,7 @@ This module contains tests for the NetAddr package IPv4 network support class.
 
 net_addr/tests/unit/test__ip4_network.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from collections.abc import Callable

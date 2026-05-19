@@ -36,7 +36,7 @@ a SYN_SENT-state session through:
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__dest_unreachable.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip4Address

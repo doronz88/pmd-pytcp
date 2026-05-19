@@ -27,7 +27,7 @@ This module contains tests for the ARP packet parser integrity checks.
 
 net_proto/tests/unit/protocols/arp/test__arp__parser__integrity_checks.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

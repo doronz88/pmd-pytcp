@@ -28,7 +28,7 @@ the examples.
 
 examples/lib/client.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import threading

@@ -28,7 +28,7 @@ limiter shared between the IPv4 and IPv6 packet handlers.
 
 pytcp/protocols/icmp/icmp__error_emitter.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

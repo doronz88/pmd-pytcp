@@ -27,7 +27,7 @@ This module contains the classes used to store the packet processing statistics.
 
 pytcp/lib/packet_stats.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

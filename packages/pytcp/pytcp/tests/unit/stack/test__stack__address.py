@@ -28,7 +28,7 @@ This module contains tests for the IPv4 address-control API
 
 pytcp/tests/unit/stack/test__stack__address.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import TYPE_CHECKING, cast, override

@@ -28,7 +28,7 @@ the IPv4/ICMPv4/ICMPv6/UDP/TCP protocols.
 
 net_proto/lib/inet_cksum.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import struct

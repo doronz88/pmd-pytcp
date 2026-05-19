@@ -31,7 +31,7 @@ segment pointer.
 
 pytcp/protocols/tcp/state/tcp__state__send_seq.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

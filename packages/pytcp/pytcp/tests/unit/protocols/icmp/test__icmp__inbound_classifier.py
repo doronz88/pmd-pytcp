@@ -27,7 +27,7 @@ This module contains tests for the ICMP inbound classifier.
 
 pytcp/tests/unit/protocols/icmp/test__icmp__inbound_classifier.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from types import SimpleNamespace

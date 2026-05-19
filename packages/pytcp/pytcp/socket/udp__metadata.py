@@ -27,7 +27,7 @@ This module contains the interface class for the UDP Parser -> UDP Socket commun
 
 pytcp/socket/udp__metadata.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from __future__ import annotations

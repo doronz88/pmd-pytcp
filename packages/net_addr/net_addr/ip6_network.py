@@ -27,7 +27,7 @@ This module contains IPv6 network support class.
 
 net_addr/ip6_network.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from collections.abc import Iterator

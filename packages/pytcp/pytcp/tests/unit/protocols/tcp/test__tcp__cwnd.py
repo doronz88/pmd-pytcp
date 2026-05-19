@@ -49,7 +49,7 @@ The tests cover the natural edge cases of each formula:
 
 pytcp/tests/unit/protocols/tcp/test__tcp__cwnd.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

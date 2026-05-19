@@ -27,7 +27,7 @@ This module contains protocol support for the outbound UDP packets.
 
 pytcp/subsystems/packet_handler/packet_handler__udp__tx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from abc import ABC

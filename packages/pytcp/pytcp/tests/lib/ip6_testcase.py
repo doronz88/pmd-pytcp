@@ -34,7 +34,7 @@ probe helpers, and source-selection plumbing on top of
 
 pytcp/tests/lib/ip6_testcase.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

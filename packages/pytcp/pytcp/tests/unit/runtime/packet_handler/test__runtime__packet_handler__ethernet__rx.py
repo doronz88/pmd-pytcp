@@ -27,7 +27,7 @@ This module contains unit tests for the 'PacketHandlerEthernetRx' mixin.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet__rx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

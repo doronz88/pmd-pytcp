@@ -30,7 +30,7 @@ answered.
 
 pytcp/protocols/icmp4/icmp4__echo_gate.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 

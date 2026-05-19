@@ -28,7 +28,7 @@ information for new packets.
 
 net_proto/lib/tracker.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import itertools

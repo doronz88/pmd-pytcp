@@ -44,7 +44,7 @@ PacketHandler subsystem loop, rate-limited by the
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__temp_addr_sweep.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import time

@@ -27,7 +27,7 @@ This module contains the SNAP protocol error classes.
 
 net_proto/protocols/snap/snap__errors.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError

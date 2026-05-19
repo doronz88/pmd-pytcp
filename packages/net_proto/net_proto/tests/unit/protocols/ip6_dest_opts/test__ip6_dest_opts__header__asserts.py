@@ -27,7 +27,7 @@ This module contains the IPv6 Dest Opts header dataclass __post_init__ asserts.
 
 net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__header__asserts.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

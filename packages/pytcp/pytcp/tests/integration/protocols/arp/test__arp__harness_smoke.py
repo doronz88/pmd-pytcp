@@ -38,7 +38,7 @@ harness shape.
 
 pytcp/tests/integration/protocols/arp/test__arp__harness_smoke.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_proto import ArpOperation, ArpParser

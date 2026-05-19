@@ -27,7 +27,7 @@ This module contains tests for the 'Subsystem' base class.
 
 pytcp/tests/unit/runtime/test__runtime__subsystem.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import io

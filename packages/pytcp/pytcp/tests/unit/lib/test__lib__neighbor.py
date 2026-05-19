@@ -29,7 +29,7 @@ plan at 'docs/refactor/nud_state_machine.md'.
 
 pytcp/tests/unit/lib/test__lib__neighbor.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

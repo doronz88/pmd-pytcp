@@ -27,7 +27,7 @@ This module contains tests for the 'Buffer' type alias.
 
 net_proto/tests/unit/lib/test__lib__buffer.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import TypeAliasType, get_args

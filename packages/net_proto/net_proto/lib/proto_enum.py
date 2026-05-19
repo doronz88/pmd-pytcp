@@ -27,7 +27,7 @@ This module contains the ProtoEnum base classes.
 
 net_proto/lib/proto_enum.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import TYPE_CHECKING, Self

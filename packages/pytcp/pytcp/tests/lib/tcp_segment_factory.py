@@ -28,7 +28,7 @@ TCP session integration tests to synthesize ingress frames.
 
 pytcp/tests/lib/tcp_segment_factory.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from collections.abc import Iterable

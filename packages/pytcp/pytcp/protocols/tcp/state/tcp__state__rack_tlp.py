@@ -37,7 +37,7 @@ trigger.
 
 pytcp/protocols/tcp/state/tcp__state__rack_tlp.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass, field

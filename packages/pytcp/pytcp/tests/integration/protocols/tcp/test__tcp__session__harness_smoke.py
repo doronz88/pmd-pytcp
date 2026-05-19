@@ -28,7 +28,7 @@ harness ('FakeTimer', 'tcp_segment_factory', 'TcpSessionTestCase').
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__harness_smoke.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

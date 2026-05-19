@@ -28,7 +28,7 @@ implementation.
 
 pytcp/tests/unit/socket/test__socket__raw__socket.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import errno

@@ -27,7 +27,7 @@ This module contains tests for the deterministic 'FakeTimer' fixture.
 
 pytcp/tests/unit/lib/test__lib__fake_timer.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import override

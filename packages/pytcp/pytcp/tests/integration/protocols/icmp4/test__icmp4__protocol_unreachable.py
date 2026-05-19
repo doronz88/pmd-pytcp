@@ -34,7 +34,7 @@ designates a transport protocol the host does not implement.
 
 pytcp/tests/integration/protocols/icmp4/test__icmp4__protocol_unreachable.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

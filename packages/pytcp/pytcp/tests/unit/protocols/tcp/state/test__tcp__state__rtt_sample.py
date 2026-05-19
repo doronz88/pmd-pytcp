@@ -27,7 +27,7 @@ Unit tests for RttSampleState dataclass.
 
 pytcp/tests/unit/protocols/tcp/state/test__tcp__state__rtt_sample.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

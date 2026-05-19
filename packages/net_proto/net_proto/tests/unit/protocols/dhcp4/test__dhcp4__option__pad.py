@@ -27,7 +27,7 @@ Module contains tests for the DHCPv4 Pad option code.
 
 net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__pad.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

@@ -35,7 +35,7 @@ its own DAD claim.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__simultaneous_probe.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip6Address, MacAddress

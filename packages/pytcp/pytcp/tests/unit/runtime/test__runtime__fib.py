@@ -27,7 +27,7 @@ This module contains tests for the host-mode routing table (FIB).
 
 pytcp/tests/unit/runtime/test__runtime__fib.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import dataclasses

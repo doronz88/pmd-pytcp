@@ -27,7 +27,7 @@ This module contains packet handler for the inbound ICMPv4 packets.
 
 pytcp/subsystems/packet_handler/packet_handler__icmp4__rx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from abc import ABC

@@ -27,7 +27,7 @@ This module contains the ARP protocol base class.
 
 net_proto/protocols/arp/arp__base.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import override

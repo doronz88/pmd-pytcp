@@ -28,7 +28,7 @@ control state container in 'pytcp/protocols/tcp/state/tcp__state__cc.py'.
 
 pytcp/tests/unit/protocols/tcp/state/test__tcp__state__cc.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from unittest import TestCase

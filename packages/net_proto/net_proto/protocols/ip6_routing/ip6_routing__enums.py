@@ -27,7 +27,7 @@ This module contains the IPv6 Routing Header enums.
 
 net_proto/protocols/ip6_routing/ip6_routing__enums.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import override

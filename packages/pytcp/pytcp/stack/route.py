@@ -33,7 +33,7 @@ RTNETLINK 'RTM_GETROUTE'.
 
 pytcp/stack/route.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network

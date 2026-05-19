@@ -29,7 +29,7 @@ interface call.
 
 pytcp/socket/tcp__status.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from dataclasses import dataclass

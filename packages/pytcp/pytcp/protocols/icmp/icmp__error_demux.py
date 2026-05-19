@@ -32,7 +32,7 @@ before acting on the error.
 
 pytcp/protocols/icmp/icmp__error_demux.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import struct

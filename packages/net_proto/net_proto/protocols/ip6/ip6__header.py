@@ -27,7 +27,7 @@ This module contains the IPv6 packet header.
 
 net_proto/protocols/ip6/ip6__header.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import struct

@@ -27,7 +27,7 @@ This module contains tests for the IPv6 header fields asserts.
 
 net_proto/tests/unit/protocols/ip6/test__ip6__header__asserts.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

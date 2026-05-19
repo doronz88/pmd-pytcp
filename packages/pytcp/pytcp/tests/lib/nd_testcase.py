@@ -36,7 +36,7 @@ their tests demand.
 
 pytcp/tests/lib/nd_testcase.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from net_addr import Ip6Address, MacAddress

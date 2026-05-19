@@ -29,7 +29,7 @@ This module contains the TCP FSM CLOSING state handler.
 
 pytcp/protocols/tcp/fsm/tcp__fsm__closing.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from __future__ import annotations

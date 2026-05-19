@@ -27,7 +27,7 @@ This module contains tests for the 'log' function.
 
 pytcp/tests/unit/lib/test__lib__logger.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import io

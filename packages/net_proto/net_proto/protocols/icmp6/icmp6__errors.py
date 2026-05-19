@@ -27,7 +27,7 @@ This module contains the ICMPv6 protocol error classes.
 
 net_proto/protocols/icmp6/icmp6__errors.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import override

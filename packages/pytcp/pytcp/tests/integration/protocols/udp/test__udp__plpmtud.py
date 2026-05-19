@@ -40,7 +40,7 @@ in Phase 4 of the PLPMTUD plan. Exercises:
 
 pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any, override

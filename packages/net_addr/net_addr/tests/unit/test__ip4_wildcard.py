@@ -27,7 +27,7 @@ This module contains tests for the NetAddr package IPv4 wildcard support class.
 
 net_addr/tests/unit/test__ip4_wildcard.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any

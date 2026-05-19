@@ -31,7 +31,7 @@ This module contains unit tests for the Packet Handler IPv4 TX operations.
 
 pytcp/tests/integration/packet_handler/test__packet_handler__ip4__tx.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 from typing import Any, override

@@ -28,7 +28,7 @@ companion enums ('AddressFamily', 'SocketType') plus the 'gaierror' shim.
 
 pytcp/tests/unit/socket/test__socket__base.py
 
-ver 3.0.5
+ver 3.0.6
 """
 
 import errno
