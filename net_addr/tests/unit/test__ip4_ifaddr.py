@@ -695,3 +695,44 @@ class TestNetAddrIp4IfAddrCauseChain(TestCase):
                     cause,
                     msg=f"The swallowed {cause.__name__} must be preserved as __cause__ for {bad!r}.",
                 )
+
+
+class TestNetAddrIp4IfAddrOrdering(TestCase):
+    """
+    The NetAddr IPv4 interface-address ordering tests.
+    """
+
+    def test__net_addr__ip4_ifaddr__ordering(self) -> None:
+        """
+        Ensure IPv4 interface addresses are totally ordered by
+        host address then network (so they sort consistently
+        with the sibling value types), matching equality.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4IfAddr("10.0.0.5/24")
+        b = Ip4IfAddr("10.0.0.5/25")
+        c = Ip4IfAddr("10.0.0.6/24")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="Ip4IfAddr must sort by (host address, network).",
+        )
+        self.assertTrue(a < b, msg="Same host address, longer-prefix network must sort after.")
+        self.assertTrue(b < c, msg="Lower host address must sort before.")
+        self.assertLessEqual(a, a, msg="An interface address must be <= itself.")
+        self.assertGreaterEqual(c, a, msg="A higher interface address must be >= a lower one.")
+        self.assertEqual(min(c, b, a), a, msg="min() must return the lowest Ip4IfAddr.")
+
+    def test__net_addr__ip4_ifaddr__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv4 interface address against an
+        IPv6 interface address raises TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip4IfAddr < Ip6IfAddr must raise TypeError."):
+            _ = Ip4IfAddr("10.0.0.5/24") < Ip6IfAddr("2001:db8::5/64")

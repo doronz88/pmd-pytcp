@@ -1156,3 +1156,62 @@ class TestNetAddrIp6IfAddrCauseChain(TestCase):
                     cause,
                     msg=f"The swallowed {cause.__name__} must be preserved as __cause__ for {bad!r}.",
                 )
+
+
+class TestNetAddrIp6IfAddrOrdering(TestCase):
+    """
+    The NetAddr IPv6 interface-address ordering tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__ordering(self) -> None:
+        """
+        Ensure IPv6 interface addresses are totally ordered by
+        host address then network (so they sort consistently
+        with the sibling value types), matching equality.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6IfAddr("2001:db8::5/64")
+        b = Ip6IfAddr("2001:db8::5/96")
+        c = Ip6IfAddr("2001:db8::6/64")
+
+        self.assertEqual(
+            sorted([c, b, a]),
+            [a, b, c],
+            msg="Ip6IfAddr must sort by (host address, network).",
+        )
+        self.assertTrue(a < b, msg="Same host address, longer-prefix network must sort after.")
+        self.assertTrue(b < c, msg="Lower host address must sort before.")
+        self.assertEqual(min(c, b, a), a, msg="min() must return the lowest Ip6IfAddr.")
+
+    def test__net_addr__ip6_ifaddr__ordering__scope_consistent_with_equality(self) -> None:
+        """
+        Ensure a scoped and an unscoped interface address with
+        the same host bits and network are unequal and remain
+        deterministically ordered (the RFC 4007 zone is folded
+        into the order key, consistently with equality).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        plain = Ip6IfAddr("fe80::1/64")
+        scoped = Ip6IfAddr("fe80::1%eth0/64")
+
+        self.assertNotEqual(plain, scoped, msg="A zone makes the interface address distinct.")
+        self.assertEqual(
+            sorted([scoped, plain]),
+            [plain, scoped],
+            msg="The unscoped interface address must order before the scoped one.",
+        )
+
+    def test__net_addr__ip6_ifaddr__ordering__cross_version_raises(self) -> None:
+        """
+        Ensure ordering an IPv6 interface address against an
+        IPv4 interface address raises TypeError.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(TypeError, msg="Ip6IfAddr < Ip4IfAddr must raise TypeError."):
+            _ = Ip6IfAddr("2001:db8::5/64") < Ip4IfAddr("10.0.0.5/24")

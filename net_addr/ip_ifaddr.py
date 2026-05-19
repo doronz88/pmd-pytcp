@@ -93,6 +93,54 @@ class IfAddr[
 
         return hash((type(self), self._address, self._network))
 
+    def __lt__(self, other: object, /) -> bool:
+        """
+        Order the interface address by host address then
+        network. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (self._address, self._network) < (other._address, other._network)
+
+    def __le__(self, other: object, /) -> bool:
+        """
+        Order the interface address by host address then
+        network. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (self._address, self._network) <= (other._address, other._network)
+
+    def __gt__(self, other: object, /) -> bool:
+        """
+        Order the interface address by host address then
+        network. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (self._address, self._network) > (other._address, other._network)
+
+    def __ge__(self, other: object, /) -> bool:
+        """
+        Order the interface address by host address then
+        network. Ordering across IP versions is undefined and
+        raises TypeError.
+        """
+
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return (self._address, self._network) >= (other._address, other._network)
+
     def __format__(self, format_spec: str, /) -> str:
         """
         Render the interface address. An empty spec or 'pl'
