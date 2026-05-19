@@ -91,11 +91,12 @@ class Address(Base, ABC):
         yields the text form (str-style width / alignment
         applied); a type-specific text code ('ex' for the
         expanded IP form, 'hy' / 'ci' for MAC notations) is
-        rendered by '_format_alt'; otherwise the value is a
-        fixed-width integer — 'b' / 'x' / 'X' zero-padded to
-        the address-family bit width, 'n' mapping to 'b' for
-        32-bit families and 'x' otherwise, with the '#' (radix
-        prefix) and '_' (4-digit grouping) modifiers.
+        rendered by '_format_alt'; 'b' / 'x' / 'X' yield the
+        integer zero-padded to the address-family bit width,
+        accepting the '#' (radix prefix) and '_' (4-digit
+        grouping) modifiers; 'd' (plain decimal) and 'n'
+        (locale-aware decimal) delegate verbatim to the stdlib
+        integer formatter and take no modifiers.
         """
 
         if not format_spec or format_spec[-1] == "s":
@@ -108,15 +109,20 @@ class Address(Base, ABC):
         code = format_spec[-1]
         flags = format_spec[:-1]
 
-        if set(flags) - {"#", "_"} or code not in {"b", "x", "X", "n"}:
+        # 'b' / 'x' / 'X' are the address-family-width zero-padded
+        # radix forms ('#' radix-prefix and '_' 4-digit grouping
+        # modifiers apply); 'd' / 'n' delegate verbatim to the
+        # stdlib integer formatter ('d' plain decimal, 'n'
+        # locale-aware decimal) and take no modifiers.
+        if not ((code in {"b", "x", "X"} and not (set(flags) - {"#", "_"})) or (code in {"d", "n"} and not flags)):
             raise type(self)._sanity_error(
                 f"Unknown format code {format_spec!r} for object of type {type(self).__name__!r}"
             )
 
-        bits = len(memoryview(self)) * 8
+        if code in {"d", "n"}:
+            return format(self._address, code)
 
-        if code == "n":
-            code = "b" if bits == 32 else "x"
+        bits = len(memoryview(self)) * 8
 
         digit_width = bits if code == "b" else bits // 4
         digits = format(self._address, f"0{digit_width}{code}")

@@ -2243,9 +2243,11 @@ class TestNetAddrIp4AddressFormat(TestCase):
 
     def test__net_addr__ip4_address__format(self) -> None:
         """
-        Ensure '__format__' supports the documented spec set
-        (s/b/x/X/n with '#' and '_'); the address is a
-        32-bit zero-padded integer.
+        Ensure '__format__' supports the documented spec set:
+        s/b/x/X with the '#' and '_' modifiers (the address as
+        a 32-bit zero-padded integer), plus the modifier-free
+        'd' (plain decimal) and 'n' (locale-aware decimal)
+        codes.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -2258,7 +2260,7 @@ class TestNetAddrIp4AddressFormat(TestCase):
             ("b", "00000001000000100000001100000100"),
             ("x", "01020304"),
             ("X", "01020304"),
-            ("n", "00000001000000100000001100000100"),
+            ("d", "16909060"),
             ("#x", "0x01020304"),
             ("_b", "0000_0001_0000_0010_0000_0011_0000_0100"),
             ("#_x", "0x0102_0304"),
@@ -2279,6 +2281,32 @@ class TestNetAddrIp4AddressFormat(TestCase):
 
         with self.assertRaises(Ip4AddressSanityError, msg="An unknown format code must raise Ip4AddressSanityError."):
             format(Ip4Address("1.2.3.4"), "q")
+
+    def test__net_addr__ip4_address__format__decimal_codes_delegate_to_int(self) -> None:
+        """
+        Ensure the 'd' (plain decimal) and 'n' (locale-aware
+        decimal) codes render the address exactly as the stdlib
+        integer formatter renders its integer value, so 'n'
+        honours the caller's LC_NUMERIC and 'd' is always the
+        plain value, independent of the ambient locale.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip4Address("1.2.3.4")
+        value = int(a)
+        for code in ("d", "n"):
+            with self.subTest(code=code):
+                self.assertEqual(
+                    format(a, code),
+                    format(value, code),
+                    msg=f"format(Ip4Address, {code!r}) must equal format(int(addr), {code!r}).",
+                )
+        self.assertEqual(
+            format(a, "d"),
+            str(value),
+            msg="The 'd' code must be the plain decimal value with no padding or grouping.",
+        )
 
 
 class TestNetAddrIp4AddressWhitespace(TestCase):

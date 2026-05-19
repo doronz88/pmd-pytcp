@@ -1875,7 +1875,9 @@ class TestNetAddrIp6AddressFormat(TestCase):
     def test__net_addr__ip6_address__format(self) -> None:
         """
         Ensure '__format__' treats the address as a 128-bit
-        zero-padded integer ('n' maps to 'x' for IPv6).
+        zero-padded integer for s/b/x/X (with '#' / '_'), and
+        also supports the modifier-free 'd' (plain decimal) and
+        'n' (locale-aware decimal) codes.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1885,7 +1887,7 @@ class TestNetAddrIp6AddressFormat(TestCase):
             ("", "::1"),
             ("s", "::1"),
             ("x", "00000000000000000000000000000001"),
-            ("n", "00000000000000000000000000000001"),
+            ("d", "1"),
             ("b", "0" * 127 + "1"),
             ("#x", "0x00000000000000000000000000000001"),
         ]:
@@ -1895,6 +1897,32 @@ class TestNetAddrIp6AddressFormat(TestCase):
                     expected,
                     msg=f"format(Ip6Address, {spec!r}) must be {expected!r}.",
                 )
+
+    def test__net_addr__ip6_address__format__decimal_codes_delegate_to_int(self) -> None:
+        """
+        Ensure the 'd' (plain decimal) and 'n' (locale-aware
+        decimal) codes render the address exactly as the stdlib
+        integer formatter renders its integer value, so 'n'
+        honours the caller's LC_NUMERIC and 'd' is always the
+        plain value, independent of the ambient locale.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("2001:db8::1")
+        value = int(a)
+        for code in ("d", "n"):
+            with self.subTest(code=code):
+                self.assertEqual(
+                    format(a, code),
+                    format(value, code),
+                    msg=f"format(Ip6Address, {code!r}) must equal format(int(addr), {code!r}).",
+                )
+        self.assertEqual(
+            format(a, "d"),
+            str(value),
+            msg="The 'd' code must be the plain decimal value with no padding or grouping.",
+        )
 
 
 class TestNetAddrIp6AddressTransitional(TestCase):

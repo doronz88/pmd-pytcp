@@ -1084,7 +1084,9 @@ class TestNetAddrMacAddressFormat(TestCase):
     def test__net_addr__mac_address__format(self) -> None:
         """
         Ensure '__format__' treats the MAC as a 48-bit
-        zero-padded integer ('n' maps to 'x').
+        zero-padded integer for x/X/b (with '#' / '_'), and
+        also supports the modifier-free 'd' (plain decimal)
+        and 'n' (locale-aware decimal) codes.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1093,7 +1095,7 @@ class TestNetAddrMacAddressFormat(TestCase):
         for spec, expected in [
             ("x", "0a1b2c3d4e5f"),
             ("X", "0A1B2C3D4E5F"),
-            ("n", "0a1b2c3d4e5f"),
+            ("d", "11111822610015"),
             ("b", "000010100001101100101100001111010100111001011111"),
             ("#x", "0x0a1b2c3d4e5f"),
             ("_x", "0a1b_2c3d_4e5f"),
@@ -1104,6 +1106,32 @@ class TestNetAddrMacAddressFormat(TestCase):
                     expected,
                     msg=f"format(MacAddress, {spec!r}) must be {expected!r}.",
                 )
+
+    def test__net_addr__mac_address__format__decimal_codes_delegate_to_int(self) -> None:
+        """
+        Ensure the 'd' (plain decimal) and 'n' (locale-aware
+        decimal) codes render the MAC exactly as the stdlib
+        integer formatter renders its integer value, so 'n'
+        honours the caller's LC_NUMERIC and 'd' is always the
+        plain value, independent of the ambient locale.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = MacAddress("0a:1b:2c:3d:4e:5f")
+        value = int(a)
+        for code in ("d", "n"):
+            with self.subTest(code=code):
+                self.assertEqual(
+                    format(a, code),
+                    format(value, code),
+                    msg=f"format(MacAddress, {code!r}) must equal format(int(addr), {code!r}).",
+                )
+        self.assertEqual(
+            format(a, "d"),
+            str(value),
+            msg="The 'd' code must be the plain decimal value with no padding or grouping.",
+        )
 
     def test__net_addr__mac_address__format_notation(self) -> None:
         """
