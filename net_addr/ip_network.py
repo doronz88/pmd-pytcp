@@ -71,11 +71,26 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
     _sanity_error: ClassVar[type[NetAddrError]] = IpNetworkSanityError
 
     @abstractmethod
-    def __init__(self, network: Self | tuple[A, M] | str | None = None, /) -> None:
+    def __init__(
+        self,
+        network: Self | tuple[A, M] | str | None = None,
+        /,
+        *,
+        # Deliberate deviation from net_addr.md §4.2 (no kwargs on a
+        # value-type __init__): the keyword-only 'strict' flag is
+        # part of the network contract. Declared on the abstract
+        # base so code typed against 'IpNetwork' can pass it and the
+        # concrete Ip4Network / Ip6Network signatures do not diverge
+        # from the base. Default False preserves the silent
+        # mask-on-construct behaviour the rest of the stack relies
+        # on.
+        strict: bool = False,
+    ) -> None:
         """
         Initialize the IP network object. Concrete subclasses
         bind the version-specific address / mask types and the
-        accepted input forms.
+        accepted input forms. Pass strict=True to reject an
+        address carrying bits outside the network mask.
         """
 
         raise NotImplementedError

@@ -31,6 +31,7 @@ net_addr/tests/unit/test__abstract_stubs.py
 ver 3.0.5
 """
 
+import inspect
 from unittest import TestCase
 
 from net_addr.address import Address
@@ -353,4 +354,40 @@ class TestNetAddrAddressLenConstant(TestCase):
                     type(instance)._address_len,
                     len(memoryview(instance)),
                     msg=(f"{type(instance).__name__}._address_len must equal " f"the serialized byte width."),
+                )
+
+
+class TestNetAddrIpNetworkInitContract(TestCase):
+    """
+    The NetAddr 'IpNetwork.__init__' base-contract tests.
+    """
+
+    def test__net_addr__ip_network__init_exposes_strict(self) -> None:
+        """
+        Ensure the abstract 'IpNetwork.__init__' and the concrete
+        Ip4Network / Ip6Network overrides all declare a
+        keyword-only 'strict' parameter defaulting to False, so
+        the base contract stays in lockstep with the subclasses
+        and code typed against the base can pass it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for cls in (IpNetwork, Ip4Network, Ip6Network):
+            with self.subTest(cls=cls.__name__):
+                param = inspect.signature(cls.__init__).parameters.get("strict")
+                self.assertIsNotNone(
+                    param,
+                    msg=f"{cls.__name__}.__init__ must declare a 'strict' parameter.",
+                )
+                assert param is not None  # narrow for mypy
+                self.assertIs(
+                    param.kind,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    msg=f"{cls.__name__}.__init__ 'strict' must be keyword-only.",
+                )
+                self.assertIs(
+                    param.default,
+                    False,
+                    msg=f"{cls.__name__}.__init__ 'strict' must default to False.",
                 )
