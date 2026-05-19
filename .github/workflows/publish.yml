@@ -69,3 +69,34 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: packages/net_addr/dist
+
+  # Standalone PyTCP-net_proto dist, decoupled from the umbrella
+  # and from net_addr: it publishes ONLY on a 'net_proto-vX.Y.Z'
+  # release tag. Independent job + its own PyPI trusted-publisher
+  # entry pointing at this workflow. Dormant until such a Release
+  # is published.
+  deploy-net_proto:
+    if: startsWith(github.event.release.tag_name, 'net_proto-v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install build backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+
+      - name: Build package
+        run: python -m build packages/net_proto
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/net_proto/dist
