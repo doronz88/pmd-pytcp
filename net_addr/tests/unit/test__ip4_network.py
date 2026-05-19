@@ -38,8 +38,10 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import (
     Ip4Address,
+    Ip4AddressFormatError,
     Ip4IfAddr,
     Ip4Mask,
+    Ip4MaskFormatError,
     Ip4Network,
     Ip4NetworkFormatError,
     Ip4NetworkSanityError,
@@ -1592,3 +1594,32 @@ class TestNetAddrIp4NetworkStdlibParity(TestCase):
         )
         with self.assertRaises(Ip4NetworkFormatError, msg="Host bits with strict=True must raise."):
             Ip4Network("10.1.2.3/255.0.0.0", strict=True)
+
+
+class TestNetAddrIp4NetworkCauseChain(TestCase):
+    """
+    The NetAddr IPv4 network error-cause-chain tests.
+    """
+
+    def test__net_addr__ip4_network__string_reject_preserves_cause(self) -> None:
+        """
+        Ensure a malformed network string raises
+        Ip4NetworkFormatError that preserves the swallowed
+        sub-constructor failure as '__cause__', so a traceback
+        shows which token (address vs mask) was rejected.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for bad, cause in [
+            ("999.0.0.1/24", Ip4AddressFormatError),
+            ("10.0.0.1/99", Ip4MaskFormatError),
+        ]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(Ip4NetworkFormatError) as ctx:
+                    Ip4Network(bad)
+                self.assertIsInstance(
+                    ctx.exception.__cause__,
+                    cause,
+                    msg=f"The swallowed {cause.__name__} must be preserved as __cause__ for {bad!r}.",
+                )

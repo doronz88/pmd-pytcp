@@ -127,8 +127,8 @@ class Ip4Network(IpNetwork[Ip4Address, Ip4Mask]):
                     raise Ip4NetworkFormatError(network)
                 self._address = Ip4Address(raw_address & int(self._mask))
                 return
-            except Ip4AddressFormatError, Ip4MaskFormatError:
-                pass
+            except (Ip4AddressFormatError, Ip4MaskFormatError) as error:
+                raise Ip4NetworkFormatError(network) from error
 
         raise Ip4NetworkFormatError(network)
 

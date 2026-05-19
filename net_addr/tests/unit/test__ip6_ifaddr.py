@@ -38,10 +38,12 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 from net_addr import (
     Ip4IfAddr,
     Ip6Address,
+    Ip6AddressFormatError,
     Ip6IfAddr,
     Ip6IfAddrFormatError,
     Ip6IfAddrSanityError,
     Ip6Mask,
+    Ip6MaskFormatError,
     Ip6Network,
     IpVersion,
     MacAddress,
@@ -1125,3 +1127,32 @@ class TestNetAddrIp6IfAddrStdlibParity(TestCase):
 
         ifaddr = Ip6IfAddr("2001:db8::5")
         self.assertEqual(str(ifaddr), "2001:db8::5/128", msg="A bare address must parse as /128.")
+
+
+class TestNetAddrIp6IfAddrCauseChain(TestCase):
+    """
+    The NetAddr IPv6 interface-address error-cause-chain tests.
+    """
+
+    def test__net_addr__ip6_ifaddr__string_reject_preserves_cause(self) -> None:
+        """
+        Ensure a malformed interface-address string raises
+        Ip6IfAddrFormatError that preserves the swallowed
+        sub-constructor failure as '__cause__', so a traceback
+        shows which token (address vs mask) was rejected.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for bad, cause in [
+            ("2001:db8::zzzz/64", Ip6AddressFormatError),
+            ("2001:db8::1/999", Ip6MaskFormatError),
+        ]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(Ip6IfAddrFormatError) as ctx:
+                    Ip6IfAddr(bad)
+                self.assertIsInstance(
+                    ctx.exception.__cause__,
+                    cause,
+                    msg=f"The swallowed {cause.__name__} must be preserved as __cause__ for {bad!r}.",
+                )

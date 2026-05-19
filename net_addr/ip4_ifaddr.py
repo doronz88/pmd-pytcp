@@ -101,7 +101,7 @@ class Ip4IfAddr(IfAddr[Ip4Address, Ip4Network]):
                 # construction.
                 self._network = Ip4Network(text)
                 return
-            except Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError:
-                pass
+            except (Ip4AddressFormatError, Ip4MaskFormatError, Ip4NetworkFormatError) as error:
+                raise Ip4IfAddrFormatError(host) from error
 
         raise Ip4IfAddrFormatError(host)

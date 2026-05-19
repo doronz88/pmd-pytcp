@@ -121,8 +121,8 @@ class Ip6Network(IpNetwork[Ip6Address, Ip6Mask]):
                     raise Ip6NetworkFormatError(network)
                 self._address = Ip6Address(raw_address & int(self._mask))
                 return
-            except Ip6AddressFormatError, Ip6MaskFormatError:
-                pass
+            except (Ip6AddressFormatError, Ip6MaskFormatError) as error:
+                raise Ip6NetworkFormatError(network) from error
 
         raise Ip6NetworkFormatError(network)
 

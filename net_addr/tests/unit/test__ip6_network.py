@@ -40,8 +40,10 @@ from net_addr import (
     Ip4IfAddr,
     Ip4Network,
     Ip6Address,
+    Ip6AddressFormatError,
     Ip6IfAddr,
     Ip6Mask,
+    Ip6MaskFormatError,
     Ip6Network,
     Ip6NetworkFormatError,
     Ip6NetworkSanityError,
@@ -1269,3 +1271,32 @@ class TestNetAddrIp6NetworkStdlibParity(TestCase):
         self.assertEqual(str(net), "2001:db8::1/128", msg="A bare address must parse as /128.")
         self.assertEqual(net.address, Ip6Address("2001:db8::1"), msg="The host address must be preserved.")
         self.assertEqual(int(net.mask), (1 << 128) - 1, msg="The mask must be /128.")
+
+
+class TestNetAddrIp6NetworkCauseChain(TestCase):
+    """
+    The NetAddr IPv6 network error-cause-chain tests.
+    """
+
+    def test__net_addr__ip6_network__string_reject_preserves_cause(self) -> None:
+        """
+        Ensure a malformed network string raises
+        Ip6NetworkFormatError that preserves the swallowed
+        sub-constructor failure as '__cause__', so a traceback
+        shows which token (address vs mask) was rejected.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for bad, cause in [
+            ("2001:db8::zzzz/64", Ip6AddressFormatError),
+            ("2001:db8::1/999", Ip6MaskFormatError),
+        ]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(Ip6NetworkFormatError) as ctx:
+                    Ip6Network(bad)
+                self.assertIsInstance(
+                    ctx.exception.__cause__,
+                    cause,
+                    msg=f"The swallowed {cause.__name__} must be preserved as __cause__ for {bad!r}.",
+                )

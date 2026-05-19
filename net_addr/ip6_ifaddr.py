@@ -136,8 +136,8 @@ class Ip6IfAddr(IfAddr[Ip6Address, Ip6Network]):
                 # construction.
                 self._network = Ip6Network((Ip6Address(int(self._address)), netmask))
                 return
-            except Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError:
-                pass
+            except (Ip6AddressFormatError, Ip6MaskFormatError, Ip6NetworkFormatError) as error:
+                raise Ip6IfAddrFormatError(host) from error
 
         raise Ip6IfAddrFormatError(host)
 

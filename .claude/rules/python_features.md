@@ -63,6 +63,7 @@ states the PyTCP enforcement level:
 | §8 | — | `dict \| dict` merge | 3.9 | MUST |
 | §9 | 673 | `typing.Self` | 3.11 | MUST |
 | §10 | 654 | Exception groups + `except*` | 3.11 | MUST (where it fits) |
+| §10a | 758 | Unparenthesized `except A, B:` | 3.14 | MUST (no `as`); parens MANDATORY with `as` |
 | §11 | 680 | `tomllib` | 3.11 | MUST (no `toml` / `tomli`) |
 | §12 | 655 | `Required` / `NotRequired` | 3.11 | MUST |
 | §13 | 675 | `LiteralString` | 3.11 | N/A (no consumer) |
@@ -312,6 +313,52 @@ consumer surface for `except*` is small today. The rule is
 still **MUST** when a path genuinely needs to surface multiple
 concurrent failures — don't flatten an `ExceptionGroup` into a
 single representative exception.
+
+## 10a. PEP 758 — unparenthesized `except` (3.14)
+
+A multi-type `except` clause **MUST** omit the parentheses —
+**but only when there is no `as` clause**:
+
+```python
+# Good — multiple types, no binding
+try:
+    self._mask = Ip4Mask("/" + mask_str)
+except Ip4AddressFormatError, Ip4MaskFormatError:
+    ...
+```
+
+The parentheses become **mandatory the moment you bind the
+exception with `as`** — PEP 758 explicitly keeps them required
+there, and CPython 3.14 rejects the bare form with a hard
+`SyntaxError: multiple exception types must be parenthesized
+when using 'as'` (verified on 3.14.3). This is **not** a style
+choice; the unparenthesized `as` form does not parse:
+
+```python
+# Forbidden — SyntaxError on 3.14, not a lint nit
+except Ip6AddressFormatError, Ip6MaskFormatError as error:
+    raise Ip6IfAddrFormatError(host) from error
+
+# Good — parens are required because of the `as`
+except (Ip6AddressFormatError, Ip6MaskFormatError) as error:
+    raise Ip6IfAddrFormatError(host) from error
+```
+
+Decision rule: bare for the no-binding case (it is the
+canonical form — a parenthesized tuple with no `as` is the
+forbidden legacy spelling); parenthesized for the `as` case
+(the only form that compiles). A single-type `except X:` or
+`except X as e:` never takes parentheses either way.
+
+This interacts with the `net_addr`/`net_proto` error-translation
+idiom: catching sub-constructor failures and re-raising the
+package error **MUST** chain the cause
+(`raise OuterError(...) from error`), which forces the `as`
+binding, which forces the parenthesized tuple. Swallowing the
+cause (`except A, B: pass` then a bare re-raise outside the
+handler) is the anti-pattern this idiom replaces — it strands
+`__cause__`/`__context__` at `None` and hides which token
+failed.
 
 ## 11. PEP 680 — `tomllib` (3.11)
 
