@@ -1,7 +1,7 @@
 VENV := venv
 ROOT_PATH:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 PYTCP_PATH := pytcp
-NET_ADDR_PATH := net_addr
+NET_ADDR_PATH := packages/net_addr/net_addr
 NET_PROTO_PATH := net_proto
 EXAMPLES_PATH := examples
 PYTCP_FILES := $(shell find ${PYTCP_PATH} -name '*.py')
@@ -14,7 +14,10 @@ ROOT_FILES := tests_runner.py
 # all accept many paths at once), plus the packages mypy checks in
 # '-p' package mode.
 LINT_FILES := $(PYTCP_FILES) $(NET_ADDR_FILES) $(NET_PROTO_FILES) $(EXAMPLES_FILES) $(ROOT_FILES)
-MYPY_PACKAGES := $(PYTCP_PATH) $(NET_ADDR_PATH) $(NET_PROTO_PATH) $(EXAMPLES_PATH)
+# mypy '-p' takes import names, not paths. net_addr now lives at
+# packages/net_addr/net_addr (resolved via its editable install in
+# the 'venv' target), so its name is decoupled from its path here.
+MYPY_PACKAGES := pytcp net_addr net_proto examples
 
 # If any recipe fails, delete its target file. Without this a
 # failed (or interrupted) 'venv' build leaves a half-populated
@@ -38,6 +41,7 @@ $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 	@./$(VENV)/bin/python -m pip install --upgrade pip
 	@./$(VENV)/bin/pip install -r requirements.txt
 	@./$(VENV)/bin/pip install -r requirements_dev.txt
+	@./$(VENV)/bin/pip install -e packages/net_addr --config-settings editable_mode=compat
 	@touch $(VENV)/bin/activate
 
 venv: $(VENV)/bin/activate
@@ -83,7 +87,7 @@ test__pytcp__integration: venv
 
 test__net_addr__unit: venv
 	@echo '<<< UNITTEST NET_ADDR UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests/unit' -name 'test__*.py')
 
 test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
@@ -95,7 +99,7 @@ test__examples__unit: venv
 
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests' 'net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
 
 validate: lint test
 

@@ -156,6 +156,8 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
+__version__: str = "3.0.5"
+
 __all__ = [
     "ClickTypeIfAddr",
     "ClickTypeIp4Address",

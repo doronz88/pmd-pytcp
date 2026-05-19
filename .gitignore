@@ -5,3 +5,6 @@ venv/
 .vscode/
 .coverage
 PyTCP.egg-info/
+*.egg-info/
+build/
+dist/

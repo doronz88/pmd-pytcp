@@ -7,7 +7,7 @@ stack-wide configuration. It complements
 [`source_files.md`](source_files.md) (general file mechanics
 applied to every subpackage) and the two sibling subpackage
 rules — [`net_addr.md`](net_addr.md) for the value-type
-library `net_addr/` and [`net_proto.md`](net_proto.md) for
+library `packages/net_addr/net_addr/` and [`net_proto.md`](net_proto.md) for
 the per-protocol packet authoring under `net_proto/`.
 
 The Project North Star's Phase 3 (kernel/userspace boundary —

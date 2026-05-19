@@ -269,7 +269,7 @@ noise without type-safety value:
 | `IpProto` | `net_proto/lib/enums.py` | `ProtoEnum`; member access only |
 | `EtherType` | `net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
 | `ArpHardwareType`, `ArpOperation` | `net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
-| `IpVersion` | `net_addr/ip_version.py` | `IntEnum`; member access only |
+| `IpVersion` | `packages/net_addr/net_addr/ip_version.py` | `IntEnum`; member access only |
 | `AddressFamily`, `SocketType` | `pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
 | `SocketOption` (TCP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
 | `SolSocketOption` (SO_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |

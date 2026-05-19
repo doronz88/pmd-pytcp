@@ -825,7 +825,7 @@ When refactoring legacy code that pre-dates this rule:
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming,
   formatting).
-- [`net_addr.md`](net_addr.md) — `net_addr/` value-type
+- [`net_addr.md`](net_addr.md) — `packages/net_addr/net_addr/` value-type
   patterns that consume PEP 695 generics, `Self`, and
   `match`/`case`.
 - [`net_proto.md`](net_proto.md) —

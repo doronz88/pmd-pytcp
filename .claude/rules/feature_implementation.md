@@ -163,7 +163,7 @@ integration test before claiming done.
 |------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
 | `net_proto/protocols/<proto>/*.py`             | `net_proto/tests/unit/protocols/<proto>/test__<proto>__<aspect>.py`                                                    |
 | `net_proto/lib/*.py`                           | `net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
-| `net_addr/*.py`                                | `net_addr/tests/unit/test__<source>.py`                                                                                |
+| `packages/net_addr/net_addr/*.py`                                | `packages/net_addr/net_addr/tests/unit/test__<source>.py`                                                                                |
 | `pytcp/lib/*.py`                               | `pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
 | `pytcp/socket/*.py`                            | `pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
 | `pytcp/protocols/tcp/*.py`                     | `pytcp/tests/unit/protocols/tcp/...` (unit) **and** `pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
@@ -353,7 +353,7 @@ pinned before.
   [`source_files.md`](source_files.md) — file skeleton,
   copyright block, module docstring, imports, naming,
   formatting, inline comments, source docstrings.
-- Value-type authoring (under `net_addr/`):
+- Value-type authoring (under `packages/net_addr/net_addr/`):
   [`net_addr.md`](net_addr.md) — ABC hierarchy,
   slot-based value types, multi-form `__init__`,
   equality / hashing, `click` CLI helpers.

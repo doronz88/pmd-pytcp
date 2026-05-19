@@ -11,10 +11,10 @@ header packs and unpacks against.
 It complements [`source_files.md`](source_files.md) (general
 file mechanics applied to every subpackage) and the two
 sibling subpackage rules — [`net_addr.md`](net_addr.md) for
-the value-type library `net_addr/` and
+the value-type library `packages/net_addr/net_addr/` and
 [`pytcp.md`](pytcp.md) for the runtime services in `pytcp/`.
 
-The `net_addr/` package does **not** follow the six-file
+The `packages/net_addr/net_addr/` package does **not** follow the six-file
 protocol layout — it is a pure value-type library. See
 [`net_addr.md`](net_addr.md) for its authoring rules.
 

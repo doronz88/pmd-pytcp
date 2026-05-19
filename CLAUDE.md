@@ -98,9 +98,26 @@ PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
 
 | Package | Role |
 |---|---|
-| `net_addr/` | Standalone address library: `Ip4Address`, `Ip6Address`, `MacAddress`, etc. No dependency on the other packages. |
+| `packages/net_addr/net_addr/` | Standalone address library: `Ip4Address`, `Ip6Address`, `MacAddress`, etc. No dependency on the other packages. Published as its own dist (see below). |
 | `net_proto/` | Protocol packet library: parse/assemble/validate. Depends on `net_addr` only. |
 | `pytcp/` | Running stack: threads, sockets, ARP/ND caches, RX/TX rings. Depends on both. |
+
+`net_addr` has been extracted into its own PEP 517 project under
+`packages/` for independent PyPI publication; `net_proto` / `pytcp`
+will follow the same mould. The folder ↔ dist ↔ import mapping (one
+invariant: project folder == import name, no exceptions):
+
+| Project folder | PyPI dist | Import |
+|---|---|---|
+| `packages/net_addr` | `PyTCP-net_addr` | `net_addr` |
+| `net_proto` (→ `packages/net_proto`, later) | `PyTCP-net_proto` | `net_proto` |
+| `pytcp` (→ `packages/pytcp`, later) | `PyTCP` | `pytcp` |
+
+`net_addr` is resolved in development via an editable install
+(`make venv` runs `pip install -e packages/net_addr`); imports are
+unchanged (`from net_addr import ...`). Its `click`-typed CLI
+helpers are an opt-in extra (`pip install "PyTCP-net_addr[cli]"`)
+and are lazily imported, so importing `net_addr` is stdlib-only.
 
 ### Packet flow
 
@@ -135,7 +152,7 @@ PyTCP has ten canonical rule files in `.claude/rules/`. They are auto-loaded int
 | [`typing.md`](.claude/rules/typing.md) | mypy strict, annotations, generics, `Self` / `@override`, `Protocol` / `TypedDict`, `cast` and `# type: ignore` policy | Any annotation |
 | [`enums.md`](.claude/rules/enums.md) | enum discipline — protocol codepoints / socket-option numbers / flag bits as IntEnum/ProtoEnum members; stdlib-socket-parity bare-alias pattern; forbidden bare-int-as-enum constants | Any new constant representing one of a set |
 | [`source_files.md`](.claude/rules/source_files.md) | general source-file mechanics — file skeleton, copyright block, module docstring, imports, naming, formatting, inline comments, source docstrings | Any new source file |
-| [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `net_addr/` |
+| [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library (at `packages/net_addr/net_addr/`) — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `packages/net_addr/net_addr/` |
 | [`net_proto.md`](.claude/rules/net_proto.md) | `net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `net_proto/protocols/` |
 | [`pytcp.md`](.claude/rules/pytcp.md) | `pytcp/` runtime services — `Subsystem` base, packet-handler mixins, BSD socket facade, sysctl registry, stack configuration | Any new runtime service under `pytcp/` |
 | [`unit_testing.md`](.claude/rules/unit_testing.md) | unit tests (framework, mocking discipline §6a, isolation §10a, modern Python features §10b, the §7.2 docstring audit) | Any new unit test |

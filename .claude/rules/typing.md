@@ -25,7 +25,7 @@ annotation style, signature shape, generic syntax, or where
 - **Target.** Python 3.14+. Every typing feature from
   PEP 484 through PEP 750 is unconditionally available;
   there is no fallback for older interpreters.
-- **Coverage.** Every PyTCP source file under `net_addr/`,
+- **Coverage.** Every PyTCP source file under `packages/net_addr/net_addr/`,
   `net_proto/`, `pytcp/` (excluding generated and vendored
   code, of which PyTCP has none today) MUST be fully typed.
   Test files under `*/tests/` MUST also pass mypy strict.
@@ -1163,7 +1163,7 @@ as unreachable.
 
 The canonical use is a small helper that centralises an
 error-raising tail so the surrounding code stays honest about
-control flow. `net_addr/click_types.py` is the reference: a
+control flow. `packages/net_addr/net_addr/click_types.py` is the reference: a
 `_fail(...) -> NoReturn` wrapper calls `ParamType.fail()`
 (itself typed `-> NoReturn` by Click) and ends in
 `raise AssertionError("unreachable: ...")`, which makes the

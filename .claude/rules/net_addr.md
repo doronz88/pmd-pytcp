@@ -1,6 +1,6 @@
-# PyTCP — `net_addr/` Authoring Rule
+# PyTCP — `packages/net_addr/net_addr/` Authoring Rule
 
-This rule codifies the conventions for the `net_addr/`
+This rule codifies the conventions for the `packages/net_addr/net_addr/`
 subpackage — PyTCP's pure value-type library for network
 addresses, networks, interface addresses, and masks. The library has no
 dependency on `net_proto/` or `pytcp/`; it sits at the
@@ -10,8 +10,8 @@ two subpackages.
 The general source-file mechanics (file skeleton, copyright
 block, module docstring, imports, naming, formatting) live
 in [`source_files.md`](source_files.md) and apply to
-`net_addr/` exactly as they apply elsewhere. This rule
-adds the `net_addr/`-specific architectural conventions on
+`packages/net_addr/net_addr/` exactly as they apply elsewhere. This rule
+adds the `packages/net_addr/net_addr/`-specific architectural conventions on
 top: the ABC hierarchy, value-type construction, equality /
 hashing, and the deliberate `click` exception to the
 zero-runtime-deps mandate.
@@ -25,7 +25,7 @@ in [`net_proto.md`](net_proto.md) and
 
 ## 1. Package scope
 
-`net_addr/` is a **pure value-type library**. It contains:
+`packages/net_addr/net_addr/` is a **pure value-type library**. It contains:
 
 - Address classes: `Ip4Address`, `Ip6Address`, `MacAddress`.
 - Network classes: `Ip4Network`, `Ip6Network`.
@@ -50,7 +50,7 @@ It does **not** contain:
 - Protocol parsers, assemblers, or wire-format packing.
 - Anything that imports from `net_proto/` or `pytcp/`.
 
-If you find yourself writing stateful code in `net_addr/`,
+If you find yourself writing stateful code in `packages/net_addr/net_addr/`,
 stop — that work belongs in `pytcp/` (per
 [`pytcp.md`](pytcp.md)). If you find yourself writing wire
 parsing, stop — that's `net_proto/` (per
@@ -58,41 +58,41 @@ parsing, stop — that's `net_proto/` (per
 
 ## 2. Runtime dependencies
 
-`net_addr/` is the **only** PyTCP subpackage that may import
-`click` at runtime. `click` is used by `net_addr/click_types.py`
+`packages/net_addr/net_addr/` is the **only** PyTCP subpackage that may import
+`click` at runtime. `click` is used by `packages/net_addr/net_addr/click_types.py`
 to expose Click-compatible argument types for CLI consumers
 (`ClickTypeIp4Address`, `ClickTypeIp6IfAddr`, etc.). The CLI
 helpers are opt-in — importing `net_addr.Ip4Address` does
 not pull in `click`; only consumers that need the Click
 types import from `net_addr.click_types`.
 
-Everything else in `net_addr/` is stdlib-only:
+Everything else in `packages/net_addr/net_addr/` is stdlib-only:
 `socket.inet_aton` / `inet_ntoa`, `re`, `time` for
 interface-address expiration, `typing` for `Self` / generics. No other
 runtime dependencies.
 
 ## 3. Class hierarchy
 
-`net_addr/` is organised as an ABC hierarchy. Every concrete
+`packages/net_addr/net_addr/` is organised as an ABC hierarchy. Every concrete
 type inherits from a deliberate chain of abstract bases so
 the value-type contract is enforced uniformly:
 
 ```
-Base                                (net_addr/base.py)
-├── Address                         (net_addr/address.py — abstract)
-│   ├── IpAddress                   (net_addr/ip_address.py — abstract)
-│   │   ├── Ip4Address              (net_addr/ip4_address.py)
-│   │   └── Ip6Address              (net_addr/ip6_address.py)
-│   └── MacAddress                  (net_addr/mac_address.py)
-├── IpNetwork[A, M]                 (net_addr/ip_network.py — abstract, generic)
-│   ├── Ip4Network                  (net_addr/ip4_network.py)
-│   └── Ip6Network                  (net_addr/ip6_network.py)
-├── IfAddr[A, N, O]                 (net_addr/ip_ifaddr.py — abstract, generic)
-│   ├── Ip4IfAddr                     (net_addr/ip4_ifaddr.py)
-│   └── Ip6IfAddr                     (net_addr/ip6_ifaddr.py)
-└── IpMask                          (net_addr/ip_mask.py — abstract)
-    ├── Ip4Mask                     (net_addr/ip4_mask.py)
-    └── Ip6Mask                     (net_addr/ip6_mask.py)
+Base                                (packages/net_addr/net_addr/base.py)
+├── Address                         (packages/net_addr/net_addr/address.py — abstract)
+│   ├── IpAddress                   (packages/net_addr/net_addr/ip_address.py — abstract)
+│   │   ├── Ip4Address              (packages/net_addr/net_addr/ip4_address.py)
+│   │   └── Ip6Address              (packages/net_addr/net_addr/ip6_address.py)
+│   └── MacAddress                  (packages/net_addr/net_addr/mac_address.py)
+├── IpNetwork[A, M]                 (packages/net_addr/net_addr/ip_network.py — abstract, generic)
+│   ├── Ip4Network                  (packages/net_addr/net_addr/ip4_network.py)
+│   └── Ip6Network                  (packages/net_addr/net_addr/ip6_network.py)
+├── IfAddr[A, N, O]                 (packages/net_addr/net_addr/ip_ifaddr.py — abstract, generic)
+│   ├── Ip4IfAddr                     (packages/net_addr/net_addr/ip4_ifaddr.py)
+│   └── Ip6IfAddr                     (packages/net_addr/net_addr/ip6_ifaddr.py)
+└── IpMask                          (packages/net_addr/net_addr/ip_mask.py — abstract)
+    ├── Ip4Mask                     (packages/net_addr/net_addr/ip4_mask.py)
+    └── Ip6Mask                     (packages/net_addr/net_addr/ip6_mask.py)
 ```
 
 When adding a new value-type concept:
@@ -109,7 +109,7 @@ When adding a new value-type concept:
 
 ## 4. Value-type implementation conventions
 
-`net_addr/` classes are value types but they are **not
+`packages/net_addr/net_addr/` classes are value types but they are **not
 @dataclass**. The codebase predates the @dataclass-everywhere
 pattern that `net_proto/` adopted, and the value-type
 contract requires explicit control over `__init__`'s
@@ -399,7 +399,7 @@ stdlib only.
 ## 7. Error classes
 
 Each value type has its own error hierarchy in
-`net_addr/errors.py`:
+`packages/net_addr/net_addr/errors.py`:
 
 ```
 NetAddrError
@@ -442,9 +442,9 @@ NetAddrError
   the error class formats the message with `repr(value)` so
   the wire input is preserved in the traceback.
 
-### 7.1 `net_addr/` raises ONLY `NetAddrError` subclasses (MUST)
+### 7.1 `packages/net_addr/net_addr/` raises ONLY `NetAddrError` subclasses (MUST)
 
-Every `raise` statement reachable at runtime in `net_addr/`
+Every `raise` statement reachable at runtime in `packages/net_addr/net_addr/`
 **MUST** raise a subclass of `NetAddrError`. A bare builtin
 exception (`ValueError`, `TypeError`, `IndexError`,
 `RuntimeError`, `KeyError`, `OverflowError`, …) is
@@ -452,7 +452,7 @@ exception (`ValueError`, `TypeError`, `IndexError`,
 around any net_addr call must catch *every* failure the
 library can produce. This is normative; a reviewer is
 entitled to bounce a PR that adds a bare-builtin `raise`
-under `net_addr/`.
+under `packages/net_addr/net_addr/`.
 
 PyTCP does **not** chase stdlib-`ipaddress` exception
 parity. There is **no** multiple-inheritance-with-a-builtin
@@ -461,15 +461,15 @@ single clean `NetAddrError` tree, not protocol mirroring. A
 caller that wants the old behaviour catches `NetAddrError`.
 
 If no existing `NetAddrError` subclass fits the failure, a
-**new one MUST be created** in `net_addr/errors.py` and
-exported from `net_addr/__init__.py` `__all__` — never
+**new one MUST be created** in `packages/net_addr/net_addr/errors.py` and
+exported from `packages/net_addr/net_addr/__init__.py` `__all__` — never
 reach for a builtin because "there is no matching error
 yet." Reuse before inventing: most failures map onto the
 existing two-axis vocabulary.
 
 ### 7.2 Format vs Sanity — the two-axis mapping (MUST)
 
-Every `net_addr/` failure is one of exactly two kinds, and
+Every `packages/net_addr/net_addr/` failure is one of exactly two kinds, and
 each maps onto the existing per-type hierarchy:
 
 | Failure kind | Error family | Examples |
@@ -520,7 +520,7 @@ lingering `except ValueError` next to `except Ip6MaskFormatError`
 is the asymmetry this rule exists to remove; delete the
 builtin arm once the raising side is `NetAddrError`-only.
 
-## 8. Module structure inside `net_addr/`
+## 8. Module structure inside `packages/net_addr/net_addr/`
 
 Each value type lives in its own module:
 
@@ -558,14 +558,14 @@ Ip4Address` instead of reaching into the per-type module.
 
 ## 9. Anti-patterns
 
-`net_addr/`-specific anti-patterns. General source-file
+`packages/net_addr/net_addr/`-specific anti-patterns. General source-file
 anti-patterns live in [`source_files.md`](source_files.md)
 §10; language / typing anti-patterns live in
 [`python_features.md`](python_features.md) §22 and
 [`typing.md`](typing.md) §23.
 
 - **Using `@dataclass(frozen=True, slots=True)`** for a new
-  value type. `net_addr/` uses explicit `__slots__` plus
+  value type. `packages/net_addr/net_addr/` uses explicit `__slots__` plus
   explicit `__init__` for the multi-form input parsing.
   Match the existing pattern — do not introduce a
   dataclass branch.
@@ -589,7 +589,7 @@ anti-patterns live in [`source_files.md`](source_files.md)
   longer one of them). The single positional-only
   `address: Self | str | bytes | ... | None` is the contract.
 - **Raising a bare builtin exception anywhere in
-  `net_addr/`** — `ValueError`, `TypeError`, `IndexError`,
+  `packages/net_addr/net_addr/`** — `ValueError`, `TypeError`, `IndexError`,
   `RuntimeError`, `KeyError`, etc. Raise a `NetAddrError`
   subclass (creating one if none fits), multiply-inheriting
   the builtin only where a Python protocol requires it
@@ -603,17 +603,17 @@ anti-patterns live in [`source_files.md`](source_files.md)
   net_addr call** to catch sub-constructor failures. Catch
   the precise `NetAddrError` subclass — the raising side
   never produces a bare builtin (§7.4).
-- **Importing `net_proto` or `pytcp`** from `net_addr/`.
-  `net_addr/` is the bottom of the dependency graph; the
+- **Importing `net_proto` or `pytcp`** from `packages/net_addr/net_addr/`.
+  `packages/net_addr/net_addr/` is the bottom of the dependency graph; the
   reverse direction is the only legal flow.
 - **Adding a setter (`set_address(value)` or
   `address.setter`)** to make a value mutable. Construct a
   fresh instance instead.
-- **Putting stateful behaviour in `net_addr/`** — timers,
+- **Putting stateful behaviour in `packages/net_addr/net_addr/`** — timers,
   caches, threads, sockets. That's `pytcp/`. If a helper
   has any state that outlives a single value, it belongs
   somewhere else.
-- **Reaching into `net_addr/_*.py` modules** from consumers.
+- **Reaching into `packages/net_addr/net_addr/_*.py` modules** from consumers.
   Import the public symbol from `net_addr` (the package),
   never from a private submodule path. The package
   `__init__.py` is the boundary.
@@ -628,21 +628,21 @@ anti-patterns live in [`source_files.md`](source_files.md)
 
 When in doubt, mirror the structure of:
 
-- `net_addr/ip4_address.py` — minimal `IpAddress` subclass.
+- `packages/net_addr/net_addr/ip4_address.py` — minimal `IpAddress` subclass.
   Multi-form `__init__`, `__str__` via `socket.inet_ntoa`,
   `is_*` predicates.
-- `net_addr/ip6_address.py` — heavier subclass with the
+- `packages/net_addr/net_addr/ip6_address.py` — heavier subclass with the
   full IPv6 scope / multicast / solicited-node predicate
   family. Same value-type shape as v4.
-- `net_addr/mac_address.py` — non-IP address type. Shows
+- `packages/net_addr/net_addr/mac_address.py` — non-IP address type. Shows
   how the pattern generalises beyond IPv4 / IPv6.
-- `net_addr/ip4_ifaddr.py` — interface-address class with the known
+- `packages/net_addr/net_addr/ip4_ifaddr.py` — interface-address class with the known
   carve-out for mutable origin / expiration_time via
   `__slots__` + setters (the `gateway` carve-out is gone —
   default gateway is FIB / Route-API state).
-- `net_addr/click_types.py` — every Click `ParamType`
+- `packages/net_addr/net_addr/click_types.py` — every Click `ParamType`
   subclass.
-- `net_addr/errors.py` — the canonical error-class
+- `packages/net_addr/net_addr/errors.py` — the canonical error-class
   hierarchy.
 
 These files are the canonical examples. Any deviation from
@@ -654,25 +654,25 @@ file.
 
 - [`source_files.md`](source_files.md) — general source-file
   conventions (file skeleton, copyright block, imports,
-  naming, formatting). Apply identically to `net_addr/`.
+  naming, formatting). Apply identically to `packages/net_addr/net_addr/`.
 - [`net_proto.md`](net_proto.md) — the per-protocol six-file
   pattern for `net_proto/protocols/<proto>/`. Consumes
-  `net_addr/` value types in header dataclasses.
+  `packages/net_addr/net_addr/` value types in header dataclasses.
 - [`pytcp.md`](pytcp.md) — the runtime services in `pytcp/`.
-  Consumes `net_addr/` value types for stack configuration
+  Consumes `packages/net_addr/net_addr/` value types for stack configuration
   and runtime address bookkeeping.
 - [`python_features.md`](python_features.md) — modern
-  Python features (PEP 604 / 585 / 695) used by `net_addr/`.
+  Python features (PEP 604 / 585 / 695) used by `packages/net_addr/net_addr/`.
 - [`typing.md`](typing.md) — annotation discipline; `Self`,
   PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N, O]`,
   ABC + `@override` patterns.
 - [`unit_testing.md`](unit_testing.md) §3 — the
-  `net_addr/tests/unit/` test layout and the value-type
+  `packages/net_addr/net_addr/tests/unit/` test layout and the value-type
   parameterised-matrix pattern.
 - [`integration_testing.md`](integration_testing.md) —
-  integration tests rarely exercise `net_addr/` directly
+  integration tests rarely exercise `packages/net_addr/net_addr/` directly
   (value types are stateless), but the test harness still
   imports `Ip4Address` / `Ip6Address` / `MacAddress`
-  fixtures from `net_addr/`.
+  fixtures from `packages/net_addr/net_addr/`.
 - [`feature_implementation.md`](feature_implementation.md)
   — tests-first workflow.

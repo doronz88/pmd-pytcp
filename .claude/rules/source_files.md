@@ -6,7 +6,7 @@ copyright block, module docstring, imports, naming,
 formatting, inline comments, source docstrings.
 
 It is the **general** rule that applies across all three
-subpackages (`net_addr/`, `net_proto/`, `pytcp/`). Two
+subpackages (`packages/net_addr/net_addr/`, `net_proto/`, `pytcp/`). Two
 companion rules layer protocol- and runtime-specific
 conventions on top:
 
@@ -60,7 +60,7 @@ scripts only — per standard Python convention, library modules
 carry neither.
 
 Known scripts in this repo: `tests_runner.py` and every file
-in `examples/`. Everything under `net_addr/`, `net_proto/`, or
+in `examples/`. Everything under `packages/net_addr/net_addr/`, `net_proto/`, or
 `pytcp/` is a library module.
 
 ### 2.1 Library module layout (no shebang)

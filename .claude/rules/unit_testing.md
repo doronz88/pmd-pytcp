@@ -1,7 +1,7 @@
 # PyTCP — Unit Test Authoring Rule
 
 This rule codifies how unit tests are written in PyTCP. It is distilled
-from the tests under `net_addr/tests/unit/` and
+from the tests under `packages/net_addr/net_addr/tests/unit/` and
 `net_proto/tests/unit/protocols/` after they were rewritten to native
 `unittest`. Every new test file in this project MUST follow it.
 
@@ -1366,7 +1366,7 @@ When in doubt, mirror the structure of:
   (options container composition)
 - `net_proto/tests/unit/protocols/arp/test__arp__parser__operation.py`
   (multi-line protocol-summary frame annotation style)
-- `net_addr/tests/unit/test__ip4_address.py`
+- `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   (value-class parameterized matrix: per-property assertions,
   equality/hash/roundtrip blocks split into dedicated TestCases)
 
@@ -1396,6 +1396,6 @@ novel patterns introduced in a new file.
 - [`net_addr.md`](net_addr.md),
   [`net_proto.md`](net_proto.md), and
   [`pytcp.md`](pytcp.md) — what the SUT is shaped like for
-  `net_addr/`, `net_proto/`, and `pytcp/` respectively; read
+  `packages/net_addr/net_addr/`, `net_proto/`, and `pytcp/` respectively; read
   the relevant one when writing tests for the corresponding
   source files.
