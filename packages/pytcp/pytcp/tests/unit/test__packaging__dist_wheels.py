@@ -28,7 +28,7 @@ and PyTCP-net_addr wheels ship their full package payload — in particular
 that net_proto's PEP 420 namespace subpackages are included (the defect
 that breaks the umbrella PyTCP wheel).
 
-packages/net_proto/net_proto/tests/unit/test__packaging__dist_wheels.py
+packages/pytcp/pytcp/tests/unit/test__packaging__dist_wheels.py
 
 ver 3.0.6
 """
