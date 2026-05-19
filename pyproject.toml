@@ -99,11 +99,14 @@ disable = """
 """
 
 [tool.setuptools.packages.find]
-# net_addr moved to packages/net_addr/ (its own PyTCP-net_addr
-# dist). Until the Phase-4 cutover, the umbrella PyTCP dist still
-# bundles it from the new location via the extra 'where' root, so
-# the existing release path stays intact.
-where = [".", "packages/net_addr"]
-include = ["pytcp", "net_addr", "net_proto"]
-exclude = ["net_addr.tests*"]
+# net_addr is now its own PyTCP-net_addr dist (packages/net_addr/),
+# so it is no longer discovered here. Everything else about this
+# umbrella build is intentionally left as-is: the PyTCP wheel is
+# known-broken independently of the split (exact non-glob patterns
+# + PEP 420 namespace subpackages -> the wheel ships almost no
+# code; pre-existing on PyPI 3.0.4). That remediation, and whether
+# the umbrella should depend on PyTCP-net_addr, is tracked
+# separately in docs/refactor/umbrella_wheel_packaging.md and is
+# deliberately NOT entangled with the net_addr release.
+include = ["pytcp", "net_proto"]
 

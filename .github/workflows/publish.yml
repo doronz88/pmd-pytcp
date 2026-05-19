@@ -5,7 +5,14 @@ on:
     types: [published]
 
 jobs:
+  # Umbrella PyTCP dist. Decoupled from the net_addr release: it
+  # publishes ONLY on a full release tag (vX.Y.Z), never on a
+  # net_addr-* tag. The umbrella wheel is known-broken pre-existing
+  # (see docs/refactor/umbrella_wheel_packaging.md); this job is
+  # left exactly as it was so the net_addr release cannot drag a
+  # broken PyTCP upload along with it.
   deploy:
+    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     # Trusted Publishing (OIDC) — no API token. Requires a
     # matching PyPI "trusted publisher" registered for this repo
@@ -32,13 +39,13 @@ jobs:
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  # Separate dist: net_addr is published as its own PyTCP-net_addr
-  # project (single repo, multi-dist). Independent job so a failure
-  # publishing one dist does not block the other; each PyPI project
-  # has its own trusted-publisher entry pointing at this workflow.
-  # Dormant until a Release is published AND the PyTCP-net_addr
-  # trusted publisher is registered (Phase-4 cutover).
+  # Standalone PyTCP-net_addr dist (single repo, multi-dist),
+  # decoupled from the umbrella: it publishes ONLY on a
+  # 'net_addr-vX.Y.Z' release tag. Independent job + its own PyPI
+  # trusted-publisher entry pointing at this workflow. Dormant
+  # until such a Release is published.
   deploy-net_addr:
+    if: startsWith(github.event.release.tag_name, 'net_addr-v')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
