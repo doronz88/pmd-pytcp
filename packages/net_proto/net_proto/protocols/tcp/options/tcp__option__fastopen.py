@@ -134,18 +134,27 @@ class TcpOptionFastOpen(TcpOption):
         Ensure integrity of the TCP Fast Open option before parsing it.
         """
 
+        # RFC 7413 §2 — TCP Fast Open has a 2-byte (Kind + Length)
+        # header at minimum; the request form is exactly 2 octets
+        # (empty cookie), the response/use form is 6..18 octets
+        # (4..16-byte cookie).
         if (value := buffer[1]) < TCP__OPTION__FASTOPEN__LEN_MIN:
             raise TcpIntegrityError(
                 f"The TCP Fast Open option length value must be at least "
                 f"{TCP__OPTION__FASTOPEN__LEN_MIN} bytes. Got: {value!r}"
             )
 
+        # RFC 9293 §3.2 — option length MUST NOT exceed the
+        # buffer available.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Fast Open option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
+        # RFC 7413 §2 — "A Fast Open Cookie is between 4 and 16
+        # bytes (inclusive) in length"; cookie_len = 0 is the
+        # request-form (cookie not yet known).
         cookie_len = buffer[1] - TCP__OPTION__FASTOPEN__LEN_MIN
         if cookie_len != 0 and not (
             TCP__OPTION__FASTOPEN__COOKIE_LEN_MIN <= cookie_len <= TCP__OPTION__FASTOPEN__COOKIE_LEN_MAX

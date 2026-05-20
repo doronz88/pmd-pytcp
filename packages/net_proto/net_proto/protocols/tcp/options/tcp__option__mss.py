@@ -111,11 +111,16 @@ class TcpOptionMss(TcpOption):
         Ensure integrity of the TCP Mss option before parsing it.
         """
 
+        # RFC 9293 §3.2 / RFC 6691 — MSS is fixed-shape: 1-byte
+        # kind + 1-byte length + 16-bit MSS value = 4 octets total.
         if (value := buffer[1]) != TCP__OPTION__MSS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Mss option length value must be {TCP__OPTION__MSS__LEN} bytes. Got: {value!r}"
             )
 
+        # RFC 9293 §3.2 — option length MUST NOT exceed the
+        # buffer available (defense-in-depth; the equality check
+        # above already implies this).
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Mss option length value must be less than or equal to "

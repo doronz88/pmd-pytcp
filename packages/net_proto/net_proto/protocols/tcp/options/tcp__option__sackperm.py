@@ -105,6 +105,8 @@ class TcpOptionSackperm(TcpOption):
         Ensure integrity of the TCP Sackperm option before parsing it.
         """
 
+        # RFC 2018 §2 — SACK-Permitted is exactly 2 octets:
+        # 1-byte kind (4) + 1-byte length (2). No option data.
         if (value := buffer[1]) != TCP__OPTION__SACKPERM__LEN:
             raise TcpIntegrityError(
                 f"The TCP Sackperm option length value must be {TCP__OPTION__SACKPERM__LEN} bytes. Got: {value!r}"

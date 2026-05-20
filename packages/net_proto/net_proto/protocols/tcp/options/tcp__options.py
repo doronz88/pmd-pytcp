@@ -174,21 +174,33 @@ class TcpOptions(ProtoOptions):
         Run the TCP options integrity checks before parsing options.
         """
 
+        # RFC 9293 §3.2 — TCP option walker. Case-1 options (Kind
+        # only: EOL and NOP) advance by 1 byte; Case-2 options
+        # (Kind + Length + Data) advance by the Length byte. The
+        # cumulative walk MUST stay within the TCP header region.
         offset = TCP__HEADER__LEN
 
         while offset < hlen:
+            # RFC 9293 §3.2 — EOL (Kind 0) terminates the option list.
             if frame[offset] == int(TcpOptionType.EOL):
                 break
 
+            # RFC 9293 §3.2 — NOP (Kind 1) is a single byte used
+            # for inter-option padding.
             if frame[offset] == int(TcpOptionType.NOP):
                 offset += TCP__OPTION__NOP__LEN
                 continue
 
+            # RFC 9293 §3.2 — Case-2 TLV: the Length byte MUST
+            # cover both itself and the preceding Kind byte (i.e.
+            # >= 2).
             if (value := frame[offset + 1]) < 2:
                 raise TcpIntegrityError(
                     f"The TCP option length must be greater than 1. Got: {value!r}.",
                 )
 
+            # RFC 9293 §3.2 — no individual option may extend
+            # past the TCP header length (Data Offset).
             offset += frame[offset + 1]
             if offset > hlen:
                 raise TcpIntegrityError(

@@ -120,16 +120,28 @@ class TcpOptionWscale(TcpOption):
         Ensure integrity of the TCP Wscale option before parsing it.
         """
 
+        # RFC 7323 §2 — Window Scale is fixed-shape: 1-byte kind +
+        # 1-byte length + 1-byte shift count = 3 octets total.
         if (value := buffer[1]) != TCP__OPTION__WSCALE__LEN:
             raise TcpIntegrityError(
                 f"The TCP Wscale option length value must be {TCP__OPTION__WSCALE__LEN} bytes. Got: {value!r}"
             )
 
+        # RFC 7323 §2 / RFC 9293 §3.2 — option length MUST NOT
+        # exceed the buffer available (defense-in-depth).
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Wscale option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
+
+        # NOTE: RFC 7323 §2.3 ("If a Window Scale option is
+        # received with a shift.cnt value larger than 14, the TCP
+        # SHOULD log the error but MUST use 14 instead of the
+        # specified value") is honoured in `from_buffer` via the
+        # `min(buffer[2], MAX_VALUE)` clamp — the over-14 case is
+        # explicitly NOT an integrity violation but a tolerated
+        # spec deviation.
 
     @override
     @classmethod

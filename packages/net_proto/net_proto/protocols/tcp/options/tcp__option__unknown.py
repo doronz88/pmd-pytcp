@@ -114,6 +114,12 @@ class TcpOptionUnknown(TcpOption):
         Ensure integrity of the unknown TCP option before parsing it.
         """
 
+        # RFC 9293 §3.2 (Case-2 TLV) — the option length byte
+        # bounds the option within the TCP header region. For
+        # unknown codepoints PyTCP preserves the wire bytes
+        # verbatim (RFC 9293 §3.2 "Future options can be defined
+        # ... TCP implementations MUST be able to receive them"),
+        # so the only structural check is "length fits buffer".
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The unknown TCP option length value must be less than or equal to "

@@ -74,6 +74,10 @@ class TcpParser(Tcp, ProtoParser):
         Ensure integrity of the TCP packet before parsing it.
         """
 
+        # RFC 9293 §3.1 — the TCP header is at least 20 octets
+        # (the fixed prefix); the upper bound is the declared IP
+        # payload length, which itself MUST NOT exceed the
+        # received frame.
         if not (TCP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
             raise TcpIntegrityError(
                 "The condition 'TCP__HEADER__LEN <= self._ip__payload_len <= "
@@ -81,6 +85,10 @@ class TcpParser(Tcp, ProtoParser):
                 f"{self._ip__payload_len=}, {len(self._frame)=}",
             )
 
+        # RFC 9293 §3.1 — Data Offset is a 4-bit field giving the
+        # TCP header length in 32-bit words; minimum value is 5
+        # (20 octets) and the header MUST fit within the IP-
+        # declared payload.
         hlen = (self._frame[12] & 0b11110000) >> 2
         if not (TCP__HEADER__LEN <= hlen <= self._ip__payload_len <= len(self._frame)):
             raise TcpIntegrityError(
@@ -89,11 +97,19 @@ class TcpParser(Tcp, ProtoParser):
                 f"{self._ip__payload_len=}, {len(self._frame)=}"
             )
 
+        # RFC 9293 §3.1 — "The checksum field is the 16 bit one's
+        # complement of the one's complement sum of all 16 bit
+        # words in the header and text. ... The checksum also
+        # covers a pseudo header conceptually prefixed to the TCP
+        # header." Algorithm: RFC 1071 one's-complement sum.
         if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise TcpIntegrityError(
                 "The packet checksum must be valid.",
             )
 
+        # RFC 9293 §3.2 (Case-2 TLV options) — walk the per-option
+        # Length bytes and confirm every option fits inside the
+        # declared TCP header region.
         TcpOptions.validate_integrity(frame=self._frame, hlen=hlen)
 
     @override
@@ -114,31 +130,48 @@ class TcpParser(Tcp, ProtoParser):
         Ensure sanity of the TCP packet after parsing it.
         """
 
+        # RFC 9293 §3.1 + RFC 6335 §6 — IANA reserves port 0 and
+        # explicitly states it MUST NOT be assigned. A segment
+        # carrying port 0 in either direction is invalid.
         if (value := self._header.sport) == 0:
             raise TcpSanityError(
                 f"The 'sport' field must be greater than 0. Got: {value!r}",
             )
 
+        # RFC 9293 §3.1 + RFC 6335 §6 — same as above for the
+        # destination port.
         if (value := self._header.dport) == 0:
             raise TcpSanityError(
                 f"The 'dport' field must be greater than 0. Got: {value!r}",
             )
 
+        # RFC 9293 §3.1 — SYN initiates a connection (consuming
+        # an ISN), FIN closes it; the two semantics are mutually
+        # exclusive within a single segment.
         if self._header.flag_syn and self._header.flag_fin:
             raise TcpSanityError(
                 "The 'flag_syn' and 'flag_fin' must not be set simultaneously.",
             )
 
+        # RFC 9293 §3.1 / RFC 5961 §4 — SYN initiates, RST aborts;
+        # the two semantics are mutually exclusive. RFC 5961 §4
+        # specifically hardens the in-window-SYN handling.
         if self._header.flag_syn and self._header.flag_rst:
             raise TcpSanityError(
                 "The 'flag_syn' and 'flag_rst' must not be set simultaneously.",
             )
 
+        # RFC 9293 §3.1 — FIN is an orderly close, RST is an
+        # abrupt abort; combining them is meaningless.
         if self._header.flag_fin and self._header.flag_rst:
             raise TcpSanityError(
                 "The 'flag_fin' and 'flag_rst' must not be set simultaneously.",
             )
 
+        # RFC 9293 §3.10.4 / RFC 9293 §3.1 — once a connection
+        # is established, "the ACK bit ... is always sent" on
+        # every subsequent segment; FIN is by definition sent on
+        # an established connection so it MUST carry ACK.
         if self._header.flag_fin and not self._header.flag_ack:
             raise TcpSanityError(
                 "The 'flag_ack' must be set when 'flag_fin' is set.",

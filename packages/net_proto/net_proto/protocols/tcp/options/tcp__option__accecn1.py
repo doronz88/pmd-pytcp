@@ -163,12 +163,19 @@ class TcpOptionAccecn1(TcpOption):
         Ensure integrity of the TCP AccECN1 option before parsing it.
         """
 
+        # RFC 9768 §3.2.3 Table 5 — AccECN1 supports four wire
+        # lengths corresponding to which trailing counter fields
+        # are present (2 = empty, 5 = ee1b only, 8 = ee1b+eceb,
+        # 11 = all three; note the AccECN1-vs-AccECN0 ordering
+        # difference). Any other length is malformed.
         if (value := buffer[1]) not in _TCP__OPTION__ACCECN1__VALID_LENS:
             raise TcpIntegrityError(
                 "The TCP AccECN1 option length value must be one of "
                 f"{sorted(_TCP__OPTION__ACCECN1__VALID_LENS)}. Got: {value!r}"
             )
 
+        # RFC 9293 §3.2 — option length MUST NOT exceed the
+        # buffer available.
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP AccECN1 option length value must be less than or equal to "

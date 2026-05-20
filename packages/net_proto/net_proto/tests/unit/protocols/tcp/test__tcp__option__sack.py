@@ -55,6 +55,8 @@ class TestTcpOptionSackAsserts(TestCase):
         Ensure the TCP Sack option constructor raises an exception when
         the provided 'blocks' argument has more than
         TCP__OPTION__SACK__MAX_BLOCK_NUM elements.
+
+        Reference: RFC 2018 §3 (max 4 SACK blocks per packet).
         """
 
         value = TCP__OPTION__SACK__MAX_BLOCK_NUM + 1
@@ -73,6 +75,8 @@ class TestTcpOptionSackAsserts(TestCase):
         """
         Ensure the TCP Sack option constructor accepts exactly
         TCP__OPTION__SACK__MAX_BLOCK_NUM blocks (the boundary).
+
+        Reference: RFC 2018 §3 (max 4 SACK blocks per packet).
         """
 
         blocks = [TcpSackBlock(0, 0)] * TCP__OPTION__SACK__MAX_BLOCK_NUM
@@ -206,6 +210,8 @@ class TestTcpOptionSackAssembler(TestCase):
         """
         Ensure '__len__()' returns the expected total option length
         (2-byte header + 8 bytes per block).
+
+        Reference: RFC 2018 §3 (SACK option length = 2 + 8N).
         """
 
         self.assertEqual(
@@ -217,6 +223,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -228,6 +236,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -239,6 +249,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire frame.
+
+        Reference: RFC 2018 §3 (SACK option wire format).
         """
 
         self.assertEqual(
@@ -250,6 +262,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__blocks(self) -> None:
         """
         Ensure the 'blocks' field exposes the provided block list.
+
+        Reference: RFC 2018 §3 (SACK block list).
         """
 
         self.assertEqual(
@@ -261,6 +275,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.SACK.
+
+        Reference: RFC 2018 §3 (SACK option Kind = 5).
         """
 
         self.assertEqual(
@@ -272,6 +288,8 @@ class TestTcpOptionSackAssembler(TestCase):
     def test__tcp__option__sack__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__LEN + 8 * num_blocks.
+
+        Reference: RFC 2018 §3 (SACK option length = 2 + 8N).
         """
 
         self.assertEqual(
@@ -338,6 +356,8 @@ class TestTcpOptionSackParser(TestCase):
         """
         Ensure from_buffer parses the Sack wire frame into the expected
         TcpOptionSack (trailing bytes must be ignored).
+
+        Reference: RFC 2018 §3 (SACK option wire format).
         """
 
         option = TcpOptionSack.from_buffer(*self._args)
@@ -398,6 +418,27 @@ class TestTcpOptionSackParser(TestCase):
                 ),
             },
         },
+        {
+            "_description": "TCP Sack option, 5 blocks (one above the 4-block ceiling).",
+            # Wire: type=5, len=42 (= 2 + 5*8), then 5 zero-filled 8-byte
+            # blocks. The existing length-and-modulo integrity checks
+            # accept this frame; before the fix, from_buffer would build
+            # 5 TcpSackBlock instances and the __post_init__ assert on
+            # len(blocks) <= 4 would trip a bare AssertionError that
+            # leaked past the IP RX handler's PacketValidationError catch.
+            "_args": [
+                b"\x05\x2a"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x00"
+            ],
+            "_results": {
+                "error": TcpIntegrityError,
+                "error_message": ("[INTEGRITY ERROR][TCP] The TCP Sack option must carry at most 4 blocks. Got: 5"),
+            },
+        },
     ]
 )
 class TestTcpOptionSackParserFailures(TestCase):
@@ -413,6 +454,8 @@ class TestTcpOptionSackParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 2018 §3 (SACK option wire format).
         """
 
         with self.assertRaises(self._results["error"]) as error:

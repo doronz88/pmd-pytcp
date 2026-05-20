@@ -73,8 +73,74 @@ options at `packages/net_proto/net_proto/protocols/tcp/options/`:
 - `tcp__option__timestamps.py` (kind 8)
 - `tcp__option__fastopen.py` (kind 34)
 
-Plus the AccECN option (RFC 9341) and the
+Plus the AccECN option (RFC 9768) and the
 ECN-related TCP control bits.
+
+---
+
+## §3.1 / §3.2 Parser integrity & sanity surface
+
+PyTCP's TCP parser exposes two staged checks:
+`_validate_integrity` (structural pre-parse — IP-layer
+length bounds, Data Offset, one's-complement checksum,
+container TLV walk) and `_validate_sanity` (post-parse
+field semantics). Hostile-wire values that would otherwise
+trip a dataclass `__post_init__` assert are caught at
+integrity and re-raised as `TcpIntegrityError` so the IP
+RX handler's `PacketValidationError` catch can drop the
+frame cleanly.
+
+### TCP base header (`tcp__parser.py`)
+
+| Phase | Check | RFC clause |
+|-------|-------|------------|
+| Integrity | `20 <= ip__payload_len <= len(frame)` | RFC 9293 §3.1 (20-octet fixed header floor; IP-bounded) |
+| Integrity | `20 <= hlen <= ip__payload_len <= len(frame)` | RFC 9293 §3.1 (Data Offset ≥ 5 32-bit words) |
+| Integrity | `inet_cksum(frame, init=pshdr_sum) == 0` | RFC 9293 §3.1 (one's-complement over pseudo-header + segment); RFC 1071 |
+| Integrity | TCP options container TLV walk (Length ≥ 2, fits within Data Offset) | RFC 9293 §3.2 |
+| Sanity | `sport != 0` | RFC 9293 §3.1 + RFC 6335 §6 (IANA reserves port 0) |
+| Sanity | `dport != 0` | RFC 9293 §3.1 + RFC 6335 §6 |
+| Sanity | `not (flag_syn and flag_fin)` | RFC 9293 §3.1 (SYN initiates / FIN closes — mutually exclusive) |
+| Sanity | `not (flag_syn and flag_rst)` | RFC 9293 §3.1 / RFC 5961 §4 (SYN/RST hardening) |
+| Sanity | `not (flag_fin and flag_rst)` | RFC 9293 §3.1 (orderly close vs abrupt abort) |
+| Sanity | `flag_fin → flag_ack` | RFC 9293 §3.10.4 / §3.1 (ACK set on every segment after establishment) |
+
+### Per-option parser integrity
+
+Every TCP option file carries a `_validate_integrity`
+static method. The Kind / Length / fixed-shape checks
+catch the recurring hostile-wire `AssertionError` leak
+class before `from_buffer` reaches `cls(...)`.
+
+| Option | `_validate_integrity` enforces | RFC clause |
+|--------|--------------------------------|------------|
+| EOL (kind 0) | type-byte (Case-1 TLV, no length) | RFC 9293 §3.2 |
+| NOP (kind 1) | type-byte (Case-1 TLV, no length) | RFC 9293 §3.2 |
+| MSS (kind 2) | `length == 4` | RFC 9293 §3.7.1 / RFC 6691 |
+| WSCALE (kind 3) | `length == 3` | RFC 7323 §2 |
+| SACK-Permitted (kind 4) | `length == 2` | RFC 2018 §2 |
+| SACK (kind 5) | `length ≤ buffer`; `(length − 2) % 8 == 0`; **block count ≤ 4** | RFC 2018 §3 |
+| Timestamps (kind 8) | `length == 10` | RFC 7323 §3 |
+| FastOpen (kind 34) | `length ≥ 2`; `length ≤ buffer`; `cookie_len ∈ {0} ∪ [4..16]` | RFC 7413 §2 |
+| AccECN0 (kind 172) | `length ∈ {2, 5, 8, 11}` | RFC 9768 §3.2.3 |
+| AccECN1 (kind 174) | `length ∈ {2, 5, 8, 11}` | RFC 9768 §3.2.3 |
+| Unknown | `length ≤ buffer` (Case-2 TLV catch-all) | RFC 9293 §3.2 |
+
+The SACK 4-block ceiling check is duplicated in the
+dataclass `__post_init__` — the former is the parser-level
+integrity gate (reachable from hostile wire), the latter
+is the construction-time invariant for API consumers
+building option objects programmatically. The duplication
+is deliberate and load-bearing, same pattern as the IPv4
+and IPv6 per-option passes.
+
+WSCALE has one deliberate divergence: RFC 7323 §2.3
+("If a Window Scale option is received with a shift.cnt
+value larger than 14, the TCP SHOULD log the error but
+MUST use 14 instead of the specified value") is honoured
+by clamping in `from_buffer`, NOT by raising at integrity
+— the over-14 case is a tolerated spec deviation, not an
+integrity violation.
 
 ---
 

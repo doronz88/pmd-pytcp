@@ -172,16 +172,34 @@ class TcpOptionSack(TcpOption):
         Ensure integrity of the TCP Sack option before parsing it.
         """
 
+        # RFC 2018 §3 — option length MUST NOT exceed the buffer
+        # available (the parent options walker trims to hlen).
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Sack option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
+        # RFC 2018 §3 — each SACK block is exactly 8 octets
+        # (32-bit Left Edge + 32-bit Right Edge); the option data
+        # region (length minus 2-byte header) MUST be a whole
+        # number of blocks.
         if (value := buffer[1] - TCP__OPTION__LEN) % TCP__OPTION__SACK__BLOCK_LEN:
             raise TcpIntegrityError(
                 "The TCP Sack option blocks length value must be a multiple of "
                 f"{TCP__OPTION__SACK__BLOCK_LEN}. Got: {value!r}"
+            )
+
+        # RFC 2018 §3 — "The maximum number of SACK blocks that
+        # can be carried in a TCP packet is limited by the
+        # maximum size of the TCP options field (40 bytes)";
+        # 40 − 2 (option header) = 38, 38 / 8 = 4 blocks
+        # ceiling. Defense-in-depth at the integrity layer so a
+        # wire frame with 5+ blocks does not leak as a bare
+        # AssertionError out of the dataclass __post_init__.
+        if (value := (buffer[1] - TCP__OPTION__LEN) // TCP__OPTION__SACK__BLOCK_LEN) > TCP__OPTION__SACK__MAX_BLOCK_NUM:
+            raise TcpIntegrityError(
+                f"The TCP Sack option must carry at most {TCP__OPTION__SACK__MAX_BLOCK_NUM} blocks. " f"Got: {value!r}"
             )
 
     @override

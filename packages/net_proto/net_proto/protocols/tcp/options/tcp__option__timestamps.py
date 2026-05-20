@@ -129,11 +129,16 @@ class TcpOptionTimestamps(TcpOption):
         Ensure integrity of the TCP Timestamps option before parsing it.
         """
 
+        # RFC 7323 §3 — Timestamps is fixed-shape: 1-byte kind +
+        # 1-byte length + 4-byte TS Value + 4-byte TS Echo Reply
+        # = 10 octets total.
         if (value := buffer[1]) != TCP__OPTION__TIMESTAMPS__LEN:
             raise TcpIntegrityError(
                 f"The TCP Timestamps option length value must be {TCP__OPTION__TIMESTAMPS__LEN} bytes. Got: {value!r}"
             )
 
+        # RFC 7323 §3 / RFC 9293 §3.2 — option length MUST NOT
+        # exceed the buffer available (defense-in-depth).
         if (value := buffer[1]) > len(buffer):
             raise TcpIntegrityError(
                 "The TCP Timestamps option length value must be less than or equal to "
