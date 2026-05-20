@@ -128,9 +128,16 @@ arm handles unknown types via `__phrx_icmp6__unknown`, preserving
 the option to deliver them to upper-layer consumers when
 applicable. This is the **opposite** of the ICMPv4 design.
 
-### Known pre-existing gap
+### RFC 7112 Parameter Problem code 3
 
-`Icmp6ParameterProblemCode` does not yet carry **code 3** from
-RFC 7112 §3 (`UNRECOGNIZED_FIRST_FRAGMENT_HAS_INCOMPLETE_HEADER_CHAIN`).
-A real RFC 7112-compliant peer sending PP code=3 will be rejected
-at parser sanity. Adding the enum member is a follow-up.
+`Icmp6ParameterProblemCode` carries **code 3** (RFC 7112 §3 —
+`INCOMPLETE_HEADER_CHAIN`). PyTCP accepts inbound PP code 3 at
+parser sanity (Linux's `ICMPV6_HDR_INCOMP = 3` behaviour). PyTCP
+does NOT actively emit PP code 3 from any drop path —
+matching Linux, which also leaves the constant defined for
+acceptance but silently drops at IPv6 reassembly failure rather
+than emitting code 3. Active emission (walking the first
+fragment's header chain in `packet_handler__ip6_frag__rx` and
+emitting PP code 3 with a computed pointer) is deferred to
+Phase 2 (router-grade parity), where the stateless-middlebox use
+case the RFC was written for actually applies.

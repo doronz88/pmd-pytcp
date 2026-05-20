@@ -66,12 +66,19 @@ ICMP6__PARAMETER_PROBLEM__STRUCT = "! BBH L"
 
 class Icmp6ParameterProblemCode(Icmp6Code):
     """
-    The ICMPv6 Parameter Problem 'code' field values (RFC 4443 §3.4).
+    The ICMPv6 Parameter Problem 'code' field values
+    (RFC 4443 §3.4 codes 0..2; RFC 7112 §3 code 3).
     """
 
     ERRONEOUS_HEADER_FIELD = 0
     UNRECOGNIZED_NEXT_HEADER = 1
     UNRECOGNIZED_IPV6_OPTION = 2
+    # RFC 7112 §3 — emitted by a receiver when an IPv6 first fragment does
+    # not contain the full extension-header chain + upper-layer header.
+    # PyTCP accepts this on RX (matching Linux's ICMPV6_HDR_INCOMP = 3);
+    # PyTCP does NOT actively emit code 3 — matching Linux's silent-drop
+    # behaviour on reassembly failure.
+    INCOMPLETE_HEADER_CHAIN = 3
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -95,9 +95,13 @@ _PACKET_TOO_BIG__UNKNOWN_CODE = _with_cksum(b"\x02\x01\x00\x00\x00\x00\x05\xdc")
 # Time Exceeded (type=3); RFC 4443 §3.3 — codes 0..1.
 _TIME_EXCEEDED__UNKNOWN_CODE = _with_cksum(b"\x03\x02\x00\x00\x00\x00\x00\x00")
 
-# Parameter Problem (type=4); RFC 4443 §3.4 — codes 0..2.
+# Parameter Problem (type=4); RFC 4443 §3.4 codes 0..2 + RFC 7112 §3
+# code 3 (Incomplete IPv6 Header Chain). Code=4 is unassigned.
 # Pointer field (4 bytes) follows the 4-byte header.
-_PARAM_PROBLEM__UNKNOWN_CODE = _with_cksum(b"\x04\x03\x00\x00\x00\x00\x00\x00")
+_PARAM_PROBLEM__UNKNOWN_CODE = _with_cksum(b"\x04\x04\x00\x00\x00\x00\x00\x00")
+
+# Parameter Problem (type=4) with code=3 — RFC 7112 §3 — valid; must parse.
+_PARAM_PROBLEM__RFC7112_CODE = _with_cksum(b"\x04\x03\x00\x00\x00\x00\x00\x00")
 
 # Echo Request (type=128); RFC 4443 §4.1 — code MUST be 0.
 _ECHO_REQUEST__UNKNOWN_CODE = _with_cksum(b"\x80\x01\x00\x00\x30\x39\xd4\x31")
@@ -137,11 +141,11 @@ _ECHO_REPLY__UNKNOWN_CODE = _with_cksum(b"\x81\x01\x00\x00\x30\x39\xd4\x31")
             },
         },
         {
-            "_description": "Parameter Problem (type=4) with unknown code=3.",
+            "_description": "Parameter Problem (type=4) with unknown code=4.",
             "_frame_rx": _PARAM_PROBLEM__UNKNOWN_CODE,
             "_results": {
                 "error_message": (
-                    "The 'code' field of the ICMPv6 Parameter Problem " "message must be one of [0, 1, 2]. Got: 3."
+                    "The 'code' field of the ICMPv6 Parameter Problem " "message must be one of [0, 1, 2, 3]. Got: 4."
                 ),
             },
         },
@@ -198,4 +202,29 @@ class TestIcmp6ParserSanityChecks(TestCase):
             str(error.exception),
             f"[SANITY ERROR][ICMPv6] {self._results['error_message']}",
             msg=f"Unexpected sanity-error message for case: {self._description}",
+        )
+
+
+class TestIcmp6ParserSanityHappyPaths(TestCase):
+    """
+    Happy-path sanity tests — valid frames must pass the sanity validator.
+    """
+
+    def test__icmp6__parser__sanity__pp_code_3_rfc7112_accepted(self) -> None:
+        """
+        Ensure a Parameter Problem with code=3 (Incomplete IPv6 Header
+        Chain) parses cleanly. PyTCP accepts this code on RX per Linux
+        behavior (`ICMPV6_HDR_INCOMP = 3`); it does not actively emit
+        code 3 itself (Linux drops silently on reassembly failure).
+
+        Reference: RFC 7112 §3 (Parameter Problem code 3 — IPv6 first fragment with incomplete IPv6 header chain).
+        """
+
+        packet_rx = _packet_rx_with_ip6(_PARAM_PROBLEM__RFC7112_CODE)
+        parser = Icmp6Parser(packet_rx)
+
+        self.assertEqual(
+            int(parser.message.code),
+            3,
+            msg="PP code=3 must be exposed on the parsed message as the RFC 7112 code value.",
         )
