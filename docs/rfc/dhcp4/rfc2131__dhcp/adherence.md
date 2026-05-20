@@ -243,14 +243,19 @@ is decoded back into a bool
 (`:609`) — builds the message with
 `dhcp4__operation=Dhcp4Operation.REQUEST`.
 
-The parser at `dhcp4__parser.py:76-86` does not validate
-that inbound frames carry REPLY — a malformed
-REQUEST-with-server-reply could in principle parse. The
-client's `message_type` filter inside
-`_recv_within_window` (`dhcp4_client.py:927-1002`)
-catches the substantive case by dropping any frame whose
-message-type does not match the expected one for the
-current FSM leg.
+The parser does not validate that inbound frames carry
+REPLY specifically (the FSM-level `message_type` filter
+inside `_recv_within_window` catches that downstream), but
+as of the RFC-alignment pass it does reject any
+`operation` value outside `{REQUEST=1, REPLY=2}` at parser
+sanity — `Dhcp4SanityError` covers unknown opcodes via the
+`Dhcp4Operation.is_unknown` check
+(`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__parser.py::_validate_sanity`).
+The header's `from_buffer` was switched from the strict
+`Dhcp4Operation(value)` constructor to the tolerant
+`Dhcp4Operation.from_int(value)` form so that unknown wire
+opcodes materialise as `UNKNOWN_n` and are caught at the
+sanity layer rather than leaking a raw `ValueError`.
 
 ---
 
@@ -1065,10 +1070,21 @@ is expected from the server.
   (under_min / over_max for integer fields; type checks
   for enums and addresses).
 - **Unit:**
-  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py` (155 lines)
-  Pin integrity error paths (frame too short, bad
-  magic cookie, bad hardware type, bad hardware
-  length).
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py`
+  Pin integrity error paths (frame too short; bad magic
+  cookie, bad hardware type, bad hardware length — the
+  last three raised from `Dhcp4Header.from_buffer` and
+  surfaced as `Dhcp4IntegrityError` via the
+  `_parse` try/except wrap per `net_proto.md` §7).
+- **Unit:**
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__sanity_checks.py`
+  Pin sanity error paths covering every `_validate_sanity`
+  branch: unknown `operation` (RFC 951 §8 / RFC 2131 §2);
+  `ciaddr` / `yiaddr` / `siaddr` / `giaddr` =
+  loopback / multicast / limited-broadcast (RFC 1122
+  §3.2.1.3); `chaddr` = multicast / broadcast (RFC 2131
+  §2 implicit unicast + IEEE 802.3). Includes a happy-path
+  pin that a valid REPLY frame parses cleanly.
 - **Unit:**
   `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py` (690 lines)
   Pin parser happy path: full round-trip of a DISCOVER

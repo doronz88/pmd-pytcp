@@ -34,8 +34,10 @@ from typing import override
 
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.dhcp4.dhcp4__base import Dhcp4
+from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4Operation
 from net_proto.protocols.dhcp4.dhcp4__errors import (
     Dhcp4IntegrityError,
+    Dhcp4SanityError,
 )
 from net_proto.protocols.dhcp4.dhcp4__header import (
     DHCP4__HEADER__FILE__MAX_LEN,
@@ -75,11 +77,18 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         Ensure integrity of the DHCPv4 packet before parsing it.
         """
 
+        # RFC 2131 §2 — fixed BOOTP header (236 B) + 4-byte magic cookie = 240 B floor.
         if len(self._frame) < DHCP4__HEADER__LEN:
             raise Dhcp4IntegrityError(
                 f"The minimum packet length must be {DHCP4__HEADER__LEN} bytes. Got: {len(self._frame)} bytes."
             )
 
+        # RFC 2131 §4.1 / RFC 2132 §2 — variable-length options must self-bound (TLV).
+        # Additional integrity invariants enforced inside 'Dhcp4Header.from_buffer'
+        # and surfaced via '_parse' (try/except wrap per net_proto.md §7):
+        #   - hrtype == ETHERNET (RFC 2131 §2 "htype").
+        #   - hrlen  == 6        (RFC 2131 §2 "hlen" must match htype).
+        #   - magic_cookie == 0x63825363 (RFC 2131 §3 / RFC 2132 §2).
         Dhcp4Options.validate_integrity(frame=self._frame, hlen=len(self._frame))
 
     @override
@@ -167,3 +176,47 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         """
         Ensure sanity of the DHCPv4 packet after parsing it.
         """
+
+        # --- operation (BOOTREQUEST / BOOTREPLY) ---
+        # RFC 951 §8 / RFC 2131 §2 define only operation=1 (BOOTREQUEST) and
+        # operation=2 (BOOTREPLY); ProtoEnum '_missing_' materialises any other
+        # wire value as UNKNOWN_n.
+        if self._header.operation.is_unknown:
+            raise Dhcp4SanityError(
+                f"The 'operation' field value must be one of {Dhcp4Operation.get_known_values()}. "
+                f"Got: {int(self._header.operation)}."
+            )
+
+        # --- ciaddr / yiaddr / siaddr / giaddr (all host endpoints) ---
+        # RFC 1122 §3.2.1.3 — an IPv4 source/destination address that names a
+        # host endpoint MUST NOT be loopback (127/8), multicast (224/4), or the
+        # limited broadcast (255.255.255.255). All four DHCPv4 header address
+        # fields name host endpoints (client current / assigned / next-server /
+        # relay-agent).
+        for field_name in ("ciaddr", "yiaddr", "siaddr", "giaddr"):
+            address = getattr(self._header, field_name)
+            if address.is_loopback:
+                raise Dhcp4SanityError(f"The '{field_name}' field value {address} must not be a loopback IPv4 address.")
+            if address.is_multicast:
+                raise Dhcp4SanityError(
+                    f"The '{field_name}' field value {address} must not be a multicast IPv4 address."
+                )
+            if address.is_limited_broadcast:
+                raise Dhcp4SanityError(
+                    f"The '{field_name}' field value {address} must not be a limited broadcast IPv4 address."
+                )
+
+        # --- chaddr (client hardware address) ---
+        # RFC 2131 §2 — 'chaddr' is the client's hardware address; for Ethernet
+        # (htype=1, hlen=6) IEEE 802.3 forbids the group-bit-set or all-ones MAC
+        # as a unicast endpoint identifier. ('chaddr' = all-zeros is tolerated
+        # because RFC 4361 deployments may zero it when option 61 carries the
+        # client ID instead.)
+        if self._header.chaddr.is_multicast:
+            raise Dhcp4SanityError(
+                f"The 'chaddr' field value {self._header.chaddr} must not be a multicast MAC address."
+            )
+        if self._header.chaddr.is_broadcast:
+            raise Dhcp4SanityError(
+                f"The 'chaddr' field value {self._header.chaddr} must not be a broadcast MAC address."
+            )

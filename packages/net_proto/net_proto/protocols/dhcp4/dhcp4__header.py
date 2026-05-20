@@ -294,7 +294,11 @@ class Dhcp4Header(ProtoStruct):
         )
 
         return cls(
-            operation=Dhcp4Operation(operation),
+            # Use the tolerant 'from_int' so an unknown wire 'op' value is
+            # materialised as UNKNOWN_n rather than raising ValueError out
+            # of '_parse'; the parser's '_validate_sanity' rejects unknowns
+            # under RFC 951 §8 / RFC 2131 §2 (only 1=REQUEST, 2=REPLY).
+            operation=Dhcp4Operation.from_int(operation),
             hops=hops,
             xid=xid,
             secs=secs,

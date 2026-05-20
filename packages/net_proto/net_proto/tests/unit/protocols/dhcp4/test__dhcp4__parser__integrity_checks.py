@@ -94,6 +94,8 @@ class TestDhcp4ParserIntegrityChecks(TestCase):
         Ensure the DHCPv4 packet parser raises Dhcp4IntegrityError with the
         expected '[INTEGRITY ERROR][DHCPv4]'-prefixed message for every
         under-length frame.
+
+        Reference: RFC 2131 §2 (fixed BOOTP header is 236 B + 4-byte magic cookie = 240 B floor).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -120,6 +122,8 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
         frame has invalid header content) and the failure surfaces as a
         Dhcp4IntegrityError once the parser wraps the header 'from_buffer'
         asserts, but the resulting message must not be the length error.
+
+        Reference: RFC 2131 §2 (240-byte header is the structural floor; content checks are separate).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -141,6 +145,8 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
         """
         Ensure the error message reports the exact length of the provided
         buffer (not a truncated or cached value).
+
+        Reference: PyTCP test infrastructure (no RFC clause — diagnostic message integrity).
         """
 
         frame = memoryview(b"\x00" * 37)
