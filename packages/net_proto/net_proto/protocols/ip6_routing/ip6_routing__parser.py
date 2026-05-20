@@ -91,13 +91,19 @@ class Ip6RoutingParser(Ip6Routing, ProtoParser):
         Ensure integrity of the IPv6 Routing packet before parsing it.
         """
 
+        # RFC 8200 §4.4 — the Routing header's fixed prefix is 4
+        # octets (Next Header / Hdr Ext Len / Routing Type /
+        # Segments Left); the type-specific data follows.
         if len(self._frame) < IP6_ROUTING__HEADER__LEN:
             raise Ip6RoutingIntegrityError(
                 "The condition 'IP6_ROUTING__HEADER__LEN <= len(self._frame)' must be met. "
                 f"Got: {IP6_ROUTING__HEADER__LEN=}, {len(self._frame)=}",
             )
 
-        # Total Routing Header length on the wire = (Hdr Ext Len + 1) * 8.
+        # RFC 8200 §4.4 — Hdr Ext Len in 8-octet units NOT
+        # including the first 8 octets; total wire length =
+        # (Hdr Ext Len + 1) * 8. Frame MUST hold every octet the
+        # header claims.
         hdr_ext_len = self._frame[1]
         total_routing_len = (hdr_ext_len + 1) * 8
 
@@ -107,8 +113,16 @@ class Ip6RoutingParser(Ip6Routing, ProtoParser):
                 f"Got: {hdr_ext_len=}, {total_routing_len=}, {len(self._frame)=}",
             )
 
-        # RFC 5095 §3: hard-drop on RH0 with Parameter Problem code 0
-        # pointing at the Routing Type byte.
+        # RFC 5095 §3 — "An IPv6 node that receives a packet with
+        # a destination address assigned to it and containing an
+        # RH0 extension header MUST NOT execute the algorithm
+        # specified in the latter part of RFC 2460 Section 4.4
+        # for RH0. Instead, such packets MUST be processed
+        # according to the behavior described in [RFC4884] for a
+        # packet with an unrecognized Routing Type value." Hard-
+        # drop with ICMPv6 Parameter Problem Code 0 (Erroneous
+        # Header Field Encountered) pointing at the Routing Type
+        # byte.
         routing_type = self._frame[IP6_ROUTING__ROUTING_TYPE__OFFSET]
         if routing_type == int(Ip6RoutingType.RH0):
             raise Ip6RoutingIntegrityError(

@@ -117,6 +117,32 @@ from net_proto import Ip6Parser, Ip6SanityError, PacketRx
                 "pointer": 8,
             },
         },
+        {
+            "_description": "Source address is the IPv6 loopback (::1).",
+            # Bytes 8-23 encode ::1 (the IPv6 loopback address).
+            # RFC 4291 §2.5.3 — "The loopback address must not be
+            # used as the source address in IPv6 packets sent outside
+            # of a single node." Direct analog of the IPv4 §3.2.1.3(g)
+            # loopback ban.
+            #
+            # IPv6 wire frame (40 bytes, header only):
+            #   Byte  0     : 0x60   -> ver=6
+            #   Bytes 1-3   : 0x000000 -> dscp=0, ecn=0, flow=0
+            #   Bytes 4-5   : 0x0000 -> dlen=0
+            #   Byte  6     : 0xff   -> next=IpProto.RAW
+            #   Byte  7     : 0x40   -> hop=64
+            #   Bytes 8-23  : src=::1 (loopback)
+            #   Bytes 24-39 : dst=a00a:b00b:c00c:d00d:e00e:f00f:0a0a:0b0b
+            "_frame_rx": (
+                b"\x60\x00\x00\x00\x00\x00\xff\x40\x00\x00\x00\x00\x00\x00\x00\x00"
+                b"\x00\x00\x00\x00\x00\x00\x00\x01\xa0\x0a\xb0\x0b\xc0\x0c\xd0\x0d"
+                b"\xe0\x0e\xf0\x0f\x0a\x0a\x0b\x0b"
+            ),
+            "_results": {
+                "error_message": ("The 'src' field must not be a loopback address. Got: Ip6Address('::1')"),
+                "pointer": 8,
+            },
+        },
     ],
 )
 class TestIp6ParserSanityChecks(TestCase):

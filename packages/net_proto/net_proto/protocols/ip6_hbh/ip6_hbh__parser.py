@@ -71,13 +71,19 @@ class Ip6HbhParser(Ip6Hbh, ProtoParser):
         Ensure integrity of the IPv6 HBH packet before parsing it.
         """
 
+        # RFC 8200 §4.3 — the HBH header is at minimum 2 octets
+        # (Next Header / Hdr Ext Len); the options trailer is
+        # gated separately below.
         if len(self._frame) < IP6_HBH__HEADER__LEN:
             raise Ip6HbhIntegrityError(
                 "The condition 'IP6_HBH__HEADER__LEN <= len(self._frame)' must be met. "
                 f"Got: {IP6_HBH__HEADER__LEN=}, {len(self._frame)=}",
             )
 
-        # RFC 8200 §4.3: total HBH length on the wire is (Hdr Ext Len + 1) * 8.
+        # RFC 8200 §4.3 — Hdr Ext Len gives the length of the HBH
+        # header in 8-octet units NOT including the first 8 octets,
+        # so total wire length = (Hdr Ext Len + 1) * 8. The
+        # received frame MUST hold every octet the header claims.
         hdr_ext_len = self._frame[1]
         total_hbh_len = (hdr_ext_len + 1) * 8
 
@@ -87,8 +93,10 @@ class Ip6HbhParser(Ip6Hbh, ProtoParser):
                 f"Got: {hdr_ext_len=}, {total_hbh_len=}, {len(self._frame)=}",
             )
 
-        # Walk the TLV options block to confirm every option's length
-        # field stays inside the declared HBH region.
+        # RFC 8200 §4.2 (TLV format) — walk the per-option Opt
+        # Data Len bytes and confirm every option fits inside the
+        # declared HBH region. Catches truncated trailing options
+        # and over-long Opt Data Len values.
         Ip6HbhOptions.validate_integrity(
             buffer=self._frame[IP6_HBH__HEADER__LEN:total_hbh_len],
         )

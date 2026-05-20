@@ -36,6 +36,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import (
     IP6_HBH__OPTION__LEN,
     Ip6HbhOption,
@@ -124,6 +125,24 @@ class Ip6HbhOptionRouterAlert(Ip6HbhOption):
 
         return memoryview(buffer)
 
+    @staticmethod
+    def _validate_integrity(buffer: Buffer, /) -> None:
+        """
+        Ensure integrity of the IPv6 HBH Router Alert option before
+        parsing it. Hostile-wire defense-in-depth so the Opt Data
+        Len mismatch does not leak as a bare AssertionError past
+        the IPv6 chain walker's PacketValidationError catch.
+        """
+
+        # RFC 2711 §2.1 — Router Alert is fixed-shape: 1-byte type
+        # + 1-byte Opt Data Len + 2-byte value = 4 octets total;
+        # Opt Data Len MUST be 2.
+        if (value := buffer[1]) != IP6_HBH__OPTION__ROUTER_ALERT__OPT_DATA_LEN:
+            raise Ip6HbhIntegrityError(
+                f"The IPv6 HBH Router Alert option Opt Data Len must be "
+                f"{IP6_HBH__OPTION__ROUTER_ALERT__OPT_DATA_LEN}. Got: {value!r}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -141,9 +160,6 @@ class Ip6HbhOptionRouterAlert(Ip6HbhOption):
             f"Got: {Ip6HbhOptionType.from_int(value)!r}"
         )
 
-        assert (value := buffer[1]) == IP6_HBH__OPTION__ROUTER_ALERT__OPT_DATA_LEN, (
-            f"The IPv6 HBH Router Alert option Opt Data Len must be "
-            f"{IP6_HBH__OPTION__ROUTER_ALERT__OPT_DATA_LEN}. Got: {value!r}"
-        )
+        cls._validate_integrity(buffer)
 
         return cls(value=int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__ROUTER_ALERT__LEN]))

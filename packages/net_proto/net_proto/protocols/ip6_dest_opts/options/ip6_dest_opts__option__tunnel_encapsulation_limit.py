@@ -37,6 +37,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8
+from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__errors import Ip6DestOptsIntegrityError
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option import (
     Ip6DestOptsOption,
     Ip6DestOptsOptionType,
@@ -109,6 +110,25 @@ class Ip6DestOptsOptionTunnelEncapsulationLimit(Ip6DestOptsOption):
 
         return memoryview(buffer)
 
+    @staticmethod
+    def _validate_integrity(buffer: Buffer, /) -> None:
+        """
+        Ensure integrity of the IPv6 Dest Opts Tunnel Encapsulation
+        Limit option before parsing it. Hostile-wire defense-in-
+        depth so the Opt Data Len mismatch does not leak as a bare
+        AssertionError past the IPv6 chain walker's
+        PacketValidationError catch.
+        """
+
+        # RFC 2473 §4.1.1 — the Tunnel Encapsulation Limit option
+        # is fixed-shape: 1-byte type + 1-byte Opt Data Len +
+        # 1-byte limit = 3 octets total; Opt Data Len MUST be 1.
+        if (value := buffer[1]) != IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__OPT_DATA_LEN:
+            raise Ip6DestOptsIntegrityError(
+                f"The IPv6 Dest Opts Tunnel Encap Limit option Opt Data Len must be "
+                f"{IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__OPT_DATA_LEN}. Got: {value!r}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -127,9 +147,6 @@ class Ip6DestOptsOptionTunnelEncapsulationLimit(Ip6DestOptsOption):
             f"Got: {Ip6DestOptsOptionType.from_int(value)!r}"
         )
 
-        assert (value := buffer[1]) == IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__OPT_DATA_LEN, (
-            f"The IPv6 Dest Opts Tunnel Encap Limit Opt Data Len must be "
-            f"{IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__OPT_DATA_LEN}. Got: {value!r}"
-        )
+        cls._validate_integrity(buffer)
 
         return cls(value=buffer[2])

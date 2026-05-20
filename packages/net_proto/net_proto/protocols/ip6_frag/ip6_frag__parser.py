@@ -73,6 +73,9 @@ class Ip6FragParser(Ip6Frag, ProtoParser):
         Ensure integrity of the IPv6 Frag packet before parsing it.
         """
 
+        # RFC 8200 §4.5 — the Fragment header is a fixed 8 octets
+        # (Next Header / Reserved / Fragment Offset+M / Identification);
+        # anything shorter cannot be parsed.
         if len(self._frame) < IP6_FRAG__HEADER__LEN:
             raise Ip6FragIntegrityError(
                 "The condition 'IP6_FRAG__HEADER__LEN <= len(self._frame)' must be met. "

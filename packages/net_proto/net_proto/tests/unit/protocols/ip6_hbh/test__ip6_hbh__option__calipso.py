@@ -36,6 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_8__MAX, UINT_16__MAX, UINT_32__MAX
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import Ip6HbhOptionType
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__calipso import (
     IP6_HBH__OPTION__CIPSO__FIXED_LEN,
@@ -292,27 +293,6 @@ class TestIp6HbhOptionCalipsoAsserts(TestCase):
         with self.assertRaises(AssertionError):
             Ip6HbhOptionCalipso.from_buffer(b"\x07\x08\x00\x00\x00\x00\x00")
 
-    def test__ip6_hbh__option__calipso__from_buffer_rejects_cmpt_length_mismatch(self) -> None:
-        """
-        Ensure 'from_buffer' rejects a buffer whose declared
-        Cmpt Length contradicts the Opt Data Len (i.e. the
-        bitmap doesn't fit in the remaining bytes).
-
-        Reference: RFC 5570 §4 (Cmpt Length consistency).
-        """
-
-        # Wire frame:
-        #   Byte 0    : 0x07 -> CALIPSO type
-        #   Byte 1    : 0x08 -> Opt Data Len = 8 (no bitmap)
-        #   Bytes 2-5 : 00 00 00 00 -> DOI
-        #   Byte 6    : 0x05 -> cmpt_length = 5 (claims 20 bytes of bitmap)
-        #   Byte 7    : 0x00 -> sens level
-        #   Bytes 8-9 : 00 00 -> checksum
-        # cmpt_length=5 demands 20 bytes of bitmap, but Opt Data Len=8
-        # has 0 bytes left — mismatch.
-        with self.assertRaises(AssertionError):
-            Ip6HbhOptionCalipso.from_buffer(b"\x07\x08\x00\x00\x00\x00\x05\x00\x00\x00")
-
     def test__ip6_hbh__option__calipso__minimum_accepted_form(self) -> None:
         """
         Ensure a 10-byte CALIPSO with no compartment bitmap
@@ -333,6 +313,49 @@ class TestIp6HbhOptionCalipsoAsserts(TestCase):
             len(opt),
             IP6_HBH__OPTION__CIPSO__FIXED_LEN,
             msg="Minimum-form CALIPSO must report length equal to fixed-prefix length.",
+        )
+
+
+class TestIp6HbhOptionCalipsoIntegrity(TestCase):
+    """
+    The IPv6 HBH CALIPSO 'from_buffer' integrity-check tests.
+    Hostile-wire defense-in-depth — these inputs must raise
+    Ip6HbhIntegrityError so the IPv6 chain walker's
+    PacketValidationError catch can drop the frame cleanly. The
+    pre-fix behaviour was a bare AssertionError that leaked past
+    the catch.
+    """
+
+    def test__ip6_hbh__option__calipso__integrity__opt_data_len__mismatch(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6HbhIntegrityError when the
+        wire Opt Data Len contradicts the Cmpt Length field — the
+        Opt Data Len MUST equal 8 (fixed prefix bytes) plus
+        cmpt_length * 4 (compartment bitmap bytes).
+
+        Reference: RFC 5570 §4 (Cmpt Length / Opt Data Len consistency).
+        """
+
+        # Wire frame:
+        #   Byte 0    : 0x07 -> CALIPSO type
+        #   Byte 1    : 0x08 -> Opt Data Len = 8 (claims no bitmap)
+        #   Bytes 2-5 : 00 00 00 00 -> DOI
+        #   Byte 6    : 0x05 -> cmpt_length = 5 (demands 20 bytes of bitmap)
+        #   Byte 7    : 0x00 -> sens_level
+        #   Bytes 8-9 : 00 00 -> checksum
+        # Opt Data Len=8 but cmpt_length*4 + 8 = 28 → mismatch.
+        buffer = b"\x07\x08\x00\x00\x00\x00\x05\x00\x00\x00"
+
+        with self.assertRaises(Ip6HbhIntegrityError) as error:
+            Ip6HbhOptionCalipso.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[INTEGRITY ERROR][IPv6 HBH] The IPv6 HBH CALIPSO Opt Data Len must equal "
+                "8 + cmpt_length * 4. Got: opt_data_len=8, cmpt_length=5"
+            ),
+            msg="Unexpected integrity-error message for Opt Data Len mismatch.",
         )
 
 

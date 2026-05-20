@@ -43,6 +43,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8, is_uint16, is_uint32
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import (
     IP6_HBH__OPTION__LEN,
     Ip6HbhOption,
@@ -166,6 +167,42 @@ class Ip6HbhOptionCalipso(Ip6HbhOption):
 
         return memoryview(buffer)
 
+    @staticmethod
+    def _validate_integrity(buffer: Buffer, /) -> None:
+        """
+        Ensure integrity of the IPv6 HBH CALIPSO option before
+        parsing it. Hostile-wire defense-in-depth so an
+        Opt Data Len / Cmpt Length mismatch does not leak as a
+        bare AssertionError past the IPv6 chain walker's
+        PacketValidationError catch.
+        """
+
+        # RFC 5570 §4 — Opt Data Len = 8 (fixed DOI + Cmpt Length
+        # + Sens Level + Checksum prefix) + cmpt_length * 4
+        # (compartment bitmap in 32-bit units). A mismatch means
+        # the bitmap is either truncated or over-claimed.
+        opt_data_len = buffer[1]
+        cmpt_length = buffer[6]
+        bitmap_len = cmpt_length * IP6_HBH__OPTION__CIPSO__BITMAP_UNIT
+        if opt_data_len != IP6_HBH__OPTION__CIPSO__FIXED_DATA_LEN + bitmap_len:
+            raise Ip6HbhIntegrityError(
+                f"The IPv6 HBH CALIPSO Opt Data Len must equal "
+                f"{IP6_HBH__OPTION__CIPSO__FIXED_DATA_LEN} + cmpt_length * "
+                f"{IP6_HBH__OPTION__CIPSO__BITMAP_UNIT}. Got: opt_data_len={opt_data_len}, "
+                f"cmpt_length={cmpt_length}"
+            )
+
+        # RFC 5570 §4 / RFC 8200 §4.2 — option length MUST NOT
+        # exceed the buffer available. The container's
+        # validate_integrity already guarantees this for the
+        # block-walk, but the per-option check is defense-in-depth
+        # for direct from_buffer callers.
+        if len(buffer) < IP6_HBH__OPTION__LEN + opt_data_len:
+            raise Ip6HbhIntegrityError(
+                "The buffer must hold the full CALIPSO option declared by Opt Data Len. "
+                f"Got: opt_data_len={opt_data_len}, buffer_len={len(buffer)}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -183,21 +220,10 @@ class Ip6HbhOptionCalipso(Ip6HbhOption):
             f"Got: {Ip6HbhOptionType.from_int(value)!r}"
         )
 
-        opt_data_len = buffer[1]
+        cls._validate_integrity(buffer)
+
         cmpt_length = buffer[6]
         bitmap_len = cmpt_length * IP6_HBH__OPTION__CIPSO__BITMAP_UNIT
-
-        assert opt_data_len == IP6_HBH__OPTION__CIPSO__FIXED_DATA_LEN + bitmap_len, (
-            f"The IPv6 HBH CALIPSO Opt Data Len must equal "
-            f"{IP6_HBH__OPTION__CIPSO__FIXED_DATA_LEN} + cmpt_length * "
-            f"{IP6_HBH__OPTION__CIPSO__BITMAP_UNIT}. Got: opt_data_len={opt_data_len}, "
-            f"cmpt_length={cmpt_length}"
-        )
-
-        assert len(buffer) >= IP6_HBH__OPTION__LEN + opt_data_len, (
-            "The buffer must hold the full CALIPSO option declared by Opt Data Len. "
-            f"Got: opt_data_len={opt_data_len}, buffer_len={len(buffer)}"
-        )
 
         doi = int.from_bytes(bytes(buffer[2:6]))
         sens_level = buffer[7]

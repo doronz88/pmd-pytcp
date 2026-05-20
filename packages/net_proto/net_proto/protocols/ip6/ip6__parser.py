@@ -82,17 +82,28 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
         Ensure integrity of the IPv6 packet before parsing it.
         """
 
+        # RFC 8200 §3 — the IPv6 base header is exactly 40 octets;
+        # anything shorter cannot be parsed.
         if len(self._frame) < IP6__HEADER__LEN:
             raise Ip6IntegrityError(
                 "The condition 'IP6__HEADER__LEN <= len(self._frame)' must be met. "
                 f"Got: {IP6__HEADER__LEN=}, {len(self._frame)=}",
             )
 
+        # RFC 8200 §3 — Version field is the top 4 bits and MUST be
+        # 6. RFC 8504 §4.1 requires hosts to silently discard
+        # frames whose Version is not 6.
         if (value := self._frame[0] >> 4) != 6:
             raise Ip6IntegrityError(
                 f"The 'ver' field must be 6. Got: {value!r}",
             )
 
+        # RFC 8200 §3 — Payload Length is the length in octets of
+        # the IPv6 payload (the portion of the packet following the
+        # 40-byte fixed header); the on-wire frame MUST match.
+        # RFC 2675 §3 jumbograms (Payload Length = 0 with a Jumbo
+        # Payload HBH option) are out of scope here — the HBH
+        # walker handles them.
         if (dlen := int.from_bytes(self._frame[4:6])) != len(self._frame) - IP6__HEADER__LEN:
             raise Ip6IntegrityError(
                 "The condition 'dlen == len(self._frame) - IP6__HEADER__LEN' must be met. "
@@ -117,12 +128,35 @@ class Ip6Parser(Ip6[Buffer], ProtoParser):
         can emit an ICMPv6 Parameter Problem with the correct pointer.
         """
 
+        # RFC 8200 §3 'Hop Limit' — "When forwarding the packet,
+        # Hop Limit is decremented by 1; the packet is discarded
+        # if Hop Limit is decremented to zero." A frame received
+        # with hop=0 has either already been forwarded as far as
+        # any spec-compliant router would allow or was crafted
+        # locally; in either case it is invalid for delivery.
         if (hop := self.hop) == 0:
             raise Ip6SanityError(
                 f"The 'hop' field must not be 0. Got: {hop!r}",
                 pointer=IP6__POINTER__HOP,
             )
 
+        # RFC 4291 §2.5.3 — "The loopback address must not be
+        # used as the source address in IPv6 packets that are
+        # sent outside of a single node." Direct analog of the
+        # IPv4 §3.2.1.3(g) loopback ban; Linux enforces the same
+        # rule. The unspecified address (::) is deliberately not
+        # rejected here so DAD-style NS messages (RFC 4861 §4.3)
+        # can reach the ICMPv6 RX path.
+        if (src := self.src).is_loopback:
+            raise Ip6SanityError(
+                f"The 'src' field must not be a loopback address. Got: {src!r}",
+                pointer=IP6__POINTER__SRC,
+            )
+
+        # RFC 4291 §2.7 — "Multicast addresses must not be used
+        # as source addresses in IPv6 packets or appear in any
+        # Routing header." Multicast identifies a group, not a
+        # single sender.
         if (src := self.src).is_multicast:
             raise Ip6SanityError(
                 f"The 'src' field must not be a multicast address. Got: {src!r}",

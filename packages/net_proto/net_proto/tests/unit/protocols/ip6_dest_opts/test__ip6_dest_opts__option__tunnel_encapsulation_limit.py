@@ -37,6 +37,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_8__MAX
+from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__errors import Ip6DestOptsIntegrityError
 from net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option import (
     Ip6DestOptsOptionType,
 )
@@ -216,18 +217,6 @@ class TestIp6DestOptsOptionTunnelEncapsulationLimitAsserts(TestCase):
         with self.assertRaises(AssertionError):
             Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(b"\x05\x01\x00")
 
-    def test__ip6_dest_opts__option__tunnel_encapsulation_limit__from_buffer_rejects_wrong_length(self) -> None:
-        """
-        Ensure 'from_buffer' rejects a buffer whose Opt Data Len
-        byte is not exactly 1 — the value field is fixed at 8
-        bits.
-
-        Reference: RFC 2473 §4.1.1 (Opt Data Len fixed at 1).
-        """
-
-        with self.assertRaises(AssertionError):
-            Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(b"\x04\x02\x00\x00")
-
     def test__ip6_dest_opts__option__tunnel_encapsulation_limit__from_buffer_rejects_truncated(self) -> None:
         """
         Ensure 'from_buffer' rejects a buffer shorter than the
@@ -238,6 +227,41 @@ class TestIp6DestOptsOptionTunnelEncapsulationLimitAsserts(TestCase):
 
         with self.assertRaises(AssertionError):
             Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(b"\x04\x01")
+
+
+class TestIp6DestOptsOptionTunnelEncapsulationLimitIntegrity(TestCase):
+    """
+    The IPv6 Dest Opts Tunnel Encapsulation Limit 'from_buffer'
+    integrity-check tests. Hostile-wire defense-in-depth — these
+    inputs must raise Ip6DestOptsIntegrityError so the IPv6 chain
+    walker's PacketValidationError catch can drop the frame
+    cleanly. The pre-fix behaviour was a bare AssertionError that
+    leaked past the catch.
+    """
+
+    def test__ip6_dest_opts__option__tunnel_encapsulation_limit__integrity__opt_data_len__wrong(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6DestOptsIntegrityError when
+        the wire Opt Data Len byte is not exactly 1 — the Tunnel
+        Encapsulation Limit field is fixed at 8 bits.
+
+        Reference: RFC 2473 §4.1.1 (Opt Data Len fixed at 1).
+        """
+
+        # Bytes: 0x04=type, 0x02=opt_data_len (should be 1), 2 trailing bytes.
+        buffer = b"\x04\x02\x00\x00"
+
+        with self.assertRaises(Ip6DestOptsIntegrityError) as error:
+            Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[INTEGRITY ERROR][IPv6 Dest Opts] The IPv6 Dest Opts Tunnel Encap Limit "
+                "option Opt Data Len must be 1. Got: 2"
+            ),
+            msg="Unexpected integrity-error message for wrong Opt Data Len.",
+        )
 
 
 class TestIp6DestOptsOptionsTunnelEncapsulationLimitProperty(TestCase):

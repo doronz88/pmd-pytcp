@@ -71,13 +71,19 @@ class Ip6DestOptsParser(Ip6DestOpts, ProtoParser):
         Ensure integrity of the IPv6 Dest Opts packet before parsing it.
         """
 
+        # RFC 8200 §4.6 — the Destination Options header is at
+        # minimum 2 octets (Next Header / Hdr Ext Len); the
+        # options trailer is gated separately below.
         if len(self._frame) < IP6_DEST_OPTS__HEADER__LEN:
             raise Ip6DestOptsIntegrityError(
                 "The condition 'IP6_DEST_OPTS__HEADER__LEN <= len(self._frame)' must be met. "
                 f"Got: {IP6_DEST_OPTS__HEADER__LEN=}, {len(self._frame)=}",
             )
 
-        # RFC 8200 §4.6: total HBH length on the wire is (Hdr Ext Len + 1) * 8.
+        # RFC 8200 §4.6 — Hdr Ext Len in 8-octet units NOT
+        # including the first 8 octets; total wire length =
+        # (Hdr Ext Len + 1) * 8. Frame MUST hold every octet the
+        # header claims.
         hdr_ext_len = self._frame[1]
         total_hbh_len = (hdr_ext_len + 1) * 8
 
@@ -87,8 +93,9 @@ class Ip6DestOptsParser(Ip6DestOpts, ProtoParser):
                 f"Got: {hdr_ext_len=}, {total_hbh_len=}, {len(self._frame)=}",
             )
 
-        # Walk the TLV options block to confirm every option's length
-        # field stays inside the declared DestOpts region.
+        # RFC 8200 §4.2 (TLV format) — walk the per-option Opt
+        # Data Len bytes and confirm every option fits inside the
+        # declared DestOpts region.
         Ip6DestOptsOptions.validate_integrity(
             buffer=self._frame[IP6_DEST_OPTS__HEADER__LEN:total_hbh_len],
         )

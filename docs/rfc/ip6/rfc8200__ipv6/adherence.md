@@ -221,6 +221,67 @@ The §4.2 TLV option machinery is shared (separate dataclass
 classes per RFC pattern, identical wire format). Action-on-
 unrecognized is enforced the same way as for HBH.
 
+## §3 / §4 Parser integrity & sanity surface
+
+PyTCP's IPv6 parsers expose two staged checks per layer:
+`_validate_integrity` (structural pre-parse — buffer
+bounds, declared lengths, fixed-shape per-option Opt Data
+Len) and `_validate_sanity` (post-parse field semantics).
+Hostile-wire values that would otherwise trip a dataclass
+`__post_init__` assert are caught at integrity and re-raised
+as the layer's typed `*IntegrityError` so the IPv6 chain
+walker's `PacketValidationError` catch can drop the frame
+cleanly.
+
+### Base IPv6 header (`ip6__parser.py`)
+
+| Phase | Check | RFC clause |
+|-------|-------|------------|
+| Integrity | `len(frame) >= 40` | RFC 8200 §3 (fixed 40-octet header) |
+| Integrity | `(frame[0] >> 4) == 6` | RFC 8200 §3 + RFC 8504 §4.1 (silent discard on Version mismatch) |
+| Integrity | `dlen == len(frame) − 40` | RFC 8200 §3 (Payload Length matches octets after the header) |
+| Sanity | `hop != 0` | RFC 8200 §3 (Hop Limit zero ⇒ discard) |
+| Sanity | `not src.is_loopback` (`::1`) | RFC 4291 §2.5.3 ("loopback address must not be used as the source address ... outside of a single node") |
+| Sanity | `not src.is_multicast` (`ff00::/8`) | RFC 4291 §2.7 (multicast cannot be a source) |
+
+Sanity checks attach the RFC 4443 §3.4 Parameter Problem
+pointer (offset of the offending field) so the RX handler
+can emit ICMPv6 Code 0 (Erroneous Header Field Encountered).
+The unspecified address (`::`) is deliberately not rejected
+at the parser layer — DAD-style NS messages legitimately use
+`src=::` per RFC 4861 §4.3; the ICMPv6 ND layer handles its
+own per-message acceptance rules.
+
+### Extension headers (per-parser integrity)
+
+| Parser | Integrity checks | RFC clause |
+|--------|------------------|------------|
+| `ip6_frag__parser.py` | `len(frame) >= 8` | RFC 8200 §4.5 (fixed 8-octet Fragment header) |
+| `ip6_hbh__parser.py` | `len(frame) >= 2`; `(hdr_ext_len + 1) * 8 <= len(frame)`; container TLV walk | RFC 8200 §4.3; RFC 8200 §4.2 (TLV format) |
+| `ip6_dest_opts__parser.py` | `len(frame) >= 2`; `(hdr_ext_len + 1) * 8 <= len(frame)`; container TLV walk | RFC 8200 §4.6; RFC 8200 §4.2 |
+| `ip6_routing__parser.py` | `len(frame) >= 4`; `(hdr_ext_len + 1) * 8 <= len(frame)`; RH0 hard-drop | RFC 8200 §4.4; RFC 5095 §3 |
+
+### Per-option parser integrity (HBH + Dest Opts options)
+
+| Option | `_validate_integrity` enforces | RFC clause |
+|--------|--------------------------------|------------|
+| HBH Pad1 (type 0) | type-byte (Case-1 TLV, no length field) | RFC 8200 §4.2 |
+| HBH PadN (type 1) | `(opt_data_len + 2) <= buffer` | RFC 8200 §4.2 |
+| HBH Router Alert (type 5) | `opt_data_len == 2` | RFC 2711 §2.1 |
+| HBH Jumbo Payload (type 0xC2) | `opt_data_len == 4`; `value > 65535` | RFC 2675 §2; RFC 2675 §3 |
+| HBH CALIPSO (type 7) | `opt_data_len == 8 + cmpt_length * 4`; `buffer` holds full option | RFC 5570 §4 |
+| HBH Unknown | `(opt_data_len + 2) <= buffer` | RFC 8200 §4.2 |
+| DestOpts Pad1 / PadN / Unknown | mirror of HBH variants | RFC 8200 §4.2 |
+| DestOpts Tunnel Encap Limit (type 4) | `opt_data_len == 1` | RFC 2473 §4.1.1 |
+
+The Router Alert / Jumbo Payload / CALIPSO / Tunnel Encap
+Limit pointer-or-shape checks are duplicated in the
+corresponding dataclass `__post_init__` asserts — the former
+is the parser-level integrity gate (reachable from hostile
+wire), the latter is the construction-time invariant for
+API consumers building option objects programmatically. The
+duplication is deliberate and load-bearing.
+
 ## §4.7 No Next Header
 
 > "The value 59 in the Next Header field of an IPv6 header or

@@ -36,6 +36,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import UINT_16__MAX, is_uint32
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import (
     IP6_HBH__OPTION__LEN,
     Ip6HbhOption,
@@ -120,6 +121,38 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
 
         return memoryview(buffer)
 
+    @staticmethod
+    def _validate_integrity(buffer: Buffer, /) -> None:
+        """
+        Ensure integrity of the IPv6 HBH Jumbo Payload option
+        before parsing it. Hostile-wire defense-in-depth so the
+        Opt Data Len mismatch and the RFC 2675 §3 "value > 65535"
+        rule do not leak as bare AssertionErrors past the IPv6
+        chain walker's PacketValidationError catch.
+        """
+
+        # RFC 2675 §2 — Jumbo Payload is fixed-shape: 1-byte type
+        # + 1-byte Opt Data Len + 4-byte Jumbo Payload Length =
+        # 6 octets total; Opt Data Len MUST be 4.
+        if (value := buffer[1]) != IP6_HBH__OPTION__JUMBO_PAYLOAD__OPT_DATA_LEN:
+            raise Ip6HbhIntegrityError(
+                f"The IPv6 HBH Jumbo Payload option Opt Data Len must be "
+                f"{IP6_HBH__OPTION__JUMBO_PAYLOAD__OPT_DATA_LEN}. Got: {value!r}"
+            )
+
+        # RFC 2675 §3 — "Jumbo Payload Length is the length of the
+        # IPv6 packet in octets, excluding the IPv6 header but
+        # including the Hop-by-Hop Options header; it must be
+        # greater than 65,535." Values ≤ 65535 would have fit in
+        # the standard 16-bit Payload Length field, so a Jumbo
+        # Payload option carrying such a value is a spec violation.
+        value = int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN])
+        if value <= UINT_16__MAX:
+            raise Ip6HbhIntegrityError(
+                f"The IPv6 HBH Jumbo Payload option value must be greater than "
+                f"{UINT_16__MAX} (jumbograms only — RFC 2675 §3). Got: {value}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -137,9 +170,6 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
             f"Got: {Ip6HbhOptionType.from_int(value)!r}"
         )
 
-        assert (value := buffer[1]) == IP6_HBH__OPTION__JUMBO_PAYLOAD__OPT_DATA_LEN, (
-            f"The IPv6 HBH Jumbo Payload option Opt Data Len must be "
-            f"{IP6_HBH__OPTION__JUMBO_PAYLOAD__OPT_DATA_LEN}. Got: {value!r}"
-        )
+        cls._validate_integrity(buffer)
 
         return cls(value=int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN]))

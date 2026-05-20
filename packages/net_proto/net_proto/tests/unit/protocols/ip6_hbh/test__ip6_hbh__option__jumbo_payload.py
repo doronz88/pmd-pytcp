@@ -36,6 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_32__MAX
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import Ip6HbhOptionType
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__jumbo_payload import (
     IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN,
@@ -263,6 +264,89 @@ class TestIp6HbhOptionJumboPayloadAsserts(TestCase):
 
         with self.assertRaises(AssertionError):
             Ip6HbhOptionJumboPayload.from_buffer(b"\xc2\x04\x00\x01\x00")
+
+
+class TestIp6HbhOptionJumboPayloadIntegrity(TestCase):
+    """
+    The IPv6 HBH Jumbo Payload 'from_buffer' integrity-check tests.
+    Hostile-wire defense-in-depth — these inputs must raise
+    Ip6HbhIntegrityError so the IPv6 chain walker's
+    PacketValidationError catch can drop the frame cleanly. The
+    pre-fix behaviour was a bare AssertionError that leaked past
+    the catch.
+    """
+
+    def test__ip6_hbh__option__jumbo_payload__integrity__opt_data_len__wrong(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6HbhIntegrityError when the
+        wire Opt Data Len byte is not exactly 4 — the Jumbo
+        Payload Length field is fixed at 32 bits.
+
+        Reference: RFC 2675 §2 (Opt Data Len fixed at 4).
+        """
+
+        # Bytes: 0xc2=type, 0x02=opt_data_len (should be 4), 4 trailing bytes.
+        buffer = b"\xc2\x02\x00\x01\x00\x00"
+
+        with self.assertRaises(Ip6HbhIntegrityError) as error:
+            Ip6HbhOptionJumboPayload.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][IPv6 HBH] The IPv6 HBH Jumbo Payload option Opt Data Len must be 4. Got: 2",
+            msg="Unexpected integrity-error message for wrong Opt Data Len.",
+        )
+
+    def test__ip6_hbh__option__jumbo_payload__integrity__value__at_uint16_max(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6HbhIntegrityError when the
+        wire Jumbo Payload Length is exactly 65535. The value
+        must be strictly greater than the uint16 ceiling — at or
+        below means the standard IPv6 Payload Length field would
+        have sufficed and a Jumbo Payload option carrying such a
+        value is a spec violation.
+
+        Reference: RFC 2675 §3 (Jumbo Payload Length MUST be > 65535).
+        """
+
+        # Bytes: 0xc2=type, 0x04=opt_data_len, value=65535 (RFC violation).
+        buffer = b"\xc2\x04\x00\x00\xff\xff"
+
+        with self.assertRaises(Ip6HbhIntegrityError) as error:
+            Ip6HbhOptionJumboPayload.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[INTEGRITY ERROR][IPv6 HBH] The IPv6 HBH Jumbo Payload option value "
+                "must be greater than 65535 (jumbograms only — RFC 2675 §3). Got: 65535"
+            ),
+            msg="Unexpected integrity-error message for value at uint16 max.",
+        )
+
+    def test__ip6_hbh__option__jumbo_payload__integrity__value__zero(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6HbhIntegrityError when the
+        wire Jumbo Payload Length is zero — value 0 is reserved
+        and not a valid jumbogram payload length.
+
+        Reference: RFC 2675 §3 (Jumbo Payload Length MUST be > 65535).
+        """
+
+        # Bytes: 0xc2=type, 0x04=opt_data_len, value=0 (RFC violation).
+        buffer = b"\xc2\x04\x00\x00\x00\x00"
+
+        with self.assertRaises(Ip6HbhIntegrityError) as error:
+            Ip6HbhOptionJumboPayload.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[INTEGRITY ERROR][IPv6 HBH] The IPv6 HBH Jumbo Payload option value "
+                "must be greater than 65535 (jumbograms only — RFC 2675 §3). Got: 0"
+            ),
+            msg="Unexpected integrity-error message for value=0.",
+        )
 
 
 class TestIp6HbhOptionsJumboPayloadProperty(TestCase):

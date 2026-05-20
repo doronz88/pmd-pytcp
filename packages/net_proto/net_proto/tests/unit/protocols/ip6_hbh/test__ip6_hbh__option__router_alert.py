@@ -36,6 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.int_checks import UINT_16__MAX
+from net_proto.protocols.ip6_hbh.ip6_hbh__errors import Ip6HbhIntegrityError
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option import Ip6HbhOptionType
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__pad1 import (
     Ip6HbhOptionPad1,
@@ -252,18 +253,6 @@ class TestIp6HbhOptionRouterAlertAsserts(TestCase):
         with self.assertRaises(AssertionError):
             Ip6HbhOptionRouterAlert.from_buffer(b"\x06\x02\x00\x00")
 
-    def test__ip6_hbh__option__router_alert__from_buffer_rejects_wrong_length(self) -> None:
-        """
-        Ensure 'from_buffer' rejects a buffer whose Opt Data Len
-        byte is not exactly 2 — RFC 2711 fixes the value field at
-        16 bits.
-
-        Reference: RFC 2711 §2 (Opt Data Len fixed at 2).
-        """
-
-        with self.assertRaises(AssertionError):
-            Ip6HbhOptionRouterAlert.from_buffer(b"\x05\x04\x00\x00\x00\x00")
-
     def test__ip6_hbh__option__router_alert__from_buffer_rejects_truncated(self) -> None:
         """
         Ensure 'from_buffer' rejects a buffer shorter than the
@@ -274,6 +263,39 @@ class TestIp6HbhOptionRouterAlertAsserts(TestCase):
 
         with self.assertRaises(AssertionError):
             Ip6HbhOptionRouterAlert.from_buffer(b"\x05\x02\x00")
+
+
+class TestIp6HbhOptionRouterAlertIntegrity(TestCase):
+    """
+    The IPv6 HBH Router Alert 'from_buffer' integrity-check tests.
+    Hostile-wire defense-in-depth — these inputs must raise
+    Ip6HbhIntegrityError so the IPv6 chain walker's
+    PacketValidationError catch can drop the frame cleanly. The
+    pre-fix behaviour was a bare AssertionError that leaked past
+    the catch.
+    """
+
+    def test__ip6_hbh__option__router_alert__integrity__opt_data_len__wrong(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip6HbhIntegrityError when the
+        wire Opt Data Len byte is not exactly 2. RFC 2711 fixes
+        the value field at 16 bits, so Opt Data Len = 2 is the
+        only valid value.
+
+        Reference: RFC 2711 §2.1 (Opt Data Len fixed at 2).
+        """
+
+        # Bytes: 0x05=type, 0x04=opt_data_len (should be 2), 4 data bytes.
+        buffer = b"\x05\x04\x00\x00\x00\x00"
+
+        with self.assertRaises(Ip6HbhIntegrityError) as error:
+            Ip6HbhOptionRouterAlert.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][IPv6 HBH] The IPv6 HBH Router Alert option Opt Data Len must be 2. Got: 4",
+            msg="Unexpected integrity-error message for wrong Opt Data Len.",
+        )
 
 
 class TestIp6HbhOptionsRouterAlertProperty(TestCase):
