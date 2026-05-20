@@ -79,10 +79,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : truncated to a single byte 0x00
                 #   Frame length    : 13 bytes (< 14-byte header minimum)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00"
             ),
             "_results": {
                 "error_message": (
@@ -96,10 +96,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : missing (truncated before 'dlen' field)
                 #   Frame length    : 12 bytes (< 14-byte header minimum)
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17"
             ),
             "_results": {
                 "error_message": (
@@ -113,10 +113,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : 0x0010 (16 bytes declared)
                 #   Payload bytes   : 15 (below the declared 16)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x10"
                 b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45"
             ),
             "_results": {
@@ -130,10 +130,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : 0x0010 (16 bytes declared)
                 #   Payload bytes   : 17 (above the declared 16)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10\x30\x31"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x10\x30\x31"
                 b"\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46\x47"
             ),
             "_results": {
@@ -147,10 +147,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : 0x0000 (no payload declared)
                 #   Payload bytes   : 1 (above the declared 0)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x00\xff"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x00\xff"
             ),
             "_results": {
                 "error_message": (
@@ -163,10 +163,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : 0x05dd (1501 bytes declared)
                 #   Payload bytes   : 1501 (> 1500 maximum)
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdd"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x05\xdd"
                 + b"X" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1)
             ),
             "_results": {
@@ -181,10 +181,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : 0x07d0 (2000 bytes declared)
                 #   Payload bytes   : 2000 (> 1500 maximum)
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x07\xd0"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x07\xd0"
                 + b"Y" * 2000
             ),
             "_results": {
@@ -238,10 +238,10 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         frame = (
             # Ethernet 802.3
             #   Destination MAC : a1:b2:c3:d4:e5:f6
-            #   Source MAC      : 11:12:13:14:15:16
+            #   Source MAC      : 12:13:14:15:16:17
             #   Length          : 0x0000 (empty payload declared)
             #   Frame length    : 14 bytes (== ETHERNET_802_3__HEADER__LEN)
-            b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x00\x00"
+            b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x00\x00"
         )
 
         packet_rx = PacketRx(frame)
@@ -268,10 +268,10 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         frame = (
             # Ethernet 802.3
             #   Destination MAC : a1:b2:c3:d4:e5:f6
-            #   Source MAC      : 11:12:13:14:15:16
+            #   Source MAC      : 12:13:14:15:16:17
             #   Length          : 0x05dc (1500 bytes == maximum)
             #   Payload bytes   : 1500
-            b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
+            b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x05\xdc"
             + payload
         )
 
@@ -316,10 +316,10 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         frame = (
             # Ethernet 802.3
             #   Destination MAC : a1:b2:c3:d4:e5:f6
-            #   Source MAC      : 11:12:13:14:15:16
+            #   Source MAC      : 12:13:14:15:16:17
             #   Length          : 0xffff (65535 declared, far above 1500)
             #   Payload bytes   : 1 (also far below 65535)
-            b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff\x00"
+            b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\xff\xff\x00"
         )
 
         with self.assertRaises(Ethernet8023IntegrityError) as error:

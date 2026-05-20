@@ -50,24 +50,24 @@ from net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Ethertype       : 0xffff (Raw)
                 #   Payload         : b"0123456789ABCDEF" (16 bytes)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xff\xff"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\xff\xff"
                 b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
             "_results": {
                 "header": EthernetHeader(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     type=EtherType.RAW,
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "type": EtherType.RAW,
                 "payload": b"0123456789ABCDEF",
                 "__len__": 14 + 16,
-                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)",
+                "__str__": "ETHER 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, type Raw, len 30 (14+16)",
             },
         },
         {
@@ -75,24 +75,24 @@ from net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Ethertype       : 0xffff (Raw)
                 #   Payload         : b"X" * 1500
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\xff\xff"
                 + b"X" * 1500
             ),
             "_results": {
                 "header": EthernetHeader(
                     dst=MacAddress("a1:b2:c3:d4:e5:f6"),
-                    src=MacAddress("11:12:13:14:15:16"),
+                    src=MacAddress("12:13:14:15:16:17"),
                     type=EtherType.RAW,
                 ),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "src": MacAddress("11:12:13:14:15:16"),
+                "src": MacAddress("12:13:14:15:16:17"),
                 "type": EtherType.RAW,
                 "payload": b"X" * 1500,
                 "__len__": 14 + 1500,
-                "__str__": "ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)",
+                "__str__": "ETHER 12:13:14:15:16:17 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)",
             },
         },
         {
@@ -175,24 +175,24 @@ from net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Ethertype       : 0x9999 (unknown — extended into EtherType enum)
                 #   Payload         : 4 opaque bytes
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x99\x99"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x99\x99"
                 b"\x00\x00\x00\x00"
             ),
             "_results": {
                 "header": EthernetHeader(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     type=EtherType.from_int(0x9999),
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "type": EtherType.from_int(0x9999),
                 "payload": b"\x00\x00\x00\x00",
                 "__len__": 14 + 4,
-                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type 0x9999, len 18 (14+4)",
+                "__str__": "ETHER 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, type 0x9999, len 18 (14+4)",
             },
         },
         {
@@ -200,23 +200,23 @@ from net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Ethertype       : 0x0800 (IPv4)
                 #   Payload         : empty
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x08\x00"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x08\x00"
             ),
             "_results": {
                 "header": EthernetHeader(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     type=EtherType.IP4,
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "type": EtherType.IP4,
                 "payload": b"",
                 "__len__": 14,
-                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type IPv4, len 14 (14+0)",
+                "__str__": "ETHER 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, type IPv4, len 14 (14+0)",
             },
         },
     ]

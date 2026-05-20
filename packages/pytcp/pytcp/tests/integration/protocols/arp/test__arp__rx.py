@@ -488,7 +488,7 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
             "_frames_rx": [
                 ArpTestCase._build_arp_frame(
                     ethernet_dst=_STACK_MAC,
-                    ethernet_src=_UNSPEC_MAC,
+                    ethernet_src=_PEER_MAC,
                     arp_oper=ArpOperation.REPLY,
                     arp_sha=_UNSPEC_MAC,
                     arp_spa=_PEER_IP,
@@ -510,7 +510,7 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
             "_frames_rx": [
                 ArpTestCase._build_arp_frame(
                     ethernet_dst=_STACK_MAC,
-                    ethernet_src=_MCAST_MAC,
+                    ethernet_src=_PEER_MAC,
                     arp_oper=ArpOperation.REPLY,
                     arp_sha=_MCAST_MAC,
                     arp_spa=_PEER_IP,
@@ -532,7 +532,7 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
             "_frames_rx": [
                 ArpTestCase._build_arp_frame(
                     ethernet_dst=_STACK_MAC,
-                    ethernet_src=_BCAST_MAC,
+                    ethernet_src=_PEER_MAC,
                     arp_oper=ArpOperation.REPLY,
                     arp_sha=_BCAST_MAC,
                     arp_spa=_PEER_IP,

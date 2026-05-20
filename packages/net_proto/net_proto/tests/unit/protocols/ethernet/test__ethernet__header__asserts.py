@@ -153,7 +153,7 @@ class TestEthernetHeaderOperation(TestCase):
 
         return {
             "dst": MacAddress("11:22:33:44:55:66"),
-            "src": MacAddress("77:88:99:aa:bb:cc"),
+            "src": MacAddress("78:89:9a:ab:bc:cd"),
             "type": EtherType.IP4,
         }
 
@@ -191,7 +191,7 @@ class TestEthernetHeaderOperation(TestCase):
 
         Expected layout:
           Destination MAC : 11:22:33:44:55:66
-          Source MAC      : 77:88:99:aa:bb:cc
+          Source MAC      : 78:89:9a:ab:bc:cd
           Ethertype       : 0x0800 (IPv4)
         """
 
@@ -203,9 +203,9 @@ class TestEthernetHeaderOperation(TestCase):
             frame,
             # Ethernet II
             #   Destination MAC : 11:22:33:44:55:66
-            #   Source MAC      : 77:88:99:aa:bb:cc
+            #   Source MAC      : 78:89:9a:ab:bc:cd
             #   Ethertype       : 0x0800 (IPv4)
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x08\x00",
+            b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x08\x00",
             msg="Unexpected Ethernet header wire bytes.",
         )
 
@@ -250,9 +250,9 @@ class TestEthernetHeaderOperation(TestCase):
         frame = (
             # Ethernet II
             #   Destination MAC : 11:22:33:44:55:66
-            #   Source MAC      : 77:88:99:aa:bb:cc
+            #   Source MAC      : 78:89:9a:ab:bc:cd
             #   Ethertype       : 0x9999 (UNKNOWN)
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x99\x99"
+            b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x99\x99"
         )
 
         header = EthernetHeader.from_buffer(frame)
@@ -344,7 +344,7 @@ class TestEthernetHeaderProperties(TestCase):
 
         self._header = EthernetHeader(
             dst=MacAddress("11:22:33:44:55:66"),
-            src=MacAddress("77:88:99:aa:bb:cc"),
+            src=MacAddress("78:89:9a:ab:bc:cd"),
             type=EtherType.IP4,
         )
         self._host = _EthernetHeaderPropertiesHost(header=self._header)
@@ -367,7 +367,7 @@ class TestEthernetHeaderProperties(TestCase):
 
         self.assertEqual(
             self._host.src,
-            MacAddress("77:88:99:aa:bb:cc"),
+            MacAddress("78:89:9a:ab:bc:cd"),
             msg="'src' property must reflect the header's 'src' field.",
         )
 

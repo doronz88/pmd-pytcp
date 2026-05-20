@@ -58,24 +58,24 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : 0x0010 (16 bytes)
                 #   Payload         : b"0123456789ABCDEF" (16 bytes)
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x10"
                 b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
             ),
             "_results": {
                 "header": Ethernet8023Header(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     dlen=16,
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "dlen": 16,
                 "payload": b"0123456789ABCDEF",
                 "__len__": ETHERNET_802_3__HEADER__LEN + 16,
-                "__str__": "ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 16, len 30 (14+16)",
+                "__str__": "ETHER_802.3 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, dlen 16, len 30 (14+16)",
             },
         },
         {
@@ -83,25 +83,25 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : 0x05dc (1500 bytes == maximum)
                 #   Payload         : b"X" * 1500
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x05\xdc"
                 + b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN
             ),
             "_results": {
                 "header": Ethernet8023Header(
                     dst=MacAddress("a1:b2:c3:d4:e5:f6"),
-                    src=MacAddress("11:12:13:14:15:16"),
+                    src=MacAddress("12:13:14:15:16:17"),
                     dlen=ETHERNET_802_3__PAYLOAD__MAX_LEN,
                 ),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "src": MacAddress("11:12:13:14:15:16"),
+                "src": MacAddress("12:13:14:15:16:17"),
                 "dlen": ETHERNET_802_3__PAYLOAD__MAX_LEN,
                 "payload": b"X" * ETHERNET_802_3__PAYLOAD__MAX_LEN,
                 "__len__": ETHERNET_802_3__PACKET__MAX_LEN,
                 "__str__": (
-                    "ETHER_802.3 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, "
+                    "ETHER_802.3 12:13:14:15:16:17 > a1:b2:c3:d4:e5:f6, "
                     f"dlen {ETHERNET_802_3__PAYLOAD__MAX_LEN}, "
                     f"len {ETHERNET_802_3__PACKET__MAX_LEN} "
                     f"({ETHERNET_802_3__HEADER__LEN}+{ETHERNET_802_3__PAYLOAD__MAX_LEN})"
@@ -113,23 +113,23 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : 11:22:33:44:55:66
-                #   Source MAC      : 77:88:99:aa:bb:cc
+                #   Source MAC      : 78:89:9a:ab:bc:cd
                 #   Length          : 0x0000 (empty payload)
                 #   Frame length    : 14 bytes
-                b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x00"
+                b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x00"
             ),
             "_results": {
                 "header": Ethernet8023Header(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     dlen=0,
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "dlen": 0,
                 "payload": b"",
                 "__len__": ETHERNET_802_3__HEADER__LEN,
-                "__str__": "ETHER_802.3 77:88:99:aa:bb:cc > 11:22:33:44:55:66, dlen 0, len 14 (14+0)",
+                "__str__": "ETHER_802.3 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, dlen 0, len 14 (14+0)",
             },
         },
         {
@@ -326,10 +326,10 @@ class TestEthernet8023ParserTrailingBytes(TestCase):
         frame_with_trailing = (
             # Ethernet 802.3
             #   Destination MAC : 11:22:33:44:55:66
-            #   Source MAC      : 77:88:99:aa:bb:cc
+            #   Source MAC      : 78:89:9a:ab:bc:cd
             #   Length          : 0x0004 (4 bytes declared)
             #   Payload bytes   : 6 (4 payload + 2 trailing)
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x04"
+            b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x04"
             b"\xde\xad\xbe\xef\x00\x00"
         )
 

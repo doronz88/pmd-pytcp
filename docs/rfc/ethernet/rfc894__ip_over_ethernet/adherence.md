@@ -187,6 +187,35 @@ MAC on the inbound path.
 
 ---
 
+## §"Frame Format" — Source MAC Unicast Invariant
+
+> RFC 894 inherits the underlying Ethernet / IEEE 802.3 MAC
+> address semantics: the source MAC field on a transmitted
+> frame is the sending interface's hardware address, which
+> by IEEE 802.3 is a unicast address (group bit / I/G bit
+> clear; not all-zeros; not all-ones).
+
+**Adherence:** met (parser sanity, added in the
+RFC-adherence pass). The Ethernet II parser's
+`_validate_sanity` rejects any frame whose `src` MAC is
+unspecified (all-zeros), multicast (group bit set), or
+broadcast (all-ones) with `EthernetSanityError`
+(`packages/net_proto/net_proto/protocols/ethernet/ethernet__parser.py::_validate_sanity`).
+The 802.3 parser carries the same three checks
+(`packages/net_proto/net_proto/protocols/ethernet_802_3/ethernet_802_3__parser.py::_validate_sanity`).
+`dst` is deliberately NOT subject to these checks because a
+destination MAC may legitimately be multicast (e.g. IPv6 ND
+`33:33:xx:xx:xx:xx`, IPv4 multicast `01:00:5e:xx:xx:xx`) or
+broadcast (`ff:ff:ff:ff:ff:ff`).
+
+This is stricter than Linux's `net/ethernet/eth.c::eth_type_trans`,
+which does not enforce a unicast-source invariant — it's
+PyTCP's RFC-aligned hardening of the parse path. RX-side
+counters for malformed frames are
+`ethernet__failed_parse__drop` / `ethernet_802_3__failed_parse__drop`.
+
+---
+
 ## §"Trailer Formats" — Unix 4.2bsd Trailer Encapsulation
 
 > "Some versions of Unix 4.2bsd use a different
@@ -234,6 +263,10 @@ unit-test corpus and integration tests at:
 - **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__operation.py`
   — pins frame parsing with IPv4 / IPv6 / ARP / raw-payload
   cases.
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__sanity_checks.py`
+  — pins both sanity branches: sub-0x0600 `type` (legacy
+  802.3 length framing) and the three `src`-non-unicast
+  rejections (unspecified, multicast, broadcast).
 - **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__assembler__operation.py`
   — pins frame assembly + EtherType binding from payload type.
 - **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__rx.py`

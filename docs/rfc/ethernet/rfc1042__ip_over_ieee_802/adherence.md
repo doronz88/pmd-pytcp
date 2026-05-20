@@ -122,6 +122,34 @@ Ring) is not supported. Aligns with Linux's universal
 
 ---
 
+## §"Description" — Source MAC Unicast Invariant
+
+> The IEEE 802.3 MAC sublayer specifies that a frame's
+> source address MUST be a unicast individual address
+> (I/G bit clear, not all-zeros, not all-ones).
+
+**Adherence:** met (parser sanity, added in the
+RFC-adherence pass). The 802.3 parser's `_validate_sanity`
+rejects any frame whose `src` MAC is unspecified
+(all-zeros), multicast (group bit set), or broadcast
+(all-ones) with `Ethernet8023SanityError`
+(`packages/net_proto/net_proto/protocols/ethernet_802_3/ethernet_802_3__parser.py::_validate_sanity`).
+`dst` is intentionally NOT subject to the same checks
+because a destination MAC may legitimately be multicast
+or broadcast.
+
+Linux's `net/ethernet/eth.c::eth_type_trans` does not
+enforce this — PyTCP's parser-level hardening is stricter
+than Linux. RX-side counter for malformed frames is
+`ethernet_802_3__failed_parse__drop`.
+
+The dlen integrity guards (`dlen != actual payload length`,
+`dlen > 1500`) are documented at the integrity layer and
+together with the unicast-`src` sanity check cover the
+"obviously malformed wire" surface for inbound 802.3 frames.
+
+---
+
 ## §"Header Format" — LLC+SNAP 8-octet Total
 
 > "The total length of the LLC Header and the SNAP
@@ -270,7 +298,11 @@ consumer today.
 ### IEEE 802.3 framing
 
 - **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet_802_3/`
-  — pins MAC header parse / assemble.
+  — pins MAC header parse / assemble. The
+  `test__ethernet_802_3__parser__sanity_checks.py` file
+  pins the three `src`-non-unicast rejections (unspecified,
+  multicast, broadcast) and a happy-path matrix that
+  confirms valid frames continue to parse cleanly.
 
 **Status:** locked in.
 

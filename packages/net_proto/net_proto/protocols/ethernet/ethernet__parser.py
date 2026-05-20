@@ -73,6 +73,7 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
         Ensure integrity of the Ethernet packet before parsing it.
         """
 
+        # RFC 894 / DIX — fixed 14-byte Ethernet II header (6+6+2).
         if len(self._frame) < ETHERNET__HEADER__LEN:
             raise EthernetIntegrityError(
                 f"The minimum packet length must be {ETHERNET__HEADER__LEN} bytes. Got: {len(self._frame)} bytes."
@@ -93,5 +94,21 @@ class EthernetParser(Ethernet[Buffer], ProtoParser):
         Ensure sanity of the Ethernet packet after parsing it.
         """
 
+        # IEEE 802.3 / RFC 1042 — the 16-bit field after src disambiguates DIX
+        # (EtherType, value >= 0x0600) from 802.3 (Length, value < 0x0600); the
+        # 802.3 framing is handled by a separate parser.
         if (value := int(self._header.type)) < 0x0600:
             raise EthernetSanityError(f"The minimum 'type' field value must be 0x0600. Got: 0x{value:04x}.")
+
+        # IEEE 802.3 — source MAC MUST be a unicast address (group bit clear,
+        # not all-ones, not all-zeros); a non-unicast 'src' is malformed.
+        if self._header.src.is_unspecified:
+            raise EthernetSanityError(
+                f"The 'src' field value {self._header.src} must not be an unspecified MAC address."
+            )
+
+        if self._header.src.is_multicast:
+            raise EthernetSanityError(f"The 'src' field value {self._header.src} must not be a multicast MAC address.")
+
+        if self._header.src.is_broadcast:
+            raise EthernetSanityError(f"The 'src' field value {self._header.src} must not be a broadcast MAC address.")

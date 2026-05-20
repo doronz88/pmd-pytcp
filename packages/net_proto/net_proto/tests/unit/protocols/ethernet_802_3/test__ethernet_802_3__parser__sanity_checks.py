@@ -25,11 +25,9 @@
 """
 This module contains tests for the Ethernet 802.3 packet parser sanity checks.
 
-The Ethernet 802.3 parser currently defines no sanity checks: every frame
-that clears the integrity validator parses successfully. This module nails
-that contract down with explicit tests so that any future sanity check
-added to the parser must be accompanied by a matching test (and cannot
-regress the no-error path silently).
+The Ethernet 802.3 parser enforces a source-MAC unicast invariant: the
+'src' field MUST NOT be the unspecified (all-zeros), multicast (group-bit-
+set), or broadcast (all-ones) MAC address.
 
 net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__parser__sanity_checks.py
 
@@ -57,14 +55,14 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : 0x0000 (empty payload)
                 #   Frame length    : 14 bytes
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x00\x00"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x00\x00"
             ),
             "_results": {
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "src": MacAddress("11:12:13:14:15:16"),
+                "src": MacAddress("12:13:14:15:16:17"),
                 "dlen": 0,
             },
         },
@@ -90,23 +88,23 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet 802.3
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Length          : 0x05dc (1500 bytes == maximum)
                 #   Payload bytes   : 1500
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x05\xdc"
                 + b"Z" * ETHERNET_802_3__PAYLOAD__MAX_LEN
             ),
             "_results": {
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "src": MacAddress("11:12:13:14:15:16"),
+                "src": MacAddress("12:13:14:15:16:17"),
                 "dlen": ETHERNET_802_3__PAYLOAD__MAX_LEN,
             },
         },
     ]
 )
-class TestEthernet8023ParserSanityChecks(TestCase):
+class TestEthernet8023ParserSanityHappyPaths(TestCase):
     """
-    The Ethernet 802.3 packet parser sanity checks tests.
+    Happy-path tests — valid frames must pass the sanity validator.
     """
 
     _description: str
@@ -115,9 +113,11 @@ class TestEthernet8023ParserSanityChecks(TestCase):
 
     def test__ethernet_802_3__parser__sanity_accepts_valid_frame(self) -> None:
         """
-        Ensure every frame that clears the integrity validator also clears
-        the sanity validator — i.e. the Ethernet 802.3 parser defines no
-        sanity constraints today and parses the frame without raising.
+        Ensure every frame that clears the integrity validator AND carries
+        a unicast 'src' MAC also clears the sanity validator and surfaces
+        the parsed fields unchanged.
+
+        Reference: IEEE 802.3 / RFC 1042 (Ethernet 802.3 frame format).
         """
 
         try:
@@ -142,45 +142,75 @@ class TestEthernet8023ParserSanityChecks(TestCase):
         )
 
 
-class TestEthernet8023ParserSanityCheckContract(TestCase):
+@parameterized_class(
+    [
+        {
+            "_description": "The 'src' MAC is unspecified (all zeros).",
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : 00:00:00:00:00:00  (unspecified)
+                #   Length          : 0x0000 (empty payload)
+                #   Frame length    : 14 bytes
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x00\x00\x00\x00\x00\x00\x00\x00"
+            ),
+            "_results": {
+                "error_message": "The 'src' field value 00:00:00:00:00:00 must not be an unspecified MAC address.",
+            },
+        },
+        {
+            "_description": "The 'src' MAC is multicast (group bit set).",
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : 01:00:5e:00:00:01  (IPv4 multicast OUI — illegal as source)
+                #   Length          : 0x0000 (empty payload)
+                #   Frame length    : 14 bytes
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x01\x00\x5e\x00\x00\x01\x00\x00"
+            ),
+            "_results": {
+                "error_message": "The 'src' field value 01:00:5e:00:00:01 must not be a multicast MAC address.",
+            },
+        },
+        {
+            "_description": "The 'src' MAC is broadcast (all ones).",
+            "_frame_rx": (
+                # Ethernet 802.3
+                #   Destination MAC : a1:b2:c3:d4:e5:f6
+                #   Source MAC      : ff:ff:ff:ff:ff:ff  (broadcast — illegal as source)
+                #   Length          : 0x0000 (empty payload)
+                #   Frame length    : 14 bytes
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\xff\xff\xff\xff\xff\xff\x00\x00"
+            ),
+            "_results": {
+                "error_message": "The 'src' field value ff:ff:ff:ff:ff:ff must not be a broadcast MAC address.",
+            },
+        },
+    ]
+)
+class TestEthernet8023ParserSanityChecks(TestCase):
     """
-    The Ethernet 802.3 parser sanity validator contract tests.
+    The Ethernet 802.3 packet parser sanity checks tests.
     """
 
-    def test__ethernet_802_3__parser__sanity_error_class_is_wired(self) -> None:
+    _description: str
+    _frame_rx: bytes
+    _results: dict[str, Any]
+
+    def test__ethernet_802_3__parser__sanity_error(self) -> None:
         """
-        Ensure Ethernet8023SanityError is importable and carries the
-        canonical '[SANITY ERROR][Ethernet 802.3]'-prefixed message —
-        even though the parser never raises it today, the error class
-        is part of the public API and must stay ready for future use.
+        Ensure the Ethernet 802.3 parser raises Ethernet8023SanityError on
+        a frame whose 'src' MAC violates the IEEE 802.3 unicast-source
+        invariant and reports the expected message.
+
+        Reference: IEEE 802.3 (source MAC MUST be unicast — group bit clear, not all-ones, not all-zeros).
         """
 
-        error = Ethernet8023SanityError("probe")
+        with self.assertRaises(Ethernet8023SanityError) as error:
+            Ethernet8023Parser(PacketRx(self._frame_rx))
 
         self.assertEqual(
-            str(error),
-            "[SANITY ERROR][Ethernet 802.3] probe",
-            msg="Ethernet8023SanityError must produce the canonical prefixed message.",
-        )
-
-    def test__ethernet_802_3__parser__sanity_validator_is_callable_no_op(self) -> None:
-        """
-        Ensure '_validate_sanity()' is an implemented no-op on the parser —
-        calling it a second time on a parsed instance must not raise.
-        """
-
-        frame = (
-            # Ethernet 802.3
-            #   Destination MAC : 11:22:33:44:55:66
-            #   Source MAC      : 77:88:99:aa:bb:cc
-            #   Length          : 0x0000 (empty payload)
-            #   Frame length    : 14 bytes
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x00"
-        )
-
-        parser = Ethernet8023Parser(PacketRx(frame))
-
-        self.assertIsNone(
-            parser._validate_sanity(),  # noqa: SLF001
-            msg="'_validate_sanity()' must be a no-op returning None.",
+            str(error.exception),
+            f"[SANITY ERROR][Ethernet 802.3] {self._results['error_message']}",
+            msg=f"Unexpected sanity-error message for case: {self._description}",
         )

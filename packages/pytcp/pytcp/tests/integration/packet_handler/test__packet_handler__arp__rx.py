@@ -648,7 +648,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : 02:00:00:00:00:07
-                #   Source MAC      : 00:00:00:00:00:00   # unspecified / all zeros
+                #   Source MAC      : 02:00:00:00:00:91   # valid unicast (so Ethernet sanity passes)
                 #   Ethertype       : 0x0806 (ARP)
                 #   Frame length    : 42 bytes
                 #
@@ -663,8 +663,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP (TPA) : 10.0.1.7
                 #
                 # Summary: Unicast ARP reply claiming “10.0.1.91 is at 00:00:00:00:00:00.”
-                #          Invalid — SHA is unspecified.
-                b"\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00\x08\x06\x00\x01"
+                #          Invalid — SHA is unspecified. Drop happens at ARP sanity (eth src is valid).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b"
                 b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
@@ -682,7 +682,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : 02:00:00:00:00:07
-                #   Source MAC      : 01:00:5e:00:00:01   # IPv4 multicast MAC (invalid as a host source)
+                #   Source MAC      : 02:00:00:00:00:91   # valid unicast (so Ethernet sanity passes)
                 #   Ethertype       : 0x0806 (ARP)
                 #   Frame length    : 42 bytes
                 #
@@ -697,10 +697,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP (TPA) : 10.0.1.7
                 #
                 # Summary: Unicast ARP reply purporting “10.0.1.91 is at 01:00:5e:00:00:01.”
-                #          This is malformed/invalid because the sender MAC is a multicast address.
-                #          Robust stacks typically drop ARP with non-unicast SHA
-                #          (and often non-unicast Ethernet source).
-                b"\x02\x00\x00\x00\x00\x07\x01\x00\x5e\x00\x00\x01\x08\x06\x00\x01"
+                #          Drop happens at ARP sanity (eth src is valid; SHA is multicast).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\x01\x00\x5e\x00\x00\x01\x0a\x00\x01\x5b"
                 b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],
@@ -718,7 +716,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_frames_rx": [
                 # Ethernet II
                 #   Destination MAC : 02:00:00:00:00:07
-                #   Source MAC      : ff:ff:ff:ff:ff:ff   # broadcast (invalid as a host source)
+                #   Source MAC      : 02:00:00:00:00:91   # valid unicast (so Ethernet sanity passes)
                 #   Ethertype       : 0x0806 (ARP)
                 #   Frame length    : 42 bytes
                 #
@@ -733,8 +731,8 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 #   Target IP (TPA) : 10.0.1.7
                 #
                 # Summary: Unicast ARP reply claiming “10.0.1.91 is at ff:ff:ff:ff:ff:ff.”
-                #          Invalid — SHA is broadcast, must be unicast.
-                b"\x02\x00\x00\x00\x00\x07\xff\xff\xff\xff\xff\xff\x08\x06\x00\x01"
+                #          Drop happens at ARP sanity (eth src is valid; SHA is broadcast).
+                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
                 b"\x08\x00\x06\x04\x00\x02\xff\xff\xff\xff\xff\xff\x0a\x00\x01\x5b"
                 b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
             ],

@@ -68,10 +68,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Ethertype       : truncated to a single byte 0xff
                 #   Frame length    : 13 bytes (< 14-byte header minimum)
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\xff"
             ),
             "_results": {
                 "error_message": (
@@ -85,10 +85,10 @@ from net_proto import (
             "_frame_rx": (
                 # Ethernet II
                 #   Destination MAC : a1:b2:c3:d4:e5:f6
-                #   Source MAC      : 11:12:13:14:15:16
+                #   Source MAC      : 12:13:14:15:16:17
                 #   Ethertype       : missing (truncated before type field)
                 #   Frame length    : 12 bytes (< 14-byte header minimum)
-                b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16"
+                b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17"
             ),
             "_results": {
                 "error_message": (
@@ -141,10 +141,10 @@ class TestEthernetParserIntegrityChecksBoundary(TestCase):
         frame = (
             # Ethernet II
             #   Destination MAC : a1:b2:c3:d4:e5:f6
-            #   Source MAC      : 11:12:13:14:15:16
+            #   Source MAC      : 12:13:14:15:16:17
             #   Ethertype       : 0x0000 (invalid, triggers sanity failure)
             #   Frame length    : 14 bytes (== ETHERNET__HEADER__LEN)
-            b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x00\x00"
+            b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x00\x00"
         )
 
         with self.assertRaises(Exception) as error:

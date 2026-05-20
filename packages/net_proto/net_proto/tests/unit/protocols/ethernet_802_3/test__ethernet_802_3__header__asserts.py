@@ -202,7 +202,7 @@ class TestEthernet8023HeaderOperation(TestCase):
 
         return {
             "dst": MacAddress("11:22:33:44:55:66"),
-            "src": MacAddress("77:88:99:aa:bb:cc"),
+            "src": MacAddress("78:89:9a:ab:bc:cd"),
             "dlen": 16,
         }
 
@@ -247,9 +247,9 @@ class TestEthernet8023HeaderOperation(TestCase):
             frame,
             # Ethernet 802.3
             #   Destination MAC : 11:22:33:44:55:66
-            #   Source MAC      : 77:88:99:aa:bb:cc
+            #   Source MAC      : 78:89:9a:ab:bc:cd
             #   Length          : 0x0010 (16 bytes)
-            b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x00\x10",
+            b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x00\x10",
             msg="Unexpected Ethernet 802.3 header wire bytes.",
         )
 
@@ -294,9 +294,9 @@ class TestEthernet8023HeaderOperation(TestCase):
         frame = (
             # Ethernet 802.3
             #   Destination MAC : a1:b2:c3:d4:e5:f6
-            #   Source MAC      : 11:12:13:14:15:16
+            #   Source MAC      : 12:13:14:15:16:17
             #   Length          : 0x05dc (1500 bytes)
-            b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\x05\xdc"
+            b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\x05\xdc"
         )
 
         header = Ethernet8023Header.from_buffer(frame)
@@ -394,7 +394,7 @@ class TestEthernet8023HeaderProperties(TestCase):
 
         self._header = Ethernet8023Header(
             dst=MacAddress("11:22:33:44:55:66"),
-            src=MacAddress("77:88:99:aa:bb:cc"),
+            src=MacAddress("78:89:9a:ab:bc:cd"),
             dlen=16,
         )
         self._host = _Ethernet8023HeaderPropertiesHost(header=self._header)
@@ -417,7 +417,7 @@ class TestEthernet8023HeaderProperties(TestCase):
 
         self.assertEqual(
             self._host.src,
-            MacAddress("77:88:99:aa:bb:cc"),
+            MacAddress("78:89:9a:ab:bc:cd"),
             msg="'src' property must reflect the header's 'src' field.",
         )
 

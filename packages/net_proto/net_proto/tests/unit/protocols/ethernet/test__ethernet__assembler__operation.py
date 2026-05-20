@@ -57,33 +57,33 @@ from net_proto.lib.buffer import Buffer
         {
             "_description": "Ethernet packet with a 16-byte Raw payload.",
             "_kwargs": {
-                "ethernet__src": MacAddress("77:88:99:aa:bb:cc"),
+                "ethernet__src": MacAddress("78:89:9a:ab:bc:cd"),
                 "ethernet__dst": MacAddress("11:22:33:44:55:66"),
                 "ethernet__payload": RawAssembler(raw__payload=b"0123456789ABCDEF"),
             },
             "_results": {
                 "__len__": 30,
-                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type Raw, len 30 (14+16)",
+                "__str__": "ETHER 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, type Raw, len 30 (14+16)",
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('11:22:33:44:55:66'), "
-                    "src=MacAddress('77:88:99:aa:bb:cc'), type=<EtherType.RAW: 65535>), "
+                    "src=MacAddress('78:89:9a:ab:bc:cd'), type=<EtherType.RAW: 65535>), "
                     "payload=RawAssembler(raw__payload=b'0123456789ABCDEF'))"
                 ),
                 "__bytes__": (
                     # Ethernet II
                     #   Destination MAC : 11:22:33:44:55:66
-                    #   Source MAC      : 77:88:99:aa:bb:cc
+                    #   Source MAC      : 78:89:9a:ab:bc:cd
                     #   Ethertype       : 0xffff (Raw)
                     #   Payload         : b"0123456789ABCDEF" (16 bytes)
-                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xff\xff"
+                    b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\xff\xff"
                     b"\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44\x45\x46"
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "type": EtherType.RAW,
                 "header": EthernetHeader(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     type=EtherType.RAW,
                 ),
                 "payload": RawAssembler(raw__payload=b"0123456789ABCDEF"),
@@ -93,32 +93,32 @@ from net_proto.lib.buffer import Buffer
             "_description": "Ethernet packet with a 1500-byte Raw payload (MTU-sized).",
             "_kwargs": {
                 "ethernet__dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "ethernet__src": MacAddress("11:12:13:14:15:16"),
+                "ethernet__src": MacAddress("12:13:14:15:16:17"),
                 "ethernet__payload": RawAssembler(raw__payload=b"X" * 1500),
             },
             "_results": {
                 "__len__": 1514,
-                "__str__": "ETHER 11:12:13:14:15:16 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)",
+                "__str__": "ETHER 12:13:14:15:16:17 > a1:b2:c3:d4:e5:f6, type Raw, len 1514 (14+1500)",
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('a1:b2:c3:d4:e5:f6'), "
-                    "src=MacAddress('11:12:13:14:15:16'), type=<EtherType.RAW: 65535>), "
+                    "src=MacAddress('12:13:14:15:16:17'), type=<EtherType.RAW: 65535>), "
                     f"payload=RawAssembler(raw__payload=b'{'X' * 1500}'))"
                 ),
                 "__bytes__": (
                     # Ethernet II
                     #   Destination MAC : a1:b2:c3:d4:e5:f6
-                    #   Source MAC      : 11:12:13:14:15:16
+                    #   Source MAC      : 12:13:14:15:16:17
                     #   Ethertype       : 0xffff (Raw)
                     #   Payload         : b"X" * 1500
-                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x11\x12\x13\x14\x15\x16\xff\xff"
+                    b"\xa1\xb2\xc3\xd4\xe5\xf6\x12\x13\x14\x15\x16\x17\xff\xff"
                     + b"X" * 1500
                 ),
                 "dst": MacAddress("a1:b2:c3:d4:e5:f6"),
-                "src": MacAddress("11:12:13:14:15:16"),
+                "src": MacAddress("12:13:14:15:16:17"),
                 "type": EtherType.RAW,
                 "header": EthernetHeader(
                     dst=MacAddress("a1:b2:c3:d4:e5:f6"),
-                    src=MacAddress("11:12:13:14:15:16"),
+                    src=MacAddress("12:13:14:15:16:17"),
                     type=EtherType.RAW,
                 ),
                 "payload": RawAssembler(raw__payload=b"X" * 1500),
@@ -128,7 +128,7 @@ from net_proto.lib.buffer import Buffer
             "_description": "Ethernet packet carrying a Raw payload tagged as IPv4 via 'ether_type' override.",
             "_kwargs": {
                 "ethernet__dst": MacAddress("11:22:33:44:55:66"),
-                "ethernet__src": MacAddress("77:88:99:aa:bb:cc"),
+                "ethernet__src": MacAddress("78:89:9a:ab:bc:cd"),
                 "ethernet__payload": RawAssembler(
                     raw__payload=b"\xde\xad\xbe\xef",
                     ether_type=EtherType.IP4,
@@ -136,27 +136,27 @@ from net_proto.lib.buffer import Buffer
             },
             "_results": {
                 "__len__": 18,
-                "__str__": "ETHER 77:88:99:aa:bb:cc > 11:22:33:44:55:66, type IPv4, len 18 (14+4)",
+                "__str__": "ETHER 78:89:9a:ab:bc:cd > 11:22:33:44:55:66, type IPv4, len 18 (14+4)",
                 "__repr__": (
                     "EthernetAssembler(header=EthernetHeader(dst=MacAddress('11:22:33:44:55:66'), "
-                    "src=MacAddress('77:88:99:aa:bb:cc'), type=<EtherType.IP4: 2048>), "
+                    "src=MacAddress('78:89:9a:ab:bc:cd'), type=<EtherType.IP4: 2048>), "
                     "payload=RawAssembler(raw__payload=b'\\xde\\xad\\xbe\\xef'))"
                 ),
                 "__bytes__": (
                     # Ethernet II
                     #   Destination MAC : 11:22:33:44:55:66
-                    #   Source MAC      : 77:88:99:aa:bb:cc
+                    #   Source MAC      : 78:89:9a:ab:bc:cd
                     #   Ethertype       : 0x0800 (IPv4, inferred from Raw.ether_type)
                     #   Payload         : b"\xde\xad\xbe\xef" (4 bytes)
-                    b"\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\x08\x00"
+                    b"\x11\x22\x33\x44\x55\x66\x78\x89\x9a\xab\xbc\xcd\x08\x00"
                     b"\xde\xad\xbe\xef"
                 ),
                 "dst": MacAddress("11:22:33:44:55:66"),
-                "src": MacAddress("77:88:99:aa:bb:cc"),
+                "src": MacAddress("78:89:9a:ab:bc:cd"),
                 "type": EtherType.IP4,
                 "header": EthernetHeader(
                     dst=MacAddress("11:22:33:44:55:66"),
-                    src=MacAddress("77:88:99:aa:bb:cc"),
+                    src=MacAddress("78:89:9a:ab:bc:cd"),
                     type=EtherType.IP4,
                 ),
                 "payload": RawAssembler(raw__payload=b"\xde\xad\xbe\xef", ether_type=EtherType.IP4),
