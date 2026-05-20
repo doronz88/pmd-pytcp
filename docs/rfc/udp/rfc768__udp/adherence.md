@@ -339,6 +339,45 @@ route inbound packets to `_phrx_udp`.
 
 ---
 
+## Parser integrity & sanity surface
+
+PyTCP's UDP parser exposes two staged checks:
+`_validate_integrity` (structural pre-parse — buffer
+bounds, length consistency, one's-complement checksum,
+RFC 8200 §8.1 IPv6 zero-cksum default-discard) and
+`_validate_sanity` (post-parse field semantics). Unlike
+the wider TCP / ICMP / IP families, UDP has no per-option
+files and no `__post_init__` AssertionError leak surface:
+every `UdpHeader` field is wire-derived via
+`struct.unpack("! HH HH")` which guarantees uint16 by
+construction.
+
+### UDP base parser (`udp__parser.py`)
+
+| Phase | Check | RFC clause |
+|-------|-------|------------|
+| Integrity | `8 <= ip__payload_len <= len(frame)` | RFC 768 "Format" (header floor); IP-bounded |
+| Integrity | `8 <= plen == ip__payload_len <= len(frame)` | RFC 768 "Fields — Length" (≥ 8; wire matches IP-declared payload) |
+| Integrity | `raw_cksum == 0 and ip6 and not accept_zero_cksum_ip6` → `UdpZeroCksumIp6Error` | RFC 8200 §8.1 / RFC 6935 §5 / RFC 6936 §4 |
+| Integrity | `inet_cksum(frame, init=pshdr_sum) == 0` | RFC 768 "Fields — Checksum" (one's-complement over pseudo-header + UDP header + data); RFC 1071 algorithm |
+| Sanity | `dport != 0` | RFC 768 + IANA (port 0 reserved); Linux parity |
+
+The deliberate non-rejection of `sport == 0` is RFC 768
+"Source Port" optional-field semantics (the wire value 0
+is the documented "not used" sentinel; receivers MUST
+deliver normally). The deliberate IPv4 `cksum == 0`
+non-rejection is RFC 768 "If the computed checksum is
+zero ... An all zero transmitted checksum value means
+that the transmitter generated no checksum (for debugging
+or for higher level protocols that don't care)" — that
+sentinel is only forbidden on IPv6 per RFC 8200 §8.1.
+
+PyTCP has **no `__post_init__` wire-AssertionError leak**
+in UDP because the header has no derived fields and no
+options.
+
+---
+
 ## Beyond RFC 768 (clarifications inherited from other RFCs)
 
 RFC 768 predates IPv6 by 16 years and does not address

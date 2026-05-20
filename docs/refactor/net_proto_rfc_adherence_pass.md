@@ -1,5 +1,11 @@
 # `net_proto` per-protocol RFC integrity/sanity adherence pass
 
+**Status: CLOSED 2026-05-20** — all `net_proto` protocols audited
+(ARP, DHCPv4, Ethernet, ICMPv4, ICMPv6, IPv4, IPv6 + 4 ext-headers,
+TCP, UDP). The recurring `__post_init__` AssertionError-on-wire-input
+defect class has been closed across every protocol that exhibited
+it. 11106 tests passing, lint clean, §7.2 audits clean.
+
 Per-protocol review of every parser's `_validate_integrity` and
 `_validate_sanity` blocks under
 `packages/net_proto/net_proto/protocols/`, alphabetically. For each
@@ -14,7 +20,7 @@ protocol:
    touched test file.
 6. Commit + push when the user explicitly asks ("commit and push").
 
-All work is on branch `PyTCP_3_0_6`. The branch is pushed.
+All work landed on branch `PyTCP_3_0_6` and was pushed.
 
 ---
 
@@ -32,17 +38,15 @@ All work is on branch `PyTCP_3_0_6`. The branch is pushed.
 | 7a | **IPv4 per-option** | `3f8c18e8` | Annotated every per-option `_validate_integrity` (LSRR / SSRR / RR / Timestamp / Router Alert / CIPSO / Unknown) with RFC citations. Closed the hostile-wire `AssertionError` leak on LSRR/SSRR/RR (pointer ≥ 4, pointer 4-byte-aligned) and Timestamp (pointer ≥ 5, pointer entry-aligned by flag) — pre-existing `__post_init__` asserts were the only check; they raise `AssertionError` which is **not** a `PacketValidationError` and slips past the IP4 RX handler's catch. Same defect class DHCPv4 fixed in `54d8d5c6`. Added "Per-option parser integrity surface" subsection to RFC 791 adherence doc. |
 | 8 | **IPv6 + ext-headers + per-option** | `d99a1aaa` | One-shot pass covering: (a) base IPv6 header — annotated 3 integrity + 2 existing sanity + added `src.is_loopback` rejection (RFC 4291 §2.5.3, analog of IPv4 §3.2.1.3(g)); (b) all 4 extension-header parsers (Frag / HBH / DestOpts / Routing) annotated; (c) 5 per-option `_validate_integrity` gap fixes — HBH Router Alert (opt_data_len==2, RFC 2711 §2.1), HBH Jumbo Payload (opt_data_len==4 + value>65535, RFC 2675 §2/§3), HBH CALIPSO (opt_data_len consistency, RFC 5570 §4), DestOpts Tunnel Encap Limit (opt_data_len==1, RFC 2473 §4.1.1). Added "Parser integrity & sanity surface" section to RFC 8200 adherence doc. Removed 3 subsumed assertion-based tests. |
 | 9 | **TCP + per-option** | `bc847f07` | One-shot pass covering: (a) base TCP parser — annotated 4 integrity + 6 sanity branches with RFC 9293 §3.1/§3.2/§3.10.4 + RFC 1071 + RFC 6335 §6 + RFC 5961 §4 citations; (b) all 11 per-option `_validate_integrity` methods annotated (MSS, WSCALE, SACK, SACK-Permitted, Timestamps, FastOpen, AccECN0/1, NOP, EOL, Unknown) + TcpOptions container walker; (c) 1 per-option `AssertionError` leak fix — SACK `block_count ≤ 4` (RFC 2018 §3, mirroring the dataclass `__post_init__` assert into `_validate_integrity`). Drive-by fix: AccECN citation in adherence doc corrected from RFC 9341 (never published) to RFC 9768. Brought `test__tcp__option__sack.py` to §7.2 compliance (added Reference lines to all 11 test methods). |
+| 10 | **UDP** | `<commit-tbd>` | Annotation-only pass. 4 integrity + 1 sanity branches annotated with RFC 768 / RFC 8200 §8.1 / RFC 6935 §5 / RFC 6936 §4 / RFC 1071 / RFC 2460 §8.1 citations. UDP has **no per-option files** and **no `__post_init__` wire-AssertionError leak surface** (all header fields are wire-derived via `struct.unpack("! HH HH")` which guarantees uint16 by construction). Added "Parser integrity & sanity surface" tabular section to `docs/rfc/udp/rfc768__udp/adherence.md` mirroring the layout used for RFC 791 / 8200 / 9293. |
 
-Test count after the pass: **11106 passing**.
+Test count after the pass: **11106 passing** (no new tests — UDP was annotation-only; existing UDP test suite already exercised every integrity / sanity branch including the IPv6 zero-cksum default-discard and the sport=0 deliberate-accept).
 
 ---
 
-## Remaining (alphabetical)
+## Remaining
 
-In order:
-
-1. **UDP** (`packages/net_proto/net_proto/protocols/udp/`) — last
-   protocol, smallest surface
+**None.** All `net_proto` protocols audited. Pass closed.
 
 ---
 
@@ -154,33 +158,13 @@ For each protocol:
 
 To resume this work in a fresh session, paste:
 
-> Resume the `net_proto` per-protocol RFC integrity/sanity adherence
-> pass on branch `PyTCP_3_0_6`. State and workflow are documented at
-> `docs/refactor/net_proto_rfc_adherence_pass.md`. Read that file
-> first. Last protocol completed: **TCP + per-option** (commit
-> `bc847f07`, one-shot pass covering base TCP parser + 11 options
-> + SACK 4-block AssertionError leak fix). Next (and last)
-> alphabetically: **UDP** — smallest surface (no options, simple
-> sanity rules). Follow the established workflow: survey → present
-> analysis → `AskUserQuestion` to confirm direction → tests-first →
-> implement → adherence-doc refresh → run lint + `make test` +
-> §7.2 docstring audit → wait for explicit "commit and push"
-> before committing.
+The pass is **closed**. There is nothing to resume.
 >
-> UDP is RFC 768 + RFC 1122 §4.1; minimal surface. Expect 2-3
-> integrity branches (header floor, length field consistency,
-> checksum) and 2-3 sanity branches (sport/dport ≠ 0, possibly
-> length-vs-payload check). The recurring `__post_init__`
-> AssertionError leak pattern is unlikely on UDP since there are
-> no per-option files and the header is fixed 8 bytes — but verify.
->
-> Begin with reading
-> `packages/net_proto/net_proto/protocols/udp/udp__parser.py`,
-> `udp__header.py`, `udp__errors.py`, `docs/rfc/udp/` (if it
-> exists; UDP coverage may live under a roadmap RFC), and the
-> existing unit tests under
-> `packages/net_proto/net_proto/tests/unit/protocols/udp/`. Do
-> **not** start changing code; present the analysis first and use
-> `AskUserQuestion` to confirm direction. After UDP lands, the
-> `net_proto` per-protocol RFC adherence pass is **complete** —
-> update the tracking doc to mark the pass closed.
+> If a future regression introduces a new
+> `__post_init__`-asserted invariant on a parsed wire field that
+> isn't mirrored in `_validate_integrity`, the established fix
+> pattern is documented in this file (Lessons section) — mirror
+> the assert into `_validate_integrity` raising the appropriate
+> `*IntegrityError`, OR wrap the offending `from_buffer` call
+> in `try/except (AssertionError, ...) as error: raise *IntegrityError(str(error)) from error`
+> (the DHCPv4 pattern). Tests-first; cite the governing RFC.

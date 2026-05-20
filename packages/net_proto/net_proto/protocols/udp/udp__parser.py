@@ -83,6 +83,10 @@ class UdpParser(Udp, ProtoParser):
         Ensure integrity of the UDP packet before parsing it.
         """
 
+        # RFC 768 "Format" — UDP header is exactly 8 octets (sport
+        # + dport + length + checksum); upper bound is the IP-
+        # declared payload length, which itself MUST NOT exceed
+        # the received frame.
         if not (UDP__HEADER__LEN <= self._ip__payload_len <= len(self._frame)):
             raise UdpIntegrityError(
                 "The condition 'UDP__HEADER__LEN <= self._ip__payload_len <= "
@@ -90,6 +94,13 @@ class UdpParser(Udp, ProtoParser):
                 f"{self._ip__payload_len=}, {len(self._frame)=}",
             )
 
+        # RFC 768 "Fields - Length" — "Length is the length in
+        # octets of this user datagram including this header and
+        # the data. (This means the minimum value of the length
+        # is eight.)" The wire plen MUST equal the IP-layer's
+        # declared payload length (cross-check catches
+        # encapsulation truncation that the bare plen check
+        # would miss).
         plen = int.from_bytes(self._frame[4:6])
         if not (UDP__HEADER__LEN <= plen == self._ip__payload_len <= len(self._frame)):
             raise UdpIntegrityError(
@@ -118,6 +129,14 @@ class UdpParser(Udp, ProtoParser):
             # validation by design.
             return
 
+        # RFC 768 "Fields - Checksum" — "Checksum is the 16-bit
+        # one's complement of the one's complement sum of a
+        # pseudo header of information from the IP header, the
+        # UDP header, and the data". Algorithm: RFC 1071 one's-
+        # complement sum. The pseudo-header contribution is
+        # precomputed by the IP layer (RFC 2460 §8.1 for IPv6,
+        # RFC 768 / RFC 791 §3 for IPv4) and passed in via
+        # 'init=pshdr_sum'.
         if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise UdpIntegrityError("The packet checksum must be valid.")
 
