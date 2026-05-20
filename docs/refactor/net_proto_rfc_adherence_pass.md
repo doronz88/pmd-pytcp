@@ -31,8 +31,9 @@ All work is on branch `PyTCP_3_0_6`. The branch is pushed.
 | 7 | **IPv4** | `a4c0d639` | Annotated 5 integrity + 6 sanity branches with RFC citations. Added two new RFC 1122 §3.2.1.3 src rejections: `src.is_loopback` (127/8, clause (g)) and `src.is_invalid` (0.0.0.1–0.255.255.255, clause (a) minus the DHCPv4 0.0.0.0 carve-out). Closed the documented-but-not-enforced loopback gap (the RFC 791 adherence doc had wrongly claimed 127/8 was covered by `is_reserved`). Sanity checks reordered to ascending address-space order. Cascade: moved the "Loopback source 127.0.0.1" case in `test__icmp4__error_gates.py` from `__Suppressed` to `__DefenseInDepth`. |
 | 7a | **IPv4 per-option** | `3f8c18e8` | Annotated every per-option `_validate_integrity` (LSRR / SSRR / RR / Timestamp / Router Alert / CIPSO / Unknown) with RFC citations. Closed the hostile-wire `AssertionError` leak on LSRR/SSRR/RR (pointer ≥ 4, pointer 4-byte-aligned) and Timestamp (pointer ≥ 5, pointer entry-aligned by flag) — pre-existing `__post_init__` asserts were the only check; they raise `AssertionError` which is **not** a `PacketValidationError` and slips past the IP4 RX handler's catch. Same defect class DHCPv4 fixed in `54d8d5c6`. Added "Per-option parser integrity surface" subsection to RFC 791 adherence doc. |
 | 8 | **IPv6 + ext-headers + per-option** | `d99a1aaa` | One-shot pass covering: (a) base IPv6 header — annotated 3 integrity + 2 existing sanity + added `src.is_loopback` rejection (RFC 4291 §2.5.3, analog of IPv4 §3.2.1.3(g)); (b) all 4 extension-header parsers (Frag / HBH / DestOpts / Routing) annotated; (c) 5 per-option `_validate_integrity` gap fixes — HBH Router Alert (opt_data_len==2, RFC 2711 §2.1), HBH Jumbo Payload (opt_data_len==4 + value>65535, RFC 2675 §2/§3), HBH CALIPSO (opt_data_len consistency, RFC 5570 §4), DestOpts Tunnel Encap Limit (opt_data_len==1, RFC 2473 §4.1.1). Added "Parser integrity & sanity surface" section to RFC 8200 adherence doc. Removed 3 subsumed assertion-based tests. |
+| 9 | **TCP + per-option** | `bc847f07` | One-shot pass covering: (a) base TCP parser — annotated 4 integrity + 6 sanity branches with RFC 9293 §3.1/§3.2/§3.10.4 + RFC 1071 + RFC 6335 §6 + RFC 5961 §4 citations; (b) all 11 per-option `_validate_integrity` methods annotated (MSS, WSCALE, SACK, SACK-Permitted, Timestamps, FastOpen, AccECN0/1, NOP, EOL, Unknown) + TcpOptions container walker; (c) 1 per-option `AssertionError` leak fix — SACK `block_count ≤ 4` (RFC 2018 §3, mirroring the dataclass `__post_init__` assert into `_validate_integrity`). Drive-by fix: AccECN citation in adherence doc corrected from RFC 9341 (never published) to RFC 9768. Brought `test__tcp__option__sack.py` to §7.2 compliance (added Reference lines to all 11 test methods). |
 
-Test count after the pass: **11105 passing**.
+Test count after the pass: **11106 passing**.
 
 ---
 
@@ -40,9 +41,8 @@ Test count after the pass: **11105 passing**.
 
 In order:
 
-1. **TCP** (`packages/net_proto/net_proto/protocols/tcp/`) — large
-   surface, RFC 9293 primary
-2. **UDP** (`packages/net_proto/net_proto/protocols/udp/`)
+1. **UDP** (`packages/net_proto/net_proto/protocols/udp/`) — last
+   protocol, smallest surface
 
 ---
 
@@ -157,31 +157,30 @@ To resume this work in a fresh session, paste:
 > Resume the `net_proto` per-protocol RFC integrity/sanity adherence
 > pass on branch `PyTCP_3_0_6`. State and workflow are documented at
 > `docs/refactor/net_proto_rfc_adherence_pass.md`. Read that file
-> first. Last protocol completed: **IPv6 + ext-headers + per-option**
-> (commit `d99a1aaa`, one-shot pass covering base IPv6 header
-> src.is_loopback gap + 5 per-option AssertionError leaks across
-> HBH/DestOpts options). Next alphabetically: **TCP** — large surface,
-> RFC 9293 primary. Follow the established workflow: survey →
-> present analysis → `AskUserQuestion` to confirm direction →
-> tests-first → implement → adherence-doc refresh → run lint +
-> `make test` + §7.2 docstring audit → wait for explicit "commit
-> and push" before committing.
+> first. Last protocol completed: **TCP + per-option** (commit
+> `bc847f07`, one-shot pass covering base TCP parser + 11 options
+> + SACK 4-block AssertionError leak fix). Next (and last)
+> alphabetically: **UDP** — smallest surface (no options, simple
+> sanity rules). Follow the established workflow: survey → present
+> analysis → `AskUserQuestion` to confirm direction → tests-first →
+> implement → adherence-doc refresh → run lint + `make test` +
+> §7.2 docstring audit → wait for explicit "commit and push"
+> before committing.
 >
-> **Apply the lessons from IPv4/IPv6 per-option pass to TCP**:
-> (1) Survey the TCP parser AND all per-option files in the same
-> pass (`tcp__option__*.py`) — the recurring `__post_init__`
-> AssertionError-on-wire-input leak pattern is the highest-value
-> defect class to look for. (2) TCP is RFC 9293 primary (RFC 793 +
-> RFC 1122 + RFC 5961 incorporated); cite 9293 sections. (3) The
-> TCP option family is wider than IPv4/IPv6 (MSS, WSCALE, SACK,
-> SACK-Permitted, Timestamps, MD5 Signature Option, etc.) — expect
-> meaningful per-option work.
+> UDP is RFC 768 + RFC 1122 §4.1; minimal surface. Expect 2-3
+> integrity branches (header floor, length field consistency,
+> checksum) and 2-3 sanity branches (sport/dport ≠ 0, possibly
+> length-vs-payload check). The recurring `__post_init__`
+> AssertionError leak pattern is unlikely on UDP since there are
+> no per-option files and the header is fixed 8 bytes — but verify.
 >
 > Begin with reading
-> `packages/net_proto/net_proto/protocols/tcp/tcp__parser.py`,
-> `tcp__header.py`, `tcp__errors.py`, every per-option file under
-> `packages/net_proto/net_proto/protocols/tcp/options/`,
-> `docs/rfc/tcp/`, and the existing unit tests under
-> `packages/net_proto/net_proto/tests/unit/protocols/tcp/`. Do
+> `packages/net_proto/net_proto/protocols/udp/udp__parser.py`,
+> `udp__header.py`, `udp__errors.py`, `docs/rfc/udp/` (if it
+> exists; UDP coverage may live under a roadmap RFC), and the
+> existing unit tests under
+> `packages/net_proto/net_proto/tests/unit/protocols/udp/`. Do
 > **not** start changing code; present the analysis first and use
-> `AskUserQuestion` to confirm direction.
+> `AskUserQuestion` to confirm direction. After UDP lands, the
+> `net_proto` per-protocol RFC adherence pass is **complete** —
+> update the tracking doc to mark the pass closed.
