@@ -178,12 +178,13 @@ DHCP4_HEADER_DEFAULT = _dhcp4_header()
             },
         },
         {
-            "_description": "DHCPv4 packet with empty ClientId and no HostName.",
+            "_description": "DHCPv4 packet with minimum-length ClientId and no HostName.",
             "_args": [
                 DHCP4_HEADER_DEFAULT
                 + (
-                    # Client Identifier [RFC 2132]: Code=61, Len=0 (empty)
-                    b"\x3d\x00"
+                    # Client Identifier [RFC 2132 §9.14]: Code=61, Len=2 (RFC minimum),
+                    # 1-byte htype + 1-byte ID.
+                    b"\x3d\x02\x01\xff"
                     # End [RFC 2132]: terminator
                     b"\xff"
                 ),
@@ -191,7 +192,7 @@ DHCP4_HEADER_DEFAULT = _dhcp4_header()
             "_results": {
                 "header_bytes": DHCP4_HEADER_DEFAULT,
                 "options": Dhcp4Options(
-                    Dhcp4OptionClientId(b""),
+                    Dhcp4OptionClientId(b"\x01\xff"),
                     Dhcp4OptionEnd(),
                 ),
             },

@@ -340,6 +340,29 @@ same identifier in all subsequent messages"). The
 implemented; the MUST gap is in the client's
 emit path, not the wire-format library.
 
+**Wire-format bounds (assembler + parser):** the
+2-byte minimum from RFC 2132 §9.14 is enforced at
+both ends:
+
+- `Dhcp4OptionClientId.__post_init__` asserts
+  `2 <= len(client_id) <= 255` — catches a programmer
+  passing an empty or single-byte identifier at
+  construction time, before `__buffer__` would emit a
+  spec-violating frame, and catches a > 255-byte
+  identifier before `struct.pack_into` overflows the
+  uint8 length byte deep inside the wire-serialization
+  path.
+- `Dhcp4OptionClientId._validate_integrity` rejects
+  wire frames whose Length byte is below 2 with a
+  typed `Dhcp4IntegrityError` (not a bare AssertionError
+  leaking past the IP RX handler's
+  `PacketValidationError` catch).
+
+Pinned by `TestDhcp4OptionClientIdBounds` and the new
+`test__dhcp4__option__client_id__wire_len_below_minimum`
+case at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__client_id.py`.
+
 ---
 
 ## Options not implemented

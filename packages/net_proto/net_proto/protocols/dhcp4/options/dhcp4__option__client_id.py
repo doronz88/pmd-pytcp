@@ -80,6 +80,25 @@ class Dhcp4OptionClientId(Dhcp4Option):
             self.client_id, (bytes, bytearray)
         ), f"The 'client_id' field must be bytes. Got: {type(self.client_id)!r}"
 
+        # RFC 2132 §9.14 — "The code for this option is 61, and
+        # its minimum length is 2." The Length field is the data
+        # length (the byte count following the 2-byte Type/Length
+        # header), which is `len(self.client_id)` in PyTCP. The
+        # 2-byte minimum reflects the wire format `Type |
+        # Identifier` — a 1-byte type code + at least one
+        # identifier byte.
+        assert (
+            len(self.client_id) >= 2
+        ), f"The 'client_id' field minimum length is 2 (RFC 2132 §9.14). Got: {len(self.client_id)} bytes"
+
+        # The wire-format length byte is a single octet, so the
+        # data must fit in 255 bytes. Catch over-uint8 input at
+        # construction rather than letting struct.pack_into raise
+        # deep inside __buffer__.
+        assert (
+            len(self.client_id) <= 255
+        ), f"The 'client_id' field encoded length must fit in a uint8. Got: {len(self.client_id)} bytes"
+
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.client_id))
 
@@ -115,6 +134,18 @@ class Dhcp4OptionClientId(Dhcp4Option):
         """
         Ensure integrity of the DHCPv4 Client Identifier option before parsing it.
         """
+
+        # RFC 2132 §9.14 — "The code for this option is 61, and
+        # its minimum length is 2." Reject wire frames whose
+        # Length byte is below the spec minimum BEFORE the
+        # constructor's tighter dataclass assert fires, so the
+        # failure surfaces as a typed integrity error rather
+        # than a bare AssertionError that slips past the IP RX
+        # handler's PacketValidationError catch.
+        if (value := buffer[1]) < 2:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Client Identifier option minimum length is 2 (RFC 2132 §9.14). " f"Got: {value!r}"
+            )
 
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(

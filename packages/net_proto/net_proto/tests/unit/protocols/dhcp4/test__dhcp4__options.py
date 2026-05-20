@@ -354,10 +354,11 @@ class TestDhcp4OptionsAssembler(TestCase):
             },
         },
         {
-            "_description": "The DHCPv4 options parser — empty-valued Client Id and Host Name.",
+            "_description": "The DHCPv4 options parser — empty Host Name and minimum-length Client Id.",
             "_args": [
-                # Client Identifier [RFC 2132]: Code=61, Len=0 (empty)
-                b"\x3d\x00"
+                # Client Identifier [RFC 2132 §9.14]: Code=61, Len=2 (RFC-minimum),
+                # 1-byte htype + 1-byte ID.
+                b"\x3d\x02\x01\xff"
                 # Host Name [RFC 2132]: Code=12, Len=0 (empty)
                 b"\x0c\x00"
                 # End [RFC 2132]: terminator
@@ -365,7 +366,7 @@ class TestDhcp4OptionsAssembler(TestCase):
             ],
             "_results": {
                 "options": Dhcp4Options(
-                    Dhcp4OptionClientId(b""),
+                    Dhcp4OptionClientId(b"\x01\xff"),
                     Dhcp4OptionHostName(""),
                     Dhcp4OptionEnd(),
                 ),

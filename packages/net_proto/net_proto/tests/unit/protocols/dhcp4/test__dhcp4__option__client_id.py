@@ -82,22 +82,23 @@ class TestDhcp4OptionClientIdAsserts(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Client Identifier option (empty).",
-            "_args": [b""],
+            "_description": "The DHCPv4 Client Identifier option (2-byte boundary, RFC 2132 §9.14 minimum).",
+            "_args": [b"\x01\xff"],
             "_results": {
-                "__len__": 2,
-                "__str__": "client_id ",
-                "__repr__": "Dhcp4OptionClientId(client_id=b'')",
+                "__len__": 4,
+                "__str__": "client_id 01:ff",
+                "__repr__": "Dhcp4OptionClientId(client_id=b'\\x01\\xff')",
                 "__bytes__": (
-                    # DHCPv4 Client Identifier option [RFC 2132]
+                    # DHCPv4 Client Identifier option [RFC 2132 §9.14]
                     #   Code : 0x3d (61, Client Identifier)
-                    #   Len  : 0x00 (0 bytes)
-                    #   Data : (empty)
-                    b"\x3d\x00"
+                    #   Len  : 0x02 (2 bytes — the RFC-mandated minimum)
+                    #   Data : 01  (htype = Ethernet)
+                    #          ff  (1-byte identifier)
+                    b"\x3d\x02\x01\xff"
                 ),
-                "client_id": b"",
+                "client_id": b"\x01\xff",
                 "type": Dhcp4OptionType.CLIENT_ID,
-                "len": 2,
+                "len": 4,
             },
         },
         {
@@ -262,10 +263,10 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Client Identifier option (empty).",
-            "_args": [b"\x3d\x00" + b"ZH0PA"],
+            "_description": "The DHCPv4 Client Identifier option (2-byte boundary, RFC §9.14 minimum).",
+            "_args": [b"\x3d\x02\x01\xff" + b"ZH0PA"],
             "_results": {
-                "option": Dhcp4OptionClientId(client_id=b""),
+                "option": Dhcp4OptionClientId(client_id=b"\x01\xff"),
             },
         },
         {
@@ -357,6 +358,110 @@ class TestDhcp4OptionClientIdParserErrors(TestCase):
             "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Client Identifier option length value must "
             "be less than or equal to the length of provided bytes (2). Got: 4",
             msg="Unexpected integrity-error message.",
+        )
+
+    def test__dhcp4__option__client_id__wire_len_below_minimum(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the wire
+        length byte is less than the RFC-mandated minimum of 2. A
+        valid Client Identifier carries a 1-byte type code plus at
+        least 1 identifier byte.
+
+        Reference: RFC 2132 §9.14 ("The code for this option is 61,
+        and its minimum length is 2.").
+        """
+
+        # Wire frame: code=0x3d (61), length=0x01 (one byte of data
+        # — below the §9.14 minimum of 2), plus a stray byte.
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionClientId.from_buffer(b"\x3d\x01\x00")
+
+        self.assertIn(
+            "minimum length is 2",
+            str(error.exception),
+            msg="Integrity-error message must cite the RFC 2132 §9.14 minimum.",
+        )
+
+
+class TestDhcp4OptionClientIdBounds(TestCase):
+    """
+    The DHCPv4 Client Identifier option construction-time bounds
+    tests. RFC 2132 §9.14 mandates a minimum data length of 2
+    (1-byte type code + ≥ 1 identifier byte). The wire-format
+    length byte is a single octet so the maximum data length is
+    255.
+    """
+
+    def test__dhcp4__option__client_id__below_min_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4OptionClientId with fewer than
+        2 bytes raises AssertionError at construction time, citing
+        the spec-mandated minimum length.
+
+        Reference: RFC 2132 §9.14 (minimum length is 2).
+        """
+
+        for value in (b"", b"\x01"):
+            with self.subTest(value=value):
+                with self.assertRaises(AssertionError) as error:
+                    Dhcp4OptionClientId(value)
+                self.assertIn(
+                    "minimum length is 2",
+                    str(error.exception),
+                    msg=f"AssertionError must cite RFC 2132 §9.14 min for {value!r}.",
+                )
+
+    def test__dhcp4__option__client_id__over_uint8_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4OptionClientId with more than 255
+        bytes raises AssertionError at construction time, rather
+        than failing deep inside __buffer__ with a struct.error
+        when the length byte overflows uint8.
+
+        Reference: RFC 2132 §9.14 (length is a single octet).
+        """
+
+        too_long = b"\x01" + b"x" * 255  # 256 bytes total
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionClientId(too_long)
+
+        self.assertIn(
+            "must fit in a uint8",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 length-byte ceiling.",
+        )
+
+    def test__dhcp4__option__client_id__boundary_2_bytes_accepted(self) -> None:
+        """
+        Ensure exactly 2 bytes (the spec-minimum boundary) is
+        accepted at construction.
+
+        Reference: RFC 2132 §9.14 (minimum length is 2).
+        """
+
+        # Should not raise.
+        option = Dhcp4OptionClientId(b"\x01\xff")
+        self.assertEqual(
+            len(option.client_id),
+            2,
+            msg="Boundary 2-byte client_id must be accepted.",
+        )
+
+    def test__dhcp4__option__client_id__boundary_255_bytes_accepted(self) -> None:
+        """
+        Ensure exactly 255 bytes (the uint8 length-byte ceiling)
+        is accepted at construction.
+
+        Reference: RFC 2132 §9.14 (length field is a single octet).
+        """
+
+        # Should not raise.
+        option = Dhcp4OptionClientId(b"\x01" + b"x" * 254)
+        self.assertEqual(
+            len(option.client_id),
+            255,
+            msg="Boundary 255-byte client_id must be accepted.",
         )
 
 
