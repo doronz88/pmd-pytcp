@@ -299,6 +299,35 @@ be made to fail on an option it doesn't recognize. Option
 filtering policy (whether to **accept** datagrams with each
 option kind) is audited under RFC 7126.
 
+### Per-option parser integrity surface
+
+Each per-option parser carries a `_validate_integrity` static
+method that runs against the on-wire buffer before the
+dataclass constructor is invoked. Hostile-wire values that
+would otherwise trip the dataclass `__post_init__` asserts
+(and leak as bare `AssertionError`) are caught here and
+re-raised as `Ip4IntegrityError` so the IP4 RX handler's
+`PacketValidationError` catch can drop the frame cleanly.
+
+| Option | `_validate_integrity` enforces | RFC clause |
+|--------|--------------------------------|------------|
+| LSRR (131) | `length ≥ 7`; `(length − 3) % 4 == 0`; `length ≤ buffer`; `pointer ≥ 4`; `(pointer − 4) % 4 == 0` | RFC 791 §3.1 'Loose Source and Record Route' |
+| SSRR (137) | same shape as LSRR | RFC 791 §3.1 'Strict Source and Record Route' |
+| RR (7)     | `length ≥ 7`; `(length − 3) % 4 == 0`; `length ≤ buffer`; `pointer ≥ 4`; `(pointer − 4) % 4 == 0` | RFC 791 §3.1 'Record Route' |
+| Timestamp (68) | `flag ∈ {0, 1, 3}`; `length ≥ 4 + entry_len(flag)`; `(length − 4) % entry_len == 0`; `length ≤ buffer`; `pointer ≥ 5`; `(pointer − 5) % entry_len == 0` | RFC 791 §3.1 'Internet Timestamp' |
+| Router Alert (148) | `length == 4`; `length ≤ buffer` | RFC 2113 §2.1 |
+| CIPSO (134) | `length ≥ 6`; `length ≤ buffer`; per-tag walk (tag header ≥ 2, tag-len ≥ 2, tag fits) | FIPS-188 §4; Linux `net/ipv4/cipso_ipv4.c::cipso_v4_validate` |
+| Unknown    | `length ≤ buffer` (RFC 1122 §3.2.1.8 silent-preserve for unrecognised kinds) | RFC 791 §3.1 (Case-2 TLV) |
+| EOL (0) / NOP (1) | type-byte verification only (Case-1 TLV, no length field) | RFC 791 §3.1 'End of Option List' / 'No Operation' |
+
+The pointer-validity checks on LSRR / SSRR / RR / Timestamp
+are duplicated in the corresponding dataclass `__post_init__`
+asserts — the former is the parser-level integrity gate
+(reachable from hostile wire), the latter is the
+construction-time invariant for API consumers building an
+option object programmatically. The duplication is
+deliberate and load-bearing.
+
 ## §3.1 Specific Options — Loose / Strict Source Route
 
 > "Loose Source and Record Route (LSRR) ... The loose source
@@ -463,12 +492,18 @@ octet field in PyTCP wire codecs is network-order.
 
 **Status:** locked in.
 
-### §3.1 Options framework
+### §3.1 Options framework + per-option parser integrity
 
 - **Unit:** one file per option:
-  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__option__{eol,nop,rr,lsrr,ssrr,timestamp,router_alert,cipso,unknown}.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__option__{eol,nop,rr,lsrr,ssrr,timestamp,router_alert,cipso,unknown}.py`
+  Each file's `TestIp4Option<Name>Integrity` class exercises
+  every branch of the per-option `_validate_integrity` static
+  method including the pointer-base and pointer-alignment
+  rejections on LSRR / SSRR / RR / Timestamp (defense-in-depth
+  against the hostile-wire `AssertionError` leak that would
+  otherwise escape `__post_init__`).
 - **Unit:**
-  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__options.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__options.py`
   Container composition + integrity (max length, padding,
   alignment).
 - **Integration:**

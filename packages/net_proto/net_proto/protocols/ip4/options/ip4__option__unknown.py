@@ -114,6 +114,11 @@ class Ip4OptionUnknown(Ip4Option):
         Ensure integrity of the unknown IPv4 option before parsing it.
         """
 
+        # RFC 791 §3.1 (Case 2 TLV) — the option length byte bounds
+        # the option within the IPv4 options region. For unknown
+        # codepoints PyTCP preserves the wire bytes verbatim
+        # (RFC 1122 §3.2.1.8 "silently ignore the others"), so the
+        # only structural check that applies is "length fits buffer".
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The unknown IPv4 option length value must be less than or equal to "

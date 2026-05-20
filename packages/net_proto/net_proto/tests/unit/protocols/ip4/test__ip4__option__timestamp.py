@@ -523,3 +523,51 @@ class TestIp4OptionTimestampIntegrity(TestCase):
             ),
             msg="Unexpected integrity-error message for misaligned entries.",
         )
+
+    def test__ip4__option__timestamp__integrity__pointer__under_base(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip4IntegrityError when the wire
+        pointer byte is below the canonical minimum of 5 (the byte
+        offset where entry data begins). Hostile-wire defense-in-depth
+        — the __post_init__ assert would otherwise leak as a bare
+        AssertionError.
+
+        Reference: RFC 791 §3.1 (Timestamp pointer minimum is 5).
+        """
+
+        # Bytes: type=0x44, len=8, pointer=4 (< 5), oflw|flag=0, one ts entry.
+        buffer = b"\x44\x08\x04\x00\x00\x00\x00\x00"
+
+        with self.assertRaises(Ip4IntegrityError) as error:
+            Ip4OptionTimestamp.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][IPv4] The IPv4 Timestamp option pointer must be at least 5. Got: 4",
+            msg="Unexpected integrity-error message for pointer < 5.",
+        )
+
+    def test__ip4__option__timestamp__integrity__pointer__misaligned(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip4IntegrityError when the wire
+        pointer is not aligned to the per-entry boundary implied by
+        the flag (4 bytes for flag=0; 8 bytes for flag=1/3).
+
+        Reference: RFC 791 §3.1 (pointer addresses the next entry slot).
+        """
+
+        # Bytes: type=0x44, len=8, pointer=6 (mid-entry for flag=0), flag=0, ts entry.
+        # (pointer - 5) % 4 = 1 ≠ 0 → misaligned.
+        buffer = b"\x44\x08\x06\x00\x00\x00\x00\x00"
+
+        with self.assertRaises(Ip4IntegrityError) as error:
+            Ip4OptionTimestamp.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            (
+                "[INTEGRITY ERROR][IPv4] The IPv4 Timestamp option pointer must be aligned "
+                "to the 4-byte entry boundary for flag=0. Got: 6"
+            ),
+            msg="Unexpected integrity-error message for misaligned pointer (flag=0).",
+        )

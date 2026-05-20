@@ -143,21 +143,45 @@ class Ip4OptionSsrr(Ip4Option):
         Ensure integrity of the IPv4 Ssrr option before parsing it.
         """
 
+        # RFC 791 §3.1 'Strict Source and Record Route' — length byte
+        # bounds the option; shortest legal SSRR carries one 4-byte
+        # slot (3-byte header + 4-byte slot = 7).
         if (value := buffer[1]) < IP4__OPTION__SSRR__MIN_LEN:
             raise Ip4IntegrityError(
                 f"The IPv4 Ssrr option length must be at least {IP4__OPTION__SSRR__MIN_LEN} " f"bytes. Got: {value!r}"
             )
 
+        # RFC 791 §3.1 — route data is a sequence of 4-byte IPv4
+        # addresses; (length - 3-byte header) MUST be a multiple of 4.
         if (buffer[1] - IP4__OPTION__SSRR__HDR_LEN) % IP4__OPTION__SSRR__SLOT_LEN:
             raise Ip4IntegrityError(
                 "The IPv4 Ssrr option route data length must be a multiple of "
                 f"{IP4__OPTION__SSRR__SLOT_LEN} bytes. Got: {buffer[1]!r}"
             )
 
+        # RFC 791 §3.1 — option length MUST NOT exceed the buffer
+        # available.
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The IPv4 Ssrr option length value must be less than or equal to the "
                 f"length of provided bytes ({len(buffer)}). Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — "smallest legal value for the pointer is 4";
+        # defense-in-depth at the integrity layer so a hostile wire
+        # pointer below the base does not leak as AssertionError out
+        # of the dataclass __post_init__.
+        if (value := buffer[2]) < IP4__OPTION__SSRR__POINTER_BASE:
+            raise Ip4IntegrityError(
+                f"The IPv4 Ssrr option pointer must be at least {IP4__OPTION__SSRR__POINTER_BASE}. " f"Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — pointer addresses a 4-byte slot boundary;
+        # (pointer - 4) MUST be a multiple of 4.
+        if (buffer[2] - IP4__OPTION__SSRR__POINTER_BASE) % IP4__OPTION__SSRR__SLOT_LEN:
+            raise Ip4IntegrityError(
+                "The IPv4 Ssrr option pointer must be aligned to the "
+                f"{IP4__OPTION__SSRR__SLOT_LEN}-byte slot boundary. Got: {buffer[2]!r}"
             )
 
     @override

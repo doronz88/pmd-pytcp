@@ -343,3 +343,51 @@ class TestIp4OptionLsrrIntegrity(TestCase):
             ),
             msg="Unexpected integrity-error message for length > buffer.",
         )
+
+    def test__ip4__option__lsrr__integrity__pointer__under_base(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip4IntegrityError when the wire
+        pointer byte is below the canonical minimum of 4 (the byte
+        offset where route data begins). Otherwise the hostile-wire
+        condition would reach the dataclass __post_init__ and surface
+        as a bare AssertionError instead of an Ip4IntegrityError, leaking
+        past the IP4 RX handler's PacketValidationError catch.
+
+        Reference: RFC 791 §3.1 (Loose Source Route pointer minimum is 4).
+        """
+
+        # Bytes: 0x83=type, 0x07=len=7, 0x03=pointer=3 (< 4), 1 valid slot.
+        buffer = b"\x83\x07\x03\x0a\x00\x00\x01"
+
+        with self.assertRaises(Ip4IntegrityError) as error:
+            Ip4OptionLsrr.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][IPv4] The IPv4 Lsrr option pointer must be at least 4. Got: 3",
+            msg="Unexpected integrity-error message for pointer < 4.",
+        )
+
+    def test__ip4__option__lsrr__integrity__pointer__misaligned(self) -> None:
+        """
+        Ensure 'from_buffer' raises Ip4IntegrityError when the wire
+        pointer is not aligned to the 4-byte slot boundary (i.e.
+        (pointer - 4) % 4 != 0). Hostile-wire defense-in-depth — the
+        equivalent __post_init__ assert would otherwise leak as a bare
+        AssertionError.
+
+        Reference: RFC 791 §3.1 (route data is a list of 4-byte slots;
+        pointer must address a slot boundary).
+        """
+
+        # Bytes: 0x83=type, 0x07=len=7, 0x05=pointer=5 (mid-slot), 1 valid slot.
+        buffer = b"\x83\x07\x05\x0a\x00\x00\x01"
+
+        with self.assertRaises(Ip4IntegrityError) as error:
+            Ip4OptionLsrr.from_buffer(buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][IPv4] The IPv4 Lsrr option pointer must be aligned to the 4-byte slot boundary. Got: 5",
+            msg="Unexpected integrity-error message for misaligned pointer.",
+        )

@@ -110,12 +110,20 @@ class Ip4OptionRouterAlert(Ip4Option):
         Ensure integrity of the IPv4 Router Alert option before parsing it.
         """
 
+        # RFC 2113 §2.1 — the Router Alert option is fixed-size: 1
+        # type byte + 1 length byte + 2 value bytes = 4. Any other
+        # length value is malformed.
         if (value := buffer[1]) != IP4__OPTION__ROUTER_ALERT__LEN:
             raise Ip4IntegrityError(
                 f"The IPv4 Router Alert option length value must be {IP4__OPTION__ROUTER_ALERT__LEN} "
                 f"bytes. Got: {value!r}"
             )
 
+        # RFC 2113 §2.1 / RFC 791 §3.1 — option length MUST NOT
+        # exceed the buffer available (defense-in-depth; in practice
+        # the equality check above already covers this since len=4
+        # and any buffer < 4 bytes would have failed the parent
+        # options walk).
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The IPv4 Router Alert option length value must be less than or equal to the "

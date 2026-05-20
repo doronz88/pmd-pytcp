@@ -143,21 +143,52 @@ class Ip4OptionLsrr(Ip4Option):
         Ensure integrity of the IPv4 Lsrr option before parsing it.
         """
 
+        # RFC 791 §3.1 'Loose Source and Record Route' — length byte
+        # counts every octet of the option (type + length + pointer +
+        # route data); the shortest legal LSRR carries one 4-byte slot
+        # (3-byte header + 4-byte slot = 7).
         if (value := buffer[1]) < IP4__OPTION__LSRR__MIN_LEN:
             raise Ip4IntegrityError(
                 f"The IPv4 Lsrr option length must be at least {IP4__OPTION__LSRR__MIN_LEN} " f"bytes. Got: {value!r}"
             )
 
+        # RFC 791 §3.1 — route data is a sequence of 4-byte IPv4
+        # addresses; (length - 3-byte header) MUST be a multiple of
+        # 4 so the trailing region encodes a whole number of slots.
         if (buffer[1] - IP4__OPTION__LSRR__HDR_LEN) % IP4__OPTION__LSRR__SLOT_LEN:
             raise Ip4IntegrityError(
                 "The IPv4 Lsrr option route data length must be a multiple of "
                 f"{IP4__OPTION__LSRR__SLOT_LEN} bytes. Got: {buffer[1]!r}"
             )
 
+        # RFC 791 §3.1 — the length byte bounds the option within the
+        # IPv4 options region; it MUST NOT exceed the buffer available
+        # (the parent options-walker already trims to hlen).
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The IPv4 Lsrr option length value must be less than or equal to the "
                 f"length of provided bytes ({len(buffer)}). Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — "Pointer: The pointer is relative to this
+        # option, and the smallest legal value for the pointer is 4."
+        # Defense-in-depth at the integrity layer so a hostile wire
+        # value below the base does not leak as an AssertionError out
+        # of the dataclass __post_init__ (which catches the same
+        # invariant for API consumers).
+        if (value := buffer[2]) < IP4__OPTION__LSRR__POINTER_BASE:
+            raise Ip4IntegrityError(
+                f"The IPv4 Lsrr option pointer must be at least {IP4__OPTION__LSRR__POINTER_BASE}. " f"Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — the pointer addresses a 4-byte slot boundary
+        # within the route region; (pointer - 4) MUST be a multiple
+        # of 4. Same defense-in-depth rationale as the under-base
+        # check above.
+        if (buffer[2] - IP4__OPTION__LSRR__POINTER_BASE) % IP4__OPTION__LSRR__SLOT_LEN:
+            raise Ip4IntegrityError(
+                "The IPv4 Lsrr option pointer must be aligned to the "
+                f"{IP4__OPTION__LSRR__SLOT_LEN}-byte slot boundary. Got: {buffer[2]!r}"
             )
 
     @override

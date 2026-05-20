@@ -149,19 +149,25 @@ class Ip4OptionCipso(Ip4Option):
         Ensure integrity of the IPv4 CIPSO option before parsing it.
         """
 
+        # FIPS-188 §4 / Linux net/ipv4/cipso_ipv4.c::cipso_v4_validate —
+        # CIPSO option carries a 2-byte header (type + length) plus a
+        # 4-byte DOI; shortest legal CIPSO has zero tags = 6 bytes.
         if (value := buffer[1]) < IP4__OPTION__CIPSO__MIN_LEN:
             raise Ip4IntegrityError(
                 f"The IPv4 CIPSO option length must be at least " f"{IP4__OPTION__CIPSO__MIN_LEN} bytes. Got: {value!r}"
             )
 
+        # RFC 791 §3.1 — option length MUST NOT exceed the buffer
+        # available.
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The IPv4 CIPSO option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
-        # Walk the tag list to validate each tag's length-byte matches
-        # the available buffer slice.
+        # FIPS-188 §A.3 / Linux cipso_v4_validate — walk the tag list
+        # past the DOI and verify each tag's 2-byte (type+length)
+        # header is well-formed and fits within the option boundary.
         offset = IP4__OPTION__CIPSO__HDR_LEN + IP4__OPTION__CIPSO__DOI_LEN
         end = buffer[1]
         while offset < end:

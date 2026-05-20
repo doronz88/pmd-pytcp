@@ -235,6 +235,10 @@ class Ip4OptionTimestamp(Ip4Option):
 
         flag = buffer[3] & 0x0F
 
+        # RFC 791 §3.1 'Internet Timestamp' — flag values: 0 =
+        # timestamps only; 1 = each timestamp preceded by recording
+        # host's IP; 3 = only listed routers may record (addresses
+        # pre-specified). Flag=2 and 4..15 are reserved.
         if flag not in _FLAG_VALUES_ALL:
             raise Ip4IntegrityError(
                 f"The IPv4 Timestamp option flag value must be one of {{0, 1, 3}}. " f"Got: {flag!r}"
@@ -243,21 +247,52 @@ class Ip4OptionTimestamp(Ip4Option):
         entry_len = _entry_len_for_flag(flag)
         min_len = IP4__OPTION__TIMESTAMP__HDR_LEN + entry_len
 
+        # RFC 791 §3.1 — Timestamp option length is the 4-byte header
+        # (type / length / pointer / oflw|flag) plus at least one
+        # entry. Per-entry size depends on flag (4 bytes for
+        # timestamp-only, 8 bytes for timestamp+address).
         if (value := buffer[1]) < min_len:
             raise Ip4IntegrityError(
                 f"The IPv4 Timestamp option length must be at least {min_len} bytes " f"for flag={flag}. Got: {value!r}"
             )
 
+        # RFC 791 §3.1 — entries are fixed-size; (length - 4-byte
+        # header) MUST be a multiple of entry_len.
         if (buffer[1] - IP4__OPTION__TIMESTAMP__HDR_LEN) % entry_len:
             raise Ip4IntegrityError(
                 "The IPv4 Timestamp option entries length must be a multiple of "
                 f"{entry_len} bytes for flag={flag}. Got: {buffer[1]!r}"
             )
 
+        # RFC 791 §3.1 — option length MUST NOT exceed the buffer
+        # available.
         if (value := buffer[1]) > len(buffer):
             raise Ip4IntegrityError(
                 "The IPv4 Timestamp option length value must be less than or equal to the "
                 f"length of provided bytes ({len(buffer)}). Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — "The Pointer is the number of octets from the
+        # beginning of this option to the end of the timestamps plus
+        # one (i.e., it points to the octet beginning the space for
+        # next timestamp). The smallest legal value is 5." Defense-
+        # in-depth at the integrity layer so a hostile wire value
+        # below the base does not leak as AssertionError out of
+        # __post_init__.
+        if (value := buffer[2]) < IP4__OPTION__TIMESTAMP__POINTER_BASE:
+            raise Ip4IntegrityError(
+                f"The IPv4 Timestamp option pointer must be at least "
+                f"{IP4__OPTION__TIMESTAMP__POINTER_BASE}. Got: {value!r}"
+            )
+
+        # RFC 791 §3.1 — pointer addresses an entry boundary; the
+        # entry width depends on the flag (4 bytes for timestamp-only,
+        # 8 bytes for timestamp+address). (pointer - 5) MUST be a
+        # multiple of entry_len.
+        if (buffer[2] - IP4__OPTION__TIMESTAMP__POINTER_BASE) % entry_len:
+            raise Ip4IntegrityError(
+                "The IPv4 Timestamp option pointer must be aligned to the "
+                f"{entry_len}-byte entry boundary for flag={flag}. Got: {buffer[2]!r}"
             )
 
     @override
