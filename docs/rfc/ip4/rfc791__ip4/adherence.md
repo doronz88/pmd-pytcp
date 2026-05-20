@@ -222,15 +222,27 @@ instances (`packages/net_addr/net_addr/ip4_address.py`); the parser's
 `from_buffer` constructs them via the integer constructor
 form (`ip4__header.py:228-229`).
 
-Host-side sanity rules go beyond bare RFC 791:
-- **`src.is_multicast`** → reject (RFC 1122 §3.2.1.3 derivative)
-- **`src.is_reserved`** → reject (RFC 1122 §3.2.1.3 derivative)
-- **`src.is_limited_broadcast`** → reject (RFC 1122 §3.2.1.3
-  derivative)
+Host-side sanity rules go beyond bare RFC 791, in ascending
+address-space order:
+- **`src.is_invalid`** (`0.0.0.1`–`0.255.255.255`, the 0.0.0.0/8
+  "this network" range minus the DHCP-init 0.0.0.0 unspecified
+  source) → reject (RFC 1122 §3.2.1.3(a))
+- **`src.is_loopback`** (`127.0.0.0/8`) → reject (RFC 1122
+  §3.2.1.3(g) — "127/8 ... MUST NOT appear outside a host")
+- **`src.is_multicast`** (`224.0.0.0/4`) → reject (RFC 1122
+  §3.2.1.3 — class D is not a host source)
+- **`src.is_reserved`** (`240.0.0.0/4` minus `255.255.255.255`) →
+  reject (RFC 1122 §3.2.1.3 / RFC 6890)
+- **`src.is_limited_broadcast`** (`255.255.255.255`) → reject
+  (RFC 1122 §3.2.1.3(c) — limited broadcast MUST NOT be source)
 
-All three raise `Ip4SanityError` with `pointer=12` and trigger
+All five raise `Ip4SanityError` with `pointer=12` and trigger
 ICMPv4 Parameter Problem
-(`ip4__parser.py:142-158`, `packet_handler__ip4__rx.py:258-300`).
+(`ip4__parser.py` `_validate_sanity`,
+`packet_handler__ip4__rx.py:258-300`). The `src.is_unspecified`
+case (`0.0.0.0` exactly) is deliberately **not** rejected at
+parser level so DHCPv4 client discovery (which uses
+`src=0.0.0.0` per RFC 2131) can reach the UDP RX path.
 TX-side source selection runs the RFC 6724-style rules 1, 2,
 and 8 across the owned candidate set
 (`packet_handler__ip4__tx.py:372-416`) with a DHCPv4 carve-out
@@ -428,7 +440,7 @@ octet field in PyTCP wire codecs is network-order.
 
 **Status:** locked in.
 
-### §3.1 Parser sanity (TTL=0, src multicast/reserved/broadcast, DF+MF / DF+offset)
+### §3.1 Parser sanity (TTL=0, src is_invalid/loopback/multicast/reserved/limited-broadcast, DF+MF / DF+offset)
 
 - **Unit:**
   `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`

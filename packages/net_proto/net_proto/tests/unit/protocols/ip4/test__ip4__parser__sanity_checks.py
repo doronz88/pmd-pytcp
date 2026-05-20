@@ -53,6 +53,32 @@ from net_proto import Ip4Parser, Ip4SanityError, PacketRx
             },
         },
         {
+            "_description": "Source address is in the 0.0.0.0/8 'this network' range (0.10.20.30).",
+            # src bytes 12-15 = 0x000a141e (0.10.20.30 — in 0.0.0.0/8,
+            # excluding 0.0.0.0 itself which is the DHCP-init unspecified
+            # source). RFC 1122 §3.2.1.3(a) "(a) {0, <Host-number>} ...
+            # MUST NOT be used as a source address". cksum = 0xed37.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\xed\x37" b"\x00\x0a\x14\x1e\x32\x3c\x46\x50"),
+            "_results": {
+                "error_message": (
+                    "The 'src' field must not be in the 'this network' range (0.0.0.0/8). "
+                    "Got: Ip4Address('0.10.20.30')"
+                ),
+                "pointer": 12,
+            },
+        },
+        {
+            "_description": "Source address is a loopback address (127.0.0.1).",
+            # src bytes 12-15 = 0x7f000001 (127.0.0.1 — in 127.0.0.0/8).
+            # RFC 1122 §3.2.1.3(g) "Addresses of this form MUST NOT
+            # appear outside a host." cksum = 0x825e.
+            "_frame_rx": (b"\x45\xff\x00\x14\xff\xff\x40\x00\xff\xff\x82\x5e" b"\x7f\x00\x00\x01\x32\x3c\x46\x50"),
+            "_results": {
+                "error_message": ("The 'src' field must not be a loopback address. Got: Ip4Address('127.0.0.1')"),
+                "pointer": 12,
+            },
+        },
+        {
             "_description": "Source address is a multicast address (224.0.0.1).",
             # src bytes 12-15 = 0xe0000001 (224.0.0.1 is in the IPv4
             # multicast range 224.0.0.0/4). cksum = 0x215e.

@@ -95,6 +95,9 @@ and silently drops the frame
 
 ## §3.2.1.3 Addressing
 
+> "(a) { 0, 0 } ... {0, <Host-number>} ... MUST NOT be used
+> as a source address ... except as part of an initialization
+> procedure by which the host learns its own IP address."
 > "(c) {-1, -1} Limited broadcast. It MUST NOT be used as a
 > source address."
 > "(d) {<Network-number>, -1} Directed broadcast ... MUST NOT
@@ -102,15 +105,27 @@ and silently drops the frame
 > "(g) {127, <any>} Internal host loopback address. Addresses
 > of this form MUST NOT appear outside a host."
 
-**Adherence:** met for limited broadcast.
-`Ip4Parser._validate_sanity` rejects frames where
-`src.is_limited_broadcast` with `Ip4SanityError` and emits ICMP
-Parameter Problem with pointer=12
-(`ip4__parser.py:154-158`). The reserved/multicast source checks
-on the same lines extend the rule to (B), (D), and the (g)
-loopback class via `Ip4Address.is_reserved` — loopback addresses
-sit in 127/8 which is classified reserved in
-`packages/net_addr/net_addr/ip4_address.py`.
+**Adherence:** met. `Ip4Parser._validate_sanity` rejects every
+forbidden source-address class with `Ip4SanityError` and
+`pointer=12`, in ascending address-space order
+(`ip4__parser.py` `_validate_sanity`):
+
+- (a) 0/8 (this network) minus 0.0.0.0 — `src.is_invalid` →
+  reject. 0.0.0.0 itself (`is_unspecified`) is permitted so
+  DHCP client initialization (the §3.2.1.3(a) carve-out) can
+  reach the UDP RX path.
+- (g) 127/8 loopback — `src.is_loopback` → reject. Linux
+  enforces the same rule via `rp_filter=1` (the default).
+- (Class D) 224/4 multicast — `src.is_multicast` → reject.
+- (Reserved) 240/4 minus 255.255.255.255 — `src.is_reserved`
+  → reject. (RFC 6890; group includes class E.)
+- (c) 255.255.255.255 limited broadcast — `src.is_limited_broadcast`
+  → reject.
+
+The (d) per-subnet directed broadcast case requires
+`_ip4_ifaddr` state to recognise and is enforced one layer up,
+at the packet handler (`packet_handler__ip4__rx.py:145-159`).
+All host-side `src` MUST-NOTs from §3.2.1.3 are covered.
 
 > "When a host sends any datagram, the IP source address MUST be
 > one of its own IP addresses (but not a broadcast or multicast
@@ -502,11 +517,14 @@ transient network condition.
 
 **Status:** locked in.
 
-### §3.2.1.3 Source-address sanity (multicast / reserved / limited-broadcast)
+### §3.2.1.3 Source-address sanity (is_invalid / loopback / multicast / reserved / limited-broadcast)
 
 - **Unit:**
   `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
-  Each branch exercised with the expected `pointer` value.
+  Each branch exercised with the expected `pointer` value
+  (one case per address-space class: 0/8 non-zero, 127/8
+  loopback, 224/4 multicast, 240/4 reserved,
+  255.255.255.255 limited broadcast).
 - **Integration:**
   `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies ICMP Parameter Problem emission with the documented

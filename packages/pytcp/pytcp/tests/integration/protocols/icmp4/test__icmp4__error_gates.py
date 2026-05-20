@@ -130,10 +130,6 @@ class TestIcmp4ErrorGates__CleanUnicast(IcmpTestCase, TestCase):
             "_description": "Limited-broadcast destination 255.255.255.255.",
             "_kwargs": {"ip_dst": "255.255.255.255", "eth_dst": MacAddress("ff:ff:ff:ff:ff:ff")},
         },
-        {
-            "_description": "Loopback source 127.0.0.1.",
-            "_kwargs": {"ip_src": "127.0.0.1"},
-        },
     ]
 )
 class TestIcmp4ErrorGates__Suppressed(IcmpTestCase, TestCase):
@@ -175,6 +171,10 @@ class TestIcmp4ErrorGates__Suppressed(IcmpTestCase, TestCase):
 
 @parameterized_class(
     [
+        {
+            "_description": "Loopback source 127.0.0.1 — IP4 parser rejects (RFC 1122 §3.2.1.3(g)).",
+            "_kwargs": {"ip_src": "127.0.0.1"},
+        },
         {
             "_description": "Multicast source 224.0.0.1 — IP4 parser rejects.",
             "_kwargs": {"ip_src": "224.0.0.1"},
