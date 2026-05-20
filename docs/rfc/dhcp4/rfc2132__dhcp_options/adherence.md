@@ -156,6 +156,29 @@ uses only the first router (`ack.router[0]`) as the
 default gateway — the SHOULD preference order is
 honoured implicitly.
 
+**Wire-format bounds (assembler + parser):** the §3.5
+minimum-and-multiple-of-4 length rule is now enforced
+at both ends:
+
+- `Dhcp4OptionRouter.__post_init__` asserts
+  `1 <= len(routers) <= 63` — catches a programmer
+  passing an empty list at construction time, before
+  `__buffer__` would emit a spec-violating frame, and
+  catches > 63 router IPs before `struct.pack_into`
+  overflows the uint8 length byte (63 × 4 = 252; 64 × 4
+  = 256 > uint8 ceiling).
+- `Dhcp4OptionRouter._validate_integrity` already
+  enforced the multiple-of-4 rule; now also rejects
+  wire frames whose Length byte is below 4 (the §3.5
+  minimum) with a typed `Dhcp4IntegrityError` (not a
+  bare AssertionError leaking past the IP RX handler's
+  `PacketValidationError` catch).
+
+Pinned by `TestDhcp4OptionRouterBounds` and the new
+`test__dhcp4__option__router__wire_len_below_minimum`
+case at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__router.py`.
+
 ---
 
 ## §3.14 Host Name Option (code 12)

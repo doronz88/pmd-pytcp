@@ -121,25 +121,6 @@ class TestDhcp4OptionRouterAsserts(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Router option (empty list).",
-            "_args": [[]],
-            "_results": {
-                "__len__": 2,
-                "__str__": "router []",
-                "__repr__": "Dhcp4OptionRouter(routers=[])",
-                "__bytes__": (
-                    # DHCPv4 Router option [RFC 2132]
-                    #   Code : 0x03 (3, Router)
-                    #   Len  : 0x00 (0 bytes)
-                    #   Data : (empty)
-                    b"\x03\x00"
-                ),
-                "routers": [],
-                "type": Dhcp4OptionType.ROUTER,
-                "len": 2,
-            },
-        },
-        {
             "_description": "The DHCPv4 Router option (one router).",
             "_args": [[Ip4Address("192.0.2.1")]],
             "_results": {
@@ -355,13 +336,6 @@ class TestDhcp4OptionRouterAssembler(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Router option (empty list).",
-            "_args": [b"\x03\x00" + b"ZH0PA"],
-            "_results": {
-                "option": Dhcp4OptionRouter([]),
-            },
-        },
-        {
             "_description": "The DHCPv4 Router option (one router).",
             "_args": [b"\x03\x04\xc0\x00\x02\x01" + b"ZH0PA"],
             "_results": {
@@ -452,16 +426,18 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
     def test__dhcp4__option__router__length_not_multiple_of_4(self) -> None:
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
-        length (less header) is not a multiple of 4.
+        length (less header) is not a multiple of 4. The fixture uses
+        length=5 — above the §3.5 minimum of 4 (so the earlier
+        minimum-length check passes), but not a multiple of 4.
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
-            Dhcp4OptionRouter.from_buffer(b"\x03\x03\x01\x02\x03")
+            Dhcp4OptionRouter.from_buffer(b"\x03\x05\x01\x02\x03\x04\x05")
 
         self.assertEqual(
             str(error.exception),
             "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Router option length value (less header) "
-            "must be a multiple of 4. Got: 3",
+            "must be a multiple of 4. Got: 1",
             msg="Unexpected length-modulo integrity error message.",
         )
 
@@ -479,6 +455,110 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
             "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Router option length value must "
             "be less than or equal to the length of provided bytes (2). Got: 6",
             msg="Unexpected buffer-too-short integrity error message.",
+        )
+
+    def test__dhcp4__option__router__wire_len_below_minimum(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the wire
+        Length byte is below the spec-mandated minimum of 4 (one
+        4-byte IPv4 address). Wire frames with Length=0 are
+        otherwise structurally consistent (header alone) but
+        violate the §3.5 minimum.
+
+        Reference: RFC 2132 §3.5 ("The minimum length for the
+        router option is 4 octets").
+        """
+
+        # Wire frame: code=0x03, length=0x00 (below the §3.5 minimum of 4).
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionRouter.from_buffer(b"\x03\x00")
+
+        self.assertIn(
+            "minimum length",
+            str(error.exception),
+            msg="Integrity-error message must cite the spec-mandated minimum.",
+        )
+
+
+class TestDhcp4OptionRouterBounds(TestCase):
+    """
+    The DHCPv4 Router option construction-time bounds tests.
+    RFC 2132 §3.5 mandates a minimum data length of 4 octets
+    (one IPv4 address), and the wire-format length byte is a
+    single octet so the maximum is 63 router IPs (63 × 4 = 252;
+    64 × 4 = 256 > uint8 ceiling).
+    """
+
+    def test__dhcp4__option__router__empty_list_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4OptionRouter with an empty list
+        raises AssertionError at construction time, citing the
+        spec-mandated minimum.
+
+        Reference: RFC 2132 §3.5 (minimum length 4 octets = 1 router IP).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionRouter([])
+
+        self.assertIn(
+            "at least 1 router",
+            str(error.exception),
+            msg="AssertionError must cite the at-least-one-router requirement.",
+        )
+
+    def test__dhcp4__option__router__over_64_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4OptionRouter with more than 63
+        IPs raises AssertionError at construction time, rather
+        than failing deep inside __buffer__ with a struct.error
+        when the length byte (n × 4) overflows uint8.
+
+        Reference: RFC 2132 §3.5 (length is a single octet — 63 IPs max).
+        """
+
+        # 64 IPs × 4 bytes = 256 — one over the uint8 ceiling.
+        too_many = [Ip4Address("192.0.2.1")] * 64
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionRouter(too_many)
+
+        self.assertIn(
+            "at most 63",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 ceiling.",
+        )
+
+    def test__dhcp4__option__router__boundary_1_router_accepted(self) -> None:
+        """
+        Ensure exactly 1 router IP (the spec-minimum boundary) is
+        accepted at construction.
+
+        Reference: RFC 2132 §3.5 (minimum length 4 octets = 1 router IP).
+        """
+
+        # Should not raise.
+        option = Dhcp4OptionRouter([Ip4Address("192.0.2.1")])
+        self.assertEqual(
+            len(option.routers),
+            1,
+            msg="Boundary 1-router list must be accepted.",
+        )
+
+    def test__dhcp4__option__router__boundary_63_routers_accepted(self) -> None:
+        """
+        Ensure exactly 63 router IPs (the uint8 length-byte
+        ceiling) is accepted at construction.
+
+        Reference: RFC 2132 §3.5 (length field is a single octet).
+        """
+
+        # Should not raise.
+        option = Dhcp4OptionRouter([Ip4Address("192.0.2.1")] * 63)
+        self.assertEqual(
+            len(option.routers),
+            63,
+            msg="Boundary 63-router list must be accepted.",
         )
 
 

@@ -92,6 +92,24 @@ class Dhcp4OptionRouter(Dhcp4Option):
             f"Got: {[type(element) for element in self.routers]!r}"
         )
 
+        # RFC 2132 §3.5 — "The minimum length for the router
+        # option is 4 octets" — the option data must carry at
+        # least one IPv4 address.
+        assert len(self.routers) >= 1, (
+            f"The 'routers' field must carry at least 1 router IP (RFC 2132 §3.5 minimum "
+            f"length 4 octets). Got: {len(self.routers)}"
+        )
+
+        # The wire-format length byte is a single octet; with
+        # 4 bytes per IPv4 address, the option can carry at most
+        # 63 routers (63 × 4 = 252; 64 × 4 = 256 > uint8). Catch
+        # over-uint8 input at construction rather than letting
+        # struct.pack_into raise deep inside __buffer__.
+        assert len(self.routers) <= 63, (
+            f"The 'routers' field must carry at most 63 router IPs (RFC 2132 §3.5 length "
+            f"is a single octet). Got: {len(self.routers)}"
+        )
+
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.routers) * 4)
 
@@ -139,6 +157,18 @@ class Dhcp4OptionRouter(Dhcp4Option):
             raise Dhcp4IntegrityError(
                 "The DHCPv4 Router option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
+            )
+
+        # RFC 2132 §3.5 — "The minimum length for the router option
+        # is 4 octets". Reject wire frames whose Length byte is
+        # below the spec minimum BEFORE the constructor's tighter
+        # dataclass assert fires, so the failure surfaces as a
+        # typed integrity error rather than a bare AssertionError
+        # that slips past the IP RX handler's PacketValidationError
+        # catch.
+        if (value := buffer[1]) < 4:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Router option minimum length is 4 octets (RFC 2132 §3.5). " f"Got: {value!r}"
             )
 
         if (value := buffer[1] % 4) != 0:
