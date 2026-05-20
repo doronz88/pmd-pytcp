@@ -170,6 +170,24 @@ honoured implicitly.
 REQUEST (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:148`,
 `:203`).
 
+**Wire-format self-consistency (assembler):**
+`Dhcp4OptionHostName` computes the wire-format length byte
+from the **byte count** of the UTF-8-encoded host name, not
+from the Python character count. Without this distinction
+a host name containing non-ASCII characters would produce
+a self-inconsistent wire frame — the length byte would say
+"N bytes follow" while N+k bytes actually trailed (k = the
+multi-byte-encoding overhead).
+
+The wire length byte is a single octet, so the encoded
+host name must fit in 255 bytes. The dataclass
+`__post_init__` asserts this at construction.
+
+Pinned by `TestDhcp4OptionHostNameWireConsistency` at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__host_name.py`
+(two cases: non-ASCII wire self-consistency, over-255-bytes
+rejected).
+
 ---
 
 ## §9.1 Requested IP Address (code 50)

@@ -78,8 +78,21 @@ class Dhcp4OptionHostName(Dhcp4Option):
 
         assert isinstance(self.host_name, str), f"The 'host_name' field must be a str. Got: {type(self.host_name)!r}"
 
+        # Compute the wire-format byte count, NOT the Python char
+        # count. RFC 2132 §3.14 specifies the option as a string,
+        # and PyTCP serializes via `encode("utf-8")` — for any
+        # non-ASCII character the byte length exceeds the char
+        # length, and the wire frame's length byte must agree
+        # with the trailing data byte count.
+        byte_len = len(self.host_name.encode("utf-8"))
+
+        assert byte_len <= 255, (
+            f"The 'host_name' field encoded length must fit in a uint8 (RFC 2132 §3.14 "
+            f"length byte). Got: {byte_len} bytes"
+        )
+
         # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.host_name))
+        object.__setattr__(self, "len", DHCP4__OPTION__LEN + byte_len)
 
     @override
     def __str__(self) -> str:
@@ -95,6 +108,11 @@ class Dhcp4OptionHostName(Dhcp4Option):
         Get the DHCPv4 Host Name option as a memoryview.
         """
 
+        # Use the encoded byte sequence for both the length byte
+        # and the trailing data so the wire frame is self-
+        # consistent for non-ASCII host names (see __post_init__
+        # for the byte-count rationale).
+        encoded = self.host_name.encode("utf-8")
         buffer = bytearray(len(self))
 
         struct.pack_into(
@@ -102,9 +120,9 @@ class Dhcp4OptionHostName(Dhcp4Option):
             buffer,
             0,
             int(self.type),
-            len(self.host_name),
+            len(encoded),
         )
-        buffer[DHCP4__OPTION__LEN:] = self.host_name.encode("utf-8")
+        buffer[DHCP4__OPTION__LEN:] = encoded
 
         return memoryview(buffer)
 

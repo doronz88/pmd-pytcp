@@ -434,3 +434,74 @@ class TestDhcp4OptionHostNameBehavior(TestCase):
                 type=Dhcp4OptionType.HOST_NAME,
                 host_name="host",
             )
+
+
+class TestDhcp4OptionHostNameWireConsistency(TestCase):
+    """
+    The DHCPv4 Host Name option wire-format self-consistency tests.
+
+    Pin the invariant `len(bytes(opt)) == len(opt) == 2 + length_byte`
+    for non-ASCII multi-byte UTF-8 host names. Without the byte-count
+    length-math fix, `len(opt)` is computed from Python character
+    count (`len(self.host_name)`) while the data payload is the
+    UTF-8 byte sequence — disagreement on any non-ASCII input
+    produces a self-inconsistent wire frame.
+    """
+
+    def test__dhcp4__option__host_name__non_ascii_wire_self_consistent(self) -> None:
+        """
+        Ensure a host_name containing multi-byte UTF-8 characters
+        produces a self-consistent wire frame: the length byte
+        equals the number of trailing data bytes, and `len(opt)`
+        equals `len(bytes(opt))`.
+
+        Reference: RFC 2132 §3.14 (Host Name option wire format).
+        """
+
+        # "café" is 4 Python chars but 5 UTF-8 bytes: 'c' 'a' 'f' 0xc3 0xa9.
+        option = Dhcp4OptionHostName("café")
+        wire = bytes(option)
+
+        self.assertEqual(
+            len(wire),
+            7,
+            msg=("Wire-frame total length must be 2 (header) + 5 (UTF-8 data bytes) = 7. " f"Got: {len(wire)}."),
+        )
+        self.assertEqual(
+            wire[1],
+            5,
+            msg=(
+                "Wire-frame length byte must equal the number of trailing data bytes (5 for 'café'). "
+                f"Got: {wire[1]}."
+            ),
+        )
+        self.assertEqual(
+            len(option),
+            len(wire),
+            msg=(
+                "len(option) must equal len(bytes(option)) for wire-format self-consistency. "
+                f"Got: len(option)={len(option)}, len(bytes(option))={len(wire)}."
+            ),
+        )
+
+    def test__dhcp4__option__host_name__over_255_bytes_rejected(self) -> None:
+        """
+        Ensure a host_name whose UTF-8 byte encoding exceeds the
+        uint8 length-byte ceiling (255) is rejected at construction
+        time rather than failing deep inside __buffer__ with a
+        struct.pack overflow error.
+
+        Reference: RFC 2132 §3.14 (length field is a single octet).
+        """
+
+        # 256 ASCII chars = 256 UTF-8 bytes, one over the uint8 ceiling.
+        too_long = "x" * 256
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionHostName(too_long)
+
+        self.assertIn(
+            "must fit in a uint8",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 length-byte ceiling.",
+        )
