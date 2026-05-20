@@ -30,8 +30,9 @@ All work is on branch `PyTCP_3_0_6`. The branch is pushed.
 | 6 | **ICMPv6 RFC 7112 follow-up** | `25f906ed` | Added `Icmp6ParameterProblemCode.INCOMPLETE_HEADER_CHAIN = 3` per RFC 7112 §3. PyTCP now accepts PP code 3 inbound (matches Linux `ICMPV6_HDR_INCOMP`). Active emission deferred to Phase 2 — matches Linux which also doesn't actively emit, just silent-drops on reassembly failure. |
 | 7 | **IPv4** | `a4c0d639` | Annotated 5 integrity + 6 sanity branches with RFC citations. Added two new RFC 1122 §3.2.1.3 src rejections: `src.is_loopback` (127/8, clause (g)) and `src.is_invalid` (0.0.0.1–0.255.255.255, clause (a) minus the DHCPv4 0.0.0.0 carve-out). Closed the documented-but-not-enforced loopback gap (the RFC 791 adherence doc had wrongly claimed 127/8 was covered by `is_reserved`). Sanity checks reordered to ascending address-space order. Cascade: moved the "Loopback source 127.0.0.1" case in `test__icmp4__error_gates.py` from `__Suppressed` to `__DefenseInDepth`. |
 | 7a | **IPv4 per-option** | `3f8c18e8` | Annotated every per-option `_validate_integrity` (LSRR / SSRR / RR / Timestamp / Router Alert / CIPSO / Unknown) with RFC citations. Closed the hostile-wire `AssertionError` leak on LSRR/SSRR/RR (pointer ≥ 4, pointer 4-byte-aligned) and Timestamp (pointer ≥ 5, pointer entry-aligned by flag) — pre-existing `__post_init__` asserts were the only check; they raise `AssertionError` which is **not** a `PacketValidationError` and slips past the IP4 RX handler's catch. Same defect class DHCPv4 fixed in `54d8d5c6`. Added "Per-option parser integrity surface" subsection to RFC 791 adherence doc. |
+| 8 | **IPv6 + ext-headers + per-option** | `d99a1aaa` | One-shot pass covering: (a) base IPv6 header — annotated 3 integrity + 2 existing sanity + added `src.is_loopback` rejection (RFC 4291 §2.5.3, analog of IPv4 §3.2.1.3(g)); (b) all 4 extension-header parsers (Frag / HBH / DestOpts / Routing) annotated; (c) 5 per-option `_validate_integrity` gap fixes — HBH Router Alert (opt_data_len==2, RFC 2711 §2.1), HBH Jumbo Payload (opt_data_len==4 + value>65535, RFC 2675 §2/§3), HBH CALIPSO (opt_data_len consistency, RFC 5570 §4), DestOpts Tunnel Encap Limit (opt_data_len==1, RFC 2473 §4.1.1). Added "Parser integrity & sanity surface" section to RFC 8200 adherence doc. Removed 3 subsumed assertion-based tests. |
 
-Test count after the pass: **11100 passing**.
+Test count after the pass: **11105 passing**.
 
 ---
 
@@ -39,12 +40,9 @@ Test count after the pass: **11100 passing**.
 
 In order:
 
-1. **IPv6** (`packages/net_proto/net_proto/protocols/ip6/`) and the
-   four sibling extension-header subpackages
-   (`ip6_dest_opts`, `ip6_frag`, `ip6_hbh`, `ip6_routing`)
-2. **TCP** (`packages/net_proto/net_proto/protocols/tcp/`) — large
+1. **TCP** (`packages/net_proto/net_proto/protocols/tcp/`) — large
    surface, RFC 9293 primary
-3. **UDP** (`packages/net_proto/net_proto/protocols/udp/`)
+2. **UDP** (`packages/net_proto/net_proto/protocols/udp/`)
 
 ---
 
@@ -159,31 +157,31 @@ To resume this work in a fresh session, paste:
 > Resume the `net_proto` per-protocol RFC integrity/sanity adherence
 > pass on branch `PyTCP_3_0_6`. State and workflow are documented at
 > `docs/refactor/net_proto_rfc_adherence_pass.md`. Read that file
-> first. Last protocol completed: **IPv4** — header parser (commit
-> `a4c0d639`) AND per-option parsers (commit `3f8c18e8`, which
-> closed the hostile-wire AssertionError leak on LSRR/SSRR/RR/
-> Timestamp pointer bounds). Next alphabetically: **IPv6** (and the
-> four sibling extension-header subpackages — `ip6_dest_opts`,
-> `ip6_frag`, `ip6_hbh`, `ip6_routing`). Follow the established
-> workflow: survey → present analysis → `AskUserQuestion` to
-> confirm direction → tests-first → implement → adherence-doc
-> refresh → run lint + `make test` + §7.2 docstring audit → wait
-> for explicit "commit and push" before committing.
+> first. Last protocol completed: **IPv6 + ext-headers + per-option**
+> (commit `d99a1aaa`, one-shot pass covering base IPv6 header
+> src.is_loopback gap + 5 per-option AssertionError leaks across
+> HBH/DestOpts options). Next alphabetically: **TCP** — large surface,
+> RFC 9293 primary. Follow the established workflow: survey →
+> present analysis → `AskUserQuestion` to confirm direction →
+> tests-first → implement → adherence-doc refresh → run lint +
+> `make test` + §7.2 docstring audit → wait for explicit "commit
+> and push" before committing.
 >
-> **Apply the lesson from the IPv4 per-option follow-up to IPv6 from
-> the start**: don't review the IPv6 header parser alone — also
-> survey each extension-header subpackage's per-option/per-thing
-> integrity surface in the same pass. Look specifically for the
-> wire-`AssertionError` leak pattern (dataclass `__post_init__`
-> asserts on a parsed wire field that are not mirrored in
-> `_validate_integrity`).
+> **Apply the lessons from IPv4/IPv6 per-option pass to TCP**:
+> (1) Survey the TCP parser AND all per-option files in the same
+> pass (`tcp__option__*.py`) — the recurring `__post_init__`
+> AssertionError-on-wire-input leak pattern is the highest-value
+> defect class to look for. (2) TCP is RFC 9293 primary (RFC 793 +
+> RFC 1122 + RFC 5961 incorporated); cite 9293 sections. (3) The
+> TCP option family is wider than IPv4/IPv6 (MSS, WSCALE, SACK,
+> SACK-Permitted, Timestamps, MD5 Signature Option, etc.) — expect
+> meaningful per-option work.
 >
 > Begin with reading
-> `packages/net_proto/net_proto/protocols/ip6/ip6__parser.py`,
-> `ip6__header.py`, `ip6__errors.py`, each of the four extension-
-> header subpackages' parsers AND their per-option files,
-> `docs/rfc/ip6/`, and the existing unit tests under
-> `packages/net_proto/net_proto/tests/unit/protocols/ip6/` (plus
-> the ip6 ext-header test trees). Do **not** start changing code;
-> present the analysis first and use `AskUserQuestion` to confirm
-> direction.
+> `packages/net_proto/net_proto/protocols/tcp/tcp__parser.py`,
+> `tcp__header.py`, `tcp__errors.py`, every per-option file under
+> `packages/net_proto/net_proto/protocols/tcp/options/`,
+> `docs/rfc/tcp/`, and the existing unit tests under
+> `packages/net_proto/net_proto/tests/unit/protocols/tcp/`. Do
+> **not** start changing code; present the analysis first and use
+> `AskUserQuestion` to confirm direction.
