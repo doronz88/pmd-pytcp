@@ -282,6 +282,7 @@ class PacketHandlerArpTx(ABC):
         *,
         arp__tpa: Ip4Address,
         ethernet__dst: MacAddress,
+        arp__spa: Ip4Address | None = None,
     ) -> None:
         """
         Enqueue a unicast ARP cache-refresh probe addressed to
@@ -289,6 +290,16 @@ class PacketHandlerArpTx(ABC):
         an entry approaching expiry without broadcasting a
         Request to the whole segment — only the actual owner
         of the IP wakes up to reply.
+
+        'arp__spa' overrides the default sender-protocol-address
+        selection (via '_select_arp_spa'). RFC 4436 §4.3 DNAv4
+        callers MUST pass the candidate IPv4 address being
+        verified, because at INIT-REBOOT time the candidate is
+        not yet assigned to the interface and '_select_arp_spa'
+        would otherwise return 0.0.0.0 — which RFC 5227 §1.1
+        designates as the ACD-Probe sentinel, NOT a DNAv4 probe.
+        Other callers (ArpCache cache-refresh) leave 'arp__spa'
+        as None and rely on the interface-address fallback.
         """
 
         tx_status = self._phtx_arp(
@@ -296,7 +307,7 @@ class PacketHandlerArpTx(ABC):
             ethernet__dst=ethernet__dst,
             arp__oper=ArpOperation.REQUEST,
             arp__sha=self._mac_unicast,
-            arp__spa=self._select_arp_spa(arp__tpa),
+            arp__spa=arp__spa if arp__spa is not None else self._select_arp_spa(arp__tpa),
             arp__tha=MacAddress(),
             arp__tpa=arp__tpa,
         )

@@ -131,9 +131,36 @@ mode falls back cleanly to INIT.
 
 **Adherence:** met (Phase 6). `Dhcp4Client._dnav4_probe`
 calls
-`stack.packet_handler.send_arp_unicast_request(arp__tpa=gateway_ip, ethernet__dst=gateway_mac)` —
+`stack.packet_handler.send_arp_unicast_request(arp__tpa=gateway_ip, arp__spa=cached_ip, ethernet__dst=gateway_mac)` —
 a unicast ARP Request to the cached gateway IP at the
-cached gateway MAC.
+cached gateway MAC, carrying the cached candidate IPv4
+address as the sender protocol address per §4.3 (see
+below).
+
+> "The host MUST set the target protocol address (ar$tpa)
+>  to the IPv4 address of the node being tested, and the
+>  sender protocol address field (ar$spa) to its own
+>  candidate IPv4 address."
+
+**Adherence:** met. `Dhcp4Client._dnav4_probe` passes
+`arp__spa=lease.ip4_host.address` explicitly so the ARP TX
+handler's `_select_arp_spa` interface-address-selection
+fallback (which returns `0.0.0.0` when `_ip4_ifaddr` is
+empty) does not engage. At INIT-REBOOT time the cached
+candidate has not yet been re-assigned to the interface,
+so the explicit override is the only way to satisfy §4.3.
+
+Without this override the probe would carry `spa=0.0.0.0`,
+which RFC 5227 §1.1 designates as the ACD-Probe sentinel —
+a different ARP role with different receiver semantics
+(an RFC 5227 defender would respond to defend its address,
+not to advertise reachability). The §4.3 spa=candidate
+requirement is therefore load-bearing for DNAv4's
+behavioural contract, not just a formatting nicety.
+
+Pinned by
+`test__dhcp4_client__dnav4_returns_true_when_gateway_answers`
+in `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py`.
 
 > "If the host's TCP/IP stack supports it, the host MAY
 >  send unicast ARP Requests to multiple routers in

@@ -969,8 +969,17 @@ class Dhcp4Client(Subsystem):
         )
 
         try:
+            # RFC 4436 §4.3 — "the sender protocol address field
+            # (ar$spa) [MUST be set] to its own candidate IPv4
+            # address". Pass the cached lease's host IP explicitly
+            # because at INIT-REBOOT time the candidate is not
+            # yet assigned to the interface and the ARP TX
+            # handler's '_select_arp_spa' fallback would return
+            # 0.0.0.0 — which RFC 5227 §1.1 designates as an
+            # ACD Probe, not a DNAv4 reachability probe.
             packet_handler.send_arp_unicast_request(
                 arp__tpa=lease.gateway,
+                arp__spa=lease.ip4_host.address,
                 ethernet__dst=lease.gateway_mac,
             )
         except Exception as error:  # noqa: BLE001 — defensive against stack-not-ready

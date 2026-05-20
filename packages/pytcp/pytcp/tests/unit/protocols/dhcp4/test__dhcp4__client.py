@@ -2928,16 +2928,22 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         gateway answers the unicast ARP Request within the
         configured window. The ARP cache mock advances
         'state_changed_at' as soon as 'send_arp_unicast_request'
-        fires — simulating a fast Reply.
+        fires — simulating a fast Reply. The probe MUST carry
+        the cached candidate IPv4 address as the sender protocol
+        address (ar$spa); without that field the probe degenerates
+        into an ACD-style Probe (spa=0.0.0.0) and the cached
+        gateway's normal forwarding behaviour is undefined.
 
         Reference: RFC 4436 §4 (cached gateway reply confirms attachment).
+        Reference: RFC 4436 §4.3 (ar$spa = candidate IPv4 address).
         """
 
         self.enterContext(sysctl.override("dhcp.dnav4_timeout_ms", 1000))
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         mock_packet_handler = self._wire_arp_cache_with_reply()
+        cached = self._cached_lease_with_mac()
 
-        result = client._dnav4_probe(self._cached_lease_with_mac())
+        result = client._dnav4_probe(cached)
 
         self.assertTrue(
             result,
@@ -2945,6 +2951,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         )
         mock_packet_handler.send_arp_unicast_request.assert_called_once_with(
             arp__tpa=self._GATEWAY_IP,
+            arp__spa=cached.ip4_host.address,
             ethernet__dst=self._GATEWAY_MAC,
         )
 
