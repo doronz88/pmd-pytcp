@@ -40,6 +40,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4Header
+from net_proto.protocols.dhcp4.options.dhcp4__option__end import Dhcp4OptionEnd
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 
 
@@ -68,6 +69,17 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
         """
         Initialize the DHCPv4 packet assembler.
         """
+
+        # RFC 2132 §3 — "The last option must always be the 'end'
+        # option." Empty options are permitted (the magic cookie
+        # alone marks the DHCP options field); a non-empty options
+        # block whose last entry is not Dhcp4OptionEnd would emit
+        # a wire frame without the terminator, which a strict
+        # receiver may interpret as a truncation or simply leave
+        # the option list unbounded.
+        assert not dhcp4__options or isinstance(dhcp4__options[-1], Dhcp4OptionEnd), (
+            "RFC 2132 §3: the last DHCPv4 option must be Dhcp4OptionEnd. " f"Got: {dhcp4__options!r}"
+        )
 
         self._header = Dhcp4Header(
             operation=dhcp4__operation,

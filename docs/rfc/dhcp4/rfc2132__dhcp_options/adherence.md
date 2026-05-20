@@ -93,6 +93,25 @@ walking on END. Emitted as the last option of every
 DISCOVER and REQUEST
 (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:149`, `:204`).
 
+> "The last option must always be the 'end' option."
+
+**Adherence (assembler enforcement):** met. The
+`Dhcp4Assembler` constructor asserts that when
+`dhcp4__options` is non-empty, the last option MUST be
+`Dhcp4OptionEnd`. Empty `Dhcp4Options()` is permitted —
+the magic cookie alone is the documented options-field
+marker, and an explicit terminator is meaningful only
+when there is at least one preceding option. Without
+this assert a caller who forgets to append `Dhcp4OptionEnd`
+would emit a wire frame whose options section ends
+mid-stream — a strict receiver may interpret it as
+truncation or simply leave the option list unbounded.
+
+Pinned by `TestDhcp4AssemblerOptionsTerminator` at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py`
+(three cases: missing-End rejected, empty accepted,
+End-as-last accepted).
+
 ---
 
 ## §3.3 Subnet Mask Option (code 1)

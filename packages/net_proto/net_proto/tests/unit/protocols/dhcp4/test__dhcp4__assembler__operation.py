@@ -439,3 +439,86 @@ class TestDhcp4AssemblerDefaults(TestCase):
 
         self.assertEqual(assembler.sname, "", msg="'sname=None' must coalesce to empty string.")
         self.assertEqual(assembler.file, "", msg="'file=None' must coalesce to empty string.")
+
+
+class TestDhcp4AssemblerOptionsTerminator(TestCase):
+    """
+    The DHCPv4 assembler RFC 2132 §3 trailing-End-option enforcement
+    tests. When the assembler is given a non-empty 'dhcp4__options'
+    block, the last option MUST be 'Dhcp4OptionEnd'. Empty options
+    are deliberately permitted — the magic cookie alone marks the
+    DHCP options field and an emitter sending zero options is
+    constructing a degenerate (and operator-visible) DHCP message.
+    """
+
+    def test__dhcp4__assembler__options_missing_end_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with non-empty
+        Dhcp4Options whose last entry is not Dhcp4OptionEnd raises
+        AssertionError at construction time.
+
+        Reference: RFC 2132 §3 ("The last option must always be
+        the 'end' option.").
+        """
+
+        options_without_end = Dhcp4Options(
+            Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+        )
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=Dhcp4Operation.REQUEST,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+                dhcp4__options=options_without_end,
+            )
+
+        self.assertIn(
+            "RFC 2132 §3",
+            str(error.exception),
+            msg="AssertionError must cite RFC 2132 §3 for the trailing-End requirement.",
+        )
+
+    def test__dhcp4__assembler__empty_options_accepted(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with empty Dhcp4Options
+        is permitted — the magic cookie alone is the documented
+        options-field marker, and an explicit Dhcp4OptionEnd is
+        meaningful only when there is at least one preceding option.
+
+        Reference: RFC 2131 §3 (magic cookie marks the options field;
+        the End option terminates a non-empty option list).
+        """
+
+        # Should not raise.
+        assembler = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=0x00000001,
+            dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+            dhcp4__options=Dhcp4Options(),
+        )
+        self.assertEqual(
+            len(assembler.options),
+            0,
+            msg="Empty Dhcp4Options must remain empty after construction.",
+        )
+
+    def test__dhcp4__assembler__options_with_end_last_accepted(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with a non-empty
+        Dhcp4Options block whose last entry IS Dhcp4OptionEnd is
+        accepted (the canonical well-formed case).
+
+        Reference: RFC 2132 §3 (trailing End option).
+        """
+
+        # Should not raise.
+        Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=0x00000001,
+            dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+                Dhcp4OptionEnd(),
+            ),
+        )
