@@ -219,6 +219,15 @@ class Dhcp4Header(ProtoStruct):
             f"{DHCP4__HEADER__FILE__MAX_LEN!r}. Got: {len(self.file)!r}"
         )
 
+        # NB: an `isascii()` check on 'sname' / 'file' is deliberately
+        # NOT enforced here. The parser path uses
+        # `bytes.decode("ascii", errors="replace")` to tolerantly
+        # decode arbitrary wire bytes (RFC 2132 §9.3 Option Overload
+        # stuffs option bytes into these BOOTP fields), which
+        # produces `�` replacement chars. A non-ASCII assert on
+        # this dataclass would break RX. The strict-ASCII requirement
+        # is enforced at the TX boundary — `Dhcp4Assembler.__init__`.
+
     @override
     def __len__(self) -> int:
         """

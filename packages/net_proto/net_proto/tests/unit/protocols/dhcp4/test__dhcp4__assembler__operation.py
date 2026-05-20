@@ -522,3 +522,97 @@ class TestDhcp4AssemblerOptionsTerminator(TestCase):
                 Dhcp4OptionEnd(),
             ),
         )
+
+
+class TestDhcp4AssemblerAsciiSnameFile(TestCase):
+    """
+    The DHCPv4 assembler RFC 2131 §2 ASCII-only sname / file
+    enforcement tests. The wire serialization path uses
+    `bytes(value, encoding="ascii")` which raises
+    UnicodeEncodeError on non-ASCII input; without an early
+    construction-time check the failure would surface deep
+    inside __buffer__ instead of at the assembler boundary.
+
+    The Dhcp4Header dataclass itself permits non-ASCII because the
+    parser uses `errors="replace"` to tolerantly absorb RFC 2132
+    §9.3 Option Overload binary payloads on the RX path — that
+    tolerance lives on RX, not TX.
+    """
+
+    def test__dhcp4__assembler__sname_non_ascii_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with a non-ASCII
+        'dhcp4__sname' raises AssertionError at construction time
+        rather than deferring the failure to __buffer__.
+
+        Reference: RFC 2131 §2 (sname is a null-terminated ASCII string).
+        """
+
+        value = "café"
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=Dhcp4Operation.REQUEST,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+                dhcp4__sname=value,
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'dhcp4__sname' field must be ASCII. Got: {value!r}",
+            msg="Unexpected non-ASCII 'sname' assert message.",
+        )
+
+    def test__dhcp4__assembler__file_non_ascii_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with a non-ASCII
+        'dhcp4__file' raises AssertionError at construction time.
+
+        Reference: RFC 2131 §2 (file is a null-terminated ASCII string).
+        """
+
+        value = "naïve.bin"
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=Dhcp4Operation.REQUEST,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+                dhcp4__file=value,
+            )
+
+        self.assertEqual(
+            str(error.exception),
+            f"The 'dhcp4__file' field must be ASCII. Got: {value!r}",
+            msg="Unexpected non-ASCII 'file' assert message.",
+        )
+
+    def test__dhcp4__assembler__sname_file_none_accepted(self) -> None:
+        """
+        Ensure 'dhcp4__sname=None' / 'dhcp4__file=None' (the
+        None-coalescing default path) passes the ASCII check —
+        the None value coalesces to the empty string, which is
+        trivially ASCII.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Should not raise.
+        assembler = Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=0x00000001,
+            dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+            dhcp4__sname=None,
+            dhcp4__file=None,
+        )
+        self.assertEqual(
+            assembler.sname,
+            "",
+            msg="sname=None must coalesce to empty string and pass the ASCII check.",
+        )
+        self.assertEqual(
+            assembler.file,
+            "",
+            msg="file=None must coalesce to empty string and pass the ASCII check.",
+        )

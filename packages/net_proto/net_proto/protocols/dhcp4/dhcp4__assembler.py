@@ -81,6 +81,22 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
             "RFC 2132 §3: the last DHCPv4 option must be Dhcp4OptionEnd. " f"Got: {dhcp4__options!r}"
         )
 
+        # RFC 2131 §2 — 'sname' and 'file' are null-terminated ASCII
+        # strings. The wire serialization path uses
+        # `bytes(value, encoding="ascii")` which raises
+        # UnicodeEncodeError on non-ASCII input. Catch it here at
+        # the TX boundary so the failure surfaces at construction
+        # time rather than deep inside `__buffer__`. The Dhcp4Header
+        # dataclass itself tolerates non-ASCII because the parser
+        # uses `errors="replace"` to absorb RFC 2132 §9.3 Option
+        # Overload binary payloads — that tolerance lives on RX,
+        # not TX.
+        sname_normalized = dhcp4__sname or ""
+        assert sname_normalized.isascii(), f"The 'dhcp4__sname' field must be ASCII. Got: {sname_normalized!r}"
+
+        file_normalized = dhcp4__file or ""
+        assert file_normalized.isascii(), f"The 'dhcp4__file' field must be ASCII. Got: {file_normalized!r}"
+
         self._header = Dhcp4Header(
             operation=dhcp4__operation,
             hops=dhcp4__hops,
