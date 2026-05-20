@@ -498,40 +498,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/ARP - request, SHA/Ethernet-src mismatch, drop",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 52:54:00:df:85:37     # NOTE: differs from Ethernet src MAC
-                #   Sender IP       : 10.0.1.91
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.7
-                #
-                # Summary: Broadcast ARP request — “Who has 10.0.1.7? Tell 10.0.1.91.”
-                #          Warning: Ethernet source MAC (02:00:00:00:00:91) ≠ ARP SHA (52:54:00:df:85:37).
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x52\x54\x00\xdf\x85\x37\x0a\x00\x01\x5b"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__failed_parse__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
             "_description": "Ethernet/ARP - gratuitous request: SPA == TPA, broadcast dst, no reply expected",
             "_frames_rx": [
                 # Ethernet II
@@ -674,40 +640,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__op_reply=1,
                 arp__op_reply__gratuitous=1,
                 arp__op_reply__update_arp_cache=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": "Ethernet/ARP - reply, SHA != Ethernet.src, drop",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:07
-                #   Source MAC      : 02:00:00:00:00:92
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC (SHA): 02:00:00:00:00:91    # NOTE: differs from Ethernet src MAC (…:92)
-                #   Sender IP (SPA) : 10.0.1.91
-                #   Target MAC (THA): 02:00:00:00:00:07
-                #   Target IP (TPA) : 10.0.1.7
-                #
-                # Summary: Unicast ARP reply — “10.0.1.91 is at 02:00:00:00:00:91.”
-                #          Warning: L2 src MAC ≠ ARP SHA (…:92 vs …:91) — some stacks will drop this as inconsistent.
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x92\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x5b"
-                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                arp__pre_parse=1,
-                arp__failed_parse__drop=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },

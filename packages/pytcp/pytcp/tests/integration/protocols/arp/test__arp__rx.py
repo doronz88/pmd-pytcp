@@ -461,27 +461,6 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Request with SHA != Ethernet src MAC — drop at parser",
-            "_frames_rx": [
-                ArpTestCase._build_arp_frame(
-                    ethernet_dst=_BCAST_MAC,
-                    ethernet_src=_PEER_MAC,
-                    arp_oper=ArpOperation.REQUEST,
-                    arp_sha=_FOREIGN_MAC,
-                    arp_spa=_PEER_IP,
-                    arp_tpa=_STACK_IP,
-                ),
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__failed_parse__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
             "_description": "Unsupported ArpOperation = 3 — drop at parser",
             # 'ArpOperation.from_int(3)' yields a synthetic UNKNOWN_3 enum
             # member; the sanity check at 'arp__parser.py' rejects it.
@@ -499,28 +478,6 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
             "_expected__packet_stats_rx": PacketStatsRx(
                 ethernet__pre_parse=1,
                 ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__failed_parse__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": "Reply with SHA != Ethernet src MAC — drop at parser",
-            "_frames_rx": [
-                ArpTestCase._build_arp_frame(
-                    ethernet_dst=_STACK_MAC,
-                    ethernet_src=MacAddress("02:00:00:00:00:92"),
-                    arp_oper=ArpOperation.REPLY,
-                    arp_sha=_PEER_MAC,
-                    arp_spa=_PEER_IP,
-                    arp_tha=_STACK_MAC,
-                    arp_tpa=_STACK_IP,
-                ),
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
                 arp__pre_parse=1,
                 arp__failed_parse__drop=1,
             ),

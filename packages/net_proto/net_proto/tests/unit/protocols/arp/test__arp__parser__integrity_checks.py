@@ -223,6 +223,8 @@ class TestArpParserIntegrityChecks(TestCase):
         """
         Ensure the ARP packet parser raises ArpIntegrityError on malformed
         frames and reports the expected message.
+
+        Reference: RFC 826 (ARP — fixed 28-byte Ethernet/IPv4 wire layout, Packet Reception hrtype/prtype guards).
         """
 
         with self.assertRaises(ArpIntegrityError) as error:
@@ -253,6 +255,8 @@ class TestArpParserIntegrityBoundary(TestCase):
           Sender IP     : 10.0.1.91
           Target MAC    : 00:00:00:00:00:07
           Target IP     : 10.0.1.7
+
+        Reference: RFC 826 (ARP — 28-byte Ethernet/IPv4 packet layout is the structural floor).
         """
 
         frame = (

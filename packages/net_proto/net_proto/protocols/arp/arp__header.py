@@ -74,6 +74,9 @@ class ArpHeader(ProtoStruct):
     The ARP packet header.
     """
 
+    # The Ethernet/IPv4 profile pins hrtype, prtype, hrlen, prlen to fixed values;
+    # the parser validates them off the raw frame (arp__parser.py::_validate_integrity)
+    # before constructing the header, so the init=False defaults are authoritative.
     hrtype: ArpHardwareType = field(
         repr=False,
         init=False,

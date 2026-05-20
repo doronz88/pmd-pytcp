@@ -379,29 +379,48 @@ for Requests and probes/announcements/gratuitous ARP;
 
 ---
 
-## Sanity checks beyond the RFC
+## Sanity checks — RFC backing
 
-PyTCP's `_validate_sanity` enforces a number of additional
-invariants that RFC 826 does not require but that any
-sensible implementation enforces (and that Linux applies via
-`net/ipv4/arp.c::arp_rcv` filters):
+PyTCP's `_validate_sanity` enforces invariants that fall under
+several RFCs other than 826 plus one PyTCP-only hardening
+rule. Each check below cites the canonical source:
 
-- `oper` must be REQUEST or REPLY; unknown opcodes raise
-  `ArpSanityError`
-  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:110-114`).
-- `sha` must not be unspecified, multicast, or broadcast
-  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:116-123`).
-- For Replies: `spa` must not be unspecified
-  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:125-130`).
-- `spa` must not be multicast or limited broadcast
-  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:132-138`).
-- If the parent Ethernet frame is available, the ARP `sha`
-  must equal `ethernet.src`
-  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:140-145`).
+- **`oper` must be REQUEST or REPLY.** RFC 826 *Definitions*
+  (only `ares_op$REQUEST=1` and `ares_op$REPLY=2` are defined
+  for IPv4 ARP); RFC 5494 §3 marks `oper=0` and `oper=65535`
+  as reserved. Unknown opcodes raise `ArpSanityError`
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py`).
+- **`sha` must not be unspecified / multicast / broadcast.**
+  RFC 826 *Packet Generation* "ar$sha with the 48.bit
+  ethernet address of itself"; RFC 5227 §1.1 reinforces "MUST
+  contain the hardware address of the interface sending the
+  packet"; IEEE 802.3 forbids the all-zeros, group-bit-set,
+  or all-ones MAC as a unicast source.
+- **REPLY `spa` must not be unspecified.** RFC 5227 §1.1 —
+  `spa=0.0.0.0` is reserved for ARP Probes (Request form
+  only); a Reply with `spa=0.0.0.0` is malformed.
+- **`spa` must not be loopback / multicast / limited
+  broadcast.** RFC 1122 §3.2.1.3 — a sender's IPv4 source
+  address MUST NOT be 127/8, 224/4, or 255.255.255.255.
+- **`tpa` must not be multicast / limited broadcast.**
+  RFC 1112 §6.4 — IPv4 multicast resolves algorithmically
+  to `01:00:5e:xx:xx:xx`, bypassing ARP entirely. Limited
+  broadcast resolves to `ff:ff:ff:ff:ff:ff` directly. Neither
+  is ever a legitimate ARP target. **Stricter than Linux**,
+  which does not filter these at `arp_rcv`.
 
-These are **not normative under RFC 826** but are also not
-inconsistent with it; they harden the parser against
-malformed or hostile traffic.
+The RFC-backed checks above are normative under their cited
+RFCs even though RFC 826 itself is silent on the point. The
+two PyTCP-only hardenings (`tpa.is_multicast` and
+`tpa.is_limited_broadcast`) are explicit local policy and are
+documented as such in the parser source.
+
+A previous PyTCP-only check that required ARP `sha` to equal
+the parent Ethernet `src` was removed (commit on the
+`PyTCP_3_0_6` branch): it was not RFC-normative, Linux's
+`net/ipv4/arp.c::arp_rcv` does not enforce it, and the value
+of catching cross-layer MAC drift is more naturally a
+receiver-policy concern than a parser-level invariant.
 
 ---
 
@@ -488,14 +507,25 @@ more link bandwidth.
 
 **Status:** **locked in**.
 
-### Sanity checks beyond RFC 826
+### Sanity checks — RFC backing
 
 - **Unit:**
   `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py::TestArpParserSanityChecks::test__arp__parser__sanity_error`
   — parametrised matrix covering every `_validate_sanity`
-  branch (unknown opcode; sha = unspecified / multicast /
-  broadcast; reply with spa = unspecified; spa = multicast
-  / limited-broadcast; SHA / Ethernet-src mismatch).
+  branch: unknown opcode (RFC 826 / 5494 §3); sha =
+  unspecified / multicast / broadcast (RFC 826 + 5227 §1.1 +
+  IEEE 802.3); reply with spa = unspecified (RFC 5227 §1.1);
+  spa = loopback / multicast / limited-broadcast (RFC 1122
+  §3.2.1.3); tpa = multicast / limited-broadcast (RFC 1112
+  §6.4).
+- **Unit:**
+  `..._sanity__valid_reply_parses_cleanly` /
+  `..._sanity__request_with_unspecified_spa_allowed` /
+  `..._sanity__sha_mismatch_with_ethernet_src_allowed` —
+  happy-path coverage: valid Reply parses; ARP Probe with
+  spa=0.0.0.0 parses (RFC 5227 §1.1); ARP frame whose sha
+  differs from the parent Ethernet src parses (regression net
+  against re-introducing the dropped PyTCP-only hardening).
 
 **Status:** **locked in**.
 
