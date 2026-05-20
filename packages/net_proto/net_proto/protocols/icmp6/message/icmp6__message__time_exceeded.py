@@ -37,7 +37,7 @@ from typing import Self, override
 from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
+from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError, Icmp6SanityError
 from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Message,
@@ -173,7 +173,14 @@ class Icmp6MessageTimeExceeded(Icmp6Message):
         Ensure sanity of the ICMPv6 Time Exceeded message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 4443 §3.3 defines codes 0..1 (Hop Limit exceeded in transit /
+        # Fragment reassembly time exceeded). Any other value is unassigned.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 Time Exceeded message "
+                f"must be one of {Icmp6TimeExceededCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
 
     @override
     @staticmethod

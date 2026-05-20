@@ -38,7 +38,7 @@ from typing import Self, override
 from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint32
-from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
+from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError, Icmp6SanityError
 from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Message,
@@ -180,7 +180,14 @@ class Icmp6MessagePacketTooBig(Icmp6Message):
         Ensure sanity of the ICMPv6 Packet Too Big message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 4443 §3.2 defines a single code value (0). Any other value is
+        # unassigned by IANA and must be rejected.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 Packet Too Big message "
+                f"must be one of {Icmp6PacketTooBigCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
 
     @override
     @staticmethod

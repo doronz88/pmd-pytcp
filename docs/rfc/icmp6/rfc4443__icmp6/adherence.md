@@ -73,3 +73,64 @@ the
 [`rfc_adherence_audit`](../../../../.claude/skills/rfc_adherence_audit/SKILL.md)
 skill when Phase β closes the Time Exceeded / Parameter Problem
 gap (which touches §3.3 and §3.4).
+
+---
+
+## Parser validation — integrity and sanity surface
+
+`Icmp6Parser._validate_integrity`
+(`packages/net_proto/net_proto/protocols/icmp6/icmp6__parser.py`)
+enforces:
+
+- **`ICMP6__HEADER__LEN (4) <= ip6.dlen <= len(frame)`** — RFC 4443 §2.1
+  common 4-byte header (Type / Code / Checksum); upper bound is
+  RFC 8200 §3 IP-layer state.
+- **Per-message length** — each message subclass'
+  `validate_integrity` enforces its RFC-defined fixed header length
+  (RFC 4443 §3-§4 for base messages, RFC 4861 §4 for ND,
+  RFC 3810 §5 for MLDv2).
+- **Checksum** — RFC 4443 §2.3 — one's-complement checksum over the
+  full ICMPv6 message prepended with the RFC 8200 §8.1 IPv6
+  pseudo-header (the parser carries the pseudo-header sum on
+  `Ip6Parser.pshdr_sum`).
+
+`Icmp6Parser._validate_sanity` delegates to each message's
+`validate_sanity(ip6__hop, ip6__src, ip6__dst)`:
+
+- **`code.is_unknown` per known message type** — Destination
+  Unreachable (codes 0..6 RFC 4443 §3.1 + code 7 RFC 7610 §5);
+  Packet Too Big (code 0 RFC 4443 §3.2); Time Exceeded (codes 0..1
+  RFC 4443 §3.3); Parameter Problem (codes 0..2 RFC 4443 §3.4);
+  Echo Request / Reply (code 0 RFC 4443 §4.1 / §4.2). Out-of-range
+  values raise `Icmp6SanityError`.
+- **ND messages** — RFC 4861 §6.1 / §7.1 / §8.1: Hop Limit MUST be
+  255; source MUST be unicast or unspecified; target / destination
+  validity per type.
+- **MLDv2 Report** — RFC 3810 §5.2: Hop Limit MUST be 1; source MUST
+  be link-local.
+- **MLDv2 Query** — RFC 3810 §5.1.13 / §5.1.14 invariants are
+  enforced at the RX listener layer (allowing operator-tunable
+  tolerance via sysctl); the message-class sanity is a stub.
+
+### Note on Unknown-type handling
+
+Unlike ICMPv4 (where RFC 1122 §3.2.2 says "MUST silently discard"
+all unknown types), RFC 4443 §2.4(b/c) splits the rule:
+
+- (b) Unknown **informational** messages (type ≥ 128) MUST be
+  silently discarded.
+- (c) Unknown **error** messages (type 1..127) MUST be passed to
+  the upper layer.
+
+PyTCP's `Icmp6MessageUnknown.validate_sanity` is therefore
+deliberately a no-op — the packet handler's `case _:` dispatch
+arm handles unknown types via `__phrx_icmp6__unknown`, preserving
+the option to deliver them to upper-layer consumers when
+applicable. This is the **opposite** of the ICMPv4 design.
+
+### Known pre-existing gap
+
+`Icmp6ParameterProblemCode` does not yet carry **code 3** from
+RFC 7112 §3 (`UNRECOGNIZED_FIRST_FRAGMENT_HAS_INCOMPLETE_HEADER_CHAIN`).
+A real RFC 7112-compliant peer sending PP code=3 will be rejected
+at parser sanity. Adding the enum member is a follow-up.

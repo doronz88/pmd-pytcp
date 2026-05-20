@@ -152,6 +152,9 @@ class Icmp6Parser(Icmp6, ProtoParser):
         Ensure integrity of the ICMPv6 packet before parsing it.
         """
 
+        # RFC 4443 §2.1 — the common 4-byte header (Type / Code / Checksum)
+        # is the structural minimum; the upper bound (declared IPv6 payload
+        # length) is RFC 8200 §3 IP-layer state.
         if not (ICMP6__HEADER__LEN <= self._ip6__dlen <= len(self._frame)):
             raise Icmp6IntegrityError(
                 "The condition 'ICMP6__HEADER__LEN <= self._ip6__dlen <= "
@@ -159,8 +162,16 @@ class Icmp6Parser(Icmp6, ProtoParser):
                 f"{self._ip6__dlen=}, {len(self._frame)=}"
             )
 
+        # RFC 4443 §3 / §4 (base messages), RFC 4861 §4 (ND), RFC 3810 §5 (MLDv2) —
+        # each message type has a fixed-size header (often plus a per-type body).
+        # The per-message validator enforces that floor against the declared IPv6
+        # payload length.
         self._message_class().validate_integrity(frame=self._frame, ip6__dlen=self._ip6__dlen)
 
+        # RFC 4443 §2.3 — "The checksum is the 16-bit one's complement of the
+        # one's complement sum of the entire ICMPv6 message, starting with the
+        # ICMPv6 message type field, and prepended with a 'pseudo-header' of
+        # IPv6 header fields, as specified in [IPv6, Section 8.1]."
         if inet_cksum(self._frame[: self._ip6__dlen], init=self._ip6__pshdr_sum):
             raise Icmp6IntegrityError(
                 "The packet checksum must be valid.",

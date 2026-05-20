@@ -37,7 +37,7 @@ from typing import Self, override
 from net_addr import Ip6Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16, is_uint32
-from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
+from net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError, Icmp6SanityError
 from net_proto.protocols.icmp6.message.icmp6__message import (
     Icmp6Code,
     Icmp6Message,
@@ -180,7 +180,16 @@ class Icmp6MessageParameterProblem(Icmp6Message):
         Ensure sanity of the ICMPv6 Parameter Problem message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 4443 §3.4 defines codes 0..2 (Erroneous Header Field /
+        # Unrecognized Next Header / Unrecognized IPv6 Option). RFC 7112 §3
+        # adds code 3 (First-Fragment-Missing-Header-Chain) which PyTCP's
+        # enum does not yet carry — adding it would extend the accepted set.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 Parameter Problem message "
+                f"must be one of {Icmp6ParameterProblemCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
 
     @override
     @staticmethod
