@@ -36,7 +36,7 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_proto import Icmp4IntegrityError, Icmp4Parser, Ip4Parser, PacketRx
+from net_proto import Icmp4IntegrityError, Icmp4Parser, Icmp4SanityError, Ip4Parser, PacketRx
 from net_proto.protocols.icmp4.message.icmp4__message import ICMP4__HEADER__LEN
 
 
@@ -139,6 +139,8 @@ class TestIcmp4MessageUnknownParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv4 parser raises Icmp4IntegrityError on malformed
         frames and reports the expected message.
+
+        Reference: RFC 792 (4-byte common header is the structural floor for ICMPv4).
         """
 
         with self.assertRaises(Icmp4IntegrityError) as error:
@@ -159,8 +161,12 @@ class TestIcmp4MessageUnknownParserIntegrityBoundary(TestCase):
     def test__icmp4__message__unknown__parser__integrity__minimum_length_accepted(self) -> None:
         """
         Ensure a frame whose IPv4 payload length equals ICMP4__HEADER__LEN (4)
-        — i.e. a bare, data-less unknown header — passes integrity checks and
-        yields an unknown-message parse.
+        — i.e. a bare, data-less unknown header — passes integrity checks
+        (the structural floor is met) and then fails sanity with
+        Icmp4SanityError because the type is not host-stack-supported.
+
+        Reference: RFC 792 (4-byte common header is the structural floor).
+        Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard at sanity).
         """
 
         # ICMPv4 Unknown Message at minimum length (4 bytes)
@@ -171,17 +177,23 @@ class TestIcmp4MessageUnknownParserIntegrityBoundary(TestCase):
 
         self.assertEqual(len(frame), ICMP4__HEADER__LEN, msg="Fixture must match ICMP4__HEADER__LEN.")
 
-        Icmp4Parser(_packet_rx_with_ip4(frame))
+        with self.assertRaises(Icmp4SanityError):
+            Icmp4Parser(_packet_rx_with_ip4(frame))
 
     def test__icmp4__message__unknown__parser__integrity__frame_padding_ignored(self) -> None:
         """
         Ensure trailing padding beyond 'ip4__payload_len' does not trigger the
         integrity upper-bound check — the validator caps the checksummed slice
-        to the declared IPv4 payload length.
+        to the declared IPv4 payload length. The frame still trips sanity
+        because the type byte (0xff) is host-stack-unknown.
+
+        Reference: RFC 792 (checksum coverage = IP-declared payload).
+        Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard at sanity).
         """
 
         # Valid 8-byte unknown ICMPv4 message (checksum 0xfc93) plus 4 bytes of
         # padding that IPv4 tells us is not part of the ICMPv4 payload.
         frame = b"\xff\x00\xfc\x93\x30\x39\xd4\x31\xde\xad\xbe\xef"
 
-        Icmp4Parser(_packet_rx_with_ip4(frame, ip4__payload_len=8))
+        with self.assertRaises(Icmp4SanityError):
+            Icmp4Parser(_packet_rx_with_ip4(frame, ip4__payload_len=8))

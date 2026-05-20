@@ -36,7 +36,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
+from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError, Icmp4SanityError
 from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Code,
     Icmp4Message,
@@ -169,7 +169,14 @@ class Icmp4MessageEchoReply(Icmp4Message):
         Ensure sanity of the ICMPv4 Echo Reply message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 792 — Echo Reply 'code' field MUST be 0; any other value is
+        # unassigned by IANA and must be rejected.
+        if self.code.is_unknown:
+            raise Icmp4SanityError(
+                f"The 'code' field of the ICMPv4 Echo Reply message must "
+                f"be one of {Icmp4EchoReplyCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
 
     @override
     @staticmethod

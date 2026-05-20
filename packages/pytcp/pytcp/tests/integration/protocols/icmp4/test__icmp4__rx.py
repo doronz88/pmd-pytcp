@@ -327,10 +327,11 @@ class TestIcmp4Rx__UnknownType(IcmpTestCase):
 
     def test__icmp4__rx__unknown_type__packet_stats_rx(self) -> None:
         """
-        Ensure an unhandled type bumps 'icmp4__unknown' and falls
-        through the type-match dispatch.
+        Ensure an unhandled type is rejected at ICMPv4 parser sanity
+        (bumps 'icmp4__failed_parse__drop' rather than falling through to
+        a downstream dispatch).
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 1122 §3.2.2 (hosts MUST silently discard unknown-type ICMP).
         """
 
         self._drive_rx(frame=_FRAME_RX__UNKNOWN_TYPE)
@@ -341,7 +342,7 @@ class TestIcmp4Rx__UnknownType(IcmpTestCase):
             ip4__pre_parse=1,
             ip4__dst_unicast=1,
             icmp4__pre_parse=1,
-            icmp4__unknown=1,
+            icmp4__failed_parse__drop=1,
         )
 
     def test__icmp4__rx__unknown_type__packet_stats_tx(self) -> None:
@@ -384,13 +385,14 @@ class TestIcmp4Rx__SourceQuench__Rfc6633(IcmpTestCase):
 
     def test__icmp4__rx__source_quench__packet_stats_rx(self) -> None:
         """
-        Ensure an inbound Source Quench bumps the
-        'icmp4__unknown' counter — proof the message is being
-        silently discarded through the unknown-type path rather
-        than dispatched to a Source-Quench-specific handler.
+        Ensure an inbound Source Quench is rejected at ICMPv4 parser
+        sanity (bumps 'icmp4__failed_parse__drop') — Source Quench is
+        deprecated and PyTCP's Icmp4Type enum has no entry for it, so
+        the parser treats it as an unknown ICMPv4 type per RFC 1122
+        §3.2.2.
 
-        Reference: RFC 6633 §9 (Type 4 marked Deprecated in IANA
-        ICMP Parameters registry).
+        Reference: RFC 6633 §9 (Type 4 marked Deprecated in IANA ICMP Parameters registry).
+        Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard at sanity).
         """
 
         self._drive_rx(frame=_FRAME_RX__SOURCE_QUENCH)
@@ -401,7 +403,7 @@ class TestIcmp4Rx__SourceQuench__Rfc6633(IcmpTestCase):
             ip4__pre_parse=1,
             ip4__dst_unicast=1,
             icmp4__pre_parse=1,
-            icmp4__unknown=1,
+            icmp4__failed_parse__drop=1,
         )
 
     def test__icmp4__rx__source_quench__packet_stats_tx(self) -> None:
@@ -449,13 +451,12 @@ class TestIcmp4Rx__DeprecatedTypes__Rfc6918(IcmpTestCase):
 
     def test__icmp4__rx__addr_mask_request__packet_stats_rx(self) -> None:
         """
-        Ensure an inbound Address Mask Request bumps the
-        'icmp4__unknown' counter — proof the deprecated type is
-        being absorbed by the unknown-type path rather than
-        dispatched to a Type-17-specific handler.
+        Ensure an inbound Address Mask Request is rejected at ICMPv4
+        parser sanity (bumps 'icmp4__failed_parse__drop') — Type 17 is
+        deprecated and PyTCP's Icmp4Type enum has no entry for it.
 
-        Reference: RFC 6918 §3 (Type 17 deprecated; falls through
-        unknown-type silent-discard path).
+        Reference: RFC 6918 §3 (Type 17 deprecated en block).
+        Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard at sanity).
         """
 
         self._drive_rx(frame=_FRAME_RX__ADDR_MASK_REQUEST)
@@ -466,7 +467,7 @@ class TestIcmp4Rx__DeprecatedTypes__Rfc6918(IcmpTestCase):
             ip4__pre_parse=1,
             ip4__dst_unicast=1,
             icmp4__pre_parse=1,
-            icmp4__unknown=1,
+            icmp4__failed_parse__drop=1,
         )
 
 

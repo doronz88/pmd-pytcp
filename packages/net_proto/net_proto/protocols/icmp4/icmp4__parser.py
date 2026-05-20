@@ -108,6 +108,9 @@ class Icmp4Parser(Icmp4, ProtoParser):
         Ensure integrity of the ICMPv4 packet before parsing it.
         """
 
+        # RFC 792 §"Message Formats" — the common 4-byte header (type / code /
+        # checksum) is the structural minimum; the IPv4 payload-length boundary
+        # comes from the encapsulating IP layer (RFC 791).
         if not (ICMP4__HEADER__LEN <= self._ip4__payload_len <= len(self._frame)):
             raise Icmp4IntegrityError(
                 "The condition 'ICMP4__HEADER__LEN <= self._ip4__payload_len <= "
@@ -115,8 +118,17 @@ class Icmp4Parser(Icmp4, ProtoParser):
                 f"{self._ip4__payload_len=}, {len(self._frame)=}"
             )
 
+        # RFC 792 — each message type has a fixed-size header (Echo {Req,Reply}
+        # = 8 bytes; Destination Unreachable / Time Exceeded / Parameter
+        # Problem all carry the 4-byte common header + a 4-byte type-specific
+        # word). The per-message validator enforces that floor against the
+        # encapsulating IPv4 payload length.
         self._message_class().validate_integrity(frame=self._frame, ip4__payload_len=self._ip4__payload_len)
 
+        # RFC 792 — "Checksum is the 16-bit ones's complement of the one's
+        # complement sum of the ICMP message starting with the ICMP Type. For
+        # computing the checksum, the checksum field should be zero." A frame
+        # whose ones'-complement sum is not zero has a corrupt checksum.
         if inet_cksum(self._frame[: self._ip4__payload_len]):
             raise Icmp4IntegrityError(
                 "The packet checksum must be valid.",

@@ -36,7 +36,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
-from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError
+from net_proto.protocols.icmp4.icmp4__errors import Icmp4IntegrityError, Icmp4SanityError
 from net_proto.protocols.icmp4.message.icmp4__message import (
     Icmp4Code,
     Icmp4Message,
@@ -240,7 +240,15 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Ensure sanity of the ICMPv4 Destination Unreachable message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 792 §"Destination Unreachable" defines codes 0..5; RFC 1122 §3.2.2.1
+        # adds codes 6..12; RFC 1812 §5.2.7.1 adds codes 13..15. Any value
+        # outside that 0..15 range is unassigned by IANA and must be rejected.
+        if self.code.is_unknown:
+            raise Icmp4SanityError(
+                f"The 'code' field of the ICMPv4 Destination Unreachable "
+                f"message must be one of {Icmp4DestinationUnreachableCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
 
     @override
     @staticmethod

@@ -36,6 +36,7 @@ from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint16
+from net_proto.protocols.icmp4.icmp4__errors import Icmp4SanityError
 from net_proto.protocols.icmp4.message.icmp4__message import (
     ICMP4__HEADER__LEN,
     ICMP4__HEADER__STRUCT,
@@ -129,7 +130,16 @@ class Icmp4MessageUnknown(Icmp4Message):
         Ensure sanity of the ICMPv4 unknown message after parsing it.
         """
 
-        # Currently no sanity checks are implemented.
+        # RFC 1122 §3.2.2 — "If an ICMP message of unknown type is received,
+        # it MUST be silently discarded." PyTCP's Icmp4Type enum declares the
+        # five types that this host stack handles (Echo Reply, Destination
+        # Unreachable, Echo Request, Time Exceeded, Parameter Problem); any
+        # other wire 'type' value (including the deprecated Source Quench
+        # type 4 per RFC 6633) materialises as UNKNOWN_n here and the frame
+        # is rejected at parser sanity.
+        raise Icmp4SanityError(
+            f"The 'type' field value must be one of {Icmp4Type.get_known_values()}. " f"Got: {int(self.type)}."
+        )
 
     @override
     @staticmethod

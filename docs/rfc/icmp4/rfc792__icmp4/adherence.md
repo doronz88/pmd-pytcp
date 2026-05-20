@@ -34,3 +34,48 @@ The audit will be expanded into a per-section walkthrough using the
 skill when Phase β closes the Time Exceeded / Parameter Problem
 gap, since those changes touch RFC 792 normative wording on Type 11
 / Type 12 message format.
+
+---
+
+## Parser validation — RFC 792 / RFC 1122 §3.2.2 sanity surface
+
+`Icmp4Parser._validate_integrity`
+(`packages/net_proto/net_proto/protocols/icmp4/icmp4__parser.py`)
+enforces RFC 792 structural invariants:
+
+- **`ICMP4__HEADER__LEN (4) <= ip4.payload_len <= len(frame)`** — RFC 792
+  §"Message Formats" common 4-byte header (type / code / checksum) plus the
+  RFC 791 encapsulating IP boundary.
+- **Per-message length floor** — each message subclass'
+  `validate_integrity` (Echo Req/Reply, Destination Unreachable, Time
+  Exceeded, Parameter Problem) enforces its RFC 792 fixed header length.
+- **Checksum** — RFC 792 — the parser computes the ones'-complement sum
+  over the IPv4-declared ICMP payload and rejects any frame whose result is
+  non-zero.
+
+`Icmp4Parser._validate_sanity` delegates to the per-message
+`validate_sanity`:
+
+- **Echo Request / Echo Reply** — RFC 792 defines `code = 0` only. Any
+  other value is rejected as `Icmp4SanityError`.
+- **Destination Unreachable** — RFC 792 codes 0..5 + RFC 1122 §3.2.2.1
+  codes 6..12 + RFC 1812 §5.2.7.1 codes 13..15. Code values 16+ are
+  unassigned by IANA and rejected.
+- **Time Exceeded** — RFC 792 codes 0..1 (TTL exceeded in transit /
+  Fragment reassembly time exceeded). Higher codes rejected.
+- **Parameter Problem** — RFC 792 code 0 (pointer) + RFC 1122 §3.2.2.5
+  codes 1 (Required Option Missing) and 2 (Bad Length). Higher codes
+  rejected.
+- **Unknown message type** — RFC 1122 §3.2.2 — "If an ICMP message of
+  unknown type is received, it MUST be silently discarded." PyTCP's
+  `Icmp4Type` enum declares the five types this host stack handles (0, 3,
+  8, 11, 12); any other wire `type` byte (including deprecated Source
+  Quench / Address Mask Request per RFC 6633 / 6918) materialises as
+  `Icmp4MessageUnknown` and is rejected at parser sanity. The
+  RX-side counter for both unknown-type and unknown-code rejections is
+  `icmp4__failed_parse__drop`.
+
+This is stricter than Linux's `net/ipv4/icmp.c::icmp_rcv`, which builds
+the message and falls into the type-dispatch table where unknown types
+silently increment a counter and drop. PyTCP rejects them at parser
+sanity per RFC 1122 §3.2.2's explicit "silently discard" requirement.

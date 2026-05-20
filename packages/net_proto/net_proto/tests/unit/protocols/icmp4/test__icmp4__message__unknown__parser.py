@@ -37,10 +37,8 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto import (
-    Icmp4Code,
-    Icmp4MessageUnknown,
     Icmp4Parser,
-    Icmp4Type,
+    Icmp4SanityError,
     Ip4Parser,
     PacketRx,
 )
@@ -71,12 +69,7 @@ def _packet_rx_with_ip4(frame: bytes) -> PacketRx:
                 b"\x43\x44\x45\x46"
             ),
             "_results": {
-                "message": Icmp4MessageUnknown(
-                    type=Icmp4Type.from_int(255),
-                    code=Icmp4Code.from_int(255),
-                    cksum=0x3129,
-                    data=b"0123456789ABCDEF",
-                ),
+                "error_message": ("The 'type' field value must be one of [0, 3, 8, 11, 12]. Got: 255."),
             },
         },
         {
@@ -90,12 +83,7 @@ def _packet_rx_with_ip4(frame: bytes) -> PacketRx:
                 b"\x01\x02\xfe\xfd"
             ),
             "_results": {
-                "message": Icmp4MessageUnknown(
-                    type=Icmp4Type.from_int(1),
-                    code=Icmp4Code.from_int(2),
-                    cksum=0xFEFD,
-                    data=b"",
-                ),
+                "error_message": ("The 'type' field value must be one of [0, 3, 8, 11, 12]. Got: 1."),
             },
         },
         {
@@ -110,19 +98,14 @@ def _packet_rx_with_ip4(frame: bytes) -> PacketRx:
                 + b"X" * 65511
             ),
             "_results": {
-                "message": Icmp4MessageUnknown(
-                    type=Icmp4Type.from_int(1),
-                    code=Icmp4Code.from_int(0),
-                    cksum=0xF74F,
-                    data=b"X" * 65511,
-                ),
+                "error_message": ("The 'type' field value must be one of [0, 3, 8, 11, 12]. Got: 1."),
             },
         },
     ]
 )
 class TestIcmp4MessageUnknownParser(TestCase):
     """
-    The ICMPv4 unknown message parser tests.
+    The ICMPv4 unknown-type rejection tests — RFC 1122 §3.2.2.
     """
 
     _description: str
@@ -138,35 +121,37 @@ class TestIcmp4MessageUnknownParser(TestCase):
 
     def test__icmp4__message__unknown__parser(self) -> None:
         """
-        Ensure the ICMPv4 parser produces an Icmp4MessageUnknown instance
-        whose fields match the expected reference message for each frame.
+        Ensure the ICMPv4 parser rejects a frame whose 'type' is not one of
+        the five host-stack-supported values (0, 3, 8, 11, 12) with
+        Icmp4SanityError.
+
+        Reference: RFC 792 (defined ICMP type numbers).
+        Reference: RFC 1122 §3.2.2 (hosts MUST silently discard unknown-type ICMP).
         """
 
-        icmp4_parser = Icmp4Parser(self._packet_rx)
-
-        # Materialize 'data' from memoryview to bytes for structural equality.
-        object.__setattr__(
-            icmp4_parser.message,
-            "data",
-            bytes(cast(Icmp4MessageUnknown, icmp4_parser.message).data),
-        )
+        with self.assertRaises(Icmp4SanityError) as error:
+            Icmp4Parser(self._packet_rx)
 
         self.assertEqual(
-            icmp4_parser.message,
-            self._results["message"],
-            msg=f"Parsed message mismatch for case: {self._description}",
+            str(error.exception),
+            f"[SANITY ERROR][ICMPv4] {self._results['error_message']}",
+            msg=f"Unexpected sanity-error message for case: {self._description}",
         )
 
     def test__icmp4__message__unknown__parser__frame_advanced(self) -> None:
         """
-        Ensure the ICMPv4 parser advances 'packet_rx.frame' past the
-        parsed unknown message.
+        Ensure the ICMPv4 parser does NOT advance 'packet_rx.frame' when it
+        rejects an unknown-type frame at sanity (the frame stays addressable
+        to the caller for telemetry / logging).
+
+        Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard).
         """
 
-        Icmp4Parser(self._packet_rx)
+        with self.assertRaises(Icmp4SanityError):
+            Icmp4Parser(self._packet_rx)
 
         self.assertEqual(
             len(self._packet_rx.frame),
-            0,
-            msg=f"Frame must be fully consumed by the parser for case: {self._description}",
+            len(self._frame_rx),
+            msg=f"Frame must remain intact after sanity rejection for case: {self._description}",
         )

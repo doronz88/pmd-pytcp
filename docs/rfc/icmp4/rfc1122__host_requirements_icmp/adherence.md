@@ -37,11 +37,18 @@ PyTCP currently models.
 
 **Adherence:** **met**. `Icmp4Parser._message_class()` resolves
 unknown type bytes to `Icmp4MessageUnknown`
-(`packages/net_proto/net_proto/protocols/icmp4/icmp4__parser.py:85-103`); the RX
-handler routes to `__phrx_icmp4__unknown` which logs and bumps the
-`icmp4__unknown` counter
-(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:121,590-599`).
-No reply is emitted.
+(`packages/net_proto/net_proto/protocols/icmp4/icmp4__parser.py`),
+whose `validate_sanity` unconditionally raises `Icmp4SanityError`
+(`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message__unknown.py`).
+The packet handler catches `PacketValidationError` and bumps
+`icmp4__failed_parse__drop`; no reply is emitted. Per-message
+`validate_sanity` also rejects unknown `code` values within the five
+known types (Echo Req/Reply, Destination Unreachable, Time Exceeded,
+Parameter Problem) — the IANA-assigned code sets are pinned in each
+message's enum and `code.is_unknown` triggers `Icmp4SanityError`. The
+older packet-handler `__phrx_icmp4__unknown` dispatch path is now
+unreachable; the `icmp4__unknown` counter is retained on
+`PacketStatsRx` as a no-op pending broader cleanup.
 
 > "Every ICMP error message includes the Internet header and at
 > least the first 8 data octets of the datagram that triggered the
