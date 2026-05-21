@@ -148,6 +148,8 @@ class TestNetProtoLibProtoEnumHierarchy(TestCase):
     def test__net_proto__lib__proto_enum__byte_is_proto_enum(self) -> None:
         """
         Ensure 'ProtoEnumByte' subclasses 'ProtoEnum'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoEnumByte, ProtoEnum))
@@ -155,6 +157,8 @@ class TestNetProtoLibProtoEnumHierarchy(TestCase):
     def test__net_proto__lib__proto_enum__word_is_proto_enum(self) -> None:
         """
         Ensure 'ProtoEnumWord' subclasses 'ProtoEnum'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoEnumWord, ProtoEnum))
@@ -177,6 +181,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__int(self) -> None:
         """
         Ensure 'int()' returns the numeric value of a known byte member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(int(self._enum.ALPHA), 0x01)
@@ -185,6 +191,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__str(self) -> None:
         """
         Ensure '__str__()' title-cases the member name and strips underscores.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(str(self._enum.ALPHA), "Alpha")
@@ -193,6 +201,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__bytes(self) -> None:
         """
         Ensure 'bytes()' serializes a ProtoEnumByte member as one big-endian byte.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(bytes(self._enum.ALPHA), b"\x01")
@@ -201,6 +211,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__is_unknown_false(self) -> None:
         """
         Ensure known byte enum members report 'is_unknown' as False.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(self._enum.ALPHA.is_unknown)
@@ -209,6 +221,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__get_known_values(self) -> None:
         """
         Ensure 'get_known_values()' returns every declared member value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -219,6 +233,8 @@ class TestNetProtoLibProtoEnumByteBasics(TestCase):
     def test__net_proto__lib__proto_enum__byte__contains_instance(self) -> None:
         """
         Ensure the overridden instance-level '__contains__' uses known values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIn(0x01, self._enum.ALPHA)
@@ -239,6 +255,8 @@ class TestNetProtoLibProtoEnumByteFromInt(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_int_known(self) -> None:
         """
         Ensure 'from_int()' returns the known member for its declared value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_int(5), self._enum.KNOWN)
@@ -246,6 +264,8 @@ class TestNetProtoLibProtoEnumByteFromInt(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_int_unknown(self) -> None:
         """
         Ensure 'from_int()' registers and returns an 'UNKNOWN_{value}' member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_int(77)
@@ -259,6 +279,8 @@ class TestNetProtoLibProtoEnumByteFromInt(TestCase):
     ) -> None:
         """
         Ensure repeated 'from_int()' on the same unknown value returns the same member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         first = self._enum.from_int(123)
@@ -271,6 +293,8 @@ class TestNetProtoLibProtoEnumByteFromInt(TestCase):
     ) -> None:
         """
         Ensure newly registered unknowns are not reported by 'get_known_values()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._enum.from_int(200)
@@ -281,6 +305,8 @@ class TestNetProtoLibProtoEnumByteFromInt(TestCase):
         """
         Ensure 'UNKNOWN_{value}' renders via the default 'title()' formatter
         on the base ProtoEnum class (ProtoEnumByte does not override __str__).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_int(45)
@@ -302,6 +328,8 @@ class TestNetProtoLibProtoEnumByteFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_bytes_known(self) -> None:
         """
         Ensure 'from_bytes()' returns the known member for an exact single-byte input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_bytes(b"\x10"), self._enum.A)
@@ -310,6 +338,8 @@ class TestNetProtoLibProtoEnumByteFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_bytes_truncates(self) -> None:
         """
         Ensure 'from_bytes()' only consumes the first byte of the input buffer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_bytes(b"\x10\xff\xab"), self._enum.A)
@@ -317,6 +347,8 @@ class TestNetProtoLibProtoEnumByteFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_bytes_unknown(self) -> None:
         """
         Ensure 'from_bytes()' registers and returns an unknown for a novel value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_bytes(b"\x99")
@@ -327,6 +359,8 @@ class TestNetProtoLibProtoEnumByteFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__byte__from_bytes_empty(self) -> None:
         """
         Ensure 'from_bytes()' treats an empty buffer as the integer value 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_bytes(b"")
@@ -350,6 +384,8 @@ class TestNetProtoLibProtoEnumWordBasics(TestCase):
     def test__net_proto__lib__proto_enum__word__int(self) -> None:
         """
         Ensure 'int()' returns the numeric value of a known word member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(int(self._enum.HEAD), 0x1234)
@@ -358,6 +394,8 @@ class TestNetProtoLibProtoEnumWordBasics(TestCase):
     def test__net_proto__lib__proto_enum__word__bytes(self) -> None:
         """
         Ensure 'bytes()' serializes a ProtoEnumWord member as two big-endian bytes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(bytes(self._enum.HEAD), b"\x12\x34")
@@ -366,6 +404,8 @@ class TestNetProtoLibProtoEnumWordBasics(TestCase):
     def test__net_proto__lib__proto_enum__word__str(self) -> None:
         """
         Ensure '__str__()' title-cases the member name and strips underscores.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(str(self._enum.HEAD), "Head")
@@ -374,6 +414,8 @@ class TestNetProtoLibProtoEnumWordBasics(TestCase):
     def test__net_proto__lib__proto_enum__word__is_unknown_false(self) -> None:
         """
         Ensure known word enum members report 'is_unknown' as False.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(self._enum.HEAD.is_unknown)
@@ -394,6 +436,8 @@ class TestNetProtoLibProtoEnumWordFromInt(TestCase):
     def test__net_proto__lib__proto_enum__word__from_int_known(self) -> None:
         """
         Ensure 'from_int()' returns the known member for its declared value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_int(0x0800), self._enum.KNOWN)
@@ -401,6 +445,8 @@ class TestNetProtoLibProtoEnumWordFromInt(TestCase):
     def test__net_proto__lib__proto_enum__word__from_int_unknown(self) -> None:
         """
         Ensure 'from_int()' registers and returns an 'UNKNOWN_{value}' member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_int(0xABCD)
@@ -414,6 +460,8 @@ class TestNetProtoLibProtoEnumWordFromInt(TestCase):
     ) -> None:
         """
         Ensure repeated 'from_int()' on the same unknown value returns the same member.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         first = self._enum.from_int(0x1000)
@@ -437,6 +485,8 @@ class TestNetProtoLibProtoEnumWordFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__word__from_bytes_known(self) -> None:
         """
         Ensure 'from_bytes()' returns the known member for an exact two-byte input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_bytes(b"\x01\x02"), self._enum.A)
@@ -445,6 +495,8 @@ class TestNetProtoLibProtoEnumWordFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__word__from_bytes_truncates(self) -> None:
         """
         Ensure 'from_bytes()' only consumes the first two bytes of the buffer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._enum.from_bytes(b"\x01\x02\xff\xff"), self._enum.A)
@@ -452,6 +504,8 @@ class TestNetProtoLibProtoEnumWordFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__word__from_bytes_unknown(self) -> None:
         """
         Ensure 'from_bytes()' registers and returns an unknown for a novel value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_bytes(b"\xde\xad")
@@ -462,6 +516,8 @@ class TestNetProtoLibProtoEnumWordFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__word__from_bytes_short(self) -> None:
         """
         Ensure 'from_bytes()' accepts a single-byte input and treats it as 0x00XX.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_bytes(b"\x05")
@@ -471,6 +527,8 @@ class TestNetProtoLibProtoEnumWordFromBytes(TestCase):
     def test__net_proto__lib__proto_enum__word__from_bytes_empty(self) -> None:
         """
         Ensure 'from_bytes()' treats an empty buffer as the integer value 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         member = self._enum.from_bytes(b"")

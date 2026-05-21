@@ -48,6 +48,8 @@ class TestNetProtoLibErrorsHierarchy(TestCase):
     def test__net_proto__lib__errors__pytcp_error__is_exception(self) -> None:
         """
         Ensure 'PyTcpError' subclasses 'Exception'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -58,6 +60,8 @@ class TestNetProtoLibErrorsHierarchy(TestCase):
     def test__net_proto__lib__errors__packet_validation_error__is_pytcp_error(self) -> None:
         """
         Ensure 'PacketValidationError' subclasses 'PyTcpError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -70,6 +74,8 @@ class TestNetProtoLibErrorsHierarchy(TestCase):
     ) -> None:
         """
         Ensure 'PacketIntegrityError' subclasses 'PacketValidationError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -82,6 +88,8 @@ class TestNetProtoLibErrorsHierarchy(TestCase):
     ) -> None:
         """
         Ensure 'PacketSanityError' subclasses 'PacketValidationError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -98,6 +106,8 @@ class TestNetProtoLibErrorsPyTcpError(TestCase):
     def test__net_proto__lib__errors__pytcp_error__raising(self) -> None:
         """
         Ensure 'PyTcpError' can be raised and carry its message unchanged.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PyTcpError) as error:
@@ -108,6 +118,8 @@ class TestNetProtoLibErrorsPyTcpError(TestCase):
     def test__net_proto__lib__errors__pytcp_error__empty_message(self) -> None:
         """
         Ensure 'PyTcpError' can be raised without a message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PyTcpError) as error:
@@ -124,6 +136,8 @@ class TestNetProtoLibErrorsPacketValidationError(TestCase):
     def test__net_proto__lib__errors__packet_validation_error__raising(self) -> None:
         """
         Ensure 'PacketValidationError' can be raised and carry its message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketValidationError) as error:
@@ -136,6 +150,8 @@ class TestNetProtoLibErrorsPacketValidationError(TestCase):
     ) -> None:
         """
         Ensure 'PacketValidationError' is caught by 'PyTcpError' handlers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PyTcpError):
@@ -152,6 +168,8 @@ class TestNetProtoLibErrorsPacketIntegrityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketIntegrityError' prefixes the message with '[INTEGRITY ERROR]'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketIntegrityError) as error:
@@ -164,6 +182,8 @@ class TestNetProtoLibErrorsPacketIntegrityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketIntegrityError' still emits the prefix for an empty message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketIntegrityError) as error:
@@ -176,6 +196,8 @@ class TestNetProtoLibErrorsPacketIntegrityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketIntegrityError' is caught by 'PacketValidationError' handlers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketValidationError):
@@ -186,6 +208,8 @@ class TestNetProtoLibErrorsPacketIntegrityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketIntegrityError' requires the message positionally.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -202,6 +226,8 @@ class TestNetProtoLibErrorsPacketSanityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketSanityError' prefixes the message with '[SANITY ERROR]'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketSanityError) as error:
@@ -214,6 +240,8 @@ class TestNetProtoLibErrorsPacketSanityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketSanityError' still emits the prefix for an empty message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketSanityError) as error:
@@ -226,6 +254,8 @@ class TestNetProtoLibErrorsPacketSanityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketSanityError' is caught by 'PacketValidationError' handlers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketValidationError):
@@ -236,6 +266,8 @@ class TestNetProtoLibErrorsPacketSanityError(TestCase):
     ) -> None:
         """
         Ensure 'PacketSanityError' requires the message positionally.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -252,6 +284,8 @@ class TestNetProtoLibErrorsDistinction(TestCase):
     ) -> None:
         """
         Ensure integrity and sanity errors are not catchable as the opposite type.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(PacketIntegrityError):

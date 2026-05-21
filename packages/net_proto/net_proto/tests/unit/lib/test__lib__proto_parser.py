@@ -84,6 +84,8 @@ class TestNetProtoLibProtoParserAbstract(TestCase):
     def test__net_proto__lib__proto_parser__subclasses_proto(self) -> None:
         """
         Ensure 'ProtoParser' subclasses 'Proto'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoParser, Proto))
@@ -91,6 +93,8 @@ class TestNetProtoLibProtoParserAbstract(TestCase):
     def test__net_proto__lib__proto_parser__cannot_instantiate_abstract(self) -> None:
         """
         Ensure 'ProtoParser' cannot be instantiated directly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -102,6 +106,8 @@ class TestNetProtoLibProtoParserAbstract(TestCase):
         """
         Ensure a subclass missing abstract validation/parse methods cannot
         be instantiated.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class Partial(ProtoParser):
@@ -129,6 +135,8 @@ class TestNetProtoLibProtoParserAbstract(TestCase):
         """
         Ensure a concrete parser subclass can be instantiated and its lifecycle
         hooks fire in order.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         parser = _ConcreteParser(b"\x01\x02\x03")
@@ -177,6 +185,8 @@ class TestNetProtoLibProtoParserFrame(TestCase):
     def test__net_proto__lib__proto_parser__frame_returns_memoryview(self) -> None:
         """
         Ensure the 'frame' property always returns a memoryview.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -188,6 +198,8 @@ class TestNetProtoLibProtoParserFrame(TestCase):
     def test__net_proto__lib__proto_parser__frame_preserves_contents(self) -> None:
         """
         Ensure the 'frame' property exposes the original bytes untouched.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -206,6 +218,8 @@ class TestNetProtoLibProtoParserFrameView(TestCase):
         """
         Ensure the 'frame' property returns a view over the underlying
         bytearray buffer when the frame is mutable.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = bytearray(b"\x00\x00\x00")
@@ -219,6 +233,8 @@ class TestNetProtoLibProtoParserFrameView(TestCase):
     ) -> None:
         """
         Ensure each 'frame' access returns a fresh memoryview instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         parser = _ConcreteParser(b"\x01\x02")
@@ -240,6 +256,8 @@ class TestNetProtoLibProtoParserAbstractBodies(TestCase):
         """
         Ensure the abstract stub bodies raise 'NotImplementedError' when
         reached via 'super()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class _SuperParser(ProtoParser):

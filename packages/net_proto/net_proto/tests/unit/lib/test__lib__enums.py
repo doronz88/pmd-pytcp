@@ -85,6 +85,8 @@ class TestNetProtoLibEnumsEtherTypeKnown(TestCase):
     def test__net_proto__lib__enums__ether_type__value(self) -> None:
         """
         Ensure each known EtherType member maps to the documented numeric value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -96,6 +98,8 @@ class TestNetProtoLibEnumsEtherTypeKnown(TestCase):
     def test__net_proto__lib__enums__ether_type__str(self) -> None:
         """
         Ensure the human-readable label matches the documented one.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -107,6 +111,8 @@ class TestNetProtoLibEnumsEtherTypeKnown(TestCase):
     def test__net_proto__lib__enums__ether_type__is_unknown_false(self) -> None:
         """
         Ensure known EtherType members report 'is_unknown' as False.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -117,6 +123,8 @@ class TestNetProtoLibEnumsEtherTypeKnown(TestCase):
     def test__net_proto__lib__enums__ether_type__bytes_is_two_bytes(self) -> None:
         """
         Ensure the EtherType serializes to a 2-byte big-endian representation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -136,6 +144,8 @@ class TestNetProtoLibEnumsEtherTypeUnknown(TestCase):
     ) -> None:
         """
         Ensure an unknown EtherType is registered and exposes 'is_unknown=True'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         unknown = EtherType.from_int(0x1234)
@@ -146,6 +156,8 @@ class TestNetProtoLibEnumsEtherTypeUnknown(TestCase):
     def test__net_proto__lib__enums__ether_type__unknown_str_is_hex(self) -> None:
         """
         Ensure unknown EtherType members render as zero-padded 4-digit hex.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         unknown = EtherType.from_int(0x1234)
@@ -154,6 +166,8 @@ class TestNetProtoLibEnumsEtherTypeUnknown(TestCase):
     def test__net_proto__lib__enums__ether_type__unknown_lowest_value(self) -> None:
         """
         Ensure an EtherType value of 0 renders with leading zeros.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         unknown = EtherType.from_int(0x0000)
@@ -192,6 +206,8 @@ class TestNetProtoLibEnumsEtherTypeFromProto(TestCase):
     def test__net_proto__lib__enums__ether_type__from_proto(self) -> None:
         """
         Ensure 'from_proto()' returns the documented EtherType for the input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         proto = MagicMock(spec=self._spec)
@@ -213,6 +229,8 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
     ) -> None:
         """
         Ensure Raw proxies the 'ether_type' attribute through 'from_proto()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         raw = MagicMock(spec=Raw)
@@ -228,6 +246,8 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
     ) -> None:
         """
         Ensure an unsupported Proto subclass triggers the assertion failure.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class ForeignProto(Proto):
@@ -323,6 +343,8 @@ class TestNetProtoLibEnumsIpProtoKnown(TestCase):
     def test__net_proto__lib__enums__ip_proto__value(self) -> None:
         """
         Ensure each known IpProto member maps to the documented numeric value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -334,6 +356,8 @@ class TestNetProtoLibEnumsIpProtoKnown(TestCase):
     def test__net_proto__lib__enums__ip_proto__str(self) -> None:
         """
         Ensure the human-readable label matches the documented one.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -345,6 +369,8 @@ class TestNetProtoLibEnumsIpProtoKnown(TestCase):
     def test__net_proto__lib__enums__ip_proto__is_unknown_false(self) -> None:
         """
         Ensure known IpProto members report 'is_unknown' as False.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -355,6 +381,8 @@ class TestNetProtoLibEnumsIpProtoKnown(TestCase):
     def test__net_proto__lib__enums__ip_proto__bytes_is_one_byte(self) -> None:
         """
         Ensure the IpProto serializes to a single byte.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -374,6 +402,8 @@ class TestNetProtoLibEnumsIpProtoUnknown(TestCase):
     ) -> None:
         """
         Ensure an unknown IpProto is registered and exposes 'is_unknown=True'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         unknown = IpProto.from_int(55)
@@ -384,6 +414,8 @@ class TestNetProtoLibEnumsIpProtoUnknown(TestCase):
     def test__net_proto__lib__enums__ip_proto__unknown_str_is_int(self) -> None:
         """
         Ensure unknown IpProto members render as the decimal integer.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         unknown = IpProto.from_int(55)
@@ -497,6 +529,8 @@ class TestNetProtoLibEnumsIpProtoFromProto(TestCase):
     def test__net_proto__lib__enums__ip_proto__from_proto(self) -> None:
         """
         Ensure 'from_proto()' returns the documented IpProto for the input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         proto = MagicMock(spec=self._spec)
@@ -518,6 +552,8 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
     ) -> None:
         """
         Ensure Raw proxies the 'ip_proto' attribute through 'from_proto()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         raw = MagicMock(spec=Raw)
@@ -531,6 +567,8 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
         """
         Ensure Ip6 is currently mapped through 'from_proto()'. Documents the
         live behavior of the function for the Ip6 branch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ip6 = MagicMock(spec=Ip6)
@@ -545,6 +583,8 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
         """
         Ensure an unsupported Proto subclass trips the unreachable-fallback
         assertion.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class ForeignProto(Proto):
@@ -574,6 +614,8 @@ class TestNetProtoLibEnumsRoundtrip(TestCase):
     def test__net_proto__lib__enums__ether_type__from_bytes_roundtrip(self) -> None:
         """
         Ensure EtherType members round-trip through 'from_bytes(bytes(x))'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for member in (EtherType.ARP, EtherType.IP4, EtherType.IP6, EtherType.RAW):
@@ -583,6 +625,8 @@ class TestNetProtoLibEnumsRoundtrip(TestCase):
     def test__net_proto__lib__enums__ip_proto__from_bytes_roundtrip(self) -> None:
         """
         Ensure IpProto members round-trip through 'from_bytes(bytes(x))'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         for member in (

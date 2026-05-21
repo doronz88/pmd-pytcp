@@ -85,6 +85,8 @@ class TestNetProtoLibProtoAbstract(TestCase):
     def test__net_proto__lib__proto__cannot_instantiate_abstract(self) -> None:
         """
         Ensure 'Proto' cannot be instantiated directly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -93,6 +95,8 @@ class TestNetProtoLibProtoAbstract(TestCase):
     def test__net_proto__lib__proto__partial_subclass_cannot_instantiate(self) -> None:
         """
         Ensure a subclass missing abstract methods cannot be instantiated.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class Partial(Proto):
@@ -108,6 +112,8 @@ class TestNetProtoLibProtoAbstract(TestCase):
     def test__net_proto__lib__proto__concrete_subclass_can_instantiate(self) -> None:
         """
         Ensure a subclass implementing all abstract methods can be instantiated.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = _SimpleProto(b"\x01\x02")
@@ -119,6 +125,8 @@ class TestNetProtoLibProtoAbstract(TestCase):
     def test__net_proto__lib__proto__buffer_protocol(self) -> None:
         """
         Ensure implementing '__buffer__()' exposes the payload via 'memoryview()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = _SimpleProto(b"\xaa\xbb\xcc")
@@ -129,6 +137,8 @@ class TestNetProtoLibProtoAbstract(TestCase):
         """
         Ensure abstract method bodies raise 'NotImplementedError' when invoked
         via 'super()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class _SuperProto(Proto):
@@ -164,6 +174,8 @@ class TestNetProtoLibProtoEquality(TestCase):
     def test__net_proto__lib__proto__eq__self_identity(self) -> None:
         """
         Ensure 'Proto.__eq__()' returns True for the same instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = _SimpleProto(b"\x01")
@@ -173,6 +185,8 @@ class TestNetProtoLibProtoEquality(TestCase):
     def test__net_proto__lib__proto__eq__same_type_same_repr(self) -> None:
         """
         Ensure two Proto instances with matching type and repr compare equal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01\x02")
@@ -184,6 +198,8 @@ class TestNetProtoLibProtoEquality(TestCase):
     def test__net_proto__lib__proto__eq__same_type_different_repr(self) -> None:
         """
         Ensure two Proto instances with matching type but different repr compare unequal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01\x02")
@@ -194,6 +210,8 @@ class TestNetProtoLibProtoEquality(TestCase):
     def test__net_proto__lib__proto__eq__foreign_type(self) -> None:
         """
         Ensure 'Proto.__eq__()' returns False when compared to non-Proto values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = _SimpleProto(b"\x01")
@@ -206,6 +224,8 @@ class TestNetProtoLibProtoEquality(TestCase):
         """
         Ensure a foreign Proto subclass is not considered equal even when their
         repr values happen to match.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01")
@@ -224,6 +244,8 @@ class TestNetProtoLibProtoHash(TestCase):
     def test__net_proto__lib__proto__hash__matches_for_equal_instances(self) -> None:
         """
         Ensure equal Proto instances hash to the same value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01\x02\x03")
@@ -235,6 +257,8 @@ class TestNetProtoLibProtoHash(TestCase):
     def test__net_proto__lib__proto__hash__differs_for_different_repr(self) -> None:
         """
         Ensure Proto instances with different repr typically hash differently.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01")
@@ -245,6 +269,8 @@ class TestNetProtoLibProtoHash(TestCase):
     def test__net_proto__lib__proto__hash__equals_hash_of_repr(self) -> None:
         """
         Ensure 'hash()' on a Proto matches 'hash(repr(x))'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = _SimpleProto(b"\xde\xad\xbe\xef")
@@ -254,6 +280,8 @@ class TestNetProtoLibProtoHash(TestCase):
     def test__net_proto__lib__proto__usable_in_set(self) -> None:
         """
         Ensure equal Proto instances collapse into a single set element.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01\x02")
@@ -266,6 +294,8 @@ class TestNetProtoLibProtoHash(TestCase):
     def test__net_proto__lib__proto__usable_as_dict_key(self) -> None:
         """
         Ensure equal Proto instances refer to the same dict entry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _SimpleProto(b"\x01\x02")

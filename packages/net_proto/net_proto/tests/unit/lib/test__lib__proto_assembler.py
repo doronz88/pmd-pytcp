@@ -88,6 +88,8 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
     def test__net_proto__lib__proto_assembler__subclasses_proto(self) -> None:
         """
         Ensure 'ProtoAssembler' subclasses 'Proto'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoAssembler, Proto))
@@ -97,6 +99,8 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
     ) -> None:
         """
         Ensure 'ProtoAssembler' cannot be instantiated directly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -107,6 +111,8 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
     ) -> None:
         """
         Ensure a subclass missing 'assemble()' cannot be instantiated.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class Partial(ProtoAssembler):
@@ -130,6 +136,8 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
     ) -> None:
         """
         Ensure a subclass implementing all abstract methods can be instantiated.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x01\x02")
@@ -148,6 +156,8 @@ class TestNetProtoLibProtoAssemblerTracker(_TrackerReset):
     ) -> None:
         """
         Ensure the 'tracker' property returns the backing '_tracker' attribute.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x00")
@@ -157,6 +167,8 @@ class TestNetProtoLibProtoAssemblerTracker(_TrackerReset):
     def test__net_proto__lib__proto_assembler__tracker_is_tx_tracker(self) -> None:
         """
         Ensure the tracker carries a TX-tagged serial for an assembler.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x00")
@@ -175,6 +187,8 @@ class TestNetProtoLibProtoAssemblerAssemble(_TrackerReset):
     ) -> None:
         """
         Ensure 'assemble()' appends payload fragments to the supplied buffer list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x11\x22")
@@ -190,6 +204,8 @@ class TestNetProtoLibProtoAssemblerAssemble(_TrackerReset):
     ) -> None:
         """
         Ensure the 'assemble()' method only accepts its buffers list positionally.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x00")
@@ -202,6 +218,8 @@ class TestNetProtoLibProtoAssemblerAssemble(_TrackerReset):
     ) -> None:
         """
         Ensure 'assemble()' preserves existing entries in the buffers list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         assembler = _ConcreteAssembler(b"\x33")
@@ -223,6 +241,8 @@ class TestNetProtoLibProtoAssemblerAbstractBody(_TrackerReset):
         """
         Ensure the abstract 'assemble()' stub body raises 'NotImplementedError'
         when reached via 'super()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class _SuperAssembler(ProtoAssembler):

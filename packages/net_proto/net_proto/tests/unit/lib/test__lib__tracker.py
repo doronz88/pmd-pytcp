@@ -70,6 +70,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__rx__serial_format(self) -> None:
         """
         Ensure the RX tracker emits a '<lg>RXXXXX</>' formatted serial.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="RX")
@@ -83,6 +85,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__tx__serial_format(self) -> None:
         """
         Ensure the TX tracker emits a '<lr>TXXXXX</>' formatted serial.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="TX")
@@ -96,6 +100,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__rx__counter_increments(self) -> None:
         """
         Ensure each RX tracker allocation increments the shared RX counter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         first = Tracker(prefix="RX")
@@ -109,6 +115,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__tx__counter_increments(self) -> None:
         """
         Ensure each TX tracker allocation increments the shared TX counter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         first = Tracker(prefix="TX")
@@ -122,6 +130,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     ) -> None:
         """
         Ensure the RX and TX counters advance independently of each other.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         Tracker(prefix="RX")
@@ -143,6 +153,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__rx__counter_wraps_at_0xffff(self) -> None:
         """
         Ensure the RX counter wraps back to zero after hitting 0xFFFF.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         Tracker._rx_counter = itertools.count(0xFFFF)
@@ -157,6 +169,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__tx__counter_wraps_at_0xffff(self) -> None:
         """
         Ensure the TX counter wraps back to zero after hitting 0xFFFF.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         Tracker._tx_counter = itertools.count(0xFFFF)
@@ -171,6 +185,8 @@ class TestNetProtoLibTrackerRxTx(_TrackerTestBase):
     def test__net_proto__lib__tracker__invalid_prefix_raises(self) -> None:
         """
         Ensure a prefix other than 'RX'/'TX' triggers the constructor assertion.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -185,6 +201,8 @@ class TestNetProtoLibTrackerExplicitSerial(_TrackerTestBase):
     def test__net_proto__lib__tracker__explicit_serial_uses_value(self) -> None:
         """
         Ensure passing 'serial=' short-circuits formatting and returns early.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="RX", serial="CUSTOM-SERIAL")
@@ -196,6 +214,8 @@ class TestNetProtoLibTrackerExplicitSerial(_TrackerTestBase):
     ) -> None:
         """
         Ensure constructing with an explicit serial does not advance the counters.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         Tracker(prefix="RX", serial="FORCE-RX")
@@ -220,6 +240,8 @@ class TestNetProtoLibTrackerExplicitSerial(_TrackerTestBase):
     ) -> None:
         """
         Ensure an explicit serial bypasses the 'prefix in {RX, TX}' assertion.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="INVALID", serial="BYPASS")
@@ -231,6 +253,8 @@ class TestNetProtoLibTrackerExplicitSerial(_TrackerTestBase):
     ) -> None:
         """
         Ensure constructing with a serial leaves the '_timestamp' attribute unset.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="RX", serial="NO-TIMESTAMP")
@@ -249,6 +273,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     ) -> None:
         """
         Ensure 'echo_tracker' is None when the tracker stands alone.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsNone(Tracker(prefix="RX").echo_tracker)
@@ -258,6 +284,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     ) -> None:
         """
         Ensure 'echo_tracker' returns the instance supplied at construction.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         rx = Tracker(prefix="RX")
@@ -268,6 +296,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     def test__net_proto__lib__tracker__str_with_echo_tracker(self) -> None:
         """
         Ensure '__str__()' appends the echo tracker's string form.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         rx = Tracker(prefix="RX")
@@ -278,6 +308,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     def test__net_proto__lib__tracker__repr_without_echo_tracker(self) -> None:
         """
         Ensure '__repr__()' omits the echo tracker when it is absent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="RX")
@@ -290,6 +322,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     def test__net_proto__lib__tracker__repr_with_echo_tracker(self) -> None:
         """
         Ensure '__repr__()' includes the echo tracker's string form.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         rx = Tracker(prefix="RX")
@@ -303,6 +337,8 @@ class TestNetProtoLibTrackerEchoTracker(_TrackerTestBase):
     def test__net_proto__lib__tracker__nested_echo_tracker_str(self) -> None:
         """
         Ensure '__str__()' walks a chain of echo trackers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         rx = Tracker(prefix="RX")
@@ -323,6 +359,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
     def test__net_proto__lib__tracker__rx__timestamp_uses_time_time(self) -> None:
         """
         Ensure the RX constructor records 'time.time()' as the timestamp.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("net_proto.lib.tracker.time.time", return_value=12345.6789):
@@ -333,6 +371,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
     def test__net_proto__lib__tracker__tx__timestamp_uses_time_time(self) -> None:
         """
         Ensure the TX constructor records 'time.time()' as the timestamp.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("net_proto.lib.tracker.time.time", return_value=42.0):
@@ -345,6 +385,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
     ) -> None:
         """
         Ensure 'latency' returns an empty string when no echo tracker is set.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         tracker = Tracker(prefix="RX")
@@ -354,6 +396,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
     def test__net_proto__lib__tracker__latency_with_echo_tracker(self) -> None:
         """
         Ensure 'latency' reports the millisecond delta against the echo tracker.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("net_proto.lib.tracker.time.time", return_value=100.000):
@@ -370,6 +414,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
         """
         Ensure 'latency' measures against the current time each call, not the
         TX tracker's own timestamp.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch("net_proto.lib.tracker.time.time", return_value=10.000):
@@ -382,6 +428,8 @@ class TestNetProtoLibTrackerTimestampAndLatency(_TrackerTestBase):
     def test__net_proto__lib__tracker__timestamp_is_float(self) -> None:
         """
         Ensure a freshly constructed tracker exposes a float timestamp.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         before = time.time()

@@ -44,6 +44,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__is_type_alias(self) -> None:
         """
         Ensure the 'Buffer' is a PEP 695 type alias.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -55,6 +57,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__name(self) -> None:
         """
         Ensure the 'Buffer' type alias exposes the expected name.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -66,6 +70,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__members(self) -> None:
         """
         Ensure the 'Buffer' type alias resolves to the bytes/bytearray/memoryview union.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -77,6 +83,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__accepts_bytes(self) -> None:
         """
         Ensure 'bytes' value satisfies the 'Buffer' type at runtime.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         value: Buffer = b"\x01\x02\x03"
@@ -89,6 +97,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__accepts_bytearray(self) -> None:
         """
         Ensure 'bytearray' value satisfies the 'Buffer' type at runtime.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         value: Buffer = bytearray(b"\x01\x02\x03")
@@ -101,6 +111,8 @@ class TestNetProtoLibBuffer(TestCase):
     def test__net_proto__lib__buffer__accepts_memoryview(self) -> None:
         """
         Ensure 'memoryview' value satisfies the 'Buffer' type at runtime.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         value: Buffer = memoryview(b"\x01\x02\x03")
@@ -114,6 +126,8 @@ class TestNetProtoLibBuffer(TestCase):
         """
         Ensure that foreign types like 'str' and 'int' are not part of the
         'Buffer' type alias.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotIsInstance(

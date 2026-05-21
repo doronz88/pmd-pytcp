@@ -73,6 +73,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint2_constants(self) -> None:
         """
         Ensure the UINT_2 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_2__MIN, 0x00)
@@ -81,6 +83,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint4_constants(self) -> None:
         """
         Ensure the UINT_4 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_4__MIN, 0x0)
@@ -89,6 +93,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint6_constants(self) -> None:
         """
         Ensure the UINT_6 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_6__MIN, 0x00)
@@ -97,6 +103,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint8_constants(self) -> None:
         """
         Ensure the UINT_8 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_8__MIN, 0x00)
@@ -105,6 +113,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint13_constants(self) -> None:
         """
         Ensure the UINT_13 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_13__MIN, 0x0000)
@@ -113,6 +123,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint16_constants(self) -> None:
         """
         Ensure the UINT_16 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_16__MIN, 0x0000)
@@ -121,6 +133,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint20_constants(self) -> None:
         """
         Ensure the UINT_20 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_20__MIN, 0x00000)
@@ -129,6 +143,8 @@ class TestNetProtoLibIntChecksConstants(TestCase):
     def test__net_proto__lib__int_checks__uint32_constants(self) -> None:
         """
         Ensure the UINT_32 constants expose the expected range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(UINT_32__MIN, 0x00000000)
@@ -200,6 +216,8 @@ class TestNetProtoLibIntChecksUintBoundaries(TestCase):
     def test__net_proto__lib__int_checks__uint__min(self) -> None:
         """
         Ensure the checker returns True at the minimum value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -210,6 +228,8 @@ class TestNetProtoLibIntChecksUintBoundaries(TestCase):
     def test__net_proto__lib__int_checks__uint__max(self) -> None:
         """
         Ensure the checker returns True at the maximum value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -220,6 +240,8 @@ class TestNetProtoLibIntChecksUintBoundaries(TestCase):
     def test__net_proto__lib__int_checks__uint__below_min(self) -> None:
         """
         Ensure the checker returns False one below the minimum value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -230,6 +252,8 @@ class TestNetProtoLibIntChecksUintBoundaries(TestCase):
     def test__net_proto__lib__int_checks__uint__above_max(self) -> None:
         """
         Ensure the checker returns False one above the maximum value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -240,6 +264,8 @@ class TestNetProtoLibIntChecksUintBoundaries(TestCase):
     def test__net_proto__lib__int_checks__uint__midpoint(self) -> None:
         """
         Ensure the checker returns True for a value inside the range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         midpoint = (self._min + self._max) // 2
@@ -320,6 +346,8 @@ class TestNetProtoLibIntChecksAlignment(TestCase):
     def test__net_proto__lib__int_checks__is_4_byte_alligned(self) -> None:
         """
         Ensure the 'is_4_byte_alligned()' function reports 4-byte alignment correctly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -331,6 +359,8 @@ class TestNetProtoLibIntChecksAlignment(TestCase):
     def test__net_proto__lib__int_checks__is_8_byte_alligned(self) -> None:
         """
         Ensure the 'is_8_byte_alligned()' function reports 8-byte alignment correctly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(

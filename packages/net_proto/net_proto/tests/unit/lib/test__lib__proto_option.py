@@ -102,6 +102,8 @@ class TestNetProtoLibProtoOptionType(TestCase):
     ) -> None:
         """
         Ensure 'ProtoOptionType' inherits the byte-sized proto enum behavior.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoOptionType, ProtoEnumByte))
@@ -111,6 +113,8 @@ class TestNetProtoLibProtoOptionType(TestCase):
     ) -> None:
         """
         Ensure a ProtoOptionType subclass member serializes to a single byte.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(bytes(_FixtureOptionType.A), b"\x01")
@@ -125,6 +129,8 @@ class TestNetProtoLibProtoOptionAbstract(TestCase):
     def test__net_proto__lib__proto_option__is_proto_struct(self) -> None:
         """
         Ensure 'ProtoOption' subclasses 'ProtoStruct'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(issubclass(ProtoOption, ProtoStruct))
@@ -133,6 +139,8 @@ class TestNetProtoLibProtoOptionAbstract(TestCase):
         """
         Ensure 'ProtoOption' cannot be instantiated directly because it still
         carries abstract methods from 'ProtoStruct'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -150,6 +158,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__fields(self) -> None:
         """
         Ensure the subclass exposes the 'type' and 'len' fields.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._option.type, _FixtureOptionType.A)
@@ -158,6 +168,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__len_returns_len_field(self) -> None:
         """
         Ensure 'len()' returns the value of the 'len' field, not structure size.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(len(self._option), 2)
@@ -166,6 +178,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__is_frozen(self) -> None:
         """
         Ensure ProtoOption fields cannot be mutated after construction.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(FrozenInstanceError):
@@ -174,6 +188,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__post_init_runs(self) -> None:
         """
         Ensure the concrete '__post_init__()' hook runs during construction.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(AssertionError):
@@ -182,6 +198,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__buffer_protocol(self) -> None:
         """
         Ensure the concrete subclass serializes via 'memoryview()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(bytes(memoryview(self._option)), b"\x01\x02")
@@ -189,6 +207,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__from_buffer_roundtrip(self) -> None:
         """
         Ensure 'from_buffer(bytes(x))' reconstructs an equal option instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         reconstructed = _FixtureOption.from_buffer(bytes(memoryview(self._option)))
@@ -198,6 +218,8 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
     def test__net_proto__lib__proto_option__equality(self) -> None:
         """
         Ensure options compare equal when their fields match.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _FixtureOption(type=_FixtureOptionType.A, len=2)
@@ -220,6 +242,8 @@ class TestNetProtoLibProtoOptionsAbstract(TestCase):
     ) -> None:
         """
         Ensure ProtoOptions cannot be instantiated without 'from_buffer()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -237,6 +261,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_len(self) -> None:
         """
         Ensure an empty ProtoOptions reports zero length.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(len(self._options), 0)
@@ -244,6 +270,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_bool(self) -> None:
         """
         Ensure an empty ProtoOptions is falsy.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(bool(self._options))
@@ -251,6 +279,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_str(self) -> None:
         """
         Ensure an empty ProtoOptions renders as an empty string.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(str(self._options), "")
@@ -258,6 +288,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_repr(self) -> None:
         """
         Ensure an empty ProtoOptions renders with an empty list in its repr.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(repr(self._options), "_FixtureOptions(options=[])")
@@ -265,6 +297,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_buffer_protocol(self) -> None:
         """
         Ensure an empty ProtoOptions has an empty memoryview representation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(bytes(memoryview(self._options)), b"")
@@ -272,6 +306,8 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
     def test__net_proto__lib__proto_options__empty_iter(self) -> None:
         """
         Ensure iterating an empty ProtoOptions yields nothing.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(list(self._options), [])
@@ -291,6 +327,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__len_sums_option_lengths(self) -> None:
         """
         Ensure 'len()' on a ProtoOptions sums the lengths of contained options.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(len(self._options), 2 + 3 + 4)
@@ -298,6 +336,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__bool_true_when_populated(self) -> None:
         """
         Ensure a populated ProtoOptions is truthy.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(bool(self._options))
@@ -305,6 +345,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__str_joins_option_strings(self) -> None:
         """
         Ensure '__str__()' joins each option's string form with ", ".
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -315,6 +357,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__repr_lists_options(self) -> None:
         """
         Ensure '__repr__()' mentions the class name and the options list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -327,6 +371,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     ) -> None:
         """
         Ensure '__buffer__()' concatenates the serialized forms of each option.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -339,6 +385,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     ) -> None:
         """
         Ensure iterating a ProtoOptions yields options in insertion order.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -349,6 +397,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__getitem(self) -> None:
         """
         Ensure '__getitem__()' returns options by index.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(self._options[0], self._option_a)
@@ -358,6 +408,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__getitem_out_of_range(self) -> None:
         """
         Ensure '__getitem__()' raises IndexError for out-of-range indices.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(IndexError):
@@ -366,6 +418,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__index(self) -> None:
         """
         Ensure 'index()' returns the matching option's position.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(self._options.index(self._option_b), 1)
@@ -373,6 +427,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__index_missing(self) -> None:
         """
         Ensure 'index()' raises ValueError when the option is absent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(ValueError):
@@ -381,6 +437,8 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
     def test__net_proto__lib__proto_options__contains(self) -> None:
         """
         Ensure '__contains__()' uses value-based membership lookup.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIn(_FixtureOption(type=_FixtureOptionType.A, len=2), self._options)
@@ -395,6 +453,8 @@ class TestNetProtoLibProtoOptionsEquality(TestCase):
     def test__net_proto__lib__proto_options__eq__same_contents(self) -> None:
         """
         Ensure two same-typed ProtoOptions with identical contents compare equal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _FixtureOptions(_FixtureOption(type=_FixtureOptionType.A, len=2))
@@ -405,6 +465,8 @@ class TestNetProtoLibProtoOptionsEquality(TestCase):
     def test__net_proto__lib__proto_options__eq__different_contents(self) -> None:
         """
         Ensure two same-typed ProtoOptions with different contents are unequal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _FixtureOptions(_FixtureOption(type=_FixtureOptionType.A, len=2))
@@ -415,6 +477,8 @@ class TestNetProtoLibProtoOptionsEquality(TestCase):
     def test__net_proto__lib__proto_options__eq__different_class(self) -> None:
         """
         Ensure ProtoOptions subclasses with the same option list are not equal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         a = _FixtureOptions()
@@ -425,6 +489,8 @@ class TestNetProtoLibProtoOptionsEquality(TestCase):
     def test__net_proto__lib__proto_options__eq__foreign_type(self) -> None:
         """
         Ensure ProtoOptions is not equal to a raw list of options.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         option = _FixtureOption(type=_FixtureOptionType.A, len=2)
@@ -441,6 +507,8 @@ class TestNetProtoLibProtoOptionsFromBuffer(TestCase):
     def test__net_proto__lib__proto_options__from_buffer_parses_all(self) -> None:
         """
         Ensure a concrete 'from_buffer()' reconstructs the options list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         buffer = b"\x01\x02" + b"\x02\x03"
@@ -458,6 +526,8 @@ class TestNetProtoLibProtoOptionsFromBuffer(TestCase):
     def test__net_proto__lib__proto_options__from_buffer_empty(self) -> None:
         """
         Ensure 'from_buffer(b"")' returns an empty container.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         parsed = _FixtureOptions.from_buffer(b"")
@@ -475,6 +545,8 @@ class TestNetProtoLibProtoOptionsAbstractBody(TestCase):
         """
         Ensure the abstract 'from_buffer()' stub body raises 'NotImplementedError'
         when reached via 'super()'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         class _SuperOptions(ProtoOptions):

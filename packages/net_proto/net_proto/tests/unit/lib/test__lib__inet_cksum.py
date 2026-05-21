@@ -243,6 +243,8 @@ class TestNetProtoLibInetCksum(TestCase):
     def test__net_proto__lib__inet_cksum(self) -> None:
         """
         Ensure the 'inet_cksum()' function returns the expected checksum.
+
+        Reference: RFC 1071 (Internet checksum algorithm).
         """
 
         self.assertEqual(
@@ -260,6 +262,8 @@ class TestNetProtoLibInetCksumRange(TestCase):
     def test__net_proto__lib__inet_cksum__result_is_16_bit(self) -> None:
         """
         Ensure the checksum result is always a 16-bit unsigned integer.
+
+        Reference: RFC 1071 (Internet checksum algorithm).
         """
 
         for sample in (
@@ -286,6 +290,8 @@ class TestNetProtoLibInetCksumRange(TestCase):
         """
         Ensure appending the computed checksum word yields a checksum of zero,
         matching the RFC 1071 verification pattern.
+
+        Reference: RFC 1071 (Internet checksum algorithm).
         """
 
         data = b"\x45\x00\x00\x28\x12\x34\x40\x00\x40\x06\x00\x00\x0a\x00\x00\x01\x0a\x00\x00\x02"
@@ -304,6 +310,8 @@ class TestNetProtoLibInetCksumRange(TestCase):
     ) -> None:
         """
         Ensure the 'init' parameter must be passed as a keyword argument.
+
+        Reference: RFC 1071 (Internet checksum algorithm).
         """
 
         with self.assertRaises(TypeError):

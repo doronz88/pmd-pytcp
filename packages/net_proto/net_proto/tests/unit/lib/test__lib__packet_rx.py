@@ -105,6 +105,8 @@ class TestNetProtoLibPacketRx(TestCase):
     def test__net_proto__lib__packet_rx__frame_is_memoryview(self) -> None:
         """
         Ensure 'frame' is always normalized to a memoryview regardless of input.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -116,6 +118,8 @@ class TestNetProtoLibPacketRx(TestCase):
     def test__net_proto__lib__packet_rx__frame_contents_preserved(self) -> None:
         """
         Ensure 'frame' preserves the original bytes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -127,6 +131,8 @@ class TestNetProtoLibPacketRx(TestCase):
     def test__net_proto__lib__packet_rx__len(self) -> None:
         """
         Ensure 'len(PacketRx)' matches the length of the raw frame.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -138,6 +144,8 @@ class TestNetProtoLibPacketRx(TestCase):
     def test__net_proto__lib__packet_rx__parse_failed_default(self) -> None:
         """
         Ensure 'parse_failed' starts empty on a newly constructed PacketRx.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -149,6 +157,8 @@ class TestNetProtoLibPacketRx(TestCase):
     def test__net_proto__lib__packet_rx__tracker_is_rx(self) -> None:
         """
         Ensure the PacketRx tracker is an RX-prefixed Tracker instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -181,6 +191,8 @@ class TestNetProtoLibPacketRxBehavior(TestCase):
     def test__net_proto__lib__packet_rx__parse_failed_is_writable(self) -> None:
         """
         Ensure 'parse_failed' can be assigned a descriptive reason.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         packet = PacketRx(b"\x00\x01\x02")
@@ -193,6 +205,8 @@ class TestNetProtoLibPacketRxBehavior(TestCase):
     ) -> None:
         """
         Ensure back-to-back PacketRx instances allocate unique tracker serials.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         first = PacketRx(b"\x01")
@@ -208,6 +222,8 @@ class TestNetProtoLibPacketRxBehavior(TestCase):
         """
         Ensure the memoryview on 'frame' references the underlying buffer of a
         bytearray input (mutation is observable).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         source = bytearray(b"\x00\x00\x00\x00")
@@ -225,6 +241,8 @@ class TestNetProtoLibPacketRxBehavior(TestCase):
     ) -> None:
         """
         Ensure the constructor only accepts the frame positionally.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
