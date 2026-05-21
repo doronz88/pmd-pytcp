@@ -48,7 +48,10 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4MessageType,
     Dhcp4Operation,
 )
-from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
+from net_proto.protocols.dhcp4.dhcp4__errors import (
+    Dhcp4IntegrityError,
+    Dhcp4SanityError,
+)
 from net_proto.protocols.dhcp4.dhcp4__parser import Dhcp4Parser
 from net_proto.protocols.dhcp4.options.dhcp4__option import (
     Dhcp4Option,
@@ -1424,7 +1427,7 @@ class Dhcp4Client(Subsystem):
                 packet = Dhcp4Parser(client_socket.recv__mv(timeout=remaining))
             except TimeoutError:
                 return None
-            except Dhcp4IntegrityError:
+            except Dhcp4IntegrityError, Dhcp4SanityError:
                 __debug__ and log(
                     "dhcp4",
                     "<WARN>Dropping malformed inbound DHCP frame; continuing wait window</>",

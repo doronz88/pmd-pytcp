@@ -178,10 +178,12 @@ DHCP4_HEADER_DEFAULT = _dhcp4_header()
             },
         },
         {
-            "_description": "DHCPv4 packet with minimum-length ClientId and no HostName.",
+            "_description": "DHCPv4 packet with minimum-length ClientId and a Message Type.",
             "_args": [
                 DHCP4_HEADER_DEFAULT
                 + (
+                    # Message Type [RFC 2132]: Code=53, Len=1, DISCOVER (1)
+                    b"\x35\x01\x01"
                     # Client Identifier [RFC 2132 §9.14]: Code=61, Len=2 (RFC minimum),
                     # 1-byte htype + 1-byte ID.
                     b"\x3d\x02\x01\xff"
@@ -192,21 +194,25 @@ DHCP4_HEADER_DEFAULT = _dhcp4_header()
             "_results": {
                 "header_bytes": DHCP4_HEADER_DEFAULT,
                 "options": Dhcp4Options(
+                    Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER),
                     Dhcp4OptionClientId(b"\x01\xff"),
                     Dhcp4OptionEnd(),
                 ),
             },
         },
         {
-            "_description": "DHCPv4 packet with only End (no user-level options).",
+            "_description": "DHCPv4 packet with only Message Type and End (minimum-valid options).",
             "_args": [
                 DHCP4_HEADER_DEFAULT
+                # Message Type [RFC 2132]: Code=53, Len=1, DISCOVER (1)
+                + b"\x35\x01\x01"
                 # End [RFC 2132]: terminator
                 + b"\xff",
             ],
             "_results": {
                 "header_bytes": DHCP4_HEADER_DEFAULT,
                 "options": Dhcp4Options(
+                    Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER),
                     Dhcp4OptionEnd(),
                 ),
             },
@@ -304,7 +310,11 @@ class TestDhcp4ParserHeaderProperties(TestCase):
             file="boot.img",
         )
 
-        frame = self._header_bytes + b"\xff"  # End
+        # Minimum-valid options block: Message Type (REQUEST) + End.
+        # RFC 2131 §3 requires every DHCP message to carry a Message
+        # Type option; the parser's `_validate_sanity` rejects frames
+        # without it.
+        frame = self._header_bytes + b"\x35\x01\x03\xff"
         self._parser = Dhcp4Parser(memoryview(frame))
 
     def test__dhcp4__parser__operation(self) -> None:
@@ -586,14 +596,17 @@ class TestDhcp4ParserOptionsProperties(TestCase):
 
     def test__dhcp4__parser__options_accessors_absent(self) -> None:
         """
-        Ensure every Dhcp4OptionsProperties accessor returns None when the
-        corresponding option is missing from the frame.
+        Ensure every Dhcp4OptionsProperties accessor (except the
+        mandatory message_type, which the parser's sanity check
+        requires to be present) returns None when the corresponding
+        option is missing from the frame.
         """
 
-        parser = Dhcp4Parser(memoryview(DHCP4_HEADER_DEFAULT + b"\xff"))
+        # Minimum-valid options block: only Message Type + End. Every
+        # other accessor must report absence as None.
+        parser = Dhcp4Parser(memoryview(DHCP4_HEADER_DEFAULT + b"\x35\x01\x05\xff"))
 
         self.assertIsNone(parser.host_name, msg="host_name must be None.")
-        self.assertIsNone(parser.message_type, msg="message_type must be None.")
         self.assertIsNone(parser.param_req_list, msg="param_req_list must be None.")
         self.assertIsNone(parser.req_ip_addr, msg="req_ip_addr must be None.")
         self.assertIsNone(parser.router, msg="router must be None.")
@@ -664,7 +677,8 @@ class TestDhcp4ParserPreservesMagicCookieStructurally(TestCase):
         """
 
         header = _dhcp4_header(flags=0x0000)
-        parser = Dhcp4Parser(memoryview(header + b"\xff"))
+        # Minimum-valid options block (Message Type + End).
+        parser = Dhcp4Parser(memoryview(header + b"\x35\x01\x05\xff"))
 
         self.assertFalse(
             parser.flag_b,

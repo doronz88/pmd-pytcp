@@ -309,6 +309,25 @@ DECLINE, NAK, RELEASE, INFORM message types are not
 emitted by PyTCP and not handled on RX (the type filter
 treats non-OFFER and non-ACK as errors).
 
+**Presence requirement (parser sanity):** RFC 2131 §3
+mandates "DHCP messages MUST contain a 'DHCP message
+type' option that specifies the type of message". A
+magic-cookie-bearing BOOTP frame without option 53 is
+structurally well-formed but cannot be classified as a
+DHCP message. `Dhcp4Parser._validate_sanity` rejects
+such frames with `Dhcp4SanityError`. The DHCPv4 client
+catches both `Dhcp4IntegrityError` and `Dhcp4SanityError`
+in the inbound wait loop at
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py:1427`,
+so a hostile or malformed server response is dropped
+rather than crashing the client thread.
+
+Pinned by
+`TestDhcp4ParserSanityMessageTypePresence` at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__sanity_checks.py`
+(absent → rejected with RFC-cited message; present →
+parses cleanly).
+
 ---
 
 ## §9.7 Server Identifier (code 54)

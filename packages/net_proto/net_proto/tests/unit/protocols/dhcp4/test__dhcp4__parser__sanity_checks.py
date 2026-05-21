@@ -38,6 +38,13 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 from net_proto import DHCP4__HEADER__LEN, Dhcp4Parser, Dhcp4SanityError
 from net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__MAGIC_COOKIE
 
+# Minimum-valid options block: DHCP Message Type = ACK + End.
+# Every sanity-rejection fixture appends this so the
+# RFC 2131 §3 "Message Type option MUST be present" sanity
+# check (added to `_validate_sanity`) does not fire before the
+# field-specific sanity assertion the test is targeting.
+_DHCP4_OPTIONS_MIN_VALID = b"\x35\x01\x05\xff"
+
 
 def _dhcp4_frame(
     *,
@@ -53,10 +60,13 @@ def _dhcp4_frame(
     siaddr: bytes = b"\x0a\x00\x01\x01",  # 10.0.1.1 (valid unicast)
     giaddr: bytes = b"\x00\x00\x00\x00",
     chaddr_mac: bytes = b"\x02\x00\x00\x00\x00\x07",
+    options: bytes = _DHCP4_OPTIONS_MIN_VALID,
 ) -> memoryview:
     """
-    Build a minimal valid DHCPv4 frame (240-byte header + DHCP magic cookie,
-    no options block). Callers override one field to provoke a sanity error.
+    Build a minimal valid DHCPv4 frame (240-byte header + DHCP magic cookie
+    + minimum-valid options block carrying a Message Type option). Callers
+    override one field to provoke a sanity error; the default options block
+    keeps the new RFC 2131 §3 Message Type presence check satisfied.
     """
 
     assert len(chaddr_mac) == 6, f"Ethernet MAC must be 6 bytes. Got: {len(chaddr_mac)}"
@@ -73,7 +83,7 @@ def _dhcp4_frame(
 
     assert len(frame) == DHCP4__HEADER__LEN, f"Got frame len {len(frame)}, expected {DHCP4__HEADER__LEN}"
 
-    return memoryview(frame)
+    return memoryview(frame + options)
 
 
 _MCAST_IP = b"\xe0\x00\x00\x01"  # 224.0.0.1
@@ -250,4 +260,48 @@ class TestDhcp4ParserSanityHappyPath(TestCase):
         Reference: RFC 2131 §2 (BOOTP/DHCP packet format and field semantics).
         """
 
+        Dhcp4Parser(_dhcp4_frame())
+
+
+class TestDhcp4ParserSanityMessageTypePresence(TestCase):
+    """
+    The DHCPv4 parser DHCP Message Type option presence sanity
+    tests. RFC 2131 §3 mandates "DHCP messages MUST contain a
+    'DHCP message type' option"; a magic-cookie-bearing BOOTP
+    frame without option 53 cannot be classified as a DHCP
+    message and must be rejected with Dhcp4SanityError.
+    """
+
+    def test__dhcp4__parser__sanity__no_message_type_rejected(self) -> None:
+        """
+        Ensure a structurally valid magic-cookie-bearing frame
+        whose options block does NOT carry a Message Type option
+        (53) is rejected with Dhcp4SanityError.
+
+        Reference: RFC 2131 §3 (DHCP messages MUST contain a Message Type option).
+        Reference: RFC 2132 §9.6 (Message Type option code 53).
+        """
+
+        # Options block: just an End marker; no Message Type.
+        frame = _dhcp4_frame(options=b"\xff")
+
+        with self.assertRaises(Dhcp4SanityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertEqual(
+            str(error.exception),
+            "[SANITY ERROR][DHCPv4] DHCP messages MUST contain a Message Type option "
+            "(RFC 2131 §3 / RFC 2132 §9.6). Got: magic-cookie-bearing frame without option 53.",
+            msg="Unexpected message-type-absent sanity error message.",
+        )
+
+    def test__dhcp4__parser__sanity__message_type_present_accepted(self) -> None:
+        """
+        Ensure a frame with the minimum-valid options block
+        (Message Type + End) passes the sanity check.
+
+        Reference: RFC 2131 §3 (Message Type presence is the canonical DHCP indicator).
+        """
+
+        # Default _dhcp4_frame() options block carries the Message Type.
         Dhcp4Parser(_dhcp4_frame())

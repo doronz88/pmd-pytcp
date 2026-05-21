@@ -222,7 +222,8 @@ class TestDhcp4ParserSubnetMaskContiguity(TestCase):
         high-order ones).
         """
 
-        frame = bytes(self._bootp_blob()) + b"\x01\x04\xff\xff\xff\x00\xff"
+        # Options: Subnet Mask (/24) + Message Type (DISCOVER, required by RFC 2131 §3) + End.
+        frame = bytes(self._bootp_blob()) + b"\x01\x04\xff\xff\xff\x00\x35\x01\x01\xff"
 
         parser = Dhcp4Parser(memoryview(frame))
 

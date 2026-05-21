@@ -215,3 +215,17 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
             raise Dhcp4SanityError(
                 f"The 'chaddr' field value {self._header.chaddr} must not be a broadcast MAC address."
             )
+
+        # --- DHCP Message Type option presence ---
+        # RFC 2131 §3 — "DHCP messages MUST contain a 'DHCP message type'
+        # option that specifies the type of message". A magic-cookie-bearing
+        # BOOTP frame without option 53 is structurally well-formed but
+        # cannot be classified as a DHCP message; reject it explicitly here
+        # so a caller's typed `except Dhcp4SanityError` does the dropping
+        # instead of relying on a downstream `message_type != expected_type`
+        # comparison against `None`.
+        if self._options.message_type is None:
+            raise Dhcp4SanityError(
+                "DHCP messages MUST contain a Message Type option (RFC 2131 §3 / RFC 2132 §9.6). "
+                "Got: magic-cookie-bearing frame without option 53."
+            )
