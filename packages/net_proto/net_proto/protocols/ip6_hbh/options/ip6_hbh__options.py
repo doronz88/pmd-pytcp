@@ -82,7 +82,7 @@ class Ip6HbhOptions(ProtoOptions):
     @property
     def router_alert(self) -> Ip6HbhOptionRouterAlert | None:
         """
-        Get the Router Alert option if present in the container.
+        Get the IPv6 HBH 'router_alert' option (RFC 2711).
         """
 
         for option in self._options:
@@ -94,7 +94,7 @@ class Ip6HbhOptions(ProtoOptions):
     @property
     def jumbo_payload(self) -> Ip6HbhOptionJumboPayload | None:
         """
-        Get the Jumbo Payload option if present in the container.
+        Get the IPv6 HBH 'jumbo_payload' option (RFC 2675).
         """
 
         for option in self._options:
@@ -106,7 +106,7 @@ class Ip6HbhOptions(ProtoOptions):
     @property
     def calipso(self) -> Ip6HbhOptionCalipso | None:
         """
-        Get the CALIPSO option if present in the container.
+        Get the IPv6 HBH 'calipso' option (RFC 5570).
         """
 
         for option in self._options:

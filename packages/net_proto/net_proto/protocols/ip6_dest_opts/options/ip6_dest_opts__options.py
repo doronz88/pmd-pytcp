@@ -76,8 +76,7 @@ class Ip6DestOptsOptions(ProtoOptions):
     @property
     def tunnel_encapsulation_limit(self) -> Ip6DestOptsOptionTunnelEncapsulationLimit | None:
         """
-        Get the Tunnel Encapsulation Limit option if present in the
-        container.
+        Get the IPv6 DestOpts 'tunnel_encapsulation_limit' option (RFC 2473 §5.1).
         """
 
         for option in self._options:
