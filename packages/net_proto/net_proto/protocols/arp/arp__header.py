@@ -49,19 +49,19 @@ from net_proto.protocols.arp.arp__enums import (
 # The ARP packet header [RFC 826].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |         Hardware type         |         Protocol type         |
+# |         Hardware Type         |         Protocol Type         |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |   Hw length   |  Proto length |           Operation           |
+# |   HW Length   |  Proto Length |           Operation           |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                                                               >
-# +        Sender MAC address     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# >                               |       Sender IP address       >
+# +        Sender MAC Address     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# >                               |       Sender IP Address       >
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # >                               |                               >
-# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+       Target MAC address      |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+       Target MAC Address      |
 # >                                                               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                       Target IP address                       |
+# |                       Target IP Address                       |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 ARP__HEADER__LEN = 28

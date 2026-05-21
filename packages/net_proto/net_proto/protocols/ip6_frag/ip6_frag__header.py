@@ -43,7 +43,7 @@ from net_proto.lib.proto_struct import ProtoStruct
 # The IPv6 packet Fragmentation Extension header [RFC 8200].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# | Next header   |       0       |         Offset          |0|0|M|
+# | Next Header   |       0       |         Offset          |0|0|M|
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                               Id                              |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

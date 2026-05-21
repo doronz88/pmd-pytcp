@@ -53,15 +53,15 @@ from net_proto.lib.proto_struct import ProtoStruct
 # The IPv4 packet header [RFC 791].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |Version|  IHL  |   DSCP    |ECN|          Packet length        |
+# |Version|  IHL  |   DSCP    |ECN|          Packet Length        |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |         Identification        | |D|M|      Fragment offset    |
+# |         Identification        | |D|M|      Fragment Offset    |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |  Time to live |    Protocol   |         Header checksum       |
+# |  Time to Live |    Protocol   |         Header Checksum       |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                       Source address                          |
+# |                       Source Address                          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                    Destination address                        |
+# |                    Destination Address                        |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # ~                                                               ~
 # ~                            Options                            ~

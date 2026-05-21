@@ -42,9 +42,9 @@ from net_proto.lib.proto_struct import ProtoStruct
 # The UDP packet header [RFC 768].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |          Source port          |        Destination port       |
+# |          Source Port          |        Destination Port       |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |         Packet length         |            Checksum           |
+# |         Packet Length         |            Checksum           |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 UDP__HEADER__LEN = 8

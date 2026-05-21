@@ -45,11 +45,11 @@ from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |   Type = 7   |    Length     |    Pointer    |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |              Recorded address 1               |
+# |              Recorded Address 1               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                      ...                      |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |              Recorded address N               |
+# |              Recorded Address N               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 IP4__OPTION__RR__HDR_LEN = 3
