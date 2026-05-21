@@ -222,10 +222,23 @@ The wire length byte is a single octet, so the encoded
 host name must fit in 255 bytes. The dataclass
 `__post_init__` asserts this at construction.
 
-Pinned by `TestDhcp4OptionHostNameWireConsistency` at
-`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__host_name.py`
-(two cases: non-ASCII wire self-consistency, over-255-bytes
-rejected).
+**Wire-format bounds (assembler + parser):** the §3.14
+"minimum length 1" rule is enforced at both ends:
+
+- `Dhcp4OptionHostName.__post_init__` asserts the
+  UTF-8-encoded byte count is `>= 1` — catches a
+  programmer constructing `Dhcp4OptionHostName("")`
+  before it would emit a spec-violating `\x0c\x00`
+  frame.
+- `Dhcp4OptionHostName._validate_integrity` rejects wire
+  frames whose Length byte is 0 with a typed
+  `Dhcp4IntegrityError`.
+
+Pinned by `TestDhcp4OptionHostNameWireConsistency` (UTF-8
+byte-count self-consistency + over-255-byte rejection)
+and `TestDhcp4OptionHostNameBounds` (empty rejected at
+construction; 1-byte boundary accepted) at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__host_name.py`.
 
 ---
 

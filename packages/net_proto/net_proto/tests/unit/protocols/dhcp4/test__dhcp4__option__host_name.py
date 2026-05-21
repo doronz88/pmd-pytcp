@@ -142,25 +142,6 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
                 "len": 16,
             },
         },
-        {
-            "_description": "The DHCPv4 Host Name option (empty).",
-            "_args": [""],
-            "_results": {
-                "__len__": 2,
-                "__str__": "host_name ",
-                "__repr__": "Dhcp4OptionHostName(host_name='')",
-                "__bytes__": (
-                    # DHCPv4 Host Name option [RFC 2132]
-                    #   Code : 0x0c (12, Host Name)
-                    #   Len  : 0x00 (0 bytes)
-                    #   Data : (empty)
-                    b"\x0c\x00"
-                ),
-                "host_name": "",
-                "type": Dhcp4OptionType.HOST_NAME,
-                "len": 2,
-            },
-        },
     ]
 )
 class TestDhcp4OptionHostNameAssembler(TestCase):
@@ -302,13 +283,6 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
                 "option": Dhcp4OptionHostName(host_name="tom-tit-tot-01"),
             },
         },
-        {
-            "_description": "The DHCPv4 Host Name option (empty).",
-            "_args": [b"\x0c\x00" + b"ZH0PA"],
-            "_results": {
-                "option": Dhcp4OptionHostName(host_name=""),
-            },
-        },
     ]
 )
 class TestDhcp4OptionHostNameParser(TestCase):
@@ -407,6 +381,63 @@ class TestDhcp4OptionHostNameParserErrors(TestCase):
             "must be valid UTF-8",
             str(error.exception),
             msg="Invalid-UTF-8 wire payload must raise typed Dhcp4IntegrityError.",
+        )
+
+    def test__dhcp4__option__host_name__wire_len_zero_rejected(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the
+        wire Length byte is 0, which violates the option's
+        one-octet minimum-length contract.
+
+        Reference: RFC 2132 §3.14 (Host Name option minimum length 1).
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionHostName.from_buffer(b"\x0c\x00")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Host Name option minimum length is "
+            "1 octet (RFC 2132 §3.14). Got: 0",
+            msg="Unexpected minimum-length integrity error message.",
+        )
+
+
+class TestDhcp4OptionHostNameBounds(TestCase):
+    """
+    The DHCPv4 Host Name option construction-time bounds tests.
+    """
+
+    def test__dhcp4__option__host_name__empty_rejected(self) -> None:
+        """
+        Ensure the constructor refuses an empty 'host_name' — the
+        option carries at least one byte on the wire.
+
+        Reference: RFC 2132 §3.14 (Host Name option minimum length 1).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionHostName(host_name="")
+
+        self.assertEqual(
+            str(error.exception),
+            "The 'host_name' field must carry at least 1 byte (RFC 2132 §3.14 " "minimum length 1). Got: 0 bytes",
+            msg="Unexpected empty-name assert message.",
+        )
+
+    def test__dhcp4__option__host_name__boundary_1_byte_accepted(self) -> None:
+        """
+        Ensure the constructor accepts the minimum-valid length (1 byte).
+
+        Reference: RFC 2132 §3.14 (Host Name option minimum length 1).
+        """
+
+        option = Dhcp4OptionHostName(host_name="a")
+
+        self.assertEqual(
+            len(option.host_name.encode("utf-8")),
+            1,
+            msg="Minimum-valid 1-byte host name must be accepted at construction.",
         )
 
 

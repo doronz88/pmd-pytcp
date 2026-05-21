@@ -86,6 +86,11 @@ class Dhcp4OptionHostName(Dhcp4Option):
         # with the trailing data byte count.
         byte_len = len(self.host_name.encode("utf-8"))
 
+        assert byte_len >= 1, (
+            f"The 'host_name' field must carry at least 1 byte (RFC 2132 §3.14 "
+            f"minimum length 1). Got: {byte_len} bytes"
+        )
+
         assert byte_len <= 255, (
             f"The 'host_name' field encoded length must fit in a uint8 (RFC 2132 §3.14 "
             f"length byte). Got: {byte_len} bytes"
@@ -131,6 +136,11 @@ class Dhcp4OptionHostName(Dhcp4Option):
         """
         Ensure integrity of the DHCPv4 Host Name option before parsing it.
         """
+
+        if (value := buffer[1]) < 1:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Host Name option minimum length is 1 octet " f"(RFC 2132 §3.14). Got: {value!r}"
+            )
 
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
