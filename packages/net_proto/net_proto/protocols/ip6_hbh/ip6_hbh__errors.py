@@ -57,6 +57,9 @@ class Ip6HbhSanityError(PacketSanityError):
     response. 'None' means "discard silently, no ICMP".
     """
 
+    pointer: int | None
+    multicast_only: bool
+
     @override
     def __init__(
         self,

@@ -47,6 +47,8 @@ class Ip6RoutingIntegrityError(PacketIntegrityError):
     field encountered) per RFC 5095 §3 / RFC 8200 §4.4.
     """
 
+    pointer: int | None
+
     @override
     def __init__(self, message: str, /, *, pointer: int | None = None) -> None:
         super().__init__("[IPv6 Routing] " + message)
