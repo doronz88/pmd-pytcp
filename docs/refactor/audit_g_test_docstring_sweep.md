@@ -164,7 +164,7 @@ in this doc (or a commit message). No code changes expected.
 | Sub-batch | Files (approx) | Violations (approx) | Notes |
 |-----------|---------------:|--------------------:|-------|
 | G-net_proto-lib | 13 | 212 (b6853c01) | `tests/unit/lib/*.py` — `PyTCP test infrastructure (no RFC clause).` fallback (12 files); `RFC 1071 (Internet checksum algorithm).` for `test__lib__inet_cksum.py`. **completed 2026-05-21**. |
-| G-net_proto-arp | ~5 | ~75 | apply `RFC 826 (ARP wire format).` per-file |
+| G-net_proto-arp | 5 | 51 (3d347b74) | `RFC 826` per-file (wire format / header fields / Packet Reception); integrity_checks and sanity_checks were already clean. **completed 2026-05-21**. |
 | G-net_proto-dhcp4 | ~25 | ~400 | mostly `RFC 2131 §2 (DHCPv4 header) / §3.1 (message flow)` + `RFC 2132 §<N>` for per-option files |
 | G-net_proto-ethernet | ~5 | ~55 | apply `RFC 7042 (IANA EtherType) / RFC 894 (IPv4-over-Eth)` per-file |
 | G-net_proto-ethernet_802_3 | ~5 | ~40 | apply `IEEE 802.3 §3 (Ethernet 802.3 frame format).` |
