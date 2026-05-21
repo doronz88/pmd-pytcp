@@ -125,25 +125,6 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [[]],
-            "_results": {
-                "__len__": 2,
-                "__str__": "param_req_list []",
-                "__repr__": "Dhcp4OptionParamReqList(param_req_list=[])",
-                "__bytes__": (
-                    # DHCPv4 Parameter Request List option [RFC 2132]
-                    #   Code : 0x37 (55, Parameter Request List)
-                    #   Len  : 0x00 (0 bytes)
-                    #   Data : (empty)
-                    b"\x37\x00"
-                ),
-                "param_req_list": [],
-                "type": Dhcp4OptionType.PARAM_REQ_LIST,
-                "len": 2,
-            },
-        },
-        {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
             "_args": [[Dhcp4OptionType.HOST_NAME]],
             "_results": {
@@ -348,13 +329,6 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
 @parameterized_class(
     [
         {
-            "_description": "The DHCPv4 Parameter Request List option (empty).",
-            "_args": [b"\x37\x00" + b"ZH0PA"],
-            "_results": {
-                "option": Dhcp4OptionParamReqList([]),
-            },
-        },
-        {
             "_description": "The DHCPv4 Parameter Request List option (one element).",
             "_args": [b"\x37\x01\x0c" + b"ZH0PA"],
             "_results": {
@@ -458,6 +432,99 @@ class TestDhcp4OptionParamReqListParserErrors(TestCase):
             "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Parameter Request List option length value must "
             "be less than or equal to the length of provided bytes (2). Got: 4",
             msg="Unexpected integrity-error message.",
+        )
+
+    def test__dhcp4__option__param_req_list__wire_len_zero_rejected(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the wire Length
+        byte is 0, which violates the option's one-octet minimum-length
+        contract.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List minimum length 1).
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionParamReqList.from_buffer(b"\x37\x00")
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Parameter Request List option minimum length is "
+            "1 octet (RFC 2132 §9.8). Got: 0",
+            msg="Unexpected minimum-length integrity error message.",
+        )
+
+
+class TestDhcp4OptionParamReqListBounds(TestCase):
+    """
+    The DHCPv4 Parameter Request List option construction-time bounds tests.
+    """
+
+    def test__dhcp4__option__param_req_list__empty_list_rejected(self) -> None:
+        """
+        Ensure the constructor refuses an empty 'param_req_list' — the option
+        carries at least one requested option code on the wire.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List minimum length 1).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList([])
+
+        self.assertEqual(
+            str(error.exception),
+            "The 'param_req_list' field must carry at least 1 entry (RFC 2132 §9.8 " "minimum length 1 octet). Got: 0",
+            msg="Unexpected empty-list assert message.",
+        )
+
+    def test__dhcp4__option__param_req_list__over_255_rejected(self) -> None:
+        """
+        Ensure the constructor refuses a list with more than 255 entries — the
+        Length byte is a single octet and 256 entries would overflow it.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List length is one octet).
+        """
+
+        oversized = [Dhcp4OptionType.HOST_NAME] * 256
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4OptionParamReqList(oversized)
+
+        self.assertEqual(
+            str(error.exception),
+            "The 'param_req_list' field must carry at most 255 entries (RFC 2132 §9.8 "
+            "length is a single octet). Got: 256",
+            msg="Unexpected over-limit assert message.",
+        )
+
+    def test__dhcp4__option__param_req_list__boundary_1_entry_accepted(self) -> None:
+        """
+        Ensure the constructor accepts the minimum-valid length (1 entry).
+
+        Reference: RFC 2132 §9.8 (Parameter Request List minimum length 1).
+        """
+
+        option = Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME])
+
+        self.assertEqual(
+            len(option.param_req_list),
+            1,
+            msg="Minimum-valid 1-entry list must be accepted at construction.",
+        )
+
+    def test__dhcp4__option__param_req_list__boundary_255_entries_accepted(self) -> None:
+        """
+        Ensure the constructor accepts the maximum-valid length (255 entries).
+
+        Reference: RFC 2132 §9.8 (Parameter Request List length is one octet).
+        """
+
+        max_list = [Dhcp4OptionType.HOST_NAME] * 255
+        option = Dhcp4OptionParamReqList(max_list)
+
+        self.assertEqual(
+            len(option.param_req_list),
+            255,
+            msg="Maximum-valid 255-entry list must be accepted at construction.",
         )
 
 

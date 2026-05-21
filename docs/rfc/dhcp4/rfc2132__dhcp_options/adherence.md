@@ -331,6 +331,27 @@ because they are the only two the client consumes; a
 richer client (with DNS / NTP / domain-name support)
 would extend the list.
 
+**Wire-format bounds (assembler + parser):** the §9.8
+"minimum length 1" rule is now enforced at both ends:
+
+- `Dhcp4OptionParamReqList.__post_init__` asserts
+  `1 <= len(param_req_list) <= 255` — catches a
+  programmer constructing an empty list (which would
+  emit a spec-violating `\x37\x00` frame) and catches
+  > 255 entries before `struct.pack_into` overflows
+  the uint8 Length byte.
+- `Dhcp4OptionParamReqList._validate_integrity` now
+  rejects wire frames whose Length byte is 0 with a
+  typed `Dhcp4IntegrityError` — closes the previously
+  silent acceptance of `\x37\x00` (which would have
+  parsed to an empty list, violating §9.8).
+
+Pinned by `TestDhcp4OptionParamReqListBounds` and the
+new
+`test__dhcp4__option__param_req_list__wire_len_zero_rejected`
+case at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__param_req_list.py`.
+
 ---
 
 ## §9.14 Client-identifier (code 61)

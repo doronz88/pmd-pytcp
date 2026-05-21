@@ -89,6 +89,16 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
             f"Got: {[type(element) for element in self.param_req_list]!r}"
         )
 
+        assert len(self.param_req_list) >= 1, (
+            f"The 'param_req_list' field must carry at least 1 entry (RFC 2132 §9.8 "
+            f"minimum length 1 octet). Got: {len(self.param_req_list)}"
+        )
+
+        assert len(self.param_req_list) <= 255, (
+            f"The 'param_req_list' field must carry at most 255 entries (RFC 2132 §9.8 "
+            f"length is a single octet). Got: {len(self.param_req_list)}"
+        )
+
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + len(self.param_req_list))
 
@@ -131,6 +141,11 @@ class Dhcp4OptionParamReqList(Dhcp4Option):
         """
         Ensure integrity of the DHCPv4 Parameter Request List option before parsing it.
         """
+
+        if (value := buffer[1]) < 1:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Parameter Request List option minimum length is 1 octet " f"(RFC 2132 §9.8). Got: {value!r}"
+            )
 
         if (value := DHCP4__OPTION__LEN + buffer[1]) > len(buffer):
             raise Dhcp4IntegrityError(
