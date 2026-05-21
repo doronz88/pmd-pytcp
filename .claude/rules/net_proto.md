@@ -440,6 +440,95 @@ class TcpSanityError(PacketSanityError):
   assert on this exact string; do not change the format
   without updating all test fixtures.
 
+### 9.1 Error discipline: wire-input vs programmer-input
+
+Two boundaries, two tools:
+
+| Boundary | Direction | Tool | Why |
+|---|---|---|---|
+| `_validate_integrity` / `_validate_sanity` / options walker `validate_integrity` / `validate_sanity` | wire → user | `raise <Proto>IntegrityError` / `<Proto>SanityError` | Hostile-wire defense; **MUST** run unconditionally, including under `python -O` |
+| dataclass `__post_init__` / `*Assembler.__init__` | user → wire | `assert ...` | Programmer-error guard; stripped under `python -O` (the application has already been tested with assertions enabled) |
+
+**Why the split matters under `python -O`:**
+
+Production deployments may run with `-O` (assertions stripped).
+The Parser path constructs typed objects via `from_buffer` →
+`cls(...)` → `__post_init__` runs, so any `assert` in
+`__post_init__` is reachable from wire input — and **stripped
+under `-O`**. A wire-input bound enforced ONLY by a
+`__post_init__` assert is therefore unprotected in production.
+
+The mitigation is **mirroring**: every wire-reachable bound
+that has a `__post_init__` assert must ALSO be enforced by a
+typed `raise *IntegrityError` in `_validate_integrity` (or
+in the options walker for TLV protocols). The typed raise
+runs unconditionally; the assert is then either redundant
+(for wire-reachable bounds) or guards only the
+direct-construction programmer-error path (for
+wire-unreachable bounds — e.g. cross-field constraints the
+parser cannot produce, or `isinstance` checks that
+`struct.unpack` already guarantees).
+
+**Concrete rules for authors:**
+
+- A new `_validate_integrity` / `_validate_sanity` body
+  MUST use `raise <Proto>(Integrity|Sanity)Error(...)`.
+  Never `assert ...` — under `-O` it would silently let
+  hostile wire through.
+- A new `__post_init__` or `*Assembler.__init__` body MUST
+  use `assert ...`. Never `raise <Proto>(Integrity|Sanity)Error(...)`
+  — those are wire-shape errors, not API misuse. A typed
+  raise at the user boundary muddies the contract (a
+  caller's `except <Proto>IntegrityError` would catch their
+  own bugs as "hostile network traffic", and the wait-loop
+  drop path would mask the real defect).
+- A new `__post_init__` bound that is **reachable from wire
+  input** MUST be mirrored into the parser-side
+  `_validate_integrity` as a typed raise. The DHCPv4 / IPv4
+  per-option pointer-leak fixes (parser pass commit
+  `3f8c18e8`), the ICMPv6 ND `from_int` migration (assembler
+  pass commit `8535e9b2`), and the DHCPv4 wrap deletion
+  (assembler pass commit `77b543b9`) are the reference
+  examples.
+- Bare `AssertionError`, `UnicodeDecodeError`, or
+  `NetAddrError` MUST NOT leak past `Dhcp4Parser._parse` /
+  any other protocol's `_parse`. Fix the leak at origin
+  (mirror into `_validate_integrity` typed raise); do not
+  paper over with a `try/except` wrap in the parser.
+
+**Anti-pattern (forbidden):**
+
+```python
+def _validate_integrity(self) -> None:
+    # WRONG — stripped under -O, hostile wire gets through.
+    assert len(self._frame) >= MIN_HEADER_LEN, "frame too short"
+
+@dataclass
+class Foo:
+    def __post_init__(self) -> None:
+        # WRONG — type contract leakage; callers catch their own bugs
+        # as "hostile traffic".
+        if not is_uint16(self.field):
+            raise FooIntegrityError("field too big")
+```
+
+**Correct pattern:**
+
+```python
+def _validate_integrity(self) -> None:
+    # Right — typed raise, runs under -O.
+    if len(self._frame) < MIN_HEADER_LEN:
+        raise FooIntegrityError(f"frame too short: {len(self._frame)}")
+
+@dataclass
+class Foo:
+    def __post_init__(self) -> None:
+        # Right — programmer-error guard, stripped under -O.
+        assert is_uint16(self.field), f"field must be uint16, got {self.field}"
+```
+
+---
+
 ## 10. Options (TLV-bearing protocols)
 
 Only a subset of protocols (TCP, IPv4, IPv6 HBH/DO) carry
@@ -665,6 +754,23 @@ typing anti-patterns live in
 - **Hand-rolling the `[INTEGRITY ERROR]` / `[SANITY ERROR]`
   prefix** in a message string instead of raising the
   canonical exception class.
+- **Using `assert` in `_validate_integrity` / `_validate_sanity`
+  / options walker `validate_integrity` / `validate_sanity`.**
+  These checks defend against hostile wire input and MUST
+  run unconditionally — `python -O` strips asserts. Use
+  `raise <Proto>(Integrity|Sanity)Error(...)`. See §9.1.
+- **Using `raise <Proto>(Integrity|Sanity)Error(...)` in
+  dataclass `__post_init__` or `*Assembler.__init__`.** Those
+  are user-input boundaries (programmer error, not hostile
+  wire). Use `assert ...` so the check is stripped under
+  `python -O` once the application has been tested. See §9.1.
+- **Wire-reachable `__post_init__` assert without a typed
+  raise mirror in `_validate_integrity`.** Under `python -O`
+  the assert is stripped; hostile wire would slip through.
+  Every wire-reachable bound must be enforced by a typed
+  raise in `_validate_integrity` (the dataclass assert
+  becomes a defensive parallel that catches programmer
+  error). See §9.1.
 - **Inlining `struct` format strings** instead of defining a
   module constant.
 - **Silently tightening or widening a type annotation on a
