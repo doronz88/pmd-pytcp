@@ -40,8 +40,8 @@ class Dhcp4Operation(ProtoEnumByte):
     The DHCPv4 header 'oper' field values.
     """
 
-    REQUEST = 0x01
-    REPLY = 0x02
+    REQUEST = 0x01  # RFC 2131 §2 (op field): BOOTREQUEST.
+    REPLY = 0x02  # RFC 2131 §2 (op field): BOOTREPLY.
 
 
 class Dhcp4HardwareType(ProtoEnumByte):
@@ -49,7 +49,7 @@ class Dhcp4HardwareType(ProtoEnumByte):
     The DHCPv4 header 'htype' field values.
     """
 
-    ETHERNET = 0x01
+    ETHERNET = 0x01  # RFC 2131 §2 (htype field) / IANA "ARP Hardware Types": Ethernet.
 
 
 DHCP4__HARDWARE_LEN__ETHERNET = 6
@@ -60,14 +60,14 @@ class Dhcp4MessageType(ProtoEnumByte):
     The DHCPv4 message type option values.
     """
 
-    DISCOVER = 0x01
-    OFFER = 0x02
-    REQUEST = 0x03
-    DECLINE = 0x04
-    ACK = 0x05
-    NAK = 0x06
-    RELEASE = 0x07
-    INFORM = 0x08
+    DISCOVER = 0x01  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPDISCOVER.
+    OFFER = 0x02  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPOFFER.
+    REQUEST = 0x03  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPREQUEST.
+    DECLINE = 0x04  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPDECLINE.
+    ACK = 0x05  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPACK.
+    NAK = 0x06  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPNAK.
+    RELEASE = 0x07  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPRELEASE.
+    INFORM = 0x08  # RFC 2131 §3.1, RFC 2132 §9.6: DHCPINFORM.
 
     @override
     def __str__(self) -> str:

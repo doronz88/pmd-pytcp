@@ -43,8 +43,8 @@ class Ip4OptionType(ProtoOptionType):
     The IPv4 option 'type' field values.
     """
 
-    EOL = 0
-    NOP = 1
+    EOL = 0  # End of Option List - RFC 791 §3.1
+    NOP = 1  # No Operation - RFC 791 §3.1
     RR = 7  # Record Route - RFC 791
     TIMESTAMP = 68  # Timestamp - RFC 791
     CIPSO = 134  # Commercial IP Security Option - FIPS-188 / Linux NetLabel

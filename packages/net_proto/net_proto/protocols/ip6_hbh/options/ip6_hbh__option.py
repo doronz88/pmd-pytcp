@@ -54,11 +54,11 @@ class Ip6HbhOptionType(ProtoOptionType):
     The IPv6 Hop-by-Hop Options option 'type' field values.
     """
 
-    PAD1 = 0x00
-    PADN = 0x01
-    ROUTER_ALERT = 0x05
-    CALIPSO = 0x07
-    JUMBO_PAYLOAD = 0xC2
+    PAD1 = 0x00  # RFC 8200 §4.2: Pad1 (one-byte zero, no length/data).
+    PADN = 0x01  # RFC 8200 §4.2: PadN (zero-fill padding).
+    ROUTER_ALERT = 0x05  # RFC 2711: IPv6 Router Alert (intercept-and-process hint).
+    CALIPSO = 0x07  # RFC 5570: Common Architecture Label IPv6 Security Option.
+    JUMBO_PAYLOAD = 0xC2  # RFC 2675: IPv6 Jumbogram payload-length extension (>= 65536).
 
 
 class Ip6HbhOptionAction(IntEnum):

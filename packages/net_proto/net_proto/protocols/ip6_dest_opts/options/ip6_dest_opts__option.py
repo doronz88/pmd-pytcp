@@ -54,9 +54,9 @@ class Ip6DestOptsOptionType(ProtoOptionType):
     The IPv6 Destination Options option 'type' field values.
     """
 
-    PAD1 = 0x00
-    PADN = 0x01
-    TUNNEL_ENCAPSULATION_LIMIT = 0x04
+    PAD1 = 0x00  # RFC 8200 §4.2: Pad1 (one-byte zero, no length/data).
+    PADN = 0x01  # RFC 8200 §4.2: PadN (zero-fill padding).
+    TUNNEL_ENCAPSULATION_LIMIT = 0x04  # RFC 2473 §5.1: Tunnel Encapsulation Limit option.
 
 
 class Ip6DestOptsOptionAction(IntEnum):

@@ -38,7 +38,7 @@ class ArpHardwareType(ProtoEnumWord):
     The ARP header 'hrtype' field values.
     """
 
-    ETHERNET = 0x0001
+    ETHERNET = 0x0001  # RFC 826 §"Packet generation": Ethernet (10Mb) hardware type.
 
 
 class ArpOperation(ProtoEnumWord):
@@ -46,8 +46,8 @@ class ArpOperation(ProtoEnumWord):
     The ARP header 'oper' field values.
     """
 
-    REQUEST = 0x0001
-    REPLY = 0x0002
+    REQUEST = 0x0001  # RFC 826 §"Packet generation": REQUEST.
+    REPLY = 0x0002  # RFC 826 §"Packet reception": REPLY (also RFC 5494 §3 IANA list).
 
 
 ARP__HARDWARE_LEN__ETHERNET = 6
