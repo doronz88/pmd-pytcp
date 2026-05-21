@@ -78,7 +78,7 @@ class TcpOptions(ProtoOptions):
     @property
     def mss(self) -> int | None:
         """
-        Get the value of the TCP Mss option if present.
+        Get the TCP 'mss' option value.
         """
 
         for option in self._options:
@@ -90,7 +90,7 @@ class TcpOptions(ProtoOptions):
     @property
     def wscale(self) -> int | None:
         """
-        Get the value of the TCP Wscale option if present.
+        Get the TCP 'wscale' option value.
         """
 
         for option in self._options:
@@ -102,7 +102,7 @@ class TcpOptions(ProtoOptions):
     @property
     def sackperm(self) -> bool | None:
         """
-        Check if the TCP Sackperm option is present.
+        Get the TCP 'sackperm' option value.
         """
 
         for option in self._options:
@@ -114,7 +114,7 @@ class TcpOptions(ProtoOptions):
     @property
     def sack(self) -> list[TcpSackBlock] | None:
         """
-        Get the selective ACK blocks if the Sack TCP option is present.
+        Get the TCP 'sack' option value.
         """
 
         for option in self._options:
@@ -126,7 +126,7 @@ class TcpOptions(ProtoOptions):
     @property
     def timestamps(self) -> TcpTimestamps | None:
         """
-        Get the TCP timestamps if the Timestamps TCP option is present.
+        Get the TCP 'timestamps' option value.
         """
 
         for option in self._options:
@@ -138,10 +138,11 @@ class TcpOptions(ProtoOptions):
     @property
     def fastopen(self) -> bytes | None:
         """
-        Get the TCP Fast Open cookie if the Fast Open TCP option
-        is present. Returns 'b""' for the empty-cookie request
-        form, the cookie bytes for the cookie-response/use form,
-        and 'None' when the option is absent on the wire.
+        Get the TCP 'fastopen' option value.
+
+        Returns 'b""' for the empty-cookie request form, the
+        cookie bytes for the cookie-response/use form, and
+        'None' when the option is absent on the wire.
         """
 
         for option in self._options:
@@ -153,9 +154,11 @@ class TcpOptions(ProtoOptions):
     @property
     def accecn(self) -> TcpOptionAccecn0 | TcpOptionAccecn1 | None:
         """
-        Get the TCP AccECN option if present (RFC 9768 §3.2.3).
+        Get the TCP 'accecn' option.
+
         Returns either the kind=172 (AccECN0) or kind=174 (AccECN1)
-        wire-form variant, whichever the peer chose to emit.
+        wire-form variant, whichever the peer chose to emit
+        (RFC 9768 §3.2.3).
         """
 
         for option in self._options:
@@ -258,8 +261,10 @@ class TcpOptionsProperties(ABC):
     @property
     def mss(self) -> int:
         """
-        Get Mss TCP option value. If option is not present then
-        return the TCP protocol default Mss value.
+        Get the TCP 'mss' option value.
+
+        Returns the TCP__MIN_MSS protocol default when the
+        option is absent.
         """
 
         return TCP__MIN_MSS if self._options.mss is None else self._options.mss
@@ -267,7 +272,9 @@ class TcpOptionsProperties(ABC):
     @property
     def wscale(self) -> int:
         """
-        Get Wscale TCP option value.
+        Get the TCP 'wscale' option value.
+
+        Returns 0 (no scaling) when the option is absent.
         """
 
         return self._options.wscale or 0
@@ -275,7 +282,9 @@ class TcpOptionsProperties(ABC):
     @property
     def sackperm(self) -> bool:
         """
-        Get Sackperm TCP option value.
+        Get the TCP 'sackperm' option value.
+
+        Returns False when the option is absent.
         """
 
         return bool(self._options.sackperm)
@@ -283,7 +292,7 @@ class TcpOptionsProperties(ABC):
     @property
     def sack(self) -> list[TcpSackBlock] | None:
         """
-        Get Sack TCP option value.
+        Get the TCP 'sack' option value.
         """
 
         return self._options.sack
@@ -291,7 +300,7 @@ class TcpOptionsProperties(ABC):
     @property
     def timestamps(self) -> TcpTimestamps | None:
         """
-        Get the Timestamps TCP option value.
+        Get the TCP 'timestamps' option value.
         """
 
         return self._options.timestamps

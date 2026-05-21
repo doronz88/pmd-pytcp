@@ -105,7 +105,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def client_id(self) -> Buffer | None:
         """
-        Get the value of the DHCP Client Identifier option if present.
+        Get the DHCPv4 'client_id' option value.
         """
 
         for option in self._options:
@@ -117,7 +117,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def host_name(self) -> str | None:
         """
-        Get the value of the DHCP Host Name option if present.
+        Get the DHCPv4 'host_name' option value.
         """
 
         for option in self._options:
@@ -129,7 +129,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def lease_time(self) -> int | None:
         """
-        Get the value of the DHCP IP Address Lease Time option if present.
+        Get the DHCPv4 'lease_time' option value.
         """
 
         for option in self._options:
@@ -141,7 +141,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def max_msg_size(self) -> int | None:
         """
-        Get the value of the DHCP Maximum DHCP Message Size option if present.
+        Get the DHCPv4 'max_msg_size' option value.
         """
 
         for option in self._options:
@@ -153,10 +153,11 @@ class Dhcp4Options(ProtoOptions):
     @property
     def option_overload(self) -> Dhcp4OptionOverload | None:
         """
-        Get the DHCP Option Overload option (RFC 2132 §9.3) if present.
-        Returns the whole option object so the parser can consult its
-        'includes_file' / 'includes_sname' helpers when overlaying the
-        BOOTP 'file' / 'sname' fields.
+        Get the DHCPv4 'option_overload' option (RFC 2132 §9.3).
+
+        Returns the whole option object so the parser can consult
+        its 'includes_file' / 'includes_sname' helpers when
+        overlaying the BOOTP 'file' / 'sname' fields.
         """
 
         for option in self._options:
@@ -168,7 +169,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def message_type(self) -> Dhcp4MessageType | None:
         """
-        Get the value of the DHCP Message Type option if present.
+        Get the DHCPv4 'message_type' option value.
         """
 
         for option in self._options:
@@ -180,7 +181,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def param_req_list(self) -> list[Dhcp4OptionType] | None:
         """
-        Get the value of the DHCP Parameter Request List option if present.
+        Get the DHCPv4 'param_req_list' option value.
         """
 
         for option in self._options:
@@ -192,9 +193,10 @@ class Dhcp4Options(ProtoOptions):
     @property
     def rebinding_time(self) -> int | None:
         """
-        Get the value of the DHCP Rebinding (T2) Time Value option if present
-        (RFC 2132 §9.8). When non-None this overrides the factor-based T2
-        default in the DHCPv4 client lifecycle.
+        Get the DHCPv4 'rebinding_time' (T2) option value (RFC 2132 §9.8).
+
+        When non-None this overrides the factor-based T2 default in
+        the DHCPv4 client lifecycle.
         """
 
         for option in self._options:
@@ -206,9 +208,10 @@ class Dhcp4Options(ProtoOptions):
     @property
     def renewal_time(self) -> int | None:
         """
-        Get the value of the DHCP Renewal (T1) Time Value option if present
-        (RFC 2132 §9.7). When non-None this overrides the factor-based T1
-        default in the DHCPv4 client lifecycle.
+        Get the DHCPv4 'renewal_time' (T1) option value (RFC 2132 §9.7).
+
+        When non-None this overrides the factor-based T1 default in
+        the DHCPv4 client lifecycle.
         """
 
         for option in self._options:
@@ -220,7 +223,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def req_ip_addr(self) -> Ip4Address | None:
         """
-        Get the value of the DHCP Requested IP Address option if present.
+        Get the DHCPv4 'req_ip_addr' option value.
         """
 
         for option in self._options:
@@ -232,7 +235,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def router(self) -> list[Ip4Address] | None:
         """
-        Get the value of the DHCP Router option if present.
+        Get the DHCPv4 'router' option value.
         """
 
         for option in self._options:
@@ -244,7 +247,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def server_id(self) -> Ip4Address | None:
         """
-        Get the value of the DHCP Server Identifier option if present.
+        Get the DHCPv4 'server_id' option value.
         """
 
         for option in self._options:
@@ -256,7 +259,7 @@ class Dhcp4Options(ProtoOptions):
     @property
     def subnet_mask(self) -> Ip4Mask | None:
         """
-        Get the value of the DHCP Subnet Mask option if present.
+        Get the DHCPv4 'subnet_mask' option value.
         """
 
         for option in self._options:
@@ -370,7 +373,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def client_id(self) -> Buffer | None:
         """
-        Get the value of the DHCP Client Identifier option if present.
+        Get the DHCPv4 'client_id' option value.
         """
 
         return self._options.client_id
@@ -378,7 +381,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def host_name(self) -> str | None:
         """
-        Get the value of the DHCP Host Name option if present.
+        Get the DHCPv4 'host_name' option value.
         """
 
         return self._options.host_name
@@ -386,7 +389,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def lease_time(self) -> int | None:
         """
-        Get the value of the DHCP IP Address Lease Time option if present.
+        Get the DHCPv4 'lease_time' option value.
         """
 
         return self._options.lease_time
@@ -394,7 +397,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def max_msg_size(self) -> int | None:
         """
-        Get the value of the DHCP Maximum DHCP Message Size option if present.
+        Get the DHCPv4 'max_msg_size' option value.
         """
 
         return self._options.max_msg_size
@@ -402,7 +405,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def option_overload(self) -> Dhcp4OptionOverload | None:
         """
-        Get the DHCP Option Overload option (RFC 2132 §9.3) if present.
+        Get the DHCPv4 'option_overload' option (RFC 2132 §9.3).
         """
 
         return self._options.option_overload
@@ -410,7 +413,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def message_type(self) -> Dhcp4MessageType | None:
         """
-        Get the value of the DHCP Message Type option if present.
+        Get the DHCPv4 'message_type' option value.
         """
 
         return self._options.message_type
@@ -418,7 +421,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def param_req_list(self) -> list[Dhcp4OptionType] | None:
         """
-        Get the value of the DHCP Parameter Request List option if present.
+        Get the DHCPv4 'param_req_list' option value.
         """
 
         return self._options.param_req_list
@@ -426,7 +429,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def rebinding_time(self) -> int | None:
         """
-        Get the DHCP Rebinding (T2) Time Value option (RFC 2132 §9.8).
+        Get the DHCPv4 'rebinding_time' option value (RFC 2132 §9.8).
         """
 
         return self._options.rebinding_time
@@ -434,7 +437,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def renewal_time(self) -> int | None:
         """
-        Get the DHCP Renewal (T1) Time Value option (RFC 2132 §9.7).
+        Get the DHCPv4 'renewal_time' option value (RFC 2132 §9.7).
         """
 
         return self._options.renewal_time
@@ -442,7 +445,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def req_ip_addr(self) -> Ip4Address | None:
         """
-        Get the value of the DHCP Requested IP Address option if present.
+        Get the DHCPv4 'req_ip_addr' option value.
         """
 
         return self._options.req_ip_addr
@@ -450,7 +453,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def router(self) -> list[Ip4Address] | None:
         """
-        Get the value of the DHCP Router option if present.
+        Get the DHCPv4 'router' option value.
         """
 
         return self._options.router
@@ -458,7 +461,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def srv_id(self) -> Ip4Address | None:
         """
-        Get the value of the DHCP Server Identifier option if present.
+        Get the DHCPv4 'srv_id' option value.
         """
 
         return self._options.server_id
@@ -466,7 +469,7 @@ class Dhcp4OptionsProperties(ABC):
     @property
     def subnet_mask(self) -> Ip4Mask | None:
         """
-        Get the value of the DHCP Subnet Mask option if present.
+        Get the DHCPv4 'subnet_mask' option value.
         """
 
         return self._options.subnet_mask

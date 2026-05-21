@@ -84,7 +84,7 @@ class Icmp6NdOptions(ProtoOptions):
     @property
     def slla(self) -> MacAddress | None:
         """
-        Get the value of the ICMPv6 ND Slla option if present.
+        Get the ICMPv6 ND 'slla' option value.
         """
 
         for option in self._options:
@@ -96,7 +96,7 @@ class Icmp6NdOptions(ProtoOptions):
     @property
     def tlla(self) -> MacAddress | None:
         """
-        Get the value of the ICMPv6 ND Tlla option if present.
+        Get the ICMPv6 ND 'tlla' option value.
         """
 
         for option in self._options:
@@ -108,8 +108,7 @@ class Icmp6NdOptions(ProtoOptions):
     @property
     def nonce(self) -> bytes | None:
         """
-        Get the value of the ICMPv6 ND Nonce option if present
-        (RFC 3971 §5.3.2 / RFC 7527 §4.1).
+        Get the ICMPv6 ND 'nonce' option value (RFC 3971 §5.3.2 / RFC 7527 §4.1).
         """
 
         for option in self._options:
@@ -121,8 +120,8 @@ class Icmp6NdOptions(ProtoOptions):
     @property
     def pi(self) -> list[NdPrefixInfo]:
         """
-        Get the prefix info entries from every ICMPv6 ND Pi option
-        present, returning an empty list if none are present.
+        Get the ICMPv6 ND 'pi' option value (concatenated across all
+        Prefix Info options present; empty list if none are present).
         """
 
         prefix_info_list: list[NdPrefixInfo] = []
