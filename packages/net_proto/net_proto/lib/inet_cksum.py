@@ -26,6 +26,12 @@
 This module contains the function used to compute the Internet Checksum for
 the IPv4/ICMPv4/ICMPv6/UDP/TCP protocols.
 
+The algorithm is defined in RFC 1071 (Computing the Internet Checksum):
+treat the input as a sequence of 16-bit words, fold the one's-complement
+sum into 16 bits, then take the one's-complement of the result. RFC 1141
+and RFC 1624 describe incremental-update variants used elsewhere in the
+stack; this module implements only the from-scratch RFC 1071 path.
+
 net_proto/lib/inet_cksum.py
 
 ver 3.0.6
@@ -39,6 +45,8 @@ from net_proto.lib.buffer import Buffer
 def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
     """
     Calculate the Internet Checksum of the provided buffers.
+
+    Reference: RFC 1071 (Computing the Internet Checksum).
     """
 
     cksum = init
