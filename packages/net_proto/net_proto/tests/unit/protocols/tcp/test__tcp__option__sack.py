@@ -90,6 +90,71 @@ class TestTcpOptionSackAsserts(TestCase):
         )
 
 
+class TestTcpSackBlockAsserts(TestCase):
+    """
+    The TCP Sack block constructor uint32-bounds tests. The wire
+    path always trims each edge to 4 bytes via 'int.from_bytes',
+    so these asserts catch programmer error at construction with
+    a clear AssertionError instead of an opaque struct.error
+    deep inside `__buffer__` serialization.
+    """
+
+    def test__tcp__sack_block__left__over_uint32(self) -> None:
+        """
+        Ensure the TcpSackBlock constructor refuses a 'left' value
+        outside the uint32 range — the wire-format edge is a
+        32-bit unsigned integer.
+
+        Reference: RFC 2018 §3 (SACK block edges are 32-bit unsigned).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            TcpSackBlock(left=2**32, right=0)
+
+        self.assertIn(
+            "must be a 32-bit unsigned integer",
+            str(error.exception),
+            msg="AssertionError must cite the uint32 bound for 'left'.",
+        )
+
+    def test__tcp__sack_block__right__over_uint32(self) -> None:
+        """
+        Ensure the TcpSackBlock constructor refuses a 'right'
+        value outside the uint32 range — the wire-format edge is
+        a 32-bit unsigned integer.
+
+        Reference: RFC 2018 §3 (SACK block edges are 32-bit unsigned).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            TcpSackBlock(left=0, right=2**32)
+
+        self.assertIn(
+            "must be a 32-bit unsigned integer",
+            str(error.exception),
+            msg="AssertionError must cite the uint32 bound for 'right'.",
+        )
+
+    def test__tcp__sack_block__uint32_max_accepted(self) -> None:
+        """
+        Ensure the TcpSackBlock constructor accepts both edges at
+        the uint32 boundary (2**32 - 1 = 4294967295). The wire
+        path tolerates these values (a full-wraparound SACK block
+        is well-formed under sequence-number modular arithmetic).
+
+        Reference: RFC 2018 §3 (32-bit edges; wraparound permitted).
+        """
+
+        # Should not raise.
+        block = TcpSackBlock(left=2**32 - 1, right=2**32 - 1)
+
+        self.assertEqual(
+            block.left,
+            2**32 - 1,
+            msg="Maximum-valid uint32 left edge must be accepted at construction.",
+        )
+
+
 @parameterized_class(
     [
         {

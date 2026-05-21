@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
+from net_proto.lib.int_checks import is_uint32
 from net_proto.protocols.tcp.options.tcp__option import (
     TCP__OPTION__LEN,
     TcpOption,
@@ -73,6 +74,29 @@ class TcpSackBlock:
 
     left: int
     right: int
+
+    def __post_init__(self) -> None:
+        """
+        Ensure integrity of the TCP Sack block fields.
+        """
+
+        # RFC 2018 §3 — "Each contiguous block of data queued at the
+        # data receiver is defined in the SACK option by two 32-bit
+        # unsigned integers in network byte order". The wire path
+        # already trims each block to 4 bytes via `int.from_bytes`,
+        # so this assert catches programmer error at construction
+        # with a clear message instead of an opaque struct.error
+        # ("'L' format requires 0 <= number <= 4294967295") at
+        # __buffer__ serialization. Note: the RFC does NOT mandate
+        # `left < right` — sequence-number wraparound makes the
+        # ordering meaningless modulo 2**32, so no ordering check.
+        assert is_uint32(self.left), (
+            f"The 'left' field must be a 32-bit unsigned integer (RFC 2018 §3). " f"Got: {self.left!r}"
+        )
+
+        assert is_uint32(self.right), (
+            f"The 'right' field must be a 32-bit unsigned integer (RFC 2018 §3). " f"Got: {self.right!r}"
+        )
 
     def __len__(self) -> int:
         """
