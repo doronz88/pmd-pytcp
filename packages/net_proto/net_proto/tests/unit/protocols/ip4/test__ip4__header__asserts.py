@@ -498,3 +498,37 @@ class TestIp4HeaderAsserts(TestCase):
             f"The 'dst' field must be an Ip4Address. Got: {type(value)!r}",
             msg="Unexpected assertion message for non-Ip4Address 'dst'.",
         )
+
+    def test__ip4__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent IPv4
+        header — exercises every bit-packed sub-field: ver/hlen in
+        byte 0, dscp/ecn in byte 1, flag_df/flag_mf/offset in
+        bytes 6-7.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
+        """
+
+        original = Ip4Header(
+            hlen=IP4__HEADER__LEN,
+            dscp=53,
+            ecn=2,
+            plen=IP4__HEADER__LEN,
+            id=0xCAFE,
+            flag_mf=False,
+            flag_df=True,
+            offset=504,
+            ttl=64,
+            proto=IpProto.TCP,
+            cksum=0,
+            src=Ip4Address("10.0.0.1"),
+            dst=Ip4Address("192.168.1.1"),
+        )
+
+        rebuilt = Ip4Header.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

@@ -209,3 +209,28 @@ class TestIp6FragHeaderAsserts(TestCase):
             f"The 'id' field must be a 32-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'id' over UINT_32__MAX.",
         )
+
+    def test__ip6_frag__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent IPv6
+        Fragment header — exercises the 13-bit offset + reserved bits
+        + 1-bit M flag bit-packed into bytes 2-3, plus the reserved
+        byte 1 and the 32-bit identification.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
+        """
+
+        original = Ip6FragHeader(
+            next=IpProto.TCP,
+            offset=0x1F8,
+            flag_mf=True,
+            id=0xCAFEBABE,
+        )
+
+        rebuilt = Ip6FragHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

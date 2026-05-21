@@ -118,3 +118,26 @@ class TestLlcHeaderAsserts(TestCase):
             str(ctx.exception),
             msg="control non-LlcControl value must raise an assert citing the LlcControl requirement.",
         )
+
+    def test__llc__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent LLC
+        header — locks in pack/unpack symmetry across the three
+        single-byte fields (DSAP / SSAP / Control).
+
+        Reference: IEEE 802.2 §3 LLC frame format.
+        """
+
+        original = LlcHeader(
+            dsap=LlcSap.SNAP,
+            ssap=LlcSap.SNAP,
+            control=LlcControl.UI,
+        )
+
+        rebuilt = LlcHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

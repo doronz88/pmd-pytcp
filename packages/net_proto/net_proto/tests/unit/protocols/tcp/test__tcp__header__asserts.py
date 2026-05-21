@@ -531,3 +531,41 @@ class TestTcpHeaderAsserts(TestCase):
             f"The 'urg' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'urg' over UINT_16__MAX.",
         )
+
+    def test__tcp__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent TCP
+        header — locks in pack/unpack symmetry across the bit-packed
+        hlen + 9 flag bits in the byte-12 / byte-13 word, plus every
+        scalar wire field.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
+        """
+
+        original = TcpHeader(
+            sport=0xABCD,
+            dport=0x1234,
+            seq=0x11223344,
+            ack=0x55667788,
+            hlen=20,
+            flag_ns=True,
+            flag_cwr=False,
+            flag_ece=True,
+            flag_urg=False,
+            flag_ack=True,
+            flag_psh=False,
+            flag_rst=True,
+            flag_syn=False,
+            flag_fin=True,
+            win=0xFFFF,
+            cksum=0,
+            urg=0x9999,
+        )
+
+        rebuilt = TcpHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

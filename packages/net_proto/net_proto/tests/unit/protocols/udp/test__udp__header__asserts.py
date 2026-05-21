@@ -204,3 +204,21 @@ class TestUdpHeaderAsserts(TestCase):
             f"The 'cksum' field must be a 16-bit unsigned integer. Got: {value!r}",
             msg="Unexpected assertion message for 'cksum' over UINT_16__MAX.",
         )
+
+    def test__udp__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent UDP
+        header — locks in pack/unpack symmetry across every wire field.
+
+        Reference: RFC 768 (UDP header wire format).
+        """
+
+        original = UdpHeader(sport=12345, dport=54321, plen=42, cksum=0)
+
+        rebuilt = UdpHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

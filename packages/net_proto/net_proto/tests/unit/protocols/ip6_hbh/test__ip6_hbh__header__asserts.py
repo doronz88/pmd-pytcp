@@ -109,3 +109,22 @@ class TestIp6HbhHeaderAsserts(TestCase):
             255,
             msg="hdr_ext_len=255 must be accepted (uint8 maximum).",
         )
+
+    def test__ip6_hbh__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent IPv6
+        HBH fixed-prefix header — locks in pack/unpack symmetry of the
+        two-byte 'next' + 'hdr_ext_len' prefix.
+
+        Reference: RFC 8200 §4.3 (HBH header wire format).
+        """
+
+        original = Ip6HbhHeader(next=IpProto.TCP, hdr_ext_len=7)
+
+        rebuilt = Ip6HbhHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

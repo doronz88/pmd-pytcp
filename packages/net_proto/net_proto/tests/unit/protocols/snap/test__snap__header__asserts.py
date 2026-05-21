@@ -195,3 +195,25 @@ class TestSnapHeaderAsserts(TestCase):
             UINT_16__MAX,
             msg="UINT_16__MAX must be an accepted 'pid' value.",
         )
+
+    def test__snap__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent SNAP
+        header — locks in pack/unpack symmetry across the 3-byte OUI
+        and the 16-bit Protocol ID.
+
+        Reference: RFC 1042 §"Header Format" (5-byte SNAP header layout).
+        """
+
+        self._kwargs["oui"] = 0x00000C
+        self._kwargs["pid"] = 0x0800
+
+        original = SnapHeader(**self._kwargs)
+
+        rebuilt = SnapHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

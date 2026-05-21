@@ -295,3 +295,32 @@ class TestIp6HeaderAsserts(TestCase):
             f"The 'dst' field must be an Ip6Address. Got: {type(value)!r}",
             msg="Unexpected assertion message for non-Ip6Address 'dst'.",
         )
+
+    def test__ip6__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent IPv6
+        header — exercises the bit-packed ver/dscp/ecn/flow word in
+        bytes 0-3 plus every scalar wire field including the 128-bit
+        src/dst addresses.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
+        """
+
+        original = Ip6Header(
+            dscp=53,
+            ecn=2,
+            flow=0xABCDE,
+            dlen=0x4321,
+            next=IpProto.TCP,
+            hop=64,
+            src=Ip6Address("2001:db8::1"),
+            dst=Ip6Address("2001:db8::2"),
+        )
+
+        rebuilt = Ip6Header.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )

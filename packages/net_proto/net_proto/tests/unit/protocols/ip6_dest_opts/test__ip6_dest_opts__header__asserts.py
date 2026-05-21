@@ -109,3 +109,22 @@ class TestIp6DestOptsHeaderAsserts(TestCase):
             255,
             msg="hdr_ext_len=255 must be accepted (uint8 maximum).",
         )
+
+    def test__ip6_dest_opts__header__from_buffer_roundtrip(self) -> None:
+        """
+        Ensure 'from_buffer(bytes(header))' rebuilds an equivalent IPv6
+        DestOpts fixed-prefix header — locks in pack/unpack symmetry
+        of the two-byte 'next' + 'hdr_ext_len' prefix.
+
+        Reference: RFC 8200 §4.6 (DestOpts header wire format).
+        """
+
+        original = Ip6DestOptsHeader(next=IpProto.TCP, hdr_ext_len=7)
+
+        rebuilt = Ip6DestOptsHeader.from_buffer(bytes(memoryview(original)))
+
+        self.assertEqual(
+            rebuilt,
+            original,
+            msg="Roundtrip through from_buffer must preserve equality.",
+        )
