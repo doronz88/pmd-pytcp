@@ -38,6 +38,7 @@ from unittest import TestCase
 
 from net_addr import Ip4Address, Ip4Mask, MacAddress
 from net_proto import (
+    Dhcp4IntegrityError,
     Dhcp4MessageType,
     Dhcp4Operation,
     Dhcp4OptionEnd,
@@ -239,4 +240,78 @@ class TestDhcp4ParserOptionOverload(TestCase):
             packet.router,
             [Ip4Address("10.0.0.1")],
             msg="With overload=3, the 'sname'-resident router must be merged.",
+        )
+
+
+class TestDhcp4ParserOptionOverloadHostileBlob(TestCase):
+    """
+    The DHCPv4 parser Option Overload hostile-blob safety tests.
+    A server signalling Option Overload reuses the BOOTP
+    'sname' / 'file' fields for additional DHCP options; the
+    parser's overload pass must run the same TLV integrity
+    walker against the re-extracted slice that protects the
+    main option block, so a malformed sub-option raises a
+    typed Dhcp4IntegrityError rather than walking past the
+    slice end.
+    """
+
+    def test__parser__overload_sname_with_length_past_slice_end_rejected(self) -> None:
+        """
+        Ensure a Dhcp4Parser invocation against a frame whose
+        overloaded 'sname' field carries an option whose Length
+        byte extends past the 64-byte slice end raises
+        Dhcp4IntegrityError. Without the pre-walk safety check
+        the dispatch loop would over-read the slice and silently
+        truncate the option payload.
+
+        Reference: RFC 2132 §9.3 (overloaded BOOTP fields carry a full options sub-block).
+        """
+
+        # Hostile sname: Message Type (53) with Length=0xFF, which
+        # asserts 257 trailing bytes but the sname slice is only
+        # 64 bytes.
+        hostile_sname = b"\x35\xff"
+
+        frame = _build_overload_frame(
+            overload_value=2,  # sname carries options
+            sname_options=hostile_sname,
+        )
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "option length must not extend past the header length",
+            str(error.exception),
+            msg="Hostile sname must be rejected with typed Dhcp4IntegrityError.",
+        )
+
+    def test__parser__overload_file_with_missing_length_byte_rejected(self) -> None:
+        """
+        Ensure a Dhcp4Parser invocation against a frame whose
+        overloaded 'file' field carries a non-Pad, non-End option
+        whose length byte does not exist within the 128-byte
+        slice (option type appears as the slice's last byte)
+        raises Dhcp4IntegrityError.
+
+        Reference: RFC 2132 §9.3 (overloaded BOOTP fields carry a full options sub-block).
+        """
+
+        # Hostile file: 127 PAD bytes then a single Message Type
+        # type byte at offset 127 — the length byte would live at
+        # offset 128, past the 128-byte file slice end.
+        hostile_file = b"\x00" * 127 + b"\x35"
+
+        frame = _build_overload_frame(
+            overload_value=1,  # file carries options
+            file_options=hostile_file,
+        )
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "missing its length byte",
+            str(error.exception),
+            msg="Hostile file with missing length byte must be rejected with typed Dhcp4IntegrityError.",
         )

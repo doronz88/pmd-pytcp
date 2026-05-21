@@ -270,12 +270,21 @@ class Dhcp4Options(ProtoOptions):
         *,
         frame: Buffer,
         hlen: int,
+        offset: int = DHCP4__HEADER__LEN,
     ) -> None:
         """
         Run the DHCPv4 options integrity checks before parsing options.
-        """
 
-        offset = DHCP4__HEADER__LEN
+        The default 'offset' (DHCP4__HEADER__LEN = 240) walks the
+        main options block of a full DHCPv4 frame. RFC 2132 §9.3
+        Option Overload reuses the BOOTP 'sname' / 'file' fields
+        to carry additional options; the parser's overload pass
+        calls this with 'offset=0' against the re-extracted
+        sname/file slice so a hostile overloaded sub-block (e.g.
+        an option claiming a length that extends past the slice
+        end) is rejected with a typed Dhcp4IntegrityError before
+        'Dhcp4Options.from_buffer' dispatches.
+        """
 
         while offset < hlen:
             if frame[offset] == int(Dhcp4OptionType.END):

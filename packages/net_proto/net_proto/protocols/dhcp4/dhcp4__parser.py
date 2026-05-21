@@ -138,27 +138,33 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         # frame bytes intact for our re-extraction here.
         merged = list(self._options._options)  # pylint: disable=protected-access
         if overload.includes_file:
-            file_options = Dhcp4Options.from_buffer(
-                memoryview(
-                    bytes(
-                        self._frame[
-                            _DHCP4__HEADER__FILE__OFFSET : _DHCP4__HEADER__FILE__OFFSET + DHCP4__HEADER__FILE__MAX_LEN
-                        ]
-                    )
+            file_blob = memoryview(
+                bytes(
+                    self._frame[
+                        _DHCP4__HEADER__FILE__OFFSET : _DHCP4__HEADER__FILE__OFFSET + DHCP4__HEADER__FILE__MAX_LEN
+                    ]
                 )
             )
+            # RFC 2132 §9.3 — the overloaded BOOTP fields carry a
+            # full DHCP options sub-block, not bare option bytes.
+            # Run the same integrity walker that protects the main
+            # options block so a hostile overloaded option (length
+            # byte extending past the 128-byte 'file' slice end,
+            # missing length byte, etc.) raises a typed
+            # Dhcp4IntegrityError before 'from_buffer' dispatches.
+            Dhcp4Options.validate_integrity(frame=file_blob, hlen=len(file_blob), offset=0)
+            file_options = Dhcp4Options.from_buffer(file_blob)
             merged.extend(file_options._options)  # pylint: disable=protected-access
         if overload.includes_sname:
-            sname_options = Dhcp4Options.from_buffer(
-                memoryview(
-                    bytes(
-                        self._frame[
-                            _DHCP4__HEADER__SNAME__OFFSET : _DHCP4__HEADER__SNAME__OFFSET
-                            + DHCP4__HEADER__SNAME__MAX_LEN
-                        ]
-                    )
+            sname_blob = memoryview(
+                bytes(
+                    self._frame[
+                        _DHCP4__HEADER__SNAME__OFFSET : _DHCP4__HEADER__SNAME__OFFSET + DHCP4__HEADER__SNAME__MAX_LEN
+                    ]
                 )
             )
+            Dhcp4Options.validate_integrity(frame=sname_blob, hlen=len(sname_blob), offset=0)
+            sname_options = Dhcp4Options.from_buffer(sname_blob)
             merged.extend(sname_options._options)  # pylint: disable=protected-access
 
         if len(merged) == len(self._options._options):  # pylint: disable=protected-access

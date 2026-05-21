@@ -643,21 +643,48 @@ bytes but exposes no typed accessor.
 >  inserts this option if the returned parameters will
 >  exceed the usual space allotted for options."
 
-**Adherence:** not implemented. PyTCP's parser walks
-the `options` field starting at offset 240 and stops at
-END (`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`).
-The 'sname' and 'file' fields are parsed as
-ASCII-strings (`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__header.py:307-308`),
-not as option-extension areas. A server that overloads
-these fields will have its extension options silently
-dropped.
+**Adherence:** met (parsing). `Dhcp4OptionOverload` at
+`options/dhcp4__option__overload.py` enforces the
+`value ∈ {1, 2, 3}` constraint at both
+`__post_init__` (assembler-strict) and
+`_validate_integrity` (RX-strict, typed
+`Dhcp4IntegrityError`). The parser's
+`Dhcp4Parser._apply_option_overload` re-extracts the
+overloaded 'file' and/or 'sname' bytes from the frame,
+runs them through `Dhcp4OptionsProperties.validate_integrity`
+(see hostile-blob safety below), parses the sub-block
+via `Dhcp4Options.from_buffer`, and merges the result
+into the unified `parser.options` view. The
+`Dhcp4Header` `from_buffer` uses
+`bytes.decode("ascii", errors="replace")` on the raw
+'sname' and 'file' bytes so the original wire image is
+re-extractable for overlay parsing — the ASCII view is
+discarded once overload signalling is detected.
 
-PyTCP's option block is bounded by IP4_MIN_MTU - IP4 -
-UDP - DHCP4 header = 576 - 20 - 8 - 240 = 308 octets
-(`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py:85`).
-The two options PyTCP requests (Subnet Mask + Router)
-fit comfortably; option overload is unlikely to arise
-in practice.
+**Wire-format hostile-blob safety (parser):** a hostile
+server could embed an option inside the overloaded
+'sname' (64 bytes) or 'file' (128 bytes) field whose
+Length byte advertises more trailing data than the
+slice carries. Without preflight, the sub-block dispatch
+in `Dhcp4Options.from_buffer` would walk past the slice
+end and either silently truncate or raise an untyped
+exception.
+
+`Dhcp4OptionsProperties.validate_integrity` accepts an
+`offset` parameter (default 240 for the main option
+block; the overload pass calls it with `offset=0`) so
+the same TLV walker that protects the main options
+block also guards each overloaded sub-block. A
+malformed sub-option raises a typed
+`Dhcp4IntegrityError` before `from_buffer` dispatches.
+
+Pinned by
+`TestDhcp4ParserOptionOverload` (happy path: file-only,
+sname-only, both fields merged) and
+`TestDhcp4ParserOptionOverloadHostileBlob` (hostile
+sname with Length past slice end; hostile file with
+missing length byte) at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__option_overload.py`.
 
 ---
 
