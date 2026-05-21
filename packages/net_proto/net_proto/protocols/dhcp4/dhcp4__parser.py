@@ -84,11 +84,12 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
             )
 
         # RFC 2131 §4.1 / RFC 2132 §2 — variable-length options must self-bound (TLV).
-        # Additional integrity invariants enforced inside 'Dhcp4Header.from_buffer'
-        # and surfaced via '_parse' (try/except wrap per net_proto.md §7):
-        #   - hrtype == ETHERNET (RFC 2131 §2 "htype").
-        #   - hrlen  == 6        (RFC 2131 §2 "hlen" must match htype).
-        #   - magic_cookie == 0x63825363 (RFC 2131 §3 / RFC 2132 §2).
+        # The header-level integrity invariants (`hrtype == ETHERNET`,
+        # `hrlen == 6`, `magic_cookie == 0x63825363`) are raised as
+        # typed `Dhcp4IntegrityError` directly from
+        # `Dhcp4Header.from_buffer`; per-option wire-shape invariants
+        # are enforced by each option's static `_validate_integrity`
+        # called from its `from_buffer`.
         Dhcp4Options.validate_integrity(frame=self._frame, hlen=len(self._frame))
 
     @override
@@ -97,11 +98,8 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         Parse the DHCPv4 packet.
         """
 
-        try:
-            self._header = Dhcp4Header.from_buffer(self._frame)
-            self._options = Dhcp4Options.from_buffer(self._frame[len(self._header) :])
-        except (AssertionError, UnicodeDecodeError) as error:
-            raise Dhcp4IntegrityError(str(error)) from error
+        self._header = Dhcp4Header.from_buffer(self._frame)
+        self._options = Dhcp4Options.from_buffer(self._frame[len(self._header) :])
 
         # RFC 2132 §9.3 Option Overload — when option 52 is present
         # the BOOTP 'file' and/or 'sname' fields carry additional
@@ -109,10 +107,7 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         # (the header's ASCII-decoded view is unusable for non-ASCII
         # option payloads) and merge the parsed options into the main
         # set so 'self._options' presents a unified view to callers.
-        try:
-            self._apply_option_overload()
-        except (AssertionError, UnicodeDecodeError) as error:
-            raise Dhcp4IntegrityError(str(error)) from error
+        self._apply_option_overload()
 
     def _apply_option_overload(self) -> None:
         """

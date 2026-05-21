@@ -138,6 +138,19 @@ class Dhcp4OptionMaxMsgSize(Dhcp4Option):
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
+        # RFC 2132 §9.10 — the option value MUST be at least 576
+        # octets (the RFC 2131 §2 baseline-message-size floor every
+        # client MUST be prepared to receive). Mirror the
+        # dataclass `__post_init__` assert here so a hostile wire
+        # frame raises a typed `Dhcp4IntegrityError` before
+        # `cls(int.from_bytes(...))` construction would otherwise
+        # produce a bare `AssertionError`.
+        if (value := int.from_bytes(buffer[2:4], "big")) < DHCP4__OPTION__MAX_MSG_SIZE__MIN:
+            raise Dhcp4IntegrityError(
+                f"The DHCPv4 Maximum DHCP Message Size option value must be at least "
+                f"{DHCP4__OPTION__MAX_MSG_SIZE__MIN} bytes (RFC 2132 §9.10). Got: {value}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:

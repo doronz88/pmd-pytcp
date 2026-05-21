@@ -128,6 +128,24 @@ class Dhcp4OptionSubnetMask(Dhcp4Option):
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
+        # RFC 950 §2.1 — a subnet mask MUST consist of a run of
+        # high-order ones followed by a run of low-order zeros. The
+        # `Ip4Mask` value-type constructor rejects non-contiguous
+        # masks with `Ip4MaskFormatError` (caught at the parser-wrap
+        # boundary), but mirroring the check here lets a hostile
+        # mask surface as a typed `Dhcp4IntegrityError` with an
+        # RFC-cited message before `Ip4Mask` construction runs.
+        # Contiguity test: inverting the mask must produce a value
+        # whose set bits form a single low-order run, i.e.
+        # `inverted & (inverted + 1) == 0`.
+        candidate = int.from_bytes(buffer[2:6])
+        inverted = (~candidate) & 0xFFFFFFFF
+        if inverted & (inverted + 1) != 0:
+            raise Dhcp4IntegrityError(
+                "The DHCPv4 Subnet Mask must consist of contiguous high-order "
+                f"ones (RFC 950 §2.1). Got: 0x{candidate:08x}"
+            )
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:

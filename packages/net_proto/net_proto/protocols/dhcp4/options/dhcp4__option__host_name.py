@@ -138,6 +138,20 @@ class Dhcp4OptionHostName(Dhcp4Option):
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
+        # RFC 2132 §3.14 does not pin the encoding, but the option's
+        # `host_name` field is a Python `str` decoded via
+        # `bytes.decode("utf-8")` in `from_buffer`. A hostile wire
+        # frame whose payload is not valid UTF-8 would otherwise
+        # raise `UnicodeDecodeError` past the option-level
+        # integrity boundary. Pre-validate here so a typed
+        # `Dhcp4IntegrityError` surfaces instead.
+        try:
+            bytes(buffer[2 : 2 + buffer[1]]).decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise Dhcp4IntegrityError(
+                f"The DHCPv4 Host Name option payload must be valid UTF-8. Got: {error}"
+            ) from error
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:

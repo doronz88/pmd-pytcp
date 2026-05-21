@@ -44,6 +44,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4HardwareType,
     Dhcp4Operation,
 )
+from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 
 # The DHCPv4 packet header (RFC 2131).
 
@@ -290,17 +291,20 @@ class Dhcp4Header(ProtoStruct):
             magic_cookie,
         ) = struct.unpack(DHCP4__HEADER__STRUCT, buffer[:DHCP4__HEADER__LEN])
 
-        assert (value := Dhcp4HardwareType.from_int(hrtype)) == Dhcp4HardwareType.ETHERNET, (
-            f"Invalid DHCPv4 hardware type. Expected: {Dhcp4HardwareType.ETHERNET!r}. " f"Got: {value!r}"
-        )
+        if (value := Dhcp4HardwareType.from_int(hrtype)) != Dhcp4HardwareType.ETHERNET:
+            raise Dhcp4IntegrityError(
+                f"Invalid DHCPv4 hardware type. Expected: {Dhcp4HardwareType.ETHERNET!r}. Got: {value!r}"
+            )
 
-        assert hrlen == DHCP4__HARDWARE_LEN__ETHERNET, (
-            f"Invalid DHCPv4 hardware length. Expected: {DHCP4__HARDWARE_LEN__ETHERNET!r}. " f"Got: {hrlen!r}"
-        )
+        if hrlen != DHCP4__HARDWARE_LEN__ETHERNET:
+            raise Dhcp4IntegrityError(
+                f"Invalid DHCPv4 hardware length. Expected: {DHCP4__HARDWARE_LEN__ETHERNET!r}. Got: {hrlen!r}"
+            )
 
-        assert magic_cookie == DHCP4__HEADER__MAGIC_COOKIE, (
-            f"Invalid DHCPv4 magic cookie. Expected: {DHCP4__HEADER__MAGIC_COOKIE!r}. " f"Got: {magic_cookie!r}"
-        )
+        if magic_cookie != DHCP4__HEADER__MAGIC_COOKIE:
+            raise Dhcp4IntegrityError(
+                f"Invalid DHCPv4 magic cookie. Expected: {DHCP4__HEADER__MAGIC_COOKIE!r}. Got: {magic_cookie!r}"
+            )
 
         return cls(
             # Use the tolerant 'from_int' so an unknown wire 'op' value is

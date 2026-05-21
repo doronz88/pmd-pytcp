@@ -248,3 +248,27 @@ class TestDhcp4OptionMaxMsgSizeIntegrity(TestCase):
             str(error.exception),
             msg="Wrong-type buffer must trigger the type assertion.",
         )
+
+    def test__dhcp4__option__max_msg_size__wire_below_576_rejected(self) -> None:
+        """
+        Ensure 'from_buffer' raises Dhcp4IntegrityError when the
+        wire value is below the option's 576-octet minimum,
+        before the dataclass `__post_init__` would otherwise
+        raise a bare AssertionError.
+
+        Reference: RFC 2132 §9.10 (Maximum DHCP Message Size minimum 576).
+        Reference: RFC 2131 §2 (baseline 576-byte DHCP message floor).
+        """
+
+        # Type=57, Length=2, value=575 (one below the §9.10 floor).
+        bad_buffer = b"\x39\x02\x02\x3f"
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionMaxMsgSize.from_buffer(bad_buffer)
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Maximum DHCP Message Size option value must be "
+            "at least 576 bytes (RFC 2132 §9.10). Got: 575",
+            msg="Below-576 wire value must raise typed Dhcp4IntegrityError.",
+        )

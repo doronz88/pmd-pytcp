@@ -159,3 +159,75 @@ class TestDhcp4ParserIntegrityChecksBoundary(TestCase):
             str(error.exception),
             msg="Error message must include the actual short frame length.",
         )
+
+
+class TestDhcp4ParserSubnetMaskContiguity(TestCase):
+    """
+    The DHCPv4 Subnet Mask option contiguity tests. RFC 950 §2.1
+    requires a subnet mask to consist of high-order ones
+    followed by low-order zeros; non-contiguous wire bytes are
+    rejected at the option's `_validate_integrity` static
+    method (before `Ip4Mask` construction) with a typed
+    `Dhcp4IntegrityError`.
+    """
+
+    @staticmethod
+    def _bootp_blob() -> bytearray:
+        """
+        Build a minimal valid BOOTP header (240 bytes including
+        the magic cookie) that the parser will accept structurally.
+        """
+
+        blob = bytearray(240)
+        blob[0] = 0x02  # op = BOOTREPLY
+        blob[1] = 0x01  # htype = ETHERNET
+        blob[2] = 0x06  # hlen = 6
+        # xid at bytes 4..7
+        blob[4:8] = (0x12345678).to_bytes(4, "big")
+        # magic cookie at bytes 236..239
+        blob[236:240] = b"\x63\x82\x53\x63"
+        return blob
+
+    def test__dhcp4__parser__non_contiguous_subnet_mask_rejected(self) -> None:
+        """
+        Ensure a hostile wire frame whose Subnet Mask option carries
+        non-contiguous mask bits (e.g. 0xFF00FF00) raises
+        Dhcp4IntegrityError at the option's static integrity check —
+        before `Ip4Mask` construction would otherwise raise an
+        untyped Ip4MaskFormatError.
+
+        Reference: RFC 950 §2.1 (subnet mask consists of contiguous
+        high-order ones).
+        """
+
+        frame = bytes(self._bootp_blob()) + b"\x01\x04\xff\x00\xff\x00\xff"
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Parser(memoryview(frame))
+
+        self.assertEqual(
+            str(error.exception),
+            "[INTEGRITY ERROR][DHCPv4] The DHCPv4 Subnet Mask must consist of contiguous "
+            "high-order ones (RFC 950 §2.1). Got: 0xff00ff00",
+            msg="Non-contiguous mask must be rejected with RFC 950 §2.1 cite.",
+        )
+
+    def test__dhcp4__parser__contiguous_subnet_mask_accepted(self) -> None:
+        """
+        Ensure a wire frame whose Subnet Mask option carries a
+        well-formed contiguous mask (e.g. /24 = 0xFFFFFF00) parses
+        cleanly and surfaces the parsed mask via `parser.subnet_mask`.
+
+        Reference: RFC 950 §2.1 (subnet mask consists of contiguous
+        high-order ones).
+        """
+
+        frame = bytes(self._bootp_blob()) + b"\x01\x04\xff\xff\xff\x00\xff"
+
+        parser = Dhcp4Parser(memoryview(frame))
+
+        self.assertEqual(
+            str(parser.subnet_mask),
+            "/24",
+            msg="Valid contiguous mask must parse to /24.",
+        )

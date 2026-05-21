@@ -386,6 +386,29 @@ class TestDhcp4OptionHostNameParserErrors(TestCase):
             msg="Unexpected integrity-error message.",
         )
 
+    def test__dhcp4__option__host_name__invalid_utf8_rejected(self) -> None:
+        """
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the
+        wire payload is not valid UTF-8, before the
+        `bytes.decode("utf-8")` call would otherwise raise an
+        untyped UnicodeDecodeError past the option-level integrity
+        boundary.
+
+        Reference: PyTCP option-integrity boundary (host_name field is a Python str decoded as UTF-8).
+        """
+
+        # Type=12, Length=2, value=b'\xc3\x28' (stray continuation byte — invalid UTF-8).
+        bad_buffer = b"\x0c\x02\xc3\x28"
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4OptionHostName.from_buffer(bad_buffer)
+
+        self.assertIn(
+            "must be valid UTF-8",
+            str(error.exception),
+            msg="Invalid-UTF-8 wire payload must raise typed Dhcp4IntegrityError.",
+        )
+
 
 class TestDhcp4OptionHostNameBehavior(TestCase):
     """

@@ -137,6 +137,22 @@ option ordering between Subnet Mask and Router; both
 properties are pulled out individually by `Dhcp4Options`
 accessors. Behaviour is correct regardless of order.
 
+**Wire-format hostile-input rejection (parser):** RFC 950
+§2.1 requires a subnet mask to consist of high-order ones
+followed by low-order zeros. Non-contiguous wire bytes
+(e.g. `0xFF00FF00`) are rejected at
+`Dhcp4OptionSubnetMask._validate_integrity` BEFORE
+`Ip4Mask(buffer[2:6])` construction would otherwise raise
+`Ip4MaskFormatError` — the typed
+`Dhcp4IntegrityError` carries an RFC 950 §2.1 citation in
+the message.
+
+Pinned by
+`TestDhcp4ParserSubnetMaskContiguity` at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.py`
+(non-contiguous mask rejected with RFC 950 §2.1 cite;
+contiguous /24 mask parses cleanly).
+
 ---
 
 ## §3.5 Router Option (code 3)
@@ -448,6 +464,76 @@ checks already there.
 
 Pinned by `TestDhcp4AssemblerUnknownEnumReject` at
 `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py`.
+
+---
+
+## Parser integrity contract
+
+`Dhcp4Parser._parse` raises `Dhcp4IntegrityError` (and only
+that, plus `Dhcp4SanityError` from `_validate_sanity`) for
+every hostile-wire input. No `(AssertionError,
+UnicodeDecodeError, NetAddrError)` wrap. The contract is
+that every wire-shape problem is caught at the closest
+validation boundary:
+
+- **Header-level invariants** (`hrtype == ETHERNET`,
+  `hrlen == 6`, `magic_cookie == 0x63825363`) raise
+  `Dhcp4IntegrityError` directly from
+  `Dhcp4Header.from_buffer`.
+- **Per-option wire-shape invariants** (length-byte
+  bounds, value-range bounds, contiguity / UTF-8 /
+  enum-domain pre-validation) raise `Dhcp4IntegrityError`
+  from each option's static `_validate_integrity` called
+  at the top of its `from_buffer` — before any dataclass
+  construction.
+- **Dataclass `__post_init__` asserts** stay as the
+  programmer-error guardrail (constructor misuse) and are
+  unreachable from the wire-input path; an `AssertionError`
+  bubbling out of `Dhcp4Parser._parse` indicates a bug in
+  PyTCP, not a hostile wire frame.
+
+When adding a new option, the option author's
+responsibility is to mirror every dataclass invariant that
+could be tripped by a hostile wire frame into the
+option's `_validate_integrity`. Reviewer entitled to
+bounce a PR that adds an `__post_init__` assert reachable
+from `from_buffer` without the parallel `_validate_integrity`
+check.
+
+---
+
+## Per-option assembler-audit summary
+
+The DHCPv4 assembler audit pass (2026-05-20) walked
+every per-option file and surfaced the gaps catalogued
+in the per-option sections above. The table below
+records the audit findings for each option for archaeology:
+
+| Option                       | RFC §  | Bounds gap | UNKNOWN-enum gap | Wire-side leak  |
+|------------------------------|--------|------------|------------------|-----------------|
+| Pad (0)                      | §3.1   | n/a        | n/a              | n/a             |
+| Subnet Mask (1)              | §3.3   | none       | n/a              | **fixed** (Ip4MaskFormatError) |
+| Router (3)                   | §3.5   | **fixed** (1..63) | n/a       | none            |
+| Host Name (12)               | §3.14  | **fixed** (UTF-8 byte count) | n/a | **fixed** (invalid UTF-8 typed reject) |
+| Requested IP Address (50)    | §9.1   | none       | n/a              | none            |
+| IP Address Lease Time (51)   | §9.2   | none (full uint32 range valid) | n/a | none |
+| Option Overload (52)         | §9.3   | already enforced (value ∈ {1,2,3}) | n/a | already enforced (typed Dhcp4IntegrityError) |
+| Message Type (53)            | §9.6   | none       | **fixed** (assembler-strict) | none |
+| Server Identifier (54)       | §9.7   | none       | n/a              | none            |
+| Parameter Request List (55)  | §9.8   | **fixed** (1..255) | **fixed** (assembler-strict elements) | **fixed** (Length=0 typed reject) |
+| Maximum DHCP Message Size (57) | §9.10 | already enforced (≥576) | n/a | **fixed** (below-576 typed reject) |
+| Renewal (T1) Time Value (58) | §9.7   | none       | n/a              | none            |
+| Rebinding (T2) Time Value (59) | §9.8 | none       | n/a              | none            |
+| Client-identifier (61)       | §9.14  | **fixed** (2..255) | n/a        | **fixed** (Length<2 typed reject) |
+| End (255)                    | §3.2   | n/a        | n/a              | n/a             |
+| Unknown (catch-all)          | n/a    | n/a        | n/a (by-design)  | n/a             |
+
+Plus header-level fixes:
+- `Dhcp4Header` non-ASCII sname/file enforced at
+  assembler TX (`Dhcp4Assembler.__init__`) per RFC 2131 §2.
+- `Dhcp4Assembler` enforces trailing `Dhcp4OptionEnd` per RFC 2132 §3.
+- `Dhcp4Assembler` rejects `UNKNOWN_*` `dhcp4__operation`
+  per RFC 2131 §2 (BOOTREQUEST/BOOTREPLY only).
 
 ---
 

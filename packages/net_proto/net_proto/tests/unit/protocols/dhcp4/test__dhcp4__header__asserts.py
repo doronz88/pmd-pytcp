@@ -46,6 +46,7 @@ from net_proto import (
     UINT_32__MAX,
     UINT_32__MIN,
     Dhcp4Header,
+    Dhcp4IntegrityError,
     Dhcp4Operation,
 )
 from net_proto.protocols.dhcp4.dhcp4__enums import (
@@ -665,56 +666,65 @@ class TestDhcp4HeaderOperation(TestCase):
 
     def test__dhcp4__header__from_buffer_rejects_bad_hrtype(self) -> None:
         """
-        Ensure 'from_buffer()' asserts when the hardware type is not Ethernet.
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the
+        hardware type is not Ethernet.
+
+        Reference: RFC 2131 §2 (BOOTP htype field).
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
         frame = bytearray(bytes(memoryview(original)))
         frame[1] = 0x00  # clobber hrtype
 
-        with self.assertRaises(AssertionError) as error:
+        with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Header.from_buffer(bytes(frame))
 
         self.assertIn(
             "Invalid DHCPv4 hardware type",
             str(error.exception),
-            msg="from_buffer must reject non-Ethernet hardware types.",
+            msg="from_buffer must reject non-Ethernet hardware types with Dhcp4IntegrityError.",
         )
 
     def test__dhcp4__header__from_buffer_rejects_bad_hrlen(self) -> None:
         """
-        Ensure 'from_buffer()' asserts when the hardware length is not 6.
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the
+        hardware length is not 6.
+
+        Reference: RFC 2131 §2 (BOOTP hlen field; hlen=6 for Ethernet).
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
         frame = bytearray(bytes(memoryview(original)))
         frame[2] = 0x08  # clobber hrlen
 
-        with self.assertRaises(AssertionError) as error:
+        with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Header.from_buffer(bytes(frame))
 
         self.assertIn(
             "Invalid DHCPv4 hardware length",
             str(error.exception),
-            msg="from_buffer must reject non-6 hardware lengths.",
+            msg="from_buffer must reject non-6 hardware lengths with Dhcp4IntegrityError.",
         )
 
     def test__dhcp4__header__from_buffer_rejects_bad_magic_cookie(self) -> None:
         """
-        Ensure 'from_buffer()' asserts when the magic cookie is wrong.
+        Ensure 'from_buffer()' raises Dhcp4IntegrityError when the
+        magic cookie is wrong.
+
+        Reference: RFC 2131 §3 / RFC 2132 §2 (DHCP magic cookie 0x63825363).
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
         frame = bytearray(bytes(memoryview(original)))
         frame[236:240] = b"\xde\xad\xbe\xef"
 
-        with self.assertRaises(AssertionError) as error:
+        with self.assertRaises(Dhcp4IntegrityError) as error:
             Dhcp4Header.from_buffer(bytes(frame))
 
         self.assertIn(
             "Invalid DHCPv4 magic cookie",
             str(error.exception),
-            msg="from_buffer must reject frames with bad magic cookie.",
+            msg="from_buffer must reject frames with bad magic cookie with Dhcp4IntegrityError.",
         )
 
     def test__dhcp4__header__equality(self) -> None:
