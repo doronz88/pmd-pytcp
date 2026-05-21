@@ -121,7 +121,10 @@ spec mapping.
 
 **Scope:** `packages/net_addr/net_addr/tests/` (16 files).
 
-**Status:** survey-clean. **0 violations.**
+**Status:** **verified clean 2026-05-21.** Re-ran the §7.2
+audit script against
+`packages/net_addr/net_addr/tests/`: 16 files, 464 test
+methods scanned, **0 violations**. No code changes.
 
 **Action:** verification-only. Re-run the §7.2 audit script
 against the package, confirm clean, record the verification
