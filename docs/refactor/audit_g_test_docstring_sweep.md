@@ -66,6 +66,28 @@ The dominant drift is missing `Reference:` lines (97 % of
 all violations). The other four categories together total
 60 violations and are tractable manually.
 
+**Footnote on the audit-script undercount.** The canonical
+§7.2 audit script in `unit_testing.md` matches signatures
+of the form `def test__foo(self) -> None:` on a single line.
+Test methods written with the multi-line form
+
+```python
+def test__foo(
+    self,
+) -> None:
+```
+
+slip past the regex and are not counted by the survey. The
+G-net_proto-lib sweep (commit `b6853c01`) found 50 such
+methods in the lib batch alone (~30% over the survey's
+162 count). Per-family sweeps should use a tolerant
+pattern — `def (test__\w+)\([^)]*\)\s*->\s*None:` — to
+catch both forms in the same pass. A future cleanup can
+tighten the canonical §7.2 audit script in the rule file
+to use the tolerant pattern, but the change is non-
+load-bearing: once every per-family sweep is complete the
+two patterns produce the same (zero) violation count.
+
 **Top 30 files by violation count (preview):**
 
 ```
@@ -141,7 +163,7 @@ in this doc (or a commit message). No code changes expected.
 
 | Sub-batch | Files (approx) | Violations (approx) | Notes |
 |-----------|---------------:|--------------------:|-------|
-| G-net_proto-lib | ~5 | ~85 | `tests/unit/lib/*.py` — apply `PyTCP test infrastructure (no RFC clause).` fallback |
+| G-net_proto-lib | 13 | 212 (b6853c01) | `tests/unit/lib/*.py` — `PyTCP test infrastructure (no RFC clause).` fallback (12 files); `RFC 1071 (Internet checksum algorithm).` for `test__lib__inet_cksum.py`. **completed 2026-05-21**. |
 | G-net_proto-arp | ~5 | ~75 | apply `RFC 826 (ARP wire format).` per-file |
 | G-net_proto-dhcp4 | ~25 | ~400 | mostly `RFC 2131 §2 (DHCPv4 header) / §3.1 (message flow)` + `RFC 2132 §<N>` for per-option files |
 | G-net_proto-ethernet | ~5 | ~55 | apply `RFC 7042 (IANA EtherType) / RFC 894 (IPv4-over-Eth)` per-file |
