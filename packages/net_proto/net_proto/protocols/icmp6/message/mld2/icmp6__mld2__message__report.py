@@ -86,7 +86,7 @@ class Icmp6Mld2ReportCode(Icmp6Code):
     The ICMPv6 MLDv2 Report 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 3810 §5.2: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

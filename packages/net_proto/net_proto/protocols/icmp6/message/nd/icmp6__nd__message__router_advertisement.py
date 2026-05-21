@@ -80,7 +80,7 @@ class Icmp6NdRouterAdvertisementCode(Icmp6Code):
     The ICMPv6 ND Router Advertisement 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4861 §4.2: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

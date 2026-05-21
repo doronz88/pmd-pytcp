@@ -64,7 +64,7 @@ class Icmp6EchoReplyCode(Icmp6Code):
     The ICMPv6 Echo Reply message 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4443 §4.2: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

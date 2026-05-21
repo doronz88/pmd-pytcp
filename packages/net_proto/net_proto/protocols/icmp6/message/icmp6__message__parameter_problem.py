@@ -70,9 +70,9 @@ class Icmp6ParameterProblemCode(Icmp6Code):
     (RFC 4443 §3.4 codes 0..2; RFC 7112 §3 code 3).
     """
 
-    ERRONEOUS_HEADER_FIELD = 0
-    UNRECOGNIZED_NEXT_HEADER = 1
-    UNRECOGNIZED_IPV6_OPTION = 2
+    ERRONEOUS_HEADER_FIELD = 0  # RFC 4443 §3.4: erroneous header field encountered.
+    UNRECOGNIZED_NEXT_HEADER = 1  # RFC 4443 §3.4: unrecognized Next Header type.
+    UNRECOGNIZED_IPV6_OPTION = 2  # RFC 4443 §3.4: unrecognized IPv6 option.
     # RFC 7112 §3 — emitted by a receiver when an IPv6 first fragment does
     # not contain the full extension-header chain + upper-layer header.
     # PyTCP accepts this on RX (matching Linux's ICMPV6_HDR_INCOMP = 3);

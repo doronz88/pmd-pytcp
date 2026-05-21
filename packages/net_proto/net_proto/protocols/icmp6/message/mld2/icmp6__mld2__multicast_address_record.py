@@ -98,12 +98,12 @@ class Icmp6Mld2MulticastAddressRecordType(ProtoEnumByte):
     The ICMPv6 MLDv2 Multicast Address Record 'type' field values.
     """
 
-    MODE_IS_INCLUDE = 1
-    MODE_IS_EXCLUDE = 2
-    CHANGE_TO_INCLUDE = 3
-    CHANGE_TO_EXCLUDE = 4
-    ALLOW_NEW_SOURCES = 5
-    BLOCK_OLD_SOURCES = 6
+    MODE_IS_INCLUDE = 1  # RFC 3810 §5.2.12: current-state record, INCLUDE filter mode.
+    MODE_IS_EXCLUDE = 2  # RFC 3810 §5.2.12: current-state record, EXCLUDE filter mode.
+    CHANGE_TO_INCLUDE = 3  # RFC 3810 §5.2.12: filter-mode change record, transition to INCLUDE.
+    CHANGE_TO_EXCLUDE = 4  # RFC 3810 §5.2.12: filter-mode change record, transition to EXCLUDE.
+    ALLOW_NEW_SOURCES = 5  # RFC 3810 §5.2.12: source-list change record, allow listed sources.
+    BLOCK_OLD_SOURCES = 6  # RFC 3810 §5.2.12: source-list change record, block listed sources.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

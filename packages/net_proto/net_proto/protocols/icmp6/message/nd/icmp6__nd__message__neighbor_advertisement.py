@@ -81,7 +81,7 @@ class Icmp6NdNeighborAdvertisementCode(Icmp6Code):
     The ICMPv6 ND Neighbor Advertisement 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4861 §4.4: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

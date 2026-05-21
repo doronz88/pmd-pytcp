@@ -69,8 +69,8 @@ class Icmp6TimeExceededCode(Icmp6Code):
     The ICMPv6 Time Exceeded 'code' field values (RFC 4443 §3.3).
     """
 
-    HOP_LIMIT_EXCEEDED_IN_TRANSIT = 0
-    FRAGMENT_REASSEMBLY_TIME_EXCEEDED = 1
+    HOP_LIMIT_EXCEEDED_IN_TRANSIT = 0  # RFC 4443 §3.3: hop limit reached zero in transit.
+    FRAGMENT_REASSEMBLY_TIME_EXCEEDED = 1  # RFC 4443 §3.3 / RFC 8200 §4.5: fragment reassembly timer expired.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

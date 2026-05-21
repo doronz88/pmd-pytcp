@@ -68,14 +68,14 @@ class Icmp6DestinationUnreachableCode(Icmp6Code):
     The ICMPv6 Destination Unreachable 'code' field values.
     """
 
-    NO_ROUTE = 0
-    PROHIBITED = 1
-    SCOPE = 2
-    ADDRESS = 3
-    PORT = 4
-    FAILED_POLICY = 5
-    REJECT_ROUTE = 6
-    SOURCE_ROUTING_HEADER = 7
+    NO_ROUTE = 0  # RFC 4443 §3.1: no route to destination.
+    PROHIBITED = 1  # RFC 4443 §3.1: communication with destination administratively prohibited.
+    SCOPE = 2  # RFC 4443 §3.1: beyond scope of source address.
+    ADDRESS = 3  # RFC 4443 §3.1: address unreachable.
+    PORT = 4  # RFC 4443 §3.1: port unreachable.
+    FAILED_POLICY = 5  # RFC 4443 §3.1: source address failed ingress/egress policy.
+    REJECT_ROUTE = 6  # RFC 4443 §3.1: reject route to destination.
+    SOURCE_ROUTING_HEADER = 7  # RFC 6550 §20.1.1 / RFC 7048: error in Source Routing Header.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

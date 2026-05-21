@@ -73,7 +73,7 @@ class Icmp6NdRouterSolicitationCode(Icmp6Code):
     The ICMPv6 ND Router Solicitation 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4861 §4.1: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -64,7 +64,7 @@ class Icmp6EchoRequestCode(Icmp6Code):
     The ICMPv6 Echo Request 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4443 §4.1: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

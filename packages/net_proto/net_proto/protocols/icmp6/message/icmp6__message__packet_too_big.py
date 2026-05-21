@@ -71,7 +71,7 @@ class Icmp6PacketTooBigCode(Icmp6Code):
     defines a single code (0).
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4443 §3.2: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -89,7 +89,7 @@ class Icmp6NdRedirectCode(Icmp6Code):
     The ICMPv6 ND Redirect 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4861 §4.5: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

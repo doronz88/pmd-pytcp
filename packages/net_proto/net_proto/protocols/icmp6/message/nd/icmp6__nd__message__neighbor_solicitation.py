@@ -82,7 +82,7 @@ class Icmp6NdNeighborSolicitationCode(Icmp6Code):
     The ICMPv6 ND Neighbor Solicitation 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 4861 §4.3: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -80,7 +80,7 @@ class Icmp6Mld2QueryCode(Icmp6Code):
     The ICMPv6 MLDv2 Query 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 3810 §5.1: only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
