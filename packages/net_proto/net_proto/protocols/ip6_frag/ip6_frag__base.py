@@ -48,8 +48,6 @@ class Ip6Frag(Proto, Ip6FragHeaderProperties):
     _header: Ip6FragHeader
     _payload: Buffer
 
-    pshdr_sum: int = 0
-
     @override
     def __len__(self) -> int:
         """
