@@ -230,10 +230,12 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
     def test__stack__packet_handler__tcp__rx__no_match_ack_less_sends_rst_ack(self) -> None:
         """
         Ensure an ACK-LESS TCP segment that matches no socket elicits
-        a 'RST+ACK' reply per RFC 9293 §3.10.7.1: '<SEQ=0>
-        <ACK=SEG.SEQ+SEG.LEN><CTL=RST,ACK>'. The 'SEG.LEN' term covers
-        SYN, FIN, and the payload length, so an ACK-less segment with
-        seq=100 and payload b"hi" (2 bytes) yields ACK=102.
+        a 'RST+ACK' reply: '<SEQ=0> <ACK=SEG.SEQ+SEG.LEN>
+        <CTL=RST,ACK>'. The 'SEG.LEN' term covers SYN, FIN, and the
+        payload length, so an ACK-less segment with seq=100 and
+        payload b"hi" (2 bytes) yields ACK=102.
+
+        Reference: RFC 9293 §3.10.7.1 (no-socket-match RST+ACK reply).
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_syn=True, seq=100, payload=b"hi")
@@ -267,11 +269,12 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
     def test__stack__packet_handler__tcp__rx__no_match_ack_bearing_sends_bare_rst(self) -> None:
         """
         Ensure an ACK-BEARING TCP segment that matches no socket
-        elicits a bare 'RST' reply per RFC 9293 §3.10.7.1:
-        '<SEQ=SEG.ACK><CTL=RST>' - the ACK flag is intentionally NOT
-        set on the response, and the response's SEQ echoes the
-        offending segment's ACK so the sender's acceptability check
-        accepts the RST.
+        elicits a bare 'RST' reply: '<SEQ=SEG.ACK><CTL=RST>' - the
+        ACK flag is intentionally NOT set on the response, and the
+        response's SEQ echoes the offending segment's ACK so the
+        sender's acceptability check accepts the RST.
+
+        Reference: RFC 9293 §3.10.7.1 (no-socket-match bare-RST reply).
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_ack=True, seq=100, ack=0xCAFE, payload=b"hi")

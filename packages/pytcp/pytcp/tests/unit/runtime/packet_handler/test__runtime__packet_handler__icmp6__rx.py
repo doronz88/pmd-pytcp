@@ -549,8 +549,10 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
     def test__stack__packet_handler__icmp6__rx__router_advertisement_counted(self) -> None:
         """
         Ensure an ICMPv6 RA from a link-local source is dispatched and
-        counted. Per RFC 4861 the parser requires the src to be link-
-        local, so the fixture uses fe80::1 rather than a GUA.
+        counted. The parser requires the src to be link-local, so the
+        fixture uses fe80::1 rather than a GUA.
+
+        Reference: RFC 4861 §6.1.2 (Router Advertisement src MUST be link-local).
         """
 
         ra_message = Icmp6NdMessageRouterAdvertisement(

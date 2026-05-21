@@ -200,7 +200,7 @@ class TestRackSegmentConstruction(TestCase):
         """
         Ensure 'RackSegment' accepts 'xmit_ts == INFINITE_TS'
         so a lost-marked segment's xmit_ts can be set to the
-        invalid-timestamp marker per RFC 8985 §5.2.
+        invalid-timestamp marker.
 
         Reference: RFC 8985 §5.2 (xmit_ts = INFINITE_TS for lost segments).
         """
@@ -336,8 +336,9 @@ class TestRackUpdate(TestCase):
     def test__rack__update__retransmitted_with_stale_tsecr_skipped(self) -> None:
         """
         Ensure a retransmitted segment whose TSecr predates
-        the segment's xmit_ts is skipped (RFC 8985 §6.2 step
-        2 condition 1) and does not perturb the scalars.
+        the segment's xmit_ts is skipped (step 2 condition 1
+        of the Karn-style guard) and does not perturb the
+        scalars.
 
         Reference: RFC 8985 §6.2 (Karn-style spurious-retransmit guard via TSecr).
         """
@@ -362,7 +363,8 @@ class TestRackUpdate(TestCase):
     def test__rack__update__retransmitted_with_small_rtt_skipped(self) -> None:
         """
         Ensure a retransmitted segment with rtt < min_rtt is
-        skipped (RFC 8985 §6.2 step 2 condition 2 heuristic).
+        skipped (step 2 condition 2 of the Karn-style guard
+        heuristic).
 
         Reference: RFC 8985 §6.2 (Karn-style guard via rtt < min_rtt).
         """

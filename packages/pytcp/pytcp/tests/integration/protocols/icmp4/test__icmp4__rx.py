@@ -388,8 +388,8 @@ class TestIcmp4Rx__SourceQuench__Rfc6633(IcmpTestCase):
         Ensure an inbound Source Quench is rejected at ICMPv4 parser
         sanity (bumps 'icmp4__failed_parse__drop') — Source Quench is
         deprecated and PyTCP's Icmp4Type enum has no entry for it, so
-        the parser treats it as an unknown ICMPv4 type per RFC 1122
-        §3.2.2.
+        the parser treats it as an unknown ICMPv4 type and silently
+        discards at sanity.
 
         Reference: RFC 6633 §9 (Type 4 marked Deprecated in IANA ICMP Parameters registry).
         Reference: RFC 1122 §3.2.2 (unknown-type ICMP — silent discard at sanity).

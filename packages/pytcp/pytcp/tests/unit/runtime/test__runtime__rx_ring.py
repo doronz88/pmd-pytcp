@@ -257,9 +257,10 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         a full jumbo Ethernet frame ('mtu + L2 overhead'), not the
         legacy hardcoded 2048-byte buffer that silently truncated
         anything above ~2 KiB. Jumbo Ethernet (MTU 9000) and IPv6
-        jumbograms (RFC 2675, RFC 9293 §3.7.5) require this.
+        jumbograms require this.
 
         Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 2675 (IPv6 jumbograms).
         Reference: RFC 9293 §3.7.5 (IPv6 jumbograms).
         """
 

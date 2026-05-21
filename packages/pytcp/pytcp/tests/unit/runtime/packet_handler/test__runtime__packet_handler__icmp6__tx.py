@@ -360,8 +360,8 @@ class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
         """
         Ensure 'send_icmp6_neighbor_advertisement' with
         flag_s=False, flag_o=True emits an unsolicited
-        override NA — the wire shape RFC 9131 §3 mandates for
-        gratuitous announcements.
+        override NA — the wire shape mandated for gratuitous
+        announcements.
 
         Reference: RFC 9131 §3 (gratuitous NA wire format).
         """

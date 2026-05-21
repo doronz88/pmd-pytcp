@@ -507,12 +507,11 @@ class TestTcpIssSecret(TestCase):
     def test__tcp__iss__secret_length_is_128_bits(self) -> None:
         """
         Ensure the bootstrap-generated ISS secret is exactly 128
-        bits (16 bytes) wide. RFC 6528 §3 states that "Key lengths
-        of 128 bits should be adequate"; a regression that
-        shortened the secret would weaken the off-path threat
-        model the algorithm targets.
+        bits (16 bytes) wide. A regression that shortened the
+        secret would weaken the off-path threat model the
+        algorithm targets.
 
-        Reference: RFC 6528 §3 (secret length 128 bits).
+        Reference: RFC 6528 §3 (key lengths of 128 bits should be adequate).
         """
 
         self.assertEqual(

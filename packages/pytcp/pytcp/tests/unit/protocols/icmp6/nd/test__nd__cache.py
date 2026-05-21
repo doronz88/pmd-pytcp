@@ -222,10 +222,11 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         PROBE-state solicit) calls
         'send_icmp6_neighbor_solicitation_unicast(...)' — the
         unicast NS wire form that targets the cached
-        neighbour directly (IPv6 analogue of RFC 1122
-        §2.3.2.1 IMPL (2)'s unicast ARP cache-refresh probe).
+        neighbour directly (the IPv6 analogue of the unicast
+        ARP cache-refresh probe).
 
         Reference: RFC 4861 §7.3.3 (unicast NS for PROBE).
+        Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast ARP cache-refresh probe).
         """
 
         from pytcp.runtime.packet_handler import PacketHandlerL2

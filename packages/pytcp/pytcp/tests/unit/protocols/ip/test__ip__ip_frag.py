@@ -523,10 +523,10 @@ class TestIpFragDataFields(TestCase):
         """
         Ensure the dataclass exposes exactly (timestamp, header,
         last, payload, ecn, discarded) in that order. The 'ecn'
-        field tracks per-offset codepoints for RFC 3168 §5.3
-        aggregation at reassembly time. The 'discarded' field
-        marks a flow unrecoverable while it still occupies the
-        table until the expiry sweep reaps it.
+        field tracks per-offset codepoints for aggregation at
+        reassembly time. The 'discarded' field marks a flow
+        unrecoverable while it still occupies the table until
+        the expiry sweep reaps it.
 
         Reference: RFC 5722 §3 (silent-discard requires per-flow
         discarded bit).
