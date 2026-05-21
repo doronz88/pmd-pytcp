@@ -186,6 +186,27 @@ tests.
 
 **Action:** manual review of each violation; fix in place.
 
+**Status:** **completed 2026-05-21.** 22 files / 60 non-
+Reference violations cleared across 4 commits (the final
+audit script counted 60 distinct items because several
+methods triggered both `inline_per_rfc` and
+`inline_rfc_section` for the same prose). Final whole-
+corpus audit (494 files, 5750 methods) confirms 0 non-
+Reference violations remain. Commits:
+
+- `d6a50291` — test(socket): G-stage2 — strip [FLAGS BUG]
+  markers + inline RFC (11 violations in
+  test__socket__tcp__socket.py).
+- `3e194045` — test(tcp): G-stage2 — strip inline RFC
+  citations in TCP integration (18 violations across 8 TCP
+  session integration files).
+- `ef1b64ed` — test(pytcp): G-stage2 — strip inline RFC in
+  unit + icmp4 RX tests (10 violations across 9 unit /
+  integration test files).
+- `077b9093` — test(net_proto): G-stage2 — strip inline RFC
+  + missing Ensure (4 violations across 4 net_proto unit
+  files; closes the residual `Ensure ` opener gaps).
+
 **Estimated effort:** 30-60 minutes; 1-2 commits.
 
 ---
