@@ -439,10 +439,12 @@ class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
     def test__dhcp4_client__fetch_returns_none_on_offer_without_srv_id(self) -> None:
         """
         Ensure 'fetch()' returns None when the Offer omits the
-        Server-ID option. The Request must not be sent and the socket
-        must be closed.
+        Server-ID option. The malformed Offer is rejected at the
+        parser layer with Dhcp4SanityError so the client's wait
+        loop drops it and eventually times out without sending a
+        Request.
 
-        Reference: RFC 2131 §3.1 step 2 (Server identifier required in DHCPOFFER).
+        Reference: RFC 2131 §3 Table 3 / §4.3.6 (Server Identifier required in DHCPOFFER).
         """
 
         self._server.enqueue_offer(server_id=None)
@@ -455,11 +457,21 @@ class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
             msg="fetch() must return None when the Offer omits the Server-ID option.",
         )
         self._sock.close.assert_called_once_with()
-        self.assertEqual(
-            self._sock.send.call_count,
-            1,
-            msg="Only the Discover packet must be sent when the Offer's srv_id is missing.",
-        )
+        # Parser-level rejection causes the wait loop to drop the
+        # malformed frame and the RFC 2131 §4.1 retransmission loop
+        # to re-send Discover until the per-round budget is
+        # exhausted. The exact retransmission count is governed by
+        # the `dhcp.discover_max_retries` sysctl; assert only on
+        # the invariant we care about — no Request packet was sent
+        # off the back of the malformed Offer.
+        for call in self._sock.send.call_args_list:
+            sent_bytes = call.args[0]
+            self.assertNotIn(
+                # Message Type option (53), length 1, REQUEST (3).
+                b"\x35\x01\x03",
+                bytes(sent_bytes),
+                msg="No Request packet must be emitted after a malformed Offer.",
+            )
 
 
 class TestDhcp4ClientFetchAckMissingSubnetMask(_Dhcp4ClientFixture):

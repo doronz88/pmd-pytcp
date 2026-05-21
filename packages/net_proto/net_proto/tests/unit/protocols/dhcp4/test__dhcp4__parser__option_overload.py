@@ -73,6 +73,11 @@ def _build_overload_frame(
     offsets (44 for sname, 108 for file).
     """
 
+    # ACK message-type requires a Server Identifier per
+    # RFC 2131 §3 Table 3 / §4.3.6; include it in the main option
+    # block (even when the test's payload of interest lives in
+    # the overloaded sname/file) so the parser's sanity check
+    # accepts the wrapping frame.
     frame = bytearray(
         bytes(
             Dhcp4Assembler(
@@ -82,6 +87,7 @@ def _build_overload_frame(
                 dhcp4__chaddr=MacAddress("02:00:00:00:00:01"),
                 dhcp4__options=Dhcp4Options(
                     Dhcp4OptionMessageType(message_type=Dhcp4MessageType.ACK),
+                    Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.200")),
                     Dhcp4OptionOverload(overload_value),
                     Dhcp4OptionEnd(),
                 ),
@@ -115,6 +121,11 @@ class TestDhcp4ParserOptionOverload(TestCase):
         Reference: RFC 2132 §9.3 (overload feature is opt-in).
         """
 
+        # Main options carry server_id 10.0.0.200 (the RFC-required
+        # server identifier for an ACK message); 'sname' is patched
+        # with a DIFFERENT server_id 10.0.0.254. Without overload
+        # signalling, the parser must surface the main-block value
+        # and ignore the 'sname'-resident option entirely.
         frame = bytes(
             Dhcp4Assembler(
                 dhcp4__operation=Dhcp4Operation.REPLY,
@@ -123,6 +134,7 @@ class TestDhcp4ParserOptionOverload(TestCase):
                 dhcp4__chaddr=MacAddress("02:00:00:00:00:01"),
                 dhcp4__options=Dhcp4Options(
                     Dhcp4OptionMessageType(message_type=Dhcp4MessageType.ACK),
+                    Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.200")),
                     Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.255.255.0")),
                     Dhcp4OptionEnd(),
                 ),
@@ -142,9 +154,13 @@ class TestDhcp4ParserOptionOverload(TestCase):
             Ip4Mask("255.255.255.0"),
             msg="The main-block Subnet Mask must still parse correctly.",
         )
-        self.assertIsNone(
+        self.assertEqual(
             packet.srv_id,
-            msg=("Without Option Overload, server-id in 'sname' must be ignored " "(option 52 is not present)."),
+            Ip4Address("10.0.0.200"),
+            msg=(
+                "Without Option Overload, the main-block server_id must be returned; "
+                "the 'sname'-resident server_id (10.0.0.254) must be ignored entirely."
+            ),
         )
 
     def test__parser__overload_file_only__file_options_visible(self) -> None:
@@ -156,7 +172,13 @@ class TestDhcp4ParserOptionOverload(TestCase):
         Reference: RFC 2132 §9.3 (overload value 1 = file only).
         """
 
-        file_options = bytes(Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.254"))) + bytes(Dhcp4OptionEnd())
+        # 'file' carries Router; 'sname' carries Subnet Mask. With
+        # overload=1, only 'file's extras are merged — the sname
+        # Subnet Mask must remain invisible. The main option block
+        # (built by `_build_overload_frame`) carries the
+        # RFC-required Server Identifier so the parser's sanity
+        # check accepts the ACK wrapping frame.
+        file_options = bytes(Dhcp4OptionRouter(routers=[Ip4Address("10.0.0.1")])) + bytes(Dhcp4OptionEnd())
         sname_options = bytes(Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.255.0.0"))) + bytes(Dhcp4OptionEnd())
 
         frame = _build_overload_frame(
@@ -168,9 +190,9 @@ class TestDhcp4ParserOptionOverload(TestCase):
         packet = Dhcp4Parser(frame)
 
         self.assertEqual(
-            packet.srv_id,
-            Ip4Address("10.0.0.254"),
-            msg="Server-id embedded in 'file' must be merged into the unified options view.",
+            packet.router,
+            [Ip4Address("10.0.0.1")],
+            msg="Router embedded in 'file' must be merged into the unified options view.",
         )
         # The sname Subnet Mask must NOT be visible because overload=1
         # excludes 'sname'.
@@ -188,8 +210,13 @@ class TestDhcp4ParserOptionOverload(TestCase):
         Reference: RFC 2132 §9.3 (overload value 2 = sname only).
         """
 
+        # 'sname' carries Lease Time; 'file' carries Subnet Mask.
+        # With overload=2, only 'sname's extras are merged — the
+        # file Subnet Mask must remain invisible. The main option
+        # block carries the RFC-required Server Identifier so the
+        # parser accepts the ACK frame.
         sname_options = bytes(Dhcp4OptionLeaseTime(7200)) + bytes(Dhcp4OptionEnd())
-        file_options = bytes(Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.254"))) + bytes(Dhcp4OptionEnd())
+        file_options = bytes(Dhcp4OptionSubnetMask(subnet_mask=Ip4Mask("255.255.0.0"))) + bytes(Dhcp4OptionEnd())
 
         frame = _build_overload_frame(
             overload_value=2,
@@ -205,8 +232,8 @@ class TestDhcp4ParserOptionOverload(TestCase):
             msg="Lease-time embedded in 'sname' must be merged into the unified options view.",
         )
         self.assertIsNone(
-            packet.srv_id,
-            msg=("With overload=2, the 'file'-resident server-id must be ignored " "(sname-only overlay)."),
+            packet.subnet_mask,
+            msg=("With overload=2, the 'file'-resident Subnet Mask must be ignored " "(sname-only overlay)."),
         )
 
     def test__parser__overload_both__both_fields_merged(self) -> None:
@@ -218,7 +245,11 @@ class TestDhcp4ParserOptionOverload(TestCase):
         Reference: RFC 2132 §9.3 (overload value 3 = both fields).
         """
 
-        file_options = bytes(Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.254"))) + bytes(Dhcp4OptionEnd())
+        # 'file' carries Lease Time; 'sname' carries Router. With
+        # overload=3, both extras must be merged into the unified
+        # options view alongside the main-block options (which
+        # already carry the RFC-required Server Identifier).
+        file_options = bytes(Dhcp4OptionLeaseTime(7200)) + bytes(Dhcp4OptionEnd())
         sname_options = bytes(
             Dhcp4OptionRouter(routers=[Ip4Address("10.0.0.1")]),
         ) + bytes(Dhcp4OptionEnd())
@@ -232,9 +263,9 @@ class TestDhcp4ParserOptionOverload(TestCase):
         packet = Dhcp4Parser(frame)
 
         self.assertEqual(
-            packet.srv_id,
-            Ip4Address("10.0.0.254"),
-            msg="With overload=3, the 'file'-resident server-id must be merged.",
+            packet.lease_time,
+            7200,
+            msg="With overload=3, the 'file'-resident Lease Time must be merged.",
         )
         self.assertEqual(
             packet.router,

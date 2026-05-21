@@ -38,12 +38,24 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 from net_proto import DHCP4__HEADER__LEN, Dhcp4Parser, Dhcp4SanityError
 from net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__MAGIC_COOKIE
 
-# Minimum-valid options block: DHCP Message Type = ACK + End.
-# Every sanity-rejection fixture appends this so the
-# RFC 2131 §3 "Message Type option MUST be present" sanity
-# check (added to `_validate_sanity`) does not fire before the
-# field-specific sanity assertion the test is targeting.
-_DHCP4_OPTIONS_MIN_VALID = b"\x35\x01\x05\xff"
+# Minimum-valid options block: DHCP Message Type = ACK +
+# Server Identifier (10.0.1.1) + IP Address Lease Time (3600s)
+# + End. Every sanity-rejection fixture appends this so:
+#
+# - RFC 2131 §3 "Message Type option MUST be present" sanity
+#   check does not fire before the field-specific sanity
+#   assertion the test is targeting.
+# - RFC 2131 §3 Table 3 / §4.3.6 "server-response messages
+#   MUST carry the Server Identifier option" sanity check
+#   does not fire either (the default frame is BOOTREPLY/ACK).
+# - Lease time (§4.3.1) is present so an alternate fixture
+#   that uses OFFER does not trip the OFFER-specific check.
+_DHCP4_OPTIONS_MIN_VALID = (
+    b"\x35\x01\x05"  # Message Type: ACK
+    b"\x36\x04\x0a\x00\x01\x01"  # Server Identifier: 10.0.1.1
+    b"\x33\x04\x00\x00\x0e\x10"  # IP Address Lease Time: 3600s
+    b"\xff"  # End
+)
 
 
 def _dhcp4_frame(
@@ -298,10 +310,146 @@ class TestDhcp4ParserSanityMessageTypePresence(TestCase):
     def test__dhcp4__parser__sanity__message_type_present_accepted(self) -> None:
         """
         Ensure a frame with the minimum-valid options block
-        (Message Type + End) passes the sanity check.
+        (Message Type + Server Identifier + Lease Time + End)
+        passes the sanity check.
 
         Reference: RFC 2131 §3 (Message Type presence is the canonical DHCP indicator).
         """
 
-        # Default _dhcp4_frame() options block carries the Message Type.
+        # Default _dhcp4_frame() options block carries the Message Type,
+        # Server Identifier, and Lease Time required for an ACK reply.
         Dhcp4Parser(_dhcp4_frame())
+
+
+class TestDhcp4ParserSanityRequiredServerResponseOptions(TestCase):
+    """
+    The DHCPv4 parser per-message-type required-options sanity
+    tests. RFC 2131 §3 Table 3 / §4.3.6 mandate that
+    server-emitted DHCPOFFER, DHCPACK, and DHCPNAK MUST carry
+    the Server Identifier option (54); DHCPOFFER additionally
+    MUST carry the IP Address Lease Time option (51). The
+    parser raises Dhcp4SanityError when any of these required
+    options is absent for the corresponding message type.
+    """
+
+    @staticmethod
+    def _options_for(message_type: int, *, with_server_id: bool, with_lease_time: bool) -> bytes:
+        """
+        Build a custom options block for the sanity tests.
+        """
+
+        block = bytes([0x35, 0x01, message_type])  # Message Type
+        if with_server_id:
+            block += b"\x36\x04\x0a\x00\x01\x01"  # Server Identifier 10.0.1.1
+        if with_lease_time:
+            block += b"\x33\x04\x00\x00\x0e\x10"  # Lease Time 3600s
+        block += b"\xff"  # End
+        return block
+
+    def test__dhcp4__parser__sanity__offer_missing_server_id_rejected(self) -> None:
+        """
+        Ensure an OFFER frame that omits the Server Identifier
+        option (54) is rejected with Dhcp4SanityError.
+
+        Reference: RFC 2131 §3 Table 3 / §4.3.6 (DHCPOFFER MUST include Server Identifier).
+        """
+
+        frame = _dhcp4_frame(options=self._options_for(0x02, with_server_id=False, with_lease_time=True))
+
+        with self.assertRaises(Dhcp4SanityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "DHCPv4 OFFER message MUST carry a Server Identifier option",
+            str(error.exception),
+            msg="OFFER without Server Identifier must be rejected with cited message.",
+        )
+
+    def test__dhcp4__parser__sanity__offer_missing_lease_time_rejected(self) -> None:
+        """
+        Ensure an OFFER frame that omits the IP Address Lease
+        Time option (51) is rejected with Dhcp4SanityError.
+
+        Reference: RFC 2131 §3 Table 3 / §4.3.1 (DHCPOFFER MUST include IP Address Lease Time).
+        """
+
+        frame = _dhcp4_frame(options=self._options_for(0x02, with_server_id=True, with_lease_time=False))
+
+        with self.assertRaises(Dhcp4SanityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "DHCPv4 OFFER message MUST carry an IP Address Lease Time option",
+            str(error.exception),
+            msg="OFFER without Lease Time must be rejected with cited message.",
+        )
+
+    def test__dhcp4__parser__sanity__ack_missing_server_id_rejected(self) -> None:
+        """
+        Ensure an ACK frame that omits the Server Identifier
+        option (54) is rejected with Dhcp4SanityError.
+
+        Reference: RFC 2131 §3 Table 3 / §4.3.6 (DHCPACK MUST include Server Identifier).
+        """
+
+        frame = _dhcp4_frame(options=self._options_for(0x05, with_server_id=False, with_lease_time=True))
+
+        with self.assertRaises(Dhcp4SanityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "DHCPv4 ACK message MUST carry a Server Identifier option",
+            str(error.exception),
+            msg="ACK without Server Identifier must be rejected with cited message.",
+        )
+
+    def test__dhcp4__parser__sanity__nak_missing_server_id_rejected(self) -> None:
+        """
+        Ensure a NAK frame that omits the Server Identifier
+        option (54) is rejected with Dhcp4SanityError.
+
+        Reference: RFC 2131 §3 Table 3 / §4.3.6 (DHCPNAK MUST include Server Identifier).
+        """
+
+        frame = _dhcp4_frame(options=self._options_for(0x06, with_server_id=False, with_lease_time=False))
+
+        with self.assertRaises(Dhcp4SanityError) as error:
+            Dhcp4Parser(frame)
+
+        self.assertIn(
+            "DHCPv4 NAK message MUST carry a Server Identifier option",
+            str(error.exception),
+            msg="NAK without Server Identifier must be rejected with cited message.",
+        )
+
+    def test__dhcp4__parser__sanity__discover_without_server_id_accepted(self) -> None:
+        """
+        Ensure a DISCOVER frame (client-emitted message type)
+        does NOT require the Server Identifier option — only
+        server-response messages do.
+
+        Reference: RFC 2131 §3 Table 3 (Server Identifier is REQUIRED only on OFFER/ACK/NAK).
+        """
+
+        # DISCOVER (message type 1), no server_id, no lease_time.
+        # Per RFC 2131 the client emits DISCOVER without these.
+        frame = _dhcp4_frame(
+            op=0x01,  # BOOTREQUEST
+            options=self._options_for(0x01, with_server_id=False, with_lease_time=False),
+        )
+
+        Dhcp4Parser(frame)
+
+    def test__dhcp4__parser__sanity__nak_with_server_id_accepted(self) -> None:
+        """
+        Ensure a NAK frame that carries the Server Identifier
+        option but no Lease Time passes the sanity check — the
+        RFC mandates Server Identifier on NAK but explicitly
+        forbids Lease Time on NAK.
+
+        Reference: RFC 2131 §3 Table 3 (DHCPNAK requires Server Identifier; MUST NOT include Lease Time).
+        """
+
+        frame = _dhcp4_frame(options=self._options_for(0x06, with_server_id=True, with_lease_time=False))
+
+        Dhcp4Parser(frame)

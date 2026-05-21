@@ -341,6 +341,40 @@ Pinned by
 (absent → rejected with RFC-cited message; present →
 parses cleanly).
 
+**Required-options-per-message-type (parser sanity):**
+RFC 2131 §3 Table 3 / §4.3.6 mandate that server-emitted
+DHCPOFFER, DHCPACK, and DHCPNAK MUST carry the Server
+Identifier option (54); DHCPOFFER MUST additionally carry
+the IP Address Lease Time option (51). The parser's
+`_validate_sanity` raises `Dhcp4SanityError` when any of
+these required options is absent for the corresponding
+message type. Client-emitted message types (DISCOVER /
+REQUEST / DECLINE / RELEASE / INFORM) are not checked at
+the parser layer — their per-state required-options
+constraints (RFC 2131 §3.1 / §3.2 step semantics) live
+in the client state machine.
+
+Lease Time on DHCPACK is RFC-MUST when the ACK responds
+to a DHCPREQUEST but RFC-MUST-NOT when the ACK responds
+to a DHCPINFORM. The parser has no request/reply
+correlation and the PyTCP client does not emit INFORM,
+so the lease_time MUST is enforced on DHCPOFFER only —
+keeping the parser correct for both ACK shapes
+without statefulness.
+
+Pinned by
+`TestDhcp4ParserSanityRequiredServerResponseOptions` at
+the same test file (per-message-type missing-option
+rejections + DISCOVER-without-server_id accepted +
+NAK-with-server_id-without-lease_time accepted).
+
+The pre-existing client check at
+`dhcp4__client.py:1270` (`if srv_id is None: return None`
+on the parsed Offer) is now defense-in-depth dead code —
+the parser rejects such frames before the client sees
+them. Kept for symmetry with the per-state checks the
+client makes on other fields (subnet_mask).
+
 ---
 
 ## §9.7 Server Identifier (code 54)

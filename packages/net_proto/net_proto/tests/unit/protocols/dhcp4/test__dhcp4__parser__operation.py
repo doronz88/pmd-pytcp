@@ -596,15 +596,22 @@ class TestDhcp4ParserOptionsProperties(TestCase):
 
     def test__dhcp4__parser__options_accessors_absent(self) -> None:
         """
-        Ensure every Dhcp4OptionsProperties accessor (except the
-        mandatory message_type, which the parser's sanity check
-        requires to be present) returns None when the corresponding
-        option is missing from the frame.
+        Ensure every Dhcp4OptionsProperties accessor (except those
+        the parser's sanity check requires to be present —
+        message_type for every DHCP message, server_id /
+        lease_time for server responses) returns None when the
+        corresponding option is missing from the frame.
+
+        Uses a DHCPDISCOVER (client request) frame so the parser
+        does not require server_id or lease_time. param_req_list,
+        host_name, router, subnet_mask, req_ip_addr — all genuinely
+        absent and must report None.
         """
 
-        # Minimum-valid options block: only Message Type + End. Every
-        # other accessor must report absence as None.
-        parser = Dhcp4Parser(memoryview(DHCP4_HEADER_DEFAULT + b"\x35\x01\x05\xff"))
+        # Minimum-valid options block: Message Type = DISCOVER + End.
+        # DISCOVER (client request) has no required-options sanity
+        # constraints beyond Message Type itself.
+        parser = Dhcp4Parser(memoryview(DHCP4_HEADER_DEFAULT + b"\x35\x01\x01\xff"))
 
         self.assertIsNone(parser.host_name, msg="host_name must be None.")
         self.assertIsNone(parser.param_req_list, msg="param_req_list must be None.")
@@ -632,6 +639,8 @@ class TestDhcp4ParserBufferRoundtrip(TestCase):
             + b"\x35\x01\x02"
             # Server Identifier [RFC 2132]: Code=54, Len=4, 192.0.2.1
             + b"\x36\x04\xc0\x00\x02\x01"
+            # IP Address Lease Time [RFC 2132]: Code=51, Len=4, 3600s
+            + b"\x33\x04\x00\x00\x0e\x10"
             # End [RFC 2132]: terminator
             + b"\xff"
         )
@@ -677,8 +686,11 @@ class TestDhcp4ParserPreservesMagicCookieStructurally(TestCase):
         """
 
         header = _dhcp4_header(flags=0x0000)
-        # Minimum-valid options block (Message Type + End).
-        parser = Dhcp4Parser(memoryview(header + b"\x35\x01\x05\xff"))
+        # Minimum-valid options block: Message Type = DISCOVER + End.
+        # The default `_dhcp4_header()` builds a BOOTREQUEST so a
+        # DISCOVER message type matches and the per-message-type
+        # sanity checks do not fire.
+        parser = Dhcp4Parser(memoryview(header + b"\x35\x01\x01\xff"))
 
         self.assertFalse(
             parser.flag_b,

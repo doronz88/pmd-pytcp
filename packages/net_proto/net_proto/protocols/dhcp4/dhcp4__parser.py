@@ -34,7 +34,10 @@ from typing import override
 
 from net_proto.lib.proto_parser import ProtoParser
 from net_proto.protocols.dhcp4.dhcp4__base import Dhcp4
-from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4Operation
+from net_proto.protocols.dhcp4.dhcp4__enums import (
+    Dhcp4MessageType,
+    Dhcp4Operation,
+)
 from net_proto.protocols.dhcp4.dhcp4__errors import (
     Dhcp4IntegrityError,
     Dhcp4SanityError,
@@ -230,8 +233,38 @@ class Dhcp4Parser(Dhcp4, ProtoParser):
         # so a caller's typed `except Dhcp4SanityError` does the dropping
         # instead of relying on a downstream `message_type != expected_type`
         # comparison against `None`.
-        if self._options.message_type is None:
+        if (message_type := self._options.message_type) is None:
             raise Dhcp4SanityError(
                 "DHCP messages MUST contain a Message Type option (RFC 2131 §3 / RFC 2132 §9.6). "
                 "Got: magic-cookie-bearing frame without option 53."
             )
+
+        # --- Required server-response options ---
+        # RFC 2131 §3 Table 3 / §4.3.6 — server-emitted DHCPOFFER,
+        # DHCPACK, and DHCPNAK MUST carry the Server Identifier
+        # option (54); reject responses missing it as malformed so
+        # the client's wait loop drops them uniformly via
+        # `except Dhcp4SanityError`.
+        # 'lease_time' (51) is also MUST on DHCPOFFER and on DHCPACK
+        # responses to DHCPREQUEST, but MUST NOT appear on DHCPACK
+        # responding to a DHCPINFORM. PyTCP does not emit INFORM so
+        # both ACK-paths are equivalent here, and the lease_time MUST
+        # is enforced on DHCPOFFER only — keeping the parser usable
+        # in hypothetical INFORM-ACK contexts without a stateful
+        # request/reply correlation.
+        if message_type in (
+            Dhcp4MessageType.OFFER,
+            Dhcp4MessageType.ACK,
+            Dhcp4MessageType.NAK,
+        ):
+            if self._options.server_id is None:
+                raise Dhcp4SanityError(
+                    f"DHCPv4 {message_type.name} message MUST carry a Server Identifier option "
+                    "(RFC 2131 §3 Table 3 / §4.3.6). Got: option 54 absent."
+                )
+        if message_type is Dhcp4MessageType.OFFER:
+            if self._options.lease_time is None:
+                raise Dhcp4SanityError(
+                    "DHCPv4 OFFER message MUST carry an IP Address Lease Time option "
+                    "(RFC 2131 §3 Table 3 / §4.3.1). Got: option 51 absent."
+                )
