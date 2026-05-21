@@ -195,6 +195,14 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         Ensure sanity of the ICMPv6 ND Neighbor Advertisement message after parsing it.
         """
 
+        # RFC 4861 §4.4 — the Neighbor Advertisement 'Code' field is 0.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 ND Neighbor Advertisement message "
+                f"must be one of {Icmp6NdNeighborAdvertisementCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
+
         if ip6__hop != 255:
             raise Icmp6SanityError(
                 f"ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
@@ -256,7 +264,7 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
-            code=Icmp6NdNeighborAdvertisementCode(code),
+            code=Icmp6NdNeighborAdvertisementCode.from_int(code),
             cksum=cksum,
             flag_r=bool(flags & 0b10000000_00000000_00000000_00000000),
             flag_s=bool(flags & 0b01000000_00000000_00000000_00000000),

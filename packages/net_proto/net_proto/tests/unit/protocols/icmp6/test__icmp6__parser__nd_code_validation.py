@@ -26,9 +26,10 @@
 Tests for the ICMPv6 parser's handling of out-of-range ICMP Code
 bytes on inbound ND messages. Each ND message type's Code enum
 defines only the canonical zero member; an inbound frame whose
-Code byte does not map to a known enum member must surface as a
-graceful 'Icmp6IntegrityError', NOT an uncaught 'ValueError' that
-crashes the RX subsystem.
+Code byte does not map to a known enum member materialises as an
+`UNKNOWN_n` pseudo-member during `from_buffer` (the parser-tolerant
+`from_int` construction path) and is rejected at `validate_sanity`
+with a typed `Icmp6SanityError`.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__parser__nd_code_validation.py
 
@@ -45,7 +46,6 @@ from net_addr import Ip6Address
 from net_proto import (
     EthernetAssembler,
     Icmp6Assembler,
-    Icmp6IntegrityError,
     Icmp6NdMessageNeighborAdvertisement,
     Icmp6NdMessageNeighborSolicitation,
     Icmp6NdMessageRedirect,
@@ -53,6 +53,7 @@ from net_proto import (
     Icmp6NdMessageRouterSolicitation,
     Icmp6NdOptions,
     Icmp6Parser,
+    Icmp6SanityError,
     Ip6Assembler,
     PacketRx,
     inet_cksum,
@@ -126,36 +127,36 @@ def _build_packet_rx_with_bad_code(
 @parameterized_class(
     [
         {
-            "_description": "NS message (type 135) with non-zero Code byte must be rejected as integrity error.",
+            "_description": "NS message (type 135) with non-zero Code byte must be rejected as sanity error.",
             "_message": Icmp6NdMessageNeighborSolicitation(
                 target_address=Ip6Address("fe80::1"),
                 options=Icmp6NdOptions(),
             ),
             "_ip6__src": Ip6Address("fe80::99"),
             "_ip6__dst": Ip6Address("fe80::1"),
-            "_expected_code_class": "Icmp6NdNeighborSolicitationCode",
+            "_expected_message_substr": "ICMPv6 ND Neighbor Solicitation message",
         },
         {
-            "_description": "NA message (type 136) with non-zero Code byte must be rejected as integrity error.",
+            "_description": "NA message (type 136) with non-zero Code byte must be rejected as sanity error.",
             "_message": Icmp6NdMessageNeighborAdvertisement(
                 target_address=Ip6Address("fe80::1"),
                 options=Icmp6NdOptions(),
             ),
             "_ip6__src": Ip6Address("fe80::1"),
             "_ip6__dst": Ip6Address("ff02::1"),
-            "_expected_code_class": "Icmp6NdNeighborAdvertisementCode",
+            "_expected_message_substr": "ICMPv6 ND Neighbor Advertisement message",
         },
         {
-            "_description": "RS message (type 133) with non-zero Code byte must be rejected as integrity error.",
+            "_description": "RS message (type 133) with non-zero Code byte must be rejected as sanity error.",
             "_message": Icmp6NdMessageRouterSolicitation(
                 options=Icmp6NdOptions(),
             ),
             "_ip6__src": Ip6Address("fe80::99"),
             "_ip6__dst": Ip6Address("ff02::2"),
-            "_expected_code_class": "Icmp6NdRouterSolicitationCode",
+            "_expected_message_substr": "ICMPv6 ND Router Solicitation message",
         },
         {
-            "_description": "RA message (type 134) with non-zero Code byte must be rejected as integrity error.",
+            "_description": "RA message (type 134) with non-zero Code byte must be rejected as sanity error.",
             "_message": Icmp6NdMessageRouterAdvertisement(
                 hop=64,
                 router_lifetime=1800,
@@ -165,10 +166,10 @@ def _build_packet_rx_with_bad_code(
             ),
             "_ip6__src": Ip6Address("fe80::1"),
             "_ip6__dst": Ip6Address("ff02::1"),
-            "_expected_code_class": "Icmp6NdRouterAdvertisementCode",
+            "_expected_message_substr": "ICMPv6 ND Router Advertisement message",
         },
         {
-            "_description": "Redirect message (type 137) with non-zero Code byte must be rejected as integrity error.",
+            "_description": "Redirect message (type 137) with non-zero Code byte must be rejected as sanity error.",
             "_message": Icmp6NdMessageRedirect(
                 target_address=Ip6Address("fe80::1"),
                 destination_address=Ip6Address("2001:db8::1234"),
@@ -176,31 +177,36 @@ def _build_packet_rx_with_bad_code(
             ),
             "_ip6__src": Ip6Address("fe80::1"),
             "_ip6__dst": Ip6Address("2001:db8::7"),
-            "_expected_code_class": "Icmp6NdRedirectCode",
+            "_expected_message_substr": "ICMPv6 ND Redirect message",
         },
     ]
 )
 class TestIcmp6ParserNdCodeRejection(TestCase):
     """
     Pin that an inbound ND message with a Code byte outside the
-    canonical zero member surfaces as a graceful
-    'Icmp6IntegrityError' rather than an uncaught 'ValueError'.
+    canonical zero member materialises via `from_int` as an
+    `UNKNOWN_n` pseudo-member and is rejected at `validate_sanity`
+    with a typed `Icmp6SanityError`. The parser-tolerant
+    `from_int` construction path matches the other ICMPv6
+    message types (base + MLD2) and lets the parser raise a
+    single typed exception class across all 13 ICMPv6
+    message types.
     """
 
     _description: str
     _message: Any
     _ip6__src: Ip6Address
     _ip6__dst: Ip6Address
-    _expected_code_class: str
+    _expected_message_substr: str
 
-    def test__icmp6__parser__nd_message_bad_code_rejected_as_integrity_error(self) -> None:
+    def test__icmp6__parser__nd_message_bad_code_rejected_as_sanity_error(self) -> None:
         """
         Ensure an inbound ND message whose Code byte is not
         the canonical zero value is rejected by the parser via
-        'Icmp6IntegrityError' — not an uncaught 'ValueError'
-        from the enum-construction path inside 'from_buffer'.
+        'Icmp6SanityError' from the per-message-type
+        `validate_sanity` check.
 
-        Reference: RFC 4861 §6.1.1, §6.1.2, §7.1.1, §7.1.2 (Code = 0 mandatory for ND).
+        Reference: RFC 4861 §4.1-§4.5 (Code = 0 mandatory for every ND message type).
         """
 
         ethernet_frame = _build_icmp6_frame(
@@ -219,11 +225,19 @@ class TestIcmp6ParserNdCodeRejection(TestCase):
             ip6__dst=self._ip6__dst,
         )
 
-        with self.assertRaises(Icmp6IntegrityError) as ctx:
+        with self.assertRaises(Icmp6SanityError) as ctx:
             Icmp6Parser(rx)
 
         self.assertIn(
-            self._expected_code_class,
+            self._expected_message_substr,
             str(ctx.exception),
-            msg=("The integrity-error message must surface the offending " f"enum class for case: {self._description}"),
+            msg=(
+                "The sanity-error message must surface the message-type " f"description for case: {self._description}"
+            ),
+        )
+
+        self.assertIn(
+            "Got: 99",
+            str(ctx.exception),
+            msg=f"The sanity-error message must include the offending code value for case: {self._description}",
         )

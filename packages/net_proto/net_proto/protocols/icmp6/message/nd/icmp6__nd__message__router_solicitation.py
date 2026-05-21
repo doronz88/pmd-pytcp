@@ -168,6 +168,14 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         Ensure sanity of the ICMPv6 ND Router Solicitation message after parsing it.
         """
 
+        # RFC 4861 §4.1 — the Router Solicitation 'Code' field is 0.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 ND Router Solicitation message "
+                f"must be one of {Icmp6NdRouterSolicitationCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
+
         if ip6__hop != 255:
             raise Icmp6SanityError(
                 f"ND Router Solicitation - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
@@ -229,7 +237,7 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
-            code=Icmp6NdRouterSolicitationCode(code),
+            code=Icmp6NdRouterSolicitationCode.from_int(code),
             cksum=cksum,
             options=Icmp6NdOptions.from_buffer(buffer[ICMP6__ND__ROUTER_SOLICITATION__LEN:]),
         )

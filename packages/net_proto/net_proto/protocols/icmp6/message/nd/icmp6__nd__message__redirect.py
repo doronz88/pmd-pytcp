@@ -204,6 +204,14 @@ class Icmp6NdMessageRedirect(Icmp6NdMessage):
         enforced at the RX-handler level.
         """
 
+        # RFC 4861 §4.5 — the Redirect 'Code' field is 0.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 ND Redirect message "
+                f"must be one of {Icmp6NdRedirectCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
+
         if ip6__hop != 255:
             raise Icmp6SanityError(
                 f"ND Redirect - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
@@ -255,7 +263,7 @@ class Icmp6NdMessageRedirect(Icmp6NdMessage):
         ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
         return cls(
-            code=Icmp6NdRedirectCode(code),
+            code=Icmp6NdRedirectCode.from_int(code),
             cksum=cksum,
             target_address=Ip6Address(target),
             destination_address=Ip6Address(destination),
