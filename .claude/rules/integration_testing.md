@@ -71,8 +71,9 @@ packages/pytcp/pytcp/socket/tcp__socket.py                             →  (dri
 RFC 6724 IPv6 source-address selection                  →  packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py
 ```
 
-Subdirectories use PEP 420 namespace packages — **no
-`__init__.py`** (matches the rest of the codebase).
+Every test directory is a regular package: an empty
+`__init__.py` lives at every level. Matches the rest of
+the codebase (see [`source_files.md`](source_files.md) §2.4).
 
 ### 3.1 Where files live
 

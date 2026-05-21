@@ -44,9 +44,8 @@ version = { attr = "pytcp.__version__" }
 [tool.setuptools.packages.find]
 # The trailing '*' is load-bearing: an exact "pytcp" pattern ships
 # ONLY the top-level package (the historical umbrella-wheel bug,
-# pre-existing on PyPI 3.0.4). pyproject find already does
-# namespace discovery, so this glob pulls in the pytcp.protocols.* /
-# pytcp.runtime.* PEP 420 namespace subpackages. Pinned by
+# pre-existing on PyPI 3.0.4). The glob pulls in the
+# pytcp.protocols.* / pytcp.runtime.* subpackages. Pinned by
 # packages/net_proto/net_proto/tests/unit/test__packaging__dist_wheels.py.
 include = ["pytcp*"]
 exclude = ["pytcp.tests*"]

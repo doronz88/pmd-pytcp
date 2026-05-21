@@ -42,10 +42,8 @@ version = { attr = "net_proto.__version__" }
 
 [tool.setuptools.packages.find]
 # The trailing '*' is load-bearing: an exact "net_proto" pattern
-# ships ONLY the top-level package (1 file) — the exact defect
-# that breaks the umbrella PyTCP wheel. pyproject find already
-# enables namespace discovery, so this glob alone pulls in the
-# net_proto.protocols.* PEP 420 namespace subpackages. Pinned by
+# ships ONLY the top-level package (1 file). The glob pulls in
+# all net_proto.protocols.* subpackages. Pinned by
 # test__packaging__dist_wheels.py — do not narrow to "net_proto".
 include = ["net_proto*"]
 exclude = ["net_proto.tests*"]

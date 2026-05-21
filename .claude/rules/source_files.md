@@ -105,6 +105,46 @@ first import. `__all__` lives **only in package `__init__.py`
 files** (see `packages/net_proto/net_proto/__init__.py`); source modules never
 declare it.
 
+### 2.4 `__init__.py` is mandatory in every package directory
+
+Every directory that contains `.py` files OR contains a
+subdirectory that is part of the package tree MUST carry an
+`__init__.py`. **PyTCP uses regular packages everywhere.**
+PEP 420 namespace packages are forbidden in the project's
+source / test trees.
+
+The top-level package `__init__.py` files
+(`packages/net_addr/net_addr/__init__.py`,
+`packages/net_proto/net_proto/__init__.py`,
+`packages/pytcp/pytcp/__init__.py`) carry the public-API
+`__all__` re-exports. **Every other** `__init__.py` is empty
+— a zero-byte file whose only role is to make the directory
+a regular Python package.
+
+**Why:** PyTCP doesn't use PEP 420's actual feature
+(submodules contributed by separate distributions); each
+package is monolithic. Namespace packages cost tool-
+compatibility friction (notably pyright's PEP 561 `py.typed`
+propagation), so the project pays the trivial cost of empty
+marker files in exchange for universal tool support and the
+convention every major Python project (numpy / pandas /
+Django / mypy / pyright / the stdlib) follows.
+
+Anti-pattern — adding a new directory without
+`__init__.py`:
+
+```
+packages/net_proto/net_proto/protocols/foo/  # NO __init__.py — FORBIDDEN
+packages/net_proto/net_proto/protocols/foo/foo__header.py
+```
+
+Correct — every directory carries the marker:
+
+```
+packages/net_proto/net_proto/protocols/foo/__init__.py  # empty file
+packages/net_proto/net_proto/protocols/foo/foo__header.py
+```
+
 ## 3. Copyright / license block (MANDATORY, verbatim)
 
 The 80-character-wide GPL block below is identical in every
@@ -364,6 +404,12 @@ typing anti-patterns live in
 - **Relative imports** (`from ..lib import foo`). Always
   absolute.
 - **`__all__` in a non-`__init__.py` source module.**
+- **PEP 420 namespace package directory** — adding a new
+  source directory under `packages/<x>/<x>/` (or
+  `examples/`) without an `__init__.py`. See §2.4. Every
+  package directory MUST carry an `__init__.py` (empty for
+  intermediate dirs; carrying `__all__` re-exports at the
+  top-level package).
 - **Trailing underscore on a public name** (`type_` is fine
   as a keyword-collision workaround in `socket.__new__`; no
   other uses).

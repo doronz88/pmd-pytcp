@@ -137,9 +137,9 @@ Rules:
 
   Tests for `packages/pytcp/pytcp/protocols/<proto>/*.py` source files live
   under `packages/pytcp/pytcp/tests/{unit,integration}/protocols/<proto>/`
-  mirroring the source layout. The directory has no
-  `__init__.py` (PEP 420 namespace package, matching the rest
-  of the codebase).
+  mirroring the source layout. Every test directory is a
+  regular package: an empty `__init__.py` lives at every
+  level (see [`source_files.md`](source_files.md) §2.4).
 
 - **Protocol aspect splits**: for per-protocol files under
   `packages/net_proto/net_proto/protocols/<proto>/`, per-aspect splitting is mandatory:

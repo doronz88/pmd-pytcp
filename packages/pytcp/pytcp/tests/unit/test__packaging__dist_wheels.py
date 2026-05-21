@@ -25,8 +25,11 @@
 """
 This module contains packaging tests asserting the built PyTCP-net_proto
 and PyTCP-net_addr wheels ship their full package payload — in particular
-that net_proto's PEP 420 namespace subpackages are included (the defect
-that breaks the umbrella PyTCP wheel).
+that net_proto's subpackages (every protocol family + options) are
+included. The original defect this test pins was a stale namespace-only
+discovery glob; PyTCP migrated to regular packages (empty
+`__init__.py` everywhere) but the test still gates the wheel-discovery
+glob.
 
 packages/pytcp/pytcp/tests/unit/test__packaging__dist_wheels.py
 
@@ -124,12 +127,13 @@ class TestPackagingNetProtoWheel(TestCase):
 
         cls._payload = _build_wheel_payload(_PKG_NET_PROTO)
 
-    def test__net_proto__ships_namespace_subpackages(self) -> None:
+    def test__net_proto__ships_subpackages(self) -> None:
         """
-        Ensure the net_proto wheel ships its PEP 420 namespace
-        subpackages (net_proto.protocols.*), not just the
-        top-level / regular packages — the exact failure mode
-        that leaves the umbrella PyTCP wheel non-functional.
+        Ensure the net_proto wheel ships every protocol-family
+        subpackage (net_proto.protocols.*), not just the
+        top-level package — the exact failure mode that left
+        the umbrella PyTCP wheel non-functional before the
+        package layout was reorganised.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -226,10 +230,10 @@ class TestPackagingPytcpWheel(TestCase):
 
         cls._payload = _build_wheel_payload(_PKG_PYTCP)
 
-    def test__pytcp__ships_namespace_subpackages(self) -> None:
+    def test__pytcp__ships_subpackages(self) -> None:
         """
-        Ensure the PyTCP wheel ships its PEP 420 namespace
-        subpackages (pytcp.runtime.*, pytcp.protocols.*) — the
+        Ensure the PyTCP wheel ships every runtime / protocol
+        subpackage (pytcp.runtime.*, pytcp.protocols.*) — the
         exact defect that left the historical umbrella wheel
         non-functional; this is the umbrella fix realised by
         dissolving it into the per-package pytcp dist.
