@@ -32,7 +32,22 @@ ver 3.0.6
 
 from unittest import TestCase
 
-from net_proto import Icmp4Assembler, Icmp4MessageEchoReply, Tracker
+from net_proto import (
+    Icmp4Assembler,
+    Icmp4Code,
+    Icmp4MessageEchoReply,
+    Icmp4MessageUnknown,
+    Icmp4Type,
+    Tracker,
+)
+from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable import (
+    Icmp4DestinationUnreachableCode,
+    Icmp4MessageDestinationUnreachable,
+)
+from net_proto.protocols.icmp4.message.icmp4__message__echo_request import (
+    Icmp4EchoRequestCode,
+    Icmp4MessageEchoRequest,
+)
 
 
 class TestIcmp4AssemblerMisc(TestCase):
@@ -91,4 +106,106 @@ class TestIcmp4AssemblerMisc(TestCase):
         self.assertIsNone(
             icmp4__assembler.tracker.echo_tracker,
             msg="Assembler tracker echo_tracker must default to None when not provided.",
+        )
+
+
+class TestIcmp4AssemblerUnknownCodeReject(TestCase):
+    """
+    The ICMPv4 assembler TX-strict enum-domain enforcement tests.
+
+    ProtoEnum '_missing_' materialises any unknown wire code byte
+    as an `UNKNOWN_<value>` pseudo-member so the parser can
+    surface it via `validate_sanity`. The assembler is the
+    strict-TX boundary and MUST refuse to emit a known-type
+    message whose code field carries such a pseudo-member.
+
+    The closed-set check is exempt for `Icmp4MessageUnknown`:
+    that class is the parser-side carrier for RFC 1122 §3.2.2
+    unknown-type frames whose code field is by definition an
+    `UNKNOWN_n` member of the abstract `Icmp4Code` base.
+    Wrapping such a message in an assembler is a legitimate
+    roundtrip case (security testing / raw-socket replay).
+    """
+
+    def test__icmp4__assembler__unknown_echo_request_code_rejected(self) -> None:
+        """
+        Ensure constructing an Icmp4Assembler around an Echo Request
+        message whose `code` field is an `UNKNOWN_n` enum member
+        raises AssertionError at the TX boundary.
+
+        Reference: RFC 792 (ICMPv4 Echo Request code MUST be 0).
+        """
+
+        unknown_code = Icmp4EchoRequestCode.from_int(99)
+        self.assertTrue(unknown_code.is_unknown, msg="Test fixture sanity: 99 must materialise as UNKNOWN_99.")
+
+        with self.assertRaises(AssertionError) as error:
+            Icmp4Assembler(icmp4__message=Icmp4MessageEchoRequest(code=unknown_code))
+
+        self.assertIn(
+            "must be a known Icmp4EchoRequestCode",
+            str(error.exception),
+            msg="AssertionError must cite the closed-set Icmp4EchoRequestCode domain.",
+        )
+
+    def test__icmp4__assembler__unknown_dest_unreachable_code_rejected(self) -> None:
+        """
+        Ensure constructing an Icmp4Assembler around a Destination
+        Unreachable message whose `code` field is an `UNKNOWN_n`
+        enum member raises AssertionError at the TX boundary.
+
+        Reference: RFC 792 / RFC 1122 §3.2.2.1 / RFC 1812 §5.2.7.1 (DU codes 0..15).
+        """
+
+        unknown_code = Icmp4DestinationUnreachableCode.from_int(16)
+        self.assertTrue(unknown_code.is_unknown, msg="Test fixture sanity: 16 must materialise as UNKNOWN_16.")
+
+        with self.assertRaises(AssertionError) as error:
+            Icmp4Assembler(icmp4__message=Icmp4MessageDestinationUnreachable(code=unknown_code))
+
+        self.assertIn(
+            "must be a known Icmp4DestinationUnreachableCode",
+            str(error.exception),
+            msg="AssertionError must cite the closed-set Icmp4DestinationUnreachableCode domain.",
+        )
+
+    def test__icmp4__assembler__unknown_message_wrapper_accepted(self) -> None:
+        """
+        Ensure constructing an Icmp4Assembler around an
+        Icmp4MessageUnknown is accepted — the wrapper exists to
+        round-trip wire-side unknown-type frames (the parser
+        materialises them; the assembler must be able to re-emit
+        them for security-testing / raw-socket replay).
+
+        Reference: RFC 1122 §3.2.2 (host MUST silently discard unknown ICMP types on RX; TX is unconstrained).
+        """
+
+        unknown_message = Icmp4MessageUnknown(
+            type=Icmp4Type.from_int(99),
+            code=Icmp4Code.from_int(99),
+            data=b"opaque",
+        )
+
+        # Should not raise.
+        assembler = Icmp4Assembler(icmp4__message=unknown_message)
+
+        self.assertIs(
+            assembler.message,
+            unknown_message,
+            msg="Assembler must accept an Icmp4MessageUnknown wrapping for roundtrip.",
+        )
+
+    def test__icmp4__assembler__known_code_accepted(self) -> None:
+        """
+        Ensure the canonical happy path — a known-type message with
+        a known-code value — passes the TX-strict check.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Should not raise.
+        Icmp4Assembler(
+            icmp4__message=Icmp4MessageDestinationUnreachable(
+                code=Icmp4DestinationUnreachableCode.PORT,
+            ),
         )

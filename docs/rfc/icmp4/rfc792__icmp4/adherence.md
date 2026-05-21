@@ -79,3 +79,37 @@ This is stricter than Linux's `net/ipv4/icmp.c::icmp_rcv`, which builds
 the message and falls into the type-dispatch table where unknown types
 silently increment a counter and drop. PyTCP rejects them at parser
 sanity per RFC 1122 §3.2.2's explicit "silently discard" requirement.
+
+**Wire-format strict-TX enum-domain enforcement (assembler):**
+Each known ICMPv4 message type has a closed `*Code` enum
+subclass; the parser's `validate_sanity` rejects RX frames
+whose code field carries an `UNKNOWN_n` pseudo-member
+synthesised via `<code-enum>.from_int()`. The asymmetric
+TX-side concern: a programmer who synthesised
+`Icmp4EchoRequestCode.from_int(99)` (or any other
+closed-enum's UNKNOWN member) and passed it to the assembler
+would otherwise emit a frame with an unknown code that
+strict receivers reject. `Icmp4Assembler.__init__` refuses
+such constructions.
+
+The dataclass `__post_init__` of each message type stays
+parser-tolerant (the parser's `from_buffer` constructs via
+`<code-enum>.from_int()` and the `__post_init__` only does
+isinstance checks); the strict closed-set rejection lives at
+the assembler boundary, mirroring the DHCPv4 UNKNOWN-enum
+asymmetry split (commit `68e0bd95`).
+
+`Icmp4MessageUnknown` is exempt from the closed-set check:
+it is the parser-side carrier for RFC 1122 §3.2.2
+unknown-type frames whose code field is by definition an
+`UNKNOWN_n` member of the abstract `Icmp4Code` base.
+Wrapping such a message in an assembler is a legitimate
+roundtrip case (security testing / raw-socket replay); the
+per-code check is gated by `not isinstance(message,
+Icmp4MessageUnknown)`.
+
+Pinned by `TestIcmp4AssemblerUnknownCodeReject` at
+`packages/net_proto/net_proto/tests/unit/protocols/icmp4/test__icmp4__assembler__misc.py`
+(four cases: unknown Echo Request code rejected, unknown
+Destination Unreachable code rejected, `Icmp4MessageUnknown`
+wrapping accepted, known-code happy path accepted).

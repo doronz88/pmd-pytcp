@@ -38,6 +38,9 @@ from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.icmp4.icmp4__base import Icmp4
 from net_proto.protocols.icmp4.message.icmp4__message import Icmp4Message
+from net_proto.protocols.icmp4.message.icmp4__message__unknown import (
+    Icmp4MessageUnknown,
+)
 
 
 class Icmp4Assembler(Icmp4, ProtoAssembler):
@@ -54,6 +57,32 @@ class Icmp4Assembler(Icmp4, ProtoAssembler):
         """
         Initialize the ICMPv4 packet assembler.
         """
+
+        # RFC 792 / RFC 1122 / RFC 1812 — every known ICMPv4 message
+        # type has a closed set of legal code values; the parser's
+        # `validate_sanity()` rejects wire frames carrying any other
+        # code via `code.is_unknown`. The TX boundary refuses to
+        # construct a frame with an unknown code so PyTCP itself
+        # cannot originate one. The dataclass `__post_init__` stays
+        # parser-tolerant (the parser's `from_buffer` constructs via
+        # `<code-enum>.from_int()` which materialises `UNKNOWN_n`
+        # codepoints; the strict rejection lives at the assembler
+        # boundary instead, mirroring the DHCPv4 UNKNOWN-enum
+        # asymmetry split).
+        #
+        # `Icmp4MessageUnknown` is exempt: it is the parser-side
+        # carrier for RFC 1122 §3.2.2 unknown-type frames whose code
+        # field is necessarily an `UNKNOWN_n` member of the abstract
+        # `Icmp4Code` base. Wrapping such a message in an assembler
+        # is a legitimate roundtrip case (security testing /
+        # raw-socket replay); the per-code check applies only to the
+        # closed-enum subclasses.
+        if not isinstance(icmp4__message, Icmp4MessageUnknown):
+            assert not icmp4__message.code.is_unknown, (
+                f"The 'icmp4__message.code' field must be a known "
+                f"{type(icmp4__message.code).__name__} member. "
+                f"Got: {icmp4__message.code!r}"
+            )
 
         self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
