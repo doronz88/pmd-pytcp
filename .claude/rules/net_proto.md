@@ -404,6 +404,8 @@ Rules:
 ## 9. Error classes (`<proto>__errors.py`)
 
 ```python
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -412,6 +414,7 @@ class TcpIntegrityError(PacketIntegrityError):
     Exception raised when TCP packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[TCP] " + message)
 
@@ -421,12 +424,14 @@ class TcpSanityError(PacketSanityError):
     Exception raised when TCP packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[TCP] " + message)
 ```
 
 - One file per protocol, containing exactly two classes:
-  `<Proto>IntegrityError` and `<Proto>SanityError`.
+  `<Proto>IntegrityError` and `<Proto>SanityError`. Additional
+  subclasses are allowed when RFC-justified — see §9.1.
 - Base classes from `packages/net_proto/net_proto/lib/errors.py`:
   `PacketIntegrityError` prepends `"[INTEGRITY ERROR]"` (no
   trailing space); `PacketSanityError` prepends `"[SANITY
@@ -434,13 +439,101 @@ class TcpSanityError(PacketSanityError):
   prefixes — your subclass adds only `"[<PROTO>] "` (with
   one trailing space).
 - Constructor signature: `def __init__(self, message: str, /) -> None:`
-  — `message` is positional-only.
+  — `message` is positional-only. The constructor MAY be
+  extended with RFC-driven keyword-only kwargs (e.g.
+  `pointer`, `multicast_only`); see §9.1.
+- `@override` decorator on every overridden `__init__` per
+  [`typing.md`](typing.md) §11.
 - The combined rendered form is therefore
   `"[INTEGRITY ERROR][TCP] the original message"`. Tests
   assert on this exact string; do not change the format
   without updating all test fixtures.
 
-### 9.1 Error discipline: wire-input vs programmer-input
+### 9.1 Allowed extensions
+
+The canonical two-class shape covers most protocols. Five
+files in the existing codebase carry RFC-justified
+extensions; new code following the same pattern is
+acceptable when the extension is RFC-driven and consumed by
+a real call site.
+
+**Extra subclasses.** A protocol MAY add a third
+`*Error` subclass when an RFC-distinct rejection path needs
+to be observable separately from the generic Integrity /
+Sanity buckets — typically so the RX packet handler can
+bump a dedicated stat counter. Canonical example:
+
+```python
+class UdpZeroCksumIp6Error(UdpIntegrityError):
+    """
+    Exception raised when an inbound IPv6 UDP datagram carries
+    cksum=0 on a port not configured for RFC 6935 zero-checksum
+    mode. Subclassed from 'UdpIntegrityError' so existing
+    'PacketValidationError' catches continue to drop the packet
+    correctly; the dedicated subclass lets the RX packet handler
+    bump 'udp__ip6_zero_cksum__drop' separately from the generic
+    'udp__failed_parse__drop' counter for operational
+    observability.
+    """
+```
+
+The extra class:
+
+- Subclasses one of the two protocol errors (so existing
+  `except <Proto>IntegrityError` catches continue to work).
+- Carries an inline docstring citing the RFC clause.
+- Does NOT override `__init__` — the parent's `[<PROTO>] `
+  prefix is reused as-is.
+
+**Constructor extension kwargs.** When the RX packet handler
+needs structured context to emit an ICMP Parameter Problem
+response (RFC 1122 §3.2.2.5, RFC 792, RFC 4443 §3.4, RFC
+8200 §4.2 chain-walker, RFC 5095 §3 RH0 hard-drop), the
+error MAY carry extra keyword-only attributes. Canonical
+shape:
+
+```python
+class Ip4SanityError(PacketSanityError):
+    """
+    Exception raised when IPv4 packet sanity check fails.
+
+    Carries an optional 'pointer' field — the byte offset of the
+    offending header field, used by the packet handler when emitting
+    an ICMPv4 Parameter Problem (Code 0) per RFC 1122 §3.2.2.5 / RFC
+    792.
+    """
+
+    pointer: int | None
+
+    @override
+    def __init__(self, message: str, /, *, pointer: int | None = None) -> None:
+        super().__init__("[IPv4] " + message)
+        self.pointer = pointer
+```
+
+Rules for the extension:
+
+- The extra parameters are **keyword-only** (bare `*`
+  separator), each with a sane default so existing
+  `raise SomeError("msg")` call sites keep working.
+- Each extension attribute is **declared at class level**
+  with an explicit annotation per
+  [`typing.md`](typing.md) §5.2 — mypy strict accepts
+  inference from `__init__`, but the canonical pattern is
+  the explicit declaration so an IDE / external reader
+  sees the full attribute set without walking `__init__`.
+- The docstring cites the consuming RFC clause inline so
+  the extension's purpose is greppable.
+- The extension may sit on either `IntegrityError` or
+  `SanityError` depending on the rejection class:
+  `Ip6RoutingIntegrityError.pointer` is on Integrity
+  because the RFC 5095 §3 RH0 hard-drop is a wire-shape
+  rejection that ALSO emits ICMP; the chain-walker errors
+  (`Ip6HbhSanityError`, `Ip6DestOptsSanityError`) are on
+  Sanity because the per-option action-on-unrecognized
+  dispatch is a logical (not structural) rejection.
+
+### 9.2 Error discipline: wire-input vs programmer-input
 
 Two boundaries, two tools:
 
@@ -758,19 +851,19 @@ typing anti-patterns live in
   / options walker `validate_integrity` / `validate_sanity`.**
   These checks defend against hostile wire input and MUST
   run unconditionally — `python -O` strips asserts. Use
-  `raise <Proto>(Integrity|Sanity)Error(...)`. See §9.1.
+  `raise <Proto>(Integrity|Sanity)Error(...)`. See §9.2.
 - **Using `raise <Proto>(Integrity|Sanity)Error(...)` in
   dataclass `__post_init__` or `*Assembler.__init__`.** Those
   are user-input boundaries (programmer error, not hostile
   wire). Use `assert ...` so the check is stripped under
-  `python -O` once the application has been tested. See §9.1.
+  `python -O` once the application has been tested. See §9.2.
 - **Wire-reachable `__post_init__` assert without a typed
   raise mirror in `_validate_integrity`.** Under `python -O`
   the assert is stripped; hostile wire would slip through.
   Every wire-reachable bound must be enforced by a typed
   raise in `_validate_integrity` (the dataclass assert
   becomes a defensive parallel that catches programmer
-  error). See §9.1.
+  error). See §9.2.
 - **Inlining `struct` format strings** instead of defining a
   module constant.
 - **Silently tightening or widening a type annotation on a
