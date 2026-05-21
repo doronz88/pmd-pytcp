@@ -182,23 +182,17 @@ class Icmp6Parser(Icmp6, ProtoParser):
         """
         Parse the ICMPv6 packet.
 
-        Each ND message's Code-field enum (e.g.
-        'Icmp6NdRedirectCode') defines only the canonical zero
-        member; an inbound frame whose Code byte does not map
-        to a known member raises 'ValueError' from the enum
-        constructor inside 'from_buffer'. RFC 4861 §6.1 / §7.1
-        / §8.1 require silent discard of such packets — wrap
-        the 'ValueError' as an 'Icmp6IntegrityError' so the
-        packet handler's standard 'PacketValidationError'
-        catch path drops the frame instead of crashing the RX
-        subsystem. Mirrors the codebase pattern documented at
-        net_proto.md §7 (DHCP4's from_buffer wrapping).
+        Each message type's `from_buffer` uses the
+        parser-tolerant `<Code-enum>.from_int(code)` path so
+        any wire byte that does not match a known enum member
+        materialises as `UNKNOWN_<value>` rather than raising
+        Python's built-in `ValueError`. Unknown codes are
+        rejected with a typed `Icmp6SanityError` at the
+        per-message-type `validate_sanity` boundary — no
+        post-facto try/except wrap is needed in `_parse`.
         """
 
-        try:
-            self._message = self._message_class().from_buffer(self._frame)
-        except ValueError as error:
-            raise Icmp6IntegrityError(str(error)) from error
+        self._message = self._message_class().from_buffer(self._frame)
 
     @override
     def _validate_sanity(self) -> None:
