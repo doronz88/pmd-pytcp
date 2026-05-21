@@ -307,6 +307,33 @@ rule is named in parentheses.
     paraphrase. See
     [`net_proto.md`](net_proto.md)
     §6 for the full property-mixin pattern.
+  - **Property accessors on `*OptionsProperties` mixins and
+    on `*Options` container classes** (the lookup
+    properties that return a specific option from the
+    container — both surfaces serve the same role, so the
+    same canonical phrasing applies): two forms based on
+    what the property returns.
+    - **Returns the option object itself** (return type
+      `<Proto>Option<Name> | None`): use exactly
+      `Get the <PROTO> '<option-name>' option.` The
+      trailing `| None` in the return type carries the
+      "if present" signal; don't restate it in the
+      docstring.
+      Example: for `def lsrr(self) -> Ip4OptionLsrr | None`,
+      the docstring is `Get the IPv4 'lsrr' option.`
+    - **Returns the option's extracted value** (return type
+      `Buffer | None`, `int`, `Ip4Mask | None`, etc.): use
+      exactly `Get the <PROTO> '<option-name>' option
+      value.` Same rule — don't restate the return-type
+      semantics in the docstring.
+      Example: for
+      `def client_id(self) -> Buffer | None`, the
+      docstring is `Get the DHCPv4 'client_id' option
+      value.`
+    Additional context (RFC citation, default-fallback
+    note, behavioural caveat) is acceptable on subsequent
+    docstring lines; the canonical first line stays
+    uniform across the family.
 - Module docstrings follow §4 exactly (description + path +
   `ver`).
 
