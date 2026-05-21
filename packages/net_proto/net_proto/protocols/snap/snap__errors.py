@@ -30,6 +30,8 @@ net_proto/protocols/snap/snap__errors.py
 ver 3.0.6
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class SnapIntegrityError(PacketIntegrityError):
     Exception raised when SNAP packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[SNAP] " + message)
 
@@ -47,5 +50,6 @@ class SnapSanityError(PacketSanityError):
     Exception raised when SNAP packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[SNAP] " + message)

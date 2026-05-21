@@ -30,6 +30,8 @@ net_proto/protocols/llc/llc__errors.py
 ver 3.0.6
 """
 
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -38,6 +40,7 @@ class LlcIntegrityError(PacketIntegrityError):
     Exception raised when LLC packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[LLC] " + message)
 
@@ -47,5 +50,6 @@ class LlcSanityError(PacketSanityError):
     Exception raised when LLC packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[LLC] " + message)
