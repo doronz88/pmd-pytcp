@@ -616,3 +616,135 @@ class TestDhcp4AssemblerAsciiSnameFile(TestCase):
             "",
             msg="file=None must coalesce to empty string and pass the ASCII check.",
         )
+
+
+class TestDhcp4AssemblerUnknownEnumReject(TestCase):
+    """
+    The DHCPv4 assembler TX-strict enum-domain enforcement tests.
+
+    ProtoEnum '_missing_' materialises any unknown wire codepoint
+    as a UNKNOWN_<value> pseudo-member so the parser can surface
+    it via _validate_sanity. The assembler is the strict-TX
+    boundary and MUST refuse to emit such pseudo-members.
+    """
+
+    def test__dhcp4__assembler__unknown_operation_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler with an unknown
+        Dhcp4Operation member (e.g. value 99 synthesised via
+        from_int) raises AssertionError at construction time.
+
+        Reference: RFC 2131 §2 (op field BOOTREQUEST=1 / BOOTREPLY=2).
+        """
+
+        unknown_op = Dhcp4Operation.from_int(99)
+        self.assertTrue(unknown_op.is_unknown, msg="Test fixture sanity: 99 must materialise as UNKNOWN_99.")
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=unknown_op,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+            )
+
+        self.assertIn(
+            "must be a known Dhcp4Operation",
+            str(error.exception),
+            msg="AssertionError must cite the Dhcp4Operation domain.",
+        )
+
+    def test__dhcp4__assembler__unknown_message_type_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler whose options block
+        contains a Dhcp4OptionMessageType carrying an unknown
+        Dhcp4MessageType member raises AssertionError at
+        construction time.
+
+        Reference: RFC 2132 §9.6 (Message Type option values 1..8).
+        """
+
+        unknown_msg = Dhcp4MessageType.from_int(99)
+        self.assertTrue(
+            unknown_msg.is_unknown,
+            msg="Test fixture sanity: 99 must materialise as UNKNOWN_99.",
+        )
+
+        options = Dhcp4Options(
+            Dhcp4OptionMessageType(message_type=unknown_msg),
+            Dhcp4OptionEnd(),
+        )
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=Dhcp4Operation.REQUEST,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+                dhcp4__options=options,
+            )
+
+        self.assertIn(
+            "unknown Dhcp4MessageType",
+            str(error.exception),
+            msg="AssertionError must cite the Dhcp4MessageType domain.",
+        )
+
+    def test__dhcp4__assembler__unknown_param_req_list_element_rejected(self) -> None:
+        """
+        Ensure constructing a Dhcp4Assembler whose options block
+        contains a Dhcp4OptionParamReqList with an unknown
+        Dhcp4OptionType element raises AssertionError at
+        construction time.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List element codepoints).
+        """
+
+        options = Dhcp4Options(
+            Dhcp4OptionParamReqList(
+                [
+                    Dhcp4OptionType.SUBNET_MASK,
+                    Dhcp4OptionType.from_int(99),
+                ]
+            ),
+            Dhcp4OptionEnd(),
+        )
+
+        with self.assertRaises(AssertionError) as error:
+            Dhcp4Assembler(
+                dhcp4__operation=Dhcp4Operation.REQUEST,
+                dhcp4__xid=0x00000001,
+                dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+                dhcp4__options=options,
+            )
+
+        self.assertIn(
+            "unknown Dhcp4OptionType",
+            str(error.exception),
+            msg="AssertionError must cite the Dhcp4OptionType domain.",
+        )
+
+    def test__dhcp4__assembler__known_enums_accepted(self) -> None:
+        """
+        Ensure construction succeeds when every enum member used in
+        the operation field, in the Message Type option, and in the
+        Parameter Request List is a known codepoint — the
+        canonical happy path.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        # Should not raise.
+        Dhcp4Assembler(
+            dhcp4__operation=Dhcp4Operation.REQUEST,
+            dhcp4__xid=0x00000001,
+            dhcp4__chaddr=MacAddress("00:00:00:00:00:00"),
+            dhcp4__options=Dhcp4Options(
+                Dhcp4OptionMessageType(message_type=Dhcp4MessageType.DISCOVER),
+                Dhcp4OptionParamReqList(
+                    [
+                        Dhcp4OptionType.SUBNET_MASK,
+                        Dhcp4OptionType.ROUTER,
+                    ]
+                ),
+                Dhcp4OptionEnd(),
+            ),
+        )

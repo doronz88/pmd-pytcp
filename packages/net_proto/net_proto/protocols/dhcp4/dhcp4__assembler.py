@@ -41,6 +41,12 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 )
 from net_proto.protocols.dhcp4.dhcp4__header import Dhcp4Header
 from net_proto.protocols.dhcp4.options.dhcp4__option__end import Dhcp4OptionEnd
+from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
+    Dhcp4OptionMessageType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__param_req_list import (
+    Dhcp4OptionParamReqList,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
 
 
@@ -96,6 +102,34 @@ class Dhcp4Assembler(Dhcp4, ProtoAssembler):
 
         file_normalized = dhcp4__file or ""
         assert file_normalized.isascii(), f"The 'dhcp4__file' field must be ASCII. Got: {file_normalized!r}"
+
+        # RFC 2131 §2 / RFC 2132 — protocol enums (Dhcp4Operation
+        # 'op' field, Dhcp4MessageType in Message Type option,
+        # Dhcp4OptionType inside Parameter Request List) are
+        # extensible at parse time via ProtoEnum '_missing_' so the
+        # RX path can materialise unknown wire codepoints for
+        # `_validate_sanity` to reject. The TX path is strict: a
+        # programmer who synthesised `Dhcp4Operation.from_int(99)`
+        # or `Dhcp4MessageType.from_int(99)` would otherwise emit a
+        # frame with an unknown codepoint that strict receivers
+        # cannot interpret. Refuse such constructions here.
+        assert not dhcp4__operation.is_unknown, (
+            "The 'dhcp4__operation' field must be a known Dhcp4Operation "
+            f"member (BOOTREQUEST/BOOTREPLY). Got: {dhcp4__operation!r}"
+        )
+
+        for option in dhcp4__options:
+            if isinstance(option, Dhcp4OptionMessageType):
+                assert not option.message_type.is_unknown, (
+                    "The DHCPv4 Message Type option carries an unknown "
+                    f"Dhcp4MessageType member. Got: {option.message_type!r}"
+                )
+            if isinstance(option, Dhcp4OptionParamReqList):
+                for element in option.param_req_list:
+                    assert not element.is_unknown, (
+                        "The DHCPv4 Parameter Request List option carries an "
+                        f"unknown Dhcp4OptionType member. Got: {element!r}"
+                    )
 
         self._header = Dhcp4Header(
             operation=dhcp4__operation,

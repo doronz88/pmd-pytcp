@@ -409,6 +409,48 @@ case at
 
 ---
 
+## Wire-format strict-TX enum-domain enforcement
+
+DHCPv4 carries several protocol enums whose wire
+codepoints are extensible at parse time via PyTCP's
+`ProtoEnum._missing_` hook — an unknown octet
+materialises as a `UNKNOWN_<value>` pseudo-member so
+that the parser's `_validate_sanity` can surface the
+violation as a typed `Dhcp4SanityError` rather than
+crashing on lookup. The asymmetric TX-side concern: a
+programmer who synthesised `Dhcp4Operation.from_int(99)`
+(or `Dhcp4MessageType.from_int(99)`, or a
+`Dhcp4OptionType.from_int(99)` element inside the
+Parameter Request List) and passed it to the assembler
+would otherwise emit a frame with an unknown codepoint
+that strict receivers cannot interpret.
+
+**Enforcement:** `Dhcp4Assembler.__init__` at
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__assembler.py`
+walks the construction-time arguments and rejects any
+`UNKNOWN_*` enum member with `AssertionError`:
+
+- `dhcp4__operation` (§RFC 2131 §2 op field —
+  BOOTREQUEST=1 / BOOTREPLY=2 only).
+- `dhcp4__options[i]` of type `Dhcp4OptionMessageType`
+  → its `message_type` (§9.6 values 1..8 only).
+- `dhcp4__options[i]` of type `Dhcp4OptionParamReqList`
+  → each `param_req_list[j]` element (§9.8 codepoints
+  must be a known `Dhcp4OptionType` member).
+
+Dataclass `__post_init__` deliberately stays
+parser-tolerant for these enum fields (the parser
+materialises UNKNOWN members during `from_buffer` and
+needs them to round-trip into `_validate_sanity`); the
+strict rejection lives at the assembler boundary,
+mirroring the END terminator and sname/file ASCII
+checks already there.
+
+Pinned by `TestDhcp4AssemblerUnknownEnumReject` at
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py`.
+
+---
+
 ## Options not implemented
 
 The following RFC 2132 options are not in PyTCP's
