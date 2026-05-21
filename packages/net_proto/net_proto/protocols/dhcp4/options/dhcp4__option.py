@@ -23,7 +23,14 @@
 
 
 """
-This module contains the DHCPv4 option base class.
+This module contains the DHCPv4 option base class and the
+Dhcp4OptionType codepoint enum. DHCPv4 option semantics are
+defined in RFC 2131 §3 (option carriage) and RFC 2132
+(per-option formats); per-codepoint authority lives in the
+RFC cited next to each enum member, with the canonical
+registry at IANA "Dynamic Host Configuration Protocol
+(DHCP) and Bootstrap Protocol (BOOTP) Parameters > BOOTP
+Vendor Extensions and DHCP Options".
 
 net_proto/protocols/dhcp4/options/dhcp4__option.py
 
@@ -43,21 +50,21 @@ class Dhcp4OptionType(ProtoOptionType):
     DHCPv4 option types.
     """
 
-    PAD = 0
-    SUBNET_MASK = 1
-    ROUTER = 3
-    HOST_NAME = 12
-    REQ_IP_ADDR = 50
-    LEASE_TIME = 51
-    OPTION_OVERLOAD = 52
-    MESSAGE_TYPE = 53
-    SERVER_ID = 54
-    PARAM_REQ_LIST = 55
-    MAX_MSG_SIZE = 57
-    RENEWAL_TIME = 58
-    REBINDING_TIME = 59
-    CLIENT_ID = 61
-    END = 255
+    PAD = 0  # Pad (RFC 2132 §3.1).
+    SUBNET_MASK = 1  # Subnet Mask (RFC 2132 §3.3).
+    ROUTER = 3  # Router (RFC 2132 §3.5).
+    HOST_NAME = 12  # Host Name (RFC 2132 §3.14).
+    REQ_IP_ADDR = 50  # Requested IP Address (RFC 2132 §9.1).
+    LEASE_TIME = 51  # IP Address Lease Time (RFC 2132 §9.2).
+    OPTION_OVERLOAD = 52  # Option Overload (RFC 2132 §9.3).
+    MESSAGE_TYPE = 53  # DHCP Message Type (RFC 2132 §9.6).
+    SERVER_ID = 54  # Server Identifier (RFC 2132 §9.7).
+    PARAM_REQ_LIST = 55  # Parameter Request List (RFC 2132 §9.8).
+    MAX_MSG_SIZE = 57  # Maximum DHCP Message Size (RFC 2132 §9.10).
+    RENEWAL_TIME = 58  # Renewal (T1) Time Value (RFC 2132 §9.11).
+    REBINDING_TIME = 59  # Rebinding (T2) Time Value (RFC 2132 §9.12).
+    CLIENT_ID = 61  # Client-identifier (RFC 2132 §9.14).
+    END = 255  # End (RFC 2132 §3.2).
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

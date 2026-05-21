@@ -25,6 +25,24 @@
 """
 This module contains the ICMPv6 unknown message support class.
 
+Per RFC 4443 §2.4 the receiver's action depends on whether
+the unknown Type byte falls in the error range (1..127) or
+the informational range (128..255):
+
+- (b) Unknown informational messages — silently discarded.
+- (c) Unknown error messages — passed to the upper-layer
+  process for application-defined handling.
+
+PyTCP's parser materialises the wire bytes verbatim into
+this class so the packet handler's RX dispatch can route
+unknown types per the two-branch rule above. The wrapper
+is intentionally tolerant of `UNKNOWN_n` enum members for
+both 'type' and 'code'; the closed-set TX-strict check at
+`Icmp6Assembler` is gated by an
+`isinstance(message, Icmp6MessageUnknown)` exemption so a
+roundtrip emit path stays open (security testing /
+raw-socket replay).
+
 net_proto/protocols/icmp6/message/icmp6__message__unknown.py
 
 ver 3.0.6

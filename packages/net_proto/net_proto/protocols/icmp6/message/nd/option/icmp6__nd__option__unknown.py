@@ -25,6 +25,15 @@
 """
 This module contains the unknown ICMPv6 ND option support code.
 
+Per RFC 4861 §4.6 unrecognised ND options MUST be silently
+ignored by the receiver. PyTCP's parser preserves the wire
+bytes verbatim into this class so the packet handler can
+log the codepoint for operator visibility and so a
+Phase-2 forwarder can re-emit options it doesn't itself
+consume. The wrapper is intentionally tolerant of any
+`UNKNOWN_n` Icmp6NdOptionType pseudo-member synthesised
+via the `ProtoEnum._missing_` hook.
+
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__unknown.py
 
 ver 3.0.6

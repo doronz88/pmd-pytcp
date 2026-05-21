@@ -23,7 +23,14 @@
 
 
 """
-This module contains the ICMPv6 ND option base class.
+This module contains the ICMPv6 ND option base class and
+the Icmp6NdOptionType codepoint enum. ND options are
+defined in RFC 4861 §4.6 (TLV format common to RS / RA /
+NS / NA / Redirect); per-codepoint authority lives in the
+RFC cited next to each enum member, with the canonical
+registry at IANA "Internet Control Message Protocol
+version 6 (ICMPv6) Parameters > IPv6 Neighbor Discovery
+Option Formats".
 
 net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option.py
 
@@ -43,16 +50,16 @@ class Icmp6NdOptionType(ProtoOptionType):
     The ICMPv6 ND option 'type' field values.
     """
 
-    SLLA = 1
-    TLLA = 2
-    PI = 3
-    REDIRECTED_HEADER = 4
-    MTU = 5
-    NONCE = 14
-    ROUTE_INFO = 24
-    RDNSS = 25
-    RA_FLAGS_EXTENSION = 26
-    DNSSL = 31
+    SLLA = 1  # Source Link-Layer Address (RFC 4861 §4.6.1).
+    TLLA = 2  # Target Link-Layer Address (RFC 4861 §4.6.1).
+    PI = 3  # Prefix Information (RFC 4861 §4.6.2).
+    REDIRECTED_HEADER = 4  # Redirected Header (RFC 4861 §4.6.3).
+    MTU = 5  # MTU (RFC 4861 §4.6.4).
+    NONCE = 14  # Nonce (RFC 3971 §5.3.2).
+    ROUTE_INFO = 24  # Route Information (RFC 4191 §2.3).
+    RDNSS = 25  # Recursive DNS Server (RFC 8106 §5.1).
+    RA_FLAGS_EXTENSION = 26  # RA Flags Extension (RFC 5175 §4).
+    DNSSL = 31  # DNS Search List (RFC 8106 §5.2).
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

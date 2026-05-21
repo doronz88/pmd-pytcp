@@ -25,6 +25,13 @@
 """
 This module contains the unknown DHCPv4 option support code.
 
+Per RFC 2131 §3 unknown DHCPv4 options are carried verbatim
+through the parser without semantic interpretation; clients
+and servers MUST silently ignore options they do not
+recognise. PyTCP preserves the wire bytes so a Phase-2
+relay / forwarder can re-emit them faithfully, and so
+operator-visible logs surface the unknown codepoint.
+
 net_proto/protocols/dhcp4/options/dhcp4__option__unknown.py
 
 ver 3.0.6
