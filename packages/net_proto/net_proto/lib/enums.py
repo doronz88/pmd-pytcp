@@ -41,10 +41,10 @@ class EtherType(ProtoEnumWord):
     The EtherType values.
     """
 
-    ARP = 0x0806
-    IP4 = 0x0800
-    IP6 = 0x86DD
-    RAW = 0xFFFF
+    ARP = 0x0806  # RFC 826: Address Resolution Protocol.
+    IP4 = 0x0800  # RFC 894: IPv4 over Ethernet (IANA EtherType assignment).
+    IP6 = 0x86DD  # RFC 2464: IPv6 over Ethernet (IANA EtherType assignment).
+    RAW = 0xFFFF  # IANA "Reserved" — PyTCP-internal sentinel for raw-payload passthrough.
 
     @override
     def __str__(self) -> str:
@@ -96,17 +96,17 @@ class IpProto(ProtoEnumByte):
     """
 
     IP6_HBH = 0  # RFC 8200 §4.3: Hop-by-Hop Options extension header.
-    ICMP4 = 1
+    ICMP4 = 1  # RFC 792: Internet Control Message Protocol (ICMPv4).
     IP4 = 4  # RFC 2003 §1: IPv4 encapsulated in IP (IP-in-IP).
-    TCP = 6
-    UDP = 17
-    IP6 = 41
+    TCP = 6  # RFC 9293 §3.1: Transmission Control Protocol header.
+    UDP = 17  # RFC 768: User Datagram Protocol header.
+    IP6 = 41  # RFC 2473 §3: IPv6-in-IPv6 tunneling (next header is an IPv6 header).
     IP6_ROUTING = 43  # RFC 8200 §4.4: Routing Header extension header.
-    IP6_FRAG = 44
-    ICMP6 = 58
+    IP6_FRAG = 44  # RFC 8200 §4.5: Fragment Header extension header.
+    ICMP6 = 58  # RFC 4443: Internet Control Message Protocol for IPv6.
     IP6_NO_NEXT_HEADER = 59  # RFC 8200 §4.7: No Next Header (chain terminator).
     IP6_DEST_OPTS = 60  # RFC 8200 §4.6: Destination Options extension header.
-    RAW = 255
+    RAW = 255  # IANA "Reserved" — PyTCP-internal sentinel for raw-protocol passthrough.
 
     @override
     def __str__(self) -> str:
