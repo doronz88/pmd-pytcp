@@ -106,6 +106,25 @@ class TestIp4OptionLsrrAsserts(TestCase):
             msg="Unexpected assertion message for empty 'route'.",
         )
 
+    def test__ip4__option__lsrr__route__overflows_uint8_length(self) -> None:
+        """
+        Ensure the IPv4 Lsrr option constructor rejects a 'route'
+        list whose total option length (3-byte header + 4-byte slot
+        per entry) would overflow the single-octet option-length
+        byte. With 64 entries the total is 3 + 4*64 = 259 > 255.
+
+        Reference: RFC 791 §3.1 (option-length byte is one octet).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4OptionLsrr(pointer=4, route=[Ip4Address("10.0.0.1")] * 64)
+
+        self.assertIn(
+            "must fit in a single uint8 length byte",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 length-byte overflow.",
+        )
+
 
 @parameterized_class(
     [

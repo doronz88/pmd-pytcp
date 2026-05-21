@@ -101,12 +101,21 @@ class Ip4OptionRr(Ip4Option):
             isinstance(hop, Ip4Address) for hop in self.route
         ), f"The 'route' field must be a list of Ip4Address. Got: {self.route!r}"
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(
-            self,
-            "len",
-            IP4__OPTION__RR__HDR_LEN + IP4__OPTION__RR__SLOT_LEN * len(self.route),
+        total_len = IP4__OPTION__RR__HDR_LEN + IP4__OPTION__RR__SLOT_LEN * len(self.route)
+
+        # RFC 791 §3.1 (Case 2 TLV) — the option-length byte is a
+        # single octet; an RR with more than 63 hops would overflow
+        # it. The Ip4Options walker already caps wire input via
+        # 'hlen <= 60', so this assert catches programmer error at
+        # construction with a clear message instead of an opaque
+        # struct.error at __buffer__ serialization.
+        assert is_uint8(total_len), (
+            f"The total IPv4 RR option length must fit in a single uint8 length byte. "
+            f"Got: {total_len} (route has {len(self.route)} entries; max 63)"
         )
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", total_len)
 
     @override
     def __str__(self) -> str:

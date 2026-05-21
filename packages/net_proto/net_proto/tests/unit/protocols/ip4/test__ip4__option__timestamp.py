@@ -186,6 +186,31 @@ class TestIp4OptionTimestampAsserts(TestCase):
             msg="Unexpected assertion message for empty 'entries'.",
         )
 
+    def test__ip4__option__timestamp__entries__overflows_uint8_length(self) -> None:
+        """
+        Ensure the constructor rejects an entries list whose total
+        option length (4-byte header + 4-byte ts-only entry per
+        entry, for flag=0) would overflow the single-octet
+        option-length byte. With 64 ts-only entries the total is
+        4 + 4*64 = 260 > 255.
+
+        Reference: RFC 791 §3.1 (option-length byte is one octet).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4OptionTimestamp(
+                pointer=5,
+                overflow=0,
+                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                entries=[Ip4TimestampEntry(timestamp=0) for _ in range(64)],
+            )
+
+        self.assertIn(
+            "must fit in a single uint8 length byte",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 length-byte overflow.",
+        )
+
     def test__ip4__option__timestamp__entries__address_mismatch_flag_0(self) -> None:
         """
         Ensure the constructor rejects entries that carry an address

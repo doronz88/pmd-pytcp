@@ -186,12 +186,24 @@ class Ip4OptionTimestamp(Ip4Option):
                 f"All entries must carry an address when flag={self.flag}. " f"Got: {self.entries!r}"
             )
 
-        # Hack to bypass the 'frozen=True' dataclass decorator.
-        object.__setattr__(
-            self,
-            "len",
-            IP4__OPTION__TIMESTAMP__HDR_LEN + entry_len * len(self.entries),
+        total_len = IP4__OPTION__TIMESTAMP__HDR_LEN + entry_len * len(self.entries)
+
+        # RFC 791 §3.1 (Case 2 TLV) — the option-length byte is a
+        # single octet; a Timestamp with too many entries would
+        # overflow it (max 62 entries at 4-byte/ts-only; max 31 at
+        # 8-byte/with-address). The Ip4Options walker already caps
+        # wire input via 'hlen <= 60', so this assert catches
+        # programmer error at construction with a clear message
+        # instead of an opaque struct.error at __buffer__
+        # serialization.
+        assert is_uint8(total_len), (
+            f"The total IPv4 Timestamp option length must fit in a single uint8 length byte. "
+            f"Got: {total_len} ({len(self.entries)} entries × {entry_len}-byte slots; "
+            f"max {(255 - IP4__OPTION__TIMESTAMP__HDR_LEN) // entry_len})"
         )
+
+        # Hack to bypass the 'frozen=True' dataclass decorator.
+        object.__setattr__(self, "len", total_len)
 
     @override
     def __str__(self) -> str:

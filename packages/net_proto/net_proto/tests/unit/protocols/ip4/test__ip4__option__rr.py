@@ -101,6 +101,25 @@ class TestIp4OptionRrAsserts(TestCase):
             msg="Unexpected assertion message for empty 'route'.",
         )
 
+    def test__ip4__option__rr__route__overflows_uint8_length(self) -> None:
+        """
+        Ensure the IPv4 Record Route option constructor rejects a
+        'route' list whose total option length (3-byte header +
+        4-byte slot per entry) would overflow the single-octet
+        option-length byte.
+
+        Reference: RFC 791 §3.1 (option-length byte is one octet).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip4OptionRr(pointer=4, route=[Ip4Address("10.0.0.1")] * 64)
+
+        self.assertIn(
+            "must fit in a single uint8 length byte",
+            str(error.exception),
+            msg="AssertionError must cite the uint8 length-byte overflow.",
+        )
+
 
 @parameterized_class(
     [
