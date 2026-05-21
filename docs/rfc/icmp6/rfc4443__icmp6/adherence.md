@@ -141,3 +141,46 @@ fragment's header chain in `packet_handler__ip6_frag__rx` and
 emitting PP code 3 with a computed pointer) is deferred to
 Phase 2 (router-grade parity), where the stateless-middlebox use
 case the RFC was written for actually applies.
+
+### Wire-format strict-TX enum-domain enforcement (assembler)
+
+Each known ICMPv6 message type (6 base + 2 MLD2 + 5 ND) has a
+closed `*Code` enum subclass; the parser's `validate_sanity`
+rejects RX frames whose code field carries an `UNKNOWN_n`
+pseudo-member synthesised via `<code-enum>.from_int()`. The
+asymmetric TX-side concern: a programmer who synthesised
+`Icmp6EchoRequestCode.from_int(99)` (or any other
+closed-enum's UNKNOWN member) and passed it to
+`Icmp6Assembler` would otherwise emit a frame with an
+unknown code that strict receivers reject.
+`Icmp6Assembler.__init__` refuses such constructions with
+`AssertionError`. Covers all 13 message types in one
+consolidated check.
+
+The dataclass `__post_init__` of each message type stays
+parser-tolerant (the parser's `from_buffer` constructs via
+`<code-enum>.from_int()` and `__post_init__` only does
+isinstance checks); the strict closed-set rejection lives at
+the assembler boundary, mirroring the ICMPv4 UNKNOWN-enum
+asymmetry split (commit `ea58c801`).
+
+The 5 ND messages were brought into this pattern in commit
+`8535e9b2` (`<Code-enum>(value)` → `<Code-enum>.from_int(value)`
+in `from_buffer` + `code.is_unknown` check in `validate_sanity`),
+which also enabled deletion of the parser's `try/except
+ValueError` wrap in commit `9d19e16b`.
+
+`Icmp6MessageUnknown` is exempt from the closed-set check:
+it is the parser-side carrier for RFC 4443 §2.4(b/c)
+unknown-type frames whose code field is by definition an
+`UNKNOWN_n` member of the abstract `Icmp6Code` base.
+Wrapping such a message in an assembler is a legitimate
+roundtrip case (security testing / raw-socket replay); the
+per-code check is gated by `not isinstance(message,
+Icmp6MessageUnknown)`.
+
+Pinned by `TestIcmp6AssemblerUnknownCodeReject` at
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__assembler__misc.py`
+(four cases: unknown Echo Request code rejected, unknown ND
+Neighbor Solicitation code rejected, `Icmp6MessageUnknown`
+wrapping accepted, known-code happy path accepted).

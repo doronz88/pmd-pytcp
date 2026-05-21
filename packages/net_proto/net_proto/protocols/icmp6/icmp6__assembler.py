@@ -38,6 +38,9 @@ from net_proto.lib.proto_assembler import ProtoAssembler
 from net_proto.lib.tracker import Tracker
 from net_proto.protocols.icmp6.icmp6__base import Icmp6
 from net_proto.protocols.icmp6.message.icmp6__message import Icmp6Message
+from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
+    Icmp6MessageUnknown,
+)
 
 
 class Icmp6Assembler(Icmp6, ProtoAssembler):
@@ -54,6 +57,37 @@ class Icmp6Assembler(Icmp6, ProtoAssembler):
         """
         Initialize the ICMPv6 packet assembler.
         """
+
+        # RFC 4443 §2.1 / RFC 4861 §4.1-§4.5 / RFC 3810 §5 —
+        # every known ICMPv6 message type (6 base + 2 MLD2 +
+        # 5 ND) has a closed set of legal code values; the
+        # parser's `validate_sanity` rejects RX frames whose
+        # code field carries an `UNKNOWN_n` pseudo-member
+        # synthesised via `<code-enum>.from_int()`. The TX
+        # boundary refuses to construct a frame with an
+        # unknown code so PyTCP itself cannot originate one.
+        # The dataclass `__post_init__` stays parser-tolerant
+        # (the parser's `from_buffer` constructs via
+        # `<code-enum>.from_int()` which materialises
+        # `UNKNOWN_n` codepoints; the strict closed-set
+        # rejection lives at the assembler boundary instead,
+        # mirroring the ICMPv4 UNKNOWN-enum asymmetry split,
+        # commit `ea58c801`).
+        #
+        # `Icmp6MessageUnknown` is exempt: it is the
+        # parser-side carrier for RFC 4443 §2.1 unknown-type
+        # frames whose code field is by definition an
+        # `UNKNOWN_n` member of the abstract `Icmp6Code`
+        # base. Wrapping such a message in an assembler is a
+        # legitimate roundtrip case (security testing /
+        # raw-socket replay); the per-code check applies
+        # only to the closed-enum subclasses.
+        if not isinstance(icmp6__message, Icmp6MessageUnknown):
+            assert not icmp6__message.code.is_unknown, (
+                f"The 'icmp6__message.code' field must be a known "
+                f"{type(icmp6__message.code).__name__} member. "
+                f"Got: {icmp6__message.code!r}"
+            )
 
         self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
