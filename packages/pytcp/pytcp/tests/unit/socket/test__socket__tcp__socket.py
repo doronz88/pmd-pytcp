@@ -688,10 +688,10 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
     def test__tcp_socket__getsockopt__so_keepalive_default_zero(self) -> None:
         """
         Ensure a freshly-constructed 'TcpSocket' reports
-        'SO_KEEPALIVE = 0' from 'getsockopt', matching the RFC 1122
-        §4.2.3.6 MUST: "If keep-alive are included, ... they MUST
-        default to off." Regression guard for the default-off
+        'SO_KEEPALIVE = 0' from 'getsockopt' — the default-off
         invariant at the socket-API layer.
+
+        Reference: RFC 1122 §4.2.3.6 (SO_KEEPALIVE MUST default to off).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -704,19 +704,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__so_keepalive_stores_one(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)' stores the
-        flag and a subsequent 'getsockopt' round-trips it as 1. Today
-        'TcpSocket' has no setsockopt / getsockopt methods at all,
-        so this fails with AttributeError.
-
-        Fix outline: add 'setsockopt(level, optname, value)' that
-        dispatches on '(level, optname)' and stores into
-        '_so_keepalive: bool'; add 'getsockopt(level, optname) -> int'
-        that reads it back. Validate the (level, optname) pair and
-        normalise non-zero 'value' to 1 (matches Linux for boolean
-        options).
+        flag and a subsequent 'getsockopt' round-trips it as 1.
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -730,13 +719,11 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__so_keepalive_zero_disables(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, 0)' after a
         previous '..., 1)' clears the flag. The application must be
-        able to disable keep-alive, not just enable it (RFC 1122
-        §4.2.3.6 "the application MUST be able to turn them on or
-        off for each TCP connection").
+        able to disable keep-alive, not just enable it.
+
+        Reference: RFC 1122 §4.2.3.6 (application MUST be able to turn keep-alive on or off per connection).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -751,8 +738,6 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__nonzero_value_normalises_to_one(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure boolean-shaped options collapse any non-zero integer
         to 1 on storage, matching Linux 'setsockopt(SO_KEEPALIVE,
         42, ...)' semantics. Without this, a later 'getsockopt'
@@ -770,8 +755,6 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__unknown_level_raises(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'setsockopt' on an unknown 'level' parameter raises
         rather than silently dropping the call. POSIX dictates
         'OSError(ENOPROTOOPT)' / 'OSError(EINVAL)'; PyTCP uses
@@ -789,8 +772,6 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__unknown_optname_raises(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'setsockopt' on a known level but unknown 'optname'
         parameter raises. Same POSIX semantics as the unknown-level
         case.
@@ -806,8 +787,6 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__so_keepalive_at_tcp_level_raises(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure that 'setsockopt(IPPROTO_TCP, SO_KEEPALIVE, 1)'
         (wrong level for SO_KEEPALIVE) raises rather than silently
         succeeding. SO_KEEPALIVE is an SOL_SOCKET-level option;
@@ -825,8 +804,6 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__getsockopt__unknown_level_raises(self) -> None:
         """
-        [FLAGS BUG]
-
         Ensure 'getsockopt' raises symmetrically for unknown
         '(level, optname)' pairs.
         """
@@ -878,8 +855,10 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         """
         Ensure connect() without setsockopt sets the new
         TcpSession's '_keepalive_enabled' to False explicitly
-        (not "leave unset"), preserving RFC 1122 §4.2.3.6's
-        "MUST default to off" invariant via the BSD-socket API.
+        (not "leave unset"), preserving the "MUST default to off"
+        invariant via the BSD-socket API.
+
+        Reference: RFC 1122 §4.2.3.6 (SO_KEEPALIVE MUST default to off).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -944,7 +923,9 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__tcp_keepintvl_round_trip(self) -> None:
         """
-        Same shape for TCP_KEEPINTVL.
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, N)' stores
+        the per-connection probe-interval override and a subsequent
+        'getsockopt' returns the same N.
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -958,7 +939,9 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
 
     def test__tcp_socket__setsockopt__tcp_keepcnt_round_trip(self) -> None:
         """
-        Same shape for TCP_KEEPCNT.
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPCNT, N)' stores
+        the per-connection probe-count override and a subsequent
+        'getsockopt' returns the same N.
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
