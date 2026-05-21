@@ -462,13 +462,17 @@ _GRATUITOUS_PEER_IP = Ip4Address("10.0.1.145")
         },
         {
             "_description": "Unsupported ArpOperation = 3 — drop at parser",
-            # 'ArpOperation.from_int(3)' yields a synthetic UNKNOWN_3 enum
-            # member; the sanity check at 'arp__parser.py' rejects it.
+            # Wire frame carries a raw uint16 oper = 3; the sanity
+            # check at 'arp__parser.py' rejects via
+            # 'ArpOperation.from_int(3).is_unknown'. The TX-strict
+            # 'ArpAssembler' refuses to construct such a frame on
+            # principle, so the test bypasses via the raw-oper
+            # builder.
             "_frames_rx": [
-                ArpTestCase._build_arp_frame(
+                ArpTestCase._build_arp_frame_with_raw_oper(
                     ethernet_dst=_BCAST_MAC,
                     ethernet_src=_PEER_MAC,
-                    arp_oper=ArpOperation.from_int(3),
+                    arp_oper_raw=3,
                     arp_sha=_PEER_MAC,
                     arp_spa=_PEER_IP,
                     arp_tpa=_STACK_IP,

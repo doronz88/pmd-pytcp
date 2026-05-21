@@ -211,6 +211,10 @@ class ArpTestCase(NetworkTestCase):
         Build a 42-byte Ethernet II + ARP wire frame from semantic
         kwargs. The Ethernet 'type' field is derived from the
         payload via 'EtherType.from_proto(ArpAssembler)'.
+
+        For tests that need an unknown ArpOperation (which the
+        TX-strict assembler refuses to emit on principle), use
+        '_build_arp_frame_with_raw_oper' below.
         """
 
         return bytes(
@@ -226,6 +230,43 @@ class ArpTestCase(NetworkTestCase):
                 ),
             )
         )
+
+    @staticmethod
+    def _build_arp_frame_with_raw_oper(
+        *,
+        ethernet_dst: MacAddress,
+        ethernet_src: MacAddress,
+        arp_oper_raw: int,
+        arp_sha: MacAddress,
+        arp_spa: Ip4Address,
+        arp_tpa: Ip4Address,
+        arp_tha: MacAddress = MAC__UNSPECIFIED,
+    ) -> bytes:
+        """
+        Build a 42-byte Ethernet II + ARP wire frame with a raw
+        uint16 'oper' value bypassing the TX-strict
+        ArpAssembler closed-set check.
+
+        Used by parser sanity tests that drive an unknown
+        ArpOperation through the RX path — the assembler refuses
+        to construct such a frame on principle (RFC 826 /
+        RFC 5494 §3), so the test builds the bytes directly.
+        """
+
+        # Ethernet II header (14 bytes) + ARP fixed payload (28 bytes).
+        ether_hdr = bytes(ethernet_dst) + bytes(ethernet_src) + b"\x08\x06"
+        arp_payload = (
+            b"\x00\x01"  # hrtype: ETHERNET
+            b"\x08\x00"  # prtype: IPv4
+            b"\x06"  # hrlen
+            b"\x04"  # prlen
+            + arp_oper_raw.to_bytes(2)
+            + bytes(arp_sha)
+            + bytes(arp_spa)
+            + bytes(arp_tha)
+            + bytes(arp_tpa)
+        )
+        return ether_hdr + arp_payload
 
     def _drive_arp(
         self,

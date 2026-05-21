@@ -494,3 +494,57 @@ class TestArpAssemblerTracker(TestCase):
             assembler.tracker.echo_tracker,
             msg="ArpAssembler tracker must default to having no echo_tracker.",
         )
+
+
+class TestArpAssemblerUnknownOperReject(TestCase):
+    """
+    The ARP assembler TX-strict enum-domain enforcement tests.
+
+    ProtoEnum '_missing_' materialises any unknown wire
+    Operation byte as an `UNKNOWN_<value>` pseudo-member so
+    the parser can surface it via `validate_sanity`. The
+    assembler is the strict-TX boundary and MUST refuse to
+    emit a frame whose Operation field carries such a
+    pseudo-member.
+    """
+
+    def test__arp__assembler__unknown_oper_rejected(self) -> None:
+        """
+        Ensure constructing an ArpAssembler with an Operation
+        value outside the defined REQUEST / REPLY set raises
+        AssertionError. Mirrors the parser-side rejection at
+        `ArpParser._validate_sanity` so PyTCP itself cannot
+        originate an undefined-Operation frame.
+
+        Reference: RFC 826 (only REQUEST and REPLY defined).
+        Reference: RFC 5494 §3 (reserved Operation values).
+        """
+
+        unknown_oper = ArpOperation.from_int(99)
+        self.assertTrue(
+            unknown_oper.is_unknown,
+            msg="Test fixture sanity: 99 must materialise as UNKNOWN_99.",
+        )
+
+        with self.assertRaises(AssertionError) as error:
+            ArpAssembler(arp__oper=unknown_oper)
+
+        self.assertIn(
+            "must be a known ArpOperation member",
+            str(error.exception),
+            msg="AssertionError must cite the closed-set ArpOperation domain.",
+        )
+
+    def test__arp__assembler__request_and_reply_accepted(self) -> None:
+        """
+        Ensure the canonical happy path — REQUEST and REPLY
+        Operation values — passes the TX-strict check.
+
+        Reference: RFC 826 (REQUEST=1 and REPLY=2 are the only
+        defined Operation values).
+        """
+
+        for oper in (ArpOperation.REQUEST, ArpOperation.REPLY):
+            with self.subTest(oper=oper):
+                # Should not raise.
+                ArpAssembler(arp__oper=oper)

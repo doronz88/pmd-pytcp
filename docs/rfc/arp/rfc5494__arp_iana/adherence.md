@@ -174,6 +174,19 @@ type construction. The hard-locked
 `ArpHeader` prevents `ar$hrd = 0` or `ar$hrd = 65535` on
 emit.
 
+A subtler path — passing `arp__oper=ArpOperation.from_int(99)`
+(or any other unknown numeric value) — would synthesise an
+`UNKNOWN_99` pseudo-member via the `ProtoEnum._missing_`
+hook and pass the typed-enum constructor. `ArpAssembler`
+guards against this with an explicit
+`assert not arp__oper.is_unknown` at the TX boundary,
+mirroring the closed-set strict-TX pattern used in
+DHCPv4 (`Dhcp4OperationCode` / `Dhcp4MessageType`),
+ICMPv4 (`Icmp4Type` codes), and ICMPv6 (every closed
+`Icmp6*Code` subclass). The RFC 826 + RFC 5494 §3
+"only REQUEST and REPLY are defined" rule is therefore
+enforced symmetrically on RX and TX.
+
 ---
 
 ## Test coverage audit

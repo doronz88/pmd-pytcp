@@ -60,6 +60,20 @@ class ArpAssembler(Arp, ProtoAssembler):
         Initialize the ARP packet assembler.
         """
 
+        # RFC 826 / RFC 5494 §3 — only REQUEST (1) and REPLY (2)
+        # are defined; 0 and 65535 are reserved. The parser
+        # rejects inbound frames whose Operation is an
+        # `UNKNOWN_n` member at `ArpParser._validate_sanity`;
+        # the assembler refuses to originate one for
+        # symmetry, mirroring the ICMPv4 / ICMPv6 / DHCPv4
+        # closed-set strict-TX pattern (commits `ea58c801` /
+        # `2818f654` / `68e0bd95`).
+        assert not arp__oper.is_unknown, (
+            f"The 'arp__oper' field must be a known ArpOperation member "
+            f"(RFC 826 / RFC 5494 §3 — only REQUEST and REPLY are defined). "
+            f"Got: {arp__oper!r}"
+        )
+
         self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
         self._header = ArpHeader(
