@@ -30,6 +30,8 @@ net_proto/lib/errors.py
 ver 3.0.6
 """
 
+from typing import override
+
 
 class PyTcpError(Exception):
     """
@@ -48,6 +50,7 @@ class PacketIntegrityError(PacketValidationError):
     Exception raised when packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[INTEGRITY ERROR]" + message)
 
@@ -57,5 +60,6 @@ class PacketSanityError(PacketValidationError):
     Exception raised when packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[SANITY ERROR]" + message)

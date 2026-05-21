@@ -33,6 +33,7 @@ ver 3.0.6
 
 import itertools
 import time
+from typing import override
 
 
 class Tracker:
@@ -72,6 +73,7 @@ class Tracker:
             self._timestamp = time.time()
             self._serial = f"<lr>TX{next(Tracker._tx_counter) & 0xFFFF:04X}</>"
 
+    @override
     def __str__(self) -> str:
         """
         Get tracker as a string.
@@ -81,6 +83,7 @@ class Tracker:
             return f"{self._serial} {self._echo_tracker}"
         return self._serial
 
+    @override
     def __repr__(self) -> str:
         """
         Get tracker as a string representation.

@@ -33,7 +33,7 @@ ver 3.0.6
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
@@ -84,6 +84,7 @@ class ProtoOptions(ABC):
 
         return sum(len(option) for option in self._options)
 
+    @override
     def __str__(self) -> str:
         """
         Get the options log string.
@@ -91,6 +92,7 @@ class ProtoOptions(ABC):
 
         return ", ".join(str(option) for option in self._options)
 
+    @override
     def __repr__(self) -> str:
         """
         Get the options representation string.
@@ -117,6 +119,7 @@ class ProtoOptions(ABC):
 
         return bool(self._options)
 
+    @override
     def __eq__(self, other: object, /) -> bool:
         """
         Check if the options are equal.

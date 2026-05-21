@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC, abstractmethod
+from typing import override
 
 
 class Proto(ABC):
@@ -70,6 +71,7 @@ class Proto(ABC):
 
         raise NotImplementedError
 
+    @override
     def __eq__(self, other: object) -> bool:
         """
         Compare two packets.
@@ -79,6 +81,7 @@ class Proto(ABC):
             return NotImplemented
         return self is other or (type(self) is type(other) and repr(self) == repr(other))
 
+    @override
     def __hash__(self) -> int:
         """
         Get the packet hash.
