@@ -70,6 +70,8 @@ class TestArpHeaderAsserts(TestCase):
         """
         Ensure the ARP header constructor raises an exception when the provided
         'oper' argument is not an ArpOperation.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self._kwargs["oper"] = value = "not an ArpOperation"
@@ -87,6 +89,8 @@ class TestArpHeaderAsserts(TestCase):
         """
         Ensure the ARP header constructor raises an exception when the provided
         'sha' argument is not a MacAddress.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self._kwargs["sha"] = value = "not a MacAddress"
@@ -104,6 +108,8 @@ class TestArpHeaderAsserts(TestCase):
         """
         Ensure the ARP header constructor raises an exception when the provided
         'spa' argument is not an Ip4Address.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self._kwargs["spa"] = value = "not an Ip4Address"
@@ -121,6 +127,8 @@ class TestArpHeaderAsserts(TestCase):
         """
         Ensure the ARP header constructor raises an exception when the provided
         'tha' argument is not a MacAddress.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self._kwargs["tha"] = value = "not a MacAddress"
@@ -138,6 +146,8 @@ class TestArpHeaderAsserts(TestCase):
         """
         Ensure the ARP header constructor raises an exception when the provided
         'tpa' argument is not an Ip4Address.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self._kwargs["tpa"] = value = "not an Ip4Address"
@@ -173,6 +183,8 @@ class TestArpHeaderDefaults(TestCase):
     def test__arp__header__hrtype_default(self) -> None:
         """
         Ensure the 'hrtype' field defaults to ArpHardwareType.ETHERNET.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self.assertEqual(
@@ -184,6 +196,8 @@ class TestArpHeaderDefaults(TestCase):
     def test__arp__header__prtype_default(self) -> None:
         """
         Ensure the 'prtype' field defaults to EtherType.IP4.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self.assertEqual(
@@ -195,6 +209,8 @@ class TestArpHeaderDefaults(TestCase):
     def test__arp__header__hrlen_default(self) -> None:
         """
         Ensure the 'hrlen' field defaults to the Ethernet MAC length (6).
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self.assertEqual(
@@ -206,6 +222,8 @@ class TestArpHeaderDefaults(TestCase):
     def test__arp__header__prlen_default(self) -> None:
         """
         Ensure the 'prlen' field defaults to the IPv4 address length (4).
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         self.assertEqual(
@@ -217,6 +235,8 @@ class TestArpHeaderDefaults(TestCase):
     def test__arp__header__hrtype_cannot_be_overridden(self) -> None:
         """
         Ensure 'hrtype' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         with self.assertRaises(TypeError):
@@ -239,6 +259,8 @@ class TestArpHeaderOperation(TestCase):
         """
         Ensure a valid ARP Request header instance can be constructed and its
         fields are exposed exactly as provided.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -259,6 +281,8 @@ class TestArpHeaderOperation(TestCase):
         """
         Ensure a valid ARP Reply header instance can be constructed and its
         fields are exposed exactly as provided.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -278,6 +302,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__len(self) -> None:
         """
         Ensure 'len()' on the header returns the canonical 28-byte size.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -303,6 +329,8 @@ class TestArpHeaderOperation(TestCase):
           Sender IP     : 11.22.33.44
           Target MAC    : 0a:0b:0c:0d:0e:0f
           Target IP     : 101.102.103.104
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -325,6 +353,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__from_buffer_roundtrip(self) -> None:
         """
         Ensure 'from_buffer(bytes(header))' rebuilds an equivalent header.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         original = ArpHeader(
@@ -343,6 +373,8 @@ class TestArpHeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' reads only the first ARP__HEADER__LEN bytes and
         ignores any trailing data.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         original = ArpHeader(
@@ -361,6 +393,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__equality(self) -> None:
         """
         Ensure two ARP headers with identical field values compare equal.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         kwargs: dict[str, Any] = {
@@ -376,6 +410,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__inequality_on_oper(self) -> None:
         """
         Ensure headers differing only in 'oper' compare unequal.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         base: dict[str, Any] = {
@@ -394,6 +430,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__is_hashable(self) -> None:
         """
         Ensure ARP headers can be used as keys in a set/dict.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -409,6 +447,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__is_frozen(self) -> None:
         """
         Ensure ARP header fields cannot be mutated after construction.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         header = ArpHeader(
@@ -425,6 +465,8 @@ class TestArpHeaderOperation(TestCase):
     def test__arp__header__rejects_positional_args(self) -> None:
         """
         Ensure the ARP header constructor rejects positional arguments.
+
+        Reference: RFC 826 (ARP header fields — hrtype, prtype, hrlen, prlen, oper, sha, spa, tha, tpa).
         """
 
         with self.assertRaises(TypeError):

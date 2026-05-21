@@ -223,6 +223,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__len(self) -> None:
         """
         Ensure the ARP packet assembler 'len()' returns the 28-byte header size.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -235,6 +237,8 @@ class TestArpAssemblerPackets(TestCase):
         """
         Ensure the ARP packet assembler '__str__()' method renders the canonical
         log line.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -246,6 +250,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__repr(self) -> None:
         """
         Ensure the ARP packet assembler '__repr__()' wraps the ArpHeader repr.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -257,6 +263,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__bytes(self) -> None:
         """
         Ensure 'bytes()' on the assembler yields the exact 28-byte wire image.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -269,6 +277,8 @@ class TestArpAssemblerPackets(TestCase):
         """
         Ensure the assembler supports the buffer protocol and reproduces the
         same bytes as 'bytes(assembler)'.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -280,6 +290,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__hrtype(self) -> None:
         """
         Ensure the assembler 'hrtype' property is always Ethernet.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -291,6 +303,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__prtype(self) -> None:
         """
         Ensure the assembler 'prtype' property is always IPv4.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -302,6 +316,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__hrlen(self) -> None:
         """
         Ensure the assembler 'hrlen' property is always 6.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -313,6 +329,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__prlen(self) -> None:
         """
         Ensure the assembler 'prlen' property is always 4.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -324,6 +342,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__oper(self) -> None:
         """
         Ensure the assembler 'oper' property reflects the constructor argument.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -335,6 +355,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__sha(self) -> None:
         """
         Ensure the assembler 'sha' property reflects the constructor argument.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -346,6 +368,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__spa(self) -> None:
         """
         Ensure the assembler 'spa' property reflects the constructor argument.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -357,6 +381,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__tha(self) -> None:
         """
         Ensure the assembler 'tha' property reflects the constructor argument.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -368,6 +394,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__tpa(self) -> None:
         """
         Ensure the assembler 'tpa' property reflects the constructor argument.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -379,6 +407,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__header(self) -> None:
         """
         Ensure the assembler 'header' property returns the expected ArpHeader.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -391,6 +421,8 @@ class TestArpAssemblerPackets(TestCase):
         """
         Ensure the 'assemble()' method appends the header bytes to the buffers
         list without replacing its existing contents.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         prefix = b"\xde\xad\xbe\xef"
@@ -407,6 +439,8 @@ class TestArpAssemblerPackets(TestCase):
     def test__arp__assembler__roundtrip_through_header(self) -> None:
         """
         Ensure the assembled wire image parses back into an equivalent ArpHeader.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         self.assertEqual(
@@ -425,6 +459,8 @@ class TestArpAssemblerDefaults(TestCase):
         """
         Ensure constructing the assembler without arguments yields a REQUEST
         with unspecified MAC and IPv4 addresses.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         assembler = ArpAssembler()
@@ -444,6 +480,8 @@ class TestArpAssemblerDefaults(TestCase):
     def test__arp__assembler__rejects_positional_args(self) -> None:
         """
         Ensure the assembler constructor rejects positional arguments.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         with self.assertRaises(TypeError):
@@ -458,6 +496,8 @@ class TestArpAssemblerTracker(TestCase):
     def test__arp__assembler__tracker_prefix(self) -> None:
         """
         Ensure the assembler's tracker serial carries the 'TX' prefix.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         assembler = ArpAssembler()
@@ -471,6 +511,8 @@ class TestArpAssemblerTracker(TestCase):
     def test__arp__assembler__echo_tracker_stored(self) -> None:
         """
         Ensure the assembler preserves the supplied 'echo_tracker'.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -486,6 +528,8 @@ class TestArpAssemblerTracker(TestCase):
     def test__arp__assembler__no_echo_tracker_by_default(self) -> None:
         """
         Ensure an assembler built without 'echo_tracker' has no echo reference.
+
+        Reference: RFC 826 (ARP wire format — Ethernet/IPv4 28-byte packet).
         """
 
         assembler = ArpAssembler()

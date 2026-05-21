@@ -174,6 +174,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__header(self) -> None:
         """
         Ensure the parser produces the expected 'header' object.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(
@@ -185,6 +187,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__header_field_properties(self) -> None:
         """
         Ensure the parser exposes all ARP header fields through its properties.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(self._parser.hrtype, ArpHardwareType.ETHERNET, msg="Unexpected 'hrtype'.")
@@ -200,6 +204,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__len(self) -> None:
         """
         Ensure 'len()' on the parser returns the 28-byte header size.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(len(self._parser), ARP__HEADER__LEN, msg="Parser length must be 28 bytes.")
@@ -207,6 +213,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__packet_rx_arp_attribute(self) -> None:
         """
         Ensure the parser attaches itself to the PacketRx as the 'arp' field.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertIs(
@@ -218,6 +226,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__packet_rx_frame_advances(self) -> None:
         """
         Ensure the parser advances the PacketRx frame past the ARP header.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(
@@ -230,6 +240,8 @@ class TestArpParserOperation(TestCase):
         """
         Ensure 'bytes(parser)' yields the ARP header exactly as it appeared on
         the wire.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(
@@ -242,6 +254,8 @@ class TestArpParserOperation(TestCase):
         """
         Ensure the parser '__str__()' includes operation, sender, target, and
         length information.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         representation = str(self._parser)
@@ -256,6 +270,8 @@ class TestArpParserOperation(TestCase):
     def test__arp__parser__repr_format(self) -> None:
         """
         Ensure the parser '__repr__()' wraps the ArpHeader repr.
+
+        Reference: RFC 826 (ARP Packet Reception — parse Ethernet/IPv4 layout).
         """
 
         self.assertEqual(
