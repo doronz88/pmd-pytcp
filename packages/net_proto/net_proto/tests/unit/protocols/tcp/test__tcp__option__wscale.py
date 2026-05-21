@@ -279,8 +279,11 @@ class TestTcpOptionWscaleParser(TestCase):
     def test__tcp__option__wscale__from_buffer__value_clamped_to_max(self) -> None:
         """
         Ensure from_buffer clamps a received wscale value that exceeds
-        TCP__OPTION__WSCALE__MAX_VALUE down to the maximum, per RFC 1323
-        resilience behaviour (the wire value 0xff is clamped to 14).
+        TCP__OPTION__WSCALE__MAX_VALUE down to the maximum on the
+        resilience behaviour path (the wire value 0xff is clamped to
+        14).
+
+        Reference: RFC 7323 §2.3 (wscale clamp to 14 on receive resilience).
         """
 
         # TCP Wscale option wire frame with out-of-range wscale=0xff:

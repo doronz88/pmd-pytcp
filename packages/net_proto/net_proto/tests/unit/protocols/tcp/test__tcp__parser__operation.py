@@ -497,11 +497,11 @@ class TestTcpParserOperation__ReservedBits(TestCase):
 
     def test__tcp__parser__reserved_bits__cksum_field_reflects_wire(self) -> None:
         """
-        Sanity: the parsed header's 'cksum' value equals the cksum
-        on the wire (here 0x60d5) - just confirming the test
-        fixture's hand-computed checksum is correct and the parser
-        is happy with it (no integrity error from a bad checksum
-        would have surfaced as a TcpIntegrityError already).
+        Ensure the parsed header's 'cksum' value equals the cksum
+        on the wire (here 0x60d5) - confirms the test fixture's
+        hand-computed checksum is correct and the parser is happy
+        with it (no integrity error from a bad checksum would have
+        surfaced as a TcpIntegrityError already).
         """
 
         rsrvd_parser = TcpParser(self._packet_rx(self._RSRVD_BITS_FRAME))

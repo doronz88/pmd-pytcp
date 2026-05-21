@@ -72,8 +72,8 @@ class TestIcmp6NdOptionRedirectedHeaderAsserts(TestCase):
         """
         Ensure the constructor rejects a 'data' length that does
         not produce an 8-byte aligned total option size — every
-        ND option MUST be 8-byte aligned per RFC 4861 §4.6 generic
-        option format.
+        ND option MUST be 8-byte aligned per the generic option
+        format.
 
         Reference: RFC 4861 §4.6 (ND option 8-byte alignment).
         """

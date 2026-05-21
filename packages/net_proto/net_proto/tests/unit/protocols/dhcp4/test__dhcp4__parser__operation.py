@@ -628,9 +628,9 @@ class TestDhcp4ParserBufferRoundtrip(TestCase):
 
     def test__dhcp4__parser__roundtrip(self) -> None:
         """
-        Parse a frame, re-encode it via the buffer protocol, and parse the
-        encoded bytes again — the resulting parsers must be indistinguishable
-        at the level of their exposed header and options.
+        Ensure that a parse-encode-parse round-trip is idempotent at
+        the level of the exposed header and options — the second
+        parser must be indistinguishable from the first.
         """
 
         frame = (
