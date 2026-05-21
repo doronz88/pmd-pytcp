@@ -65,7 +65,7 @@ class Ip6DestOpts(Proto, Ip6DestOptsHeaderProperties):
         """
 
         return (
-            f"IPv6_HBH next {self._header.next}, "
+            f"IPv6_DESTOPTS next {self._header.next}, "
             f"hdr_ext_len {self._header.hdr_ext_len} "
             f"({(self._header.hdr_ext_len + 1) * 8} bytes), "
             f"options [{self._options}]"

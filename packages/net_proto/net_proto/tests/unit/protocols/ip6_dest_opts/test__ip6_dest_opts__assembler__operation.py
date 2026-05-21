@@ -203,3 +203,32 @@ class TestIp6DestOptsAssemblerOperation(TestCase):
         opts = Ip6DestOptsOptions(*[Ip6DestOptsOptionPadN(b"\x00" * 253) for _ in range(9)])
         with self.assertRaises(AssertionError):
             Ip6DestOptsAssembler(ip6_dest_opts__options=opts)
+
+    def test__ip6_dest_opts__assembler__str_tags_destopts_family(self) -> None:
+        """
+        Ensure '__str__' tags the packet with the 'IPv6_DESTOPTS'
+        family name and does not leak the sibling 'IPv6_HBH' label
+        from the Hop-by-Hop base — regression guard against the
+        copy-paste defect that surfaced in the audit B sweep.
+
+        Reference: RFC 8200 §4.6 (Destination Options header).
+        """
+
+        opts = Ip6DestOptsOptions(Ip6DestOptsOptionPadN(b"\x00\x00\x00\x00"))
+        asm = Ip6DestOptsAssembler(
+            ip6_dest_opts__next=IpProto.TCP,
+            ip6_dest_opts__options=opts,
+            ip6_dest_opts__payload=b"",
+        )
+
+        log_string = str(asm)
+
+        self.assertTrue(
+            log_string.startswith("IPv6_DESTOPTS "),
+            msg=("Ip6DestOpts.__str__ must start with 'IPv6_DESTOPTS' family " f"name; got: {log_string!r}"),
+        )
+        self.assertNotIn(
+            "IPv6_HBH",
+            log_string,
+            msg=("Ip6DestOpts.__str__ must not leak the sibling 'IPv6_HBH' " f"label; got: {log_string!r}"),
+        )
