@@ -36,7 +36,7 @@ from typing import Self, override
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.tcp.options.tcp__option import TcpOption, TcpOptionType
 
-# The TCP Eol (End of Option List) option [RFC 793].
+# The TCP Eol (End of Option List) option [RFC 9293 §3.2].
 
 # +-+-+-+-+-+-+-+-+
 # |    Type = 0   |

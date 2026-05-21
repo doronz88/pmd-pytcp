@@ -43,7 +43,7 @@ from net_proto.protocols.tcp.options.tcp__option import (
 )
 from net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 
-# The TCP Timestamps option [RFC 1323].
+# The TCP Timestamps option [RFC 7323 §3].
 
 #                                 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #                                 |    Type = 8   |   Length = 10 |

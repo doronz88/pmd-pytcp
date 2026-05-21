@@ -46,7 +46,7 @@ from net_proto.protocols.dhcp4.dhcp4__enums import (
 )
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 
-# The DHCPv4 packet header (RFC 2131).
+# The DHCPv4 packet header [RFC 2131].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |   Operation   |    HW Type    |     HW Len    |     Hops      |

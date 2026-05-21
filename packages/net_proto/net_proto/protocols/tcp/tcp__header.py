@@ -44,7 +44,7 @@ from net_proto.lib.int_checks import (
 )
 from net_proto.lib.proto_struct import ProtoStruct
 
-# The TCP packet header [RFC 793].
+# The TCP packet header [RFC 9293].
 
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |          Source Port          |       Destination Port        |
