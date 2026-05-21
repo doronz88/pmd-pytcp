@@ -75,6 +75,22 @@ class Ip6RoutingAssembler(Ip6Routing, ProtoAssembler):
         assembler asserts this requirement.
         """
 
+        # RFC 5095 §3 — "An IPv6 node ... MUST NOT execute the
+        # algorithm specified in [RFC 2460] for RH0". The hard-drop
+        # mandate applies symmetrically to RX and TX: the parser at
+        # `Ip6RoutingParser._validate_integrity` rejects inbound
+        # RH0 with `Ip6RoutingIntegrityError(pointer=2)`; the
+        # assembler MUST refuse to originate one. RH2/RH3/RH4 are
+        # permitted (parsed and emitted as opaque per the existing
+        # Phase-2-forwarder design); UNKNOWN_n variants are
+        # tolerated so test fixtures can exercise peer-rejection
+        # behaviour.
+        assert ip6_routing__routing_type != Ip6RoutingType.RH0, (
+            f"The IPv6 Routing Header type MUST NOT be RH0 "
+            f"(RFC 5095 §3 — Type 0 Routing Header is deprecated and "
+            f"hard-dropped on receipt). Got: {ip6_routing__routing_type!r}"
+        )
+
         self._tracker = Tracker(prefix="TX", echo_tracker=echo_tracker)
 
         self._payload = ip6_routing__payload

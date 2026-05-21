@@ -54,6 +54,22 @@ solely so the parser can recognise and reject it. There is
 no encode path, no opaque-bytes preserve path — RH0 is hard-
 dropped during the integrity-check phase.
 
+**TX-strict assembler ban:** `Ip6RoutingAssembler.__init__`
+refuses to construct a Routing Header with
+`routing_type=Ip6RoutingType.RH0`. This is the symmetric TX
+counterpart to the parser's RX rejection: the RFC 5095 §3
+"MUST NOT" applies to both directions, and PyTCP itself
+MUST NOT originate a deprecated RH0 frame even via direct
+API misuse (test fixtures, hypothetical future Phase-2
+forwarder code). Non-deprecated routing types (RH2 / RH3 /
+RH4) and `UNKNOWN_n` variants continue to be accepted so
+test fixtures can exercise peer-rejection behaviour.
+
+Pinned by `TestIp6RoutingAssemblerOperation.test__ip6_routing__assembler__rh0_rejected`
+and `test__ip6_routing__assembler__rh2_rh3_rh4_accepted`
+at
+`packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__assembler__operation.py`.
+
 ## §3 Deprecation of the Type 0 Routing Header
 
 > "An IPv6 node that receives a packet with a destination
@@ -148,6 +164,8 @@ The §3 clauses above are pinned by:
 | Pointer = 42 (absolute) | Same integration test asserts `probe.message.pointer == 42` for the RH-immediately-after-IPv6-header case. |
 | Counter `ip6_routing__rh0__drop` | Same integration test. |
 | Non-RH0 routing types pass through | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` (RH3, RH4, unknown via dynamic-extend) |
+| TX-strict RH0 ban | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__assembler__operation.py::TestIp6RoutingAssemblerOperation::test__ip6_routing__assembler__rh0_rejected` |
+| TX-strict RH2 / RH3 / RH4 still allowed | Same file, `test__ip6_routing__assembler__rh2_rh3_rh4_accepted` |
 
 A regression that broke the RH0 hard-drop would fail the
 integrity-check unit test loudly (the hard-drop is the very

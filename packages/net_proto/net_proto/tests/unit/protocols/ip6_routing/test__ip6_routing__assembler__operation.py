@@ -137,3 +137,48 @@ class TestIp6RoutingAssemblerOperation(TestCase):
             1,
             msg="16-byte RH must yield hdr_ext_len=1.",
         )
+
+    def test__ip6_routing__assembler__rh0_rejected(self) -> None:
+        """
+        Ensure constructing an Ip6RoutingAssembler with
+        routing_type=RH0 raises AssertionError. The parser's
+        integrity check at `Ip6RoutingParser._validate_integrity`
+        already rejects inbound RH0; the assembler-side prohibition
+        closes the symmetric TX gap so PyTCP itself cannot
+        originate a deprecated RH0 frame.
+
+        Reference: RFC 5095 §3 (RH0 is deprecated; MUST NOT be originated).
+        """
+
+        with self.assertRaises(AssertionError) as error:
+            Ip6RoutingAssembler(
+                ip6_routing__routing_type=Ip6RoutingType.RH0,
+                ip6_routing__data=b"\x00" * 12,
+            )
+
+        self.assertIn(
+            "MUST NOT be RH0",
+            str(error.exception),
+            msg="AssertionError must cite the RFC 5095 §3 RH0 prohibition.",
+        )
+
+    def test__ip6_routing__assembler__rh2_rh3_rh4_accepted(self) -> None:
+        """
+        Ensure constructing an Ip6RoutingAssembler with
+        non-deprecated routing types (RH2 / RH3 / RH4) is
+        accepted — the deprecation ban applies to RH0 only.
+
+        Reference: RFC 5095 §3 (RH0 only; other routing types unaffected).
+        """
+
+        for routing_type in (
+            Ip6RoutingType.RH2,
+            Ip6RoutingType.RH3,
+            Ip6RoutingType.RH4,
+        ):
+            with self.subTest(routing_type=routing_type):
+                # Should not raise.
+                Ip6RoutingAssembler(
+                    ip6_routing__routing_type=routing_type,
+                    ip6_routing__data=b"\x00" * 12,
+                )
