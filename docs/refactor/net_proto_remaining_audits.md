@@ -367,6 +367,60 @@ packages/`. Replace with `Buffer` everywhere.
 
 ---
 
+### Audit L — `*Options` / `*OptionsProperties` lookup-property layout
+
+**Goal:** Surfaced by audit F's docstring sweep. The
+lookup-property layout for TLV-option containers drifts
+across families:
+
+| Family | `*Options` container | `*OptionsProperties` mixin |
+|--------|----------------------|----------------------------|
+| TCP | 7 lookup properties | 5 properties (with default-fallback wrappers) |
+| DHCPv4 | 13 lookup properties | 13 properties (delegating 1:1) |
+| ICMPv6 ND | 4 lookup properties | empty (mixin defines only `_options`) |
+| IPv4 | none | 6 lookup properties |
+| IPv6 HBH | 3 lookup properties | empty |
+| IPv6 DestOpts | 1 lookup property | empty |
+
+Five distinct layouts for the same architectural role.
+Consumers reading `packet_rx.tcp.options.mss` see one
+surface; consumers reading `packet_rx.tcp.mss` see
+another. The two surfaces don't always agree on naming
+(`Dhcp4Options.server_id` ≠ `Dhcp4OptionsProperties.srv_id`)
+or on return-type semantics (TCP's mixin adds default
+fallbacks the container doesn't).
+
+**Method:** decide which layout is canonical for net_proto
+(probably: lookup properties live on the `*Options`
+container only; the `*OptionsProperties` mixin re-exports
+them at the protocol-class level via property delegation
+when needed), then migrate the divergent families. Each
+family migration is one focused commit:
+
+- TCP: collapse the 5 mixin default-fallback wrappers into
+  the container or into the `Tcp` base class properties.
+  Drop the 5 mixin duplicates that delegate to the
+  container 1:1.
+- DHCPv4: drop the 13 mixin duplicates (they all delegate
+  1:1 to the container) and reconcile the
+  `server_id` / `srv_id` naming.
+- IPv4: move the 6 lookup properties from the mixin to a
+  new `Ip4Options` container layer (the family currently
+  has no container-level properties at all).
+- IPv6 HBH / DestOpts / ICMPv6 ND: already container-only;
+  no migration needed.
+
+**Expected outcome:** Reduce ~24 redundant mixin
+properties to ~0; consolidate the 5-way layout drift to a
+single canonical pattern.
+
+**Likely Tier-1-ish work** because it's a real
+architectural inconsistency that affects every consumer
+of the option lookups. Defer-able but not deferable
+forever.
+
+---
+
 ## Workflow expectations
 
 For each audit pass:
