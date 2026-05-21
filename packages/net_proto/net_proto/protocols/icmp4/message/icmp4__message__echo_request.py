@@ -63,7 +63,7 @@ class Icmp4EchoRequestCode(Icmp4Code):
     The ICMPv4 Echo Request 'code' field values.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0  # RFC 792 §"Echo or Echo Reply Message": only code 0 defined.
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

@@ -68,8 +68,8 @@ class Icmp4TimeExceededCode(Icmp4Code):
     The ICMPv4 Time Exceeded 'code' field values (RFC 792).
     """
 
-    TTL_EXCEEDED_IN_TRANSIT = 0
-    FRAGMENT_REASSEMBLY_TIME_EXCEEDED = 1
+    TTL_EXCEEDED_IN_TRANSIT = 0  # RFC 792: TTL expired while in transit.
+    FRAGMENT_REASSEMBLY_TIME_EXCEEDED = 1  # RFC 792: fragment reassembly timer expired.
 
     @override
     def __str__(self) -> str:

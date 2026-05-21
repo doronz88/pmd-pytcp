@@ -52,11 +52,11 @@ class Icmp4Type(ProtoEnumByte):
     The ICMPv4 message 'type' field values.
     """
 
-    ECHO_REPLY = 0
-    DESTINATION_UNREACHABLE = 3
-    ECHO_REQUEST = 8
-    TIME_EXCEEDED = 11
-    PARAMETER_PROBLEM = 12
+    ECHO_REPLY = 0  # RFC 792 §"Echo or Echo Reply Message".
+    DESTINATION_UNREACHABLE = 3  # RFC 792 §"Destination Unreachable Message".
+    ECHO_REQUEST = 8  # RFC 792 §"Echo or Echo Reply Message".
+    TIME_EXCEEDED = 11  # RFC 792 §"Time Exceeded Message".
+    PARAMETER_PROBLEM = 12  # RFC 792 §"Parameter Problem Message".
 
 
 class Icmp4Code(ProtoEnumByte):

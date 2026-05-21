@@ -81,22 +81,22 @@ class Icmp4DestinationUnreachableCode(Icmp4Code):
     The ICMPv4 Destination Unreachable 'code' field values.
     """
 
-    NETWORK = 0
-    HOST = 1
-    PROTOCOL = 2
-    PORT = 3
-    FRAGMENTATION_NEEDED = 4
-    SOURCE_ROUTE_FAILED = 5
-    NETWORK_UNKNOWN = 6
-    HOST_UNKNOWN = 7
-    SOURCE_HOST_ISOLATED = 8
-    NETWORK_PROHIBITED = 9
-    HOST_PROHIBITED = 10
-    NETWORK_TOS = 11
-    HOST_TOS = 12
-    COMMUNICATION_PROHIBITED = 13
-    HOST_PRECEDENCE = 14
-    PRECEDENCE_CUTOFF = 15
+    NETWORK = 0  # RFC 792: net unreachable.
+    HOST = 1  # RFC 792: host unreachable.
+    PROTOCOL = 2  # RFC 792: protocol unreachable.
+    PORT = 3  # RFC 792: port unreachable.
+    FRAGMENTATION_NEEDED = 4  # RFC 792 / RFC 1191 §3: fragmentation needed and DF set (PMTUD).
+    SOURCE_ROUTE_FAILED = 5  # RFC 792: source route failed.
+    NETWORK_UNKNOWN = 6  # RFC 1122 §3.2.2.1: destination network unknown.
+    HOST_UNKNOWN = 7  # RFC 1122 §3.2.2.1: destination host unknown.
+    SOURCE_HOST_ISOLATED = 8  # RFC 1122 §3.2.2.1: source host isolated (obsolete).
+    NETWORK_PROHIBITED = 9  # RFC 1122 §3.2.2.1: destination network administratively prohibited.
+    HOST_PROHIBITED = 10  # RFC 1122 §3.2.2.1: destination host administratively prohibited.
+    NETWORK_TOS = 11  # RFC 1122 §3.2.2.1: destination network unreachable for ToS.
+    HOST_TOS = 12  # RFC 1122 §3.2.2.1: destination host unreachable for ToS.
+    COMMUNICATION_PROHIBITED = 13  # RFC 1812 §5.2.7.1: communication administratively prohibited (firewall).
+    HOST_PRECEDENCE = 14  # RFC 1812 §5.2.7.1: host precedence violation.
+    PRECEDENCE_CUTOFF = 15  # RFC 1812 §5.2.7.1: precedence cutoff in effect.
 
     @override
     def __str__(self) -> str:
