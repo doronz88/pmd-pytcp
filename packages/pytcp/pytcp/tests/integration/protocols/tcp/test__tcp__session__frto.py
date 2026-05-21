@@ -407,9 +407,9 @@ class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
         advances the window (but does NOT cover the pre-RTO
         SND.MAX), F-RTO enters step 2 (waiting for second
         ACK) rather than clearing state. When the second ACK
-        further advances the window, RFC 5682 §2.1 step 3b
-        declares the timeout spurious and pre-RTO cwnd /
-        ssthresh are restored.
+        further advances the window, F-RTO declares the
+        timeout spurious and pre-RTO cwnd / ssthresh are
+        restored.
 
         Reference: RFC 5682 §2.1 step 2 (partial-ACK -> wait for second ACK).
         Reference: RFC 5682 §2.1 step 3b (second-ACK-advances declares spurious).

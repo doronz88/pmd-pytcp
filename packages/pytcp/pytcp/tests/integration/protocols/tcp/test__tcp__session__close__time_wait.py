@@ -407,12 +407,12 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
     def test__rfc1337__no_evidence_syn_in_time_wait_elicits_challenge_ack(self) -> None:
         """
         Ensure a SYN arriving at TIME_WAIT WITHOUT fresh
-        evidence on either RFC 6191 §2 axis (seq <= RCV.NXT
+        evidence on either freshness axis (seq <= RCV.NXT
         AND no TSopt / TSval <= ts_recent) elicits a challenge
         ACK with our current SND.NXT and RCV.NXT and does NOT
         transition out of TIME_WAIT. SYNs with fresh seq or
         TSval evidence are accepted as fresh connections per
-        the Linux-style RFC 6191 §2 OR'd predicate; this test
+        the Linux-style OR'd freshness predicate; this test
         pins the no-evidence fallback.
 
         Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
@@ -706,12 +706,14 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         TSval EQUAL to '_ts_recent' but a SEQ strictly greater
         than 'RCV.NXT' is accepted as a fresh connection (the
         Linux-style OR'd predicate: TSval-fresh OR seq-fresh).
-        TSval=last alone is insufficient evidence (RFC 6191 §3
-        requires strict '>'), but seq>last_seq proves the SYN
-        cannot be a delayed segment from the previous
-        incarnation (its seq is past anything we ever ACKed).
+        TSval=last alone is insufficient evidence (the
+        TSval-fresh predicate requires strict '>'), but
+        seq>last_seq proves the SYN cannot be a delayed
+        segment from the previous incarnation (its seq is
+        past anything we ever ACKed).
 
         Reference: RFC 6191 §2 A.2 (TSval == last + seq > last_seq).
+        Reference: RFC 6191 §3 (TSval-fresh predicate requires strict '>').
         """
 
         session = self._drive_to_time_wait_with_tsopt(
@@ -829,13 +831,14 @@ class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
         """
         Ensure that a SYN to our TIME_WAIT 4-tuple lacking
         BOTH TSval evidence AND seq evidence falls back to
-        the RFC 9293 §3.10.7.4 / RFC 1337 §3 challenge-ACK
-        path. With seq <= rcv_nxt and TSval <= ts_recent, the
-        SYN cannot be distinguished from a delayed segment
-        from the previous incarnation, so TIME_WAIT must be
-        preserved.
+        the canonical challenge-ACK path. With seq <= rcv_nxt
+        and TSval <= ts_recent, the SYN cannot be distinguished
+        from a delayed segment from the previous incarnation,
+        so TIME_WAIT must be preserved.
 
         Reference: RFC 6191 §2 A.4 / B.3 (no evidence default drop / challenge-ACK).
+        Reference: RFC 9293 §3.10.7.4 (SYN-on-synchronized challenge ACK).
+        Reference: RFC 1337 §3 (TIME-WAIT assassination mitigations).
         """
 
         session = self._drive_to_time_wait_with_tsopt(

@@ -2005,13 +2005,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         """
         Ensure that on the active-open path, when the peer's
         AccECN-confirming SYN/ACK Table-2 codepoint reports
-        observing Not-ECT on the SYN we sent (matching what
-        we actually sent per RFC 3168 §6.1.1), no IP-ECN
-        mangling is detected. Pins the regression-guard
-        semantics: mangling detection only fires on an actual
-        mismatch.
+        observing Not-ECT on the SYN we sent (matching the
+        Not-ECT codepoint our active-open SYN actually
+        carries), no IP-ECN mangling is detected. Pins the
+        regression-guard semantics: mangling detection only
+        fires on an actual mismatch.
 
         Reference: RFC 9768 §3.2.2.3 (no mangling when peer-observed IP-ECN matches our Not-ECT).
+        Reference: RFC 3168 §6.1.1 (active-open SYN carries Not-ECT in IP header).
         """
 
         # Table-2 'Not-ECT observed' codepoint: (AE=0, CWR=1, ECE=0)
@@ -2030,12 +2031,14 @@ class TestTcpSession__Accecn(TcpSessionTestCase):
         """
         Ensure that on the active-open path, when the peer's
         AccECN-confirming SYN/ACK Table-2 codepoint reports
-        observing ECT(0) on the SYN we sent (which we sent
-        as Not-ECT per RFC 3168 §6.1.1), the IP-ECN field
-        underwent an invalid Not-ECT-changes transition and
-        PyTCP detects mangling.
+        observing ECT(0) on the SYN we sent (which the
+        active-open SYN actually carried as Not-ECT in its
+        IP header), the IP-ECN field underwent an invalid
+        Not-ECT-changes transition and PyTCP detects
+        mangling.
 
         Reference: RFC 9768 §3.2.2.3 (Not-ECT codepoint changes is an invalid transition).
+        Reference: RFC 3168 §6.1.1 (active-open SYN carries Not-ECT in IP header).
         """
 
         # Table-2 'ECT(0) observed' codepoint: (AE=1, CWR=0, ECE=0)

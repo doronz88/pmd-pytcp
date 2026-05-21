@@ -878,10 +878,11 @@ class TestTcpRfc6675SackRetainedOnRto(TcpSessionTestCase):
         Ensure that the RTO retransmit handler retains the
         '_sack_scoreboard' so the post-RTO recovery can use the
         prior SACK reports to skip already-delivered ranges.
-        RFC 6675 §5.1 modern interpretation supersedes RFC 2018
-        §5's older "turn off SACKed bits" guidance.
+        The modern interpretation supersedes the older "turn
+        off SACKed bits" guidance.
 
         Reference: RFC 6675 §5.1 (utilize all SACK info on RTO).
+        Reference: RFC 2018 §5 (legacy "turn off SACKed bits", now superseded).
         """
 
         session = self._drive_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

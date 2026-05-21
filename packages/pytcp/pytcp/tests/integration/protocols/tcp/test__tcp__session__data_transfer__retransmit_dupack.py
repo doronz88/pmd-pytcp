@@ -671,23 +671,24 @@ class TestTcpDataTransfer__RetransmitDupack(TcpSessionTestCase):
 
     def test__dupack__limited_transmit_sends_new_segment_on_first_dup_ack(self) -> None:
         """
-        Ensure the RFC 3042 Limited Transmit behaviour: on
-        the FIRST duplicate ACK (before fast-retransmit
-        fires at the third), the sender MUST emit one
-        previously-unsent segment from the TX buffer if the
-        receiver window allows. Limited Transmit injects
-        new segments into the pipe so a small-window flow
-        (where there might not be three in-flight segments
-        to generate three dup-ACKs) can still trigger fast
-        retransmit on real loss.
+        Ensure the Limited Transmit behaviour: on the FIRST
+        duplicate ACK (before fast-retransmit fires at the
+        third), the sender MUST emit one previously-unsent
+        segment from the TX buffer if the receiver window
+        allows. Limited Transmit injects new segments into
+        the pipe so a small-window flow (where there might
+        not be three in-flight segments to generate three
+        dup-ACKs) can still trigger fast retransmit on real
+        loss.
 
         The Limited Transmit budget is 'cwnd + 2*SMSS' -
         two extra segments beyond cwnd, one per each of
         the first two dup-ACKs. After fast-retransmit
-        fires (third dup-ACK), the regular RFC 5681 §3.2
+        fires (third dup-ACK), the regular fast-recovery
         path takes over.
 
         Reference: RFC 3042 §3 (Limited Transmit on first two dup-ACKs).
+        Reference: RFC 5681 §3.2 (fast-recovery on third dup-ACK).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

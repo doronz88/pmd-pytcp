@@ -535,18 +535,18 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         """
         Ensure that when the third duplicate ACK fires
         fast-retransmit, the sender sets ssthresh =
-        max(FlightSize/2, 2*SMSS) per RFC 5681 §3.2 step 2
-        AND, per RFC 6937 §3.1, sets cwnd to 'pipe + sndcnt'
-        where sndcnt is computed from the proportional
-        formula. On the trigger ACK 'prr_delivered = 0' and
-        'prr_out = 0' (the retransmit has not fired yet at
-        the moment cwnd is set), so 'sndcnt = 0' and 'cwnd =
-        pipe = FlightSize at entry'. This replaces the
-        legacy RFC 5681 §3.2 step 3 'cwnd = ssthresh +
-        3*SMSS' coarse approximation with PRR's data-driven
-        per-ACK pacing.
+        max(FlightSize/2, 2*SMSS) (the canonical halving) AND
+        sets cwnd to 'pipe + sndcnt' from the PRR
+        proportional formula. On the trigger ACK
+        'prr_delivered = 0' and 'prr_out = 0' (the retransmit
+        has not fired yet at the moment cwnd is set), so
+        'sndcnt = 0' and 'cwnd = pipe = FlightSize at entry'.
+        This replaces the legacy 'cwnd = ssthresh + 3*SMSS'
+        coarse approximation with PRR's data-driven per-ACK
+        pacing.
 
-        Reference: RFC 5681 §3.2 (fast-retransmit ssthresh halving).
+        Reference: RFC 5681 §3.2 step 2 (fast-retransmit ssthresh halving).
+        Reference: RFC 5681 §3.2 step 3 (legacy coarse cwnd-set superseded by PRR).
         Reference: RFC 6937 §3.1 (PRR per-ACK cwnd = pipe + sndcnt).
         """
 
@@ -865,14 +865,15 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         cum-ACKs in one recovery cycle, '_recovery_point' is
         preserved on each partial advance and cleared only
         on the cum-ACK that crosses the marker. Per-ACK cwnd
-        recomputation is now governed by RFC 6937 PRR
-        (covered by 'TestTcpCwndPrr'); this test focuses on
-        the structural multi-partial-cum-ACK invariants
-        (recovery-state lifecycle + RFC 5681 §3.2 step 6
-        deflate to ssthresh on exit) that PRR preserves.
+        recomputation is now governed by PRR (covered by
+        'TestTcpCwndPrr'); this test focuses on the
+        structural multi-partial-cum-ACK invariants
+        (recovery-state lifecycle + deflate to ssthresh on
+        exit) that PRR preserves.
 
         Reference: RFC 6582 §3 (NewReno multi-partial-cum-ACK recovery lifecycle).
-        Reference: RFC 5681 §3.2 (recovery exit deflation).
+        Reference: RFC 5681 §3.2 step 6 (recovery exit deflation).
+        Reference: RFC 6937 §3.1 (PRR per-ACK cwnd recomputation).
         """
 
         session = self._drive_handshake(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -1660,8 +1661,8 @@ class TestTcpCwndPrr(TcpSessionTestCase):
             sndcnt = CEIL(prr_delivered * ssthresh / RecoverFS) - prr_out
             cwnd   = pipe + max(0, sndcnt)
 
-        where pipe is the RFC 6675 §4 FlightSize estimate.
-        For the 5-segment scenario:
+        where pipe is the FlightSize estimate. For the
+        5-segment scenario:
 
             RecoverFS  = 5 * SMSS = 7300
             ssthresh   = max(7300/2, 2*SMSS) = 3650
@@ -1678,6 +1679,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         ratio corrects.
 
         Reference: RFC 6937 §3.1 (PRR proportional cwnd recomputation per ACK).
+        Reference: RFC 6675 §4 (FlightSize / pipe estimate).
         """
 
         session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)

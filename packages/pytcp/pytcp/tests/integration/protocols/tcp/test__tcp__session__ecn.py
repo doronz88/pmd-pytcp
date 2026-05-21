@@ -87,12 +87,12 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
     def test__ecn__active_open_syn_advertises_ece_and_cwr(self) -> None:
         """
         Ensure the active-open SYN sets both ECE and CWR
-        flags - the canonical RFC 3168 §6.1.1 client-side
-        ECN advertisement. A peer that supports ECN
-        responds with SYN+ACK setting only ECE (not CWR);
-        a peer that does not support ECN responds with
-        neither flag, and the session falls back to non-
-        ECN operation per the bilateral non-offer rule.
+        flags - the canonical client-side ECN-setup
+        advertisement. A peer that supports ECN responds
+        with SYN+ACK setting only ECE (not CWR); a peer
+        that does not support ECN responds with neither
+        flag, and the session falls back to non-ECN
+        operation per the bilateral non-offer rule.
 
         Reference: RFC 3168 §6.1.1 (ECN-setup SYN: ECE+CWR).
         """
@@ -127,8 +127,8 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
     def test__ecn__passive_open_syn_ack_echoes_ece_only(self) -> None:
         """
         Ensure that when a peer's active-open SYN carries
-        ECE+CWR (the canonical RFC 3168 §6.1.1 ECN-setup
-        signal), the server's SYN+ACK reply sets ECE (only)
+        ECE+CWR (the canonical ECN-setup signal), the
+        server's SYN+ACK reply sets ECE (only)
         - NOT CWR. The asymmetry is the wire signal that
         confirms bilateral ECN support: the active opener
         advertises with ECE+CWR, the passive responder
@@ -480,10 +480,10 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         the first new outbound data segment. CWR is the
         sender's wire confirmation to the receiver that the
         ECN response has been applied; the receiver uses CWR
-        to stop echoing ECE on subsequent ACKs (RFC 3168
-        §6.1.3).
+        to stop echoing ECE on subsequent ACKs.
 
         Reference: RFC 3168 §6.1.2 (sender-side CWR confirmation).
+        Reference: RFC 3168 §6.1.3 (receiver stops echoing ECE on CWR).
         """
 
         session = self._drive_handshake_to_established_with_ecn(iss=LOCAL__ISS, peer_iss=PEER__ISS)
@@ -528,14 +528,13 @@ class TestTcpSession__Ecn(TcpSessionTestCase):
         Ensure that when the RTO retransmit timer fires for a
         previously-ECT-marked data segment, the retransmit goes
         out with the IP-ECN field cleared to Not-ECT (binary
-        '00' = 0). Per RFC 3168 §6.1.5, "ECN-capable TCP
-        implementations MUST NOT set either ECT codepoint
-        (ECT(0) or ECT(1)) in the IP header for retransmitted
-        data packets". The rationale is that an ECT-marked
-        retransmit that is later dropped in the network
-        prevents the end nodes from seeing a CE mark on the
-        original copy, and an ECT mark on the retransmit
-        ambiguates the congestion signal.
+        '00' = 0). An ECN-capable TCP implementation MUST NOT
+        set either ECT codepoint (ECT(0) or ECT(1)) in the IP
+        header for retransmitted data packets. The rationale
+        is that an ECT-marked retransmit that is later dropped
+        in the network prevents the end nodes from seeing a CE
+        mark on the original copy, and an ECT mark on the
+        retransmit ambiguates the congestion signal.
 
         Reference: RFC 3168 §6.1.5 (no ECT on retransmits).
         """

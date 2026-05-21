@@ -467,11 +467,11 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
     def test__robustness__no_evidence_syn_in_time_wait_must_elicit_challenge_ack(self) -> None:
         """
         Ensure a peer-issued SYN arriving in TIME_WAIT WITHOUT
-        fresh evidence on either RFC 6191 §2 axis (seq <=
+        fresh evidence on either freshness axis (seq <=
         RCV.NXT AND no TSopt) elicits a challenge ACK and
         does NOT change state. SYNs with fresh seq evidence
         are accepted as fresh connections per the Linux-style
-        RFC 6191 §2 OR'd predicate; this test pins the no-
+        OR'd freshness predicate; this test pins the no-
         evidence challenge-ACK fallback path used as the blind
         SYN-in-window mitigation.
 
