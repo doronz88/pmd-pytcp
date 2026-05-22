@@ -75,6 +75,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
 )
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.fib import RouteProtocol
+from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 
@@ -115,6 +116,12 @@ class PacketHandler(Subsystem, ABC):
     _packet_stats_rx: PacketStatsRx
     _packet_stats_tx: PacketStatsTx
     _link_stats: LinkStatsCounters
+    # Per-interface RX ring. Injected at construction by
+    # 'stack.init()' (the ring is fd-bound, hence per-interface).
+    # The subsystem loop dequeues from this — never from the
+    # global 'stack.rx_ring' shim. 'None' only for standalone
+    # unit-test handlers that never run the subsystem loop.
+    _rx_ring: RxRing | None
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool
@@ -149,6 +156,7 @@ class PacketHandler(Subsystem, ABC):
         interface_name: str | None = None,
         ip6_host: Ip6IfAddr | None = None,
         ip4_host: Ip4IfAddr | None = None,
+        rx_ring: RxRing | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
         link_stats: LinkStatsCounters | None = None,
@@ -158,6 +166,11 @@ class PacketHandler(Subsystem, ABC):
         """
 
         super().__init__()
+
+        # Per-interface RX ring (fd-bound). Injected by
+        # 'stack.init()'; standalone unit-test handlers leave it
+        # None and never run '_subsystem_loop'.
+        self._rx_ring = rx_ring
 
         # Initialize data stores for packet statistics. When the
         # caller supplies pre-constructed stats objects (the
@@ -1268,6 +1281,7 @@ class PacketHandlerL2(
         ip6_host: Ip6IfAddr | None = None,
         ip6_lla_autoconfig: bool = True,
         ip6_gua_autoconfig: bool = True,
+        rx_ring: RxRing | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
         link_stats: LinkStatsCounters | None = None,
@@ -1283,6 +1297,7 @@ class PacketHandlerL2(
             ip4_support=ip4_support,
             ip6_host=ip6_host,
             ip4_host=ip4_host,
+            rx_ring=rx_ring,
             packet_stats_rx=packet_stats_rx,
             packet_stats_tx=packet_stats_tx,
             link_stats=link_stats,
@@ -1411,9 +1426,9 @@ class PacketHandlerL2(
         sweep) rate-limited by 'icmp6.temp_addr_sweep_interval_s'.
         """
 
-        from pytcp.stack import rx_ring
+        assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
 
-        if (packet_rx := rx_ring.dequeue()) is not None:
+        if (packet_rx := self._rx_ring.dequeue()) is not None:
             if int.from_bytes(packet_rx.frame[12:14]) <= ETHERNET_802_3__PACKET__MAX_LEN:
                 self._phrx_ethernet_802_3(packet_rx)
             else:
@@ -2016,9 +2031,9 @@ class PacketHandlerL3(
         Pick up incoming packets from RX Ring and processes them.
         """
 
-        from pytcp.stack import rx_ring
+        assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
 
-        if (packet_rx := rx_ring.dequeue()) is not None:
+        if (packet_rx := self._rx_ring.dequeue()) is not None:
             match EtherType.from_bytes(packet_rx.frame[2:4]):
                 case EtherType.IP6:
                     if self._ip6_support:

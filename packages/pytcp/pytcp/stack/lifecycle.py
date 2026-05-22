@@ -110,6 +110,14 @@ def mock__init(
 
     if mock__packet_handler is not None:
         _stack.packet_handler = mock__packet_handler
+        # Inject the RX ring into the handler the same way the real
+        # 'init()' does, so a test exercising '_subsystem_loop'
+        # through 'mock__init' dequeues from the handler's own ring
+        # rather than the global shim. Harness tests that drive RX
+        # via '_phrx_ethernet' directly don't pass 'mock__rx_ring'
+        # and leave this None.
+        if mock__rx_ring is not None:
+            mock__packet_handler._rx_ring = mock__rx_ring
 
     # Phase 4 commit A — the Address API. If the test harness
     # passes a packet_handler, also build a default Address API
@@ -266,6 +274,7 @@ def init(
                 ip6_host=ip6_host,
                 ip6_gua_autoconfig=ip6_gua_autoconfig,
                 ip6_lla_autoconfig=ip6_lla_autoconfig,
+                rx_ring=_stack.rx_ring,
                 packet_stats_rx=_packet_stats_rx,
                 packet_stats_tx=_packet_stats_tx,
                 link_stats=_link_stats,
@@ -279,6 +288,7 @@ def init(
                 ip4_host=ip4_host,
                 ip6_support=ip6_support,
                 ip6_host=ip6_host,
+                rx_ring=_stack.rx_ring,
                 packet_stats_rx=_packet_stats_rx,
                 packet_stats_tx=_packet_stats_tx,
                 link_stats=_link_stats,

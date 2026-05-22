@@ -31,12 +31,13 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+from pytcp.runtime.rx_ring import RxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -379,14 +380,43 @@ class TestPacketHandlerL2SubsystemLoop(TestCase):
         eth_802_3 = MagicMock()
         eth_802_3.frame = b"\x00" * 12 + b"\x00\x46" + b"\x00" * 60
 
-        with patch.object(stack, "rx_ring", MagicMock()) as mock_rx_ring:
-            mock_rx_ring.dequeue.side_effect = [eth2, eth_802_3, None]
-            h._subsystem_loop()
+        mock_rx_ring = create_autospec(RxRing, spec_set=True)
+        mock_rx_ring.dequeue.side_effect = [eth2, eth_802_3, None]
+        h._rx_ring = mock_rx_ring
+        h._subsystem_loop()
+        h._subsystem_loop()
+        h._subsystem_loop()
+
+        h._phrx_ethernet.assert_called_once_with(eth2)
+        h._phrx_ethernet_802_3.assert_called_once_with(eth_802_3)
+
+    def test__stack__packet_handler__init__l2_loop_uses_injected_rx_ring(self) -> None:
+        """
+        Ensure the L2 subsystem loop dequeues from the handler's own
+        injected 'self._rx_ring' and never reaches through to the
+        global 'stack.rx_ring'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        h = _build_l2_handler()
+        h._phrx_ethernet = MagicMock()  # type: ignore[method-assign]
+        h._phrx_ethernet_802_3 = MagicMock()  # type: ignore[method-assign]
+
+        eth2 = MagicMock()
+        eth2.frame = b"\x00" * 12 + b"\x08\x00" + b"\x00" * 46
+
+        injected = create_autospec(RxRing, spec_set=True)
+        injected.dequeue.side_effect = [eth2, None]
+        h._rx_ring = injected
+
+        global_ring = create_autospec(RxRing, spec_set=True)
+        with patch.object(stack, "rx_ring", global_ring, create=True):
             h._subsystem_loop()
             h._subsystem_loop()
 
         h._phrx_ethernet.assert_called_once_with(eth2)
-        h._phrx_ethernet_802_3.assert_called_once_with(eth_802_3)
+        global_ring.dequeue.assert_not_called()
 
 
 class TestPacketHandlerL3SubsystemLoop(TestCase):
@@ -417,11 +447,12 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         unknown = MagicMock()
         unknown.frame = b"\x00\x00\xff\xff" + b"UNKNOWN_PAYLOAD"
 
-        with patch.object(stack, "rx_ring", MagicMock()) as mock_rx_ring:
-            mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, unknown, None]
-            h._subsystem_loop()
-            h._subsystem_loop()
-            h._subsystem_loop()
+        mock_rx_ring = create_autospec(RxRing, spec_set=True)
+        mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, unknown, None]
+        h._rx_ring = mock_rx_ring
+        h._subsystem_loop()
+        h._subsystem_loop()
+        h._subsystem_loop()
 
         h._phrx_ip4.assert_called_once_with(ip4_packet)
         h._phrx_ip6.assert_called_once_with(ip6_packet)
@@ -446,10 +477,11 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         ip6_packet = MagicMock()
         ip6_packet.frame = b"\x00\x00\x86\xdd" + b"IPV6_PAYLOAD"
 
-        with patch.object(stack, "rx_ring", MagicMock()) as mock_rx_ring:
-            mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, None]
-            h._subsystem_loop()
-            h._subsystem_loop()
+        mock_rx_ring = create_autospec(RxRing, spec_set=True)
+        mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, None]
+        h._rx_ring = mock_rx_ring
+        h._subsystem_loop()
+        h._subsystem_loop()
 
         h._phrx_ip4.assert_not_called()
         h._phrx_ip6.assert_not_called()
