@@ -168,7 +168,7 @@ in this doc (or a commit message). No code changes expected.
 | G-net_proto-dhcp4 | ~25 | ~400 | mostly `RFC 2131 §2 (DHCPv4 header) / §3.1 (message flow)` + `RFC 2132 §<N>` for per-option files |
 | G-net_proto-ethernet | 5 | 49 (894b1b5f) | `RFC 894` (Ethernet II framing) per-file; integrity/sanity keep specific `IEEE 802.3 / RFC 1042` type/length-boundary clauses. **completed 2026-05-21**. |
 | G-net_proto-ethernet_802_3 | 5 | 55 (8be0373e) | `IEEE 802.3 §3` per-file; sanity_checks already clean. **completed 2026-05-21**. |
-| G-net_proto-icmp4 | ~10 | ~80 | apply `RFC 792 (ICMPv4)` per-file; per-message files use the message-type RFC clause |
+| G-net_proto-icmp4 | 25 | 107 (2d8b1ee0) | `RFC 792` per-message-type (type 3/0/8/unknown). parameter_problem, time_exceeded, unknown parsers, sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp6 | ~30 | ~300 | apply `RFC 4443 / RFC 4861 / RFC 3810` per-message-family |
 | G-net_proto-ip4 | ~15 | ~180 | apply `RFC 791 §3.1 (IPv4 header wire format).` per-file |
 | G-net_proto-ip6 (incl. ext-headers) | ~25 | ~250 | apply `RFC 8200 §3 / §4.x` per-file |
