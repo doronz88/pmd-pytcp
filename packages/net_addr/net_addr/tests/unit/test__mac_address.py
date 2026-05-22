@@ -526,6 +526,8 @@ class TestNetAddrMacAddress(TestCase):
         """
         Ensure the MAC address 'is_multicast__ip6__solicited_node' property
         returns a correct value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
