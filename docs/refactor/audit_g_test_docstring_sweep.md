@@ -175,7 +175,7 @@ in this doc (or a commit message). No code changes expected.
 | G-net_proto-llc | 5 | 0 | already clean (mix of `IEEE 802.2 §3 LLC frame format` for wire-format tests + `PyTCP test infrastructure (no RFC clause)` for header asserts). **verified clean 2026-05-21**. |
 | G-net_proto-snap | 5 | 0 | already clean (mix of `RFC 1042 §"Header Format"` for wire-format tests + `PyTCP test infrastructure` for asserts + non-RFC `Cisco CDP encapsulation` for vendor-OUI tests). **verified clean 2026-05-21**. |
 | G-net_proto-tcp | ~20 | ~250 | apply `RFC 9293 §3.1 (TCP header wire format).` per-file; per-option files use option-RFC clause |
-| G-net_proto-udp | ~5 | ~35 | apply `RFC 768 (UDP).` per-file |
+| G-net_proto-udp | 5 | 30 (2ff3ad6a) | `RFC 768` per-file (wire format / header / integrity / parse / sanity). **completed 2026-05-21**. |
 
 **Estimated effort:** 1–2 sessions, ~13 commits if per-family.
 
