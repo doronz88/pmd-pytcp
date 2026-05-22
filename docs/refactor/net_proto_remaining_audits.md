@@ -29,6 +29,7 @@ adherence docs are canonical.
 | Wire-input vs programmer-input error discipline | 2026-05-21 | `.claude/rules/net_proto.md` §9.1 + §17 anti-patterns |
 | Audits A–G (roundtrip, base, errors, lib, enums, prop-docstrings, §7.2 test-docstring sweep) | 2026-05-21 | A/E confirmed via git; B/C/D/F prior session; G fully closed (see `docs/refactor/audit_g_test_docstring_sweep.md`) |
 | Audit H — module-docstring path / `ver` accuracy | 2026-05-21 | commit `b7d5cecc` — 24 stale paths + 1 convention outlier fixed (all in pytcp); net_addr/net_proto were clean; all `ver` lines already 3.0.6 |
+| Audit I — class-docstring consistency | 2026-05-21 | **verified clean, no changes.** AST-walked all 3 packages (484 classes): 0 missing docstrings, 0 missing-period, all open with a noun-phrase first line. The 117 multi-line docstrings all carry intentional context (RFC citations, error-extension rationale per net_proto.md §9.1, Phase markers) — not drift. |
 
 ---
 
