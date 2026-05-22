@@ -47,6 +47,8 @@ class TestLoggerStartTime(TestCase):
         """
         Ensure 'LOG__START_TIME' was captured as a float at import time,
         so timestamp deltas computed inside 'log()' stay numeric.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -60,6 +62,8 @@ class TestLoggerStartTime(TestCase):
         Ensure 'LOG__START_TIME' is not set in the future relative to
         the current wall-clock reading — guards against a typo that
         would swap 'time.time()' for some other arithmetic.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertLessEqual(
@@ -78,6 +82,8 @@ class TestLoggerChannelGate(TestCase):
         """
         Ensure 'log()' returns False and writes nothing when the channel
         is not in 'LOG__CHANNEL'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stream = io.StringIO()
@@ -103,6 +109,8 @@ class TestLoggerChannelGate(TestCase):
         """
         Ensure 'log()' returns True and writes a non-empty line when the
         channel is enabled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stream = io.StringIO()
@@ -142,6 +150,8 @@ class TestLoggerPlainOutput(TestCase):
         """
         Ensure 'log()' uses 'print()' semantics — the written payload
         ends with a trailing newline.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -161,6 +171,8 @@ class TestLoggerPlainOutput(TestCase):
         Ensure the channel name is rendered upper-cased and padded to
         seven characters — the canonical '<b>{channel.upper():7}</>'
         format in the source.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -180,6 +192,8 @@ class TestLoggerPlainOutput(TestCase):
         """
         Ensure the caller-supplied message text appears verbatim in the
         emitted line.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -199,6 +213,8 @@ class TestLoggerPlainOutput(TestCase):
         """
         Ensure all style tokens (e.g. '<g>', '</>') are replaced by their
         ANSI escape sequences before output.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -236,6 +252,8 @@ class TestLoggerPlainOutput(TestCase):
         Ensure style tokens embedded in the caller's message are also
         substituted (the replacement loop covers the whole line, not just
         the header).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -262,6 +280,8 @@ class TestLoggerPlainOutput(TestCase):
         """
         Ensure the non-debug path does not include the 'ClassName.method'
         caller segment that the debug path would add.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -288,6 +308,8 @@ class TestLoggerDebugOutput(TestCase):
         Ensure the debug path formats a 'ClassName.methodName' segment
         using 'inspect.stack()' — the caller must be an instance method
         so the inspected frame has 'self' in its locals.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stream = io.StringIO()
@@ -317,6 +339,8 @@ class TestLoggerDebugOutput(TestCase):
         Ensure the 'inspect_depth' keyword lets a wrapper push the frame
         lookup one level deeper. The canonical use case is a thin helper
         that still wants the real caller's class/method in the log line.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         stream = io.StringIO()
@@ -355,6 +379,8 @@ class TestLoggerSignature(TestCase):
         Ensure 'channel' and 'message' are positional-only (they appear
         before the '/' in the signature). Passing them as keywords must
         raise 'TypeError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):
@@ -364,6 +390,8 @@ class TestLoggerSignature(TestCase):
         """
         Ensure 'inspect_depth' is keyword-only (after the '*'). Passing
         it positionally must raise 'TypeError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(TypeError):

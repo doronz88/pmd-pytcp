@@ -45,6 +45,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure 'InterfaceLayer' is a plain 'Enum' subclass (not an 'IntEnum'),
         so its members compare by identity only.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -56,6 +58,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure the enum exposes exactly the two canonical members 'L2' (TAP)
         and 'L3' (TUN), so an accidental addition is caught immediately.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -68,6 +72,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure 'InterfaceLayer.L2' carries the first 'auto()' value so the
         enum's ordering stays stable across releases.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -80,6 +86,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure 'InterfaceLayer.L3' carries the second 'auto()' value so the
         enum's ordering stays stable across releases.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -92,6 +100,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure the 'L2' and 'L3' members are distinct enum singletons so
         code that branches on identity never collapses both layers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsNot(
@@ -104,6 +114,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure 'InterfaceLayer['L2']' resolves to the same singleton as
         the attribute access, so reflective lookups stay consistent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -116,6 +128,8 @@ class TestInterfaceLayer(TestCase):
         """
         Ensure 'InterfaceLayer['L3']' resolves to the same singleton as
         the attribute access, so reflective lookups stay consistent.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(

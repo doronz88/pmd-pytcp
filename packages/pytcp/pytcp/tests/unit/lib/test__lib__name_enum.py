@@ -58,6 +58,8 @@ class TestNameEnumSubclassing(TestCase):
         """
         Ensure 'NameEnum' derives from 'IntEnum' so its members retain
         full integer semantics (comparison, arithmetic, JSON serialization).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -69,6 +71,8 @@ class TestNameEnumSubclassing(TestCase):
         """
         Ensure members of a 'NameEnum' subclass are still 'int' instances,
         so downstream code can compare them against raw wire-level integers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIsInstance(
@@ -122,6 +126,8 @@ class TestNameEnumStr(TestCase):
         """
         Ensure 'NameEnum.__str__()' returns the member's own 'name'
         attribute verbatim (not the stdlib 'ClassName.MEMBER' form).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -134,6 +140,8 @@ class TestNameEnumStr(TestCase):
         """
         Ensure the member's 'name' attribute equals the expected label,
         matching the string that '__str__()' is required to return.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -146,6 +154,8 @@ class TestNameEnumStr(TestCase):
         """
         Ensure the member's integer 'value' attribute equals the expected
         integer, so a future reordering of auto() members would be caught.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -165,6 +175,8 @@ class TestNameEnumStrDiffersFromDefault(TestCase):
         Ensure the overridden 'NameEnum.__str__()' returns only the member
         name, not the '<ClassName>.<MEMBER>' form produced by the stdlib
         'IntEnum' default. Guards against an accidental override removal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotIn(
