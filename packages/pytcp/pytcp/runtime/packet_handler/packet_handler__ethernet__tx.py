@@ -55,11 +55,13 @@ class PacketHandlerEthernetTx(ABC):
         from net_addr import Ip4IfAddr, Ip6IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.runtime.tx_ring import TxRing
 
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
         _ip6_ifaddr: list[Ip6IfAddr]
         _ip4_ifaddr: list[Ip4IfAddr]
+        _tx_ring: TxRing | None
 
     def _phtx_ethernet(
         self,
@@ -337,7 +339,7 @@ class PacketHandlerEthernetTx(ABC):
         )
         return TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
 
-    @staticmethod
-    def __send_out_packet(ethernet_packet_tx: EthernetAssembler) -> None:
+    def __send_out_packet(self, ethernet_packet_tx: EthernetAssembler) -> None:
         __debug__ and log("ether", f"{ethernet_packet_tx.tracker} - {ethernet_packet_tx}")
-        stack.tx_ring.enqueue(ethernet_packet_tx)
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.enqueue(ethernet_packet_tx)

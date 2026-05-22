@@ -78,6 +78,7 @@ from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
+from pytcp.runtime.tx_ring import TxRing
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
 from .packet_handler__arp__tx import PacketHandlerArpTx
@@ -122,6 +123,11 @@ class PacketHandler(Subsystem, ABC):
     # global 'stack.rx_ring' shim. 'None' only for standalone
     # unit-test handlers that never run the subsystem loop.
     _rx_ring: RxRing | None
+    # Per-interface TX ring (fd-bound). Injected at construction;
+    # the TX-mixin send-out paths enqueue onto this — never onto
+    # the global 'stack.tx_ring' shim. 'None' only for standalone
+    # unit-test handlers that never enqueue.
+    _tx_ring: TxRing | None
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool
@@ -157,6 +163,7 @@ class PacketHandler(Subsystem, ABC):
         ip6_host: Ip6IfAddr | None = None,
         ip4_host: Ip4IfAddr | None = None,
         rx_ring: RxRing | None = None,
+        tx_ring: TxRing | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
         link_stats: LinkStatsCounters | None = None,
@@ -167,10 +174,11 @@ class PacketHandler(Subsystem, ABC):
 
         super().__init__()
 
-        # Per-interface RX ring (fd-bound). Injected by
-        # 'stack.init()'; standalone unit-test handlers leave it
-        # None and never run '_subsystem_loop'.
+        # Per-interface RX / TX rings (fd-bound). Injected by
+        # 'stack.init()'; standalone unit-test handlers leave them
+        # None and never run '_subsystem_loop' / enqueue.
         self._rx_ring = rx_ring
+        self._tx_ring = tx_ring
 
         # Initialize data stores for packet statistics. When the
         # caller supplies pre-constructed stats objects (the
@@ -1282,6 +1290,7 @@ class PacketHandlerL2(
         ip6_lla_autoconfig: bool = True,
         ip6_gua_autoconfig: bool = True,
         rx_ring: RxRing | None = None,
+        tx_ring: TxRing | None = None,
         packet_stats_rx: PacketStatsRx | None = None,
         packet_stats_tx: PacketStatsTx | None = None,
         link_stats: LinkStatsCounters | None = None,
@@ -1298,6 +1307,7 @@ class PacketHandlerL2(
             ip6_host=ip6_host,
             ip4_host=ip4_host,
             rx_ring=rx_ring,
+            tx_ring=tx_ring,
             packet_stats_rx=packet_stats_rx,
             packet_stats_tx=packet_stats_tx,
             link_stats=link_stats,

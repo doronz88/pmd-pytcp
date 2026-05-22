@@ -38,6 +38,7 @@ from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -485,3 +486,33 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
 
         h._phrx_ip4.assert_not_called()
         h._phrx_ip6.assert_not_called()
+
+
+class TestPacketHandlerTxRingInjection(TestCase):
+    """
+    The packet-handler injected-TX-ring send-out tests.
+    """
+
+    def test__stack__packet_handler__init__ethernet_send_uses_injected_tx_ring(self) -> None:
+        """
+        Ensure an outbound Ethernet frame with a specified destination
+        MAC is enqueued onto the handler's own injected 'self._tx_ring'
+        and never reaches through to the global 'stack.tx_ring'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        h = _build_l2_handler()
+
+        injected = create_autospec(TxRing, spec_set=True)
+        h._tx_ring = injected
+
+        global_ring = create_autospec(TxRing, spec_set=True)
+        with patch.object(stack, "tx_ring", global_ring, create=True):
+            h._phtx_ethernet(
+                ethernet__src=MacAddress("02:00:00:00:00:07"),
+                ethernet__dst=MacAddress("02:00:00:00:00:99"),
+            )
+
+        injected.enqueue.assert_called_once()
+        global_ring.enqueue.assert_not_called()

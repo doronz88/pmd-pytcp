@@ -43,7 +43,6 @@ from net_proto import (
     IpProto,
     RawAssembler,
 )
-from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -69,6 +68,7 @@ class PacketHandlerIp6Tx(ABC):
             Icmp6SlaacAddress,
             Icmp6TempAddress,
         )
+        from pytcp.runtime.tx_ring import TxRing
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
@@ -78,6 +78,7 @@ class PacketHandlerIp6Tx(ABC):
         _interface_mtu: int
         _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
         _icmp6_temp_addresses: list[Icmp6TempAddress]
+        _tx_ring: TxRing | None
 
         # pylint: disable=unused-argument
 
@@ -492,6 +493,6 @@ class PacketHandlerIp6Tx(ABC):
             kwargs["ip6__hop"] = ip6__hop
         return self._phtx_ip6(**kwargs)
 
-    @staticmethod
-    def __send_out_packet(ip6_packet_tx: Ip6Assembler) -> None:
-        stack.tx_ring.enqueue(ip6_packet_tx)
+    def __send_out_packet(self, ip6_packet_tx: Ip6Assembler) -> None:
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.enqueue(ip6_packet_tx)

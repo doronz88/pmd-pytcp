@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import (
     Ip4Address,
@@ -55,6 +55,7 @@ from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.runtime.packet_handler.packet_handler__ethernet__tx import (
     PacketHandlerEthernetTx,
 )
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -140,11 +141,17 @@ class _EthernetTxTestBase(TestCase):
 
         self._handler = _StubHandler()
 
-        self._tx_ring_patch = patch.object(stack, "tx_ring", MagicMock())
-        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock())
-        self._nd_cache_patch = patch.object(stack, "nd_cache", MagicMock())
+        # The TX ring is now injected per-interface; assign the mock
+        # to the handler's own '_tx_ring' rather than patching the
+        # global 'stack.tx_ring' (which the send-out path no longer
+        # reads). ARP / ND caches are still reached via 'stack.*'
+        # (handler-ownership lands in a later phase).
+        self._tx_ring = create_autospec(TxRing, spec_set=True)
+        self._handler._tx_ring = self._tx_ring
 
-        self._tx_ring = self._tx_ring_patch.start()
+        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock(), create=True)
+        self._nd_cache_patch = patch.object(stack, "nd_cache", MagicMock(), create=True)
+
         self._arp_cache = self._arp_cache_patch.start()
         self._nd_cache = self._nd_cache_patch.start()
 
@@ -190,7 +197,6 @@ class _EthernetTxTestBase(TestCase):
         Restore the patched stack singletons.
         """
 
-        self._tx_ring_patch.stop()
         self._arp_cache_patch.stop()
         self._nd_cache_patch.stop()
         self._ip4_fib_patch.stop()

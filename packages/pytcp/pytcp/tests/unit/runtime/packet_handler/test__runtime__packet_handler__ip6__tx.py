@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec
 
 from net_addr import Ip6Address, Ip6IfAddr
 from net_proto import Ip6Assembler, IpProto, RawAssembler
@@ -42,6 +42,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ip6__tx import (
     PacketHandlerIp6Tx,
 )
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -92,6 +93,11 @@ class _StubHandler(PacketHandlerIp6Tx):
         self._ip6_multicast = [STACK__IP6_MULTICAST]
         self._icmp6_slaac_addresses = []
         self._icmp6_temp_addresses = []
+
+        # Per-interface TX ring — injected by the L3-enqueue test that
+        # exercises '__send_out_packet'; None for the L2 tests whose
+        # '_phtx_ethernet' override records calls instead.
+        self._tx_ring = None
 
         self.ethernet_tx_calls: list[dict[str, object]] = []
         self.frag_tx_calls: list[Ip6Assembler] = []
@@ -296,12 +302,13 @@ class TestPacketHandlerIp6TxSend(TestCase):
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3)
-        with patch.object(stack, "tx_ring", MagicMock()) as mock_tx_ring:
-            status = handler._phtx_ip6(
-                ip6__src=STACK__IP6_ADDRESS,
-                ip6__dst=HOST_A__IP6,
-                ip6__payload=RawAssembler(),
-            )
+        mock_tx_ring = create_autospec(TxRing, spec_set=True)
+        handler._tx_ring = mock_tx_ring
+        status = handler._phtx_ip6(
+            ip6__src=STACK__IP6_ADDRESS,
+            ip6__dst=HOST_A__IP6,
+            ip6__payload=RawAssembler(),
+        )
 
         self.assertEqual(status, TxStatus.PASSED__IP6__TO_TX_RING)
         self.assertEqual(handler._packet_stats_tx.ip6__mtu_ok__send, 1)

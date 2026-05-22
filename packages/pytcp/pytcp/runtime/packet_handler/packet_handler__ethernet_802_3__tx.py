@@ -35,7 +35,6 @@ from typing import TYPE_CHECKING
 
 from net_addr import MacAddress
 from net_proto import Ethernet8023Assembler, RawAssembler
-from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
@@ -49,9 +48,11 @@ class PacketHandlerEthernet8023Tx(ABC):
         from net_addr import Ip4IfAddr, Ip6IfAddr
         from net_proto import Ethernet8023Payload
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.runtime.tx_ring import TxRing
 
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
+        _tx_ring: TxRing | None
 
     def _phtx_ethernet_802_3(
         self,
@@ -105,12 +106,13 @@ class PacketHandlerEthernet8023Tx(ABC):
         )
         return TxStatus.DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL
 
-    @staticmethod
     def __send_out_packet(
+        self,
         ethernet_802_3_packet_tx: Ethernet8023Assembler,
     ) -> None:
         __debug__ and log(
             "ether",
             f"{ethernet_802_3_packet_tx.tracker} - {ethernet_802_3_packet_tx}",
         )
-        stack.tx_ring.enqueue(ethernet_802_3_packet_tx)
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.enqueue(ethernet_802_3_packet_tx)

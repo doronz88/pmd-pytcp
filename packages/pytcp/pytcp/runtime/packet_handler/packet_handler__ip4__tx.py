@@ -46,7 +46,6 @@ from net_proto import (
     Tracker,
     UdpAssembler,
 )
-from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -67,6 +66,7 @@ class PacketHandlerIp4Tx(ABC):
         from net_addr import Ip4IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.runtime.tx_ring import TxRing
 
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
@@ -75,6 +75,7 @@ class PacketHandlerIp4Tx(ABC):
         _ip4_id: int
         _ip4_support: bool
         _interface_mtu: int
+        _tx_ring: TxRing | None
 
         # pylint: disable=unused-argument
 
@@ -530,8 +531,9 @@ class PacketHandlerIp4Tx(ABC):
             kwargs["ip4__ttl"] = ip4__ttl
         return self._phtx_ip4(**kwargs)
 
-    @staticmethod
     def __send_out_packet(
+        self,
         ip4_packet_tx: Ip4Assembler | Ip4FragAssembler,
     ) -> None:
-        stack.tx_ring.enqueue(ip4_packet_tx)
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.enqueue(ip4_packet_tx)

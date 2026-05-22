@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest.mock import create_autospec
 
 from net_addr import Ip4Address, Ip4IfAddr
 from net_proto import Ip4Assembler, Ip4FragAssembler, IpProto, RawAssembler, UdpAssembler
@@ -98,6 +98,10 @@ class _StubHandler(PacketHandlerIp4Tx):
         self._ip4_ifaddr = ip4_hosts if ip4_hosts is not None else [STACK__IP4_HOST]
         self._ip4_multicast = [STACK__IP4_MULTICAST]
         self._ip4_id = 0
+        # Per-interface TX ring — injected by the L3-enqueue tests
+        # that exercise '__send_out_packet'; None for the L2 tests
+        # whose '_phtx_ethernet' override records calls instead.
+        self._tx_ring = None
 
         self.ethernet_tx_calls: list[dict[str, object]] = []
         self.ethernet_tx_status: TxStatus = TxStatus.PASSED__ETHERNET__TO_TX_RING
@@ -367,12 +371,13 @@ class TestPacketHandlerIp4TxSend(TestCase):
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3)
-        with patch.object(stack, "tx_ring", MagicMock(), create=True) as mock_tx_ring:
-            status = handler._phtx_ip4(
-                ip4__src=STACK__IP4_ADDRESS,
-                ip4__dst=HOST_A__IP4,
-                ip4__payload=RawAssembler(),
-            )
+        mock_tx_ring = create_autospec(TxRing, spec_set=True)
+        handler._tx_ring = mock_tx_ring
+        status = handler._phtx_ip4(
+            ip4__src=STACK__IP4_ADDRESS,
+            ip4__dst=HOST_A__IP4,
+            ip4__payload=RawAssembler(),
+        )
 
         self.assertEqual(status, TxStatus.PASSED__IP4__TO_TX_RING)
         self.assertEqual(handler._packet_stats_tx.ip4__mtu_ok__send, 1)
@@ -433,12 +438,12 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
         handler = _StubHandler(interface_layer=InterfaceLayer.L3, interface_mtu=200)
         payload = RawAssembler(raw__payload=b"\x00" * 400)
         mock_tx_ring = create_autospec(TxRing, spec_set=True)
-        with patch.object(stack, "tx_ring", mock_tx_ring, create=True):
-            status = handler._phtx_ip4(
-                ip4__src=STACK__IP4_ADDRESS,
-                ip4__dst=HOST_A__IP4,
-                ip4__payload=payload,
-            )
+        handler._tx_ring = mock_tx_ring
+        status = handler._phtx_ip4(
+            ip4__src=STACK__IP4_ADDRESS,
+            ip4__dst=HOST_A__IP4,
+            ip4__payload=payload,
+        )
 
         self.assertEqual(
             status,

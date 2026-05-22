@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import create_autospec
 
 from net_addr import MacAddress
 from net_proto import Ethernet8023Assembler, RawAssembler
@@ -41,6 +41,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ethernet_802_3__tx import (
     PacketHandlerEthernet8023Tx,
 )
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -88,21 +89,17 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
 
     def setUp(self) -> None:
         """
-        Patch the stack's TX ring with a MagicMock so assemble()-enqueue
+        Inject a mock TX ring into the handler so assemble()-enqueue
         calls can be inspected without touching a real file descriptor.
         """
 
         self._handler = _StubHandler()
 
-        self._tx_ring_patch = patch.object(stack, "tx_ring", MagicMock())
-        self._tx_ring = self._tx_ring_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Restore the patched stack.tx_ring singleton.
-        """
-
-        self._tx_ring_patch.stop()
+        # The TX ring is injected per-interface; assign the mock to the
+        # handler's own '_tx_ring' (the send-out path no longer reads
+        # the global 'stack.tx_ring').
+        self._tx_ring = create_autospec(TxRing, spec_set=True)
+        self._handler._tx_ring = self._tx_ring
 
     def test__stack__packet_handler__ethernet_802_3__tx__fills_unspecified_src(self) -> None:
         """
