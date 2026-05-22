@@ -35,7 +35,7 @@ ICMPv6 Neighbor Solicitation — and inherits everything else
 (state machine, timers, queued-packet semantics, PERMANENT
 escape hatch, sysctl-driven knobs) from the parent class.
 
-pytcp/protocols/icmp6/nd__cache.py
+pytcp/protocols/icmp6/nd/nd__cache.py
 
 ver 3.0.6
 """

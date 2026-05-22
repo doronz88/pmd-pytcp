@@ -33,7 +33,7 @@ specific solicit callback and the kw-only public surface
 ('ip6_address=', 'mac_address=') that legacy call sites
 depend on.
 
-pytcp/tests/unit/protocols/icmp6/test__nd__cache.py
+pytcp/tests/unit/protocols/icmp6/nd/test__nd__cache.py
 
 ver 3.0.6
 """

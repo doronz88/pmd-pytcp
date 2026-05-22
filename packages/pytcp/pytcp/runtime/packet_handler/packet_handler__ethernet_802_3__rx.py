@@ -34,7 +34,7 @@ and dropped with protocol-specific counters so the
 operator can identify what management traffic is on the
 wire.
 
-pytcp/subsystems/packet_handler/packet_handler__ethernet_802_3__rx.py
+pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py
 
 ver 3.0.6
 """

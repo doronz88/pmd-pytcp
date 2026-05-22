@@ -25,7 +25,7 @@
 """
 This module contains packet handler for the outbound ICMPv4 packets
 
-pytcp/subsystems/packet_handler/packet_handler__icmp4__tx.py
+pytcp/runtime/packet_handler/packet_handler__icmp4__tx.py
 
 ver 3.0.6
 """

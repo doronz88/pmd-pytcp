@@ -25,7 +25,7 @@
 """
 This package contains packet handler class for inbound and outbound packets.
 
-pytcp/subsystems/packet_handler/__init__.py
+pytcp/runtime/packet_handler/__init__.py
 
 ver 3.0.6
 """

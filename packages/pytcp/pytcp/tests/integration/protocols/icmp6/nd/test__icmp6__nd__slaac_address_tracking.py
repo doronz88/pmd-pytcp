@@ -40,7 +40,7 @@ it when an inbound PI advertises 'valid_lifetime=0' (RFC 4862
 (§5.5.3 (e)(6) (b)/(c)) and the per-address state machine
 (PREFERRED → DEPRECATED → REMOVED) are deferred to §12b.
 
-pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_prefix_tracking.py
+pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_tracking.py
 
 ver 3.0.6
 """

@@ -25,7 +25,7 @@
 """
 This module contains packet handler for the outbound IPv6 fragment extension header.
 
-pytcp/subsystems/packet_handler/packet_handler__ip6_frag__tx.py
+pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py
 
 ver 3.0.6
 """

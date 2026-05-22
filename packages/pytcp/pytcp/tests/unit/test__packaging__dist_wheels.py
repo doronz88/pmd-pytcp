@@ -31,7 +31,7 @@ discovery glob; PyTCP migrated to regular packages (empty
 `__init__.py` everywhere) but the test still gates the wheel-discovery
 glob.
 
-packages/pytcp/pytcp/tests/unit/test__packaging__dist_wheels.py
+pytcp/tests/unit/test__packaging__dist_wheels.py
 
 ver 3.0.6
 """
