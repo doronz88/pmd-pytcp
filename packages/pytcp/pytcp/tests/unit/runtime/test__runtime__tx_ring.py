@@ -100,6 +100,8 @@ class TestTxRingInit(_TxRingFixture):
         """
         Ensure '__init__' stores the 'fd', 'mtu', and
         'queue_max_size' fields on private attributes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -122,6 +124,8 @@ class TestTxRingInit(_TxRingFixture):
         """
         Ensure '__init__' creates an empty deque and a sane
         configured queue cap.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -144,6 +148,8 @@ class TestTxRingEnqueue(_TxRingFixture):
     def test__tx_ring__enqueue_appends_packet(self) -> None:
         """
         Ensure enqueue() places the packet on the internal deque.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=EthernetAssembler)
@@ -159,6 +165,8 @@ class TestTxRingEnqueue(_TxRingFixture):
         Ensure enqueue() silently drops the packet when the deque is
         at capacity rather than blocking — dropping an outbound
         frame is preferable to stalling the caller.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
@@ -181,6 +189,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
         Ensure the loop returns early on 'queue.Empty' — there is
         nothing to transmit so os.writev() must not be called.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -215,6 +225,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         'EthernetAssembler' packet and writes it to the fd via
         'os.writev'. The Ethernet branch uses an empty initial buffer
         list and adds Ethernet-header overhead to the MTU check.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = self._make_ethernet()
@@ -241,6 +253,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         Ensure the loop prepends the IPv6 EtherType prefix
         (b'\\x00\\x00\\x86\\xdd') to the buffer list for an
         'Ip6Assembler' packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=Ip6Assembler)
@@ -264,6 +278,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         Ensure the loop prepends the IPv4 EtherType prefix
         (b'\\x00\\x00\\x08\\x00') to the buffer list for an
         'Ip4Assembler' packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=Ip4Assembler)
@@ -286,6 +302,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
         Ensure 'Ip4FragAssembler' packets also receive the IPv4
         EtherType prefix — they share a branch with 'Ip4Assembler'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=Ip4FragAssembler)
@@ -309,6 +327,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         Ensure 'Ethernet8023Assembler' packets exercise the
         corresponding MTU branch and get written out — the test only
         verifies the dispatch, not the 802.3 framing internals.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=Ethernet8023Assembler)
@@ -326,6 +346,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
         Ensure the loop drops a frame whose length exceeds the MTU
         (plus Ethernet header overhead) without calling os.writev.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = self._make_ethernet()
@@ -342,6 +364,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         """
         Ensure an 'OSError' from 'os.writev' is caught so the TX
         thread does not crash on transient interface errors.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = self._make_ethernet()
@@ -358,6 +382,8 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         Ensure packets of an unexpected type (not one of the five
         accepted assemblers) are logged and dropped — os.writev must
         not be called.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock()  # plain MagicMock, no spec -> unknown type

@@ -129,6 +129,8 @@ class TestPacketHandlerIcmp4RxParse(_Icmp4RxTestBase):
         Ensure an ICMPv4 frame with a bad checksum is counted in
         'icmp4__failed_parse__drop'. The parser validates ICMPv4
         integrity (including checksum) and raises on mismatch.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         ip4 = bytearray(
@@ -168,6 +170,8 @@ class TestPacketHandlerIcmp4RxEchoRequest(_Icmp4RxTestBase):
         """
         Ensure an ICMPv4 Echo Request from a peer produces an Echo
         Reply with src=our-dst and dst=peer.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         ip4 = bytes(
@@ -209,6 +213,8 @@ class TestPacketHandlerIcmp4RxEchoReply(_Icmp4RxTestBase):
         Ensure an ICMPv4 Echo Reply reaches the __phrx_icmp4__echo_reply
         branch and bumps 'icmp4__echo_reply'. With no matching RAW
         socket installed, the handler returns silently.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         ip4 = bytes(
@@ -240,6 +246,8 @@ class TestPacketHandlerIcmp4RxDestinationUnreachable(_Icmp4RxTestBase):
         Ensure an ICMPv4 Destination Unreachable is counted in
         'icmp4__destination_unreachable' regardless of whether the
         embedded datagram matches a UDP socket.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         # Build the original UDP datagram that elicited the unreachable.
@@ -276,6 +284,8 @@ class TestPacketHandlerIcmp4RxDestinationUnreachable(_Icmp4RxTestBase):
         basic IPv4/UDP integrity check does NOT call
         'notify_unreachable' on any socket. Guards against regressions
         that would dispatch malformed unreachables to UDP sockets.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         unreachable = Icmp4MessageDestinationUnreachable(
@@ -315,6 +325,8 @@ class TestPacketHandlerIcmp4RxUnknown(_Icmp4RxTestBase):
         Ensure an ICMPv4 packet carrying an unhandled type increments
         'icmp4__unknown'. The handler builds such a message by rewriting
         the type byte on a valid echo-reply frame.
+
+        Reference: RFC 792 (ICMPv4 RX dispatch).
         """
 
         ip4 = bytearray(

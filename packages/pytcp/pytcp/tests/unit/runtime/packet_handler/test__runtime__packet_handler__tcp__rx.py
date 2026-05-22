@@ -141,6 +141,8 @@ class TestPacketHandlerTcpRxParse(_TcpRxTestBase):
         """
         Ensure a TCP segment with a corrupt checksum is counted in
         'tcp__failed_parse__drop'.
+
+        Reference: RFC 9293 §3.10 (TCP RX segment processing).
         """
 
         # Build a valid IP+TCP frame then corrupt the TCP cksum field.
@@ -180,6 +182,8 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         """
         Ensure a TCP segment matching an active socket is forwarded to
         the socket's 'process_tcp_packet'.
+
+        Reference: RFC 9293 §3.10 (TCP RX segment processing).
         """
 
         fake_socket = MagicMock()
@@ -211,6 +215,8 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         """
         Ensure a TCP RST that doesn't match any socket is silently
         dropped and no RST is sent back (would be an amplification).
+
+        Reference: RFC 9293 §3.10 (TCP RX segment processing).
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_rst=True, flag_ack=True)

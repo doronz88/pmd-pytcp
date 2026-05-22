@@ -99,6 +99,8 @@ class TestPacketHandlerBaseConstruction(TestCase):
         """
         Ensure the base constructor creates empty host / candidate /
         multicast lists and zeroed IP id counters.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -121,6 +123,8 @@ class TestPacketHandlerBaseConstruction(TestCase):
         """
         Ensure passing 'ip4_host=' seeds the candidate list (the
         address still has to pass DAD before moving to _ip4_ifaddr).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = PacketHandlerL2(
@@ -140,6 +144,8 @@ class TestPacketHandlerBaseConstruction(TestCase):
     def test__stack__packet_handler__init__ip6_host_seeds_candidate(self) -> None:
         """
         Ensure passing 'ip6_host=' seeds the candidate list.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = PacketHandlerL2(
@@ -166,6 +172,8 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
         Ensure '_ip4_unicast' returns the addresses of the configured
         IPv4 hosts in order.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -178,6 +186,8 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
         Ensure '_ip6_unicast' returns the addresses of the configured
         IPv6 hosts in order.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -190,6 +200,8 @@ class TestPacketHandlerAddressProperties(TestCase):
         """
         Ensure '_ip4_broadcast' returns per-host network broadcasts
         plus the all-ones limited broadcast.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -216,6 +228,8 @@ class TestPacketHandlerAddressAssignment(TestCase):
         """
         Ensure '_assign_ip4_host' / '_remove_ip4_host' mutate the
         host list without affecting anything else.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -234,6 +248,8 @@ class TestPacketHandlerAddressAssignment(TestCase):
         matching multicast MAC to '_mac_multicast' (needed so the L2
         filter accepts frames for the joined group) and invokes the
         MLDv2 listener-report sender.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -250,6 +266,8 @@ class TestPacketHandlerAddressAssignment(TestCase):
         """
         Ensure '_remove_ip6_multicast' removes both the IPv6 entry and
         the matching MAC multicast.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -266,6 +284,8 @@ class TestPacketHandlerAddressAssignment(TestCase):
         """
         Ensure PacketHandlerL3 '_assign_ip6_multicast' does NOT touch
         any MAC multicast list (L3 stack has no MAC filter).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()
@@ -290,6 +310,8 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         """
         Ensure PacketHandlerL3's '_create_stack_ip4_addressing' moves
         every candidate into '_ip4_ifaddr' (no DAD on L3).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()
@@ -304,6 +326,8 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         """
         Ensure '_create_stack_ip4_addressing' turns off '_ip4_support'
         when no candidates could be assigned.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()
@@ -318,6 +342,8 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         """
         Ensure PacketHandlerL3's '_create_stack_ip6_addressing' joins
         ff02::1 (all-nodes) and promotes every candidate.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()
@@ -340,6 +366,8 @@ class TestPacketHandlerL2SubsystemLoop(TestCase):
         Ensure an Ethernet II frame (ethertype > 802.3 max) is routed
         to '_phrx_ethernet', and an 802.3 frame is routed to
         '_phrx_ethernet_802_3'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
@@ -371,6 +399,8 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         Ensure the L3 loop inspects bytes 2-3 of the TUN framing to
         decide IPv4 vs IPv6 dispatch, advances the frame pointer past
         the 4-byte TUN header, and honors the support flags.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()
@@ -401,6 +431,8 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         """
         Ensure the L3 loop drops IPv4 when '_ip4_support' is False and
         IPv6 when '_ip6_support' is False.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l3_handler()

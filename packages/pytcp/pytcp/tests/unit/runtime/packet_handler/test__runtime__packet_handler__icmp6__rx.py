@@ -203,6 +203,8 @@ class TestPacketHandlerIcmp6RxParse(_Icmp6RxTestBase):
         """
         Ensure a malformed ICMPv6 frame is counted in
         'icmp6__failed_parse__drop'.
+
+        Reference: RFC 4443 (ICMPv6 message processing).
         """
 
         ip6 = bytearray(
@@ -239,6 +241,8 @@ class TestPacketHandlerIcmp6RxEcho(_Icmp6RxTestBase):
         """
         Ensure an ICMPv6 Echo Request produces an Echo Reply with
         src=our-dst and dst=peer.
+
+        Reference: RFC 4443 §4.2 (Echo Reply).
         """
 
         ip6 = _build_icmp6_frame(
@@ -583,6 +587,8 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
         Ensure an ICMPv6 NS targeting our address is counted. The RX
         handler exercises the DAD / ND-cache paths which are patched
         out via the stub _phtx_icmp6.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation).
         """
 
         ns_message = Icmp6NdMessageNeighborSolicitation(

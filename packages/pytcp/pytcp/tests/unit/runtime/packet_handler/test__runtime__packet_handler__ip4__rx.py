@@ -196,6 +196,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         """
         Ensure a malformed IPv4 frame is counted in
         'ip4__failed_parse__drop' and no dispatch happens.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         self._handler._phrx_ip4(PacketRx(b"\x45\x00\x00"))
@@ -211,6 +213,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         """
         Ensure a packet addressed to an IP not in any of our address
         lists is dropped with 'ip4__dst_unknown__drop'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(dst=OFF_NET__IP4)
@@ -228,6 +232,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         Ensure the destination filter is bypassed when the stack has no
         configured unicast addresses — the DHCP client relies on this
         to receive OFFER / ACK packets before an IP is claimed.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         handler = _StubHandler(ip4_unicast=[])
@@ -249,6 +255,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         """
         Ensure a packet to the stack unicast IP increments the
         'ip4__dst_unicast' counter.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(dst=STACK__IP4_ADDRESS, payload=b"\x00" * 8)
@@ -264,6 +272,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         """
         Ensure a packet to a joined multicast group is counted in
         'ip4__dst_multicast'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(dst=STACK__IP4_MULTICAST, payload=b"\x00" * 8)
@@ -279,6 +289,8 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         """
         Ensure a packet to a broadcast IP is counted in
         'ip4__dst_broadcast'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(dst=STACK__IP4_BROADCAST, payload=b"\x00" * 8)
@@ -299,6 +311,8 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
     def test__stack__packet_handler__ip4__rx__udp_dispatches(self) -> None:
         """
         Ensure a UDP packet dispatches to '_phrx_udp'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(proto=IpProto.UDP, payload=b"\x00" * 8)
@@ -309,6 +323,8 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
     def test__stack__packet_handler__ip4__rx__tcp_dispatches(self) -> None:
         """
         Ensure a TCP packet dispatches to '_phrx_tcp'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(proto=IpProto.TCP, payload=b"\x00" * 20)
@@ -319,6 +335,8 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
     def test__stack__packet_handler__ip4__rx__icmp4_dispatches(self) -> None:
         """
         Ensure an ICMPv4 packet dispatches to '_phrx_icmp4'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(proto=IpProto.ICMP4, payload=b"\x00" * 8)
@@ -330,6 +348,8 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
         """
         Ensure an IPv4 packet carrying an unsupported proto value is
         dropped and counted in 'ip4__no_proto_support__drop'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frame = _ip4_frame(proto=IpProto.IP6_FRAG, payload=b"\x00" * 8)
@@ -384,6 +404,8 @@ class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):
         """
         Ensure the first of two fragments is stored and returns without
         dispatching to any upper-layer handler.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         frag1 = self._build_fragment(
@@ -415,6 +437,8 @@ class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):
         """
         Ensure an out-of-order fragment sequence stays pending until
         all offsets line up.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         # Send second fragment (offset=8, final) before the first.
@@ -443,6 +467,8 @@ class TestPacketHandlerIp4RxRawSocketMatch(_Ip4RxTestBase):
         """
         Ensure a matching RAW socket consumes the packet and prevents
         upper-layer dispatch, incrementing 'raw__socket_match'.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         from unittest.mock import MagicMock
@@ -488,6 +514,8 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
         """
         Ensure a two-fragment UDP packet gets fully reassembled and
         dispatched to '_phrx_udp', with 'ip4__defrag' incremented.
+
+        Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
         # Two consecutive 8-byte UDP payload fragments that combine

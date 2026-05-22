@@ -249,6 +249,8 @@ class TestPacketHandlerEthernetRx(TestCase):
         Ensure the handler dispatches to the correct upper-layer
         _phrx_* method for the parsed EtherType (or none, when the
         packet is dropped upstream of the dispatch switch).
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         self.assertEqual(
@@ -261,6 +263,8 @@ class TestPacketHandlerEthernetRx(TestCase):
         """
         Ensure the handler updates the exact set of RX statistics the
         behavioral contract promises for this case.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         expected = PacketStatsRx(**self._results)
@@ -281,6 +285,8 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
         Ensure an IPv4 frame is dropped when '_ip4_support' is False,
         even though the MAC filter passed. The switch has explicit
         guards for each support flag.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         handler = _StubHandler(ip4_support=False)
@@ -300,6 +306,8 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
     def test__stack__packet_handler__ethernet__rx__ip6_disabled_drops_ip6(self) -> None:
         """
         Ensure an IPv6 frame is dropped when '_ip6_support' is False.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         handler = _StubHandler(ip6_support=False)
@@ -320,6 +328,8 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
         """
         Ensure ARP dispatch is gated on '_ip4_support' — ARP is
         meaningless in an IPv6-only stack and the handler drops it.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         handler = _StubHandler(ip4_support=False)

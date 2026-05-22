@@ -164,6 +164,8 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         """
         Ensure a truncated IPv6 frame is counted in
         'ip6__failed_parse__drop'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(b"\x60\x00\x00"))
@@ -177,6 +179,8 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
     def test__stack__packet_handler__ip6__rx__unknown_dst_drops(self) -> None:
         """
         Ensure a packet to an unowned IPv6 is dropped.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=OFF_NET__IP6)))
@@ -191,6 +195,8 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         """
         Ensure a packet to the stack unicast IPv6 increments
         'ip6__dst_unicast'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=STACK__IP6_ADDRESS, payload=b"\x00" * 8)))
@@ -201,6 +207,8 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         """
         Ensure a packet to a joined multicast group increments
         'ip6__dst_multicast'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=STACK__IP6_MULTICAST, payload=b"\x00" * 8)))
@@ -216,6 +224,8 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
     def test__stack__packet_handler__ip6__rx__udp_dispatches(self) -> None:
         """
         Ensure a UDP packet dispatches to '_phrx_udp'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.UDP, payload=b"\x00" * 8)))
@@ -225,6 +235,8 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
     def test__stack__packet_handler__ip6__rx__tcp_dispatches(self) -> None:
         """
         Ensure a TCP packet dispatches to '_phrx_tcp'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.TCP, payload=b"\x00" * 20)))
@@ -234,6 +246,8 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
     def test__stack__packet_handler__ip6__rx__icmp6_dispatches(self) -> None:
         """
         Ensure an ICMPv6 packet dispatches to '_phrx_icmp6'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.ICMP6, payload=b"\x00" * 8)))
@@ -243,6 +257,8 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
     def test__stack__packet_handler__ip6__rx__frag_dispatches(self) -> None:
         """
         Ensure an IPv6 fragment dispatches to '_phrx_ip6_frag'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.IP6_FRAG, payload=b"\x00" * 8)))
@@ -253,6 +269,8 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
         """
         Ensure an unsupported next-header drops with
         'ip6__no_proto_support__drop'.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.RAW, payload=b"\x00" * 8)))
@@ -281,6 +299,8 @@ class TestPacketHandlerIp6RxRawSocketMatch(_Ip6RxTestBase):
         """
         Ensure a matching RAW socket consumes the packet and prevents
         upper-layer dispatch.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         fake_socket = MagicMock()

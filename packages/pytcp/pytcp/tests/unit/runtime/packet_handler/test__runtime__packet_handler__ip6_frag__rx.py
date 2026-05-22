@@ -139,6 +139,8 @@ class TestPacketHandlerIp6FragRx(TestCase):
         """
         Ensure the first of two fragments is stored in the flow table
         and does not trigger a reassembly.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly).
         """
 
         packet_rx = _ip6_frag_packet_rx(
@@ -174,6 +176,8 @@ class TestPacketHandlerIp6FragRx(TestCase):
         """
         Ensure two in-order fragments reassemble into a single packet
         dispatched to '_phrx_ip6' and the flow is purged.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly).
         """
 
         frag0 = _ip6_frag_packet_rx(
@@ -212,6 +216,8 @@ class TestPacketHandlerIp6FragRx(TestCase):
         """
         Ensure the reassembler stays pending when the final fragment
         arrives before the first.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly).
         """
 
         # Final fragment (offset=8) arrives first.

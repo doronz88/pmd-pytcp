@@ -185,6 +185,8 @@ class TestPacketHandlerEthernet8023Rx(TestCase):
         """
         Ensure the handler updates the exact set of RX statistics the
         behavioral contract promises for this case.
+
+        Reference: IEEE 802.3 §3 (802.3 RX dispatch).
         """
 
         expected = PacketStatsRx(**self._results)
@@ -206,6 +208,8 @@ class TestPacketHandlerEthernet8023RxDispatch(TestCase):
         upper-protocol handlers (_phrx_arp / _phrx_ip4 / _phrx_ip6).
         802.3 frames are accepted into stats only; upper layers are
         routed by the plain Ethernet handler in the real code path.
+
+        Reference: IEEE 802.3 §3 (802.3 RX dispatch).
         """
 
         handler = _StubHandler()

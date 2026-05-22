@@ -138,6 +138,8 @@ class TestPacketHandlerIp6FragTx(TestCase):
         """
         Ensure a payload that exceeds the per-fragment MTU is split into
         at least two fragments and each is forwarded to '_phtx_ip6'.
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
         handler = _StubHandler(interface_mtu=200)
@@ -205,6 +207,8 @@ class TestPacketHandlerIp6FragTx(TestCase):
         """
         Ensure the handler returns the most severe TX status when per-
         fragment results differ (documents the priority order).
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
         handler = _StubHandler(

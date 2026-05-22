@@ -108,6 +108,8 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         """
         Ensure the handler fills an unspecified source MAC with the
         stack's unicast MAC and increments 'ethernet_802_3__src_unspec__fill'.
+
+        Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
         status = self._handler._phtx_ethernet_802_3(
@@ -158,6 +160,8 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         """
         Ensure the handler does not overwrite a caller-supplied source
         MAC and instead increments 'ethernet_802_3__src_spec'.
+
+        Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
         custom_src = MacAddress("02:00:00:00:00:aa")
@@ -197,6 +201,8 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         Ensure the handler drops the packet when the destination MAC is
         unspecified, returns 'DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL',
         and does not enqueue to the TX ring.
+
+        Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
         status = self._handler._phtx_ethernet_802_3(
@@ -224,6 +230,8 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         """
         Ensure calling the handler without any kwargs (all defaults)
         drops the packet — both src and dst default to unspecified.
+
+        Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
         status = self._handler._phtx_ethernet_802_3()

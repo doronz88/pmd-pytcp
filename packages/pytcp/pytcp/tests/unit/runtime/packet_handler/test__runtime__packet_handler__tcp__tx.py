@@ -95,6 +95,8 @@ class TestPacketHandlerTcpTxRouting(TestCase):
     def test__stack__packet_handler__tcp__tx__ip4_routes_to_phtx_ip4(self) -> None:
         """
         Ensure a TCP segment with IPv4 src/dst is forwarded to '_phtx_ip4'.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -115,6 +117,8 @@ class TestPacketHandlerTcpTxRouting(TestCase):
     def test__stack__packet_handler__tcp__tx__ip6_routes_to_phtx_ip6(self) -> None:
         """
         Ensure a TCP segment with IPv6 src/dst is forwarded to '_phtx_ip6'.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -134,6 +138,8 @@ class TestPacketHandlerTcpTxRouting(TestCase):
         """
         Ensure a mismatched IPv4 src with IPv6 dst raises ValueError
         rather than silently picking a layer.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -154,6 +160,8 @@ class TestPacketHandlerTcpTxFlags(TestCase):
     def test__stack__packet_handler__tcp__tx__flag_counters_increment(self) -> None:
         """
         Ensure each TCP flag increments its own statistic counter.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -194,6 +202,8 @@ class TestPacketHandlerTcpTxOptions(TestCase):
         """
         Ensure passing 'tcp__mss' emits a segment with the MSS option
         and increments 'tcp__opt_mss'.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -211,6 +221,8 @@ class TestPacketHandlerTcpTxOptions(TestCase):
         """
         Ensure passing 'tcp__wscale' emits a segment with NOP+WSCALE
         and increments both 'tcp__opt_nop' and 'tcp__opt_wscale'.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()
@@ -234,6 +246,8 @@ class TestPacketHandlerTcpTxSendHelper(TestCase):
     def test__stack__packet_handler__tcp__tx__send_tcp_packet_forwards(self) -> None:
         """
         Ensure 'send_tcp_packet' forwards its arguments to '_phtx_tcp'.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         handler = _StubHandler()

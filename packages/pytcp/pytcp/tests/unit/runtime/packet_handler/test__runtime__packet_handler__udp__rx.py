@@ -170,6 +170,8 @@ class TestPacketHandlerUdpRxParse(_UdpRxTestBase):
         """
         Ensure a UDP segment with a bad checksum is counted in
         'udp__failed_parse__drop'.
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         frame = bytearray(
@@ -208,6 +210,8 @@ class TestPacketHandlerUdpRxDispatch(_UdpRxTestBase):
         """
         Ensure a UDP datagram matching a listening socket is forwarded
         to the socket's 'process_udp_packet'.
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         fake_socket = MagicMock()
@@ -235,6 +239,8 @@ class TestPacketHandlerUdpRxDispatch(_UdpRxTestBase):
         """
         Ensure a UDP datagram with an unspecified source IP is silently
         dropped (no ICMP unreachable, no echo, no socket match).
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         packet_rx = _packet_rx_from_ip4_udp(src=IP4__UNSPEC, payload=b"hi")
@@ -253,6 +259,8 @@ class TestPacketHandlerUdpRxDispatch(_UdpRxTestBase):
         Ensure an IPv4 UDP datagram with no matching socket elicits an
         ICMPv4 Port Unreachable reply with the original IP packet in
         the message data.
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         packet_rx = _packet_rx_from_ip4_udp(payload=b"hi")
@@ -273,6 +281,8 @@ class TestPacketHandlerUdpRxDispatch(_UdpRxTestBase):
         """
         Ensure an IPv6 UDP datagram with no matching socket elicits an
         ICMPv6 Port Unreachable reply.
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         packet_rx = _packet_rx_from_ip6_udp(payload=b"hi")
@@ -308,6 +318,8 @@ class TestPacketHandlerUdpRxEcho(_UdpRxTestBase):
         """
         Ensure a UDP datagram to port 7 with UDP__ECHO_NATIVE=True
         triggers a native UDP echo reply back to the sender.
+
+        Reference: RFC 768 (UDP RX dispatch).
         """
 
         packet_rx = _packet_rx_from_ip4_udp(sport=54321, dport=7, payload=b"echo")

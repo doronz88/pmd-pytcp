@@ -92,6 +92,8 @@ class TestRxRingInit(_RxRingFixture):
         """
         Ensure '__init__' stores the 'fd', 'mtu', and
         'queue_max_size' fields on private attributes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -114,6 +116,8 @@ class TestRxRingInit(_RxRingFixture):
         """
         Ensure '__init__' creates an empty deque and a sane
         configured queue cap.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -130,6 +134,8 @@ class TestRxRingInit(_RxRingFixture):
     def test__rx_ring__custom_queue_size(self) -> None:
         """
         Ensure a non-default 'queue_max_size' is honored.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=7)
@@ -150,6 +156,8 @@ class TestRxRingDequeue(_RxRingFixture):
         """
         Ensure 'dequeue()' returns the next queued 'PacketRx' in FIFO
         order via the fast path (deque non-empty, no eventfd wait).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         pkt = MagicMock(spec=PacketRx)
@@ -165,6 +173,8 @@ class TestRxRingDequeue(_RxRingFixture):
         Ensure 'dequeue()' returns 'None' when the deque stays empty
         past the subsystem-sleep timeout. Exercises the slow path
         ('select.select' on the eventfd times out).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with patch(
@@ -213,6 +223,8 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         Ensure the loop returns early (without reading the fd) when
         the selector signals no readable events. This is the happy
         no-op path while the interface is quiet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
@@ -229,6 +241,8 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         selector is mocked to return ready on the first call and
         empty on the inner-drain peek so the loop exits after one
         frame.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         frame = b"\x00" * 64
@@ -304,6 +318,8 @@ class TestRxRingSubsystemLoop(_RxRingFixture):
         Ensure the loop catches 'queue.Full' when the RX ring is
         already at 'queue_max_size' — the frame is dropped instead of
         blocking the RX thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         # Exhaust the queue first.
@@ -677,6 +693,8 @@ class TestRxRingQueueFullSpelling(TestCase):
         Ensure the module's 'queue.Full' reference resolves to the
         standard library's exception class — a shim or rename would
         silently change the drop-path semantics.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(

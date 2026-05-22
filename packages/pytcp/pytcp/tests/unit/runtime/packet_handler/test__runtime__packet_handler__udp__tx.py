@@ -95,6 +95,8 @@ class TestPacketHandlerUdpTxRouting(TestCase):
     def test__stack__packet_handler__udp__tx__ip4_routes_to_phtx_ip4(self) -> None:
         """
         Ensure a UDP datagram with IPv4 src/dst is forwarded to '_phtx_ip4'.
+
+        Reference: RFC 768 (UDP TX).
         """
 
         handler = _StubHandler()
@@ -115,6 +117,8 @@ class TestPacketHandlerUdpTxRouting(TestCase):
     def test__stack__packet_handler__udp__tx__ip6_routes_to_phtx_ip6(self) -> None:
         """
         Ensure a UDP datagram with IPv6 src/dst is forwarded to '_phtx_ip6'.
+
+        Reference: RFC 768 (UDP TX).
         """
 
         handler = _StubHandler()
@@ -133,6 +137,8 @@ class TestPacketHandlerUdpTxRouting(TestCase):
     def test__stack__packet_handler__udp__tx__mixed_ip_versions_raises(self) -> None:
         """
         Ensure a mismatched IPv4 src / IPv6 dst raises ValueError.
+
+        Reference: RFC 768 (UDP TX).
         """
 
         handler = _StubHandler()
@@ -154,6 +160,8 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         """
         Ensure 'send_udp_packet' forwards its arguments verbatim to
         '_phtx_udp'.
+
+        Reference: RFC 768 (UDP TX).
         """
 
         handler = _StubHandler()
