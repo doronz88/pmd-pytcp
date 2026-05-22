@@ -184,6 +184,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler '__len__()' method returns a
         correct value (header + payload bytes).
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -196,6 +198,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler '__str__()' method returns the
         canonical log line.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -208,6 +212,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler '__repr__()' method returns a
         string that can rebuild the header and embeds the payload repr.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -220,6 +226,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler '__bytes__()' method emits the
         expected on-wire frame.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -232,6 +240,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'dst' property returns a correct
         value.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -244,6 +254,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'src' property returns a correct
         value.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -256,6 +268,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'type' property returns the
         EtherType inferred from the payload via EtherType.from_proto().
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -268,6 +282,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'header' property exposes the
         fully populated EthernetHeader.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -280,6 +296,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'payload' property returns the
         wrapped upper-layer assembler.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -292,6 +310,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet packet assembler 'assemble()' method appends the
         header + payload buffers that concatenate to the expected wire image.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         buffers: list[Buffer] = []
@@ -308,6 +328,8 @@ class TestEthernetAssemblerOperation(TestCase):
         """
         Ensure the Ethernet assembler reuses the payload's Tracker so that
         upstream TX log lines remain correlated with the payload assembler.
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         self.assertIs(
@@ -328,6 +350,8 @@ class TestEthernetAssemblerEtherTypeFromProto(TestCase):
     def test__ethernet__assembler__infers_arp_ethertype(self) -> None:
         """
         Ensure wrapping an ArpAssembler yields EtherType.ARP (0x0806).
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         assembler = EthernetAssembler(
@@ -355,6 +379,8 @@ class TestEthernetAssemblerEtherTypeFromProto(TestCase):
     def test__ethernet__assembler__infers_ip4_ethertype(self) -> None:
         """
         Ensure wrapping an Ip4Assembler yields EtherType.IP4 (0x0800).
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         assembler = EthernetAssembler(
@@ -377,6 +403,8 @@ class TestEthernetAssemblerEtherTypeFromProto(TestCase):
     def test__ethernet__assembler__infers_ip6_ethertype(self) -> None:
         """
         Ensure wrapping an Ip6Assembler yields EtherType.IP6 (0x86dd).
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         assembler = EthernetAssembler(
@@ -406,6 +434,8 @@ class TestEthernetAssemblerDefaults(TestCase):
         """
         Ensure the assembler default constructor yields a header-only frame
         with zeroed MAC addresses and a Raw payload (EtherType 0xffff).
+
+        Reference: RFC 894 (Ethernet II frame — dst, src, EtherType).
         """
 
         assembler = EthernetAssembler()

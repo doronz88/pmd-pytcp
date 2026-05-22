@@ -241,6 +241,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__header(self) -> None:
         """
         Ensure the parser exposes the expected EthernetHeader.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -252,6 +254,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__dst_property(self) -> None:
         """
         Ensure the 'dst' property mirrors the header's destination MAC.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -263,6 +267,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__src_property(self) -> None:
         """
         Ensure the 'src' property mirrors the header's source MAC.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -274,6 +280,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__type_property(self) -> None:
         """
         Ensure the 'type' property mirrors the header's EtherType.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -285,6 +293,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__len(self) -> None:
         """
         Ensure 'len()' on the parser equals header length plus payload length.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -296,6 +306,8 @@ class TestEthernetParserOperation(TestCase):
     def test__ethernet__parser__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical Ethernet log line.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -309,6 +321,8 @@ class TestEthernetParserOperation(TestCase):
         Ensure '__repr__()' mentions the class name and includes both the
         'header=' and 'payload=' anchors documented for every PyTCP assembler
         and parser base class.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         rendered = repr(self._parser)
@@ -327,6 +341,8 @@ class TestEthernetParserOperation(TestCase):
         """
         Ensure the parser assigns itself to PacketRx.ethernet so upper-layer
         parsers can locate the Ethernet header via the PacketRx.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertIs(
@@ -339,6 +355,8 @@ class TestEthernetParserOperation(TestCase):
         """
         Ensure the parser advances PacketRx.frame past the 14-byte header so
         the next protocol parser sees only the payload.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -351,6 +369,8 @@ class TestEthernetParserOperation(TestCase):
         """
         Ensure the parser exposes the complete on-wire frame (header +
         payload) through the buffer protocol.
+
+        Reference: RFC 894 (Ethernet II frame parse — header + payload).
         """
 
         self.assertEqual(

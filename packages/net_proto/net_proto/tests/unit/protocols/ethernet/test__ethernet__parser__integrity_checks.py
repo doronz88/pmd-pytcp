@@ -113,6 +113,8 @@ class TestEthernetParserIntegrityChecks(TestCase):
         Ensure the Ethernet packet parser raises EthernetIntegrityError with
         the expected '[INTEGRITY ERROR][Ethernet]'-prefixed message for every
         under-length frame.
+
+        Reference: RFC 894 (Ethernet II frame integrity — 14-byte header floor).
         """
 
         with self.assertRaises(EthernetIntegrityError) as error:
@@ -136,6 +138,8 @@ class TestEthernetParserIntegrityChecksBoundary(TestCase):
         validation. With the ethertype field set to an invalid value below
         0x0600 the sanity step must reject the frame instead — proving that
         the integrity gate itself did not raise.
+
+        Reference: RFC 894 (Ethernet II frame integrity — 14-byte header floor).
         """
 
         frame = (
@@ -164,6 +168,8 @@ class TestEthernetParserIntegrityChecksBoundary(TestCase):
         """
         Ensure the error message reports the exact length of the provided
         buffer (not a truncated or cached value).
+
+        Reference: RFC 894 (Ethernet II frame integrity — 14-byte header floor).
         """
 
         frame = b"\x00" * 7

@@ -63,6 +63,8 @@ class TestEthernetHeaderAsserts(TestCase):
         """
         Ensure the Ethernet header constructor raises an exception when the
         provided 'dst' argument is not a MacAddress.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self._kwargs["dst"] = value = "not a MacAddress"
@@ -80,6 +82,8 @@ class TestEthernetHeaderAsserts(TestCase):
         """
         Ensure the Ethernet header constructor raises an exception when the
         provided 'src' argument is not a MacAddress.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self._kwargs["src"] = value = "not a MacAddress"
@@ -97,6 +101,8 @@ class TestEthernetHeaderAsserts(TestCase):
         """
         Ensure the Ethernet header constructor raises an exception when the
         provided 'type' argument is not an EtherType.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self._kwargs["type"] = value = "not an EtherType"
@@ -120,6 +126,8 @@ class TestEthernetHeaderConstants(TestCase):
         """
         Ensure the ETHERNET__HEADER__LEN constant equals 14 bytes (the wire
         length of a DIX/Ethernet II header: 6+6+2).
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -132,6 +140,8 @@ class TestEthernetHeaderConstants(TestCase):
         """
         Ensure the ETHERNET__HEADER__STRUCT format string describes a big-endian
         layout of two 6-byte fields followed by a 16-bit word.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -161,6 +171,8 @@ class TestEthernetHeaderOperation(TestCase):
         """
         Ensure a valid Ethernet header instance can be constructed and its
         fields are exposed exactly as provided.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         kwargs = self._valid_kwargs()
@@ -174,6 +186,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__len(self) -> None:
         """
         Ensure 'len()' on the header returns the canonical 14-byte size.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         header = EthernetHeader(**self._valid_kwargs())
@@ -193,6 +207,8 @@ class TestEthernetHeaderOperation(TestCase):
           Destination MAC : 11:22:33:44:55:66
           Source MAC      : 78:89:9a:ab:bc:cd
           Ethertype       : 0x0800 (IPv4)
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         header = EthernetHeader(**self._valid_kwargs())
@@ -212,6 +228,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__from_buffer_roundtrip(self) -> None:
         """
         Ensure 'from_buffer(bytes(header))' rebuilds an equivalent header.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         original = EthernetHeader(**self._valid_kwargs())
@@ -228,6 +246,8 @@ class TestEthernetHeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' reads only the first ETHERNET__HEADER__LEN
         bytes and ignores any trailing data.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         original = EthernetHeader(**self._valid_kwargs())
@@ -245,6 +265,8 @@ class TestEthernetHeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' accepts an unknown EtherType value by extending
         the enum via 'EtherType.from_int()' rather than rejecting the frame.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         frame = (
@@ -263,6 +285,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__equality(self) -> None:
         """
         Ensure two Ethernet headers with identical field values compare equal.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         kwargs = self._valid_kwargs()
@@ -276,6 +300,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__inequality_on_type(self) -> None:
         """
         Ensure headers differing only in 'type' compare unequal.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         base = self._valid_kwargs()
@@ -290,6 +316,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__is_hashable(self) -> None:
         """
         Ensure Ethernet headers can be used as keys in a set/dict.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         header = EthernetHeader(**self._valid_kwargs())
@@ -299,6 +327,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__is_frozen(self) -> None:
         """
         Ensure Ethernet header fields cannot be mutated after construction.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         header = EthernetHeader(**self._valid_kwargs())
@@ -309,6 +339,8 @@ class TestEthernetHeaderOperation(TestCase):
     def test__ethernet__header__rejects_positional_args(self) -> None:
         """
         Ensure the Ethernet header constructor rejects positional arguments.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         with self.assertRaises(TypeError):
@@ -352,6 +384,8 @@ class TestEthernetHeaderProperties(TestCase):
     def test__ethernet__header__properties__dst_getter(self) -> None:
         """
         Ensure the 'dst' property returns the underlying header's 'dst' field.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -363,6 +397,8 @@ class TestEthernetHeaderProperties(TestCase):
     def test__ethernet__header__properties__src_getter(self) -> None:
         """
         Ensure the 'src' property returns the underlying header's 'src' field.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -375,6 +411,8 @@ class TestEthernetHeaderProperties(TestCase):
         """
         Ensure the 'type' property returns the underlying header's 'type'
         field.
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         self.assertEqual(
@@ -388,6 +426,8 @@ class TestEthernetHeaderProperties(TestCase):
         Ensure the 'dst' setter mutates the frozen header via the documented
         'object.__setattr__' bypass (used by TX packet handlers when filling in
         the destination MAC after ARP resolution).
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         new_dst = MacAddress("aa:bb:cc:dd:ee:ff")
@@ -409,6 +449,8 @@ class TestEthernetHeaderProperties(TestCase):
         Ensure the 'src' setter mutates the frozen header via the documented
         'object.__setattr__' bypass (used by TX packet handlers when filling in
         the source MAC from the selected egress interface).
+
+        Reference: RFC 894 (Ethernet II header — dst, src, EtherType).
         """
 
         new_src = MacAddress("de:ad:be:ef:00:01")
