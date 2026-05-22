@@ -59,6 +59,8 @@ class TestUdpHeaderAsserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards
         the negative tests from masking regressions that would make the
         baseline invalid.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         header = UdpHeader(**self._kwargs)
@@ -73,6 +75,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'sport' argument is lower than the minimum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["sport"] = value = UINT_16__MIN - 1
@@ -90,6 +94,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'sport' argument is higher than the maximum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["sport"] = value = UINT_16__MAX + 1
@@ -107,6 +113,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'dport' argument is lower than the minimum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["dport"] = value = UINT_16__MIN - 1
@@ -124,6 +132,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'dport' argument is higher than the maximum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["dport"] = value = UINT_16__MAX + 1
@@ -141,6 +151,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'plen' argument is lower than the minimum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["plen"] = value = UINT_16__MIN - 1
@@ -158,6 +170,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'plen' argument is higher than the maximum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["plen"] = value = UINT_16__MAX + 1
@@ -175,6 +189,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'cksum' argument is lower than the minimum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -192,6 +208,8 @@ class TestUdpHeaderAsserts(TestCase):
         """
         Ensure the UDP header constructor raises an exception when the
         provided 'cksum' argument is higher than the maximum supported value.
+
+        Reference: RFC 768 (UDP header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1

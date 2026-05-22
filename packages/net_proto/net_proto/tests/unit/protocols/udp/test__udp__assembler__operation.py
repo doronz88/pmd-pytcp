@@ -164,6 +164,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns header + payload bytes.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -175,6 +177,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -186,6 +190,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -197,6 +203,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -208,6 +216,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__sport(self) -> None:
         """
         Ensure the 'sport' property returns the provided source port.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -219,6 +229,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__dport(self) -> None:
         """
         Ensure the 'dport' property returns the provided destination port.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -231,6 +243,8 @@ class TestUdpAssemblerOperation(TestCase):
         """
         Ensure the 'plen' property returns the computed packet length
         (UDP__HEADER__LEN + len(payload)).
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -243,6 +257,8 @@ class TestUdpAssemblerOperation(TestCase):
         """
         Ensure the 'cksum' property returns 0 on the assembler (the field
         is populated only inside the __bytes__ / assemble() buffer).
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -254,6 +270,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed UdpHeader.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -265,6 +283,8 @@ class TestUdpAssemblerOperation(TestCase):
     def test__udp__assembler__payload(self) -> None:
         """
         Ensure the 'payload' property returns the provided payload bytes.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         self.assertEqual(
@@ -277,6 +297,8 @@ class TestUdpAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header and payload in order and the
         concatenation matches '__bytes__'.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         buffers: list[Buffer] = []
@@ -293,6 +315,8 @@ class TestUdpAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends exactly two buffers — header then
         payload — so downstream code can locate them by index.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         buffers: list[Buffer] = []
@@ -325,6 +349,8 @@ class TestUdpAssemblerMisc(TestCase):
         """
         Ensure the UDP packet assembler stores the provided echo_tracker
         on its internal Tracker.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -448,6 +474,8 @@ class TestUdpAssemblerMisc(TestCase):
         """
         Ensure the assembler with no arguments produces a minimal valid
         8-byte zeroed-out UDP header with an empty payload.
+
+        Reference: RFC 768 (UDP datagram wire format).
         """
 
         assembler = UdpAssembler()

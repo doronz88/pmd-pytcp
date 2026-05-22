@@ -84,6 +84,8 @@ class TestUdpParserSanityChecks(TestCase):
         Ensure the UDP packet parser raises UdpSanityError with the
         expected message for each frame that is structurally well-formed
         but logically inconsistent.
+
+        Reference: RFC 768 (UDP datagram sanity — port fields).
         """
 
         with self.assertRaises(UdpSanityError) as error:

@@ -160,6 +160,8 @@ class TestUdpParserIntegrityChecks(TestCase):
         """
         Ensure the UDP packet parser raises UdpIntegrityError with the
         expected message for each malformed frame.
+
+        Reference: RFC 768 (UDP datagram integrity — Length / Checksum fields).
         """
 
         with self.assertRaises(UdpIntegrityError) as error:
@@ -185,6 +187,8 @@ class TestUdpParserIntegrityBoundary(TestCase):
         """
         Ensure the baseline 8-byte frame (header-only, valid checksum)
         passes every integrity check and parses successfully.
+
+        Reference: RFC 768 (UDP datagram integrity — Length / Checksum fields).
         """
 
         self.assertEqual(

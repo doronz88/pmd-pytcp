@@ -152,6 +152,8 @@ class TestUdpParserOperation(TestCase):
         """
         Ensure the UDP packet parser decodes the 8-byte fixed header
         into the expected UdpHeader dataclass.
+
+        Reference: RFC 768 (UDP datagram parse — header + payload).
         """
 
         udp_parser = UdpParser(self._packet_rx)
@@ -166,6 +168,8 @@ class TestUdpParserOperation(TestCase):
         """
         Ensure the UDP packet parser extracts the payload starting at
         'UDP__HEADER__LEN' and ending at 'header.plen'.
+
+        Reference: RFC 768 (UDP datagram parse — header + payload).
         """
 
         udp_parser = UdpParser(self._packet_rx)
@@ -180,6 +184,8 @@ class TestUdpParserOperation(TestCase):
         """
         Ensure the UDP packet parser installs itself on the PacketRx as
         'packet_rx.udp'.
+
+        Reference: RFC 768 (UDP datagram parse — header + payload).
         """
 
         udp_parser = UdpParser(self._packet_rx)
@@ -194,6 +200,8 @@ class TestUdpParserOperation(TestCase):
         """
         Ensure the UDP packet parser advances 'packet_rx.frame' past the
         UDP header so the remaining bytes are the UDP payload.
+
+        Reference: RFC 768 (UDP datagram parse — header + payload).
         """
 
         udp_parser = UdpParser(self._packet_rx)
