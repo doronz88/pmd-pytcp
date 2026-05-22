@@ -170,6 +170,8 @@ class TestPacketHandlerEthernet8023Tx(Ethernet8023TestCase):
         Ensure the Packet Handler Ethernet 802.3 TX path produces
         the expected frames, statuses, and statistics for each
         parametrized case.
+
+        Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
         self.assertEqual(

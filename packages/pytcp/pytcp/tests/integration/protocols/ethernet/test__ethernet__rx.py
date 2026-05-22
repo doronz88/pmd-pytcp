@@ -165,6 +165,8 @@ class TestPacketHandlerEthernetRx(EthernetTestCase):
         """
         Ensure the Packet Handler processes the received Ethernet
         frames as expected for each parametrized case.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         for frame_rx in self._frames_rx:
@@ -210,6 +212,8 @@ class TestPacketHandlerEthernetRxNoIp4Support(EthernetTestCase):
         Ensure an ARP frame to our unicast MAC is classified, then
         dropped via 'ethernet__no_proto_support__drop' because the
         ARP dispatch arm is gated on '_ip4_support'.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         # Ethernet II
@@ -264,6 +268,8 @@ class TestPacketHandlerEthernetRxNoIp6Support(EthernetTestCase):
         Ensure an IPv6 frame to our unicast MAC is classified, then
         dropped via 'ethernet__no_proto_support__drop' because the
         IPv6 dispatch arm is gated on '_ip6_support'.
+
+        Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
         # Ethernet II

@@ -180,6 +180,8 @@ class TestPacketHandlerEthernet8023Rx(Ethernet8023TestCase):
         """
         Ensure the Packet Handler processes the received Ethernet
         802.3 frames as expected for each parametrized case.
+
+        Reference: IEEE 802.3 §3 (802.3 RX dispatch).
         """
 
         for frame_rx in self._frames_rx:
