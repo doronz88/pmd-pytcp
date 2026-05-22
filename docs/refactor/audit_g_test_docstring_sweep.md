@@ -239,6 +239,38 @@ Reference violations remain. Commits:
 
 ---
 
+## Precision pass on options-container files (2026-05-21)
+
+The bulk per-family sweeps apply one file-level umbrella
+Reference to every missing-Reference method. The loosest
+surface for that approach is the **options-container**
+files, which hold multiple option types from different
+RFCs. A per-method precision pass (commit `a1151ca4`)
+reviewed all four:
+
+- `tcp/test__tcp__options.py` — 5 lookup-property tests
+  (`mss` → RFC 9293 §3.7.1, `wscale` → RFC 7323 §2,
+  `sackperm` → RFC 2018 §2, `sack` → RFC 2018 §3,
+  `timestamps` → RFC 7323 §3) tightened off the
+  `RFC 9293 §3.1` block umbrella; the 5 container-mechanic
+  tests (len/str/repr/bytes/from_buffer) keep it.
+- `icmp6/test__icmp6__nd__options.py` — 6 lookup-property
+  tests (`slla`/`tlla` → RFC 4861 §4.6.1, `pi` →
+  RFC 4861 §4.6.2) tightened off the `§4.6` umbrella.
+- `ip4/test__ip4__options.py` — **no change**: every method
+  is a container mechanic (collection protocols + block
+  `validate_integrity`); per-option copy_flag tests were
+  already specifically cited.
+- `dhcp4/test__dhcp4__options.py` — **no change**: container
+  mechanics + multi-option accessor tests
+  (`properties__all_absent` / `all_present` /
+  `first_occurrence_wins` touch every accessor at once, so
+  no single option RFC fits).
+
+Note: the other per-family sweeps remain at file-level
+granularity (the documented compromise). The container
+files were the concentrated weak spot and are now precise.
+
 ## Workflow expectations
 
 For each sub-audit:
