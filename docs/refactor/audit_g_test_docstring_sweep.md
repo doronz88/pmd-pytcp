@@ -169,12 +169,12 @@ in this doc (or a commit message). No code changes expected.
 | G-net_proto-ethernet | 5 | 49 (894b1b5f) | `RFC 894` (Ethernet II framing) per-file; integrity/sanity keep specific `IEEE 802.3 / RFC 1042` type/length-boundary clauses. **completed 2026-05-21**. |
 | G-net_proto-ethernet_802_3 | 5 | 55 (8be0373e) | `IEEE 802.3 §3` per-file; sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp4 | 25 | 107 (2d8b1ee0) | `RFC 792` per-message-type (type 3/0/8/unknown). parameter_problem, time_exceeded, unknown parsers, sanity_checks already clean. **completed 2026-05-21**. |
-| G-net_proto-icmp6 | ~30 | ~300 | apply `RFC 4443 / RFC 4861 / RFC 3810` per-message-family |
+| G-net_proto-icmp6 | 67 | 433 (864e1dc0) | `RFC 4443` (base) / `RFC 4861 §4.x` (ND msgs+opts) / `RFC 3810 §5.2` (MLDv2) per-message-family. time_exceeded, parameter_problem, redirect, prf, nd_code_validation, sanity_checks + dnssl/mtu/nonce/ra_flags/rdnss/redirected_header/route_info options already clean. **completed 2026-05-21**. |
 | G-net_proto-ip4 | 16 | 141 (fede712e) | `RFC 791 §3.1` per-file (header / options / EOL / NOP / unknown). lsrr/rr/ssrr/timestamp (RFC 791 §3.1), router_alert (RFC 2113), cipso (FIPS-188), sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-ip6 (incl. ext-headers) | 35 | 75 (6ad89d95) | `RFC 8200 §3` (ip6/) + `RFC 8200 §4.5` (ip6_frag/). ip6_dest_opts, ip6_hbh, ip6_routing already clean. **completed 2026-05-21**. |
 | G-net_proto-llc | 5 | 0 | already clean (mix of `IEEE 802.2 §3 LLC frame format` for wire-format tests + `PyTCP test infrastructure (no RFC clause)` for header asserts). **verified clean 2026-05-21**. |
 | G-net_proto-snap | 5 | 0 | already clean (mix of `RFC 1042 §"Header Format"` for wire-format tests + `PyTCP test infrastructure` for asserts + non-RFC `Cisco CDP encapsulation` for vendor-OUI tests). **verified clean 2026-05-21**. |
-| G-net_proto-tcp | ~20 | ~250 | apply `RFC 9293 §3.1 (TCP header wire format).` per-file; per-option files use option-RFC clause |
+| G-net_proto-tcp | 14 | 166 (PENDING) | `RFC 9293 §3.1` (header wire format) per-file; per-option files use option-RFC clause. **STILL PENDING — the icmp6 commit 864e1dc0 message erroneously claimed the whole net_proto family sweep was closed; tcp remains.** |
 | G-net_proto-udp | 5 | 30 (2ff3ad6a) | `RFC 768` per-file (wire format / header / integrity / parse / sanity). **completed 2026-05-21**. |
 
 **Estimated effort:** 1–2 sessions, ~13 commits if per-family.
