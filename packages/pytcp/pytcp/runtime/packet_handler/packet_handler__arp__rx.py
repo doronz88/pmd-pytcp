@@ -190,9 +190,9 @@ class PacketHandlerArpRx(ABC):
             case ArpOperation.REPLY:
                 self.__phrx_arp__reply(packet_rx)
             case _:
-                self._packet_stats_rx.inc("arp__op_unknown__drop")
+                self._packet_stats_rx.arp__op_unknown__drop += 1
                 __debug__ and log(
-                    "ether",
+                    "arp",
                     f"{packet_rx.tracker} - Unsupported operation " f"{packet_rx.arp.oper}, dropping.",
                 )
 

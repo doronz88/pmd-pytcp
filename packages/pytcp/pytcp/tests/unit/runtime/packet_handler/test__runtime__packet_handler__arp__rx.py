@@ -525,6 +525,46 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
             msg="The match-case fallthrough must not fire; parser blocks unknown opers first.",
         )
 
+    def test__stack__packet_handler__arp__rx__unknown_operation_handler_fallthrough_counts_drop(self) -> None:
+        """
+        Ensure the '_phrx_arp' match-case fallthrough for an operation
+        that is neither REQUEST nor REPLY bumps 'arp__op_unknown__drop'
+        without raising. The branch is unreachable through the real
+        parser (which rejects 'is_unknown' opers at parse time), so it
+        is exercised here by stubbing the parser to install an unknown
+        operation; this guards against a future ArpOperation member the
+        parser accepts but the handler does not dispatch crashing the
+        RX thread.
+
+        Reference: RFC 5494 §3 (additional ARP operation codes).
+        """
+
+        def _stub_parser(pkt: PacketRx) -> None:
+            pkt.arp = SimpleNamespace(oper=ArpOperation.from_int(0x00FF))  # type: ignore[assignment]
+
+        packet_rx = _make_packet_rx(
+            _arp_frame(
+                oper=ArpOperation.REQUEST,
+                sha=HOST_A__MAC,
+                spa=HOST_A__IP4,
+                tha=MAC__UNSPEC,
+                tpa=STACK__IP4_ADDRESS,
+            ),
+            ethernet_dst=STACK__MAC_UNICAST,
+        )
+
+        with patch(
+            "pytcp.runtime.packet_handler.packet_handler__arp__rx.ArpParser",
+            side_effect=_stub_parser,
+        ):
+            self._handler._phrx_arp(packet_rx)
+
+        self.assertEqual(
+            self._handler._packet_stats_rx.arp__op_unknown__drop,
+            1,
+            msg="The handler's unknown-operation fallthrough must bump arp__op_unknown__drop.",
+        )
+
 
 class TestPacketHandlerArpRxReply(_ArpRxTestBase):
     """
