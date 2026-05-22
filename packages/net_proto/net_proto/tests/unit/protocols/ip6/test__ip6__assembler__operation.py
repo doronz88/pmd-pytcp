@@ -246,6 +246,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns the expected total packet length.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -257,6 +259,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -268,6 +272,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -279,6 +285,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -290,6 +298,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__ver(self) -> None:
         """
         Ensure the 'ver' property returns IpVersion.IP6.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -301,6 +311,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__dscp(self) -> None:
         """
         Ensure the 'dscp' property returns the provided DSCP value.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -312,6 +324,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__ecn(self) -> None:
         """
         Ensure the 'ecn' property returns the provided ECN value.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -323,6 +337,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__flow(self) -> None:
         """
         Ensure the 'flow' property returns the provided flow label.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -335,6 +351,8 @@ class TestIp6AssemblerOperation(TestCase):
         """
         Ensure the 'dlen' property returns the payload length computed
         from the provided payload assembler.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -347,6 +365,8 @@ class TestIp6AssemblerOperation(TestCase):
         """
         Ensure the 'next' property returns the IpProto derived from the
         provided payload type.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -358,6 +378,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__hop(self) -> None:
         """
         Ensure the 'hop' property returns the provided hop limit.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -369,6 +391,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__src(self) -> None:
         """
         Ensure the 'src' property returns the provided source address.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -380,6 +404,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__dst(self) -> None:
         """
         Ensure the 'dst' property returns the provided destination address.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -391,6 +417,8 @@ class TestIp6AssemblerOperation(TestCase):
     def test__ip6__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed Ip6Header.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -403,6 +431,8 @@ class TestIp6AssemblerOperation(TestCase):
         """
         Ensure the 'payload' property returns the provided payload
         assembler.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -416,6 +446,8 @@ class TestIp6AssemblerOperation(TestCase):
         Ensure 'payload_len' matches len(payload) without invoking
         assemble(); downstream code reads it before the packet is
         serialized.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self.assertEqual(
@@ -428,6 +460,8 @@ class TestIp6AssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header and payload in order and the
         concatenation matches '__bytes__'.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         buffers: list[Buffer] = []
@@ -445,6 +479,8 @@ class TestIp6AssemblerOperation(TestCase):
         Ensure 'assemble()' appends exactly two buffers — the fixed
         40-byte header followed by the payload — so downstream code
         (e.g. Ethernet, fragmenter) can locate them by index.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         buffers: list[Buffer] = []

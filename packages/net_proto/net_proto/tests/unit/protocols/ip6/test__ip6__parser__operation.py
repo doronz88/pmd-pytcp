@@ -190,6 +190,8 @@ class TestIp6PacketParserOperation(TestCase):
     def test__ip6__parser__header(self) -> None:
         """
         Ensure the parser exposes the expected Ip6Header object.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         parser = Ip6Parser(self._packet_rx)
@@ -204,6 +206,8 @@ class TestIp6PacketParserOperation(TestCase):
         """
         Ensure 'header_bytes' returns the first IP6__HEADER__LEN bytes
         of the frame.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         parser = Ip6Parser(self._packet_rx)
@@ -218,6 +222,8 @@ class TestIp6PacketParserOperation(TestCase):
         """
         Ensure 'payload_bytes' returns the dlen-byte region that follows
         the fixed header.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         parser = Ip6Parser(self._packet_rx)
@@ -231,6 +237,8 @@ class TestIp6PacketParserOperation(TestCase):
     def test__ip6__parser__packet_bytes(self) -> None:
         """
         Ensure 'packet_bytes' returns the full header + payload span.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         parser = Ip6Parser(self._packet_rx)
@@ -245,6 +253,8 @@ class TestIp6PacketParserOperation(TestCase):
         """
         Ensure the parser stores itself on the PacketRx as both 'ip'
         and 'ip6' so downstream handlers can look it up by either name.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         parser = Ip6Parser(self._packet_rx)
@@ -265,6 +275,8 @@ class TestIp6PacketParserOperation(TestCase):
         Ensure the parser advances 'PacketRx.frame' past the IPv6 header
         to the payload bytes so the next-layer parser sees only what it
         is supposed to consume.
+
+        Reference: RFC 8200 §3 (IPv6 datagram parse — header + payload).
         """
 
         Ip6Parser(self._packet_rx)

@@ -162,6 +162,8 @@ class TestIp6FragParserOperation(TestCase):
     def test__ip6_frag__parser__header(self) -> None:
         """
         Ensure the parser exposes the expected Ip6FragHeader object.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -175,6 +177,8 @@ class TestIp6FragParserOperation(TestCase):
     def test__ip6_frag__parser__next(self) -> None:
         """
         Ensure the 'next' property returns the parsed next-header IpProto.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -189,6 +193,8 @@ class TestIp6FragParserOperation(TestCase):
         """
         Ensure the 'offset' property returns the 13-bit upper portion
         of the offset|flag_mf wire field.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -203,6 +209,8 @@ class TestIp6FragParserOperation(TestCase):
         """
         Ensure the 'flag_mf' property returns bit 0 of the
         offset|flag_mf wire field as a bool.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -216,6 +224,8 @@ class TestIp6FragParserOperation(TestCase):
     def test__ip6_frag__parser__id(self) -> None:
         """
         Ensure the 'id' property returns the parsed 32-bit datagram id.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -230,6 +240,8 @@ class TestIp6FragParserOperation(TestCase):
         """
         Ensure the 'payload' property returns the bytes following the
         fixed 8-byte header.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -244,6 +256,8 @@ class TestIp6FragParserOperation(TestCase):
         """
         Ensure 'header_bytes' returns the first IP6_FRAG__HEADER__LEN
         bytes of the frame.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -257,6 +271,8 @@ class TestIp6FragParserOperation(TestCase):
     def test__ip6_frag__parser__payload_bytes(self) -> None:
         """
         Ensure 'payload_bytes' returns the post-header payload region.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -270,6 +286,8 @@ class TestIp6FragParserOperation(TestCase):
     def test__ip6_frag__parser__packet_bytes(self) -> None:
         """
         Ensure 'packet_bytes' returns the full header + payload span.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -284,6 +302,8 @@ class TestIp6FragParserOperation(TestCase):
         """
         Ensure the parser stores itself on the PacketRx as 'ip6_frag'
         so downstream handlers can look it up.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         parser = Ip6FragParser(self._packet_rx)
@@ -299,6 +319,8 @@ class TestIp6FragParserOperation(TestCase):
         Ensure the parser advances 'PacketRx.frame' past the IPv6 Frag
         header to the payload bytes so the next-layer parser sees only
         what it is supposed to consume.
+
+        Reference: RFC 8200 §4.5 (Fragment header parse).
         """
 
         Ip6FragParser(self._packet_rx)

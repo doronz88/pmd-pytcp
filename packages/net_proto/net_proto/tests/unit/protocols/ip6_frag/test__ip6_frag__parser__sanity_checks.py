@@ -149,6 +149,8 @@ class TestIp6FragParserSanityChecks(TestCase):
         other PacketSanityError subclass. Pinned even though the parser
         currently has no sanity checks, so the contract is enforced
         from day one for any check added later.
+
+        Reference: RFC 8200 §4.5 (Fragment header sanity).
         """
 
         error = Ip6FragSanityError("dummy reason")

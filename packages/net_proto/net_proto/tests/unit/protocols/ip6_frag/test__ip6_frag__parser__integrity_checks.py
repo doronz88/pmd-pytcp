@@ -102,6 +102,8 @@ class TestIp6FragParserIntegrityChecks(TestCase):
         """
         Ensure the IPv6 Frag packet parser raises Ip6FragIntegrityError
         with the expected message for each malformed frame.
+
+        Reference: RFC 8200 §4.5 (Fragment header integrity).
         """
 
         with self.assertRaises(Ip6FragIntegrityError) as error:
@@ -127,6 +129,8 @@ class TestIp6FragParserIntegrityBoundary(TestCase):
         """
         Ensure an 8-byte frame (header only, no payload) passes the
         integrity check and parses successfully.
+
+        Reference: RFC 8200 §4.5 (Fragment header integrity).
         """
 
         self.assertEqual(

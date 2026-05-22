@@ -211,6 +211,8 @@ class TestIp6FragAssemblerOperation(TestCase):
         """
         Ensure '__len__()' returns the expected total packet length
         (header + payload).
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -222,6 +224,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -233,6 +237,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -244,6 +250,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -256,6 +264,8 @@ class TestIp6FragAssemblerOperation(TestCase):
         """
         Ensure the 'next' property returns the provided next-header
         IpProto.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -267,6 +277,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__offset(self) -> None:
         """
         Ensure the 'offset' property returns the provided offset.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -278,6 +290,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__flag_mf(self) -> None:
         """
         Ensure the 'flag_mf' property returns the provided MF flag.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -289,6 +303,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__id(self) -> None:
         """
         Ensure the 'id' property returns the provided datagram id.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -300,6 +316,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed Ip6FragHeader.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -311,6 +329,8 @@ class TestIp6FragAssemblerOperation(TestCase):
     def test__ip6_frag__assembler__payload(self) -> None:
         """
         Ensure the 'payload' property returns the provided payload bytes.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self.assertEqual(
@@ -323,6 +343,8 @@ class TestIp6FragAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header and payload in order and the
         concatenation matches '__bytes__'.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         buffers: list[Buffer] = []
@@ -340,6 +362,8 @@ class TestIp6FragAssemblerOperation(TestCase):
         Ensure 'assemble()' appends exactly two buffers — the fixed
         8-byte header followed by the payload — so downstream code can
         locate them by index.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         buffers: list[Buffer] = []
@@ -375,6 +399,8 @@ class TestIp6FragAssemblerDefaults(TestCase):
         """
         Ensure the assembler with no arguments produces a valid 8-byte
         zeroed-out fragment header with empty payload.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         assembler = Ip6FragAssembler()

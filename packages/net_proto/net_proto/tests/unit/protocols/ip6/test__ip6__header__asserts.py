@@ -78,6 +78,8 @@ class TestIp6HeaderAsserts(TestCase):
         the negative tests from masking future regressions that would
         make the baseline invalid. Also pins 'ver' to IpVersion.IP6
         because the field is set unconditionally via field(init=False).
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         header = Ip6Header(**self._kwargs)
@@ -91,6 +93,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__dscp__under_min(self) -> None:
         """
         Ensure the constructor rejects 'dscp' below UINT_6__MIN.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["dscp"] = value = UINT_6__MIN - 1
@@ -107,6 +111,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__dscp__over_max(self) -> None:
         """
         Ensure the constructor rejects 'dscp' above UINT_6__MAX.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["dscp"] = value = UINT_6__MAX + 1
@@ -123,6 +129,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__ecn__under_min(self) -> None:
         """
         Ensure the constructor rejects 'ecn' below UINT_2__MIN.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["ecn"] = value = UINT_2__MIN - 1
@@ -139,6 +147,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__ecn__over_max(self) -> None:
         """
         Ensure the constructor rejects 'ecn' above UINT_2__MAX.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["ecn"] = value = UINT_2__MAX + 1
@@ -155,6 +165,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__flow__under_min(self) -> None:
         """
         Ensure the constructor rejects 'flow' below UINT_20__MIN.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["flow"] = value = UINT_20__MIN - 1
@@ -171,6 +183,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__flow__over_max(self) -> None:
         """
         Ensure the constructor rejects 'flow' above UINT_20__MAX.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["flow"] = value = UINT_20__MAX + 1
@@ -187,6 +201,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__dlen__under_min(self) -> None:
         """
         Ensure the constructor rejects 'dlen' below UINT_16__MIN.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["dlen"] = value = UINT_16__MIN - 1
@@ -203,6 +219,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__dlen__over_max(self) -> None:
         """
         Ensure the constructor rejects 'dlen' above UINT_16__MAX.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["dlen"] = value = UINT_16__MAX + 1
@@ -219,6 +237,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__next__not_IpProto(self) -> None:
         """
         Ensure the constructor rejects 'next' when it is not an IpProto.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["next"] = value = "not an IpProto"
@@ -235,6 +255,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__hop__under_min(self) -> None:
         """
         Ensure the constructor rejects 'hop' below UINT_8__MIN.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["hop"] = value = UINT_8__MIN - 1
@@ -251,6 +273,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__hop__over_max(self) -> None:
         """
         Ensure the constructor rejects 'hop' above UINT_8__MAX.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["hop"] = value = UINT_8__MAX + 1
@@ -267,6 +291,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__src__not_Ip6Address(self) -> None:
         """
         Ensure the constructor rejects 'src' when it is not an Ip6Address.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["src"] = value = "not an Ip6Address"
@@ -283,6 +309,8 @@ class TestIp6HeaderAsserts(TestCase):
     def test__ip6__header__dst__not_Ip6Address(self) -> None:
         """
         Ensure the constructor rejects 'dst' when it is not an Ip6Address.
+
+        Reference: RFC 8200 §3 (IPv6 header wire format).
         """
 
         self._kwargs["dst"] = value = "not an Ip6Address"

@@ -147,6 +147,8 @@ class TestIp6ParserIntegrityChecks(TestCase):
         """
         Ensure the IPv6 packet parser raises Ip6IntegrityError with the
         expected message for each malformed frame.
+
+        Reference: RFC 8200 §3 (IPv6 header integrity — Version / Payload Length).
         """
 
         with self.assertRaises(Ip6IntegrityError) as error:
@@ -172,6 +174,8 @@ class TestIp6ParserIntegrityBoundary(TestCase):
         """
         Ensure a 40-byte frame with ver=6 and dlen=0 passes integrity
         checks and parses successfully.
+
+        Reference: RFC 8200 §3 (IPv6 header integrity — Version / Payload Length).
         """
 
         self.assertEqual(

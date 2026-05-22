@@ -67,6 +67,8 @@ class TestIp6FragHeaderAsserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards
         the negative tests from masking future regressions that would
         make the baseline invalid.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         header = Ip6FragHeader(**self._kwargs)
@@ -94,6 +96,8 @@ class TestIp6FragHeaderAsserts(TestCase):
     def test__ip6_frag__header__next__not_IpProto(self) -> None:
         """
         Ensure the constructor rejects 'next' when it is not an IpProto.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["next"] = value = "not an IpProto"
@@ -110,6 +114,8 @@ class TestIp6FragHeaderAsserts(TestCase):
     def test__ip6_frag__header__offset__under_min(self) -> None:
         """
         Ensure the constructor rejects 'offset' below UINT_13__MIN.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["offset"] = value = UINT_13__MIN - 1
@@ -129,6 +135,8 @@ class TestIp6FragHeaderAsserts(TestCase):
         representation exceeds UINT_13__MAX. The field is stored in
         bytes, so the smallest rejected multiple-of-8 value is
         '(UINT_13__MAX + 1) << 3'.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["offset"] = value = (UINT_13__MAX + 1) << 3
@@ -149,6 +157,8 @@ class TestIp6FragHeaderAsserts(TestCase):
         themselves 8-byte aligned. 'UINT_13__MAX - 1' is the largest
         such misaligned value, so the range check passes and the
         alignment assert that runs next fires.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["offset"] = value = UINT_13__MAX - 1
@@ -165,6 +175,8 @@ class TestIp6FragHeaderAsserts(TestCase):
     def test__ip6_frag__header__flag_mf__not_boolean(self) -> None:
         """
         Ensure the constructor rejects 'flag_mf' when it is not a bool.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["flag_mf"] = value = "not a boolean"
@@ -181,6 +193,8 @@ class TestIp6FragHeaderAsserts(TestCase):
     def test__ip6_frag__header__id__under_min(self) -> None:
         """
         Ensure the constructor rejects 'id' below UINT_32__MIN.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["id"] = value = UINT_32__MIN - 1
@@ -197,6 +211,8 @@ class TestIp6FragHeaderAsserts(TestCase):
     def test__ip6_frag__header__id__over_max(self) -> None:
         """
         Ensure the constructor rejects 'id' above UINT_32__MAX.
+
+        Reference: RFC 8200 §4.5 (Fragment header wire format).
         """
 
         self._kwargs["id"] = value = UINT_32__MAX + 1
