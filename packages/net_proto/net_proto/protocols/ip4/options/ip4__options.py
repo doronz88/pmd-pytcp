@@ -67,6 +67,73 @@ class Ip4Options(ProtoOptions):
 
     _options: list[Ip4Option]  # type: ignore[assignment]
 
+    @property
+    def lsrr(self) -> Ip4OptionLsrr | None:
+        """
+        Get the IPv4 'lsrr' option (RFC 791 Loose Source and Record Route).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionLsrr):
+                return option
+        return None
+
+    @property
+    def ssrr(self) -> Ip4OptionSsrr | None:
+        """
+        Get the IPv4 'ssrr' option (RFC 791 Strict Source and Record Route).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionSsrr):
+                return option
+        return None
+
+    @property
+    def router_alert(self) -> Ip4OptionRouterAlert | None:
+        """
+        Get the IPv4 'router_alert' option (RFC 2113).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionRouterAlert):
+                return option
+        return None
+
+    @property
+    def rr(self) -> Ip4OptionRr | None:
+        """
+        Get the IPv4 'rr' option (RFC 791 Record Route).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionRr):
+                return option
+        return None
+
+    @property
+    def timestamp(self) -> Ip4OptionTimestamp | None:
+        """
+        Get the IPv4 'timestamp' option (RFC 791 Timestamp).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionTimestamp):
+                return option
+        return None
+
+    @property
+    def cipso(self) -> Ip4OptionCipso | None:
+        """
+        Get the IPv4 'cipso' option (FIPS-188 Commercial IP Security
+        Option / Linux NetLabel).
+        """
+
+        for option in self._options:
+            if isinstance(option, Ip4OptionCipso):
+                return option
+        return None
+
     @staticmethod
     def validate_integrity(
         *,
@@ -159,10 +226,7 @@ class Ip4OptionsProperties(ABC):
         Get the IPv4 'lsrr' option (RFC 791 Loose Source and Record Route).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionLsrr):
-                return option
-        return None
+        return self._options.lsrr
 
     @property
     def ssrr(self) -> Ip4OptionSsrr | None:
@@ -170,10 +234,7 @@ class Ip4OptionsProperties(ABC):
         Get the IPv4 'ssrr' option (RFC 791 Strict Source and Record Route).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionSsrr):
-                return option
-        return None
+        return self._options.ssrr
 
     @property
     def router_alert(self) -> Ip4OptionRouterAlert | None:
@@ -181,10 +242,7 @@ class Ip4OptionsProperties(ABC):
         Get the IPv4 'router_alert' option (RFC 2113).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionRouterAlert):
-                return option
-        return None
+        return self._options.router_alert
 
     @property
     def rr(self) -> Ip4OptionRr | None:
@@ -192,10 +250,7 @@ class Ip4OptionsProperties(ABC):
         Get the IPv4 'rr' option (RFC 791 Record Route).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionRr):
-                return option
-        return None
+        return self._options.rr
 
     @property
     def timestamp(self) -> Ip4OptionTimestamp | None:
@@ -203,10 +258,7 @@ class Ip4OptionsProperties(ABC):
         Get the IPv4 'timestamp' option (RFC 791 Timestamp).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionTimestamp):
-                return option
-        return None
+        return self._options.timestamp
 
     @property
     def cipso(self) -> Ip4OptionCipso | None:
@@ -215,7 +267,4 @@ class Ip4OptionsProperties(ABC):
         Option / Linux NetLabel).
         """
 
-        for option in self._options:
-            if isinstance(option, Ip4OptionCipso):
-                return option
-        return None
+        return self._options.cipso

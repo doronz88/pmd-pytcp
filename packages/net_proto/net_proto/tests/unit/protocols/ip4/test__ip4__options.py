@@ -723,3 +723,124 @@ class TestIp4OptionsWithCopyFlag(TestCase):
             source_repr_before,
             msg="with_copy_flag must not mutate the source Ip4Options.",
         )
+
+
+class TestIp4OptionsLookupProperties(TestCase):
+    """
+    The Ip4Options container lookup-property tests.
+    """
+
+    def _options_with(self, *options: Any) -> Ip4Options:
+        """
+        Build an Ip4Options carrying the supplied options.
+        """
+
+        return Ip4Options(*options)
+
+    def test__ip4_options__lsrr__present(self) -> None:
+        """
+        Ensure the 'lsrr' property returns the first Lsrr option from
+        the container when present.
+
+        Reference: RFC 791 §3.1 (Loose Source and Record Route).
+        """
+
+        option = Ip4OptionLsrr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertIs(
+            self._options_with(Ip4OptionNop(), option).lsrr,
+            option,
+            msg="Ip4Options.lsrr must return the Lsrr option when present.",
+        )
+
+    def test__ip4_options__ssrr__present(self) -> None:
+        """
+        Ensure the 'ssrr' property returns the first Ssrr option from
+        the container when present.
+
+        Reference: RFC 791 §3.1 (Strict Source and Record Route).
+        """
+
+        option = Ip4OptionSsrr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertIs(
+            self._options_with(option).ssrr,
+            option,
+            msg="Ip4Options.ssrr must return the Ssrr option when present.",
+        )
+
+    def test__ip4_options__router_alert__present(self) -> None:
+        """
+        Ensure the 'router_alert' property returns the first Router
+        Alert option from the container when present.
+
+        Reference: RFC 2113 (Router Alert option).
+        """
+
+        option = Ip4OptionRouterAlert()
+        self.assertIs(
+            self._options_with(option).router_alert,
+            option,
+            msg="Ip4Options.router_alert must return the option when present.",
+        )
+
+    def test__ip4_options__rr__present(self) -> None:
+        """
+        Ensure the 'rr' property returns the first Record Route option
+        from the container when present.
+
+        Reference: RFC 791 §3.1 (Record Route).
+        """
+
+        option = Ip4OptionRr(pointer=4, route=[Ip4Address("0.0.0.0")])
+        self.assertIs(
+            self._options_with(option).rr,
+            option,
+            msg="Ip4Options.rr must return the Rr option when present.",
+        )
+
+    def test__ip4_options__timestamp__present(self) -> None:
+        """
+        Ensure the 'timestamp' property returns the first Timestamp
+        option from the container when present.
+
+        Reference: RFC 791 §3.1 (Timestamp).
+        """
+
+        from net_proto.protocols.ip4.options.ip4__option__timestamp import Ip4TimestampEntry
+
+        option = Ip4OptionTimestamp(pointer=5, overflow=0, flag=0, entries=[Ip4TimestampEntry(timestamp=0)])
+        self.assertIs(
+            self._options_with(option).timestamp,
+            option,
+            msg="Ip4Options.timestamp must return the Timestamp option when present.",
+        )
+
+    def test__ip4_options__cipso__present(self) -> None:
+        """
+        Ensure the 'cipso' property returns the first CIPSO option from
+        the container when present.
+
+        Reference: FIPS-188 §A (Commercial IP Security Option).
+        """
+
+        option = Ip4OptionCipso(doi=1, tags=[])
+        self.assertIs(
+            self._options_with(option).cipso,
+            option,
+            msg="Ip4Options.cipso must return the Cipso option when present.",
+        )
+
+    def test__ip4_options__lookup__none_when_absent(self) -> None:
+        """
+        Ensure every lookup property returns None on a container that
+        carries no matching option.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
+        """
+
+        empty = self._options_with(Ip4OptionNop())
+        for name in ("lsrr", "ssrr", "router_alert", "rr", "timestamp", "cipso"):
+            with self.subTest(prop=name):
+                self.assertIsNone(
+                    getattr(empty, name),
+                    msg=f"Ip4Options.{name} must be None when the option is absent.",
+                )
