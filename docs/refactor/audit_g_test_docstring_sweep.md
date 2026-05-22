@@ -196,12 +196,30 @@ violations).
 |-----------|---------------:|--------------------:|-------|
 | G-pytcp-socket | 9 | 152 (8d833e38) | tcp__socket `RFC 9293 §3.9`, udp__socket `RFC 768`; base/raw/metadata/socket_id `PyTCP test infrastructure`. bind_helpers + udp__metadata already clean. **completed 2026-05-21**. |
 | G-pytcp-lib | 10 | 27 (8c0e7f05) | `PyTCP test infrastructure` fallback (interface_layer, logger, name_enum). dad_slot_registry, fake_timer, neighbor, packet_stats, plpmtud, pmtu_state, tx_status already clean. **completed 2026-05-21**. |
-| G-pytcp-integration-tcp | ~10 | ~50 | TCP session integration tests — apply `RFC 9293 §<state>` per-file |
-| G-pytcp-integration-icmp4 | ~5 | ~30 | apply `RFC 792 / RFC 1122 §3.2.2` per-file |
-| G-pytcp-integration-icmp6-nd | ~5 | ~30 | apply `RFC 4861 §<section>` per-file |
-| G-pytcp-runtime | ~5 | ~25 | apply per-handler RFC |
+| G-pytcp-integration-tcp | — | 0 | **NO-OP** — full survey (2026-05-21) found integration/protocols/tcp already 100% clean (487 methods, 0 missing). |
+| G-pytcp-integration-icmp4 | — | 0 | **NO-OP** — integration/protocols/icmp4 already clean (72 methods). |
+| G-pytcp-integration-icmp6-nd | — | 0 | **NO-OP** — integration/protocols/icmp6 already clean (291 methods). |
+| G-pytcp-runtime | 27 | 107 (e1de32fa) | per-protocol RFC on packet-handler mixins (RFC 894 / IEEE 802.3 / 792 / 791 / 8200 / 9293 / 768); icmp6__rx 3 tightened per-method; init + rx_ring + tx_ring `PyTCP test infrastructure`. **completed 2026-05-21**. |
 
-**Estimated effort:** 1 session, ~6 commits if per-family.
+**Full pytcp survey (2026-05-21):** the planned
+integration-* batches above are no-ops — the entire
+`integration/protocols/{tcp,icmp4,icmp6,ip4,ip6,udp,arp,
+dhcp4}` tree was already §7.2-clean. After G-pytcp-lib,
+G-pytcp-socket, and G-pytcp-runtime, the **only** remaining
+pytcp violations are:
+
+- `unit/protocols/ip/test__ip__ip_frag.py` — 21 (IP
+  reassembly helper; mixed v4/v6, per-method judgement).
+- `integration/packet_handler/` — 18 across 8 files
+  (arp / ip6 / ip6_frag / tcp RX-TX smoke tests).
+- `integration/protocols/ethernet/` — 3
+  (`test__ethernet__rx.py`).
+- `integration/protocols/ethernet_802_3/` — 2
+  (`test__ethernet_802_3__{rx,tx}.py`).
+
+Total remaining: **44 violations across 11 files.**
+
+**Estimated effort:** 1 short session, ~3 commits.
 
 ### Sub-audit G-stage2 (non-Reference cleanup)
 
