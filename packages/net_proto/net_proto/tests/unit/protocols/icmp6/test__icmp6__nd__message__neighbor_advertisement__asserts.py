@@ -67,6 +67,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__code__default_accepted(self) -> None:
         """
         Ensure the constructor accepts the DEFAULT 'code' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6NdMessageNeighborAdvertisement(**self._kwargs)
@@ -75,6 +77,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'code' is not an
         Icmp6NdNeighborAdvertisementCode.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["code"] = value = "not an Icmp6NdNeighborAdvertisementCode"
@@ -92,6 +96,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 16-bit
         unsigned integer values for 'cksum'.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for cksum in (UINT_16__MIN, UINT_16__MAX):
@@ -102,6 +108,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' is below the minimum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -119,6 +127,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' exceeds the maximum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -135,6 +145,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_r__bool_accepted(self) -> None:
         """
         Ensure the constructor accepts 'flag_r' True/False.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for flag_r in (False, True):
@@ -144,6 +156,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_r__not_boolean(self) -> None:
         """
         Ensure the constructor raises when 'flag_r' is not a boolean.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["flag_r"] = value = "not a boolean"
@@ -160,6 +174,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_s__bool_accepted(self) -> None:
         """
         Ensure the constructor accepts 'flag_s' True/False.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for flag_s in (False, True):
@@ -169,6 +185,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_s__not_boolean(self) -> None:
         """
         Ensure the constructor raises when 'flag_s' is not a boolean.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["flag_s"] = value = "not a boolean"
@@ -185,6 +203,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_o__bool_accepted(self) -> None:
         """
         Ensure the constructor accepts 'flag_o' True/False.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for flag_o in (False, True):
@@ -194,6 +214,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__flag_o__not_boolean(self) -> None:
         """
         Ensure the constructor raises when 'flag_o' is not a boolean.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["flag_o"] = value = "not a boolean"
@@ -210,6 +232,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__target_address__accepted(self) -> None:
         """
         Ensure the constructor accepts a valid Ip6Address 'target_address'.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6NdMessageNeighborAdvertisement(**{**self._kwargs, "target_address": Ip6Address("2001:db8::1")})
@@ -218,6 +242,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'target_address' is not an
         Ip6Address.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["target_address"] = value = "not an Ip6Address"
@@ -234,6 +260,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__options__empty_accepted(self) -> None:
         """
         Ensure the constructor accepts an empty Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6NdMessageNeighborAdvertisement(**{**self._kwargs, "options": Icmp6NdOptions()})
@@ -241,6 +269,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__options__populated_accepted(self) -> None:
         """
         Ensure the constructor accepts an Icmp6NdOptions carrying options.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6NdMessageNeighborAdvertisement(
@@ -254,6 +284,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'options' is not an
         Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
@@ -271,6 +303,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure from_buffer() accepts a frame whose type byte is
         ICMPv6 ND Neighbor Advertisement (136).
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         # 24-byte NA with zero flags/target, checksum and reserved all zero
@@ -282,6 +316,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
         """
         Ensure from_buffer() raises when the 'type' field does not match
         Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         with self.assertRaises(AssertionError) as error:

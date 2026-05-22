@@ -151,6 +151,8 @@ class TestIcmp6MessageUnknownParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6MessageUnknown instance
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -172,6 +174,8 @@ class TestIcmp6MessageUnknownParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the
         parsed unknown message.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         Icmp6Parser(self._packet_rx)

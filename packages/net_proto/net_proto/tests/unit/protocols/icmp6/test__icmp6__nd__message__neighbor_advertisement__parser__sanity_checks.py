@@ -87,6 +87,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksHop(TestCase):
         """
         Ensure every ip6__hop value other than 255 is rejected with the
         canonical Icmp6SanityError message.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for hop in (0, 1, 64, 128, 254):
@@ -113,6 +115,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksHop(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__hop_255__accepted(self) -> None:
         """
         Ensure ip6__hop == 255 passes the sanity check.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6Parser(
@@ -133,6 +137,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__src_multicast__rejected(self) -> None:
         """
         Ensure a multicast 'ip6__src' is rejected.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         src = Ip6Address("ff02::1")
@@ -159,6 +165,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__src_unicast__accepted(self) -> None:
         """
         Ensure a unicast 'ip6__src' passes the sanity check.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6Parser(
@@ -181,6 +189,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagSet(TestCa
         """
         Ensure an 'ip6__dst' that is neither unicast nor all-nodes
         multicast is rejected when flag_s is set.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         dst = Ip6Address("ff02::2")
@@ -209,6 +219,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagSet(TestCa
         """
         Ensure unicast and all-nodes-multicast 'ip6__dst' values pass when
         flag_s is set.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         for dst in (Ip6Address("2001:db8::2"), Ip6Address("ff02::1")):
@@ -232,6 +244,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagUnset(Test
     def test__icmp6__nd__message__neighbor_advertisement__dst_unicast__rejected(self) -> None:
         """
         Ensure a unicast 'ip6__dst' is rejected when flag_s is not set.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         dst = Ip6Address("2001:db8::2")
@@ -260,6 +274,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserSanityChecksDstFlagUnset(Test
         """
         Ensure an all-nodes-multicast 'ip6__dst' passes when flag_s is not
         set.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6Parser(

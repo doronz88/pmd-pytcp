@@ -67,6 +67,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure the constructor rejects a 'code' argument that is not an
         Icmp6NdRouterSolicitationCode instance.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         value = "not an Icmp6NdRouterSolicitationCode"
@@ -83,6 +85,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__router_solicitation__code__default_accepted(self) -> None:
         """
         Ensure Icmp6NdRouterSolicitationCode.DEFAULT is accepted.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         message = Icmp6NdMessageRouterSolicitation(**self._kwargs)
@@ -97,6 +101,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument below the
         16-bit unsigned minimum.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         value = UINT_16__MIN - 1
@@ -114,6 +120,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument above the
         16-bit unsigned maximum.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         value = UINT_16__MAX + 1
@@ -131,6 +139,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure both boundary values of the 'cksum' 16-bit range are
         accepted.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         for value in (UINT_16__MIN, UINT_16__MAX):
@@ -147,6 +157,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure the constructor rejects an 'options' argument that is not
         an Icmp6NdOptions instance.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         value = "not an Icmp6NdOptions"
@@ -163,6 +175,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__router_solicitation__options__empty_accepted(self) -> None:
         """
         Ensure an empty Icmp6NdOptions is accepted.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         options = Icmp6NdOptions()
@@ -179,6 +193,8 @@ class TestIcmp6NdMessageRouterSolicitationAsserts(TestCase):
         """
         Ensure a populated Icmp6NdOptions (carrying an SLLA option) is
         accepted.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionSlla(slla=MacAddress("00:11:22:33:44:55")))
@@ -202,6 +218,8 @@ class TestIcmp6NdMessageRouterSolicitationParserAsserts(TestCase):
         """
         Ensure Icmp6NdMessageRouterSolicitation.from_buffer raises on a
         buffer whose 'type' field is not ND__ROUTER_SOLICITATION.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -217,6 +235,8 @@ class TestIcmp6NdMessageRouterSolicitationParserAsserts(TestCase):
         """
         Ensure from_buffer parses a well-formed 8-byte header whose type
         is ND__ROUTER_SOLICITATION (133).
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         message = Icmp6NdMessageRouterSolicitation.from_buffer(b"\x85\x00\x00\x00\x00\x00\x00\x00")

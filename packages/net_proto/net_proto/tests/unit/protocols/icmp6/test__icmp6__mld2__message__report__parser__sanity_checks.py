@@ -74,6 +74,8 @@ class TestIcmp6Mld2MessageReportParserSanityChecksHopInvalid(TestCase):
         """
         Ensure every non-one ip6__hop value is rejected with the
         canonical Icmp6SanityError message.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         for hop in (0, 2, 64, 128, 255):
@@ -97,6 +99,8 @@ class TestIcmp6Mld2MessageReportParserSanityChecksHopValid(TestCase):
         """
         Ensure a valid MLDv2 Report with ip6__hop == 1 passes sanity
         checks and parses cleanly.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         packet_rx = _packet_rx_with_ip6(_MLD2_REPORT_EMPTY_FRAME, ip6__hop=1)

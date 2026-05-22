@@ -146,6 +146,8 @@ class TestIcmp6MessageUnknownParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         frames and reports the expected message.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -168,6 +170,8 @@ class TestIcmp6MessageUnknownParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals ICMP6__HEADER__LEN (4)
         — i.e. a bare, data-less unknown header — passes integrity checks and
         yields an unknown-message parse.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         # ICMPv6 Unknown Message at minimum length (4 bytes)
@@ -185,6 +189,8 @@ class TestIcmp6MessageUnknownParserIntegrityBoundary(TestCase):
         Ensure trailing padding beyond 'ip6__dlen' does not trigger the
         integrity upper-bound check — the validator caps the checksummed slice
         to the declared IPv6 payload length.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         # Valid 8-byte unknown ICMPv6 message (checksum 0xfc93) plus 4 bytes of

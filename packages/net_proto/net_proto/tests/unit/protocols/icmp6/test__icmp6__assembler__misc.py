@@ -68,6 +68,8 @@ class TestIcmp6AssemblerMisc(TestCase):
         Ensure the ICMPv6 packet assembler 'tracker' property forwards the
         provided 'echo_tracker' so that RX/TX log lines stay correlated with
         the originating packet.
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -88,6 +90,8 @@ class TestIcmp6AssemblerMisc(TestCase):
         Ensure the ICMPv6 packet assembler 'tracker' is created with the 'TX'
         prefix so that outbound log lines are distinguishable from the inbound
         'RX' side (the prefix is embedded in the tracker serial).
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         icmp6__assembler = Icmp6Assembler(
@@ -105,6 +109,8 @@ class TestIcmp6AssemblerMisc(TestCase):
         Ensure that when no 'echo_tracker' is provided the assembler tracker's
         'echo_tracker' attribute is None (standalone transmit, not tied to an
         incoming request).
+
+        Reference: RFC 4443 §2.1 (ICMPv6 message general format).
         """
 
         icmp6__assembler = Icmp6Assembler(

@@ -84,6 +84,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksHop(TestCase):
         """
         Ensure every ip6__hop value other than 255 is rejected with the
         canonical Icmp6SanityError message.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         for hop in (0, 1, 64, 128, 254):
@@ -110,6 +112,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksHop(TestCase):
     def test__icmp6__nd__message__router_solicitation__hop_255__accepted(self) -> None:
         """
         Ensure ip6__hop == 255 passes the sanity check.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(
@@ -131,6 +135,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__router_solicitation__src_multicast__rejected(self) -> None:
         """
         Ensure a multicast 'ip6__src' is rejected.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         src = Ip6Address("ff02::1")
@@ -157,6 +163,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__router_solicitation__src_unicast__accepted(self) -> None:
         """
         Ensure a unicast 'ip6__src' passes the sanity check.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(
@@ -172,6 +180,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSrc(TestCase):
         """
         Ensure an unspecified 'ip6__src' passes the sanity check (the
         stateless-bootstrap case).
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(
@@ -193,6 +203,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksDst(TestCase):
     def test__icmp6__nd__message__router_solicitation__dst_unicast__rejected(self) -> None:
         """
         Ensure a unicast 'ip6__dst' is rejected.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         dst = Ip6Address("2001:db8::1")
@@ -220,6 +232,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksDst(TestCase):
         """
         Ensure a multicast 'ip6__dst' other than all-routers (ff02::2)
         is rejected.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         dst = Ip6Address("ff02::1")
@@ -247,6 +261,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksDst(TestCase):
         """
         Ensure the all-routers multicast 'ip6__dst' (ff02::2) passes
         the sanity check.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(
@@ -269,6 +285,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSllaWithUnspecifiedS
         """
         Ensure an RS carrying an SLLA option is rejected when 'ip6__src'
         is unspecified.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         with self.assertRaises(Icmp6SanityError) as error:
@@ -295,6 +313,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSllaWithUnspecifiedS
         """
         Ensure an RS with no SLLA option passes when 'ip6__src' is
         unspecified (the bootstrap case).
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(
@@ -311,6 +331,8 @@ class TestIcmp6NdMessageRouterSolicitationParserSanityChecksSllaWithUnspecifiedS
         Ensure an RS carrying an SLLA option is accepted when 'ip6__src'
         is a unicast address (the rule applies only to the unspecified
         case).
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(

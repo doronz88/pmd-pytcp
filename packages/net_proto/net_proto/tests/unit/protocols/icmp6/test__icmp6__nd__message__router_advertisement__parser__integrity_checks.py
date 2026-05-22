@@ -183,6 +183,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         Router Advertisement frames with the expected message.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -205,6 +207,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals
         ICMP6__ND__ROUTER_ADVERTISEMENT__LEN (16) — a bare RA with no
         options — passes integrity checks and parses successfully.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(

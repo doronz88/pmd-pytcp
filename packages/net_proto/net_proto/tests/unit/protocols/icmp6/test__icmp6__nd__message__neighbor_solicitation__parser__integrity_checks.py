@@ -196,6 +196,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         Neighbor Solicitation frames with the expected message.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -218,6 +220,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals
         ICMP6__ND__NEIGHBOR_SOLICITATION__LEN (24) — a bare NS with no
         options — passes integrity checks and parses successfully.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self.assertEqual(

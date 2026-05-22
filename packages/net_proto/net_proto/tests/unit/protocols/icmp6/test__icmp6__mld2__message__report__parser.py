@@ -219,6 +219,8 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6Mld2MessageReport whose
         fields match the expected reference message for each frame.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -232,6 +234,8 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
     def test__icmp6__mld2__message__report__parser__message_type(self) -> None:
         """
         Ensure the parsed message is an Icmp6Mld2MessageReport instance.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -246,6 +250,8 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
         MLDv2 Report message (the whole frame is consumed).
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         Icmp6Parser(self._packet_rx)
@@ -260,6 +266,8 @@ class TestIcmp6Mld2MessageReportParser(TestCase):
         """
         Ensure the parsed message's 'number_of_records' property matches
         the length of the reference record list.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)

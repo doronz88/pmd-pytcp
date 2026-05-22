@@ -197,6 +197,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__len(self) -> None:
         """
         Ensure 'len()' on the assembler equals ICMP6__ECHO_REQUEST__LEN + len(data).
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -208,6 +210,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__str(self) -> None:
         """
         Ensure 'str()' renders the canonical ICMPv6 Echo Request log line.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -219,6 +223,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__repr(self) -> None:
         """
         Ensure 'repr()' forwards the wrapped message's dataclass repr.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -231,6 +237,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         """
         Ensure 'bytes()' returns the full wire form including the
         recomputed Internet checksum at bytes 2-3.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -242,6 +250,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__type(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'type' field.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -253,6 +263,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__code(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'code' field.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -266,6 +278,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         Ensure the assembler exposes the wrapped message 'cksum' field as
         passed to the constructor (the on-wire checksum is written during
         assemble() and does not mutate this attribute).
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -277,6 +291,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__id(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'id' field.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -288,6 +304,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__seq(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'seq' field.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -299,6 +317,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
     def test__icmp6__message__echo_request__assembler__data(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'data' field.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         self.assertEqual(
@@ -312,6 +332,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         Ensure 'assemble()' appends the header + data, back-patches the
         checksum into the header buffer, and yields the same wire bytes
         as 'bytes()'.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         buffers: list[Buffer] = []
@@ -329,6 +351,8 @@ class TestIcmp6MessageEchoRequestAssembler(TestCase):
         Ensure 'assemble()' produces exactly two buffers — the packed
         8-byte header followed by the data buffer — so the ICMPv6 checksum
         back-patch in Icmp6Assembler.assemble() targets the header buffer.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         buffers: list[Buffer] = []

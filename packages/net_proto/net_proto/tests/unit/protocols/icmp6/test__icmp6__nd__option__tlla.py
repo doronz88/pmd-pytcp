@@ -54,6 +54,8 @@ class TestIcmp6NdOptionTllaAsserts(TestCase):
         """
         Ensure the constructor rejects a 'tlla' argument that is not a
         MacAddress instance.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         value = "not a MacAddress"
@@ -70,6 +72,8 @@ class TestIcmp6NdOptionTllaAsserts(TestCase):
     def test__icmp6__nd__option__tlla__tlla__default_accepted(self) -> None:
         """
         Ensure a default-constructed MacAddress is accepted as 'tlla'.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         tlla = MacAddress()
@@ -85,6 +89,8 @@ class TestIcmp6NdOptionTllaAsserts(TestCase):
     def test__icmp6__nd__option__tlla__tlla__populated_accepted(self) -> None:
         """
         Ensure a populated MacAddress is accepted as 'tlla'.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         tlla = MacAddress("01:02:03:04:05:06")
@@ -151,6 +157,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__len(self) -> None:
         """
         Ensure '__len__()' returns the expected byte length.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -162,6 +170,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -173,6 +183,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -184,6 +196,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire bytes.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -195,6 +209,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__type(self) -> None:
         """
         Ensure the option 'type' field is Icmp6NdOptionType.TLLA.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -206,6 +222,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__length(self) -> None:
         """
         Ensure the option 'len' field equals ICMP6__ND__OPTION__TLLA__LEN.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -217,6 +235,8 @@ class TestIcmp6NdOptionTllaAssembler(TestCase):
     def test__icmp6__nd__option__tlla__tlla(self) -> None:
         """
         Ensure the option 'tlla' field carries the provided MacAddress.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         self.assertEqual(
@@ -235,6 +255,8 @@ class TestIcmp6NdOptionTllaParser(TestCase):
         """
         Ensure from_buffer parses an 8-byte Tlla option whose buffer length
         exactly matches ICMP6__ND__OPTION__TLLA__LEN.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         buffer = b"\x02\x01\x01\x02\x03\x04\x05\x06"
@@ -257,6 +279,8 @@ class TestIcmp6NdOptionTllaParser(TestCase):
         """
         Ensure from_buffer parses a Tlla option when the buffer carries
         trailing bytes past the 8-byte option payload.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         buffer = b"\x02\x01\x01\x02\x03\x04\x05\x06" + b"ZH0PA"
@@ -328,6 +352,8 @@ class TestIcmp6NdOptionTllaParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         with self.assertRaises(self._results["error"]) as error:

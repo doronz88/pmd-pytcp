@@ -215,6 +215,8 @@ class TestIcmp6NdMessageRouterAdvertisementParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6NdMessageRouterAdvertisement
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -229,6 +231,8 @@ class TestIcmp6NdMessageRouterAdvertisementParser(TestCase):
         """
         Ensure the parsed message is an Icmp6NdMessageRouterAdvertisement
         instance.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -243,6 +247,8 @@ class TestIcmp6NdMessageRouterAdvertisementParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
         Router Advertisement message (the whole frame is consumed).
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6Parser(self._packet_rx)

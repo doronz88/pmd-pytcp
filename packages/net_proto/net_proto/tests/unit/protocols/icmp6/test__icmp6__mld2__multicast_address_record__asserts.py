@@ -64,6 +64,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure the constructor rejects a 'multicast_address' argument that
         is not a multicast IPv6 address.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self._kwargs["multicast_address"] = value = Ip6Address("2001::1")
@@ -81,6 +83,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure the constructor rejects a 'source_addresses' list containing
         any non-unicast IPv6 address.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         offender = Ip6Address("ff02::1")
@@ -103,6 +107,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure the constructor rejects an 'aux_data' buffer whose length is
         not a multiple of 4 bytes.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self._kwargs["aux_data"] = b"X" * 17  # 17 = 16 + 1 → not 4-byte aligned
@@ -121,6 +127,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         Ensure every non-4-byte-aligned length in 1..19 is rejected by the
         'aux_data' alignment check (negative sweep across all off-by-one
         positions within a 4-byte period).
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         for length in range(1, 20):
@@ -140,6 +148,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure every 4-byte-aligned length in 0..20 is accepted by the
         'aux_data' alignment check.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         for length in (0, 4, 8, 12, 16, 20):
@@ -156,6 +166,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure the constructor accepts every defined
         Icmp6Mld2MulticastAddressRecordType value for the 'type' field.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         for record_type in Icmp6Mld2MulticastAddressRecordType:
@@ -172,6 +184,8 @@ class TestIcmp6Mld2MulticastAddressRecordAsserts(TestCase):
         """
         Ensure the constructor accepts a 'source_addresses' list of
         unicast IPv6 addresses and preserves them in order.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         sources = [Ip6Address("2001::1"), Ip6Address("2001::2"), Ip6Address("2001::3")]

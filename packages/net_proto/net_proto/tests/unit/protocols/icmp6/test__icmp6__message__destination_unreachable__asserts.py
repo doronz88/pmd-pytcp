@@ -66,6 +66,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the ICMPv6 Destination Unreachable message constructor rejects
         a 'code' argument that is not an Icmp6DestinationUnreachableCode.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         self._kwargs["code"] = value = "not an Icmp6DestinationUnreachableCode"
@@ -83,6 +85,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the ICMPv6 Destination Unreachable message constructor rejects
         a 'cksum' argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -100,6 +104,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the ICMPv6 Destination Unreachable message constructor rejects
         a 'cksum' argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -117,6 +123,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the ICMPv6 Destination Unreachable message constructor rejects
         a 'data' argument that is neither bytes nor memoryview.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         self._kwargs["data"] = value = "not bytes or memoryview"
@@ -135,6 +143,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         Ensure the ICMPv6 Destination Unreachable message constructor rejects
         a 'data' argument whose length exceeds IP6__PAYLOAD__MAX_LEN minus
         the 8-byte Destination Unreachable header.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         value = IP6__PAYLOAD__MAX_LEN - ICMP6__DESTINATION_UNREACHABLE__LEN + 1
@@ -157,6 +167,8 @@ class TestIcmp6MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure every Icmp6DestinationUnreachableCode value is accepted by
         the message constructor.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         for code in Icmp6DestinationUnreachableCode:
@@ -180,6 +192,8 @@ class TestIcmp6MessageDestinationUnreachableFromBufferAsserts(TestCase):
         Ensure 'Icmp6MessageDestinationUnreachable.from_buffer()' refuses
         to parse a buffer whose first byte (ICMPv6 'type') is not
         DESTINATION_UNREACHABLE (1).
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -203,6 +217,8 @@ class TestIcmp6MessageDestinationUnreachableFromBufferAsserts(TestCase):
         Ensure 'Icmp6MessageDestinationUnreachable.from_buffer()' accepts a
         buffer whose first byte is DESTINATION_UNREACHABLE (1) and returns
         a concrete message instance.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         message = Icmp6MessageDestinationUnreachable.from_buffer(

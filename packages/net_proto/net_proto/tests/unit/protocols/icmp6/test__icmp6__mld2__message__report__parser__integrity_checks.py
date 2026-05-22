@@ -234,6 +234,8 @@ class TestIcmp6Mld2MessageReportParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         MLDv2 Report frames with the expected message.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -256,6 +258,8 @@ class TestIcmp6Mld2MessageReportParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals
         ICMP6__MLD2__REPORT__LEN (8) — a bare, record-less MLDv2 Report —
         passes integrity checks and parses successfully.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         # ICMPv6 MLDv2 Report at minimum length (8 bytes), no records
@@ -278,6 +282,8 @@ class TestIcmp6Mld2MessageReportParserIntegrityBoundary(TestCase):
         """
         Ensure a valid MLDv2 Report carrying a single record passes
         integrity checks and walks the record-offset loop cleanly.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         # ICMPv6 MLDv2 Report, one record

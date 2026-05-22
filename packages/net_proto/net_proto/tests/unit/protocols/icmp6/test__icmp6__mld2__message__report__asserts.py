@@ -67,6 +67,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor rejects a 'code' argument whose type is not
         Icmp6Mld2ReportCode.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self._kwargs["code"] = value = "not an Icmp6Mld2ReportCode"
@@ -84,6 +86,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor accepts the only defined Icmp6Mld2ReportCode
         value (DEFAULT).
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         for code in Icmp6Mld2ReportCode:
@@ -99,6 +103,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument below the 16-bit
         unsigned minimum.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -116,6 +122,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument above the 16-bit
         unsigned maximum.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -133,6 +141,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor accepts both endpoints of the valid 16-bit
         unsigned 'cksum' range.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         for cksum in (UINT_16__MIN, UINT_16__MAX):
@@ -148,6 +158,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure the constructor rejects a 'records' list whose total
         on-wire length exceeds the IPv6 payload budget.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         records_len_max = IP6__PAYLOAD__MAX_LEN - ICMP6__MLD2__REPORT__LEN
@@ -177,6 +189,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         ≤ records_len_max is accepted. Every record is 4-byte aligned, so
         the true achievable ceiling is records_len_max rounded down to a
         multiple of 4.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         records_len_max = IP6__PAYLOAD__MAX_LEN - ICMP6__MLD2__REPORT__LEN
@@ -200,6 +214,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure an empty 'records' list is accepted and produces a bare
         8-byte header message.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         message = Icmp6Mld2MessageReport(**self._kwargs)
@@ -224,6 +240,8 @@ class TestIcmp6Mld2MessageReportAsserts(TestCase):
         """
         Ensure a 'records' list with multiple entries is preserved in
         order and 'number_of_records' reflects the count.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         records = [
@@ -264,6 +282,8 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
         """
         Ensure 'from_buffer()' rejects a buffer whose type byte is not
         Icmp6Type.MLD2__REPORT (143).
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -287,6 +307,8 @@ class TestIcmp6Mld2MessageReportParserAsserts(TestCase):
         """
         Ensure 'from_buffer()' accepts a buffer with type 143 and returns
         a message with the default code, zero checksum, and no records.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         message = Icmp6Mld2MessageReport.from_buffer(

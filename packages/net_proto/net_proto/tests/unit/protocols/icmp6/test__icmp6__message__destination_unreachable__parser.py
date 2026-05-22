@@ -287,6 +287,8 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6MessageDestinationUnreachable
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -308,6 +310,8 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCase):
         """
         Ensure the parsed message is an Icmp6MessageDestinationUnreachable
         instance.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -322,6 +326,8 @@ class TestIcmp6MessageDestinationUnreachableParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the
         parsed Destination Unreachable message.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         Icmp6Parser(self._packet_rx)

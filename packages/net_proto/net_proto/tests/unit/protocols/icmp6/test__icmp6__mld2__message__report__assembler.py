@@ -314,6 +314,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
         Ensure 'len()' on the assembler equals ICMP6__MLD2__REPORT__LEN
         plus the summed lengths of every record.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -325,6 +327,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     def test__icmp6__mld2__message__report__assembler__str(self) -> None:
         """
         Ensure 'str()' renders the canonical MLDv2 Report log line.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -336,6 +340,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     def test__icmp6__mld2__message__report__assembler__repr(self) -> None:
         """
         Ensure 'repr()' forwards the wrapped message's dataclass repr.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -348,6 +354,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
         Ensure 'bytes()' returns the full wire form including the
         recomputed Internet checksum at bytes 2-3.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -359,6 +367,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     def test__icmp6__mld2__message__report__assembler__type(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'type' field.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -370,6 +380,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     def test__icmp6__mld2__message__report__assembler__code(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'code' field.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -383,6 +395,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         Ensure the assembler exposes the wrapped message 'cksum' field as
         passed to the constructor (the on-wire checksum is written during
         assemble() and does not mutate this attribute).
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -395,6 +409,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
         Ensure the assembler exposes the wrapped message 'number_of_records'
         property.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -406,6 +422,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
     def test__icmp6__mld2__message__report__assembler__records(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'records' field.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         self.assertEqual(
@@ -418,6 +436,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         """
         Ensure 'assemble()' appends the packed buffers, back-patches the
         checksum, and yields the same wire bytes as 'bytes()'.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         buffers: list[Buffer] = []
@@ -436,6 +456,8 @@ class TestIcmp6Mld2MessageReportAssembler(TestCase):
         8-byte report header followed by the concatenated records — so the
         ICMPv6 checksum back-patch in Icmp6Assembler.assemble() targets
         the header buffer.
+
+        Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report type 143).
         """
 
         buffers: list[Buffer] = []

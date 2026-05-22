@@ -146,6 +146,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6NdMessageNeighborAdvertisement
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -160,6 +162,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParser(TestCase):
         """
         Ensure the parsed message is an Icmp6NdMessageNeighborAdvertisement
         instance.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -174,6 +178,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
         Neighbor Advertisement message (the whole frame is consumed).
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         Icmp6Parser(self._packet_rx)

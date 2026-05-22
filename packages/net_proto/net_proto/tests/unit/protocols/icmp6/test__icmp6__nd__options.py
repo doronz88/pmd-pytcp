@@ -161,6 +161,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         """
         Ensure '__len__()' returns the total wire-bytes length of the
         contained options.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -173,6 +175,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         """
         Ensure '__str__()' returns a comma-separated join of per-option log
         strings.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -185,6 +189,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         """
         Ensure '__repr__()' returns the canonical Icmp6NdOptions(options=...)
         representation.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -197,6 +203,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
         """
         Ensure '__bytes__()' emits the concatenation of each option's wire
         bytes.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -208,6 +216,8 @@ class TestIcmp6NdOptionsAssembler(TestCase):
     def test__icmp6__nd__options__bool(self) -> None:
         """
         Ensure '__bool__()' reflects whether the container holds any options.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -226,6 +236,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'slla' property returns None when the container has no
         Slla option.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionTlla(MacAddress("01:02:03:04:05:06")))
@@ -239,6 +251,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'slla' property returns the MacAddress of the first Slla
         option in insertion order.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         first = MacAddress("01:02:03:04:05:06")
@@ -259,6 +273,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'tlla' property returns None when the container has no
         Tlla option.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionSlla(MacAddress("01:02:03:04:05:06")))
@@ -272,6 +288,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'tlla' property returns the MacAddress of the first Tlla
         option in insertion order.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         first = MacAddress("aa:bb:cc:dd:ee:ff")
@@ -292,6 +310,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'pi' property returns an empty list when the container
         has no Pi option.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionSlla(MacAddress("01:02:03:04:05:06")))
@@ -306,6 +326,8 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         """
         Ensure the 'pi' property returns one NdPrefixInfo per Pi option in
         insertion order.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         option_a = Icmp6NdOptionPi(
@@ -368,6 +390,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
     def test__icmp6__nd__options__iter(self) -> None:
         """
         Ensure iterating the container yields each option in insertion order.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -379,6 +403,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
     def test__icmp6__nd__options__getitem(self) -> None:
         """
         Ensure indexing returns the option at the requested position.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(self._options[0], self._slla, msg="Index 0 must return the first option.")
@@ -389,6 +415,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
         """
         Ensure '__contains__' recognises options held by the container and
         rejects ones not held.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertIn(
@@ -406,6 +434,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
     def test__icmp6__nd__options__index(self) -> None:
         """
         Ensure 'index()' returns the position of the requested option.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -417,6 +447,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
     def test__icmp6__nd__options__eq__same_contents(self) -> None:
         """
         Ensure two Icmp6NdOptions with equal option lists compare equal.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         other = Icmp6NdOptions(self._slla, self._tlla, self._unknown)
@@ -431,6 +463,8 @@ class TestIcmp6NdOptionsSequenceProtocol(TestCase):
         """
         Ensure Icmp6NdOptions does not compare equal to a non-Icmp6NdOptions
         object.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertNotEqual(
@@ -449,6 +483,8 @@ class TestIcmp6NdOptionsParser(TestCase):
         """
         Ensure from_buffer parses a buffer carrying four Slla options back
         into the reference container.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         buffer = (
@@ -474,6 +510,8 @@ class TestIcmp6NdOptionsParser(TestCase):
         Ensure from_buffer dispatches each option-type byte to the correct
         parser, including the default case that produces
         Icmp6NdOptionUnknown.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         buffer = (
@@ -508,6 +546,8 @@ class TestIcmp6NdOptionsParser(TestCase):
     def test__icmp6__nd__options__from_buffer__empty(self) -> None:
         """
         Ensure from_buffer parses an empty buffer into an empty container.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -528,6 +568,8 @@ class TestIcmp6NdOptionsValidateIntegrity(TestCase):
         """
         Ensure validate_integrity returns without error for a well-formed
         option sequence.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         frame = b"\x01\x01\x01\x02\x03\x04\x05\x06\x02\x01\xaa\xbb\xcc\xdd\xee\xff"
@@ -540,6 +582,8 @@ class TestIcmp6NdOptionsValidateIntegrity(TestCase):
         """
         Ensure validate_integrity returns without error when offset already
         sits at the end of the frame.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         Icmp6NdOptions.validate_integrity(frame=b"\x00\x00\x00\x00", offset=4)
@@ -550,6 +594,8 @@ class TestIcmp6NdOptionsValidateIntegrity(TestCase):
         """
         Ensure validate_integrity raises Icmp6IntegrityError when an option
         encodes a length of zero 8-byte units.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         frame = b"\x01\x00\x00\x00\x00\x00\x00\x00"
@@ -569,6 +615,8 @@ class TestIcmp6NdOptionsValidateIntegrity(TestCase):
         """
         Ensure validate_integrity raises Icmp6IntegrityError when an option
         claims to extend past the end of the frame.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         frame = b"\x01\x02\x00\x00\x00\x00\x00\x00"

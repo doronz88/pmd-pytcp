@@ -67,6 +67,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__code__default_accepted(self) -> None:
         """
         Ensure the constructor accepts the DEFAULT 'code' value.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6NdMessageNeighborSolicitation(**self._kwargs)
@@ -75,6 +77,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor raises when 'code' is not an
         Icmp6NdNeighborSolicitationCode.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self._kwargs["code"] = value = "not an Icmp6NdNeighborSolicitationCode"
@@ -92,6 +96,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 16-bit
         unsigned integer values for 'cksum'.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         for cksum in (UINT_16__MIN, UINT_16__MAX):
@@ -102,6 +108,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' is below the minimum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -119,6 +127,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' exceeds the maximum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -135,6 +145,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__target_address__accepted(self) -> None:
         """
         Ensure the constructor accepts a valid Ip6Address 'target_address'.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6NdMessageNeighborSolicitation(**{**self._kwargs, "target_address": Ip6Address("2001:db8::1")})
@@ -143,6 +155,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor raises when 'target_address' is not an
         Ip6Address.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self._kwargs["target_address"] = value = "not an Ip6Address"
@@ -159,6 +173,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__options__empty_accepted(self) -> None:
         """
         Ensure the constructor accepts an empty Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6NdMessageNeighborSolicitation(**{**self._kwargs, "options": Icmp6NdOptions()})
@@ -166,6 +182,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__options__populated_accepted(self) -> None:
         """
         Ensure the constructor accepts an Icmp6NdOptions carrying options.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6NdMessageNeighborSolicitation(
@@ -179,6 +197,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure the constructor raises when 'options' is not an
         Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
@@ -196,6 +216,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure from_buffer() accepts a frame whose type byte is
         ICMPv6 ND Neighbor Solicitation (135).
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         # 24-byte NS with zeroed reserved/target, checksum placeholder 0x0000.
@@ -207,6 +229,8 @@ class TestIcmp6NdMessageNeighborSolicitationAsserts(TestCase):
         """
         Ensure from_buffer() raises when the 'type' field does not match
         Icmp6Type.ND__NEIGHBOR_SOLICITATION.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         with self.assertRaises(AssertionError) as error:

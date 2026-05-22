@@ -147,6 +147,8 @@ class TestIcmp6NdMessageRouterSolicitationParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6NdMessageRouterSolicitation
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -161,6 +163,8 @@ class TestIcmp6NdMessageRouterSolicitationParser(TestCase):
         """
         Ensure the parsed message is an Icmp6NdMessageRouterSolicitation
         instance.
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -175,6 +179,8 @@ class TestIcmp6NdMessageRouterSolicitationParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
         Router Solicitation message (the whole frame is consumed).
+
+        Reference: RFC 4861 §4.1 (Router Solicitation type 133).
         """
 
         Icmp6Parser(self._packet_rx)

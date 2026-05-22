@@ -282,6 +282,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns the expected byte length.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -293,6 +295,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -304,6 +308,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -316,6 +322,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure '__bytes__()' returns the expected wire bytes with a
         back-patched checksum.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -328,6 +336,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure the assembled message carries type
         Icmp6Type.ND__ROUTER_ADVERTISEMENT.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -339,6 +349,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__code(self) -> None:
         """
         Ensure the assembled message carries the expected 'code' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -352,6 +364,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         Ensure the assembled message's 'cksum' field reflects the value
         passed at construction (the back-patch happens on the buffer, not
         on the dataclass).
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -363,6 +377,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__hop(self) -> None:
         """
         Ensure the assembled message carries the expected 'hop' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -374,6 +390,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__flag_m(self) -> None:
         """
         Ensure the assembled message carries the expected 'flag_m' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -385,6 +403,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__flag_o(self) -> None:
         """
         Ensure the assembled message carries the expected 'flag_o' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -397,6 +417,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure the assembled message carries the expected 'router_lifetime'
         value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -409,6 +431,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure the assembled message carries the expected 'reachable_time'
         value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -421,6 +445,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure the assembled message carries the expected 'retrans_timer'
         value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -432,6 +458,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__router_advertisement__assembler__options(self) -> None:
         """
         Ensure the assembled message carries the expected 'options' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self.assertEqual(
@@ -444,6 +472,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         """
         Ensure 'assemble()' appends the Router Advertisement wire bytes
         (header + options) to the provided buffer list.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         buffers: list[Buffer] = []
@@ -461,6 +491,8 @@ class TestIcmp6NdMessageRouterAdvertisementAssembler(TestCase):
         Ensure 'assemble()' appends exactly two buffers (fixed header +
         options payload) so Icmp6Assembler can back-patch the checksum at
         buffers[-2][2:4].
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         buffers: list[Buffer] = []

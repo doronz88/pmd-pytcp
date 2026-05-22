@@ -64,6 +64,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects a 'type' argument that is not an
         Icmp6NdOptionType instance.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         value = "not an Icmp6NdOptionType"
@@ -81,6 +83,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects a 'type' argument that is a known
         Icmp6NdOptionType (SLLA/TLLA/PI), as those have dedicated classes.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         for known_type in Icmp6NdOptionType.get_known_values():
@@ -100,6 +104,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure an Icmp6NdOptionType value that is not known (e.g. 255) is
         accepted as 'type'.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         type_ = Icmp6NdOptionType.from_int(255)
@@ -116,6 +122,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects a 'data' payload that pushes 'len'
         past the 8-bit unsigned maximum.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -131,6 +139,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects a 'data' payload whose length leaves
         the computed 'len' field not 8-byte aligned.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -146,6 +156,8 @@ class TestIcmp6NdOptionUnknownAsserts(TestCase):
         """
         Ensure an empty-except-for-padding 'data' payload that produces an
         8-byte-aligned 'len' is accepted.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         option = Icmp6NdOptionUnknown(**{**self._kwargs, "data": b"\x00" * (8 - ICMP6__ND__OPTION__LEN)})
@@ -216,6 +228,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
     def test__icmp6__nd__option__unknown__len(self) -> None:
         """
         Ensure '__len__()' returns the expected byte length.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -227,6 +241,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
     def test__icmp6__nd__option__unknown__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -238,6 +254,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
     def test__icmp6__nd__option__unknown__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -249,6 +267,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
     def test__icmp6__nd__option__unknown__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire bytes.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -261,6 +281,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         """
         Ensure the option 'type' field carries the provided
         Icmp6NdOptionType.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -273,6 +295,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
         """
         Ensure the option 'len' field equals ICMP6__ND__OPTION__LEN +
         len(data) (already validated as 8-byte aligned).
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -284,6 +308,8 @@ class TestIcmp6NdOptionUnknownAssembler(TestCase):
     def test__icmp6__nd__option__unknown__data(self) -> None:
         """
         Ensure the option 'data' field carries the provided bytes payload.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         self.assertEqual(
@@ -302,6 +328,8 @@ class TestIcmp6NdOptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown option whose buffer length
         exactly matches the encoded option length.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         buffer = b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44"
@@ -321,6 +349,8 @@ class TestIcmp6NdOptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown option when the buffer
         carries trailing bytes past the declared option length.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         buffer = b"\xff\x02\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x41\x42\x43\x44" + b"ZH0PA"
@@ -402,6 +432,8 @@ class TestIcmp6NdOptionUnknownParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 4861 §4.6 (ND option general format).
         """
 
         with self.assertRaises(self._results["error"]) as error:

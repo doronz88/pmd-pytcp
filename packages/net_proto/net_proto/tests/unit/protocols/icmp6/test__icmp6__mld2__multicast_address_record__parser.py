@@ -246,6 +246,8 @@ class TestIcmp6Mld2MulticastAddressRecordParser(TestCase):
         Ensure 'from_buffer()' reconstructs the reference record from the
         fixture bytes, ignoring any trailing payload supplied after the
         declared source/aux-data extent.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         trailing_garbage = b"ZH0PA"
@@ -263,6 +265,8 @@ class TestIcmp6Mld2MulticastAddressRecordParser(TestCase):
         (number_of_sources × IP6_ADDRESS_LEN + aux_data_len × 4) as the
         authoritative boundary — anything past that offset must not be
         absorbed into the record even when the buffer continues.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         record = Icmp6Mld2MulticastAddressRecord.from_buffer(self._frame_rx + b"extraneous trailing bytes")

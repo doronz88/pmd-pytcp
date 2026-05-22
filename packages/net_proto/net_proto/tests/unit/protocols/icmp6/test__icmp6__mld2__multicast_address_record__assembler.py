@@ -410,6 +410,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
         """
         Ensure '__len__()' returns the total on-wire length
         (header + sources + aux_data).
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -421,6 +423,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical MLDv2 record log line.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -432,6 +436,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' matches the dataclass-generated repr.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -443,6 +449,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__bytes(self) -> None:
         """
         Ensure 'bytes()' returns the on-wire record encoding.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -454,6 +462,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__type(self) -> None:
         """
         Ensure the 'type' field is preserved.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -466,6 +476,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
         """
         Ensure 'aux_data_len' reports the byte length (not 32-bit words)
         of the 'aux_data' buffer.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -478,6 +490,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
         """
         Ensure 'number_of_sources' reports the count of entries in
         'source_addresses'.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -489,6 +503,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__multicast_address(self) -> None:
         """
         Ensure the 'multicast_address' field is preserved.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -500,6 +516,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__source_addresses(self) -> None:
         """
         Ensure the 'source_addresses' list is preserved in order.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -511,6 +529,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
     def test__icmp6__mld2__multicast_address_record__assembler__aux_data(self) -> None:
         """
         Ensure the 'aux_data' field is preserved verbatim.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         self.assertEqual(
@@ -523,6 +543,8 @@ class TestIcmp6Mld2MulticastAddressRecordAssembler(TestCase):
         """
         Ensure the on-wire bytes round-trip through 'from_buffer()' and
         reproduce a structurally identical record.
+
+        Reference: RFC 3810 §5.2.12 (Multicast Address Record).
         """
 
         parsed = Icmp6Mld2MulticastAddressRecord.from_buffer(bytes(self._record))

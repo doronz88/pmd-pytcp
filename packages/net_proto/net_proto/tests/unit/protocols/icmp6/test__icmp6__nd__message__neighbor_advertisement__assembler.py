@@ -168,6 +168,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns the expected byte length.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -179,6 +181,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -190,6 +194,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -202,6 +208,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         """
         Ensure '__bytes__()' returns the expected wire bytes with a
         back-patched checksum.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -214,6 +222,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         """
         Ensure the assembled message carries type
         Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -225,6 +235,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__code(self) -> None:
         """
         Ensure the assembled message carries the expected 'code' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -238,6 +250,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         Ensure the assembled message's 'cksum' field reflects the value
         passed at construction (the back-patch happens on the buffer, not
         on the dataclass).
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -249,6 +263,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_r(self) -> None:
         """
         Ensure the assembled message carries the expected 'flag_r' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -260,6 +276,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_s(self) -> None:
         """
         Ensure the assembled message carries the expected 'flag_s' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -271,6 +289,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__flag_o(self) -> None:
         """
         Ensure the assembled message carries the expected 'flag_o' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -282,6 +302,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__target_address(self) -> None:
         """
         Ensure the assembled message carries the expected 'target_address' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -293,6 +315,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
     def test__icmp6__nd__message__neighbor_advertisement__assembler__options(self) -> None:
         """
         Ensure the assembled message carries the expected 'options' value.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(
@@ -305,6 +329,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         """
         Ensure 'assemble()' appends the Neighbor Advertisement wire bytes
         (header + options) to the provided buffer list.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         buffers: list[Buffer] = []
@@ -322,6 +348,8 @@ class TestIcmp6NdMessageNeighborAdvertisementAssembler(TestCase):
         Ensure 'assemble()' appends exactly two buffers (fixed header +
         options payload) so Icmp6Assembler can back-patch the checksum at
         buffers[-2][2:4].
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         buffers: list[Buffer] = []

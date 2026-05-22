@@ -76,6 +76,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__code__default_accepted(self) -> None:
         """
         Ensure the constructor accepts the DEFAULT 'code' value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6NdMessageRouterAdvertisement(**self._kwargs)
@@ -84,6 +86,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'code' is not an
         Icmp6NdRouterAdvertisementCode.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["code"] = value = "not an Icmp6NdRouterAdvertisementCode"
@@ -101,6 +105,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 16-bit
         unsigned integer values for 'cksum'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for cksum in (UINT_16__MIN, UINT_16__MAX):
@@ -111,6 +117,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' is below the minimum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -128,6 +136,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'cksum' exceeds the maximum
         16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -145,6 +155,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 8-bit
         unsigned integer values for 'hop'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for hop in (UINT_8__MIN, UINT_8__MAX):
@@ -155,6 +167,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'hop' is below the minimum
         8-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["hop"] = value = UINT_8__MIN - 1
@@ -172,6 +186,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'hop' exceeds the maximum
         8-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["hop"] = value = UINT_8__MAX + 1
@@ -188,6 +204,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__flag_m__bool_accepted(self) -> None:
         """
         Ensure the constructor accepts True and False for 'flag_m'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for flag_m in (False, True):
@@ -197,6 +215,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__flag_m__not_boolean(self) -> None:
         """
         Ensure the constructor raises when 'flag_m' is not a boolean.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["flag_m"] = value = "not a boolean"
@@ -213,6 +233,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__flag_o__bool_accepted(self) -> None:
         """
         Ensure the constructor accepts True and False for 'flag_o'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for flag_o in (False, True):
@@ -222,6 +244,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__flag_o__not_boolean(self) -> None:
         """
         Ensure the constructor raises when 'flag_o' is not a boolean.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["flag_o"] = value = "not a boolean"
@@ -239,6 +263,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 16-bit
         unsigned integer values for 'router_lifetime'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for router_lifetime in (UINT_16__MIN, UINT_16__MAX):
@@ -249,6 +275,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'router_lifetime' is below the
         minimum 16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["router_lifetime"] = value = UINT_16__MIN - 1
@@ -266,6 +294,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'router_lifetime' exceeds the
         maximum 16-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["router_lifetime"] = value = UINT_16__MAX + 1
@@ -283,6 +313,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 32-bit
         unsigned integer values for 'reachable_time'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for reachable_time in (UINT_32__MIN, UINT_32__MAX):
@@ -293,6 +325,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'reachable_time' is below the
         minimum 32-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["reachable_time"] = value = UINT_32__MIN - 1
@@ -310,6 +344,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'reachable_time' exceeds the
         maximum 32-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["reachable_time"] = value = UINT_32__MAX + 1
@@ -327,6 +363,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor accepts the minimum and maximum 32-bit
         unsigned integer values for 'retrans_timer'.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for retrans_timer in (UINT_32__MIN, UINT_32__MAX):
@@ -337,6 +375,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'retrans_timer' is below the
         minimum 32-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["retrans_timer"] = value = UINT_32__MIN - 1
@@ -354,6 +394,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'retrans_timer' exceeds the
         maximum 32-bit unsigned integer value.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["retrans_timer"] = value = UINT_32__MAX + 1
@@ -370,6 +412,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__options__empty_accepted(self) -> None:
         """
         Ensure the constructor accepts an empty Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6NdMessageRouterAdvertisement(**{**self._kwargs, "options": Icmp6NdOptions()})
@@ -377,6 +421,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
     def test__icmp6__nd__message__router_advertisement__options__populated_accepted(self) -> None:
         """
         Ensure the constructor accepts an Icmp6NdOptions carrying options.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6NdMessageRouterAdvertisement(
@@ -390,6 +436,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure the constructor raises when 'options' is not an
         Icmp6NdOptions.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         self._kwargs["options"] = value = "not an Icmp6NdOptions"
@@ -407,6 +455,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure from_buffer() accepts a frame whose type byte is
         ICMPv6 ND Router Advertisement (134).
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         # 16-byte RA with zeroed fields, checksum placeholder 0x0000.
@@ -418,6 +468,8 @@ class TestIcmp6NdMessageRouterAdvertisementAsserts(TestCase):
         """
         Ensure from_buffer() raises when the 'type' field does not match
         Icmp6Type.ND__ROUTER_ADVERTISEMENT.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         with self.assertRaises(AssertionError) as error:

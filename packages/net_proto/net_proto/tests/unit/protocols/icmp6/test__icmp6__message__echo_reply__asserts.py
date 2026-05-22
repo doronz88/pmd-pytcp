@@ -67,6 +67,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'code'
         argument that is not an Icmp6EchoReplyCode.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["code"] = value = "not an Icmp6EchoReplyCode"
@@ -84,6 +86,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'cksum'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -101,6 +105,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'cksum'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -118,6 +124,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects an 'id'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["id"] = value = UINT_16__MIN - 1
@@ -135,6 +143,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects an 'id'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["id"] = value = UINT_16__MAX + 1
@@ -152,6 +162,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'seq'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["seq"] = value = UINT_16__MIN - 1
@@ -169,6 +181,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'seq'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["seq"] = value = UINT_16__MAX + 1
@@ -186,6 +200,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor rejects a 'data'
         argument that is neither bytes nor memoryview.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         self._kwargs["data"] = value = "not bytes or memoryview"
@@ -205,6 +221,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         argument whose length exceeds IP6__PAYLOAD__MAX_LEN minus the 8-byte
         Echo Reply header (i.e. the frame would no longer fit in an IPv6
         payload).
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         value = IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REPLY__LEN + 1
@@ -227,6 +245,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor accepts a 'data'
         argument whose length is exactly IP6__PAYLOAD__MAX_LEN - header.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         max_len = IP6__PAYLOAD__MAX_LEN - ICMP6__ECHO_REPLY__LEN
@@ -244,6 +264,8 @@ class TestIcmp6MessageEchoReplyAsserts(TestCase):
         """
         Ensure the ICMPv6 Echo Reply message constructor accepts 'id' and
         'seq' at the minimum (0) and maximum (0xFFFF) 16-bit unsigned values.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         for field_name in ("id", "seq"):
@@ -267,6 +289,8 @@ class TestIcmp6MessageEchoReplyFromBufferAsserts(TestCase):
         """
         Ensure 'Icmp6MessageEchoReply.from_buffer()' refuses to parse a
         buffer whose first byte (ICMPv6 'type') is not ECHO_REPLY.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -289,6 +313,8 @@ class TestIcmp6MessageEchoReplyFromBufferAsserts(TestCase):
         """
         Ensure 'Icmp6MessageEchoReply.from_buffer()' accepts a buffer whose
         first byte is ECHO_REPLY (129) and returns a concrete reply message.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         message = Icmp6MessageEchoReply.from_buffer(

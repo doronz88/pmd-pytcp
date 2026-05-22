@@ -70,6 +70,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'flag_l' argument that is not a
         boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = "not a boolean"
@@ -87,6 +89,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'flag_a' argument that is not a
         boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = "not a boolean"
@@ -104,6 +108,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'flag_r' argument that is not a
         boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = "not a boolean"
@@ -121,6 +127,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'valid_lifetime' argument below
         UINT_32__MIN.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = UINT_32__MIN - 1
@@ -138,6 +146,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'valid_lifetime' argument above
         UINT_32__MAX.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = UINT_32__MAX + 1
@@ -155,6 +165,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor accepts UINT_32__MIN and UINT_32__MAX as
         'valid_lifetime' boundary values.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         for value in (UINT_32__MIN, UINT_32__MAX):
@@ -171,6 +183,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'preferred_lifetime' argument below
         UINT_32__MIN.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = UINT_32__MIN - 1
@@ -188,6 +202,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'preferred_lifetime' argument above
         UINT_32__MAX.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = UINT_32__MAX + 1
@@ -205,6 +221,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor accepts UINT_32__MIN and UINT_32__MAX as
         'preferred_lifetime' boundary values.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         for value in (UINT_32__MIN, UINT_32__MAX):
@@ -221,6 +239,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor rejects a 'prefix' argument that is not an
         Ip6Network instance.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         value = "not an Ip6Network"
@@ -238,6 +258,8 @@ class TestIcmp6NdOptionPiAsserts(TestCase):
         """
         Ensure the constructor accepts the documented False defaults for the
         L/A/R flag fields.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         option = Icmp6NdOptionPi(
@@ -409,6 +431,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__len(self) -> None:
         """
         Ensure '__len__()' returns the expected byte length.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -420,6 +444,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -431,6 +457,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -442,6 +470,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire bytes.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -453,6 +483,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__type(self) -> None:
         """
         Ensure the option 'type' field is Icmp6NdOptionType.PI.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -464,6 +496,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__length(self) -> None:
         """
         Ensure the option 'len' field equals ICMP6__ND__OPTION__PI__LEN.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -475,6 +509,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__flag_l(self) -> None:
         """
         Ensure the option 'flag_l' field carries the provided boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -486,6 +522,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__flag_a(self) -> None:
         """
         Ensure the option 'flag_a' field carries the provided boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -497,6 +535,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__flag_r(self) -> None:
         """
         Ensure the option 'flag_r' field carries the provided boolean.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -508,6 +548,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__valid_lifetime(self) -> None:
         """
         Ensure the option 'valid_lifetime' field carries the provided value.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -520,6 +562,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
         """
         Ensure the option 'preferred_lifetime' field carries the provided
         value.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -531,6 +575,8 @@ class TestIcmp6NdOptionPiAssembler(TestCase):
     def test__icmp6__nd__option__pi__prefix(self) -> None:
         """
         Ensure the option 'prefix' field carries the provided Ip6Network.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         self.assertEqual(
@@ -549,6 +595,8 @@ class TestIcmp6NdOptionPiParser(TestCase):
         """
         Ensure from_buffer parses a 32-byte Pi option whose buffer length
         exactly matches ICMP6__ND__OPTION__PI__LEN.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         buffer = (
@@ -581,6 +629,8 @@ class TestIcmp6NdOptionPiParser(TestCase):
         """
         Ensure from_buffer parses a Pi option when the buffer carries
         trailing bytes past the 32-byte option payload.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         buffer = (
@@ -606,6 +656,8 @@ class TestIcmp6NdOptionPiParser(TestCase):
     def test__icmp6__nd__option__pi__from_buffer__all_flags_set(self) -> None:
         """
         Ensure from_buffer decodes all three flag bits (L/A/R) when set.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         buffer = (
@@ -696,6 +748,8 @@ class TestIcmp6NdOptionPiParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         with self.assertRaises(self._results["error"]) as error:

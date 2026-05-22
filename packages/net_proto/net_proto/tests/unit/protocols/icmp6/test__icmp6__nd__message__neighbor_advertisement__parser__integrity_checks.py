@@ -198,6 +198,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         Neighbor Advertisement frames with the expected message.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -220,6 +222,8 @@ class TestIcmp6NdMessageNeighborAdvertisementParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals
         ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN (24) — a bare NA with no
         options — passes integrity checks and parses successfully.
+
+        Reference: RFC 4861 §4.4 (Neighbor Advertisement type 136).
         """
 
         self.assertEqual(

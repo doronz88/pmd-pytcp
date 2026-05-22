@@ -93,6 +93,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksHop(TestCase):
         """
         Ensure every ip6__hop value other than 255 is rejected with the
         canonical Icmp6SanityError message.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         for hop in (0, 1, 64, 128, 254):
@@ -119,6 +121,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksHop(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__hop_255__accepted(self) -> None:
         """
         Ensure ip6__hop == 255 passes the sanity check.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -140,6 +144,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__src_multicast__rejected(self) -> None:
         """
         Ensure a multicast 'ip6__src' is rejected.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         src = Ip6Address("ff02::1")
@@ -166,6 +172,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__src_unicast__accepted(self) -> None:
         """
         Ensure a unicast 'ip6__src' passes the sanity check.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -182,6 +190,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSrc(TestCase):
         Ensure an unspecified 'ip6__src' passes the sanity check
         (DAD case, with the canonical DAD-shape destination —
         target_address's solicited-node multicast).
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -204,6 +214,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDst(TestCase):
         """
         Ensure an 'ip6__dst' that is neither the target_address nor its
         solicited-node multicast address is rejected.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         dst = Ip6Address("2001:db8::2")
@@ -231,6 +243,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDst(TestCase):
     def test__icmp6__nd__message__neighbor_solicitation__dst_target__accepted(self) -> None:
         """
         Ensure an 'ip6__dst' equal to the target_address passes.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -246,6 +260,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksDst(TestCase):
         """
         Ensure an 'ip6__dst' equal to the target_address's solicited-node
         multicast address passes.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -325,6 +341,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksTargetAddress(Test
     def test__icmp6__nd__message__neighbor_solicitation__target_address_unspecified__rejected(self) -> None:
         """
         Ensure a non-unicast (unspecified) target_address is rejected.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         with self.assertRaises(Icmp6SanityError) as error:
@@ -349,6 +367,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksTargetAddress(Test
     def test__icmp6__nd__message__neighbor_solicitation__target_address_unicast__accepted(self) -> None:
         """
         Ensure a unicast 'target_address' passes the sanity check.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(
@@ -371,6 +391,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifie
         """
         Ensure an NS carrying an SLLA option is rejected when 'ip6__src'
         is unspecified.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         with self.assertRaises(Icmp6SanityError) as error:
@@ -398,6 +420,8 @@ class TestIcmp6NdMessageNeighborSolicitationParserSanityChecksSllaWithUnspecifie
         Ensure an NS with no SLLA option passes when 'ip6__src'
         is unspecified (the canonical DAD case, with the
         target's solicited-node multicast as the destination).
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(

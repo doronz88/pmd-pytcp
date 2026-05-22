@@ -179,6 +179,8 @@ class TestIcmp6MessageEchoRequestParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         Echo Request frames with the expected message.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -201,6 +203,8 @@ class TestIcmp6MessageEchoRequestParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv6 payload length equals
         ICMP6__ECHO_REQUEST__LEN (8) — a bare, data-less Echo Request —
         passes integrity checks and parses successfully.
+
+        Reference: RFC 4443 §4.1 (Echo Request type 128).
         """
 
         # ICMPv6 Echo Request at minimum length (8 bytes)

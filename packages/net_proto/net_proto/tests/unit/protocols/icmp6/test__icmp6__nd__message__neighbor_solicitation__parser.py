@@ -154,6 +154,8 @@ class TestIcmp6NdMessageNeighborSolicitationParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6NdMessageNeighborSolicitation
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -168,6 +170,8 @@ class TestIcmp6NdMessageNeighborSolicitationParser(TestCase):
         """
         Ensure the parsed message is an Icmp6NdMessageNeighborSolicitation
         instance.
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -182,6 +186,8 @@ class TestIcmp6NdMessageNeighborSolicitationParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the parsed
         Neighbor Solicitation message (the whole frame is consumed).
+
+        Reference: RFC 4861 §4.3 (Neighbor Solicitation type 135).
         """
 
         Icmp6Parser(self._packet_rx)

@@ -156,6 +156,8 @@ class TestIcmp6MessageEchoReplyParser(TestCase):
         """
         Ensure the ICMPv6 parser produces an Icmp6MessageEchoReply whose
         fields match the expected reference message for each frame.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -176,6 +178,8 @@ class TestIcmp6MessageEchoReplyParser(TestCase):
     def test__icmp6__message__echo_reply__parser__message_type(self) -> None:
         """
         Ensure the parsed message is an Icmp6MessageEchoReply instance.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         icmp6_parser = Icmp6Parser(self._packet_rx)
@@ -190,6 +194,8 @@ class TestIcmp6MessageEchoReplyParser(TestCase):
         """
         Ensure the ICMPv6 parser advances 'packet_rx.frame' past the
         parsed Echo Reply message.
+
+        Reference: RFC 4443 §4.2 (Echo Reply type 129).
         """
 
         Icmp6Parser(self._packet_rx)

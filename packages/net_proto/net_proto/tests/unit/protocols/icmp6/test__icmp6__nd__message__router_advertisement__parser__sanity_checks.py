@@ -82,6 +82,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksHop(TestCase):
         """
         Ensure every ip6__hop value other than 255 is rejected with the
         canonical Icmp6SanityError message.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         for hop in (0, 1, 64, 128, 254):
@@ -108,6 +110,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksHop(TestCase):
     def test__icmp6__nd__message__router_advertisement__hop_255__accepted(self) -> None:
         """
         Ensure ip6__hop == 255 passes the sanity check.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6Parser(
@@ -129,6 +133,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__router_advertisement__src_global_unicast__rejected(self) -> None:
         """
         Ensure a global-unicast 'ip6__src' is rejected.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         src = Ip6Address("2001:db8::1")
@@ -155,6 +161,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__router_advertisement__src_unspecified__rejected(self) -> None:
         """
         Ensure an unspecified 'ip6__src' is rejected (not link-local).
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         src = Ip6Address("::")
@@ -181,6 +189,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksSrc(TestCase):
     def test__icmp6__nd__message__router_advertisement__src_link_local__accepted(self) -> None:
         """
         Ensure a link-local 'ip6__src' passes the sanity check.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6Parser(
@@ -202,6 +212,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksDst(TestCase):
     def test__icmp6__nd__message__router_advertisement__dst_unspecified__rejected(self) -> None:
         """
         Ensure an unspecified 'ip6__dst' is rejected.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         dst = Ip6Address("::")
@@ -229,6 +241,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksDst(TestCase):
         """
         Ensure a multicast 'ip6__dst' other than all-nodes (ff02::1) is
         rejected.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         dst = Ip6Address("ff02::2")
@@ -255,6 +269,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksDst(TestCase):
     def test__icmp6__nd__message__router_advertisement__dst_unicast__accepted(self) -> None:
         """
         Ensure a unicast 'ip6__dst' passes the sanity check.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6Parser(
@@ -270,6 +286,8 @@ class TestIcmp6NdMessageRouterAdvertisementParserSanityChecksDst(TestCase):
         """
         Ensure the all-nodes multicast 'ip6__dst' (ff02::1) passes the
         sanity check.
+
+        Reference: RFC 4861 §4.2 (Router Advertisement type 134).
         """
 
         Icmp6Parser(

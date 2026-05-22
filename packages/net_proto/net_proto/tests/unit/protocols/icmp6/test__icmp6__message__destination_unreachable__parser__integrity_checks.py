@@ -177,6 +177,8 @@ class TestIcmp6MessageDestinationUnreachableParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv6 parser raises Icmp6IntegrityError on malformed
         Destination Unreachable frames with the expected message.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         with self.assertRaises(Icmp6IntegrityError) as error:
@@ -200,6 +202,8 @@ class TestIcmp6MessageDestinationUnreachableParserIntegrityBoundary(TestCase):
         ICMP6__DESTINATION_UNREACHABLE__LEN (8) — a bare, data-less
         Destination Unreachable — passes integrity checks and parses
         successfully.
+
+        Reference: RFC 4443 §3.1 (Destination Unreachable type 1).
         """
 
         # ICMPv6 Destination Unreachable at minimum length (8 bytes)
