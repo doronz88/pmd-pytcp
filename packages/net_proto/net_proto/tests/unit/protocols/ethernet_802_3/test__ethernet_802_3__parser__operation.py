@@ -179,6 +179,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__header(self) -> None:
         """
         Ensure the parser exposes the expected Ethernet8023Header.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -190,6 +192,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__dst_property(self) -> None:
         """
         Ensure the 'dst' property mirrors the header's destination MAC.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -201,6 +205,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__src_property(self) -> None:
         """
         Ensure the 'src' property mirrors the header's source MAC.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -212,6 +218,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__dlen_property(self) -> None:
         """
         Ensure the 'dlen' property mirrors the header's declared length.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -223,6 +231,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__len(self) -> None:
         """
         Ensure 'len()' on the parser equals header length plus payload length.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -234,6 +244,8 @@ class TestEthernet8023ParserOperation(TestCase):
     def test__ethernet_802_3__parser__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical Ethernet 802.3 log line.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -247,6 +259,8 @@ class TestEthernet8023ParserOperation(TestCase):
         Ensure '__repr__()' starts with the class name and includes both the
         'header=' and 'payload=' anchors documented for every PyTCP
         assembler and parser base class.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         rendered = repr(self._parser)
@@ -265,6 +279,8 @@ class TestEthernet8023ParserOperation(TestCase):
         """
         Ensure the parser assigns itself to PacketRx.ethernet_802_3 so
         upper-layer parsers can locate the 802.3 header via the PacketRx.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertIs(
@@ -277,6 +293,8 @@ class TestEthernet8023ParserOperation(TestCase):
         """
         Ensure the parser advances PacketRx.frame past the 14-byte header so
         the next protocol parser sees only the payload.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -289,6 +307,8 @@ class TestEthernet8023ParserOperation(TestCase):
         """
         Ensure the parser exposes the complete on-wire frame (header +
         payload) through the buffer protocol.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -301,6 +321,8 @@ class TestEthernet8023ParserOperation(TestCase):
         """
         Ensure the parser's own 'frame' property returns the bytes captured
         before PacketRx.frame was advanced — the full on-wire frame.
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         self.assertEqual(
@@ -321,6 +343,8 @@ class TestEthernet8023ParserTrailingBytes(TestCase):
         not match the declared 'dlen' field (the 802.3 header is strict
         about declared-vs-actual length, so trailing bytes past dlen are
         a hard integrity error rather than silently ignored).
+
+        Reference: IEEE 802.3 §3 (802.3 frame parse — header + payload).
         """
 
         frame_with_trailing = (

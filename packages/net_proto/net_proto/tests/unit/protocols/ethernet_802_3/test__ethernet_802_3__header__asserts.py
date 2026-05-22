@@ -68,6 +68,8 @@ class TestEthernet8023HeaderAsserts(TestCase):
         """
         Ensure the Ethernet 802.3 header constructor raises an exception when
         the provided 'dst' argument is not a MacAddress.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self._kwargs["dst"] = value = "not a MacAddress"
@@ -85,6 +87,8 @@ class TestEthernet8023HeaderAsserts(TestCase):
         """
         Ensure the Ethernet 802.3 header constructor raises an exception when
         the provided 'src' argument is not a MacAddress.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self._kwargs["src"] = value = "not a MacAddress"
@@ -102,6 +106,8 @@ class TestEthernet8023HeaderAsserts(TestCase):
         """
         Ensure the Ethernet 802.3 header constructor raises an exception when
         the provided 'dlen' argument is lower than the minimum supported value.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self._kwargs["dlen"] = value = UINT_16__MIN - 1
@@ -121,6 +127,8 @@ class TestEthernet8023HeaderAsserts(TestCase):
         Ensure the Ethernet 802.3 header constructor raises an exception when
         the provided 'dlen' argument is higher than the maximum supported
         value (the 802.3 payload ceiling of 1500 bytes).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self._kwargs["dlen"] = value = ETHERNET_802_3__PAYLOAD__MAX_LEN + 1
@@ -145,6 +153,8 @@ class TestEthernet8023HeaderConstants(TestCase):
         """
         Ensure the ETHERNET_802_3__HEADER__LEN constant equals 14 bytes (the
         wire length of an IEEE 802.3 MAC header: 6 + 6 + 2).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -157,6 +167,8 @@ class TestEthernet8023HeaderConstants(TestCase):
         """
         Ensure the ETHERNET_802_3__HEADER__STRUCT format string describes a
         big-endian layout of two 6-byte fields followed by a 16-bit word.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -169,6 +181,8 @@ class TestEthernet8023HeaderConstants(TestCase):
         """
         Ensure the ETHERNET_802_3__PACKET__MAX_LEN constant equals the IEEE
         802.3 MTU of 1514 bytes (header + maximum 1500-byte payload).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -181,6 +195,8 @@ class TestEthernet8023HeaderConstants(TestCase):
         """
         Ensure ETHERNET_802_3__PAYLOAD__MAX_LEN equals the packet maximum
         length minus the fixed 14-byte header.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -210,6 +226,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure a valid Ethernet 802.3 header instance can be constructed and
         its fields are exposed exactly as provided.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         kwargs = self._valid_kwargs()
@@ -223,6 +241,8 @@ class TestEthernet8023HeaderOperation(TestCase):
     def test__ethernet_802_3__header__len(self) -> None:
         """
         Ensure 'len()' on the header returns the canonical 14-byte size.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         header = Ethernet8023Header(**self._valid_kwargs())
@@ -237,6 +257,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure the Ethernet 802.3 header buffer representation matches the
         wire format [IEEE] exactly.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         header = Ethernet8023Header(**self._valid_kwargs())
@@ -256,6 +278,8 @@ class TestEthernet8023HeaderOperation(TestCase):
     def test__ethernet_802_3__header__from_buffer_roundtrip(self) -> None:
         """
         Ensure 'from_buffer(bytes(header))' rebuilds an equivalent header.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         original = Ethernet8023Header(**self._valid_kwargs())
@@ -272,6 +296,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' reads only the first ETHERNET_802_3__HEADER__LEN
         bytes and ignores any trailing data.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         original = Ethernet8023Header(**self._valid_kwargs())
@@ -289,6 +315,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' accepts the maximum allowed 'dlen' value of
         1500 and exposes it verbatim on the reconstructed header.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         frame = (
@@ -311,6 +339,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure two Ethernet 802.3 headers with identical field values compare
         equal.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         kwargs = self._valid_kwargs()
@@ -324,6 +354,8 @@ class TestEthernet8023HeaderOperation(TestCase):
     def test__ethernet_802_3__header__inequality_on_dlen(self) -> None:
         """
         Ensure headers differing only in 'dlen' compare unequal.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         base = self._valid_kwargs()
@@ -338,6 +370,8 @@ class TestEthernet8023HeaderOperation(TestCase):
     def test__ethernet_802_3__header__is_hashable(self) -> None:
         """
         Ensure Ethernet 802.3 headers can be used as keys in a set/dict.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         header = Ethernet8023Header(**self._valid_kwargs())
@@ -348,6 +382,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure Ethernet 802.3 header fields cannot be mutated after
         construction.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         header = Ethernet8023Header(**self._valid_kwargs())
@@ -359,6 +395,8 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
         Ensure the Ethernet 802.3 header constructor rejects positional
         arguments.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         with self.assertRaises(TypeError):
@@ -402,6 +440,8 @@ class TestEthernet8023HeaderProperties(TestCase):
     def test__ethernet_802_3__header__properties__dst_getter(self) -> None:
         """
         Ensure the 'dst' property returns the underlying header's 'dst' field.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -413,6 +453,8 @@ class TestEthernet8023HeaderProperties(TestCase):
     def test__ethernet_802_3__header__properties__src_getter(self) -> None:
         """
         Ensure the 'src' property returns the underlying header's 'src' field.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -425,6 +467,8 @@ class TestEthernet8023HeaderProperties(TestCase):
         """
         Ensure the 'dlen' property returns the underlying header's 'dlen'
         field.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         self.assertEqual(
@@ -438,6 +482,8 @@ class TestEthernet8023HeaderProperties(TestCase):
         Ensure the 'dst' setter mutates the frozen header via the documented
         'object.__setattr__' bypass (used by TX packet handlers when filling
         in the destination MAC after ARP resolution).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         new_dst = MacAddress("aa:bb:cc:dd:ee:ff")
@@ -459,6 +505,8 @@ class TestEthernet8023HeaderProperties(TestCase):
         Ensure the 'src' setter mutates the frozen header via the documented
         'object.__setattr__' bypass (used by TX packet handlers when filling
         in the source MAC from the selected egress interface).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC header — dst, src, length).
         """
 
         new_src = MacAddress("de:ad:be:ef:00:01")

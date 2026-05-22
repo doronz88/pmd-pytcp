@@ -210,6 +210,8 @@ class TestEthernet8023ParserIntegrityChecks(TestCase):
         Ensure the Ethernet 802.3 packet parser raises Ethernet8023IntegrityError
         with the expected '[INTEGRITY ERROR][Ethernet 802.3]'-prefixed message
         for every malformed frame.
+
+        Reference: IEEE 802.3 §3 (802.3 frame integrity — length field bound).
         """
 
         with self.assertRaises(Ethernet8023IntegrityError) as error:
@@ -233,6 +235,8 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         'dlen' field is zero passes the integrity validator and is parsed
         into a header with an empty payload — proving the integrity gate
         accepts the minimal valid frame.
+
+        Reference: IEEE 802.3 §3 (802.3 frame integrity — length field bound).
         """
 
         frame = (
@@ -262,6 +266,8 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         """
         Ensure a frame with dlen == ETHERNET_802_3__PAYLOAD__MAX_LEN (1500)
         and exactly 1500 payload bytes passes integrity validation.
+
+        Reference: IEEE 802.3 §3 (802.3 frame integrity — length field bound).
         """
 
         payload = b"Z" * ETHERNET_802_3__PAYLOAD__MAX_LEN
@@ -293,6 +299,8 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         """
         Ensure the minimum-length error message reports the exact length of
         the provided buffer (not a truncated or cached value).
+
+        Reference: IEEE 802.3 §3 (802.3 frame integrity — length field bound).
         """
 
         frame = b"\x00" * 7
@@ -311,6 +319,8 @@ class TestEthernet8023ParserIntegrityChecksBoundary(TestCase):
         Ensure the 'inconsistent payload length' check fires before the
         'payload exceeds maximum' check when a frame has an oversized declared
         'dlen' that does not match the actual payload bytes.
+
+        Reference: IEEE 802.3 §3 (802.3 frame integrity — length field bound).
         """
 
         frame = (

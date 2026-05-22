@@ -189,6 +189,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler '__len__()' method returns
         a correct value (header + payload bytes).
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -201,6 +203,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler '__str__()' method returns
         the canonical log line.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -213,6 +217,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler '__repr__()' method returns
         a string that can rebuild the header and embeds the payload repr.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -225,6 +231,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler '__bytes__()' method emits
         the expected on-wire frame.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -237,6 +245,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler 'dst' property returns a
         correct value.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -249,6 +259,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler 'src' property returns a
         correct value.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -261,6 +273,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler 'dlen' property reflects
         the payload byte length derived at construction time.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -273,6 +287,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler 'header' property exposes
         the fully populated Ethernet8023Header.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -285,6 +301,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         """
         Ensure the Ethernet 802.3 packet assembler 'payload' property returns
         the wrapped upper-layer assembler.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertEqual(
@@ -298,6 +316,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         Ensure the Ethernet 802.3 packet assembler 'assemble()' method
         appends the header + payload buffers that concatenate to the
         expected wire image.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         buffers: list[Buffer] = []
@@ -315,6 +335,8 @@ class TestEthernet8023AssemblerOperation(TestCase):
         Ensure the Ethernet 802.3 assembler reuses the payload's Tracker so
         that upstream TX log lines remain correlated with the payload
         assembler.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         self.assertIs(
@@ -333,6 +355,8 @@ class TestEthernet8023AssemblerDefaults(TestCase):
         """
         Ensure the assembler default constructor yields a header-only frame
         with zeroed MAC addresses, a zero 'dlen' and an empty Raw payload.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         assembler = Ethernet8023Assembler()
@@ -379,6 +403,8 @@ class TestEthernet8023AssemblerBoundaries(TestCase):
         exceeds ETHERNET_802_3__PAYLOAD__MAX_LEN — the Ethernet8023Header
         '__post_init__' assert catches the 'dlen' overflow at construction
         time, before any bytes are emitted.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         oversized = RawAssembler(raw__payload=b"Q" * (ETHERNET_802_3__PAYLOAD__MAX_LEN + 1))
@@ -396,6 +422,8 @@ class TestEthernet8023AssemblerBoundaries(TestCase):
         """
         Ensure bytes emitted by the assembler parse back into an equivalent
         header (field-for-field) through the Ethernet 802.3 parser.
+
+        Reference: IEEE 802.3 §3 (802.3 MAC frame wire format).
         """
 
         assembler = Ethernet8023Assembler(
