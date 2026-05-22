@@ -167,7 +167,7 @@ in this doc (or a commit message). No code changes expected.
 | G-net_proto-arp | 5 | 51 (3d347b74) | `RFC 826` per-file (wire format / header fields / Packet Reception); integrity_checks and sanity_checks were already clean. **completed 2026-05-21**. |
 | G-net_proto-dhcp4 | ~25 | ~400 | mostly `RFC 2131 §2 (DHCPv4 header) / §3.1 (message flow)` + `RFC 2132 §<N>` for per-option files |
 | G-net_proto-ethernet | ~5 | ~55 | apply `RFC 7042 (IANA EtherType) / RFC 894 (IPv4-over-Eth)` per-file |
-| G-net_proto-ethernet_802_3 | ~5 | ~40 | apply `IEEE 802.3 §3 (Ethernet 802.3 frame format).` |
+| G-net_proto-ethernet_802_3 | 5 | 55 (8be0373e) | `IEEE 802.3 §3` per-file; sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp4 | ~10 | ~80 | apply `RFC 792 (ICMPv4)` per-file; per-message files use the message-type RFC clause |
 | G-net_proto-icmp6 | ~30 | ~300 | apply `RFC 4443 / RFC 4861 / RFC 3810` per-message-family |
 | G-net_proto-ip4 | ~15 | ~180 | apply `RFC 791 §3.1 (IPv4 header wire format).` per-file |
