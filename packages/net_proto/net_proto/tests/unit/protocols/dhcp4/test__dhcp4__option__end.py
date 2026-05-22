@@ -50,6 +50,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__len(self) -> None:
         """
         Ensure '__len__()' returns the one-byte End marker length.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -61,6 +63,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__str(self) -> None:
         """
         Ensure '__str__()' returns the canonical 'end' log string.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -72,6 +76,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__repr(self) -> None:
         """
         Ensure '__repr__()' returns the dataclass form.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -86,6 +92,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
 
         DHCPv4 End option [RFC 2132]:
           Code : 0xff (255, End)
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -97,6 +105,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -108,6 +118,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__type(self) -> None:
         """
         Ensure the 'type' field is Dhcp4OptionType.END.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -119,6 +131,8 @@ class TestDhcp4OptionEndAssembler(TestCase):
     def test__dhcp4__option__end__len_field(self) -> None:
         """
         Ensure the 'len' field equals DHCP4__OPTION__END__LEN.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -137,6 +151,8 @@ class TestDhcp4OptionEndParser(TestCase):
         """
         Ensure 'from_buffer()' parses a buffer starting with 0xff and ignores
         any trailing bytes.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         option = Dhcp4OptionEnd.from_buffer(b"\xff" + b"ZH0PA")
@@ -150,6 +166,8 @@ class TestDhcp4OptionEndParser(TestCase):
     def test__dhcp4__option__end__from_buffer_exact(self) -> None:
         """
         Ensure 'from_buffer()' succeeds on a buffer containing only 0xff.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         option = Dhcp4OptionEnd.from_buffer(b"\xff")
@@ -163,6 +181,8 @@ class TestDhcp4OptionEndParser(TestCase):
     def test__dhcp4__option__end__minimum_length(self) -> None:
         """
         Ensure 'from_buffer()' asserts on an empty buffer.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -177,6 +197,8 @@ class TestDhcp4OptionEndParser(TestCase):
     def test__dhcp4__option__end__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 0xff.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -197,6 +219,8 @@ class TestDhcp4OptionEndBehavior(TestCase):
     def test__dhcp4__option__end__equality(self) -> None:
         """
         Ensure two End options compare equal.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         self.assertEqual(
@@ -208,6 +232,8 @@ class TestDhcp4OptionEndBehavior(TestCase):
     def test__dhcp4__option__end__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         option = Dhcp4OptionEnd()
@@ -221,6 +247,8 @@ class TestDhcp4OptionEndBehavior(TestCase):
     def test__dhcp4__option__end__rejects_type_override(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         with self.assertRaises(TypeError):
@@ -229,6 +257,8 @@ class TestDhcp4OptionEndBehavior(TestCase):
     def test__dhcp4__option__end__rejects_len_override(self) -> None:
         """
         Ensure 'len' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.2 (End option).
         """
 
         with self.assertRaises(TypeError):

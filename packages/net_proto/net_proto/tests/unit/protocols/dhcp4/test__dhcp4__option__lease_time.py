@@ -53,6 +53,8 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
     def test__dhcp4__option__lease_time__over_max(self) -> None:
         """
         Ensure the constructor raises when 'lease_time' exceeds UINT_32__MAX.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         value = UINT_32__MAX + 1
@@ -69,6 +71,8 @@ class TestDhcp4OptionLeaseTimeAsserts(TestCase):
     def test__dhcp4__option__lease_time__under_min(self) -> None:
         """
         Ensure the constructor raises when 'lease_time' is below zero.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         value = UINT_32__MIN - 1
@@ -174,6 +178,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__len(self) -> None:
         """
         Ensure '__len__()' returns the fixed 6 bytes (code + len + 4-byte value).
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -185,6 +191,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -196,6 +204,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -207,6 +217,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -218,6 +230,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -229,6 +243,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__field(self) -> None:
         """
         Ensure the 'lease_time' field reflects the constructor argument.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -240,6 +256,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__type(self) -> None:
         """
         Ensure the 'type' field is always LEASE_TIME.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -251,6 +269,8 @@ class TestDhcp4OptionLeaseTimeAssembler(TestCase):
     def test__dhcp4__option__lease_time__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -305,6 +325,8 @@ class TestDhcp4OptionLeaseTimeParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         option = Dhcp4OptionLeaseTime.from_buffer(*self._args)
@@ -325,6 +347,8 @@ class TestDhcp4OptionLeaseTimeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -339,6 +363,8 @@ class TestDhcp4OptionLeaseTimeParserErrors(TestCase):
     def test__dhcp4__option__lease_time__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 51.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -355,6 +381,8 @@ class TestDhcp4OptionLeaseTimeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         option length is not 4.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -370,6 +398,8 @@ class TestDhcp4OptionLeaseTimeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -391,6 +421,8 @@ class TestDhcp4OptionLeaseTimeBehavior(TestCase):
     def test__dhcp4__option__lease_time__equality(self) -> None:
         """
         Ensure two options with equal 'lease_time' compare equal.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertEqual(
@@ -402,6 +434,8 @@ class TestDhcp4OptionLeaseTimeBehavior(TestCase):
     def test__dhcp4__option__lease_time__inequality(self) -> None:
         """
         Ensure two options with different 'lease_time' compare unequal.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         self.assertNotEqual(
@@ -413,6 +447,8 @@ class TestDhcp4OptionLeaseTimeBehavior(TestCase):
     def test__dhcp4__option__lease_time__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         option = Dhcp4OptionLeaseTime(60)
@@ -423,6 +459,8 @@ class TestDhcp4OptionLeaseTimeBehavior(TestCase):
     def test__dhcp4__option__lease_time__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §9.2 (IP Address Lease Time option).
         """
 
         with self.assertRaises(TypeError):

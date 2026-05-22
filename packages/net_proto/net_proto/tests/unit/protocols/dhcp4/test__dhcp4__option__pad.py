@@ -50,6 +50,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__len(self) -> None:
         """
         Ensure '__len__()' returns the one-byte Pad marker length.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -61,6 +63,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__str(self) -> None:
         """
         Ensure '__str__()' returns the canonical 'pad' log string.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -72,6 +76,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__repr(self) -> None:
         """
         Ensure '__repr__()' returns the dataclass form.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -86,6 +92,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
 
         DHCPv4 Pad option [RFC 2132]:
           Code : 0x00 (0, Pad)
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -97,6 +105,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -108,6 +118,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__type(self) -> None:
         """
         Ensure the 'type' field is Dhcp4OptionType.PAD.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -119,6 +131,8 @@ class TestDhcp4OptionPadAssembler(TestCase):
     def test__dhcp4__option__pad__len_field(self) -> None:
         """
         Ensure the 'len' field equals DHCP4__OPTION__PAD__LEN.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -137,6 +151,8 @@ class TestDhcp4OptionPadParser(TestCase):
         """
         Ensure 'from_buffer()' parses a buffer starting with 0x00 and ignores
         any trailing bytes.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         option = Dhcp4OptionPad.from_buffer(b"\x00" + b"ZH0PA")
@@ -150,6 +166,8 @@ class TestDhcp4OptionPadParser(TestCase):
     def test__dhcp4__option__pad__from_buffer_exact(self) -> None:
         """
         Ensure 'from_buffer()' succeeds on a buffer containing only 0x00.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         option = Dhcp4OptionPad.from_buffer(b"\x00")
@@ -163,6 +181,8 @@ class TestDhcp4OptionPadParser(TestCase):
     def test__dhcp4__option__pad__minimum_length(self) -> None:
         """
         Ensure 'from_buffer()' asserts on an empty buffer.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -177,6 +197,8 @@ class TestDhcp4OptionPadParser(TestCase):
     def test__dhcp4__option__pad__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 0x00.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -197,6 +219,8 @@ class TestDhcp4OptionPadBehavior(TestCase):
     def test__dhcp4__option__pad__equality(self) -> None:
         """
         Ensure two Pad options compare equal.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         self.assertEqual(
@@ -208,6 +232,8 @@ class TestDhcp4OptionPadBehavior(TestCase):
     def test__dhcp4__option__pad__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         option = Dhcp4OptionPad()
@@ -221,6 +247,8 @@ class TestDhcp4OptionPadBehavior(TestCase):
     def test__dhcp4__option__pad__rejects_type_override(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         with self.assertRaises(TypeError):
@@ -229,6 +257,8 @@ class TestDhcp4OptionPadBehavior(TestCase):
     def test__dhcp4__option__pad__rejects_len_override(self) -> None:
         """
         Ensure 'len' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.1 (Pad option).
         """
 
         with self.assertRaises(TypeError):

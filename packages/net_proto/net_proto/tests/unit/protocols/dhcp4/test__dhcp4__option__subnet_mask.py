@@ -56,6 +56,8 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'subnet_mask' argument is not an Ip4Mask.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         value = "255.255.255.0"
@@ -73,6 +75,8 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         """
         Ensure the constructor rejects a bare int — Ip4Mask instances are
         required.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         value = 0xFFFFFF00
@@ -90,6 +94,8 @@ class TestDhcp4OptionSubnetMaskAsserts(TestCase):
         """
         Ensure the constructor rejects raw bytes — Ip4Mask instances are
         required.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         value = b"\xff\xff\xff\x00"
@@ -223,6 +229,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__len(self) -> None:
         """
         Ensure '__len__()' returns the fixed 6-byte option length.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -234,6 +242,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -245,6 +255,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -256,6 +268,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -267,6 +281,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -278,6 +294,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__field(self) -> None:
         """
         Ensure the 'subnet_mask' field reflects the constructor argument.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -289,6 +307,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__type(self) -> None:
         """
         Ensure the 'type' field is always SUBNET_MASK (1).
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -300,6 +320,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__len_field(self) -> None:
         """
         Ensure the 'len' field equals DHCP4__OPTION__SUBNET_MASK__LEN.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -311,6 +333,8 @@ class TestDhcp4OptionSubnetMaskAssembler(TestCase):
     def test__dhcp4__option__subnet_mask__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -372,6 +396,8 @@ class TestDhcp4OptionSubnetMaskParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         option = Dhcp4OptionSubnetMask.from_buffer(*self._args)
@@ -392,6 +418,8 @@ class TestDhcp4OptionSubnetMaskParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -406,6 +434,8 @@ class TestDhcp4OptionSubnetMaskParserErrors(TestCase):
     def test__dhcp4__option__subnet_mask__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 1.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -422,6 +452,8 @@ class TestDhcp4OptionSubnetMaskParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length is not exactly 4 bytes.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -437,6 +469,8 @@ class TestDhcp4OptionSubnetMaskParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -458,6 +492,8 @@ class TestDhcp4OptionSubnetMaskBehavior(TestCase):
     def test__dhcp4__option__subnet_mask__equality(self) -> None:
         """
         Ensure two options with equal 'subnet_mask' compare equal.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertEqual(
@@ -469,6 +505,8 @@ class TestDhcp4OptionSubnetMaskBehavior(TestCase):
     def test__dhcp4__option__subnet_mask__inequality(self) -> None:
         """
         Ensure two options with different 'subnet_mask' compare unequal.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         self.assertNotEqual(
@@ -480,6 +518,8 @@ class TestDhcp4OptionSubnetMaskBehavior(TestCase):
     def test__dhcp4__option__subnet_mask__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         option = Dhcp4OptionSubnetMask(Ip4Mask("255.255.255.0"))
@@ -490,6 +530,8 @@ class TestDhcp4OptionSubnetMaskBehavior(TestCase):
     def test__dhcp4__option__subnet_mask__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.3 (Subnet Mask option).
         """
 
         with self.assertRaises(TypeError):

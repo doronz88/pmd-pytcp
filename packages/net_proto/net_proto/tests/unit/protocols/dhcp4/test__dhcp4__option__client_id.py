@@ -52,6 +52,8 @@ class TestDhcp4OptionClientIdAsserts(TestCase):
         """
         Ensure the DHCPv4 Client Identifier option constructor raises an
         exception when the provided 'client_id' argument is not bytes.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         value = "not bytes"
@@ -68,6 +70,8 @@ class TestDhcp4OptionClientIdAsserts(TestCase):
     def test__dhcp4__option__client_id__accepts_bytearray(self) -> None:
         """
         Ensure the DHCPv4 Client Identifier option accepts bytearray input.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         option = Dhcp4OptionClientId(bytearray(b"\xaa\xbb\xcc"))
@@ -162,6 +166,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__len(self) -> None:
         """
         Ensure the option '__len__()' returns code + len + identifier bytes.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -173,6 +179,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__str(self) -> None:
         """
         Ensure the option '__str__()' method renders the canonical log line.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -184,6 +192,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__repr(self) -> None:
         """
         Ensure the option '__repr__()' method renders the dataclass form.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -195,6 +205,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__bytes(self) -> None:
         """
         Ensure 'bytes()' on the option yields the expected wire image.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -207,6 +219,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         """
         Ensure the option supports the buffer protocol and reproduces the
         same bytes as 'bytes(option)'.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -218,6 +232,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__field(self) -> None:
         """
         Ensure the 'client_id' field reflects the constructor argument.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -229,6 +245,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__type(self) -> None:
         """
         Ensure the option 'type' field is always CLIENT_ID.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -240,6 +258,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__len_field(self) -> None:
         """
         Ensure the option 'len' field matches __len__().
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -251,6 +271,8 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
     def test__dhcp4__option__client_id__roundtrip(self) -> None:
         """
         Ensure bytes(option) can be parsed back into an equal option.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -298,6 +320,8 @@ class TestDhcp4OptionClientIdParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         option = Dhcp4OptionClientId.from_buffer(*self._args)
@@ -318,6 +342,8 @@ class TestDhcp4OptionClientIdParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -332,6 +358,8 @@ class TestDhcp4OptionClientIdParserErrors(TestCase):
     def test__dhcp4__option__client_id__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 61.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -348,6 +376,8 @@ class TestDhcp4OptionClientIdParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -473,6 +503,8 @@ class TestDhcp4OptionClientIdBehavior(TestCase):
     def test__dhcp4__option__client_id__equality(self) -> None:
         """
         Ensure two options with equal 'client_id' compare equal.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertEqual(
@@ -484,6 +516,8 @@ class TestDhcp4OptionClientIdBehavior(TestCase):
     def test__dhcp4__option__client_id__inequality(self) -> None:
         """
         Ensure two options with different 'client_id' compare unequal.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         self.assertNotEqual(
@@ -495,6 +529,8 @@ class TestDhcp4OptionClientIdBehavior(TestCase):
     def test__dhcp4__option__client_id__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         option = Dhcp4OptionClientId(b"\x01\x02\x03")
@@ -505,6 +541,8 @@ class TestDhcp4OptionClientIdBehavior(TestCase):
     def test__dhcp4__option__client_id__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §9.14 (Client-identifier option).
         """
 
         with self.assertRaises(TypeError):

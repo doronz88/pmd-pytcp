@@ -53,6 +53,8 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'routers' argument is not a list.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         value = Ip4Address("192.0.2.1")
@@ -70,6 +72,8 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         """
         Ensure the constructor rejects a tuple of Ip4Address values — only a
         bare list is allowed.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         value = (Ip4Address("192.0.2.1"),)
@@ -87,6 +91,8 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'routers' list contains a non-Ip4Address element.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         value: list[Any] = [Ip4Address(), "not an Ip4Address"]
@@ -104,6 +110,8 @@ class TestDhcp4OptionRouterAsserts(TestCase):
         """
         Ensure the constructor rejects a list of dotted-decimal strings —
         Ip4Address instances are required.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         value: list[Any] = ["192.0.2.1"]
@@ -236,6 +244,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__len(self) -> None:
         """
         Ensure '__len__()' returns 2 + 4 * number-of-routers.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -247,6 +257,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -258,6 +270,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -269,6 +283,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -280,6 +296,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -291,6 +309,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__field(self) -> None:
         """
         Ensure the 'routers' field reflects the constructor argument.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -302,6 +322,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__type(self) -> None:
         """
         Ensure the 'type' field is always ROUTER (3).
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -313,6 +335,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__len_field(self) -> None:
         """
         Ensure the 'len' field matches __len__().
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -324,6 +348,8 @@ class TestDhcp4OptionRouterAssembler(TestCase):
     def test__dhcp4__option__router__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -377,6 +403,8 @@ class TestDhcp4OptionRouterParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         option = Dhcp4OptionRouter.from_buffer(*self._args)
@@ -397,6 +425,8 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -411,6 +441,8 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
     def test__dhcp4__option__router__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 3.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -429,6 +461,8 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
         length (less header) is not a multiple of 4. The fixture uses
         length=5 — above the §3.5 minimum of 4 (so the earlier
         minimum-length check passes), but not a multiple of 4.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -445,6 +479,8 @@ class TestDhcp4OptionRouterParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -570,6 +606,8 @@ class TestDhcp4OptionRouterBehavior(TestCase):
     def test__dhcp4__option__router__equality(self) -> None:
         """
         Ensure two options with equal 'routers' compare equal.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertEqual(
@@ -581,6 +619,8 @@ class TestDhcp4OptionRouterBehavior(TestCase):
     def test__dhcp4__option__router__inequality(self) -> None:
         """
         Ensure two options with different 'routers' compare unequal.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertNotEqual(
@@ -592,6 +632,8 @@ class TestDhcp4OptionRouterBehavior(TestCase):
     def test__dhcp4__option__router__inequality_by_count(self) -> None:
         """
         Ensure two options with different router counts compare unequal.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         self.assertNotEqual(
@@ -603,6 +645,8 @@ class TestDhcp4OptionRouterBehavior(TestCase):
     def test__dhcp4__option__router__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         option = Dhcp4OptionRouter([Ip4Address("192.0.2.1")])
@@ -613,6 +657,8 @@ class TestDhcp4OptionRouterBehavior(TestCase):
     def test__dhcp4__option__router__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.5 (Router option).
         """
 
         with self.assertRaises(TypeError):

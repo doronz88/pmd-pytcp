@@ -185,6 +185,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__len(self) -> None:
         """
         Ensure '__len__()' returns the sum of all option lengths.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -196,6 +198,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__str(self) -> None:
         """
         Ensure '__str__()' returns comma-separated option strings.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         if "__str__" in self._results:
@@ -208,6 +212,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__repr(self) -> None:
         """
         Ensure '__repr__()' renders the container and its options.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         if "__repr__" in self._results:
@@ -220,6 +226,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the concatenated wire image.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -231,6 +239,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__memoryview(self) -> None:
         """
         Ensure the container supports the buffer protocol.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -242,6 +252,8 @@ class TestDhcp4OptionsAssembler(TestCase):
     def test__dhcp4__options__bool(self) -> None:
         """
         Ensure '__bool__()' reflects whether any options are present.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -416,6 +428,8 @@ class TestDhcp4OptionsParser(TestCase):
     def test__dhcp4__options__from_buffer(self) -> None:
         """
         Ensure 'from_buffer()' builds the expected Dhcp4Options container.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         dhcp4_options = Dhcp4Options.from_buffer(*self._args)
@@ -446,6 +460,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
     def test__dhcp4__options__validate_integrity__all_pads_and_end(self) -> None:
         """
         Ensure Pad bytes are consumed 1-at-a-time and End terminates scanning.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         # Pad, Pad, Pad, End — all known, all valid.
@@ -456,6 +472,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
     def test__dhcp4__options__validate_integrity__well_formed_mix(self) -> None:
         """
         Ensure a well-formed mix of TLV options and an End marker passes.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         frame = self._frame(
@@ -475,6 +493,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         """
         Ensure a frame with no End marker passes integrity as long as the
         offset walk doesn't exceed hlen. The loop simply falls off the end.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         frame = self._frame(b"\x01\x04\xff\xff\xff\x00")
@@ -488,6 +508,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         Ensure an option whose length byte is 0 passes integrity. The
         DHCPv4 wire format (RFC 2132) uses the length byte as data length
         only; 0 bytes of data is legal. End terminates the scan.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         # Server Identifier with Len=0 (no data), then End.
@@ -501,6 +523,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         """
         Ensure an option with length byte = 1 passes integrity. The length
         byte encodes data length only, so 1 byte of data is legal.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         # Server Identifier with Len=1, 1 data byte, then End.
@@ -514,6 +538,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         """
         Ensure a frame whose final option is truncated at its type byte
         (length byte missing) raises Dhcp4IntegrityError.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         # A single type byte at the end of the frame — length byte is absent.
@@ -538,6 +564,8 @@ class TestDhcp4OptionsValidateIntegrity(TestCase):
         Ensure an option whose data length extends past hlen raises
         Dhcp4IntegrityError. Total option size on the wire is
         DHCP4__OPTION__LEN + data_len (2-byte header + data).
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         # Client Identifier claims Len=10 but only 2 data bytes are present.
@@ -566,6 +594,8 @@ class TestDhcp4OptionsProperties(TestCase):
         """
         Ensure every accessor returns None when the corresponding option is
         absent.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         options = Dhcp4Options(Dhcp4OptionEnd())
@@ -582,6 +612,8 @@ class TestDhcp4OptionsProperties(TestCase):
         """
         Ensure every accessor returns the value carried by the corresponding
         option when present.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         options = Dhcp4Options(
@@ -640,6 +672,8 @@ class TestDhcp4OptionsProperties(TestCase):
         """
         Ensure each accessor returns the first matching option when duplicates
         are present (the loop returns on first match).
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         options = Dhcp4Options(
@@ -684,6 +718,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__equality(self) -> None:
         """
         Ensure two Dhcp4Options built from equal inputs compare equal.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -699,6 +735,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__inequality_different_options(self) -> None:
         """
         Ensure Dhcp4Options with different option lists compare unequal.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertNotEqual(
@@ -715,6 +753,8 @@ class TestDhcp4OptionsBehavior(TestCase):
         """
         Ensure Dhcp4Options with options in different order compare unequal —
         the underlying list is order-sensitive.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertNotEqual(
@@ -730,6 +770,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__inequality_other_type(self) -> None:
         """
         Ensure Dhcp4Options compare unequal to a non-Dhcp4Options value.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertNotEqual(
@@ -741,6 +783,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__contains(self) -> None:
         """
         Ensure '__contains__' reports membership of a specific option value.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertIn(
@@ -757,6 +801,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__iter(self) -> None:
         """
         Ensure iteration yields the options in insertion order.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -768,6 +814,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__getitem(self) -> None:
         """
         Ensure '__getitem__' returns the option at the given index.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -784,6 +832,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__index(self) -> None:
         """
         Ensure 'index()' returns the position of a given option.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertEqual(
@@ -795,6 +845,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__bool_empty(self) -> None:
         """
         Ensure empty Dhcp4Options is falsy.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertFalse(
@@ -805,6 +857,8 @@ class TestDhcp4OptionsBehavior(TestCase):
     def test__dhcp4__options__bool_non_empty(self) -> None:
         """
         Ensure a non-empty Dhcp4Options is truthy.
+
+        Reference: RFC 2132 §2 (DHCP options encoding).
         """
 
         self.assertTrue(

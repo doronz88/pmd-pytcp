@@ -52,6 +52,8 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'param_req_list' argument is not a list.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         value = "not a list"
@@ -69,6 +71,8 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         """
         Ensure the constructor rejects a tuple of Dhcp4OptionType values —
         only a bare list is allowed.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         value = (Dhcp4OptionType.HOST_NAME,)
@@ -86,6 +90,8 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'param_req_list' contains an element that is not a Dhcp4OptionType.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         value: list[Any] = [
@@ -107,6 +113,8 @@ class TestDhcp4OptionParamReqListAsserts(TestCase):
         """
         Ensure the constructor rejects a list of raw ints (values must be
         wrapped in Dhcp4OptionType).
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         value: list[Any] = [12, 53]
@@ -229,6 +237,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__len(self) -> None:
         """
         Ensure '__len__()' returns code + len + per-element bytes.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -240,6 +250,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -251,6 +263,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -262,6 +276,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -273,6 +289,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -284,6 +302,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__field(self) -> None:
         """
         Ensure the 'param_req_list' field reflects the constructor argument.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -295,6 +315,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__type(self) -> None:
         """
         Ensure the 'type' field is always PARAM_REQ_LIST (55).
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -306,6 +328,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__len_field(self) -> None:
         """
         Ensure the 'len' field matches __len__().
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -317,6 +341,8 @@ class TestDhcp4OptionParamReqListAssembler(TestCase):
     def test__dhcp4__option__param_req_list__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -372,6 +398,8 @@ class TestDhcp4OptionParamReqListParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         option = Dhcp4OptionParamReqList.from_buffer(*self._args)
@@ -392,6 +420,8 @@ class TestDhcp4OptionParamReqListParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -406,6 +436,8 @@ class TestDhcp4OptionParamReqListParserErrors(TestCase):
     def test__dhcp4__option__param_req_list__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 55.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -422,6 +454,8 @@ class TestDhcp4OptionParamReqListParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -536,6 +570,8 @@ class TestDhcp4OptionParamReqListBehavior(TestCase):
     def test__dhcp4__option__param_req_list__equality(self) -> None:
         """
         Ensure two options with equal 'param_req_list' compare equal.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertEqual(
@@ -547,6 +583,8 @@ class TestDhcp4OptionParamReqListBehavior(TestCase):
     def test__dhcp4__option__param_req_list__inequality(self) -> None:
         """
         Ensure two options with different 'param_req_list' compare unequal.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         self.assertNotEqual(
@@ -558,6 +596,8 @@ class TestDhcp4OptionParamReqListBehavior(TestCase):
     def test__dhcp4__option__param_req_list__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         option = Dhcp4OptionParamReqList([Dhcp4OptionType.HOST_NAME])
@@ -568,6 +608,8 @@ class TestDhcp4OptionParamReqListBehavior(TestCase):
     def test__dhcp4__option__param_req_list__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §9.8 (Parameter Request List option).
         """
 
         with self.assertRaises(TypeError):

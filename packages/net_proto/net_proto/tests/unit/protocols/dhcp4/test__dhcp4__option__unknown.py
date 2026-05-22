@@ -54,6 +54,8 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided 'type'
         argument is not a Dhcp4OptionType.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         value = "not a Dhcp4OptionType"
@@ -71,6 +73,8 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects a raw int — a Dhcp4OptionType is
         required.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         value = 254
@@ -89,6 +93,8 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         Ensure the constructor raises an exception when the provided 'type'
         argument is a known Dhcp4OptionType — the unknown option must cover
         only unassigned codes.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         for code in Dhcp4OptionType.get_known_values():
@@ -107,6 +113,8 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
         """
         Ensure the option's computed 'len' field is an 8-bit unsigned
         integer — the data payload cannot exceed 255 bytes.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -238,6 +246,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__len(self) -> None:
         """
         Ensure '__len__()' returns code + len + payload bytes.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -249,6 +259,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical 'unk-{type}-{len}' form.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -260,6 +272,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -271,6 +285,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -282,6 +298,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -293,6 +311,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__type(self) -> None:
         """
         Ensure the 'type' field reflects the constructor argument.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -304,6 +324,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__len_field(self) -> None:
         """
         Ensure the 'len' field matches __len__().
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -315,6 +337,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__data(self) -> None:
         """
         Ensure the 'data' field reflects the constructor argument.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -326,6 +350,8 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
     def test__dhcp4__option__unknown__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -382,6 +408,8 @@ class TestDhcp4OptionUnknownParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         option = Dhcp4OptionUnknown.from_buffer(*self._args)
@@ -402,6 +430,8 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -417,6 +447,8 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the option type byte is a known
         Dhcp4OptionType (End, 255).
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -432,6 +464,8 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the option type byte is a known
         Dhcp4OptionType (Pad, 0).
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -447,6 +481,8 @@ class TestDhcp4OptionUnknownParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -468,6 +504,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
     def test__dhcp4__option__unknown__equality(self) -> None:
         """
         Ensure two options with equal fields compare equal.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertEqual(
@@ -479,6 +517,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
     def test__dhcp4__option__unknown__inequality_type(self) -> None:
         """
         Ensure two options with different 'type' compare unequal.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertNotEqual(
@@ -490,6 +530,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
     def test__dhcp4__option__unknown__inequality_data(self) -> None:
         """
         Ensure two options with different 'data' compare unequal.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         self.assertNotEqual(
@@ -501,6 +543,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
     def test__dhcp4__option__unknown__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         option = Dhcp4OptionUnknown(type=Dhcp4OptionType.from_int(254), data=b"data")
@@ -512,6 +556,8 @@ class TestDhcp4OptionUnknownBehavior(TestCase):
         """
         Ensure 'len' cannot be supplied via the constructor (init=False); it
         is always derived from the payload length.
+
+        Reference: RFC 2132 §2 (DHCP option TLV format).
         """
 
         with self.assertRaises(TypeError):

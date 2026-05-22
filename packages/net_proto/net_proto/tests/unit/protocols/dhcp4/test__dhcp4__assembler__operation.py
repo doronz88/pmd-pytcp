@@ -243,6 +243,8 @@ class TestDhcp4AssemblerOperation(TestCase):
         """
         Ensure 'len()' on the assembler equals the 240-byte header plus
         the total options length.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         self.assertEqual(
@@ -254,6 +256,8 @@ class TestDhcp4AssemblerOperation(TestCase):
     def test__dhcp4__assembler__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical DHCPv4 log line.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         self.assertEqual(
@@ -266,6 +270,8 @@ class TestDhcp4AssemblerOperation(TestCase):
         """
         Ensure '__repr__()' wraps the Dhcp4Header and Dhcp4Options repr and
         mentions the class name plus the 'header=' and 'options=' anchors.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         rendered = repr(self._dhcp4__assembler)
@@ -287,6 +293,8 @@ class TestDhcp4AssemblerOperation(TestCase):
         """
         Ensure the first 240 bytes of the assembler output match the expected
         BOOTP+magic-cookie header layout built from the same fields.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         k = self._kwargs
@@ -314,6 +322,8 @@ class TestDhcp4AssemblerOperation(TestCase):
     def test__dhcp4__assembler__options_bytes_tail(self) -> None:
         """
         Ensure the options portion appears verbatim after the 240-byte header.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         self.assertEqual(
@@ -325,6 +335,8 @@ class TestDhcp4AssemblerOperation(TestCase):
     def test__dhcp4__assembler__memoryview_matches_bytes(self) -> None:
         """
         Ensure the buffer protocol yields the same image as 'bytes(assembler)'.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         self.assertEqual(
@@ -337,6 +349,8 @@ class TestDhcp4AssemblerOperation(TestCase):
         """
         Ensure a parser applied to the assembler output reproduces the same
         header and options.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         frame = bytes(self._dhcp4__assembler)
@@ -376,6 +390,8 @@ class TestDhcp4AssemblerAssembleRaises(TestCase):
         """
         Ensure the 'assemble()' method raises NotImplementedError referencing
         the Socket API as the correct entry point.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         assembler = Dhcp4Assembler(
@@ -404,6 +420,8 @@ class TestDhcp4AssemblerDefaults(TestCase):
         """
         Ensure optional constructor parameters default to the documented zeroed
         values (0.0.0.0 addresses, empty sname/file, empty options).
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         assembler = Dhcp4Assembler(
@@ -427,6 +445,8 @@ class TestDhcp4AssemblerDefaults(TestCase):
         """
         Ensure explicit None values for 'sname' and 'file' coalesce to empty
         strings before reaching the Dhcp4Header.
+
+        Reference: RFC 2131 §2 (DHCP message + options assembly).
         """
 
         assembler = Dhcp4Assembler(

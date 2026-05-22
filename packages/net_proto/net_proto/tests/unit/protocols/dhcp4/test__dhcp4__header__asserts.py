@@ -85,6 +85,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'operation' argument is not a Dhcp4Operation.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["operation"] = value = "not a Dhcp4Operation"
@@ -102,6 +104,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'hops' argument is lower than the minimum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["hops"] = value = UINT_8__MIN - 1
@@ -119,6 +123,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'hops' argument is higher than the maximum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["hops"] = value = UINT_8__MAX + 1
@@ -136,6 +142,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'xid' argument is lower than the minimum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["xid"] = value = UINT_32__MIN - 1
@@ -153,6 +161,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'xid' argument is higher than the maximum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["xid"] = value = UINT_32__MAX + 1
@@ -170,6 +180,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'secs' argument is lower than the minimum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["secs"] = value = UINT_16__MIN - 1
@@ -187,6 +199,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'secs' argument is higher than the maximum supported value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["secs"] = value = UINT_16__MAX + 1
@@ -204,6 +218,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'flag_b' argument is not a boolean.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["flag_b"] = value = "not a boolean"
@@ -221,6 +237,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'ciaddr' argument is not an Ip4Address.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["ciaddr"] = value = "not an Ip4Address"
@@ -238,6 +256,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'yiaddr' argument is not an Ip4Address.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["yiaddr"] = value = "not an Ip4Address"
@@ -255,6 +275,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'siaddr' argument is not an Ip4Address.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["siaddr"] = value = "not an Ip4Address"
@@ -272,6 +294,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'giaddr' argument is not an Ip4Address.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["giaddr"] = value = "not an Ip4Address"
@@ -289,6 +313,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'chaddr' argument is not a MacAddress.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["chaddr"] = value = "not a MacAddress"
@@ -306,6 +332,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'sname' argument is not a string.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["sname"] = value = b"not a string"
@@ -323,6 +351,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         length of provided 'sname' argument is over maximum allowable value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["sname"] = value = "X" * (DHCP4__HEADER__SNAME__MAX_LEN + 1)
@@ -341,6 +371,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor accepts 'sname' of exactly the
         maximum allowable length.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["sname"] = "X" * DHCP4__HEADER__SNAME__MAX_LEN
@@ -357,6 +389,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         provided 'file' argument is not a string.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["file"] = value = b"not a string"
@@ -374,6 +408,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor raises an exception when the
         length of provided 'file' argument is over maximum allowable value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["file"] = value = "X" * (DHCP4__HEADER__FILE__MAX_LEN + 1)
@@ -392,6 +428,8 @@ class TestDhcp4HeaderAsserts(TestCase):
         """
         Ensure the DHCPv4 header constructor accepts 'file' of exactly the
         maximum allowable length.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self._kwargs["file"] = "X" * DHCP4__HEADER__FILE__MAX_LEN
@@ -433,6 +471,8 @@ class TestDhcp4HeaderDefaults(TestCase):
     def test__dhcp4__header__hrtype_default(self) -> None:
         """
         Ensure the 'hrtype' field defaults to Dhcp4HardwareType.ETHERNET.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self.assertEqual(
@@ -444,6 +484,8 @@ class TestDhcp4HeaderDefaults(TestCase):
     def test__dhcp4__header__hrlen_default(self) -> None:
         """
         Ensure the 'hrlen' field defaults to the Ethernet MAC length (6).
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self.assertEqual(
@@ -455,6 +497,8 @@ class TestDhcp4HeaderDefaults(TestCase):
     def test__dhcp4__header__magic_cookie_default(self) -> None:
         """
         Ensure the 'magic_cookie' field defaults to the RFC 2131 value.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         self.assertEqual(
@@ -466,6 +510,8 @@ class TestDhcp4HeaderDefaults(TestCase):
     def test__dhcp4__header__hrtype_cannot_be_overridden(self) -> None:
         """
         Ensure 'hrtype' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         with self.assertRaises(TypeError):
@@ -515,6 +561,8 @@ class TestDhcp4HeaderOperation(TestCase):
         """
         Ensure a valid DHCPv4 header instance can be constructed and its fields
         are exposed exactly as provided.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         kwargs = self._valid_kwargs()
@@ -537,6 +585,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__len(self) -> None:
         """
         Ensure 'len()' on the header returns the canonical 240-byte size.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         header = Dhcp4Header(**self._valid_kwargs())
@@ -567,6 +617,8 @@ class TestDhcp4HeaderOperation(TestCase):
           SNAME         : "" (padded to 64 bytes)
           FILE          : "" (padded to 128 bytes)
           Magic Cookie  : 0x63825363
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         header = Dhcp4Header(
@@ -607,6 +659,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__flag_b_true_sets_broadcast_bit(self) -> None:
         """
         Ensure 'flag_b=True' sets the high bit of the 16-bit flags word.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         header = Dhcp4Header(
@@ -635,6 +689,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__from_buffer_roundtrip(self) -> None:
         """
         Ensure 'from_buffer(bytes(header))' rebuilds an equivalent header.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
@@ -651,6 +707,8 @@ class TestDhcp4HeaderOperation(TestCase):
         """
         Ensure 'from_buffer()' reads only the first DHCP4__HEADER__LEN bytes and
         ignores any trailing data.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
@@ -730,6 +788,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__equality(self) -> None:
         """
         Ensure two DHCPv4 headers with identical field values compare equal.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         kwargs = self._valid_kwargs()
@@ -743,6 +803,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__inequality_on_operation(self) -> None:
         """
         Ensure headers differing only in 'operation' compare unequal.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         base = self._valid_kwargs()
@@ -757,6 +819,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__is_hashable(self) -> None:
         """
         Ensure DHCPv4 headers can be used as keys in a set/dict.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         header = Dhcp4Header(**self._valid_kwargs())
@@ -766,6 +830,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__is_frozen(self) -> None:
         """
         Ensure DHCPv4 header fields cannot be mutated after construction.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         header = Dhcp4Header(**self._valid_kwargs())
@@ -776,6 +842,8 @@ class TestDhcp4HeaderOperation(TestCase):
     def test__dhcp4__header__rejects_positional_args(self) -> None:
         """
         Ensure the DHCPv4 header constructor rejects positional arguments.
+
+        Reference: RFC 2131 §2 (BOOTP/DHCP message header fields).
         """
 
         with self.assertRaises(TypeError):

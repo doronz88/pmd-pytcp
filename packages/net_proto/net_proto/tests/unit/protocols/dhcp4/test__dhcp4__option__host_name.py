@@ -52,6 +52,8 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
         """
         Ensure the DHCPv4 Host Name option constructor raises an exception
         when the provided 'host_name' argument is not a str.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         value = 123
@@ -68,6 +70,8 @@ class TestDhcp4OptionHostNameAsserts(TestCase):
     def test__dhcp4__option__host_name__rejects_bytes(self) -> None:
         """
         Ensure the DHCPv4 Host Name option constructor rejects bytes input.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         value = b"host"
@@ -163,6 +167,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__len(self) -> None:
         """
         Ensure '__len__()' returns code + len + hostname bytes.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -174,6 +180,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -185,6 +193,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -196,6 +206,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -207,6 +219,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -218,6 +232,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__field(self) -> None:
         """
         Ensure the 'host_name' field reflects the constructor argument.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -229,6 +245,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__type(self) -> None:
         """
         Ensure the 'type' field is always HOST_NAME.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -240,6 +258,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__len_field(self) -> None:
         """
         Ensure the 'len' field matches __len__().
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -251,6 +271,8 @@ class TestDhcp4OptionHostNameAssembler(TestCase):
     def test__dhcp4__option__host_name__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -298,6 +320,8 @@ class TestDhcp4OptionHostNameParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         option = Dhcp4OptionHostName.from_buffer(*self._args)
@@ -318,6 +342,8 @@ class TestDhcp4OptionHostNameParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -332,6 +358,8 @@ class TestDhcp4OptionHostNameParserErrors(TestCase):
     def test__dhcp4__option__host_name__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 12.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -348,6 +376,8 @@ class TestDhcp4OptionHostNameParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -449,6 +479,8 @@ class TestDhcp4OptionHostNameBehavior(TestCase):
     def test__dhcp4__option__host_name__equality(self) -> None:
         """
         Ensure two options with equal 'host_name' compare equal.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertEqual(
@@ -460,6 +492,8 @@ class TestDhcp4OptionHostNameBehavior(TestCase):
     def test__dhcp4__option__host_name__inequality(self) -> None:
         """
         Ensure two options with different 'host_name' compare unequal.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         self.assertNotEqual(
@@ -471,6 +505,8 @@ class TestDhcp4OptionHostNameBehavior(TestCase):
     def test__dhcp4__option__host_name__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         option = Dhcp4OptionHostName("host")
@@ -481,6 +517,8 @@ class TestDhcp4OptionHostNameBehavior(TestCase):
     def test__dhcp4__option__host_name__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §3.14 (Host Name option).
         """
 
         with self.assertRaises(TypeError):

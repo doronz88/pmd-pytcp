@@ -239,6 +239,8 @@ class TestDhcp4ParserOperation(TestCase):
         """
         Ensure the parser's 'header' matches the one re-parsed from the raw
         header bytes.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -250,6 +252,8 @@ class TestDhcp4ParserOperation(TestCase):
     def test__dhcp4__parser__options(self) -> None:
         """
         Ensure the parser's 'options' match the expected Dhcp4Options object.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -261,6 +265,8 @@ class TestDhcp4ParserOperation(TestCase):
     def test__dhcp4__parser__len(self) -> None:
         """
         Ensure '__len__()' returns header length + options length.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -273,6 +279,8 @@ class TestDhcp4ParserOperation(TestCase):
         """
         Ensure the buffer protocol yields header bytes concatenated with the
         options' wire image.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -320,6 +328,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__operation(self) -> None:
         """
         Ensure 'operation' reflects the header operation field.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -331,6 +341,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__hrtype(self) -> None:
         """
         Ensure 'hrtype' reports the Ethernet hardware type constant.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -342,6 +354,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__hrlen(self) -> None:
         """
         Ensure 'hrlen' reports the Ethernet hardware-address length (6).
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -353,6 +367,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__hops(self) -> None:
         """
         Ensure 'hops' matches the byte at the 'hops' offset.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -364,6 +380,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__xid(self) -> None:
         """
         Ensure 'xid' is the transaction identifier decoded as big-endian u32.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -375,6 +393,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__secs(self) -> None:
         """
         Ensure 'secs' is the 16-bit seconds-elapsed field.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -386,6 +406,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__flag_b(self) -> None:
         """
         Ensure 'flag_b' decodes the top bit of the 'flags' word.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertTrue(
@@ -396,6 +418,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__ciaddr(self) -> None:
         """
         Ensure 'ciaddr' decodes the client IP address as Ip4Address.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -407,6 +431,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__yiaddr(self) -> None:
         """
         Ensure 'yiaddr' decodes the "your" IP address as Ip4Address.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -418,6 +444,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__siaddr(self) -> None:
         """
         Ensure 'siaddr' decodes the server IP address as Ip4Address.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -429,6 +457,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__giaddr(self) -> None:
         """
         Ensure 'giaddr' decodes the gateway/relay IP address as Ip4Address.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -441,6 +471,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
         """
         Ensure 'chaddr' decodes the first 6 bytes of the hardware-address
         field as a MacAddress.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -452,6 +484,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__sname(self) -> None:
         """
         Ensure 'sname' strips trailing NULs from the server-hostname field.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -463,6 +497,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__file(self) -> None:
         """
         Ensure 'file' strips trailing NULs from the bootfile-name field.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -474,6 +510,8 @@ class TestDhcp4ParserHeaderProperties(TestCase):
     def test__dhcp4__parser__magic_cookie(self) -> None:
         """
         Ensure 'magic_cookie' returns the DHCP magic cookie constant.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -519,6 +557,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__host_name(self) -> None:
         """
         Ensure 'host_name' returns the Host Name option value.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -530,6 +570,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__message_type(self) -> None:
         """
         Ensure 'message_type' returns the Message Type option value.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -542,6 +584,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
         """
         Ensure 'param_req_list' returns the Parameter Request List values as
         Dhcp4OptionType members.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -553,6 +597,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__req_ip_addr(self) -> None:
         """
         Ensure 'req_ip_addr' returns the Requested IP Address option value.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -564,6 +610,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__router(self) -> None:
         """
         Ensure 'router' returns the Router option list.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -575,6 +623,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__srv_id(self) -> None:
         """
         Ensure 'srv_id' returns the Server Identifier option value.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -586,6 +636,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
     def test__dhcp4__parser__subnet_mask(self) -> None:
         """
         Ensure 'subnet_mask' returns the Subnet Mask option value as Ip4Mask.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
@@ -606,6 +658,8 @@ class TestDhcp4ParserOptionsProperties(TestCase):
         does not require server_id or lease_time. param_req_list,
         host_name, router, subnet_mask, req_ip_addr — all genuinely
         absent and must report None.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         # Minimum-valid options block: Message Type = DISCOVER + End.
@@ -631,6 +685,8 @@ class TestDhcp4ParserBufferRoundtrip(TestCase):
         Ensure that a parse-encode-parse round-trip is idempotent at
         the level of the exposed header and options — the second
         parser must be indistinguishable from the first.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         frame = (
@@ -670,6 +726,8 @@ class TestDhcp4ParserPreservesMagicCookieStructurally(TestCase):
     def test__dhcp4__parser__magic_cookie_offset(self) -> None:
         """
         Ensure the 4-byte magic cookie sits at bytes 236..239 of the header.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         header = _dhcp4_header()
@@ -683,6 +741,8 @@ class TestDhcp4ParserPreservesMagicCookieStructurally(TestCase):
     def test__dhcp4__parser__flags_broadcast_bit_off(self) -> None:
         """
         Ensure that with flags=0x0000 the parser reports flag_b=False.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         header = _dhcp4_header(flags=0x0000)
@@ -701,6 +761,8 @@ class TestDhcp4ParserPreservesMagicCookieStructurally(TestCase):
         """
         Ensure the helper lays out fields in the same order struct.unpack
         expects — parse the header with both approaches and compare.
+
+        Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         header = _dhcp4_header(xid=0xAABBCCDD)

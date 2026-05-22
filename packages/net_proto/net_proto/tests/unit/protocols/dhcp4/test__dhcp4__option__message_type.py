@@ -52,6 +52,8 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
         """
         Ensure the DHCPv4 Message Type option constructor raises an exception
         when the provided 'message_type' argument is not a Dhcp4MessageType.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         value = "not a Dhcp4MessageType"
@@ -68,6 +70,8 @@ class TestDhcp4OptionMessageTypeAsserts(TestCase):
     def test__dhcp4__option__message_type__rejects_raw_int(self) -> None:
         """
         Ensure the DHCPv4 Message Type option constructor rejects a raw int.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -193,6 +197,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__len(self) -> None:
         """
         Ensure '__len__()' returns the fixed 3 bytes (code + len + value).
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -204,6 +210,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -215,6 +223,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -226,6 +236,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -237,6 +249,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -248,6 +262,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__field(self) -> None:
         """
         Ensure the 'message_type' field reflects the constructor argument.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -259,6 +275,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__type(self) -> None:
         """
         Ensure the 'type' field is always MESSAGE_TYPE (53).
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -270,6 +288,8 @@ class TestDhcp4OptionMessageTypeAssembler(TestCase):
     def test__dhcp4__option__message_type__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -336,6 +356,8 @@ class TestDhcp4OptionMessageTypeParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -354,6 +376,8 @@ class TestDhcp4OptionMessageTypeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -368,6 +392,8 @@ class TestDhcp4OptionMessageTypeParserErrors(TestCase):
     def test__dhcp4__option__message_type__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 53.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -384,6 +410,8 @@ class TestDhcp4OptionMessageTypeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         option length is not 1.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -399,6 +427,8 @@ class TestDhcp4OptionMessageTypeParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -420,6 +450,8 @@ class TestDhcp4OptionMessageTypeBehavior(TestCase):
     def test__dhcp4__option__message_type__equality(self) -> None:
         """
         Ensure two options with equal 'message_type' compare equal.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertEqual(
@@ -431,6 +463,8 @@ class TestDhcp4OptionMessageTypeBehavior(TestCase):
     def test__dhcp4__option__message_type__inequality(self) -> None:
         """
         Ensure two options with different 'message_type' compare unequal.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         self.assertNotEqual(
@@ -442,6 +476,8 @@ class TestDhcp4OptionMessageTypeBehavior(TestCase):
     def test__dhcp4__option__message_type__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         option = Dhcp4OptionMessageType(Dhcp4MessageType.DISCOVER)
@@ -452,6 +488,8 @@ class TestDhcp4OptionMessageTypeBehavior(TestCase):
     def test__dhcp4__option__message_type__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §9.6 (DHCP Message Type option).
         """
 
         with self.assertRaises(TypeError):

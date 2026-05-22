@@ -56,6 +56,8 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         """
         Ensure the constructor raises an exception when the provided
         'server_id' argument is not an Ip4Address.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         value = "not an Ip4Address"
@@ -73,6 +75,8 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         """
         Ensure the constructor rejects a dotted-decimal string address —
         Ip4Address instances are required.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         value = "192.0.2.1"
@@ -90,6 +94,8 @@ class TestDhcp4OptionServerIdAsserts(TestCase):
         """
         Ensure the constructor rejects a bare int — Ip4Address instances are
         required.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         value = 0xC0000201
@@ -223,6 +229,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__len(self) -> None:
         """
         Ensure '__len__()' returns the fixed 6-byte option length.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -234,6 +242,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__str(self) -> None:
         """
         Ensure '__str__()' renders the canonical log line.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -245,6 +255,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__repr(self) -> None:
         """
         Ensure '__repr__()' renders the dataclass form.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -256,6 +268,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__bytes(self) -> None:
         """
         Ensure 'bytes()' yields the expected wire image.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -267,6 +281,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__memoryview(self) -> None:
         """
         Ensure the option supports the buffer protocol.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -278,6 +294,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__field(self) -> None:
         """
         Ensure the 'server_id' field reflects the constructor argument.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -289,6 +307,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__type(self) -> None:
         """
         Ensure the 'type' field is always SERVER_ID (54).
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -300,6 +320,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__len_field(self) -> None:
         """
         Ensure the 'len' field equals DHCP4__OPTION__SERVER_ID__LEN.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -311,6 +333,8 @@ class TestDhcp4OptionServerIdAssembler(TestCase):
     def test__dhcp4__option__server_id__roundtrip(self) -> None:
         """
         Ensure bytes(option) parses back into an equal option.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -372,6 +396,8 @@ class TestDhcp4OptionServerIdParser(TestCase):
         """
         Ensure 'from_buffer()' produces the expected option and ignores the
         trailing bytes beyond the advertised length.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         option = Dhcp4OptionServerId.from_buffer(*self._args)
@@ -392,6 +418,8 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
         """
         Ensure 'from_buffer()' asserts when the buffer is shorter than the
         2-byte type+len header.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -406,6 +434,8 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
     def test__dhcp4__option__server_id__wrong_type(self) -> None:
         """
         Ensure 'from_buffer()' asserts when the option type byte is not 54.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -422,6 +452,8 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length is not exactly 4 bytes.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -437,6 +469,8 @@ class TestDhcp4OptionServerIdParserErrors(TestCase):
         """
         Ensure 'from_buffer()' raises Dhcp4IntegrityError when the advertised
         length exceeds the remaining bytes in the buffer.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -458,6 +492,8 @@ class TestDhcp4OptionServerIdBehavior(TestCase):
     def test__dhcp4__option__server_id__equality(self) -> None:
         """
         Ensure two options with equal 'server_id' compare equal.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertEqual(
@@ -469,6 +505,8 @@ class TestDhcp4OptionServerIdBehavior(TestCase):
     def test__dhcp4__option__server_id__inequality(self) -> None:
         """
         Ensure two options with different 'server_id' compare unequal.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         self.assertNotEqual(
@@ -480,6 +518,8 @@ class TestDhcp4OptionServerIdBehavior(TestCase):
     def test__dhcp4__option__server_id__is_frozen(self) -> None:
         """
         Ensure the option cannot be mutated after construction.
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         option = Dhcp4OptionServerId(Ip4Address("192.0.2.1"))
@@ -490,6 +530,8 @@ class TestDhcp4OptionServerIdBehavior(TestCase):
     def test__dhcp4__option__server_id__type_cannot_be_overridden(self) -> None:
         """
         Ensure 'type' cannot be supplied via the constructor (init=False).
+
+        Reference: RFC 2132 §9.7 (Server Identifier option).
         """
 
         with self.assertRaises(TypeError):

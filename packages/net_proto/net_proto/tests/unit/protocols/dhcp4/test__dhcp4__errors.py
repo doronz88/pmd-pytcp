@@ -48,6 +48,8 @@ class TestDhcp4Errors(TestCase):
         """
         Ensure 'Dhcp4IntegrityError' subclasses the generic
         'PacketIntegrityError' base class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -59,6 +61,8 @@ class TestDhcp4Errors(TestCase):
         """
         Ensure 'Dhcp4IntegrityError' prepends the '[DHCPv4] ' protocol tag
         to the error message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         error = Dhcp4IntegrityError("Bad option length.")
@@ -72,6 +76,8 @@ class TestDhcp4Errors(TestCase):
         """
         Ensure 'Dhcp4SanityError' subclasses the generic 'PacketSanityError'
         base class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -83,6 +89,8 @@ class TestDhcp4Errors(TestCase):
         """
         Ensure 'Dhcp4SanityError' prepends the '[DHCPv4] ' protocol tag
         to the error message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         error = Dhcp4SanityError("Unexpected field value.")
