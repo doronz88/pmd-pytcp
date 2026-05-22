@@ -136,6 +136,8 @@ class TestUdpSocketInit(_UdpSocketTestCase):
         Ensure a fresh IPv4 UDP socket starts with unspecified
         local/remote IPs, both ports at 0, and the fixed socket_type
         + ip_proto mix.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -150,6 +152,8 @@ class TestUdpSocketInit(_UdpSocketTestCase):
         """
         Ensure a fresh IPv6 UDP socket starts with the '::' unspecified
         address on both ends.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET6)
@@ -160,6 +164,8 @@ class TestUdpSocketInit(_UdpSocketTestCase):
         """
         Ensure the 'assert type is SocketType.DGRAM' guard fires when
         a non-DGRAM socket type is supplied.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         with self.assertRaises(AssertionError):
@@ -169,6 +175,8 @@ class TestUdpSocketInit(_UdpSocketTestCase):
         """
         Ensure the 'assert protocol is IpProto.UDP' guard fires for a
         non-UDP protocol argument.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         with self.assertRaises(AssertionError):
@@ -185,6 +193,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         Ensure bind() with a zero local port defers to
         'pick_local_port' and registers the resulting port on the
         socket.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -203,6 +213,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         """
         Ensure bind() with a specific local port accepts it when no
         other socket is using it.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -213,6 +225,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         """
         Ensure binding an already-bound socket raises 'OSError' with
         Errno 22 — the socket can be bound exactly once.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -229,6 +243,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         """
         Ensure bind() raises 'OverflowError' for a port value outside
         the 0-65535 range.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -239,6 +255,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         """
         Ensure bind() to a specific IPv4 address not owned by the
         stack raises 'OSError' with Errno 99.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -253,6 +271,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_rejects_malformed_ip(self) -> None:
         """
         Ensure a malformed IPv4 literal raises 'gaierror'.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -262,6 +282,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_ip6_accepts_stack_owned(self) -> None:
         """
         Ensure bind() on an IPv6 socket accepts a stack-owned address.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET6)
@@ -275,6 +297,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_ip6_rejects_malformed(self) -> None:
         """
         Ensure a malformed IPv6 literal raises 'gaierror'.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET6)
@@ -285,6 +309,8 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         """
         Ensure bind() to a port already claimed by another socket
         raises 'OSError' with Errno 98.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         first = UdpSocket(family=AddressFamily.INET4)
@@ -310,6 +336,8 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
         Ensure connect() picks a local IP via 'pick_local_ip_address'
         when unspecified, picks a local port via 'pick_local_port'
         when unbound, and stores both sides of the remote address.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -334,6 +362,8 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
         """
         Ensure connect() raises 'OverflowError' for a remote port
         outside the 0-65535 range.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -343,6 +373,8 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
     def test__udp_socket__connect_rejects_malformed_address(self) -> None:
         """
         Ensure a malformed remote-address literal raises 'gaierror'.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -354,6 +386,8 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
         Ensure connecting to '0.0.0.0' (unspecified) flips the internal
         'unreachable' flag, which translates to 'ConnectionRefusedError'
         on the next send()/recv() call.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -397,6 +431,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         """
         Ensure send() raises 'OSError' with Errno 89 when neither the
         remote IP nor the remote port is set.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -412,6 +448,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         """
         Ensure send() returns 'len(data)' when 'send_udp_packet'
         reports 'PASSED__ETHERNET__TO_TX_RING'.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = self._connected_socket()
@@ -421,6 +459,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         """
         Ensure send() returns 0 when the TX path reports a drop
         status.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
@@ -433,6 +473,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         Ensure send() on a socket flagged unreachable clears the flag
         and raises 'ConnectionRefusedError' — subsequent send()s see
         a clean state.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = self._connected_socket()
@@ -449,6 +491,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         Ensure sendto() works on an unbound socket — it picks a local
         port via 'pick_local_port' and derives the remote from its
         argument.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -472,6 +516,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         """
         Ensure sendto() raises 'OverflowError' for a remote port
         outside the 0-65535 range.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -482,6 +528,8 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         """
         Ensure sendto() on an already-bound socket reuses the existing
         local port rather than picking a new one.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -523,6 +571,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure 'process_udp_packet' appends the envelope and releases
         the RX semaphore exactly once per call.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -537,6 +587,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure recv() dequeues a single queued packet and returns its
         payload as 'bytes'.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -551,6 +603,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure recv() with a finite timeout raises 'TimeoutError' when
         no packet arrives.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -561,6 +615,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure recv() on a socket flagged unreachable raises
         'ConnectionRefusedError' and clears the flag.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -577,6 +633,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         Ensure recv__mv() returns the underlying memoryview without
         copying through 'bytes'. Downstream parsers rely on the
         zero-copy behavior.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -597,6 +655,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure recvfrom() returns a (bytes, (str_ip, port)) tuple
         extracted from the metadata's remote-side fields.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -613,6 +673,8 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         """
         Ensure recvfrom() with a finite timeout raises 'TimeoutError'
         when no packet arrives.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)
@@ -1081,6 +1143,8 @@ class TestUdpSocketClose(_UdpSocketTestCase):
         """
         Ensure close() removes the socket from 'stack.sockets' so
         subsequent packets cannot be routed to it.
+
+        Reference: RFC 768 (UDP user interface).
         """
 
         s = UdpSocket(family=AddressFamily.INET4)

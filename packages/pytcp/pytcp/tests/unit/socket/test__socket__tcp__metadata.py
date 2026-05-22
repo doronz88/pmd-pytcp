@@ -82,6 +82,8 @@ class TestTcpMetadataFields(TestCase):
         Ensure 'TcpMetadata' exposes every constructor argument as an
         attribute. The parser -> socket handoff depends on every field
         being available without additional decoding.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata()
@@ -115,6 +117,8 @@ class TestTcpMetadataFields(TestCase):
         """
         Ensure 'TcpMetadata' is immutable so the parser -> socket
         envelope cannot be mutated mid-dispatch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata()
@@ -132,6 +136,8 @@ class TestTcpMetadataSocketIdIp4(TestCase):
         Ensure the exact-match 'socket_id' for an IPv4 envelope packs
         (INET4, STREAM, local_ip, local_port, remote_ip, remote_port)
         — the key used to route packets to an established session.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata()
@@ -155,6 +161,8 @@ class TestTcpMetadataSocketIdIp4(TestCase):
         two listener-match candidates: local-address-specific and
         local-address-unspecified. Both use the unspecified remote
         address and port-0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata()
@@ -192,6 +200,8 @@ class TestTcpMetadataSocketIdIp6(TestCase):
         """
         Ensure the exact-match 'socket_id' for an IPv6 envelope packs
         (INET6, STREAM, ...) with the IPv6 addresses preserved.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata(
@@ -218,6 +228,8 @@ class TestTcpMetadataSocketIdIp6(TestCase):
         Ensure 'listening_socket_ids' for an IPv6 envelope produces the
         two listener-match candidates with the '::' unspecified IPv6
         remote/wildcard-local addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = _make_ip4_metadata(

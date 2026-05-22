@@ -78,6 +78,8 @@ class TestGaierror(TestCase):
         Ensure 'gaierror' is a subclass of 'OSError' so callers written
         against the stdlib BSD socket API catch it via the broader
         exception class.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertTrue(
@@ -89,6 +91,8 @@ class TestGaierror(TestCase):
         """
         Ensure raising 'gaierror' preserves the supplied message through
         'str(exc)' so error-matching tests can assert on the exact text.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(gaierror) as context:
@@ -111,6 +115,8 @@ class TestAddressFamily(TestCase):
         Ensure the 'AddressFamily' enum has exactly the 'INET4' and
         'INET6' members with their canonical integer values. Downstream
         match statements rely on both the member identity and the value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -129,6 +135,8 @@ class TestAddressFamily(TestCase):
         Ensure the 'AF_INET', 'AF_INET4', and 'AF_INET6' module-level
         aliases point at the corresponding 'AddressFamily' members so
         BSD-API-style constants resolve correctly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -152,6 +160,8 @@ class TestAddressFamily(TestCase):
         Ensure 'AddressFamily' members stringify as their name, not
         their integer value. The 'NameEnum' base overrides '__str__'
         so log lines carry readable identifiers.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -169,6 +179,8 @@ class TestAddressFamily(TestCase):
         """
         Ensure 'AddressFamily.from_ver()' maps 'IpVersion.IP4' to
         'AddressFamily.INET4'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -181,6 +193,8 @@ class TestAddressFamily(TestCase):
         """
         Ensure 'AddressFamily.from_ver()' maps 'IpVersion.IP6' to
         'AddressFamily.INET6'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -199,6 +213,8 @@ class TestSocketType(TestCase):
         """
         Ensure the 'SocketType' enum exposes 'STREAM', 'DGRAM', and
         'RAW' with their canonical integer values.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -221,6 +237,8 @@ class TestSocketType(TestCase):
         """
         Ensure the 'SOCK_STREAM', 'SOCK_DGRAM', 'SOCK_RAW' module-level
         aliases point at the corresponding 'SocketType' members.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -243,6 +261,8 @@ class TestSocketType(TestCase):
         """
         Ensure 'SocketType' members stringify as their member name so
         log lines use the human-readable identifier.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -398,6 +418,8 @@ class TestSocketFactory(TestCase):
         Ensure passing 'SocketType.STREAM' returns a 'TcpSocket' instance
         for both the implicit-protocol and explicit 'IpProto.TCP'
         branches of the '__new__' match statement.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         implicit = socket(family=AddressFamily.INET4, type=SocketType.STREAM)
@@ -423,6 +445,8 @@ class TestSocketFactory(TestCase):
         Ensure passing 'SocketType.DGRAM' returns a 'UdpSocket' instance
         for both the implicit-protocol and explicit 'IpProto.UDP'
         branches.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         implicit = socket(family=AddressFamily.INET4, type=SocketType.DGRAM)
@@ -447,6 +471,8 @@ class TestSocketFactory(TestCase):
         """
         Ensure passing 'AddressFamily.INET4' together with
         'SocketType.RAW' returns a 'RawSocket' instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = socket(
@@ -464,6 +490,8 @@ class TestSocketFactory(TestCase):
         """
         Ensure passing 'AddressFamily.INET6' together with
         'SocketType.RAW' returns a 'RawSocket' instance.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = socket(
@@ -610,6 +638,8 @@ class TestSocketFactory(TestCase):
         Ensure calling '__new__' on a concrete subclass skips the
         dispatch table — the derived-class constructor must get an
         instance of its own type rather than a re-dispatched pick.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         instance = TcpSocket.__new__(TcpSocket)
@@ -663,6 +693,8 @@ class TestSocketStringification(TestCase):
         Ensure '__str__' formats the socket as the canonical
         'family/type/proto/local_ip/local_port/remote_ip/remote_port'
         seven-field slash-separated log string.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket()
@@ -677,6 +709,8 @@ class TestSocketStringification(TestCase):
         """
         Ensure '__repr__' delegates to '__str__' so debug and log
         output carry the same representation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket()
@@ -696,6 +730,8 @@ class TestSocketContextManager(TestCase):
         """
         Ensure entering the runtime context yields the socket object
         itself so the 'with' binding matches the receiver.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket()
@@ -711,6 +747,8 @@ class TestSocketContextManager(TestCase):
         Ensure '__exit__' is a no-op that does not suppress or raise
         anything — clean exit must not mask caller-side exceptions and
         must not signal suppression.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket()
@@ -745,6 +783,8 @@ class TestSocketProperties(TestCase):
         Ensure 'socket_id' assembles a 'SocketId' from every private
         attribute that defines the socket tuple. This is the key used
         in 'stack.sockets'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         expected = SocketId(
@@ -767,6 +807,8 @@ class TestSocketProperties(TestCase):
         'local_ip_address', 'remote_ip_address', 'local_port',
         'remote_port' properties each return the matching private
         attribute.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -809,6 +851,8 @@ class TestSocketProperties(TestCase):
         """
         Ensure the BSD-compatible 'family', 'type', 'proto' properties
         return the same values as their internal counterparts.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -837,6 +881,8 @@ class TestSocketGetSockName(TestCase):
         """
         Ensure 'getsockname()' returns a '(str_ip, port)' tuple matching
         the BSD API shape, with the IP address stringified.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket(
@@ -853,6 +899,8 @@ class TestSocketGetSockName(TestCase):
         """
         Ensure 'getpeername()' returns a '(remote_str_ip, remote_port)'
         tuple matching the BSD socket API contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = _StubSocket(
@@ -883,6 +931,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'bind' placeholder raises
         'NotImplementedError'. Concrete subclasses must override it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -892,6 +942,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'connect' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -901,6 +953,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'send' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -910,6 +964,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'recv' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -919,6 +975,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'recv__mv' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -928,6 +986,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'close' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -937,6 +997,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'listen' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -946,6 +1008,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'accept' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -955,6 +1019,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'sendto' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -964,6 +1030,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'recvfrom' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):
@@ -973,6 +1041,8 @@ class TestSocketPlaceholders(TestCase):
         """
         Ensure the base-class 'recvfrom__mv' placeholder raises
         'NotImplementedError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(NotImplementedError):

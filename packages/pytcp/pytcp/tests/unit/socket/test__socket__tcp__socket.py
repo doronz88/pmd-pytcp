@@ -138,6 +138,8 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         Ensure a fresh IPv4 TCP socket starts with unspecified
         addresses, both ports at 0, and no session attached. The
         'state' property must report 'FsmState.CLOSED' in this state.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -159,6 +161,8 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         """
         Ensure a fresh IPv6 TCP socket starts with the '::' unspecified
         addresses.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET6)
@@ -169,6 +173,8 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         """
         Ensure the 'assert type is SocketType.STREAM' guard fires for
         a non-STREAM socket type.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         with self.assertRaises(AssertionError):
@@ -178,6 +184,8 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         """
         Ensure the 'assert protocol is IpProto.TCP' guard fires for a
         non-TCP protocol argument.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         with self.assertRaises(AssertionError):
@@ -190,6 +198,8 @@ class TestTcpSocketInit(_TcpSocketTestCase):
         registers the socket on 'stack.sockets' immediately. This is
         the path taken when a listening socket spawns an accepted
         child.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         session = MagicMock()
@@ -231,6 +241,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure bind() with a stack-owned address and a specific port
         registers the socket on 'stack.sockets'.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -245,6 +257,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure calling bind() twice raises 'OSError' with Errno 22 —
         the socket can be bound to a specific port exactly once.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -261,6 +275,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure bind() to a specific IP not owned by the stack raises
         'OSError' with Errno 99.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -275,6 +291,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
     def test__tcp_socket__bind_rejects_malformed_ip(self) -> None:
         """
         Ensure a malformed IPv4 literal raises 'gaierror'.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -285,6 +303,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure bind() raises 'OverflowError' for a port outside the
         0-65535 range.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -295,6 +315,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure bind() with a local port of 0 defers to
         'pick_local_port' for ephemeral assignment.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -313,6 +335,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure bind() raises 'OSError' with Errno 98 when another
         socket has already claimed the port.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         first = TcpSocket(family=AddressFamily.INET4)
@@ -331,6 +355,8 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         """
         Ensure the IPv6 bind() path raises 'gaierror' for malformed
         IPv6 literals.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET6)
@@ -347,6 +373,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         """
         Ensure connect() instantiates a 'TcpSession' with the
         resolved addresses and delegates to its 'connect()' method.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -372,6 +400,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         Ensure a 'TcpSessionError("Connection refused")' raised by the
         session is translated into 'ConnectionRefusedError' with the
         Errno 111 message.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         self._session_cls.return_value.connect.side_effect = TcpSessionError("Connection refused")
@@ -397,6 +427,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         Ensure a 'TcpSessionError("Connection timeout")' raised by the
         session is translated into 'TimeoutError' with the Errno 110
         message.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         self._session_cls.return_value.connect.side_effect = TcpSessionError("Connection timeout")
@@ -422,6 +454,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         Ensure connecting to '0.0.0.0' raises 'ConnectionRefusedError'
         with the '[Errno 111]' message — unspecified remote is not a
         valid destination for a stream socket.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -432,6 +466,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         """
         Ensure connect() raises 'OverflowError' for a port outside
         the 0-65535 range.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -441,6 +477,8 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
     def test__tcp_socket__connect_rejects_malformed_address(self) -> None:
         """
         Ensure a malformed remote-address literal raises 'gaierror'.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -458,6 +496,8 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         Ensure listen() creates a 'TcpSession', registers the listening
         socket on 'stack.sockets' under the unspecified key, and
         delegates to the session's 'listen()' method.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -475,6 +515,8 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         """
         Ensure accept() returns a '(socket, (remote_ip_str, port))'
         tuple once the semaphore is signaled.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -503,6 +545,8 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         """
         Ensure accept() raises 'TimeoutError' when the semaphore is
         not signaled within the supplied timeout window.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -538,6 +582,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         Ensure send() on a socket with no remote IP raises
         'BrokenPipeError' (matching the CPython EPIPE shape) so the
         caller sees the same exception as a normal TCP send-after-FIN.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -549,6 +595,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
         Ensure send() delegates to the session's send() and returns
         the byte count the session reports.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -566,6 +614,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         Ensure a 'TcpSessionError' from the session surfaces as a
         'BrokenPipeError' with the Errno 32 message, matching the
         BSD stream-socket contract.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -583,6 +633,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
         Ensure recv() delegates to 'TcpSession.receive()' and returns
         its byte payload verbatim.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -598,6 +650,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
         Ensure a 'TimeoutError' raised by the session is re-raised as
         a new 'TimeoutError' with the socket-level message.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -614,6 +668,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
     def test__tcp_socket__close_delegates_to_session(self) -> None:
         """
         Ensure close() delegates to 'TcpSession.close()' unconditionally.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -625,6 +681,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         Ensure 'process_tcp_packet' forwards the received metadata to
         'TcpSession.tcp_fsm'. If there is no session attached, the call
         must be a no-op.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s, session = self._connected_socket()
@@ -636,6 +694,8 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
         Ensure 'process_tcp_packet' on a socket with no session simply
         returns — it must not raise.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -651,6 +711,8 @@ class TestTcpSocketStateProperty(_TcpSocketTestCase):
         """
         Ensure the 'state' property reads through to
         'tcp_session.state' when a session is attached.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -668,6 +730,8 @@ class TestTcpSocketStateProperty(_TcpSocketTestCase):
         """
         Ensure the 'state' property returns 'FsmState.CLOSED' when no
         session is attached.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -706,6 +770,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         """
         Ensure 'setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)' stores the
         flag and a subsequent 'getsockopt' round-trips it as 1.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -742,6 +808,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         to 1 on storage, matching Linux 'setsockopt(SO_KEEPALIVE,
         42, ...)' semantics. Without this, a later 'getsockopt'
         would surface a value the application never directly stored.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -760,6 +828,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         'OSError(ENOPROTOOPT)' / 'OSError(EINVAL)'; PyTCP uses
         'OSError' so the failure shape is greppable across the
         stdlib-compatible boundary.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -775,6 +845,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         Ensure 'setsockopt' on a known level but unknown 'optname'
         parameter raises. Same POSIX semantics as the unknown-level
         case.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -792,6 +864,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         succeeding. SO_KEEPALIVE is an SOL_SOCKET-level option;
         applying it at IPPROTO_TCP is a programmer error worth
         flagging at the boundary.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -806,6 +880,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         """
         Ensure 'getsockopt' raises symmetrically for unknown
         '(level, optname)' pairs.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -829,6 +905,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         previously-unset attribute returns a new MagicMock, which
         is truthy. Identity-checking against the literal 'True'
         catches both cases.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -888,6 +966,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         inherit through the listening session's flag, so a
         listening socket that opted in via setsockopt produces
         keep-alive-enabled child sessions for every incoming SYN.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -910,6 +990,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPIDLE, N)' stores
         the per-connection idle override and a subsequent
         'getsockopt' returns the same N.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -926,6 +1008,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPINTVL, N)' stores
         the per-connection probe-interval override and a subsequent
         'getsockopt' returns the same N.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -942,6 +1026,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         Ensure 'setsockopt(IPPROTO_TCP, TCP_KEEPCNT, N)' stores
         the per-connection probe-count override and a subsequent
         'getsockopt' returns the same N.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -959,6 +1045,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         returns 0 on a fresh socket - the sentinel meaning "no
         override; the session falls back to the global
         'tcp__constants.KEEPALIVE_*' default at runtime."
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
@@ -973,6 +1061,8 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         constructed TcpSession's matching field. Without this, the
         per-connection override has no path into the protocol
         runtime.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
         s = TcpSocket(family=AddressFamily.INET4)

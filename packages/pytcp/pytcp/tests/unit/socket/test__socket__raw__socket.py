@@ -239,6 +239,8 @@ class TestRawSocketBind(_RawSocketTestCase):
         Ensure binding to a specific local IPv4 address that the stack
         owns succeeds, updates 'local_ip_address', and registers the
         socket in 'stack.sockets'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -260,6 +262,8 @@ class TestRawSocketBind(_RawSocketTestCase):
         Ensure binding to '0.0.0.0' (the unspecified IPv4 address) is
         always accepted regardless of the stack's unicast list — it
         represents a wildcard bind.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -275,6 +279,8 @@ class TestRawSocketBind(_RawSocketTestCase):
         """
         Ensure binding to an IPv4 address not owned by the stack raises
         'OSError' with the canonical Errno 99 message.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -290,6 +296,8 @@ class TestRawSocketBind(_RawSocketTestCase):
         """
         Ensure a malformed IPv4 literal raises 'gaierror' — the
         stack-level alias for 'socket.gaierror'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -300,6 +308,8 @@ class TestRawSocketBind(_RawSocketTestCase):
         """
         Ensure the IPv6 branch also checks the stack's unicast set and
         raises Errno 99 when the address is not owned.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
@@ -314,6 +324,8 @@ class TestRawSocketBind(_RawSocketTestCase):
     def test__raw_socket__bind_ip6_rejects_malformed_address(self) -> None:
         """
         Ensure malformed IPv6 literals raise 'gaierror'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
@@ -331,6 +343,8 @@ class TestRawSocketConnect(_RawSocketTestCase):
         Ensure connect() validates the remote IP, delegates to
         'pick_local_ip_address' when the local IP is unspecified, and
         stores both sides plus the remote port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -357,6 +371,8 @@ class TestRawSocketConnect(_RawSocketTestCase):
         """
         Ensure connect() raises 'OverflowError' for a port value
         outside the 0-65535 inclusive range.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -367,6 +383,8 @@ class TestRawSocketConnect(_RawSocketTestCase):
         """
         Ensure connect() raises 'gaierror' when the remote address
         literal is malformed.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -378,6 +396,8 @@ class TestRawSocketConnect(_RawSocketTestCase):
         Ensure connect() raises 'gaierror' when the helper cannot pick
         a local IP address (both the stack-provided and fallback
         picks would be unspecified).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -399,6 +419,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         Ensure send() raises 'OSError' with the Errno 89 message when
         called before connect(), because the remote IP is still the
         unspecified placeholder.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -414,6 +436,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         """
         Ensure send() dispatches to 'send_ip4_packet' for an IPv4 raw
         socket and returns 'len(data)' on 'PASSED__ETHERNET__TO_TX_RING'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -432,6 +456,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         """
         Ensure send() dispatches to 'send_ip6_packet' for an IPv6 raw
         socket.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
@@ -450,6 +476,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         """
         Ensure send() returns 0 when the TX path reports any status
         other than 'PASSED__ETHERNET__TO_TX_RING'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _make_packet_handler()
@@ -472,6 +500,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         Ensure sendto() can transmit without a prior connect() — it
         derives the remote from its 'address' argument and the local
         from 'pick_local_ip_address'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -489,6 +519,8 @@ class TestRawSocketSend(_RawSocketTestCase):
         """
         Ensure sendto() dispatches to 'send_ip6_packet' for an IPv6
         raw socket.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
@@ -530,6 +562,8 @@ class TestRawSocketReceive(_RawSocketTestCase):
         Ensure 'process_raw_packet' appends the metadata to the RX
         queue and releases the 'packet_rx_md_ready' semaphore exactly
         once per packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -545,6 +579,8 @@ class TestRawSocketReceive(_RawSocketTestCase):
         """
         Ensure recv() dequeues the next metadata entry, returns its
         'raw__data' as 'bytes', and honors the queued-packet ordering.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -560,6 +596,8 @@ class TestRawSocketReceive(_RawSocketTestCase):
         """
         Ensure recv() with a finite timeout raises 'TimeoutError' when
         no packet arrives within the window.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -570,6 +608,8 @@ class TestRawSocketReceive(_RawSocketTestCase):
         """
         Ensure recvfrom() returns a (bytes, (str_ip, 0)) tuple. The
         port is always 0 for raw sockets since there is no L4 port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -591,6 +631,8 @@ class TestRawSocketReceive(_RawSocketTestCase):
         """
         Ensure recvfrom() with a finite timeout raises 'TimeoutError'
         when no packet arrives within the window.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -608,6 +650,8 @@ class TestRawSocketClose(_RawSocketTestCase):
         Ensure close() removes the socket from 'stack.sockets' so
         subsequent packets cannot reach it. Closing a socket that was
         never bound is a no-op.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
@@ -630,6 +674,8 @@ class TestRawSocketClose(_RawSocketTestCase):
         """
         Ensure close() does not raise when called on an unbound socket
         — it must treat 'socket not in registry' as success.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)

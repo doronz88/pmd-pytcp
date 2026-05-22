@@ -64,6 +64,8 @@ class TestRawMetadataIp4(TestCase):
         """
         Ensure every constructor argument is stored verbatim on the
         instance, including the optional raw-data and tracker fields.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
@@ -102,6 +104,8 @@ class TestRawMetadataIp4(TestCase):
         candidate keyed by (INET4, RAW, local, int(proto), remote, 0).
         The '0' remote port mirrors the raw-socket convention that
         there is no L4 port.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         expected = [
@@ -131,6 +135,8 @@ class TestRawMetadataIp6(TestCase):
         Ensure 'socket_ids' for an IPv6 raw envelope returns a single
         candidate with 'AddressFamily.INET6' and the IPv6 local/remote
         addresses preserved.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = RawMetadata(
@@ -167,6 +173,8 @@ class TestRawMetadataDefaults(TestCase):
         Ensure 'raw__data' defaults to an empty 'bytes()' when the
         caller does not supply it. This matters for socket lookups
         that only care about the envelope, not the payload.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = RawMetadata(
@@ -185,6 +193,8 @@ class TestRawMetadataDefaults(TestCase):
         """
         Ensure 'RawMetadata' is immutable so the parser -> socket
         envelope cannot be mutated mid-dispatch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         md = RawMetadata(

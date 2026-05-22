@@ -61,6 +61,8 @@ class TestSocketId(TestCase):
         """
         Ensure 'SocketId' stores every keyword-only field verbatim so
         consumers can reconstruct the socket tuple without conversion.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -100,6 +102,8 @@ class TestSocketId(TestCase):
         flag must prevent attribute assignment. Stack code uses
         'SocketId' as a dict key, so hashability must not be broken
         by mutation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(FrozenInstanceError):
@@ -110,6 +114,8 @@ class TestSocketId(TestCase):
         Ensure 'SocketId' is hashable so it can be used as a dictionary
         key in 'stack.sockets'. Frozen dataclasses with 'slots=True' are
         hashable by default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         try:
@@ -122,6 +128,8 @@ class TestSocketId(TestCase):
         Ensure two 'SocketId' objects built from the same field values
         compare equal. This is the contract 'stack.sockets[id]' lookups
         rely on.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         other = SocketId(
@@ -148,6 +156,8 @@ class TestSocketId(TestCase):
         """
         Ensure any differing field produces a non-equal 'SocketId'. The
         local-port field is used here as a representative perturbation.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         other = SocketId(
@@ -170,6 +180,8 @@ class TestSocketId(TestCase):
         Ensure 'SocketId' accepts 'Ip6Address' values for IPv6 sockets —
         the 'Address' annotation on local/remote fields is the base
         class for both 'Ip4Address' and 'Ip6Address'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         socket_id = SocketId(
