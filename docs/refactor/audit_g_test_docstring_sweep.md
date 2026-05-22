@@ -165,7 +165,7 @@ in this doc (or a commit message). No code changes expected.
 |-----------|---------------:|--------------------:|-------|
 | G-net_proto-lib | 13 | 212 (b6853c01) | `tests/unit/lib/*.py` — `PyTCP test infrastructure (no RFC clause).` fallback (12 files); `RFC 1071 (Internet checksum algorithm).` for `test__lib__inet_cksum.py`. **completed 2026-05-21**. |
 | G-net_proto-arp | 5 | 51 (3d347b74) | `RFC 826` per-file (wire format / header fields / Packet Reception); integrity_checks and sanity_checks were already clean. **completed 2026-05-21**. |
-| G-net_proto-dhcp4 | ~25 | ~400 | mostly `RFC 2131 §2 (DHCPv4 header) / §3.1 (message flow)` + `RFC 2132 §<N>` for per-option files |
+| G-net_proto-dhcp4 | 24 | 342 (4afcc6b0) | `RFC 2131 §2` (message) + `RFC 2132 §<N>` per-option (sections cross-checked against the Dhcp4OptionType enum). max_msg_size/overload/rebinding/renewal + parser integrity/option_overload/sanity already clean. **completed 2026-05-21**. |
 | G-net_proto-ethernet | 5 | 49 (894b1b5f) | `RFC 894` (Ethernet II framing) per-file; integrity/sanity keep specific `IEEE 802.3 / RFC 1042` type/length-boundary clauses. **completed 2026-05-21**. |
 | G-net_proto-ethernet_802_3 | 5 | 55 (8be0373e) | `IEEE 802.3 §3` per-file; sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp4 | 25 | 107 (2d8b1ee0) | `RFC 792` per-message-type (type 3/0/8/unknown). parameter_problem, time_exceeded, unknown parsers, sanity_checks already clean. **completed 2026-05-21**. |
