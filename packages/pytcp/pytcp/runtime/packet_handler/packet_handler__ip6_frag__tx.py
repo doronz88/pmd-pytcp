@@ -182,6 +182,7 @@ class PacketHandlerIp6FragTx(ABC):
             TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
             TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            TxStatus.PASSED__IP6__TO_TX_RING,
         ]:
             if tx_status in ip6_tx_status:
                 return tx_status

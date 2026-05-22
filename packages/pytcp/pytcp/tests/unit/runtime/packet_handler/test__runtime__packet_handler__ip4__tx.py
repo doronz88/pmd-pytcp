@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, Ip4IfAddr
 from net_proto import Ip4Assembler, Ip4FragAssembler, IpProto, RawAssembler, UdpAssembler
@@ -42,6 +42,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ip4__tx import (
     PacketHandlerIp4Tx,
 )
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -366,7 +367,7 @@ class TestPacketHandlerIp4TxSend(TestCase):
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3)
-        with patch.object(stack, "tx_ring", MagicMock()) as mock_tx_ring:
+        with patch.object(stack, "tx_ring", MagicMock(), create=True) as mock_tx_ring:
             status = handler._phtx_ip4(
                 ip4__src=STACK__IP4_ADDRESS,
                 ip4__dst=HOST_A__IP4,
@@ -423,28 +424,26 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
     def test__stack__packet_handler__ip4__tx__over_mtu_l3_enqueues_fragments(self) -> None:
         """
         Ensure the L3 fragmentation path enqueues each fragment on the
-        TX ring and returns PASSED__IP4__TO_TX_RING.
+        TX ring and reports PASSED__IP4__TO_TX_RING when every fragment
+        is enqueued successfully.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _StubHandler(interface_layer=InterfaceLayer.L3, interface_mtu=200)
         payload = RawAssembler(raw__payload=b"\x00" * 400)
-        with patch.object(stack, "tx_ring", MagicMock()) as mock_tx_ring:
+        mock_tx_ring = create_autospec(TxRing, spec_set=True)
+        with patch.object(stack, "tx_ring", mock_tx_ring, create=True):
             status = handler._phtx_ip4(
                 ip4__src=STACK__IP4_ADDRESS,
                 ip4__dst=HOST_A__IP4,
                 ip4__payload=payload,
             )
 
-        # The handler returns DROPPED__IP4__UNKNOWN on L3 (because the
-        # outbound_tx_status set is empty), documenting that the L3
-        # fragmentation path intentionally does not report per-fragment
-        # enqueue status.
         self.assertEqual(
             status,
-            TxStatus.DROPPED__IP4__UNKNOWN,
-            msg="L3 fragmentation path returns DROPPED__IP4__UNKNOWN because per-frag TX status is not tracked.",
+            TxStatus.PASSED__IP4__TO_TX_RING,
+            msg="L3 fragmented send with every fragment enqueued must return PASSED__IP4__TO_TX_RING.",
         )
         self.assertGreaterEqual(
             mock_tx_ring.enqueue.call_count,

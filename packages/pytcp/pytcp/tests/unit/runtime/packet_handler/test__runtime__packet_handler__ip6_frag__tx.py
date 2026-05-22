@@ -222,3 +222,25 @@ class TestPacketHandlerIp6FragTx(TestCase):
             TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
             msg="Worst per-fragment status must propagate to the caller.",
         )
+
+    def test__stack__packet_handler__ip6_frag__tx__l3_reports_passed_to_tx_ring(self) -> None:
+        """
+        Ensure a fragmented send whose per-fragment status is
+        PASSED__IP6__TO_TX_RING (the L3 / TUN direct-enqueue path)
+        reports PASSED__IP6__TO_TX_RING to the caller rather than a
+        spurious drop.
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
+        """
+
+        handler = _StubHandler(
+            interface_mtu=200,
+            ip6_tx_status=TxStatus.PASSED__IP6__TO_TX_RING,
+        )
+        status = handler._phtx_ip6_frag(ip6_packet_tx=self._build_ip6_packet(payload_size=400))
+
+        self.assertEqual(
+            status,
+            TxStatus.PASSED__IP6__TO_TX_RING,
+            msg="L3 fragmented send with every fragment enqueued must return PASSED__IP6__TO_TX_RING.",
+        )

@@ -285,7 +285,7 @@ class PacketHandlerIp4Tx(ABC):
                     )
                 case InterfaceLayer.L3:
                     self.__send_out_packet(ip4_frag_tx)
-                    tx_status = TxStatus.PASSED__IP4__TO_TX_RING
+                    outbound_tx_status.add(TxStatus.PASSED__IP4__TO_TX_RING)
 
         # Return the most severe code.
         for tx_status in [
