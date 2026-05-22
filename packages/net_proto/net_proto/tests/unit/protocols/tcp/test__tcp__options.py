@@ -343,7 +343,7 @@ class TestTcpOptionsAssembler(TestCase):
         Ensure the 'mss' property returns the first Mss option value (or
         None if no Mss option is present).
 
-        Reference: RFC 9293 §3.1 (TCP options block).
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -357,7 +357,7 @@ class TestTcpOptionsAssembler(TestCase):
         Ensure the 'wscale' property returns the first Wscale option value
         (or None if no Wscale option is present).
 
-        Reference: RFC 9293 §3.1 (TCP options block).
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -371,7 +371,7 @@ class TestTcpOptionsAssembler(TestCase):
         Ensure the 'sackperm' property returns True when a Sackperm option
         is present and None otherwise.
 
-        Reference: RFC 9293 §3.1 (TCP options block).
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -385,7 +385,7 @@ class TestTcpOptionsAssembler(TestCase):
         Ensure the 'sack' property returns the first Sack option block
         list (or None if no Sack option is present).
 
-        Reference: RFC 9293 §3.1 (TCP options block).
+        Reference: RFC 2018 §3 (SACK option — kind 5).
         """
 
         self.assertEqual(
@@ -399,7 +399,7 @@ class TestTcpOptionsAssembler(TestCase):
         Ensure the 'timestamps' property returns the first Timestamps
         option value (or None if no Timestamps option is present).
 
-        Reference: RFC 9293 §3.1 (TCP options block).
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(

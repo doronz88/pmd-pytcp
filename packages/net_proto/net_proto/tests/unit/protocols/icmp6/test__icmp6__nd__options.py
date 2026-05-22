@@ -237,7 +237,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'slla' property returns None when the container has no
         Slla option.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.1 (Source Link-Layer Address option).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionTlla(MacAddress("01:02:03:04:05:06")))
@@ -252,7 +252,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'slla' property returns the MacAddress of the first Slla
         option in insertion order.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.1 (Source Link-Layer Address option).
         """
 
         first = MacAddress("01:02:03:04:05:06")
@@ -274,7 +274,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'tlla' property returns None when the container has no
         Tlla option.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionSlla(MacAddress("01:02:03:04:05:06")))
@@ -289,7 +289,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'tlla' property returns the MacAddress of the first Tlla
         option in insertion order.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.1 (Target Link-Layer Address option).
         """
 
         first = MacAddress("aa:bb:cc:dd:ee:ff")
@@ -311,7 +311,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'pi' property returns an empty list when the container
         has no Pi option.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         options = Icmp6NdOptions(Icmp6NdOptionSlla(MacAddress("01:02:03:04:05:06")))
@@ -327,7 +327,7 @@ class TestIcmp6NdOptionsAccessors(TestCase):
         Ensure the 'pi' property returns one NdPrefixInfo per Pi option in
         insertion order.
 
-        Reference: RFC 4861 §4.6 (ND option general format).
+        Reference: RFC 4861 §4.6.2 (Prefix Information option).
         """
 
         option_a = Icmp6NdOptionPi(
