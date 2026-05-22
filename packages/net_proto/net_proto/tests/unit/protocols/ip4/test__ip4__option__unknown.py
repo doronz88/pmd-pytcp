@@ -64,6 +64,8 @@ class TestIp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects 'type' when it is not an
         Ip4OptionType instance.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self._kwargs["type"] = value = "not a Ip4OptionType"
@@ -81,6 +83,8 @@ class TestIp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects every known Ip4OptionType value
         (the unknown option MUST NOT overlap with Eol or Nop).
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         for known in Ip4OptionType.get_known_values():
@@ -101,6 +105,8 @@ class TestIp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor rejects 'data' long enough that
         IP4__OPTION__LEN + len(data) overflows an 8-bit unsigned integer.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self._kwargs["data"] = b"X" * (UINT_8__MAX - IP4__OPTION__LEN + 1)
@@ -118,6 +124,8 @@ class TestIp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor accepts 'data' whose length brings the
         derived 'len' field exactly to UINT_8__MAX (boundary case).
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self._kwargs["data"] = b"X" * (UINT_8__MAX - IP4__OPTION__LEN)
@@ -134,6 +142,8 @@ class TestIp4OptionUnknownAsserts(TestCase):
         """
         Ensure the constructor accepts an empty 'data' buffer (the
         resulting option is exactly IP4__OPTION__LEN bytes on the wire).
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         option = Ip4OptionUnknown(**self._kwargs)
@@ -214,6 +224,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__len(self) -> None:
         """
         Ensure '__len__()' returns the expected wire-byte length.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -225,6 +237,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -236,6 +250,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -247,6 +263,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -258,6 +276,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__type(self) -> None:
         """
         Ensure the 'type' field carries the provided Ip4OptionType.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -269,6 +289,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__length(self) -> None:
         """
         Ensure the 'len' field equals IP4__OPTION__LEN + len(data).
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -280,6 +302,8 @@ class TestIp4OptionUnknownAssembler(TestCase):
     def test__ip4__option__unknown__data(self) -> None:
         """
         Ensure the 'data' field carries the provided payload verbatim.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         self.assertEqual(
@@ -298,6 +322,8 @@ class TestIp4OptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown option whose buffer length
         equals the declared 'len' byte (boundary case).
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         # IPv4 unknown option wire format (exactly 18 bytes):
@@ -321,6 +347,8 @@ class TestIp4OptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown option when the buffer
         carries trailing bytes past the declared 'len' byte.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         # IPv4 unknown option with 5 trailing bytes that must be ignored
@@ -418,6 +446,8 @@ class TestIp4OptionUnknownParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 791 §3.1 (IPv4 option TLV — type, length, data).
         """
 
         with self.assertRaises(self._results["error"]) as error:

@@ -53,6 +53,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__len(self) -> None:
         """
         Ensure '__len__()' returns IP4__OPTION__EOL__LEN (1 byte).
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         self.assertEqual(
@@ -64,6 +66,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__str(self) -> None:
         """
         Ensure '__str__()' returns the log string 'eol'.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         self.assertEqual(
@@ -75,6 +79,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__repr(self) -> None:
         """
         Ensure '__repr__()' returns 'Ip4OptionEol()'.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         self.assertEqual(
@@ -86,6 +92,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the single wire byte 0x00.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         # IPv4 Eol option wire format:
@@ -99,6 +107,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__type(self) -> None:
         """
         Ensure the 'type' field is Ip4OptionType.EOL.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         self.assertEqual(
@@ -110,6 +120,8 @@ class TestIp4OptionEolAssembler(TestCase):
     def test__ip4__option__eol__length(self) -> None:
         """
         Ensure the 'len' field equals IP4__OPTION__EOL__LEN.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         self.assertEqual(
@@ -128,6 +140,8 @@ class TestIp4OptionEolParser(TestCase):
         """
         Ensure from_buffer parses a 1-byte Eol whose buffer length
         exactly matches IP4__OPTION__EOL__LEN.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         # IPv4 Eol option wire format (exactly 1 byte):
@@ -153,6 +167,8 @@ class TestIp4OptionEolParser(TestCase):
         Ensure from_buffer parses an Eol option when the buffer carries
         trailing bytes past the 1-byte option payload (those trailing
         bytes are consumed by the next option in the options container).
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         # IPv4 Eol option wire format followed by 5 trailing bytes that
@@ -216,6 +232,8 @@ class TestIp4OptionEolParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 791 §3.1 (End of Option List — type byte = 0).
         """
 
         with self.assertRaises(self._results["error"]) as error:

@@ -84,6 +84,8 @@ class TestIp4HeaderAsserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards the
         negative tests from masking future regressions that would make the
         baseline invalid.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         header = Ip4Header(**self._kwargs)
@@ -98,6 +100,8 @@ class TestIp4HeaderAsserts(TestCase):
         """
         Ensure the constructor rejects 'hlen' below IP4__HEADER__LEN
         (20 bytes).
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["hlen"] = value = IP4__HEADER__LEN - 1
@@ -118,6 +122,8 @@ class TestIp4HeaderAsserts(TestCase):
         """
         Ensure the constructor rejects 'hlen' above IP4__HEADER__MAX_LEN
         (60 bytes; IHL=15 * 4 = 60 is the wire ceiling).
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["hlen"] = value = IP4__HEADER__MAX_LEN + 4
@@ -139,6 +145,8 @@ class TestIp4HeaderAsserts(TestCase):
         Ensure the constructor rejects 'hlen' values that are in the
         [20, 60] range but not multiples of 4. The wire IHL field
         counts 4-byte words, so these values cannot round-trip.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["hlen"] = value = IP4__HEADER__LEN + 1
@@ -159,6 +167,8 @@ class TestIp4HeaderAsserts(TestCase):
         """
         Ensure the constructor accepts 'hlen' exactly at
         IP4__HEADER__MAX_LEN (boundary case).
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["hlen"] = IP4__HEADER__MAX_LEN
@@ -175,6 +185,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__dscp__under_min(self) -> None:
         """
         Ensure the constructor rejects 'dscp' below UINT_6__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["dscp"] = value = UINT_6__MIN - 1
@@ -191,6 +203,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__dscp__over_max(self) -> None:
         """
         Ensure the constructor rejects 'dscp' above UINT_6__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["dscp"] = value = UINT_6__MAX + 1
@@ -207,6 +221,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__ecn__under_min(self) -> None:
         """
         Ensure the constructor rejects 'ecn' below UINT_2__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["ecn"] = value = UINT_2__MIN - 1
@@ -223,6 +239,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__ecn__over_max(self) -> None:
         """
         Ensure the constructor rejects 'ecn' above UINT_2__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["ecn"] = value = UINT_2__MAX + 1
@@ -239,6 +257,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__plen__under_min(self) -> None:
         """
         Ensure the constructor rejects 'plen' below IP4__HEADER__LEN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["plen"] = value = IP4__HEADER__LEN - 1
@@ -255,6 +275,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__plen__over_max(self) -> None:
         """
         Ensure the constructor rejects 'plen' above UINT_16__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["plen"] = value = UINT_16__MAX + 1
@@ -271,6 +293,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__id__under_min(self) -> None:
         """
         Ensure the constructor rejects 'id' below UINT_16__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["id"] = value = UINT_16__MIN - 1
@@ -287,6 +311,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__id__over_max(self) -> None:
         """
         Ensure the constructor rejects 'id' above UINT_16__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["id"] = value = UINT_16__MAX + 1
@@ -303,6 +329,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__flag_df__not_boolean(self) -> None:
         """
         Ensure the constructor rejects 'flag_df' when it is not a bool.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["flag_df"] = value = "not a boolean"
@@ -319,6 +347,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__flag_mf__not_boolean(self) -> None:
         """
         Ensure the constructor rejects 'flag_mf' when it is not a bool.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["flag_mf"] = value = "not a boolean"
@@ -335,6 +365,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__offset__under_min(self) -> None:
         """
         Ensure the constructor rejects 'offset' below UINT_13__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["offset"] = value = UINT_13__MIN - 1
@@ -354,6 +386,8 @@ class TestIp4HeaderAsserts(TestCase):
         representation exceeds UINT_13__MAX. The field is stored in
         bytes, so the smallest rejected multiple-of-8 value is
         '(UINT_13__MAX + 1) << 3'.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["offset"] = value = (UINT_13__MAX + 1) << 3
@@ -374,6 +408,8 @@ class TestIp4HeaderAsserts(TestCase):
         themselves 8-byte aligned. 'UINT_13__MAX - 1' is the largest
         such misaligned value, so the range check passes and the
         alignment assert that runs next fires.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["offset"] = value = UINT_13__MAX - 1
@@ -390,6 +426,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__ttl__under_min(self) -> None:
         """
         Ensure the constructor rejects 'ttl' below UINT_8__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["ttl"] = value = UINT_8__MIN - 1
@@ -406,6 +444,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__ttl__over_max(self) -> None:
         """
         Ensure the constructor rejects 'ttl' above UINT_8__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["ttl"] = value = UINT_8__MAX + 1
@@ -422,6 +462,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__proto__not_IpProto(self) -> None:
         """
         Ensure the constructor rejects 'proto' when it is not an IpProto.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["proto"] = value = "not an IpProto"
@@ -438,6 +480,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__cksum__under_min(self) -> None:
         """
         Ensure the constructor rejects 'cksum' below UINT_16__MIN.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -454,6 +498,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__cksum__over_max(self) -> None:
         """
         Ensure the constructor rejects 'cksum' above UINT_16__MAX.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -470,6 +516,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__src__not_ip4_address(self) -> None:
         """
         Ensure the constructor rejects 'src' when it is not an Ip4Address.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["src"] = value = 0
@@ -486,6 +534,8 @@ class TestIp4HeaderAsserts(TestCase):
     def test__ip4__header__dst__not_ip4_address(self) -> None:
         """
         Ensure the constructor rejects 'dst' when it is not an Ip4Address.
+
+        Reference: RFC 791 §3.1 (IPv4 header wire format).
         """
 
         self._kwargs["dst"] = value = 0

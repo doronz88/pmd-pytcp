@@ -51,6 +51,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor rejects 'ip4__options' longer than
         IP4__OPTIONS__MAX_LEN bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -70,6 +72,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor accepts 'ip4__options' whose length equals
         IP4__OPTIONS__MAX_LEN bytes (boundary case).
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         options = Ip4Options(*([Ip4OptionNop()] * IP4__OPTIONS__MAX_LEN))
@@ -86,6 +90,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor rejects 'ip4__options' whose length is not
         a multiple of 4 bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -105,6 +111,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor rejects an options list where the 'Eol'
         option is not the final entry.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -127,6 +135,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor accepts an options list where the 'Eol'
         option is the last entry.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         options = Ip4Options(
@@ -148,6 +158,8 @@ class TestIp4AssemblerAsserts(TestCase):
         """
         Ensure the constructor accepts an options list that does not
         contain an 'Eol' option at all.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         options = Ip4Options(Ip4OptionNop(), Ip4OptionNop(), Ip4OptionNop(), Ip4OptionNop())
@@ -170,6 +182,8 @@ class TestIp4FragAssemblerAsserts(TestCase):
         """
         Ensure the (Frag) constructor rejects 'ip4_frag__options' longer
         than IP4__OPTIONS__MAX_LEN bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -189,6 +203,8 @@ class TestIp4FragAssemblerAsserts(TestCase):
         """
         Ensure the (Frag) constructor accepts 'ip4_frag__options' whose
         length equals IP4__OPTIONS__MAX_LEN bytes (boundary case).
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         options = Ip4Options(*([Ip4OptionNop()] * IP4__OPTIONS__MAX_LEN))
@@ -205,6 +221,8 @@ class TestIp4FragAssemblerAsserts(TestCase):
         """
         Ensure the (Frag) constructor rejects 'ip4_frag__options' whose
         length is not a multiple of 4 bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -224,6 +242,8 @@ class TestIp4FragAssemblerAsserts(TestCase):
         """
         Ensure the (Frag) constructor rejects an options list where the
         'Eol' option is not the final entry.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -246,6 +266,8 @@ class TestIp4FragAssemblerAsserts(TestCase):
         """
         Ensure the (Frag) constructor accepts an options list where the
         'Eol' option is the last entry.
+
+        Reference: RFC 791 §3.1 (IPv4 header field constraints).
         """
 
         options = Ip4Options(

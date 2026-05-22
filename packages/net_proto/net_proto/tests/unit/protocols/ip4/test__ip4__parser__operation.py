@@ -263,6 +263,8 @@ class TestIp4PacketParserOperation(TestCase):
     def test__ip4__parser__header(self) -> None:
         """
         Ensure the parser exposes the expected Ip4Header object.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -276,6 +278,8 @@ class TestIp4PacketParserOperation(TestCase):
     def test__ip4__parser__options(self) -> None:
         """
         Ensure the parser exposes the expected Ip4Options container.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -289,6 +293,8 @@ class TestIp4PacketParserOperation(TestCase):
     def test__ip4__parser__header_bytes(self) -> None:
         """
         Ensure 'header_bytes' returns the first hlen bytes of the frame.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -302,6 +308,8 @@ class TestIp4PacketParserOperation(TestCase):
     def test__ip4__parser__payload_bytes(self) -> None:
         """
         Ensure 'payload_bytes' returns the bytes between hlen and plen.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -316,6 +324,8 @@ class TestIp4PacketParserOperation(TestCase):
         """
         Ensure 'packet_bytes' returns the full header + options +
         payload span.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -330,6 +340,8 @@ class TestIp4PacketParserOperation(TestCase):
         """
         Ensure the parser stores itself on the PacketRx as both 'ip'
         and 'ip4' so downstream handlers can look it up by either name.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         parser = Ip4Parser(self._packet_rx)
@@ -350,6 +362,8 @@ class TestIp4PacketParserOperation(TestCase):
         Ensure the parser advances 'PacketRx.frame' past the IPv4
         header+options to the payload bytes so the next-layer parser
         sees only what it is supposed to consume.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram parse — header + payload).
         """
 
         Ip4Parser(self._packet_rx)

@@ -302,6 +302,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns the expected total packet length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -313,6 +315,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -324,6 +328,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -335,6 +341,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -346,6 +354,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__ver(self) -> None:
         """
         Ensure the 'ver' property returns IpVersion.IP4.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -357,6 +367,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__hlen(self) -> None:
         """
         Ensure the 'hlen' property returns the header byte length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -368,6 +380,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__dscp(self) -> None:
         """
         Ensure the 'dscp' property returns the provided DSCP value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -379,6 +393,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__ecn(self) -> None:
         """
         Ensure the 'ecn' property returns the provided ECN value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -390,6 +406,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__plen(self) -> None:
         """
         Ensure the 'plen' property returns the total packet length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -401,6 +419,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__id(self) -> None:
         """
         Ensure the 'id' property returns the provided identification.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -412,6 +432,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__flag_df(self) -> None:
         """
         Ensure the 'flag_df' property returns the provided DF flag.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -424,6 +446,8 @@ class TestIp4AssemblerOperation(TestCase):
         """
         Ensure the 'flag_mf' property returns False (Ip4Assembler pins
         MF to False because fragmentation is handled by Ip4FragAssembler).
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -436,6 +460,8 @@ class TestIp4AssemblerOperation(TestCase):
         """
         Ensure the 'offset' property returns 0 (Ip4Assembler pins
         offset to 0 because fragmentation is handled by Ip4FragAssembler).
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -447,6 +473,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__ttl(self) -> None:
         """
         Ensure the 'ttl' property returns the provided TTL value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -459,6 +487,8 @@ class TestIp4AssemblerOperation(TestCase):
         """
         Ensure the 'proto' property returns the IpProto derived from
         the provided payload type.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -472,6 +502,8 @@ class TestIp4AssemblerOperation(TestCase):
         Ensure the 'cksum' property returns 0 before assemble() runs
         (the checksum is back-patched into buffers[0][10:12] by
         assemble(), not into the header dataclass).
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -483,6 +515,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__src(self) -> None:
         """
         Ensure the 'src' property returns the provided source address.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -494,6 +528,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__dst(self) -> None:
         """
         Ensure the 'dst' property returns the provided destination address.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -505,6 +541,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed Ip4Header.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -516,6 +554,8 @@ class TestIp4AssemblerOperation(TestCase):
     def test__ip4__assembler__options(self) -> None:
         """
         Ensure the 'options' property returns the provided Ip4Options.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -528,6 +568,8 @@ class TestIp4AssemblerOperation(TestCase):
         """
         Ensure the 'payload' property returns the provided payload
         assembler.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -540,6 +582,8 @@ class TestIp4AssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header, options, and payload in
         order and the concatenation matches '__bytes__'.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         buffers: list[Buffer] = []
@@ -557,6 +601,8 @@ class TestIp4AssemblerOperation(TestCase):
         Ensure 'assemble()' appends exactly three buffers — fixed-size
         header, options, and payload — so downstream stack code (e.g.
         Ethernet / fragmenter) can locate and mutate them by index.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         buffers: list[Buffer] = []
@@ -757,6 +803,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns the expected total packet length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -768,6 +816,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -779,6 +829,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -790,6 +842,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -801,6 +855,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__ver(self) -> None:
         """
         Ensure the 'ver' property returns IpVersion.IP4.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -812,6 +868,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__hlen(self) -> None:
         """
         Ensure the 'hlen' property returns the header byte length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -823,6 +881,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__dscp(self) -> None:
         """
         Ensure the 'dscp' property returns the provided DSCP value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -834,6 +894,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__ecn(self) -> None:
         """
         Ensure the 'ecn' property returns the provided ECN value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -845,6 +907,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__plen(self) -> None:
         """
         Ensure the 'plen' property returns the total packet length.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -856,6 +920,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__id(self) -> None:
         """
         Ensure the 'id' property returns the provided identification.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -868,6 +934,8 @@ class TestIp4FragAssemblerOperation(TestCase):
         """
         Ensure the 'flag_df' property returns False (Ip4FragAssembler
         pins DF to False because fragments cannot carry DF).
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -879,6 +947,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__flag_mf(self) -> None:
         """
         Ensure the 'flag_mf' property returns the provided MF flag.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -890,6 +960,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__offset(self) -> None:
         """
         Ensure the 'offset' property returns the provided offset value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -901,6 +973,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__ttl(self) -> None:
         """
         Ensure the 'ttl' property returns the provided TTL value.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -914,6 +988,8 @@ class TestIp4FragAssemblerOperation(TestCase):
         Ensure the 'proto' property returns the provided IpProto value
         (the Frag assembler takes proto as an explicit argument rather
         than inferring from payload type).
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -925,6 +1001,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__cksum(self) -> None:
         """
         Ensure the 'cksum' property returns 0 before assemble() runs.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -936,6 +1014,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__src(self) -> None:
         """
         Ensure the 'src' property returns the provided source address.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -947,6 +1027,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__dst(self) -> None:
         """
         Ensure the 'dst' property returns the provided destination address.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -958,6 +1040,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed Ip4Header.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -969,6 +1053,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__options(self) -> None:
         """
         Ensure the 'options' property returns the provided Ip4Options.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -980,6 +1066,8 @@ class TestIp4FragAssemblerOperation(TestCase):
     def test__ip4_frag__assembler__payload(self) -> None:
         """
         Ensure the 'payload' property returns the provided payload buffer.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         self.assertEqual(
@@ -992,6 +1080,8 @@ class TestIp4FragAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header, options, and payload in
         order and the concatenation matches '__bytes__'.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         buffers: list[Buffer] = []
@@ -1009,6 +1099,8 @@ class TestIp4FragAssemblerOperation(TestCase):
         Ensure Ip4FragAssembler.assemble appends exactly three buffers
         — fixed header, options, and payload — mirroring the Ip4Assembler
         layout so the fragmenter can splice them uniformly.
+
+        Reference: RFC 791 §3.1 (IPv4 datagram wire format).
         """
 
         buffers: list[Buffer] = []

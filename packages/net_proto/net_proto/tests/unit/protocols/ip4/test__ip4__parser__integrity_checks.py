@@ -165,6 +165,8 @@ class TestIp4ParserIntegrityChecks(TestCase):
         """
         Ensure the IPv4 packet parser raises Ip4IntegrityError with the
         expected message for each malformed frame.
+
+        Reference: RFC 791 §3.1 (IPv4 header integrity — IHL / Total Length).
         """
 
         with self.assertRaises(Ip4IntegrityError) as error:
@@ -190,6 +192,8 @@ class TestIp4ParserIntegrityBoundary(TestCase):
         """
         Ensure a 20-byte frame with hlen=plen=20 and a valid checksum
         passes integrity checks and parses successfully.
+
+        Reference: RFC 791 §3.1 (IPv4 header integrity — IHL / Total Length).
         """
 
         self.assertEqual(

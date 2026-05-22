@@ -130,6 +130,8 @@ class TestIp4OptionsAssembler(TestCase):
     def test__ip4_options__len(self) -> None:
         """
         Ensure '__len__()' returns the sum of the per-option lengths.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -141,6 +143,8 @@ class TestIp4OptionsAssembler(TestCase):
     def test__ip4_options__str(self) -> None:
         """
         Ensure '__str__()' returns the comma-joined per-option log strings.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -152,6 +156,8 @@ class TestIp4OptionsAssembler(TestCase):
     def test__ip4_options__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -163,6 +169,8 @@ class TestIp4OptionsAssembler(TestCase):
     def test__ip4_options__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the concatenated wire bytes.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -174,6 +182,8 @@ class TestIp4OptionsAssembler(TestCase):
     def test__ip4_options__bool(self) -> None:
         """
         Ensure '__bool__()' is True iff the container is non-empty.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -203,6 +213,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__iter(self) -> None:
         """
         Ensure iterating Ip4Options yields the stored options in order.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -214,6 +226,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__getitem(self) -> None:
         """
         Ensure indexing returns the option at the requested position.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -230,6 +244,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__contains__present(self) -> None:
         """
         Ensure 'in' returns True for a present option.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertIn(
@@ -241,6 +257,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__contains__absent(self) -> None:
         """
         Ensure 'in' returns False for an absent option.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertNotIn(
@@ -252,6 +270,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__eq(self) -> None:
         """
         Ensure __eq__ compares underlying option lists.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -273,6 +293,8 @@ class TestIp4OptionsSequenceProtocol(TestCase):
     def test__ip4_options__index(self) -> None:
         """
         Ensure 'index' returns the position of the first matching option.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -343,6 +365,8 @@ class TestIp4OptionsParser(TestCase):
         Ensure from_buffer parses the buffer into the expected option
         sequence, stopping at the first Eol and dispatching unknown
         type bytes to Ip4OptionUnknown.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         self.assertEqual(
@@ -366,6 +390,8 @@ class TestIp4OptionsValidateIntegrity(TestCase):
         """
         Ensure a well-formed options buffer (Nop-Nop-Eol + padding)
         passes validation without raising.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         # Frame layout: 20 filler header bytes + NOP + NOP + EOL + padding.
@@ -378,6 +404,8 @@ class TestIp4OptionsValidateIntegrity(TestCase):
         """
         Ensure hlen == IP4__HEADER__LEN (no options at all) passes
         validation without raising.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         Ip4Options.validate_integrity(frame=self._HEADER_FILLER, hlen=20)
@@ -386,6 +414,8 @@ class TestIp4OptionsValidateIntegrity(TestCase):
         """
         Ensure an Eol byte short-circuits the validator; bytes past the
         Eol are not inspected.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         # The 0xff byte at offset 22 would normally trigger the
@@ -400,6 +430,8 @@ class TestIp4OptionsValidateIntegrity(TestCase):
         """
         Ensure the validator raises Ip4IntegrityError when an unknown
         option declares a length less than 2.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         # Options: 0xff 0x01 0x00 0x00 -> unknown option, len=1 (<2).
@@ -418,6 +450,8 @@ class TestIp4OptionsValidateIntegrity(TestCase):
         """
         Ensure the validator raises Ip4IntegrityError when an unknown
         option declares a length that extends past the header.
+
+        Reference: RFC 791 §3.1 (IPv4 options block).
         """
 
         # Options: 0xff 0x05 ... -> declared len=5 starting at offset
