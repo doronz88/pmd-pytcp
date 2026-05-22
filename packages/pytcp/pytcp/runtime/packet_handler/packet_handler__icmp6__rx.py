@@ -898,7 +898,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         admitted: list[tuple[Ip6Network, Ip6Address]] = []
         accept_pinfo = bool(nd__constants.ICMP6__ACCEPT_RA_PINFO)
-        for option in packet_rx.icmp6.message.option_pi:
+        for option in packet_rx.icmp6.message.pi:
             reason: str | None = None
             if not option.flag_a:
                 reason = "RFC 4862 §5.5.3 (e)(1): A flag clear (non-autonomous)"
@@ -998,7 +998,7 @@ class PacketHandlerIcmp6Rx(ABC):
         dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
             target_address,
             peer_info=None,
-            inbound_nonce=packet_rx.icmp6.message.option_nonce,
+            inbound_nonce=packet_rx.icmp6.message.nonce,
         )
         if dad_signal is DadSignalResult.LOOP_HAIRPIN:
             # RFC 7527 §4.2 Enhanced DAD: a Nonce option matching
@@ -1046,12 +1046,12 @@ class PacketHandlerIcmp6Rx(ABC):
         # SLLA is present.
         if (
             not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast)
-            and packet_rx.icmp6.message.option_slla
+            and packet_rx.icmp6.message.slla
         ):
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
             stack.nd_cache.add_entry(
                 ip6_address=packet_rx.ip6.src,
-                mac_address=packet_rx.icmp6.message.option_slla,
+                mac_address=packet_rx.icmp6.message.slla,
             )
 
         # Determine if request is part of DAD request by examining its source
@@ -1102,7 +1102,7 @@ class PacketHandlerIcmp6Rx(ABC):
         target_address = packet_rx.icmp6.message.target_address
         dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
             target_address,
-            peer_info=packet_rx.icmp6.message.option_tlla,
+            peer_info=packet_rx.icmp6.message.tlla,
             inbound_nonce=None,
         )
         if dad_signal is DadSignalResult.SIGNALED:
@@ -1110,11 +1110,11 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         # Update ICMPv6 ND cache.
-        if packet_rx.icmp6.message.option_tlla:
+        if packet_rx.icmp6.message.tlla:
             self._packet_stats_rx.icmp6__nd_neighbor_advertisement__update_nd_cache += 1
             stack.nd_cache.add_entry(
                 ip6_address=packet_rx.icmp6.message.target_address,
-                mac_address=packet_rx.icmp6.message.option_tlla,
+                mac_address=packet_rx.icmp6.message.tlla,
             )
             return
 

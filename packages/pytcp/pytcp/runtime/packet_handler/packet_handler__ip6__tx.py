@@ -263,7 +263,7 @@ class PacketHandlerIp6Tx(ABC):
             ip6__src.is_unspecified
             and isinstance(ip6__payload, Icmp6)
             and isinstance(ip6__payload.message, Icmp6NdMessageNeighborSolicitation)
-            and ip6__payload.message.option_slla is None
+            and ip6__payload.message.slla is None
         ):
             self._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(

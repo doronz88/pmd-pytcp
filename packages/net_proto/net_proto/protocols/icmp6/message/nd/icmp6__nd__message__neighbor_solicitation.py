@@ -225,10 +225,10 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
                     "the 'ip6__dst' must be the solicited-node multicast of 'target_address'. "
                     f"Got: {ip6__dst!r}",
                 )
-            if self.option_slla is not None:
+            if self.slla is not None:
                 raise Icmp6SanityError(
                     "ND Neighbor Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, the 'slla' option "
-                    f"must not be included. Got: {self.option_slla!r}",
+                    f"must not be included. Got: {self.slla!r}",
                 )
 
         # TODO: Enforce proper option presence.

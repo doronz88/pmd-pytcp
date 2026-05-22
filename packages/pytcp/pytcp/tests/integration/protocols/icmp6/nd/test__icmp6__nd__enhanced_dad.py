@@ -225,8 +225,8 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
         )
         assert dad_message is not None
         self.assertIsNotNone(
-            dad_message.option_nonce,
-            msg=f"Probe must carry a Nonce option. Got: {dad_message.option_nonce!r}",
+            dad_message.nonce,
+            msg=f"Probe must carry a Nonce option. Got: {dad_message.nonce!r}",
         )
         # Nonces are cleared after DAD completes successfully —
         # the probe's nonce was tracked DURING the DAD session
@@ -280,8 +280,8 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
         )
         assert dad_message is not None
         self.assertIsNone(
-            dad_message.option_nonce,
-            msg=("enhanced_dad=0 must suppress the Nonce option on probes. " f"Got: {dad_message.option_nonce!r}"),
+            dad_message.nonce,
+            msg=("enhanced_dad=0 must suppress the Nonce option on probes. " f"Got: {dad_message.nonce!r}"),
         )
         self.assertFalse(
             self._packet_handler._icmp6_nd_dad__registry.has_signal(CANDIDATE),

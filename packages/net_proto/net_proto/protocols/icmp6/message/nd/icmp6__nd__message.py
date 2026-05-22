@@ -55,7 +55,7 @@ class Icmp6NdMessage(Icmp6Message):
     options: Icmp6NdOptions
 
     @property
-    def option_slla(self) -> MacAddress | None:
+    def slla(self) -> MacAddress | None:
         """
         Get the value of the ICMPv6 ND Slla option if present.
         """
@@ -63,7 +63,7 @@ class Icmp6NdMessage(Icmp6Message):
         return self.options.slla
 
     @property
-    def option_tlla(self) -> MacAddress | None:
+    def tlla(self) -> MacAddress | None:
         """
         Get the value of the ICMPv6 ND Tlla option if present.
         """
@@ -71,7 +71,7 @@ class Icmp6NdMessage(Icmp6Message):
         return self.options.tlla
 
     @property
-    def option_pi(self) -> list[NdPrefixInfo]:
+    def pi(self) -> list[NdPrefixInfo]:
         """
         Get the prefix info entries from every ICMPv6 ND Pi option
         present, returning an empty list if none are present.
@@ -80,7 +80,7 @@ class Icmp6NdMessage(Icmp6Message):
         return self.options.pi
 
     @property
-    def option_nonce(self) -> bytes | None:
+    def nonce(self) -> bytes | None:
         """
         Get the value of the ICMPv6 ND Nonce option if present
         (RFC 3971 §5.3.2 / RFC 7527 §4.1).

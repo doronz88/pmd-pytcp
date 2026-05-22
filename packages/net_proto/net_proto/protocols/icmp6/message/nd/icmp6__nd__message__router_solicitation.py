@@ -193,10 +193,10 @@ class Icmp6NdMessageRouterSolicitation(Icmp6NdMessage):
                 f"must be all-routers multicast. Got: {ip6__dst!r}",
             )
 
-        if ip6__src.is_unspecified and self.option_slla is not None:
+        if ip6__src.is_unspecified and self.slla is not None:
             raise Icmp6SanityError(
                 "ND Router Solicitation - [RFC 4861] When the 'ip6__src' is unspecified, "
-                f"the 'slla' option must not be included. Got: {self.option_slla!r}",
+                f"the 'slla' option must not be included. Got: {self.slla!r}",
             )
 
         # TODO: Enforce proper option presence.

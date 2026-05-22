@@ -330,3 +330,53 @@ class TestIcmp6NdMessageNeighborAdvertisementAsserts(TestCase):
             "The 'type' field must be <Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT: 136>. Got: <Icmp6Type.UNKNOWN_255: 255>",
             msg="Unexpected assertion message for wrong 'type' byte in from_buffer().",
         )
+
+
+class TestIcmp6NdMessageOptionAccessors(TestCase):
+    """
+    The ICMPv6 ND message bare option-accessor tests.
+    """
+
+    def test__icmp6__nd__message__slla_accessor_returns_option_value(self) -> None:
+        """
+        Ensure the message-level 'slla' accessor returns the Source
+        Link-Layer Address carried by the message's SLLA option,
+        matching the bare (un-prefixed) option-accessor naming used
+        across the other protocol families.
+
+        Reference: RFC 4861 §4.6.1 (Source Link-Layer Address option).
+        """
+
+        mac = MacAddress("02:00:00:00:00:91")
+        message = Icmp6NdMessageNeighborAdvertisement(
+            code=Icmp6NdNeighborAdvertisementCode.DEFAULT,
+            cksum=0,
+            target_address=Ip6Address(),
+            options=Icmp6NdOptions(Icmp6NdOptionSlla(mac)),
+        )
+
+        self.assertEqual(
+            message.slla,
+            mac,
+            msg="Icmp6NdMessage.slla must return the SLLA option's MacAddress.",
+        )
+
+    def test__icmp6__nd__message__slla_accessor_none_when_absent(self) -> None:
+        """
+        Ensure the message-level 'slla' accessor returns None when the
+        message carries no SLLA option.
+
+        Reference: RFC 4861 §4.6.1 (Source Link-Layer Address option).
+        """
+
+        message = Icmp6NdMessageNeighborAdvertisement(
+            code=Icmp6NdNeighborAdvertisementCode.DEFAULT,
+            cksum=0,
+            target_address=Ip6Address(),
+            options=Icmp6NdOptions(),
+        )
+
+        self.assertIsNone(
+            message.slla,
+            msg="Icmp6NdMessage.slla must be None when no SLLA option is present.",
+        )
