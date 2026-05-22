@@ -67,13 +67,21 @@ IP6__PRIVATE_PREFIX_MASK = 0xFE00_0000_0000_0000_0000_0000_0000_0000
 IP6__DOCUMENTATION_PREFIX = 0x2001_0DB8_0000_0000_0000_0000_0000_0000
 IP6__DOCUMENTATION_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
 
+# RFC 9637 second Documentation prefix — 3fff::/20
+IP6__DOCUMENTATION_RFC9637_PREFIX = 0x3FFF_0000_0000_0000_0000_0000_0000_0000
+IP6__DOCUMENTATION_RFC9637_PREFIX_MASK = 0xFFFF_F000_0000_0000_0000_0000_0000_0000
+
 # RFC 6666 Discard-Only Address Block — 100::/64
 IP6__DISCARD_PREFIX = 0x0100_0000_0000_0000_0000_0000_0000_0000
 IP6__DISCARD_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_0000_0000_0000_0000
 
-# RFC 5180 Benchmarking — 2001:2::/48
-IP6__BENCHMARK_PREFIX = 0x2001_0002_0000_0000_0000_0000_0000_0000
-IP6__BENCHMARK_PREFIX_MASK = 0xFFFF_FFFF_FFFF_0000_0000_0000_0000_0000
+# RFC 2928 IETF Protocol Assignments — 2001::/23. The umbrella
+# allocation that contains the TEREDO (2001::/32), Benchmarking
+# (2001:2::/48, RFC 5180), AMT (2001:3::/32), AS112-v6
+# (2001:4:112::/48), ORCHIDv2 (2001:20::/28), DET (2001:30::/28)
+# and the PCP / TURN / DNS-SD anycast single-address assignments.
+IP6__IETF_PROTOCOL_PREFIX = 0x2001_0000_0000_0000_0000_0000_0000_0000
+IP6__IETF_PROTOCOL_PREFIX_MASK = 0xFFFF_FE00_0000_0000_0000_0000_0000_0000
 
 # RFC 4291 §2.5.5.2 IPv4-mapped IPv6 — ::ffff:0:0/96
 IP6__IPV4_MAPPED_PREFIX = 0x0000_0000_0000_0000_0000_FFFF_0000_0000
@@ -87,6 +95,29 @@ IP6__6TO4_PREFIX_MASK = 0xFFFF_0000_0000_0000_0000_0000_0000_0000
 # obfuscated client = bitwise-NOT of bits 31..0)
 IP6__TEREDO_PREFIX = 0x2001_0000_0000_0000_0000_0000_0000_0000
 IP6__TEREDO_PREFIX_MASK = 0xFFFF_FFFF_0000_0000_0000_0000_0000_0000
+
+# Remaining IANA IPv6 Special-Purpose Registry prefixes that
+# 'is_reserved' aggregates and that have no dedicated predicate.
+
+# RFC 6052 §2.1 NAT64 well-known prefix — 64:ff9b::/96
+IP6__NAT64_WELL_KNOWN_PREFIX = 0x0064_FF9B_0000_0000_0000_0000_0000_0000
+IP6__NAT64_WELL_KNOWN_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_0000_0000
+
+# RFC 8215 NAT64 local-use translation prefix — 64:ff9b:1::/48
+IP6__NAT64_LOCAL_PREFIX = 0x0064_FF9B_0001_0000_0000_0000_0000_0000
+IP6__NAT64_LOCAL_PREFIX_MASK = 0xFFFF_FFFF_FFFF_0000_0000_0000_0000_0000
+
+# RFC 9780 Dummy IPv6 Prefix — 100:0:0:1::/64
+IP6__DUMMY_PREFIX = 0x0100_0000_0000_0001_0000_0000_0000_0000
+IP6__DUMMY_PREFIX_MASK = 0xFFFF_FFFF_FFFF_FFFF_0000_0000_0000_0000
+
+# RFC 7534 Direct Delegation AS112 Service — 2620:4f:8000::/48
+IP6__AS112_PREFIX = 0x2620_004F_8000_0000_0000_0000_0000_0000
+IP6__AS112_PREFIX_MASK = 0xFFFF_FFFF_FFFF_0000_0000_0000_0000_0000
+
+# RFC 9602 Segment Routing over IPv6 (SRv6) SIDs — 5f00::/16
+IP6__SRV6_PREFIX = 0x5F00_0000_0000_0000_0000_0000_0000_0000
+IP6__SRV6_PREFIX_MASK = 0xFFFF_0000_0000_0000_0000_0000_0000_0000
 
 
 @final
@@ -518,37 +549,55 @@ class Ip6Address(IpAddress):
     @property
     def is_documentation(self) -> bool:
         """
-        Check if IPv6 address is in the 2001:db8::/32
-        documentation prefix (RFC 3849).
+        Check if IPv6 address is in a documentation prefix:
+        2001:db8::/32 (RFC 3849) or 3fff::/20 (RFC 9637).
         """
 
-        return self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
+        return (
+            self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
+            or self._address & IP6__DOCUMENTATION_RFC9637_PREFIX_MASK == IP6__DOCUMENTATION_RFC9637_PREFIX
+        )
 
     @property
     def is_reserved(self) -> bool:
         """
         Check if IPv6 address belongs to a special-purpose
         prefix from the IANA IPv6 Special-Purpose Address
-        Registry (RFC 6890 / RFC 8190) that is NOT already
+        Registry (RFC 8190 / RFC 6890) that is NOT already
         covered by another predicate (is_loopback,
         is_link_local, is_multicast, is_private,
-        is_unspecified). Currently recognises:
+        is_unspecified). Mirrors the full registry:
 
-        - 100::/64       (RFC 6666 Discard-Only)
-        - ::ffff:0:0/96  (RFC 4291 §2.5.5.2 IPv4-mapped)
-        - 2001:2::/48    (RFC 5180 Benchmarking)
-        - 2001:db8::/32  (RFC 3849 Documentation)
+        - ::ffff:0:0/96     (RFC 4291 §2.5.5.2 IPv4-mapped)
+        - 64:ff9b::/96      (RFC 6052 NAT64 well-known)
+        - 64:ff9b:1::/48    (RFC 8215 NAT64 local-use)
+        - 100::/64          (RFC 6666 Discard-Only)
+        - 100:0:0:1::/64    (RFC 9780 Dummy Prefix)
+        - 2001::/23         (RFC 2928 IETF Protocol Assignments,
+                             subsuming TEREDO / Benchmarking /
+                             AMT / AS112-v6 / ORCHIDv2 / DET and
+                             the PCP / TURN / DNS-SD anycast
+                             single-address assignments)
+        - 2001:db8::/32     (RFC 3849 Documentation)
+        - 2002::/16         (RFC 3056 6to4)
+        - 2620:4f:8000::/48 (RFC 7534 Direct Delegation AS112)
+        - 3fff::/20         (RFC 9637 Documentation)
+        - 5f00::/16         (RFC 9602 SRv6 SIDs)
 
-        Additional prefixes (TEREDO, 6to4, ORCHIDv2, etc.)
-        will be folded in as PyTCP gains consumers that
-        need to distinguish them. See
+        See
         `docs/rfc/ip6/rfc8190__ipv6_special_purpose/adherence.md`
         for the per-prefix walk-through.
         """
 
         return (
-            self._address & IP6__DISCARD_PREFIX_MASK == IP6__DISCARD_PREFIX
+            self.is_documentation
+            or self._address & IP6__NAT64_WELL_KNOWN_PREFIX_MASK == IP6__NAT64_WELL_KNOWN_PREFIX
+            or self._address & IP6__NAT64_LOCAL_PREFIX_MASK == IP6__NAT64_LOCAL_PREFIX
+            or self._address & IP6__DISCARD_PREFIX_MASK == IP6__DISCARD_PREFIX
+            or self._address & IP6__DUMMY_PREFIX_MASK == IP6__DUMMY_PREFIX
+            or self._address & IP6__IETF_PROTOCOL_PREFIX_MASK == IP6__IETF_PROTOCOL_PREFIX
+            or self._address & IP6__6TO4_PREFIX_MASK == IP6__6TO4_PREFIX
+            or self._address & IP6__AS112_PREFIX_MASK == IP6__AS112_PREFIX
+            or self._address & IP6__SRV6_PREFIX_MASK == IP6__SRV6_PREFIX
             or self._address & IP6__IPV4_MAPPED_PREFIX_MASK == IP6__IPV4_MAPPED_PREFIX
-            or self._address & IP6__BENCHMARK_PREFIX_MASK == IP6__BENCHMARK_PREFIX
-            or self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
         )

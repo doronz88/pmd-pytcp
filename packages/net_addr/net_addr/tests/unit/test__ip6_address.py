@@ -1362,7 +1362,7 @@ class TestNetAddrIp6AddressSolicitedNodeMulticast(TestCase):
 class TestIp6AddressIsDocumentation(TestCase):
     """
     'Ip6Address.is_documentation' recognises the 2001:db8::/32
-    documentation prefix per RFC 3849.
+    (RFC 3849) and 3fff::/20 (RFC 9637) documentation prefixes.
     """
 
     def test__net_addr__ip6_address__is_documentation__match(self) -> None:
@@ -1430,6 +1430,45 @@ class TestIp6AddressIsDocumentation(TestCase):
             msg="Cloudflare public DNS is not documentation.",
         )
 
+    def test__net_addr__ip6_address__is_documentation__rfc9637_match(self) -> None:
+        """
+        Ensure an address in 3fff::/20 reports
+        is_documentation = True.
+
+        Reference: RFC 9637 (Expanding the IPv6 Documentation Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("3fff::1").is_documentation,
+            msg="3fff::1 must be recognised as documentation.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__rfc9637_boundary(self) -> None:
+        """
+        Ensure the upper boundary of 3fff::/20 reports
+        is_documentation = True.
+
+        Reference: RFC 9637 (Expanding the IPv6 Documentation Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff").is_documentation,
+            msg="Last address in 3fff::/20 must be documentation.",
+        )
+
+    def test__net_addr__ip6_address__is_documentation__rfc9637_above(self) -> None:
+        """
+        Ensure addresses just above 3fff::/20 report
+        is_documentation = False.
+
+        Reference: RFC 9637 (Expanding the IPv6 Documentation Prefix).
+        """
+
+        self.assertFalse(
+            Ip6Address("3fff:1000::1").is_documentation,
+            msg="3fff:1000::/20 is outside the documentation prefix.",
+        )
+
 
 class TestIp6AddressIsReserved(TestCase):
     """
@@ -1489,6 +1528,111 @@ class TestIp6AddressIsReserved(TestCase):
         self.assertTrue(
             Ip6Address("::ffff:192.0.2.1").is_reserved,
             msg="::ffff:0:0/96 IPv4-mapped prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__nat64_well_known(self) -> None:
+        """
+        Ensure 64:ff9b::/96 (IPv4-IPv6 translation well-known
+        prefix) reports is_reserved = True.
+
+        Reference: RFC 6052 §2.1 (Well-Known Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("64:ff9b::192.0.2.1").is_reserved,
+            msg="64:ff9b::/96 NAT64 well-known prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__nat64_local(self) -> None:
+        """
+        Ensure 64:ff9b:1::/48 (local-use IPv4-IPv6 translation
+        prefix) reports is_reserved = True.
+
+        Reference: RFC 8215 (Local-Use IPv4/IPv6 Translation Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("64:ff9b:1::1").is_reserved,
+            msg="64:ff9b:1::/48 NAT64 local-use prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__dummy(self) -> None:
+        """
+        Ensure 100:0:0:1::/64 (Dummy IPv6 Prefix) reports
+        is_reserved = True.
+
+        Reference: RFC 9780 (A Dummy IPv6 Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("100:0:0:1::1").is_reserved,
+            msg="100:0:0:1::/64 dummy prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__ietf_protocol(self) -> None:
+        """
+        Ensure the 2001::/23 IETF Protocol Assignments umbrella
+        reports is_reserved = True (it subsumes TEREDO, AMT,
+        AS112-v6, ORCHIDv2, the DET prefix and the anycast
+        single-address assignments).
+
+        Reference: RFC 2928 (Initial IPv6 Sub-TLA ID Assignments).
+        """
+
+        self.assertTrue(
+            Ip6Address("2001::1").is_reserved,
+            msg="2001::/23 IETF Protocol Assignments must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__sixtofour(self) -> None:
+        """
+        Ensure 2002::/16 (6to4) reports is_reserved = True.
+
+        Reference: RFC 3056 §2 (6to4 prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("2002::1").is_reserved,
+            msg="2002::/16 6to4 prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__as112(self) -> None:
+        """
+        Ensure 2620:4f:8000::/48 (Direct Delegation AS112
+        Service) reports is_reserved = True.
+
+        Reference: RFC 7534 (AS112 Nameserver Operations).
+        """
+
+        self.assertTrue(
+            Ip6Address("2620:4f:8000::1").is_reserved,
+            msg="2620:4f:8000::/48 AS112 prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__documentation_rfc9637(self) -> None:
+        """
+        Ensure 3fff::/20 (second documentation prefix) reports
+        is_reserved = True.
+
+        Reference: RFC 9637 (Expanding the IPv6 Documentation Prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("3fff::1").is_reserved,
+            msg="3fff::/20 documentation prefix must be reserved.",
+        )
+
+    def test__net_addr__ip6_address__is_reserved__srv6(self) -> None:
+        """
+        Ensure 5f00::/16 (Segment Routing SRv6 SIDs) reports
+        is_reserved = True.
+
+        Reference: RFC 9602 (Segment Routing over IPv6 SIDs block).
+        """
+
+        self.assertTrue(
+            Ip6Address("5f00::1").is_reserved,
+            msg="5f00::/16 SRv6 SID prefix must be reserved.",
         )
 
     def test__net_addr__ip6_address__is_reserved__global_not_reserved(self) -> None:

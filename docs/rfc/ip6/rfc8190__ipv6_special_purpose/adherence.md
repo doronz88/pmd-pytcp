@@ -16,17 +16,18 @@ BCP that updates the procedural rules around the IANA
 Special-Purpose Address Registries; the operational
 classification requirements for hosts come from RFC 6890
 ("Special-Purpose IP Address Registries") and the
-per-prefix RFCs it indexes (RFC 3849 for documentation,
-RFC 6666 for discard, RFC 5180 for benchmarking, etc.).
+per-prefix RFCs it indexes (RFC 3849 / RFC 9637 for
+documentation, RFC 6666 for discard, RFC 5180 for
+benchmarking, etc.).
 
 The IPv4 parallel is
 [`../../ip4/rfc6890__special_purpose_ip_registries/adherence.md`](../../ip4/rfc6890__special_purpose_ip_registries/adherence.md).
 PyTCP's only RFC 8190 surface is the address-classification
 predicate set on `Ip6Address`.
 
-The audit was performed by reading RFC 8190 + the IANA
+The audit was performed by reading RFC 8190 + the live IANA
 IPv6 Special-Purpose Address Registry (current as of
-2026-05-12) and inspecting `packages/net_addr/net_addr/ip6_address.py`
+2026-05-22) and inspecting `packages/net_addr/net_addr/ip6_address.py`
 directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
@@ -36,38 +37,47 @@ Adherence levels: **met**, **partial**, **not implemented**,
 
 ## Top-line adherence
 
-PyTCP **meets** the RFC 8190 / RFC 6890 surface relevant to a
-host stack: the most-needed special-purpose prefixes
-(loopback, link-local, ULA, multicast, unspecified,
-documentation, discard, benchmarking, IPv4-mapped) are
-recognised by `Ip6Address` predicates. The non-propagation
-operational requirements are router-side (Phase-2 forwarding
-plane). The "Forwardable" / "Globally Reachable" /
-"Reserved-by-Protocol" metadata in the registry is operator-
-facing — PyTCP currently exposes only the bare predicates and
-leaves the policy decision to consumers.
+PyTCP **meets** the RFC 8190 / RFC 6890 host-stack surface:
+`Ip6Address.is_reserved` now mirrors the **full** IANA IPv6
+Special-Purpose Address Registry — every registered prefix is
+classified, either by a dedicated predicate
+(`is_loopback` / `is_link_local` / `is_multicast` /
+`is_private` / `is_unspecified` / `is_documentation`) or by
+the `is_reserved` aggregator. The non-propagation operational
+requirements are router-side (Phase-2 forwarding plane). The
+"Forwardable" / "Globally Reachable" / "Reserved-by-Protocol"
+metadata in the registry is operator-facing — PyTCP exposes
+the bare predicates and leaves the policy decision to
+consumers.
 
-| Prefix                  | RFC               | PyTCP predicate                  | Status |
-|-------------------------|-------------------|----------------------------------|--------|
-| `::/128`                | RFC 4291          | `is_unspecified`                 | met    |
-| `::1/128`               | RFC 4291          | `is_loopback`                    | met    |
-| `::ffff:0:0/96`         | RFC 4291 §2.5.5.2 | `is_reserved`                    | met    |
-| `64:ff9b::/96`          | RFC 6052          | (no predicate; treated as global) | partial — no consumer today |
-| `64:ff9b:1::/48`        | RFC 8215          | (no predicate)                   | partial — no consumer today |
-| `100::/64`              | RFC 6666          | `is_reserved`                    | met    |
-| `2001::/23`             | RFC 2928          | (no predicate; covered by is_global) | partial — IETF protocol assignments  |
-| `2001::/32`             | RFC 4380 (TEREDO) | (no predicate)                   | n/a (operator-side; no PyTCP TEREDO) |
-| `2001:1::1/128`         | RFC 7723 (PCP)    | (no predicate)                   | n/a (no PCP) |
-| `2001:2::/48`           | RFC 5180          | `is_reserved`                    | met    |
-| `2001:3::/32`           | RFC 7450 (AMT)    | (no predicate)                   | n/a (no AMT) |
-| `2001:4:112::/48`       | RFC 7535          | (no predicate)                   | n/a (no AS112) |
-| `2001:20::/28`          | RFC 7343 (ORCHIDv2) | (no predicate)                 | n/a (no HIT) |
-| `2001:db8::/32`         | RFC 3849          | `is_documentation` + `is_reserved` | met  |
-| `2002::/16`             | RFC 3056 (6to4)   | (no predicate)                   | partial — 6to4 deprecated, no consumer |
-| `2620:4f:8000::/48`     | RFC 7534 (AS112)  | (no predicate)                   | n/a (operator-side) |
-| `fc00::/7`              | RFC 4193 (ULA)    | `is_private`                     | met    |
-| `fe80::/10`             | RFC 4291 (LL)     | `is_link_local`                  | met    |
-| `ff00::/8`              | RFC 4291 (mc)     | `is_multicast`                   | met    |
+| Prefix              | Name / RFC                         | PyTCP predicate                     | Status |
+|---------------------|------------------------------------|-------------------------------------|--------|
+| `::/128`            | Unspecified — RFC 4291             | `is_unspecified`                    | met    |
+| `::1/128`           | Loopback — RFC 4291                | `is_loopback`                       | met    |
+| `::ffff:0:0/96`     | IPv4-mapped — RFC 4291 §2.5.5.2    | `is_reserved`                       | met    |
+| `64:ff9b::/96`      | NAT64 well-known — RFC 6052        | `is_reserved`                       | met    |
+| `64:ff9b:1::/48`    | NAT64 local-use — RFC 8215         | `is_reserved`                       | met    |
+| `100::/64`          | Discard-Only — RFC 6666           | `is_reserved`                       | met    |
+| `100:0:0:1::/64`    | Dummy Prefix — RFC 9780           | `is_reserved`                       | met    |
+| `2001::/23`         | IETF Protocol Assignments — RFC 2928 | `is_reserved`                    | met (umbrella) |
+| `2001::/32`         | TEREDO — RFC 4380                 | `is_reserved` (via 2001::/23)       | met    |
+| `2001:1::1/128`     | PCP Anycast — RFC 7723           | `is_reserved` (via 2001::/23)       | met    |
+| `2001:1::2/128`     | TURN Anycast — RFC 8155          | `is_reserved` (via 2001::/23)       | met    |
+| `2001:1::3/128`     | DNS-SD SRP Anycast — RFC 9665     | `is_reserved` (via 2001::/23)       | met    |
+| `2001:2::/48`       | Benchmarking — RFC 5180          | `is_reserved` (via 2001::/23)       | met    |
+| `2001:3::/32`       | AMT — RFC 7450                   | `is_reserved` (via 2001::/23)       | met    |
+| `2001:4:112::/48`   | AS112-v6 — RFC 7535             | `is_reserved` (via 2001::/23)       | met    |
+| `2001:10::/28`      | Deprecated (ORCHID) — RFC 4843   | `is_reserved` (via 2001::/23)       | met    |
+| `2001:20::/28`      | ORCHIDv2 — RFC 7343             | `is_reserved` (via 2001::/23)       | met    |
+| `2001:30::/28`      | DET — RFC 9374                  | `is_reserved` (via 2001::/23)       | met    |
+| `2001:db8::/32`     | Documentation — RFC 3849        | `is_documentation` + `is_reserved`  | met    |
+| `2002::/16`         | 6to4 — RFC 3056                 | `is_reserved`                       | met    |
+| `2620:4f:8000::/48` | Direct Delegation AS112 — RFC 7534 | `is_reserved`                    | met    |
+| `3fff::/20`         | Documentation — RFC 9637        | `is_documentation` + `is_reserved`  | met    |
+| `5f00::/16`         | SRv6 SIDs — RFC 9602            | `is_reserved`                       | met    |
+| `fc00::/7`          | Unique-Local — RFC 4193         | `is_private`                        | met    |
+| `fe80::/10`         | Link-Local Unicast — RFC 4291   | `is_link_local`                     | met    |
+| `ff00::/8`          | Multicast — RFC 4291            | `is_multicast`                      | met    |
 
 ---
 
@@ -87,30 +97,41 @@ concerns; no host-stack code changes.
 > "The 'Special-Purpose Address Registries' (...) are
 >  updated to reflect the changes described above."
 
-**Adherence:** met (the predicates cover the registry
-entries listed in the table above). The PyTCP
-`Ip6Address` predicates match the IANA IPv6 Special-Purpose
-Address Registry verbatim for the entries that have a
-predicate; entries without a predicate either have no
-PyTCP consumer (TEREDO, AMT, PCP, AS112, ORCHIDv2) or are
-deprecated (6to4).
+**Adherence:** met. The PyTCP `Ip6Address` predicates classify
+the IANA IPv6 Special-Purpose Address Registry in full — every
+registry entry maps to either a dedicated predicate or the
+`is_reserved` aggregator (see the top-line table).
 
-The `is_reserved` predicate is an aggregator over the
-"special-purpose AND not-covered-by-another-predicate" set:
+`is_reserved` is the aggregator over the "special-purpose AND
+not-covered-by-another-predicate" set. The `2001::/23` IETF
+Protocol Assignments umbrella (RFC 2928) subsumes every
+2001:0000–2001:01ff sub-allocation (TEREDO, the PCP / TURN /
+DNS-SD anycast single addresses, Benchmarking, AMT, AS112-v6,
+the deprecated ORCHID block, ORCHIDv2 and the DET prefix), so
+a single mask test covers all of them:
 
 ```python
 @property
 def is_reserved(self) -> bool:
     return (
-        self._address & IP6__DISCARD_PREFIX_MASK == IP6__DISCARD_PREFIX
+        self.is_documentation
+        or self._address & IP6__NAT64_WELL_KNOWN_PREFIX_MASK == IP6__NAT64_WELL_KNOWN_PREFIX
+        or self._address & IP6__NAT64_LOCAL_PREFIX_MASK == IP6__NAT64_LOCAL_PREFIX
+        or self._address & IP6__DISCARD_PREFIX_MASK == IP6__DISCARD_PREFIX
+        or self._address & IP6__DUMMY_PREFIX_MASK == IP6__DUMMY_PREFIX
+        or self._address & IP6__IETF_PROTOCOL_PREFIX_MASK == IP6__IETF_PROTOCOL_PREFIX
+        or self._address & IP6__6TO4_PREFIX_MASK == IP6__6TO4_PREFIX
+        or self._address & IP6__AS112_PREFIX_MASK == IP6__AS112_PREFIX
+        or self._address & IP6__SRV6_PREFIX_MASK == IP6__SRV6_PREFIX
         or self._address & IP6__IPV4_MAPPED_PREFIX_MASK == IP6__IPV4_MAPPED_PREFIX
-        or self._address & IP6__BENCHMARK_PREFIX_MASK == IP6__BENCHMARK_PREFIX
-        or self._address & IP6__DOCUMENTATION_PREFIX_MASK == IP6__DOCUMENTATION_PREFIX
     )
 ```
 
 (`packages/net_addr/net_addr/ip6_address.py`). Consumers that need a finer
-classification call `is_documentation` directly.
+classification call `is_documentation` directly. `is_reserved`
+delegates the two documentation prefixes to `is_documentation`
+so the documentation membership is defined in exactly one
+place.
 
 ---
 
@@ -121,9 +142,16 @@ classification call `is_documentation` directly.
 > "An IPv6 prefix used for sinking traffic at the routing
 >  layer, where the destination has no relevance to a host."
 
-**Adherence:** met (`is_reserved` returns True). Consumers
-that want to drop outbound traffic to the discard prefix
-can gate on `dst.is_reserved` and skip emission.
+**Adherence:** met (`is_reserved` returns True).
+
+### 100:0:0:1::/64 (RFC 9780 Dummy IPv6 Prefix)
+
+> "A prefix that can be used as a non-routable placeholder
+>  IPv6 destination address."
+
+**Adherence:** met (`is_reserved` returns True). Distinct from
+the discard prefix `100::/64` — the dummy prefix is the
+adjacent `100:0:0:1::/64` and is matched by its own mask.
 
 ### ::ffff:0:0/96 (RFC 4291 §2.5.5.2 IPv4-mapped)
 
@@ -132,31 +160,55 @@ can gate on `dst.is_reserved` and skip emission.
 
 **Adherence:** met (`is_reserved` returns True). PyTCP does
 not emit IPv4-mapped addresses on the wire; an IPv4-mapped
-destination on a TX path would be classified as reserved
-and could be rejected by future strict-policy code.
+destination on a TX path would be classified as reserved and
+could be rejected by future strict-policy code.
 
-### 2001:db8::/32 (RFC 3849 Documentation)
+### 64:ff9b::/96 (RFC 6052) and 64:ff9b:1::/48 (RFC 8215) NAT64
+
+**Adherence:** met (`is_reserved` returns True). PyTCP has no
+NAT64 client today, but the translation prefixes are now
+classified rather than silently treated as global unicast; a
+future NAT64 consumer would add a dedicated
+`is_nat64_translated` predicate alongside these masks.
+
+### 2001::/23 (RFC 2928 IETF Protocol Assignments)
+
+**Adherence:** met (`is_reserved` returns True via the
+`IP6__IETF_PROTOCOL_PREFIX` /23 mask). This umbrella covers
+the 2001:0000–2001:01ff sub-allocations as one test; the
+individual sub-block constants (TEREDO at `2001::/32`,
+ORCHIDv2 at `2001:20::/28`, etc.) are intentionally not
+duplicated, because the /23 already classifies them and PyTCP
+has no consumer that needs to distinguish one sub-block from
+another. The dedicated `teredo` extraction property keeps its
+own `IP6__TEREDO_PREFIX` constant because it parses the
+embedded server/client IPv4 pair, which is a different concern
+from membership classification.
+
+### 2001:db8::/32 (RFC 3849) and 3fff::/20 (RFC 9637) Documentation
 
 > "Use in publicly available documentation. Filtered at
 >  network boundaries to prevent leakage."
 
-**Adherence:** met (`is_documentation` + `is_reserved`
-both return True). A future ingress-filter that drops
-documentation-sourced packets at the host boundary (a
-Phase-2 sysctl) would consult `is_documentation`; the
-Phase-1 stack accepts them, but tests that use the
-documentation prefix as fixtures get unambiguous
-classification.
+**Adherence:** met (`is_documentation` + `is_reserved` both
+return True). RFC 9637 (2024) expanded the documentation
+allocation with the larger `3fff::/20`; `is_documentation` now
+matches either prefix, and `is_reserved` delegates to it.
 
-### 2001:2::/48 (RFC 5180 Benchmarking)
+### 2002::/16 (RFC 3056 6to4)
 
-> "Address space allocated for benchmarking testing of
->  network interconnect devices."
+**Adherence:** met (`is_reserved` returns True). 6to4 is
+deprecated for new deployment (RFC 7526) but remains a live
+registry entry; PyTCP classifies it and routes via native
+IPv6 only. The `sixtofour` extraction property keeps its own
+`IP6__6TO4_PREFIX` constant for parsing the embedded IPv4.
 
-**Adherence:** met (`is_reserved` returns True). No
-operational impact on PyTCP today; the predicate is
-available for future test-fixture validation or
-firewall-plane gating.
+### 2620:4f:8000::/48 (RFC 7534 Direct Delegation AS112) and 5f00::/16 (RFC 9602 SRv6 SIDs)
+
+**Adherence:** met (`is_reserved` returns True). Both are
+operator/router-side allocations with no host consumer in
+PyTCP, but they are now classified rather than treated as
+global unicast.
 
 ### fc00::/7 (RFC 4193 ULA)
 
@@ -168,35 +220,18 @@ record for the full walk-through.
 
 **Adherence:** met (existing `is_link_local` /
 `is_multicast` predicates). These are RFC 4291 prefixes
-(not RFC 8190 registry entries strictly, but referenced
-from RFC 6890).
+(referenced from RFC 6890 / the registry).
 
-### Prefixes with no PyTCP predicate
+### Interaction with is_global
 
-The following IANA registry entries have **no PyTCP
-predicate** today because PyTCP has no consumer that needs
-to distinguish them:
-
-- `64:ff9b::/96` (RFC 6052 IPv4-IPv6 Well-Known Prefix) —
-  no NAT64 client.
-- `64:ff9b:1::/48` (RFC 8215 IPv4-IPv6 Local-Use) — same.
-- `2001:1::1/128` (RFC 7723 PCP Anycast) — no PCP client.
-- `2001:3::/32` (RFC 7450 AMT) — no AMT.
-- `2001:4:112::/48` (RFC 7535 AS112-v6) — operator-side.
-- `2001:20::/28` (RFC 7343 ORCHIDv2) — no HIT/HIP.
-- `2002::/16` (RFC 3056 6to4) — deprecated; PyTCP routes
-  via native IPv6 only.
-
-These are classified as **partial** in the top-line table
-because the registry classification is missing, but the
-practical impact is zero — every such prefix is currently
-treated as global unicast by PyTCP, which matches the
-operational behaviour of most IPv6 stacks (Linux treats
-2001:db8:: as global too unless explicitly filtered).
-
-A future code path that needs distinction (e.g. a NAT64
-client emitting via 64:ff9b::/96) would add the relevant
-predicate at that time.
+`is_global` remains the pure RFC 4291 `2000::/3` test and is
+**not** narrowed by `is_reserved` — a benchmarking
+(`2001:2::1`) or documentation (`2001:db8::1`) address is both
+`is_global` and `is_reserved`. This is the documented
+deliberate divergence in `ip6_address.py`: PyTCP's `is_global`
+is "global unicast" in the addressing-architecture sense, not
+RFC 6890 "Globally Reachable". Consumers wanting reachability
+semantics combine `is_global and not is_reserved`.
 
 ---
 
@@ -206,9 +241,9 @@ predicate at that time.
 
 - **Unit:**
   `packages/net_addr/net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsDocumentation`
-  — boundary cases (2001:db8::1, 2001:db8::ffff:..., upper
-  edge), neighbour rejection (2001:db7::, 2001:db9::), and
-  global-unrelated rejection.
+  — 2001:db8::/32 boundary cases (match, upper edge, below,
+  above, global-unrelated) plus RFC 9637 3fff::/20 cases
+  (`__rfc9637_match`, `__rfc9637_boundary`, `__rfc9637_above`).
 
 **Status:** locked in.
 
@@ -216,11 +251,16 @@ predicate at that time.
 
 - **Unit:**
   `packages/net_addr/net_addr/tests/unit/test__ip6_address.py::TestIp6AddressIsReserved`
-  — positive cases for each recognised prefix (100::/64
-  discard, ::ffff:0:0/96 IPv4-mapped, 2001:2::/48
-  benchmark, 2001:db8::/32 documentation); negative cases
-  for global unicast, link-local, ULA, loopback,
-  unspecified (each owned by its dedicated predicate).
+  — positive cases for every recognised registry prefix:
+  discard (`100::/64`), documentation (`2001:db8::/32`),
+  benchmark (`2001:2::/48`), IPv4-mapped (`::ffff:0:0/96`),
+  NAT64 well-known (`64:ff9b::/96`), NAT64 local-use
+  (`64:ff9b:1::/48`), dummy (`100:0:0:1::/64`), IETF Protocol
+  Assignments umbrella (`2001::/23`), 6to4 (`2002::/16`),
+  AS112 (`2620:4f:8000::/48`), RFC 9637 documentation
+  (`3fff::/20`), SRv6 SIDs (`5f00::/16`); negative cases for
+  global unicast, link-local, ULA, loopback, unspecified (each
+  owned by its dedicated predicate).
 
 **Status:** locked in.
 
@@ -228,8 +268,8 @@ predicate at that time.
 
 | Predicate          | Coverage |
 |--------------------|----------|
-| `is_documentation` | locked in |
-| `is_reserved`      | locked in |
+| `is_documentation` | locked in (both RFC 3849 + RFC 9637 prefixes) |
+| `is_reserved`      | locked in (full IANA registry) |
 | Unrelated prefixes | locked in indirectly (via existing `is_loopback` / `is_link_local` / etc. coverage) |
 
 ---
@@ -243,17 +283,19 @@ predicate at that time.
 | `is_multicast` (`ff00::/8`)                           | met    |
 | `is_private` (`fc00::/7`)                             | met    |
 | `is_unspecified` (`::/128`)                           | met    |
-| `is_documentation` (`2001:db8::/32`)                  | met (new this commit) |
-| `is_reserved` aggregator                              | met (new this commit; covers discard / IPv4-mapped / benchmark / documentation) |
-| Remaining special-purpose prefixes (TEREDO, NAT64, ORCHIDv2, AS112, etc.) | partial (no consumer; treated as global) |
+| `is_documentation` (`2001:db8::/32`, `3fff::/20`)     | met    |
+| `is_reserved` aggregator (full IANA registry)         | met    |
 | Procedural RFC 8190 §1-§2 rules                       | n/a (IETF process) |
 | Operational non-propagation (router-side)             | n/a (no forwarding; Phase-2 concern) |
+| "Forwardable" / "Globally Reachable" registry metadata | not implemented (operator-facing; no PyTCP consumer) |
 
-PyTCP meets the host-stack surface relevant to RFC 8190.
-The remaining "partial" rows are operationally low-impact
-for a host stack and become relevant when a consumer
-materialises (e.g. NAT64 client → add `is_nat64_translated`
-predicate alongside `64:ff9b::/96`).
+PyTCP meets the host-stack surface relevant to RFC 8190 and
+classifies the full IANA IPv6 Special-Purpose Address Registry.
+The only un-modelled aspect is the per-entry boolean metadata
+(Forwardable / Globally Reachable / Reserved-by-Protocol),
+which is operator-facing policy with no current PyTCP consumer;
+a strict-policy consumer would read it as
+`is_global and not is_reserved`.
 
 ## Cross-references
 
