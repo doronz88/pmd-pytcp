@@ -169,6 +169,8 @@ class TestIcmp4MessageDestinationUnreachableParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv4 parser raises Icmp4IntegrityError on malformed
         Destination Unreachable frames with the expected message.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 integrity).
         """
 
         with self.assertRaises(Icmp4IntegrityError) as error:
@@ -192,6 +194,8 @@ class TestIcmp4MessageDestinationUnreachableParserIntegrityBoundary(TestCase):
         ICMP4__DESTINATION_UNREACHABLE__LEN (8) — a bare, data-less
         Destination Unreachable — passes integrity checks and parses
         successfully.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 integrity).
         """
 
         # ICMPv4 Destination Unreachable at minimum length (8 bytes)

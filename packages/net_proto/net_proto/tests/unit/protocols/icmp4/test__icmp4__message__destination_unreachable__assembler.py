@@ -494,6 +494,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
         Ensure 'len()' on the assembler equals ICMP4__DESTINATION_UNREACHABLE__LEN
         plus len(data) (after the __post_init__ truncation).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -506,6 +508,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
         Ensure 'str()' renders the canonical Destination Unreachable log line
         (including the 'mtu' segment for FRAGMENTATION_NEEDED).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -517,6 +521,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
     def test__icmp4__message__destination_unreachable__assembler__repr(self) -> None:
         """
         Ensure 'repr()' forwards the wrapped message's dataclass repr.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -529,6 +535,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
         Ensure 'bytes()' returns the full wire form including the
         recomputed Internet checksum at bytes 2-3.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -542,6 +550,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         Ensure the assembler exposes the wrapped message 'type' field
         (always Icmp4Type.DESTINATION_UNREACHABLE via the non-init
         dataclass field).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -553,6 +563,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
     def test__icmp4__message__destination_unreachable__assembler__code(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'code' field.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -564,6 +576,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
     def test__icmp4__message__destination_unreachable__assembler__cksum(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'cksum' field.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -576,6 +590,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
         """
         Ensure the assembler exposes the wrapped message 'data' field
         (post-truncation by __post_init__).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         self.assertEqual(
@@ -587,6 +603,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler(TestCase):
     def test__icmp4__message__destination_unreachable__assembler__assemble(self) -> None:
         """
         Ensure 'assemble()' yields the same wire bytes as 'bytes()'.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         buffers: list[Buffer] = []
@@ -613,6 +631,8 @@ class TestIcmp4MessageDestinationUnreachableAssembler__FragmentationNeededMtu(Te
         """
         Ensure a FRAGMENTATION_NEEDED message constructed with mtu=1200
         round-trips that value through the assembler's wrapped message.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 wire format).
         """
 
         assembler = Icmp4Assembler(

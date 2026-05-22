@@ -152,6 +152,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__len(self) -> None:
         """
         Ensure 'len()' on the assembler equals ICMP4__HEADER__LEN + len(data).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -163,6 +165,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__str(self) -> None:
         """
         Ensure 'str()' renders the canonical ICMPv4 unknown-message log line.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -174,6 +178,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__repr(self) -> None:
         """
         Ensure 'repr()' forwards the wrapped message's dataclass repr.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -186,6 +192,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         """
         Ensure 'bytes()' returns the full wire form including the
         recomputed Internet checksum at bytes 2-3.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -197,6 +205,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__type(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'type' field.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -208,6 +218,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__code(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'code' field.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -221,6 +233,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         Ensure the assembler exposes the wrapped message 'cksum' field as
         passed to the constructor (the on-wire checksum is written during
         assemble() and does not mutate this attribute).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -232,6 +246,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
     def test__icmp4__message__unknown__assembler__data(self) -> None:
         """
         Ensure the assembler exposes the wrapped message 'data' field.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         self.assertEqual(
@@ -245,6 +261,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         Ensure 'assemble()' appends the header + data, back-patches the
         checksum into the header buffer, and yields the same wire bytes
         as 'bytes()'.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         buffers: list[Buffer] = []
@@ -262,6 +280,8 @@ class TestIcmp4MessageUnknownAssembler(TestCase):
         Ensure 'assemble()' produces exactly two buffers — the packed header
         (4 bytes) followed by the data buffer — so the ICMPv4 checksum
         back-patch in Icmp4Assembler.assemble() targets the header buffer.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message wire format).
         """
 
         buffers: list[Buffer] = []

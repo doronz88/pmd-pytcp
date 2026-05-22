@@ -65,6 +65,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor rejects a non-Icmp4Type
         'type' argument with a precise AssertionError.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["type"] = value = "not an Icmp4Type"
@@ -82,6 +84,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor rejects a non-Icmp4Code
         'code' argument with a precise AssertionError.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["code"] = value = "not an Icmp4Code"
@@ -99,6 +103,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor rejects a 'cksum'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -116,6 +122,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor rejects a 'cksum'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -133,6 +141,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor accepts the minimum
         16-bit unsigned 'cksum' value (0).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["cksum"] = UINT_16__MIN
@@ -149,6 +159,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor accepts the maximum
         16-bit unsigned 'cksum' value (0xFFFF).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["cksum"] = UINT_16__MAX
@@ -165,6 +177,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor rejects a 'data'
         argument that is not a bytes/bytearray/memoryview buffer.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["data"] = value = "not bytes or memoryview"
@@ -182,6 +196,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor accepts a bytearray
         'data' argument (the Buffer protocol allows mutable buffers too).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["data"] = bytearray(b"payload")
@@ -198,6 +214,8 @@ class TestIcmp4MessageUnknownAsserts(TestCase):
         """
         Ensure the ICMPv4 unknown message constructor accepts a memoryview
         'data' argument.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         self._kwargs["data"] = memoryview(b"payload")
@@ -223,6 +241,8 @@ class TestIcmp4MessageUnknownParserAsserts(TestCase):
         to one of the known ICMPv4 types (0 = Echo Reply, 3 = Destination
         Unreachable, 8 = Echo Request). That dispatch branch belongs to the
         concrete message class, not the unknown-message fallback.
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         for type_value in Icmp4Type.get_known_values():
@@ -251,6 +271,8 @@ class TestIcmp4MessageUnknownParserAsserts(TestCase):
         """
         Ensure 'Icmp4MessageUnknown.from_buffer()' constructs a proper unknown
         message when the 'type' byte is outside the known set (255 here).
+
+        Reference: RFC 792 (ICMPv4 unknown-type message fields).
         """
 
         buffer = bytearray(

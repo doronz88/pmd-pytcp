@@ -68,6 +68,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the ICMPv4 Destination Unreachable message constructor rejects
         a 'code' argument that is not an Icmp4DestinationUnreachableCode.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["code"] = value = "not an Icmp4DestinationUnreachableCode"
@@ -85,6 +87,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the constructor rejects FRAGMENTATION_NEEDED with no MTU
         (mtu=None — the most common mistake that the validator catches).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
@@ -106,6 +110,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         version looped over codes but never actually wrote the loop variable
         into kwargs; here we set both and assert via subTest for every
         non-FRAG code value.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         mtu_value = 1500
@@ -128,6 +134,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument below the 16-bit
         unsigned minimum.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -145,6 +153,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the constructor rejects a 'cksum' argument above the 16-bit
         unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -163,6 +173,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         Ensure the constructor rejects an 'mtu' argument below the 16-bit
         unsigned minimum (code must be FRAGMENTATION_NEEDED for this branch
         of the validator to fire).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
@@ -181,6 +193,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure the constructor rejects an 'mtu' argument above the 16-bit
         unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         self._kwargs["code"] = Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
@@ -200,6 +214,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         Ensure the constructor rejects a 'data' argument whose length exceeds
         IP4__PAYLOAD__MAX_LEN minus the 8-byte Destination Unreachable
         header.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         value = IP4__PAYLOAD__MAX_LEN - ICMP4__DESTINATION_UNREACHABLE__LEN + 1
@@ -226,6 +242,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         over-max assert but above the truncation cap still succeeds — just
         with the tail snipped off — because RFC 792 only requires enough of
         the offending datagram to identify it.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         cap = IP4__MIN_MTU - IP4__HEADER__LEN - ICMP4__DESTINATION_UNREACHABLE__LEN
@@ -243,6 +261,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         """
         Ensure 'data' exactly at the truncation cap is kept verbatim (no
         bytes removed by the trailing object.__setattr__ slice).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         cap = IP4__MIN_MTU - IP4__HEADER__LEN - ICMP4__DESTINATION_UNREACHABLE__LEN
@@ -262,6 +282,8 @@ class TestIcmp4MessageDestinationUnreachableAsserts(TestCase):
         Ensure the constructor accepts every non-FRAGMENTATION_NEEDED code
         when 'mtu' is None (the canonical Destination Unreachable wire
         shape).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         for code in Icmp4DestinationUnreachableCode:
@@ -288,6 +310,8 @@ class TestIcmp4MessageDestinationUnreachableFromBufferAsserts(TestCase):
         Ensure 'Icmp4MessageDestinationUnreachable.from_buffer()' refuses to
         parse a buffer whose first byte (ICMPv4 'type') is not
         DESTINATION_UNREACHABLE (3).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -311,6 +335,8 @@ class TestIcmp4MessageDestinationUnreachableFromBufferAsserts(TestCase):
         Ensure 'Icmp4MessageDestinationUnreachable.from_buffer()' accepts a
         buffer whose first byte is DESTINATION_UNREACHABLE (3) and returns
         a concrete Destination Unreachable message.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 fields).
         """
 
         message = Icmp4MessageDestinationUnreachable.from_buffer(

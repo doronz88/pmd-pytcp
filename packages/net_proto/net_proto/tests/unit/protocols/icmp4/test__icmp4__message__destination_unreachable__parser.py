@@ -340,6 +340,8 @@ class TestIcmp4MessageDestinationUnreachableParser(TestCase):
         """
         Ensure the ICMPv4 parser produces an Icmp4MessageDestinationUnreachable
         whose fields match the expected reference message for each frame.
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 parse).
         """
 
         icmp4_parser = Icmp4Parser(self._packet_rx)
@@ -362,6 +364,8 @@ class TestIcmp4MessageDestinationUnreachableParser(TestCase):
         Ensure the ICMPv4 parser fully consumes 'packet_rx.frame' after
         parsing the Destination Unreachable (so downstream layers see an
         empty remainder).
+
+        Reference: RFC 792 (ICMPv4 Destination Unreachable type 3 parse).
         """
 
         Icmp4Parser(self._packet_rx)

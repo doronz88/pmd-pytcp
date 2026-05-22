@@ -164,6 +164,8 @@ class TestIcmp4MessageEchoRequestParserIntegrityChecks(TestCase):
         """
         Ensure the ICMPv4 parser raises Icmp4IntegrityError on malformed
         Echo Request frames with the expected message.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 integrity).
         """
 
         with self.assertRaises(Icmp4IntegrityError) as error:
@@ -186,6 +188,8 @@ class TestIcmp4MessageEchoRequestParserIntegrityBoundary(TestCase):
         Ensure a frame whose IPv4 payload length equals ICMP4__ECHO_REQUEST__LEN
         (8) — a bare, data-less Echo Request — passes integrity checks and
         parses successfully.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 integrity).
         """
 
         # ICMPv4 Echo Request at minimum length (8 bytes)

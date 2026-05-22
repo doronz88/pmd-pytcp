@@ -60,6 +60,8 @@ class TestIcmp4AssemblerMisc(TestCase):
         Ensure the ICMPv4 packet assembler 'tracker' property forwards the
         provided 'echo_tracker' so that RX/TX log lines stay correlated with
         the originating packet.
+
+        Reference: RFC 792 (ICMPv4 message wire format — type, code, checksum).
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -80,6 +82,8 @@ class TestIcmp4AssemblerMisc(TestCase):
         Ensure the ICMPv4 packet assembler 'tracker' is created with the 'TX'
         prefix so that outbound log lines are distinguishable from the inbound
         'RX' side (the prefix is embedded in the tracker serial).
+
+        Reference: RFC 792 (ICMPv4 message wire format — type, code, checksum).
         """
 
         icmp4__assembler = Icmp4Assembler(
@@ -97,6 +101,8 @@ class TestIcmp4AssemblerMisc(TestCase):
         Ensure that when no 'echo_tracker' is provided the assembler tracker's
         'echo_tracker' attribute is None (standalone transmit, not tied to an
         incoming request).
+
+        Reference: RFC 792 (ICMPv4 message wire format — type, code, checksum).
         """
 
         icmp4__assembler = Icmp4Assembler(

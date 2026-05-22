@@ -67,6 +67,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'code'
         argument that is not an Icmp4EchoRequestCode.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["code"] = value = "not an Icmp4EchoRequestCode"
@@ -84,6 +86,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'cksum'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -101,6 +105,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'cksum'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -118,6 +124,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects an 'id'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["id"] = value = UINT_16__MIN - 1
@@ -135,6 +143,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects an 'id'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["id"] = value = UINT_16__MAX + 1
@@ -152,6 +162,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'seq'
         argument below the 16-bit unsigned minimum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["seq"] = value = UINT_16__MIN - 1
@@ -169,6 +181,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'seq'
         argument above the 16-bit unsigned maximum.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["seq"] = value = UINT_16__MAX + 1
@@ -186,6 +200,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor rejects a 'data'
         argument that is neither bytes nor memoryview.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         self._kwargs["data"] = value = "not bytes or memoryview"
@@ -205,6 +221,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         argument whose length exceeds IP4__PAYLOAD__MAX_LEN minus the 8-byte
         Echo Request header (i.e. the frame would no longer fit in an IPv4
         payload).
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         value = IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN + 1
@@ -227,6 +245,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor accepts a 'data'
         argument whose length is exactly IP4__PAYLOAD__MAX_LEN - header.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         max_len = IP4__PAYLOAD__MAX_LEN - ICMP4__ECHO_REQUEST__LEN
@@ -244,6 +264,8 @@ class TestIcmp4MessageEchoRequestAsserts(TestCase):
         """
         Ensure the ICMPv4 Echo Request message constructor accepts 'id' and
         'seq' at the minimum (0) and maximum (0xFFFF) 16-bit unsigned values.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         for field_name in ("id", "seq"):
@@ -267,6 +289,8 @@ class TestIcmp4MessageEchoRequestFromBufferAsserts(TestCase):
         """
         Ensure 'Icmp4MessageEchoRequest.from_buffer()' refuses to parse a
         buffer whose first byte (ICMPv4 'type') is not ECHO_REQUEST.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -289,6 +313,8 @@ class TestIcmp4MessageEchoRequestFromBufferAsserts(TestCase):
         """
         Ensure 'Icmp4MessageEchoRequest.from_buffer()' accepts a buffer whose
         first byte is ECHO_REQUEST (8) and returns a concrete request message.
+
+        Reference: RFC 792 (ICMPv4 Echo Request type 8 fields).
         """
 
         message = Icmp4MessageEchoRequest.from_buffer(
