@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from enum import Enum
-from typing import Self
+from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
 
@@ -48,6 +48,7 @@ class ProtoEnum(Enum):
 
         return int(self.value)
 
+    @override
     def __str__(self) -> str:
         """
         Get the enum value as a string.

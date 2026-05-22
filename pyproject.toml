@@ -41,6 +41,16 @@ python_version = "3.14"
 strict = true
 disallow_any_unimported = true
 show_error_codes = true
+enable_error_code = ["explicit-override"]
+
+# Test modules are exempt from 'explicit-override': the
+# @override-on-setUp/tearDown expectation (unit_testing.md
+# §10b.1) stays a written convention rather than a mechanical
+# gate, so the test corpus is not forced to decorate every
+# fixture hook. Source code is enforced.
+[[tool.mypy.overrides]]
+module = ["*.tests.*"]
+disable_error_code = ["explicit-override"]
 
 [tool.pylint.master]
 max-line-length = 120

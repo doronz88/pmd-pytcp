@@ -47,6 +47,7 @@ class Proto(ABC):
 
         raise NotImplementedError
 
+    @override
     @abstractmethod
     def __str__(self) -> str:
         """
@@ -55,6 +56,7 @@ class Proto(ABC):
 
         raise NotImplementedError
 
+    @override
     @abstractmethod
     def __repr__(self) -> str:
         """

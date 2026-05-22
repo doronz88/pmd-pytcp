@@ -1113,9 +1113,15 @@ class TestUdpParser(TestCase):
         super().tearDown()
 ```
 
-mypy strict catches missing decorators. The decorator also
-serves as inline documentation that the method is part of
-the unittest contract.
+This is a written convention, not a mechanical gate: the
+`explicit-override` error code is enabled repo-wide in
+`pyproject.toml` but disabled for `*.tests.*` modules (a
+`[[tool.mypy.overrides]]` stanza), so mypy strict enforces
+`@override` in source but does NOT flag a missing decorator
+on a test `setUp` / `tearDown`. Decorate them anyway — the
+decorator documents that the method is part of the unittest
+contract, and the convention keeps test and source code
+uniform.
 
 ### 10b.2 `enterContext` / `enterClassContext` / `enterModuleContext` (3.11+)
 

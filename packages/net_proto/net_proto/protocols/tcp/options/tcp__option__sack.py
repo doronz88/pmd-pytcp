@@ -120,6 +120,7 @@ class TcpSackBlock:
 
         return memoryview(buffer)
 
+    @override
     def __str__(self) -> str:
         """
         Get the TCP Sack block log string.

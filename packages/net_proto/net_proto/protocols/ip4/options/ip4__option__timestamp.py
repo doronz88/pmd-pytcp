@@ -122,6 +122,7 @@ class Ip4TimestampEntry:
             struct.pack_into("! L", buffer, 0, self.timestamp)
         return memoryview(buffer)
 
+    @override
     def __str__(self) -> str:
         """
         Get the entry as a single-line log string.

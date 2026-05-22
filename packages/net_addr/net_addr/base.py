@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC, abstractmethod
+from typing import override
 
 
 class Base(ABC):
@@ -40,6 +41,7 @@ class Base(ABC):
 
     __slots__ = ()
 
+    @override
     @abstractmethod
     def __str__(self) -> str:
         """
@@ -48,6 +50,7 @@ class Base(ABC):
 
         raise NotImplementedError
 
+    @override
     def __repr__(self) -> str:
         """
         Get the network object representation string.
@@ -55,6 +58,7 @@ class Base(ABC):
 
         return f"{type(self).__name__}({str(self)!r})"
 
+    @override
     @abstractmethod
     def __eq__(self, other: object, /) -> bool:
         """
@@ -63,6 +67,7 @@ class Base(ABC):
 
         raise NotImplementedError
 
+    @override
     @abstractmethod
     def __hash__(self) -> int:
         """

@@ -310,6 +310,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
 
         raise NotImplementedError
 
+    @override
     def __format__(self, format_spec: str, /) -> str:
         """
         Render the network. An empty spec or 'pl' yields the

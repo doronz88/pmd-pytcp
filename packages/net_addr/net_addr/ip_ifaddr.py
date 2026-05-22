@@ -155,6 +155,7 @@ class IfAddr[
 
         return (self._address, self._network) >= (other._address, other._network)
 
+    @override
     def __format__(self, format_spec: str, /) -> str:
         """
         Render the interface address. An empty spec or 'pl'

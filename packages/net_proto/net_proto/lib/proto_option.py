@@ -55,6 +55,7 @@ class ProtoOption(ProtoStruct):
     type: ProtoOptionType
     len: int
 
+    @override
     def __len__(self) -> int:
         """
         Get the option length.

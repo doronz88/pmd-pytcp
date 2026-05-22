@@ -92,6 +92,7 @@ class Address(Base, ABC):
 
         return None
 
+    @override
     def __format__(self, format_spec: str, /) -> str:
         """
         Format the address. A type-specific text code ('ex'
