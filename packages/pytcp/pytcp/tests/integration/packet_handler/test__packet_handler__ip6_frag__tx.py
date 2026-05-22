@@ -650,6 +650,8 @@ class TestPacketHandlerIp6FragTx(NetworkTestCase):
         Ensure the Packet Handler IPv6 fragmentation TX path
         produces the expected frames, statuses, and statistics for
         each parametrized case.
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
         self.assertEqual(
@@ -704,6 +706,8 @@ class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
         """
         Ensure a large TCP payload triggers fragmentation and the
         TCP isinstance branch in '_phtx_ip6_frag' fires.
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
         tx_status = self._packet_handler._phtx_ip6(
@@ -736,6 +740,8 @@ class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
         """
         Ensure a large ICMPv6 payload triggers fragmentation and the
         Icmp6 isinstance branch in '_phtx_ip6_frag' fires.
+
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
         tx_status = self._packet_handler._phtx_ip6(

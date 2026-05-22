@@ -294,6 +294,8 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
         """
         Ensure the Packet Handler processes the received TCP
         frames as expected for each parametrized case.
+
+        Reference: RFC 9293 §3.10 (TCP RX segment processing).
         """
 
         for frame_rx in self._frames_rx:

@@ -191,6 +191,8 @@ class TestPacketHandlerIp6Rx(NetworkTestCase):
         """
         Ensure the Packet Handler processes the received IPv6
         frames as expected for each parametrized case.
+
+        Reference: RFC 8200 §3 (IPv6 RX dispatch).
         """
 
         for frame_rx in self._frames_rx:

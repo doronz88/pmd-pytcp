@@ -380,6 +380,8 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
         """
         Ensure the Packet Handler IPv6 TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
+
+        Reference: RFC 8200 §3 (IPv6 TX).
         """
 
         if self._clear_ip6_host:
@@ -438,6 +440,8 @@ class TestPacketHandlerIp6TxErrors(NetworkTestCase):
     def test__packet_handler__ip6__tx__error(self) -> None:
         """
         Ensure '_phtx_ip6' raises the expected exception for invalid kwargs.
+
+        Reference: RFC 8200 §3 (IPv6 TX).
         """
 
         with self.assertRaises(type(self._expected__error)) as error:
@@ -472,6 +476,8 @@ class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
         Ensure '_phtx_ip6' returns 'DROPPED__IP6__NO_PROTOCOL_SUPPORT'
         and bumps 'ip6__no_proto_support__drop' without emitting any
         frame when IPv6 support is disabled.
+
+        Reference: RFC 8200 §3 (IPv6 TX).
         """
 
         tx_status = self._packet_handler._phtx_ip6(
@@ -514,6 +520,8 @@ class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
         a 'RawAssembler' payload using the supplied 'ip6__next' and
         the renamed addressing kwargs, producing a successful frame
         and matching stats.
+
+        Reference: RFC 8200 §3 (IPv6 TX).
         """
 
         tx_status = self._packet_handler.send_ip6_packet(

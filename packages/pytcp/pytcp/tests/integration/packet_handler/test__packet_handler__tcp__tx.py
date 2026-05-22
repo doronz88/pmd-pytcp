@@ -2079,6 +2079,8 @@ class TestPacketHandlerTcpTx(NetworkTestCase):
         """
         Ensure the Packet Handler TCP TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         self.assertEqual(
@@ -2139,6 +2141,8 @@ class TestPacketHandlerTcpTxErrors(NetworkTestCase):
         """
         Ensure '_phtx_tcp' raises the expected exception for invalid
         IP address version combinations.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         with self.assertRaises(type(self._expected__error)) as error:
@@ -2164,6 +2168,8 @@ class TestPacketHandlerTcpTxSendTcpPacket(NetworkTestCase):
         / 'tcp__remote_port' → 'tcp__sport' / 'tcp__dport') and forwards
         to '_phtx_tcp', producing the same frame and stats as a direct
         '_phtx_tcp' call would.
+
+        Reference: RFC 9293 §3.1 (TCP TX segment emission).
         """
 
         tx_status = self._packet_handler.send_tcp_packet(

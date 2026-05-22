@@ -159,6 +159,8 @@ class TestPacketHandlerArpTx(NetworkTestCase):
         """
         Ensure the Packet Handler ARP TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
+
+        Reference: RFC 826 (ARP TX).
         """
 
         self.assertEqual(
@@ -213,6 +215,8 @@ class TestPacketHandlerArpTxErrors(NetworkTestCase):
         """
         Ensure the Packet Handler ARP TX path raises the expected
         exception for each parametrized case.
+
+        Reference: RFC 826 (ARP TX).
         """
 
         with self.assertRaises(type(self._expected__error)) as error:
@@ -246,6 +250,8 @@ class TestPacketHandlerArpTxNoIp4Support(NetworkTestCase):
         Ensure '_phtx_arp' returns 'DROPPED__ARP__NO_PROTOCOL_SUPPORT'
         and bumps the 'arp__no_proto_support__drop' stat without
         emitting any frame when IPv4 support is disabled.
+
+        Reference: RFC 826 (ARP TX).
         """
 
         tx_status = self._packet_handler._phtx_arp(
@@ -521,6 +527,8 @@ class TestPacketHandlerArpTxHelpers(NetworkTestCase):
         """
         Ensure each ARP TX helper method emits the expected wire frame
         and bumps the expected TX statistics.
+
+        Reference: RFC 826 (ARP TX).
         """
 
         if self._clear_ip4_host:

@@ -1695,6 +1695,8 @@ class TestPacketHandlerIp6FragRx(NetworkTestCase):
         Ensure the Packet Handler processes the received IPv6
         fragments and reassembles them as expected for each
         parametrized case.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly).
         """
 
         for frame_rx in self._frames_rx:

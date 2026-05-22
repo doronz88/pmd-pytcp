@@ -1114,6 +1114,8 @@ class TestPacketHandlerArpRx(NetworkTestCase):
         """
         Ensure the Packet Handler processes the received ARP frames
         as expected for each parametrized case.
+
+        Reference: RFC 826 (ARP RX dispatch).
         """
 
         for frame_rx in self._frames_rx:
