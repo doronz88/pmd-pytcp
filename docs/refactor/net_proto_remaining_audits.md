@@ -27,6 +27,8 @@ adherence docs are canonical.
 | PEP 420 → regular packages | 2026-05-21 | memory `project_pep420_to_regular_packages.md` |
 | Diagram-label capitalization sweep | 2026-05-21 | commits `0838d8f7` |
 | Wire-input vs programmer-input error discipline | 2026-05-21 | `.claude/rules/net_proto.md` §9.1 + §17 anti-patterns |
+| Audits A–G (roundtrip, base, errors, lib, enums, prop-docstrings, §7.2 test-docstring sweep) | 2026-05-21 | A/E confirmed via git; B/C/D/F prior session; G fully closed (see `docs/refactor/audit_g_test_docstring_sweep.md`) |
+| Audit H — module-docstring path / `ver` accuracy | 2026-05-21 | commit `b7d5cecc` — 24 stale paths + 1 convention outlier fixed (all in pytcp); net_addr/net_proto were clean; all `ver` lines already 3.0.6 |
 
 ---
 
