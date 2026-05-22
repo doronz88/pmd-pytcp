@@ -195,7 +195,7 @@ violations).
 | Sub-batch | Files (approx) | Violations (approx) | Notes |
 |-----------|---------------:|--------------------:|-------|
 | G-pytcp-socket | ~10 | ~200 | apply `RFC 9293 §3.9 (User/TCP interface).` for socket-API tests; some warrant specific clauses |
-| G-pytcp-lib | ~10 | ~50 | apply `PyTCP test infrastructure (no RFC clause).` |
+| G-pytcp-lib | 10 | 27 (8c0e7f05) | `PyTCP test infrastructure` fallback (interface_layer, logger, name_enum). dad_slot_registry, fake_timer, neighbor, packet_stats, plpmtud, pmtu_state, tx_status already clean. **completed 2026-05-21**. |
 | G-pytcp-integration-tcp | ~10 | ~50 | TCP session integration tests — apply `RFC 9293 §<state>` per-file |
 | G-pytcp-integration-icmp4 | ~5 | ~30 | apply `RFC 792 / RFC 1122 §3.2.2` per-file |
 | G-pytcp-integration-icmp6-nd | ~5 | ~30 | apply `RFC 4861 §<section>` per-file |
