@@ -29,20 +29,21 @@ in [`net_proto.md`](net_proto.md) and
 
 - Address classes: `Ip4Address`, `Ip6Address`, `MacAddress`.
 - Network classes: `Ip4Network`, `Ip6Network`.
-- Interface-address classes: `Ip4IfAddr`, `Ip6IfAddr` (address + network +
-  optional origin / expiration metadata). The default gateway is
-  no longer interface-address state — it lives in the routing
-  table (FIB) reached through the Route API; see
+- Interface-address classes: `Ip4IfAddr`, `Ip6IfAddr` (a pure
+  address + network pair — no mutable metadata). The default
+  gateway is not interface-address state — it lives in the
+  routing table (FIB) reached through the Route API; see
   `docs/refactor/routing_table_host_mode.md`.
 - Mask classes: `Ip4Mask`, `Ip6Mask`.
-- Enumerations: `IpVersion`, `Ip4IfAddrSource`,
-  `Ip6IfAddrSource`.
-- ABC base classes: `Base`, `Address`, `IpAddress`,
-  `IpNetwork`, `IfAddr`, `IpMask`, `IfAddrSource`.
+- Wildcard classes: `Ip4Wildcard`, `Ip6Wildcard` (arbitrary,
+  possibly non-contiguous ACL / firewall match masks).
+- Enumerations: `IpVersion`.
+- ABC base classes: `Base`, `Ip`, `Address`, `IpAddress`,
+  `IpNetwork`, `IfAddr`, `IpMask`, `IpWildcard`.
 - `click_types.py` — `click`-typed wrappers for CLI argument
   parsing.
-- Error classes — format / sanity / assertion errors for
-  every value type.
+- Error classes — format / sanity errors for every value
+  type.
 
 It does **not** contain:
 
@@ -67,32 +68,47 @@ not pull in `click`; only consumers that need the Click
 types import from `net_addr.click_types`.
 
 Everything else in `packages/net_addr/net_addr/` is stdlib-only:
-`socket.inet_aton` / `inet_ntoa`, `re`, `time` for
-interface-address expiration, `typing` for `Self` / generics. No other
-runtime dependencies.
+`socket` (`inet_pton` / `inet_ntop` / `inet_ntoa`), `re`,
+`hashlib` / `secrets` (RFC 7217 / RFC 8981 IPv6 IID
+generation in `ip6_ifaddr.py`), `typing` for `Self` /
+generics. No other runtime dependencies.
 
 ## 3. Class hierarchy
 
 `packages/net_addr/net_addr/` is organised as an ABC hierarchy. Every concrete
 type inherits from a deliberate chain of abstract bases so
-the value-type contract is enforced uniformly:
+the value-type contract is enforced uniformly. There are two
+roots: `Base` (the value-type contract — `__str__` /
+`__repr__` / `__eq__` / `__hash__`) and `Ip` (a small mixin
+providing IP-version introspection — `version` / `is_ip4` /
+`is_ip6`), mixed into every IP-versioned family but **not**
+into `MacAddress` (a MAC has no IP version):
 
 ```
-Base                                (packages/net_addr/net_addr/base.py)
-├── Address                         (packages/net_addr/net_addr/address.py — abstract)
-│   ├── IpAddress                   (packages/net_addr/net_addr/ip_address.py — abstract)
-│   │   ├── Ip4Address              (packages/net_addr/net_addr/ip4_address.py)
-│   │   └── Ip6Address              (packages/net_addr/net_addr/ip6_address.py)
-│   └── MacAddress                  (packages/net_addr/net_addr/mac_address.py)
-├── IpNetwork[A, M]                 (packages/net_addr/net_addr/ip_network.py — abstract, generic)
-│   ├── Ip4Network                  (packages/net_addr/net_addr/ip4_network.py)
-│   └── Ip6Network                  (packages/net_addr/net_addr/ip6_network.py)
-├── IfAddr[A, N, O]                 (packages/net_addr/net_addr/ip_ifaddr.py — abstract, generic)
-│   ├── Ip4IfAddr                     (packages/net_addr/net_addr/ip4_ifaddr.py)
-│   └── Ip6IfAddr                     (packages/net_addr/net_addr/ip6_ifaddr.py)
-└── IpMask                          (packages/net_addr/net_addr/ip_mask.py — abstract)
-    ├── Ip4Mask                     (packages/net_addr/net_addr/ip4_mask.py)
-    └── Ip6Mask                     (packages/net_addr/net_addr/ip6_mask.py)
+Base                            (net_addr/base.py — value-type contract ABC)
+Ip                              (net_addr/ip.py — IP-version mixin ABC: version / is_ip4 / is_ip6)
+
+Address(Base)                   (net_addr/address.py — abstract)
+├── IpAddress(Address, Ip)      (net_addr/ip_address.py — abstract)
+│   ├── Ip4Address              (net_addr/ip4_address.py)
+│   └── Ip6Address              (net_addr/ip6_address.py)
+└── MacAddress                  (net_addr/mac_address.py — no Ip mixin)
+
+IpNetwork[A, M](Base, Ip)       (net_addr/ip_network.py — abstract, generic)
+├── Ip4Network                  (net_addr/ip4_network.py)
+└── Ip6Network                  (net_addr/ip6_network.py)
+
+IfAddr[A, N](Base, Ip)          (net_addr/ip_ifaddr.py — abstract, generic)
+├── Ip4IfAddr                   (net_addr/ip4_ifaddr.py)
+└── Ip6IfAddr                   (net_addr/ip6_ifaddr.py)
+
+IpMask(Base, Ip)                (net_addr/ip_mask.py — abstract)
+├── Ip4Mask                     (net_addr/ip4_mask.py)
+└── Ip6Mask                     (net_addr/ip6_mask.py)
+
+IpWildcard(Base, Ip)            (net_addr/ip_wildcard.py — abstract)
+├── Ip4Wildcard                 (net_addr/ip4_wildcard.py)
+└── Ip6Wildcard                 (net_addr/ip6_wildcard.py)
 ```
 
 When adding a new value-type concept:
@@ -100,7 +116,7 @@ When adding a new value-type concept:
 1. Identify where it sits in the hierarchy. If it's a
    v4/v6-parallel pair, both branches need a sibling class.
 2. Lift shared behaviour into the ABC and the
-   `IpNetwork[A, M]` / `IfAddr[A, N, O]` PEP 695 generics.
+   `IpNetwork[A, M]` / `IfAddr[A, N]` PEP 695 generics.
    See [`typing.md`](typing.md) §9 for generic syntax.
 3. The concrete subclass overrides type-version-specific
    methods (`__init__` accepting v4-shaped vs v6-shaped
@@ -155,11 +171,10 @@ Every concrete class declares `__slots__`. The base
 descendants declare additional slots for their own fields:
 
 ```python
-class IfAddr[A, N, O](Address, ABC):
-    __slots__ = ("_network", "_origin", "_expiration_time")
+class IfAddr[A: (Ip6Address, Ip4Address), N: (Ip6Network, Ip4Network)](Base, Ip, ABC):
+    __slots__ = ("_address", "_network")
+    _address: A
     _network: N
-    _origin: O
-    _expiration_time: int
 ```
 
 Reasons:
@@ -241,15 +256,15 @@ forbids it. The two valid mutation patterns:
   `ifaddr.address = new_address` is forbidden; instead
   `Ip4IfAddr((new_address, mask))` (or the copy-constructor
   form — see §4.2) produces a new interface address.
-- **Class-side state on `Ip4IfAddr`** (the `origin`,
-  `expiration_time` extras) is the historical
-  exception: these were carved out as mutable for the
-  packet-handler RX path before the value-type contract
-  was tightened. Treat them as a known wart, not a
-  template. The `gateway` carve-out is **gone** — the
+- **No carve-outs remain.** `IfAddr` is a pure
+  `(address, network)` value pair with no mutable state.
+  The historical `origin` / `expiration_time` / `gateway`
+  extras are **gone** — address provenance / lifetime is
+  owned by the runtime that holds the address, and the
   default gateway moved to the FIB / Route API
-  (`docs/refactor/routing_table_host_mode.md`), so `IfAddr`
-  has no mutable address-routing state.
+  (`docs/refactor/routing_table_host_mode.md`). Do not
+  re-introduce a mutable field on a value type; construct a
+  fresh instance instead.
 
 ### 4.4 Equality and hashing
 
@@ -364,15 +379,23 @@ interface addresses, and masks. The differences:
 - `Ip4Network` / `Ip6Network` accept additional input
   forms: `(Ip4Address, Ip4Mask)`, `(Ip4Address, Ip4Network)`,
   and the canonical string form `"10.0.0.0/24"`.
-- `IfAddr[A, N, O]` is generic over address, network, and
-  interface-address-source enum.
-- Interface-address classes have the known carve-out for mutable
-  `origin` / `expiration_time` fields (§4.3). The `gateway`
-  carve-out has been removed — the default gateway is FIB /
-  Route-API state, not interface-address state. Any remaining
-  mutable-field setter MUST carry the
-  `# Hack to bypass the value-type immutability contract.`
-  inline comment so the deviation is greppable.
+- `IfAddr[A, N]` is generic over address type and network
+  type (PEP 695). `Ip4IfAddr` / `Ip6IfAddr` accept a `Self`,
+  an `(address, network)` or `(address, mask)` tuple, or the
+  canonical `"addr/prefix"` string; the tuple form with an
+  explicit network runs an `address in network` sanity check,
+  while the mask / string forms derive the network by masking
+  and so are contained by construction.
+- Interface-address classes are fully immutable value types —
+  no mutable fields, no setters (§4.3). `Ip6IfAddr` carries
+  classmethod IID generators (`from_eui64`, `from_rfc7217`,
+  `from_rfc8981_temp`) that each return a fresh instance.
+- `IpWildcard[]` (`Ip4Wildcard` / `Ip6Wildcard`) is the
+  ACL / firewall match mask — an arbitrary, possibly
+  non-contiguous per-bit "don't care" mask, distinct from the
+  contiguous `IpMask` netmask. `IpNetwork.hostmask` returns
+  the wildcard that is the inverted netmask (the contiguous
+  special case). `__or__` / `__ror__` apply it to an address.
 
 ## 6. Click CLI helpers (`click_types.py`)
 
@@ -410,8 +433,9 @@ NetAddrError
 │   └── Ip6AddressError
 │       ├── Ip6AddressFormatError  →  (Ip6AddressError, IpAddressFormatError)
 │       └── Ip6AddressSanityError  →  (Ip6AddressError, IpAddressSanityError)
-├── IpMaskError / IpWildcardError / IpNetworkError / IfAddrError
-│       … same concept/axis/per-type/leaf shape …
+├── IpNetworkError / IfAddrError           (same concept/axis/per-type/leaf shape, both Format and Sanity axes)
+├── IpMaskError / IpWildcardError           (same shape but Format axis ONLY — a mask / wildcard can only fail
+│                                            at construction, so there is no *MaskSanityError / *WildcardSanityError)
 └── MacAddressError                      (single concrete type → no version split)
     ├── MacAddressFormatError
     └── MacAddressSanityError
@@ -526,7 +550,8 @@ Each value type lives in its own module:
 
 | File | Contents |
 |---|---|
-| `base.py` | `Base` ABC — root of the value-type hierarchy |
+| `base.py` | `Base` ABC — value-type contract root (`__str__` / `__repr__` / `__eq__` / `__hash__`) |
+| `ip.py` | `Ip` ABC — IP-version mixin (`version` / `is_ip4` / `is_ip6`) |
 | `address.py` | `Address` ABC — abstract address contract |
 | `ip_address.py` | `IpAddress` ABC — abstract IP-address contract |
 | `ip4_address.py` | `Ip4Address` concrete class |
@@ -535,15 +560,15 @@ Each value type lives in its own module:
 | `ip_network.py` | `IpNetwork[A, M]` generic ABC |
 | `ip4_network.py` | `Ip4Network` concrete class |
 | `ip6_network.py` | `Ip6Network` concrete class |
-| `ip_ifaddr.py` | `IfAddr[A, N, O]` generic ABC |
+| `ip_ifaddr.py` | `IfAddr[A, N]` generic ABC |
 | `ip4_ifaddr.py` | `Ip4IfAddr` concrete class |
 | `ip6_ifaddr.py` | `Ip6IfAddr` concrete class |
 | `ip_mask.py` | `IpMask` ABC |
 | `ip4_mask.py` | `Ip4Mask` concrete class |
 | `ip6_mask.py` | `Ip6Mask` concrete class |
-| `ip_ifaddr_source.py` | `IfAddrSource` enum base |
-| `ip4_ifaddr_source.py` | `Ip4IfAddrSource` enum |
-| `ip6_ifaddr_source.py` | `Ip6IfAddrSource` enum |
+| `ip_wildcard.py` | `IpWildcard` ABC |
+| `ip4_wildcard.py` | `Ip4Wildcard` concrete class |
+| `ip6_wildcard.py` | `Ip6Wildcard` concrete class |
 | `ip_version.py` | `IpVersion` enum (`IP4` / `IP6`) |
 | `errors.py` | Error class hierarchy for every value type |
 | `click_types.py` | Click `ParamType` subclasses |
@@ -583,11 +608,15 @@ anti-patterns live in [`source_files.md`](source_files.md)
   `memoryview` (wire form), and `str` (canonical formatter
   output). Drop one, and the type stops being
   interchangeable across PyTCP's data path.
-- **Keyword arguments on a value-type `__init__`** (except
-  for `Ip4IfAddr` / `Ip6IfAddr`'s `origin` /
-  `expiration_time` carve-outs in §4.3; `gateway` is no
-  longer one of them). The single positional-only
-  `address: Self | str | bytes | ... | None` is the contract.
+- **Keyword arguments on a value-type `__init__`** (the sole
+  sanctioned exception is the keyword-only `strict` flag on
+  `Ip4Network` / `Ip6Network`, declared on the `IpNetwork`
+  base — see §5 and the inline rationale in `ip_network.py`).
+  Otherwise the single positional-only
+  `address: Self | str | bytes | ... | None` is the contract;
+  there is no `origin` / `expiration_time` / `gateway`
+  carve-out (those were removed when `IfAddr` became a pure
+  value type).
 - **Raising a bare builtin exception anywhere in
   `packages/net_addr/net_addr/`** — `ValueError`, `TypeError`, `IndexError`,
   `RuntimeError`, `KeyError`, etc. Raise a `NetAddrError`
@@ -636,10 +665,17 @@ When in doubt, mirror the structure of:
   family. Same value-type shape as v4.
 - `packages/net_addr/net_addr/mac_address.py` — non-IP address type. Shows
   how the pattern generalises beyond IPv4 / IPv6.
-- `packages/net_addr/net_addr/ip4_ifaddr.py` — interface-address class with the known
-  carve-out for mutable origin / expiration_time via
-  `__slots__` + setters (the `gateway` carve-out is gone —
-  default gateway is FIB / Route-API state).
+- `packages/net_addr/net_addr/ip4_ifaddr.py` — interface-address class: an
+  immutable `(address, network)` value pair with multi-form
+  construction (`Self` / tuple / mask-tuple / string) and the
+  tuple-form `address in network` sanity check. No mutable
+  fields.
+- `packages/net_addr/net_addr/ip6_ifaddr.py` — adds the RFC 4291 EUI-64,
+  RFC 7217 stable-opaque, and RFC 8981 temporary IID
+  classmethod generators (each returns a fresh instance).
+- `packages/net_addr/net_addr/ip4_wildcard.py` — the ACL / firewall match-mask
+  value type (arbitrary non-contiguous bits), sibling to the
+  contiguous `Ip4Mask`.
 - `packages/net_addr/net_addr/click_types.py` — every Click `ParamType`
   subclass.
 - `packages/net_addr/net_addr/errors.py` — the canonical error-class
@@ -664,7 +700,7 @@ file.
 - [`python_features.md`](python_features.md) — modern
   Python features (PEP 604 / 585 / 695) used by `packages/net_addr/net_addr/`.
 - [`typing.md`](typing.md) — annotation discipline; `Self`,
-  PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N, O]`,
+  PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N]`,
   ABC + `@override` patterns.
 - [`unit_testing.md`](unit_testing.md) §3 — the
   `packages/net_addr/net_addr/tests/unit/` test layout and the value-type
