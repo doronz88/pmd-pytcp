@@ -1044,10 +1044,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         # Update ICMPv6 ND cache if valid IPv6 source is set and the ND option
         # SLLA is present.
-        if (
-            not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast)
-            and packet_rx.icmp6.message.slla
-        ):
+        if not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast) and packet_rx.icmp6.message.slla:
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
             stack.nd_cache.add_entry(
                 ip6_address=packet_rx.ip6.src,
