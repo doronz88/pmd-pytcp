@@ -1,9 +1,21 @@
 # Audit G — Test docstring §7.2 wholesale sweep
 
-**Status:** planning doc (2026-05-21). Drafted during the
-audit-G survey when the scale (1989 violations across 195
-files) made it clear the work was too big for a single
-session.
+**Status: COMPLETE (2026-05-21).** The whole test corpus —
+494 files, 5826 test methods across both single-line and
+multi-line signatures — is §7.2-clean: 0 missing
+`Reference:`, 0 missing `Ensure ` opener, 0 `[FLAGS BUG]`
+markers, 0 inline RFC citations. All sub-audits closed:
+G-stage2, G-net_addr, all 13 G-net_proto families, and all
+G-pytcp areas (lib, socket, runtime, ip-frag, integration
+packet_handler, integration ethernet). The planned
+G-pytcp-integration-{tcp,icmp4,icmp6-nd} batches were
+no-ops (already clean). Final straggler (a multi-line
+signature the canonical single-line audit regex missed)
+fixed in commit `28517056`.
+
+Drafted during the audit-G survey when the scale (1989
+violations across 195 files) made it clear the work was too
+big for a single session.
 
 This doc captures the full survey output, the scope
 tradeoffs, the per-package sub-audit breakdown, and the
@@ -143,10 +155,15 @@ spec mapping.
 
 **Scope:** `packages/net_addr/net_addr/tests/` (16 files).
 
-**Status:** **verified clean 2026-05-21.** Re-ran the §7.2
-audit script against
-`packages/net_addr/net_addr/tests/`: 16 files, 464 test
-methods scanned, **0 violations**. No code changes.
+**Status:** **verified clean 2026-05-21**, with one
+follow-up fix. The initial verification ran the canonical
+single-line-signature audit regex (464 methods, 0
+violations). A later whole-corpus pass with the tolerant
+pattern surfaced one multi-line-signature method
+(`test__mac_address.py::…is_multicast_ip6_solicited_node`)
+that the canonical regex had skipped — fixed in commit
+`28517056`. net_addr is now fully clean under both
+patterns.
 
 **Action:** verification-only. Re-run the §7.2 audit script
 against the package, confirm clean, record the verification
