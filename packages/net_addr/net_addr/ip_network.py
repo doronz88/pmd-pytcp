@@ -270,7 +270,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
     @property
     def address(self) -> A:
         """
-        Get the IP network '_address' attribute.
+        Get the IP network address.
         """
 
         return self._address
@@ -278,7 +278,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
     @property
     def mask(self) -> M:
         """
-        Get the IP network '_mask' attribute.
+        Get the IP network mask.
         """
 
         return self._mask

@@ -183,7 +183,7 @@ class IfAddr[
     @property
     def address(self) -> A:
         """
-        Get the IP interface address '_address' attribute.
+        Get the IP interface host address.
         """
 
         return self._address
@@ -191,7 +191,7 @@ class IfAddr[
     @property
     def network(self) -> N:
         """
-        Get the IP interface address '_network' attribute.
+        Get the IP interface network.
         """
 
         return self._network
