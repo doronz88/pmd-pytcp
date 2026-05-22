@@ -436,7 +436,7 @@ class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' rejection of an Offer without Server-ID.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_offer_without_srv_id(self) -> None:
+    def test__dhcp4_client__fetch_returns_none_on_offer_without_server_id(self) -> None:
         """
         Ensure 'fetch()' returns None when the Offer omits the
         Server-ID option. The malformed Offer is rejected at the
@@ -1278,7 +1278,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="Third TX must carry message type DHCPDECLINE.",
         )
         self.assertEqual(
-            decline.srv_id,
+            decline.server_id,
             Ip4Address("10.0.0.254"),
             msg="DECLINE must echo the OFFER's Server Identifier (option 54).",
         )
@@ -2247,7 +2247,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="RENEW REQUEST must carry 'ciaddr' = the leased IP per RFC 2131 §4.3.2 Table 4.",
         )
         self.assertIsNone(
-            renew_request.srv_id,
+            renew_request.server_id,
             msg="RENEW REQUEST MUST NOT carry the Server Identifier option.",
         )
         self.assertIsNone(
@@ -2310,7 +2310,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="RELEASE 'ciaddr' must equal the current leased IPv4 address.",
         )
         self.assertEqual(
-            release.srv_id,
+            release.server_id,
             Ip4Address("10.0.0.254"),
             msg="RELEASE must carry Server Identifier = lease.server_id.",
         )
@@ -2393,7 +2393,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="REBIND REQUEST must set the BROADCAST flag.",
         )
         self.assertIsNone(
-            rebind_request.srv_id,
+            rebind_request.server_id,
             msg="REBIND REQUEST MUST NOT carry the Server Identifier option.",
         )
 
@@ -2653,7 +2653,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             msg="INIT-REBOOT requested-ip option must echo the cached IP.",
         )
         self.assertIsNone(
-            reboot_req.srv_id,
+            reboot_req.server_id,
             msg="INIT-REBOOT must NOT include the server-identifier option.",
         )
         self.assertTrue(

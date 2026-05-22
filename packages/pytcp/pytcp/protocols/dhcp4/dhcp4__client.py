@@ -629,7 +629,7 @@ class Dhcp4Client(Subsystem):
             ip4_host=ip4_host,
             gateway=result.router[0] if result.router else None,
             lease_time__sec=result.lease_time,
-            server_id=result.srv_id if result.srv_id is not None else lease.server_id,
+            server_id=result.server_id if result.server_id is not None else lease.server_id,
             acquired_at_monotonic=time.monotonic(),
             t1_override=t1_override,
             t2_override=t2_override,
@@ -868,7 +868,7 @@ class Dhcp4Client(Subsystem):
             ip4_host=ip4_host,
             gateway=result.router[0] if result.router else None,
             lease_time__sec=result.lease_time,
-            server_id=(result.srv_id if result.srv_id is not None else cached.server_id),
+            server_id=(result.server_id if result.server_id is not None else cached.server_id),
             acquired_at_monotonic=time.monotonic(),
             t1_override=t1_override,
             t2_override=t2_override,
@@ -1266,7 +1266,7 @@ class Dhcp4Client(Subsystem):
         # path is strictly compliant in that mode.
         self._collect_additional_offers(client_socket, xid=xid, first_offer=offer)
 
-        srv_id = offer.srv_id
+        srv_id = offer.server_id
         if srv_id is None:
             __debug__ and log(
                 "dhcp4",
@@ -1497,7 +1497,7 @@ class Dhcp4Client(Subsystem):
 
         __debug__ and log(
             "dhcp4",
-            f"<lg>OFFER from {first_offer.srv_id}</> selected; " f"collecting additional OFFERs for {window_ms} ms",
+            f"<lg>OFFER from {first_offer.server_id}</> selected; " f"collecting additional OFFERs for {window_ms} ms",
         )
 
         deadline = time.monotonic() + window_ms / 1000.0
@@ -1518,7 +1518,7 @@ class Dhcp4Client(Subsystem):
             assert isinstance(result, Dhcp4Parser)
             __debug__ and log(
                 "dhcp4",
-                f"<lg>OFFER from {result.srv_id}</> received "
+                f"<lg>OFFER from {result.server_id}</> received "
                 f"during collection window; ignored (first OFFER retained)",
             )
 

@@ -155,7 +155,7 @@ class TestDhcp4ParserOptionOverload(TestCase):
             msg="The main-block Subnet Mask must still parse correctly.",
         )
         self.assertEqual(
-            packet.srv_id,
+            packet.server_id,
             Ip4Address("10.0.0.200"),
             msg=(
                 "Without Option Overload, the main-block server_id must be returned; "

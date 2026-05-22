@@ -620,17 +620,17 @@ class TestDhcp4ParserOptionsProperties(TestCase):
             msg="Unexpected 'router' value.",
         )
 
-    def test__dhcp4__parser__srv_id(self) -> None:
+    def test__dhcp4__parser__server_id(self) -> None:
         """
-        Ensure 'srv_id' returns the Server Identifier option value.
+        Ensure 'server_id' returns the Server Identifier option value.
 
         Reference: RFC 2131 §2 (DHCP message parse).
         """
 
         self.assertEqual(
-            self._parser.srv_id,
+            self._parser.server_id,
             Ip4Address("192.0.2.254"),
-            msg="Unexpected 'srv_id' value.",
+            msg="Unexpected 'server_id' value.",
         )
 
     def test__dhcp4__parser__subnet_mask(self) -> None:
@@ -671,7 +671,7 @@ class TestDhcp4ParserOptionsProperties(TestCase):
         self.assertIsNone(parser.param_req_list, msg="param_req_list must be None.")
         self.assertIsNone(parser.req_ip_addr, msg="req_ip_addr must be None.")
         self.assertIsNone(parser.router, msg="router must be None.")
-        self.assertIsNone(parser.srv_id, msg="srv_id must be None.")
+        self.assertIsNone(parser.server_id, msg="server_id must be None.")
         self.assertIsNone(parser.subnet_mask, msg="subnet_mask must be None.")
 
 

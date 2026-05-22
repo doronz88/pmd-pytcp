@@ -459,9 +459,9 @@ class Dhcp4OptionsProperties(ABC):
         return self._options.router
 
     @property
-    def srv_id(self) -> Ip4Address | None:
+    def server_id(self) -> Ip4Address | None:
         """
-        Get the DHCPv4 'srv_id' option value.
+        Get the DHCPv4 'server_id' option value.
         """
 
         return self._options.server_id
