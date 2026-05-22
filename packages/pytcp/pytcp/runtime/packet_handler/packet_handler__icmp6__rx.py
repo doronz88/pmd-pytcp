@@ -755,7 +755,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            self._packet_stats_rx.icmp6__packet_too_big__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(

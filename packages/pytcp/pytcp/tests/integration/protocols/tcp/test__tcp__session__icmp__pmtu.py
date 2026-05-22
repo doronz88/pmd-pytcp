@@ -29,20 +29,24 @@
 """
 Integration tests for the ICMP PMTUD → TCP demux path added in
 Phase 6 of the ICMP demux + PMTUD refactor. Drives an ICMPv4
-Frag-Needed (Type 3 Code 4) into a SYN_SENT-state TCP session and
-verifies pmtu_cache update + snd_mss recompute.
+Frag-Needed (Type 3 Code 4) and an ICMPv6 Packet Too Big (Type 2)
+into a SYN_SENT-state TCP session and verifies pmtu_cache update,
+snd_mss recompute, and the sequence-in-window guard.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py
 
 ver 3.0.6
 """
 
-from net_addr import Ip4Address
+from net_addr import Ip4Address, Ip6Address
 from net_proto import (
     Icmp4Assembler,
     Icmp4DestinationUnreachableCode,
     Icmp4MessageDestinationUnreachable,
+    Icmp6Assembler,
+    Icmp6MessagePacketTooBig,
     Ip4Assembler,
+    Ip6Assembler,
     TcpAssembler,
 )
 from pytcp import stack
@@ -52,7 +56,9 @@ from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
+    HOST_A__IP6_ADDRESS,
     STACK__IP4_HOST,
+    STACK__IP6_HOST,
 )
 from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
@@ -62,6 +68,9 @@ PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
 PEER__PORT: int = 80
 LOCAL__ISS: int = 0x0000_1000
 NEXT_HOP_MTU: int = 1400
+
+STACK__IP6: Ip6Address = STACK__IP6_HOST.address
+PEER__IP6: Ip6Address = HOST_A__IP6_ADDRESS
 
 
 def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
@@ -98,6 +107,42 @@ def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
         )
     )
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
+
+
+def _build_icmp6_packet_too_big_frame(*, mtu: int, embedded_seq: int) -> bytes:
+    """
+    Build an Ethernet/IPv6/ICMPv6 Type 2 (Packet Too Big) frame whose
+    embedded data is the IPv6+TCP SYN segment the stack sent on the
+    (STACK → PEER : STACK__PORT → PEER__PORT) flow with seq=embedded_seq.
+    """
+
+    embedded_tcp = bytes(
+        Ip6Assembler(
+            ip6__src=STACK__IP6,
+            ip6__dst=PEER__IP6,
+            ip6__payload=TcpAssembler(
+                tcp__sport=STACK__PORT,
+                tcp__dport=PEER__PORT,
+                tcp__seq=embedded_seq,
+                tcp__flag_syn=True,
+            ),
+        )
+    )
+    icmp = Icmp6Assembler(
+        icmp6__message=Icmp6MessagePacketTooBig(
+            mtu=mtu,
+            data=embedded_tcp,
+        ),
+    )
+    ip6 = bytes(
+        Ip6Assembler(
+            ip6__src=PEER__IP6,
+            ip6__dst=STACK__IP6,
+            ip6__hop=64,
+            ip6__payload=icmp,
+        )
+    )
+    return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd" + ip6
 
 
 class TestTcpOnPmtu(TcpSessionTestCase):
@@ -252,4 +297,51 @@ class TestTcpOnPmtu(TcpSessionTestCase):
             self._packet_handler.packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu,
             before + 1,
             msg="Successful Frag-Needed → TCP demux must bump the notify-pmtu counter.",
+        )
+
+
+class TestTcp6OnPmtu(TcpSessionTestCase):
+    """
+    Integration tests for the ICMPv6 Packet Too Big → TCP PMTUD path.
+    """
+
+    def test__icmp6__packet_too_big__seq_out_of_window__drops(self) -> None:
+        """
+        Ensure an ICMPv6 Packet Too Big whose embedded TCP seq fails
+        the sequence-in-window guard bumps the dedicated
+        packet-too-big seq-out-of-window drop counter (not the
+        destination-unreachable counter, which belongs to a different
+        ICMPv6 message type) and does not update the path-MTU cache.
+
+        Reference: RFC 5927 §4 (sequence-in-window check).
+        Reference: RFC 8201 §4 (IPv6 PMTUD per-destination MTU cache).
+        """
+
+        session = self._make_active_session(iss=LOCAL__ISS, family=AddressFamily.INET6)
+        session.tcp_fsm(syscall=SysCall.CONNECT)
+        self._advance(ms=1)
+        assert session.state is FsmState.SYN_SENT
+
+        self._drive_rx(
+            frame=_build_icmp6_packet_too_big_frame(
+                mtu=NEXT_HOP_MTU,
+                embedded_seq=LOCAL__ISS + 0x4000_0000,
+            ),
+        )
+
+        stats = self._packet_handler.packet_stats_rx
+        self.assertEqual(
+            stats.icmp6__packet_too_big__tcp__seq_out_of_window__drop,
+            1,
+            msg="Out-of-window Packet Too Big must bump the packet-too-big seq-out-of-window drop counter.",
+        )
+        self.assertEqual(
+            stats.icmp6__destination_unreachable__tcp__seq_out_of_window__drop,
+            0,
+            msg="Out-of-window Packet Too Big must NOT bump the destination-unreachable seq-out-of-window counter.",
+        )
+        self.assertNotIn(
+            PEER__IP6,
+            stack.pmtu_cache,
+            msg="Out-of-window Packet Too Big must NOT update pmtu_cache.",
         )
