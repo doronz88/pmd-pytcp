@@ -672,7 +672,13 @@ violations = []
 for path in FILES:
     text = Path(path).read_text()
     for m in re.finditer(
-        r'def (test__\w+)\(self\) -> None:\s*\n\s*"""(.*?)"""',
+        # Tolerant signature pattern: matches both the single-line
+        # `def test__x(self) -> None:` and the multi-line
+        # `def test__x(\n    self,\n) -> None:` forms. A naive
+        # `\(self\)` pattern silently skips every multi-line
+        # signature, under-reporting violations (this is a real
+        # historical miss — see the audit-G sweep notes).
+        r'def (test__\w+)\([^)]*\)\s*->\s*None:\s*\n\s*"""(.*?)"""',
         text, re.DOTALL,
     ):
         name, body = m.group(1), m.group(2)

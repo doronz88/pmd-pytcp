@@ -220,7 +220,10 @@ violations = []
 for path in FILES:
     text = Path(path).read_text()
     for m in re.finditer(
-        r'def (test__\w+)\(self\) -> None:\s*\n\s*"""(.*?)"""',
+        # Tolerant signature pattern — matches single-line and
+        # multi-line `def test__x(...) -> None:` forms (a naive
+        # `\(self\)` silently skips multi-line signatures).
+        r'def (test__\w+)\([^)]*\)\s*->\s*None:\s*\n\s*"""(.*?)"""',
         text, re.DOTALL,
     ):
         name, body = m.group(1), m.group(2)

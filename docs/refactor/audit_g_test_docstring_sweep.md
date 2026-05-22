@@ -92,13 +92,15 @@ def test__foo(
 slip past the regex and are not counted by the survey. The
 G-net_proto-lib sweep (commit `b6853c01`) found 50 such
 methods in the lib batch alone (~30% over the survey's
-162 count). Per-family sweeps should use a tolerant
-pattern — `def (test__\w+)\([^)]*\)\s*->\s*None:` — to
-catch both forms in the same pass. A future cleanup can
-tighten the canonical §7.2 audit script in the rule file
-to use the tolerant pattern, but the change is non-
-load-bearing: once every per-family sweep is complete the
-two patterns produce the same (zero) violation count.
+162 count), and a single net_addr method
+(`test__mac_address.py::…is_multicast_ip6_solicited_node`)
+slipped the early G-net_addr verification for the same
+reason. **Resolved:** the canonical §7.2 audit script in
+`.claude/rules/unit_testing.md`,
+`.claude/rules/integration_testing.md`, and the
+`sysctl_knob` skill now use the tolerant pattern
+`def (test__\w+)\([^)]*\)\s*->\s*None:`, which catches both
+the single-line and multi-line signature forms in one pass.
 
 **Top 30 files by violation count (preview):**
 
