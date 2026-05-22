@@ -31,6 +31,7 @@ adherence docs are canonical.
 | Audit H — module-docstring path / `ver` accuracy | 2026-05-21 | commit `b7d5cecc` — 24 stale paths + 1 convention outlier fixed (all in pytcp); net_addr/net_proto were clean; all `ver` lines already 3.0.6 |
 | Audit I — class-docstring consistency | 2026-05-21 | **verified clean, no changes.** AST-walked all 3 packages (484 classes): 0 missing docstrings, 0 missing-period, all open with a noun-phrase first line. The 117 multi-line docstrings all carry intentional context (RFC citations, error-extension rationale per net_proto.md §9.1, Phase markers) — not drift. |
 | Audit J — `@override` decorator sweep | 2026-05-21 | **verified clean, no changes.** AST census of all 787 `@override` methods across 3 packages: 651 bare, 98 `@override`→`@classmethod`, 20 `@override`→`@staticmethod`, 18 `@property`→`@override`. The 18 property cases have `@override` innermost — the PEP 698 runtime-correct form (override must mark the raw function, not the property descriptor). Zero broken `@override`→`@property` orderings. mypy strict accepts all. |
+| Audit K — `Buffer` alias adoption | 2026-05-21 | commit `0e236720` — fixed 3 `list[bytes \| bytearray \| memoryview]` → `list[Buffer]` in `test__ip6__rfc6437_flow_label.py`. The 9 net_addr value-type ctor signatures correctly keep the spelled-out union (net_addr sits below net_proto; can't import the alias — `net_addr.md` §1). |
 
 ---
 
