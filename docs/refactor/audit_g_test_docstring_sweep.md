@@ -170,7 +170,7 @@ in this doc (or a commit message). No code changes expected.
 | G-net_proto-ethernet_802_3 | 5 | 55 (8be0373e) | `IEEE 802.3 §3` per-file; sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp4 | 25 | 107 (2d8b1ee0) | `RFC 792` per-message-type (type 3/0/8/unknown). parameter_problem, time_exceeded, unknown parsers, sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-icmp6 | ~30 | ~300 | apply `RFC 4443 / RFC 4861 / RFC 3810` per-message-family |
-| G-net_proto-ip4 | ~15 | ~180 | apply `RFC 791 §3.1 (IPv4 header wire format).` per-file |
+| G-net_proto-ip4 | 16 | 141 (fede712e) | `RFC 791 §3.1` per-file (header / options / EOL / NOP / unknown). lsrr/rr/ssrr/timestamp (RFC 791 §3.1), router_alert (RFC 2113), cipso (FIPS-188), sanity_checks already clean. **completed 2026-05-21**. |
 | G-net_proto-ip6 (incl. ext-headers) | ~25 | ~250 | apply `RFC 8200 §3 / §4.x` per-file |
 | G-net_proto-llc | 5 | 0 | already clean (mix of `IEEE 802.2 §3 LLC frame format` for wire-format tests + `PyTCP test infrastructure (no RFC clause)` for header asserts). **verified clean 2026-05-21**. |
 | G-net_proto-snap | 5 | 0 | already clean (mix of `RFC 1042 §"Header Format"` for wire-format tests + `PyTCP test infrastructure` for asserts + non-RFC `Cisco CDP encapsulation` for vendor-OUI tests). **verified clean 2026-05-21**. |
