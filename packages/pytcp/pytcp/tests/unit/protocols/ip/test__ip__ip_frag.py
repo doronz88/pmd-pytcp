@@ -73,6 +73,8 @@ class TestIpFragFlowIdIp4(TestCase):
     def test__ip_frag_flow_id__src(self) -> None:
         """
         Ensure the 'src' field stores the constructor's IPv4 source address.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly flow key — src, dst, id, protocol).
         """
 
         self.assertEqual(
@@ -85,6 +87,8 @@ class TestIpFragFlowIdIp4(TestCase):
         """
         Ensure the 'dst' field stores the constructor's IPv4 destination
         address.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly flow key — src, dst, id, protocol).
         """
 
         self.assertEqual(
@@ -96,6 +100,8 @@ class TestIpFragFlowIdIp4(TestCase):
     def test__ip_frag_flow_id__id(self) -> None:
         """
         Ensure the 'id' field stores the constructor's identification value.
+
+        Reference: RFC 791 §3.2 (IPv4 reassembly flow key — src, dst, id, protocol).
         """
 
         self.assertEqual(
@@ -114,6 +120,8 @@ class TestIpFragFlowIdIp6(TestCase):
         """
         Ensure the 'src' / 'dst' fields accept 'Ip6Address' values — the
         type union in the source must support both IPv4 and IPv6.
+
+        Reference: RFC 8200 §4.5 (IPv6 reassembly flow key — src, dst, id).
         """
 
         src = Ip6Address("2001:db8::1")
@@ -155,6 +163,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure two 'IpFragFlowId' instances with identical fields compare
         equal (frozen dataclass default __eq__).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -167,6 +177,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure two 'IpFragFlowId' instances that differ in one field
         compare unequal.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertNotEqual(
@@ -179,6 +191,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure equal 'IpFragFlowId' instances produce equal hashes so they
         can be used as dict keys in the fragment store.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -191,6 +205,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure 'IpFragFlowId' works as a dict key and equal instances
         resolve to the same entry. This is the flow-id's real use site.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         store: dict[IpFragFlowId, str] = {self._flow_a: "frag-bucket"}
@@ -205,6 +221,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure 'IpFragFlowId' is frozen — direct attribute mutation must
         raise 'FrozenInstanceError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(FrozenInstanceError):
@@ -214,6 +232,8 @@ class TestIpFragFlowIdSemantics(TestCase):
         """
         Ensure 'IpFragFlowId' uses '__slots__' (no per-instance __dict__),
         which is the in-source declaration and a memory/perf guarantee.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -322,6 +342,8 @@ class TestIpFragDataConstruction(TestCase):
         """
         Ensure the 'header' field stores the constructor's byte payload
         verbatim (used later to rebuild the reassembled packet).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -334,6 +356,8 @@ class TestIpFragDataConstruction(TestCase):
         """
         Ensure the 'payload' field stores the constructor's offset->bytes
         mapping verbatim.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
@@ -348,6 +372,8 @@ class TestIpFragDataConstruction(TestCase):
         'default_factory', lies between the wall-clock reading taken just
         before and just after construction. Guards against any change
         that would replace 'default_factory=time.time' with a constant.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         before = time.time()
@@ -370,6 +396,8 @@ class TestIpFragDataConstruction(TestCase):
         Ensure the 'timestamp' dataclass field's 'default_factory' is
         exactly 'time.time' — this is the contract that underpins the
         wall-clock bracketing test and the fragment-reassembly TTL logic.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timestamp_field = next(f for f in fields(IpFragData) if f.name == "timestamp")
@@ -384,6 +412,8 @@ class TestIpFragDataConstruction(TestCase):
         """
         Ensure the 'last' flag defaults to False — a fresh fragment bucket
         has not yet received the last-fragment packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -409,6 +439,8 @@ class TestIpFragDataReceivedLastFrag(TestCase):
         """
         Ensure 'received_last_frag()' flips 'last' from False to True by
         bypassing the frozen-dataclass barrier via 'object.__setattr__'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertFalse(
@@ -427,6 +459,8 @@ class TestIpFragDataReceivedLastFrag(TestCase):
         """
         Ensure calling 'received_last_frag()' a second time keeps the
         'last' flag True (flag is monotone).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self._frag.received_last_frag()
@@ -442,6 +476,8 @@ class TestIpFragDataReceivedLastFrag(TestCase):
         Ensure the frozen-dataclass contract still rejects direct attribute
         assignment, even though 'received_last_frag()' mutates via the
         'object.__setattr__' escape hatch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with self.assertRaises(FrozenInstanceError):
@@ -544,6 +580,8 @@ class TestIpFragDataFields(TestCase):
         """
         Ensure the 'timestamp' field is 'init=False' so callers cannot
         inject a spoofed construction time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         timestamp_field = next(f for f in fields(IpFragData) if f.name == "timestamp")
@@ -557,6 +595,8 @@ class TestIpFragDataFields(TestCase):
         """
         Ensure the 'last' field is 'init=False' — it may only be set via
         'received_last_frag()', not through the constructor.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         last_field = next(f for f in fields(IpFragData) if f.name == "last")
@@ -570,6 +610,8 @@ class TestIpFragDataFields(TestCase):
         """
         Ensure 'IpFragData' uses '__slots__' — matches the in-source
         'slots=True' declaration.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         frag = IpFragData(header=b"", payload={})
