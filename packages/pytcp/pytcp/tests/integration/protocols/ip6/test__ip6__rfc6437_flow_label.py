@@ -46,6 +46,7 @@ from typing import override
 
 from net_addr import Ip6Address
 from net_proto import Icmp6Assembler, Icmp6MessageEchoRequest
+from net_proto.lib.buffer import Buffer
 from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
 from pytcp.protocols.ip6.ip6__flow_label import compute_ip6_flow_label
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
@@ -119,7 +120,7 @@ class TestIp6Rfc6437FlowLabelAutoWire(IcmpTestCase):
             ethernet__dst=STACK__MAC_ADDRESS,
             ethernet__payload=ip6_packet,
         )
-        buffers: list[bytes | bytearray | memoryview] = []
+        buffers: list[Buffer] = []
         ethernet_frame.assemble(buffers)
         frame_rx = b"".join(bytes(buf) for buf in buffers)
 
@@ -175,7 +176,7 @@ class TestIp6Rfc6437FlowLabelAutoWire(IcmpTestCase):
             ethernet__dst=STACK__MAC_ADDRESS,
             ethernet__payload=ip6_packet,
         )
-        buffers: list[bytes | bytearray | memoryview] = []
+        buffers: list[Buffer] = []
         ethernet_frame.assemble(buffers)
         frame_rx = b"".join(bytes(buf) for buf in buffers)
 
@@ -232,7 +233,7 @@ class TestIp6Rfc6437FlowLabelAutoWire(IcmpTestCase):
             ethernet__dst=STACK__MAC_ADDRESS,
             ethernet__payload=ip6_packet,
         )
-        buffers: list[bytes | bytearray | memoryview] = []
+        buffers: list[Buffer] = []
         ethernet_frame.assemble(buffers)
         frame_rx = b"".join(bytes(buf) for buf in buffers)
 
