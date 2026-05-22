@@ -589,6 +589,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__len(self) -> None:
         """
         Ensure '__len__()' returns header + options + payload bytes.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -600,6 +602,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -611,6 +615,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -622,6 +628,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -633,6 +641,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__sport(self) -> None:
         """
         Ensure the 'sport' property returns the provided source port.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -644,6 +654,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__dport(self) -> None:
         """
         Ensure the 'dport' property returns the provided destination port.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -655,6 +667,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__seq(self) -> None:
         """
         Ensure the 'seq' property returns the provided sequence number.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -666,6 +680,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__ack(self) -> None:
         """
         Ensure the 'ack' property returns the provided acknowledgment number.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -677,6 +693,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__hlen(self) -> None:
         """
         Ensure the 'hlen' property returns the computed header length.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -688,6 +706,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_ns(self) -> None:
         """
         Ensure the 'flag_ns' property returns the provided NS flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -699,6 +719,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_cwr(self) -> None:
         """
         Ensure the 'flag_cwr' property returns the provided CWR flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -710,6 +732,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_ece(self) -> None:
         """
         Ensure the 'flag_ece' property returns the provided ECE flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -721,6 +745,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_urg(self) -> None:
         """
         Ensure the 'flag_urg' property returns the provided URG flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -732,6 +758,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_ack(self) -> None:
         """
         Ensure the 'flag_ack' property returns the provided ACK flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -743,6 +771,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_psh(self) -> None:
         """
         Ensure the 'flag_psh' property returns the provided PSH flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -754,6 +784,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_rst(self) -> None:
         """
         Ensure the 'flag_rst' property returns the provided RST flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -765,6 +797,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_syn(self) -> None:
         """
         Ensure the 'flag_syn' property returns the provided SYN flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -776,6 +810,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__flag_fin(self) -> None:
         """
         Ensure the 'flag_fin' property returns the provided FIN flag.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -787,6 +823,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__win(self) -> None:
         """
         Ensure the 'win' property returns the provided window size.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -799,6 +837,8 @@ class TestTcpAssemblerOperation(TestCase):
         """
         Ensure the 'cksum' property returns 0 on the assembler (the field
         is populated only inside the __bytes__ / assemble() buffer).
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -810,6 +850,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__urg(self) -> None:
         """
         Ensure the 'urg' property returns the provided urgent pointer.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -821,6 +863,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__header(self) -> None:
         """
         Ensure the 'header' property returns the computed TcpHeader.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -832,6 +876,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__options(self) -> None:
         """
         Ensure the 'options' property returns the provided TcpOptions.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -843,6 +889,8 @@ class TestTcpAssemblerOperation(TestCase):
     def test__tcp__assembler__payload(self) -> None:
         """
         Ensure the 'payload' property returns the provided payload bytes.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         self.assertEqual(
@@ -855,6 +903,8 @@ class TestTcpAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends header, options, and payload in order
         and the concatenation matches '__bytes__'.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         buffers: list[Buffer] = []
@@ -871,6 +921,8 @@ class TestTcpAssemblerOperation(TestCase):
         """
         Ensure 'assemble()' appends exactly three buffers — header,
         options, payload — so downstream code can locate them by index.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         buffers: list[Buffer] = []
@@ -908,6 +960,8 @@ class TestTcpAssemblerMisc(TestCase):
         """
         Ensure the TCP packet assembler stores the provided echo_tracker
         on its internal Tracker.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         echo_tracker = Tracker(prefix="RX")
@@ -924,6 +978,8 @@ class TestTcpAssemblerMisc(TestCase):
         """
         Ensure the assembler with no arguments produces a minimal valid
         20-byte zeroed-out TCP header with empty options and payload.
+
+        Reference: RFC 9293 §3.1 (TCP segment wire format).
         """
 
         assembler = TcpAssembler()

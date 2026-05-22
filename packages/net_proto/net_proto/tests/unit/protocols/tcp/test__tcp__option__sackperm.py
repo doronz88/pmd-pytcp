@@ -58,6 +58,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__len(self) -> None:
         """
         Ensure '__len__()' returns TCP__OPTION__SACKPERM__LEN (2 bytes).
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -69,6 +71,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__str(self) -> None:
         """
         Ensure '__str__()' returns the log string 'sackperm'.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -80,6 +84,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__repr(self) -> None:
         """
         Ensure '__repr__()' returns 'TcpOptionSackperm()'.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -91,6 +97,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the 2-byte wire frame.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         # TCP Sackperm option wire frame (2 bytes):
@@ -105,6 +113,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.SACKPERM.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -116,6 +126,8 @@ class TestTcpOptionSackpermAssembler(TestCase):
     def test__tcp__option__sackperm__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__SACKPERM__LEN.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         self.assertEqual(
@@ -134,6 +146,8 @@ class TestTcpOptionSackpermParser(TestCase):
         """
         Ensure from_buffer parses a 2-byte Sackperm whose buffer length
         exactly matches TCP__OPTION__SACKPERM__LEN.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         # TCP Sackperm option wire frame (exactly 2 bytes):
@@ -154,6 +168,8 @@ class TestTcpOptionSackpermParser(TestCase):
         Ensure from_buffer parses a Sackperm option when the buffer carries
         trailing bytes past the 2-byte option payload (those trailing
         bytes are consumed by the next option in the options container).
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         # TCP Sackperm option wire frame followed by 5 trailing bytes:
@@ -225,6 +241,8 @@ class TestTcpOptionSackpermParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 2018 §2 (SACK-Permitted option — kind 4).
         """
 
         with self.assertRaises(self._results["error"]) as error:

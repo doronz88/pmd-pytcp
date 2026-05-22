@@ -53,6 +53,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__len(self) -> None:
         """
         Ensure '__len__()' returns TCP__OPTION__NOP__LEN (1 byte).
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         self.assertEqual(
@@ -64,6 +66,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__str(self) -> None:
         """
         Ensure '__str__()' returns the log string 'nop'.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         self.assertEqual(
@@ -75,6 +79,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__repr(self) -> None:
         """
         Ensure '__repr__()' returns 'TcpOptionNop()'.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         self.assertEqual(
@@ -86,6 +92,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the single wire byte 0x01.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         # TCP Nop option wire format (1 byte):
@@ -99,6 +107,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.NOP.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         self.assertEqual(
@@ -110,6 +120,8 @@ class TestTcpOptionNopAssembler(TestCase):
     def test__tcp__option__nop__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__NOP__LEN.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         self.assertEqual(
@@ -128,6 +140,8 @@ class TestTcpOptionNopParser(TestCase):
         """
         Ensure from_buffer parses a 1-byte Nop whose buffer length exactly
         matches TCP__OPTION__NOP__LEN.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         # TCP Nop option wire format (exactly 1 byte):
@@ -153,6 +167,8 @@ class TestTcpOptionNopParser(TestCase):
         Ensure from_buffer parses a Nop option when the buffer carries
         trailing bytes past the 1-byte option payload (those trailing
         bytes are consumed by the next option in the options container).
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         # TCP Nop option wire format followed by 5 trailing bytes that
@@ -214,6 +230,8 @@ class TestTcpOptionNopParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 9293 §3.1 (No-Operation — kind 1).
         """
 
         with self.assertRaises(self._results["error"]) as error:

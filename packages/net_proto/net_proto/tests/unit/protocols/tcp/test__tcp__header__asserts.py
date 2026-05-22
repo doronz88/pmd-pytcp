@@ -80,6 +80,8 @@ class TestTcpHeaderAsserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards
         the negative tests from masking regressions that would make the
         baseline invalid.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         header = TcpHeader(**self._kwargs)
@@ -94,6 +96,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'sport' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["sport"] = value = UINT_16__MIN - 1
@@ -111,6 +115,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'sport' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["sport"] = value = UINT_16__MAX + 1
@@ -128,6 +134,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'dport' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["dport"] = value = UINT_16__MIN - 1
@@ -145,6 +153,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'dport' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["dport"] = value = UINT_16__MAX + 1
@@ -162,6 +172,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'seq' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["seq"] = value = UINT_32__MIN - 1
@@ -179,6 +191,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'seq' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["seq"] = value = UINT_32__MAX + 1
@@ -196,6 +210,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'ack' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["ack"] = value = UINT_32__MIN - 1
@@ -213,6 +229,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'ack' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["ack"] = value = UINT_32__MAX + 1
@@ -230,6 +248,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'hlen' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["hlen"] = value = UINT_6__MIN - 1
@@ -247,6 +267,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'hlen' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["hlen"] = value = UINT_6__MAX + 1
@@ -264,6 +286,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         value of the provided 'hlen' argument is not 4 bytes aligned.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["hlen"] = value = UINT_6__MAX - 1
@@ -281,6 +305,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ns' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_ns"] = value = "not a boolean"
@@ -298,6 +324,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_cwr' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_cwr"] = value = "not a boolean"
@@ -315,6 +343,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ece' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_ece"] = value = "not a boolean"
@@ -332,6 +362,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_urg' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_urg"] = value = "not a boolean"
@@ -349,6 +381,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_ack' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_ack"] = value = "not a boolean"
@@ -366,6 +400,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_psh' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_psh"] = value = "not a boolean"
@@ -383,6 +419,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_rst' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_rst"] = value = "not a boolean"
@@ -400,6 +438,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_syn' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_syn"] = value = "not a boolean"
@@ -417,6 +457,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'flag_fin' argument is not a boolean.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["flag_fin"] = value = "not a boolean"
@@ -434,6 +476,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'win' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["win"] = value = UINT_16__MIN - 1
@@ -451,6 +495,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'win' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["win"] = value = UINT_16__MAX + 1
@@ -468,6 +514,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'cksum' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MIN - 1
@@ -485,6 +533,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'cksum' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["cksum"] = value = UINT_16__MAX + 1
@@ -502,6 +552,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'urg' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["urg"] = value = UINT_16__MIN - 1
@@ -519,6 +571,8 @@ class TestTcpHeaderAsserts(TestCase):
         """
         Ensure the TCP header constructor raises an exception when the
         provided 'urg' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.1 (TCP header wire format).
         """
 
         self._kwargs["urg"] = value = UINT_16__MAX + 1

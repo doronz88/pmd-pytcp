@@ -176,6 +176,8 @@ class TestTcpParserIntegrityChecks(TestCase):
         """
         Ensure the TCP packet parser raises TcpIntegrityError with the
         expected message for each malformed frame.
+
+        Reference: RFC 9293 §3.1 (TCP header integrity).
         """
 
         with self.assertRaises(TcpIntegrityError) as error:
@@ -202,6 +204,8 @@ class TestTcpParserIntegrityBoundary(TestCase):
         Ensure the baseline 24-byte frame (20-byte header + 4 Nop
         options, valid checksum) passes the integrity check and parses
         successfully.
+
+        Reference: RFC 9293 §3.1 (TCP header integrity).
         """
 
         self.assertEqual(

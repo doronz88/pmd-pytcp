@@ -54,6 +54,8 @@ class TestTcpOptionMssAsserts(TestCase):
         """
         Ensure the TCP Mss option constructor raises an exception when the
         provided 'mss' argument is lower than the minimum supported value.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         value = UINT_16__MIN - 1
@@ -71,6 +73,8 @@ class TestTcpOptionMssAsserts(TestCase):
         """
         Ensure the TCP Mss option constructor raises an exception when the
         provided 'mss' argument is higher than the maximum supported value.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         value = UINT_16__MAX + 1
@@ -150,6 +154,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__len(self) -> None:
         """
         Ensure '__len__()' returns the expected total option length.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -161,6 +167,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -172,6 +180,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -183,6 +193,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire frame.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -194,6 +206,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__mss(self) -> None:
         """
         Ensure the 'mss' field exposes the provided MSS value.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -205,6 +219,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.MSS.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -216,6 +232,8 @@ class TestTcpOptionMssAssembler(TestCase):
     def test__tcp__option__mss__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__MSS__LEN.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         self.assertEqual(
@@ -234,6 +252,8 @@ class TestTcpOptionMssParser(TestCase):
         """
         Ensure from_buffer parses a 4-byte Mss whose buffer length exactly
         matches TCP__OPTION__MSS__LEN.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         # TCP Mss option wire frame (exactly 4 bytes):
@@ -255,6 +275,8 @@ class TestTcpOptionMssParser(TestCase):
         Ensure from_buffer parses a Mss option when the buffer carries
         trailing bytes past the 4-byte option payload (those trailing
         bytes are consumed by the next option in the options container).
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         # TCP Mss option wire frame followed by 5 trailing bytes:
@@ -276,6 +298,8 @@ class TestTcpOptionMssParser(TestCase):
         """
         Ensure from_buffer parses a valid Mss option carrying the minimum
         mss value of 0.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         # TCP Mss option wire frame (4 bytes, mss=0):
@@ -355,6 +379,8 @@ class TestTcpOptionMssParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 9293 §3.7.1 (Maximum Segment Size option — kind 2).
         """
 
         with self.assertRaises(self._results["error"]) as error:

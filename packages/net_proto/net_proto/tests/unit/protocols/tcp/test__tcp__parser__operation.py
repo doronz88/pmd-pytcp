@@ -287,6 +287,8 @@ class TestTcpParserOperation(TestCase):
         """
         Ensure the TCP packet parser decodes the 20-byte fixed header
         into the expected TcpHeader dataclass.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         tcp_parser = TcpParser(self._packet_rx)
@@ -301,6 +303,8 @@ class TestTcpParserOperation(TestCase):
         """
         Ensure the TCP packet parser decodes the options area into the
         expected TcpOptions container.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         tcp_parser = TcpParser(self._packet_rx)
@@ -315,6 +319,8 @@ class TestTcpParserOperation(TestCase):
         """
         Ensure the TCP packet parser extracts the payload starting at
         'hlen' and ending at 'ip.payload_len'.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         tcp_parser = TcpParser(self._packet_rx)
@@ -329,6 +335,8 @@ class TestTcpParserOperation(TestCase):
         """
         Ensure the TCP packet parser installs itself on the PacketRx as
         'packet_rx.tcp'.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         tcp_parser = TcpParser(self._packet_rx)
@@ -343,6 +351,8 @@ class TestTcpParserOperation(TestCase):
         """
         Ensure the TCP packet parser advances 'packet_rx.frame' past the
         TCP header so the remaining bytes are the TCP payload.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         tcp_parser = TcpParser(self._packet_rx)
@@ -449,6 +459,8 @@ class TestTcpParserOperation__ReservedBits(TestCase):
         bits are all set, raising no integrity / sanity error. RFC
         9293 §3.1 mandates that received reserved bits 'must be
         ignored', not rejected.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         # Constructing TcpParser runs the full integrity / parse /
@@ -465,6 +477,8 @@ class TestTcpParserOperation__ReservedBits(TestCase):
         valid checksum is different too); every other field reflects
         what the parser DID extract, and equality there confirms the
         reserved bits had no effect on the parse.
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         baseline_parser = TcpParser(self._packet_rx(self._BASELINE_FRAME))
@@ -502,6 +516,8 @@ class TestTcpParserOperation__ReservedBits(TestCase):
         hand-computed checksum is correct and the parser is happy
         with it (no integrity error from a bad checksum would have
         surfaced as a TcpIntegrityError already).
+
+        Reference: RFC 9293 §3.1 (TCP segment parse).
         """
 
         rsrvd_parser = TcpParser(self._packet_rx(self._RSRVD_BITS_FRAME))

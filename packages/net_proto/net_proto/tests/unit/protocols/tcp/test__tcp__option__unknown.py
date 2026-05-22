@@ -64,6 +64,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
     def test__tcp__option__unknown__default_accepted(self) -> None:
         """
         Ensure the default kwargs dict itself is accepted.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         option = TcpOptionUnknown(**self._kwargs)
@@ -78,6 +80,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
         """
         Ensure the TCP unknown option constructor raises an exception when
         the provided 'type' argument is not a TcpOptionType.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self._kwargs["type"] = value = "not a TcpOptionType"
@@ -95,6 +99,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
         """
         Ensure the TCP unknown option constructor raises an exception when
         the provided 'type' argument is a core (known) TcpOptionType.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         for type_value in TcpOptionType.get_known_values():
@@ -115,6 +121,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
         Ensure the TCP unknown option constructor raises an exception when
         the computed 'len' field would exceed the 8-bit unsigned integer
         range (i.e. data is longer than UINT_8__MAX - 2 bytes).
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self._kwargs["data"] = b"X" * (UINT_8__MAX - TCP__OPTION__LEN + 1)
@@ -132,6 +140,8 @@ class TestTcpOptionUnknownAsserts(TestCase):
         """
         Ensure the TCP unknown option constructor accepts exactly
         UINT_8__MAX bytes of total length (data length = UINT_8__MAX - 2).
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self._kwargs["data"] = b"X" * (UINT_8__MAX - TCP__OPTION__LEN)
@@ -163,6 +173,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__len(self) -> None:
         """
         Ensure '__len__()' returns 2 (header) + 16 (data) = 18 bytes.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -174,6 +186,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__str(self) -> None:
         """
         Ensure '__str__()' returns 'unk-<type>-<len>'.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -185,6 +199,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -196,6 +212,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected 18-byte wire frame.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         # Unknown TCP option wire frame (18 bytes = 2-byte header + 16-byte data):
@@ -211,6 +229,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__type(self) -> None:
         """
         Ensure the 'type' field is the provided non-core TcpOptionType(255).
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -222,6 +242,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__length(self) -> None:
         """
         Ensure the 'len' field is TCP__OPTION__LEN + len(data) = 18.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -233,6 +255,8 @@ class TestTcpOptionUnknownAssembler(TestCase):
     def test__tcp__option__unknown__data(self) -> None:
         """
         Ensure the 'data' field exposes the provided payload bytes.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         self.assertEqual(
@@ -251,6 +275,8 @@ class TestTcpOptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown TCP option when the buffer
         carries trailing bytes past the declared option length.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         # Unknown TCP option wire frame (18 bytes) followed by 5 trailing bytes:
@@ -272,6 +298,8 @@ class TestTcpOptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown TCP option whose buffer length
         exactly matches the declared option length.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         # Unknown TCP option wire frame (exactly 18 bytes):
@@ -292,6 +320,8 @@ class TestTcpOptionUnknownParser(TestCase):
         """
         Ensure from_buffer parses an unknown TCP option with an empty
         data payload (len=2, header only).
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         # Unknown TCP option wire frame (2 bytes = header only, no data):
@@ -408,6 +438,8 @@ class TestTcpOptionUnknownParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 9293 §3.1 (TCP option TLV format).
         """
 
         with self.assertRaises(self._results["error"]) as error:

@@ -51,6 +51,8 @@ class TestTcpAssemblerAsserts(TestCase):
         Ensure the default-constructed assembler (no kwargs) is accepted;
         this guards the negative tests from silent regressions that would
         make the baseline invalid.
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         assembler = TcpAssembler()
@@ -66,6 +68,8 @@ class TestTcpAssemblerAsserts(TestCase):
         Ensure the TCP packet assembler constructor raises an exception
         when the length of the provided 'tcp__options' argument is higher
         than TCP__OPTIONS__MAX_LEN.
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -86,6 +90,8 @@ class TestTcpAssemblerAsserts(TestCase):
         Ensure the TCP packet assembler constructor accepts a 'tcp__options'
         whose serialized length is exactly TCP__OPTIONS__MAX_LEN (the
         inclusive upper boundary).
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         assembler = TcpAssembler(
@@ -105,6 +111,8 @@ class TestTcpAssemblerAsserts(TestCase):
         Ensure the TCP packet assembler constructor raises an exception
         when the length of the provided 'tcp__options' argument is not
         4-byte aligned.
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -124,6 +132,8 @@ class TestTcpAssemblerAsserts(TestCase):
         """
         Ensure the TCP packet assembler constructor raises an exception
         when the 'Eol' option is not the last option in the options list.
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         with self.assertRaises(AssertionError) as error:
@@ -146,6 +156,8 @@ class TestTcpAssemblerAsserts(TestCase):
         """
         Ensure the TCP packet assembler constructor accepts an Eol option
         when it is the last option in the options list.
+
+        Reference: RFC 9293 §3.1 (TCP header field constraints).
         """
 
         assembler = TcpAssembler(

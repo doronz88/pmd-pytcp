@@ -67,6 +67,8 @@ class TestTcpOptionTimestampsAsserts(TestCase):
         Ensure the default kwargs dict itself is accepted; this guards
         the negative tests from silent regressions that would make the
         baseline invalid.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         option = TcpOptionTimestamps(**self._kwargs)
@@ -82,6 +84,8 @@ class TestTcpOptionTimestampsAsserts(TestCase):
         Ensure the TCP Timestamps option constructor raises an exception
         when the provided 'tsval' argument is lower than the minimum
         supported value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self._kwargs["tsval"] = value = UINT_32__MIN - 1
@@ -100,6 +104,8 @@ class TestTcpOptionTimestampsAsserts(TestCase):
         Ensure the TCP Timestamps option constructor raises an exception
         when the provided 'tsval' argument is higher than the maximum
         supported value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self._kwargs["tsval"] = value = UINT_32__MAX + 1
@@ -118,6 +124,8 @@ class TestTcpOptionTimestampsAsserts(TestCase):
         Ensure the TCP Timestamps option constructor raises an exception
         when the provided 'tsecr' argument is lower than the minimum
         supported value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self._kwargs["tsecr"] = value = UINT_32__MIN - 1
@@ -136,6 +144,8 @@ class TestTcpOptionTimestampsAsserts(TestCase):
         Ensure the TCP Timestamps option constructor raises an exception
         when the provided 'tsecr' argument is higher than the maximum
         supported value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self._kwargs["tsecr"] = value = UINT_32__MAX + 1
@@ -224,6 +234,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__len(self) -> None:
         """
         Ensure '__len__()' returns TCP__OPTION__TIMESTAMPS__LEN (10 bytes).
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -235,6 +247,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -246,6 +260,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -257,6 +273,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire frame.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -268,6 +286,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.TIMESTAMPS.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -279,6 +299,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__TIMESTAMPS__LEN.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -290,6 +312,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__tsval(self) -> None:
         """
         Ensure the 'tsval' field exposes the provided value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -301,6 +325,8 @@ class TestTcpOptionTimestampsAssembler(TestCase):
     def test__tcp__option__timestamps__tsecr(self) -> None:
         """
         Ensure the 'tsecr' field exposes the provided value.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         self.assertEqual(
@@ -342,6 +368,8 @@ class TestTcpOptionTimestampsParser(TestCase):
         """
         Ensure from_buffer parses the Timestamps wire frame into the
         expected TcpOptionTimestamps (trailing bytes must be ignored).
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         option = TcpOptionTimestamps.from_buffer(*self._args)
@@ -418,6 +446,8 @@ class TestTcpOptionTimestampsParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 7323 §3 (Timestamps option — kind 8).
         """
 
         with self.assertRaises(self._results["error"]) as error:

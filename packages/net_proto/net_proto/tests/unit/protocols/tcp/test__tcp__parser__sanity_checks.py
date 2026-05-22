@@ -116,6 +116,8 @@ class TestTcpParserSanityChecks(TestCase):
         Ensure the TCP packet parser raises TcpSanityError with the
         expected message for each frame that is structurally well-formed
         but logically inconsistent.
+
+        Reference: RFC 9293 §3.1 (TCP header sanity).
         """
 
         with self.assertRaises(TcpSanityError) as error:

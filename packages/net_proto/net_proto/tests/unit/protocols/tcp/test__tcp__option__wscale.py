@@ -55,6 +55,8 @@ class TestTcpOptionWscaleAsserts(TestCase):
         Ensure the TCP Wscale option constructor raises an exception when
         the provided 'wscale' argument is lower than the minimum supported
         value.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         value = UINT_8__MIN - 1
@@ -76,6 +78,8 @@ class TestTcpOptionWscaleAsserts(TestCase):
         Ensure the TCP Wscale option constructor raises an exception when
         the provided 'wscale' argument is higher than the Wscale option
         maximum supported value.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         value = TCP__OPTION__WSCALE__MAX_VALUE + 1
@@ -155,6 +159,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__len(self) -> None:
         """
         Ensure '__len__()' returns TCP__OPTION__WSCALE__LEN (3 bytes).
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -166,6 +172,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -177,6 +185,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -188,6 +198,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire frame.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -199,6 +211,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__wscale(self) -> None:
         """
         Ensure the 'wscale' field exposes the provided wscale value.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -210,6 +224,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__type(self) -> None:
         """
         Ensure the 'type' field is TcpOptionType.WSCALE.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -221,6 +237,8 @@ class TestTcpOptionWscaleAssembler(TestCase):
     def test__tcp__option__wscale__length(self) -> None:
         """
         Ensure the 'len' field equals TCP__OPTION__WSCALE__LEN.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         self.assertEqual(
@@ -239,6 +257,8 @@ class TestTcpOptionWscaleParser(TestCase):
         """
         Ensure from_buffer parses a 3-byte Wscale whose buffer length
         exactly matches TCP__OPTION__WSCALE__LEN.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         # TCP Wscale option wire frame (exactly 3 bytes):
@@ -259,6 +279,8 @@ class TestTcpOptionWscaleParser(TestCase):
         """
         Ensure from_buffer parses a Wscale option when the buffer carries
         trailing bytes past the 3-byte option payload.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         # TCP Wscale option wire frame followed by 5 trailing bytes:
@@ -304,6 +326,8 @@ class TestTcpOptionWscaleParser(TestCase):
     def test__tcp__option__wscale__from_buffer__zero_wscale(self) -> None:
         """
         Ensure from_buffer parses a valid Wscale option carrying wscale=0.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         # TCP Wscale option wire frame (3 bytes, wscale=0):
@@ -384,6 +408,8 @@ class TestTcpOptionWscaleParserFailures(TestCase):
         """
         Ensure from_buffer raises the expected exception with the expected
         message for each malformed buffer.
+
+        Reference: RFC 7323 §2 (Window Scale option — kind 3).
         """
 
         with self.assertRaises(self._results["error"]) as error:

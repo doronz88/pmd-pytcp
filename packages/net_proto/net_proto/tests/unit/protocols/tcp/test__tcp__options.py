@@ -289,6 +289,8 @@ class TestTcpOptionsAssembler(TestCase):
     def test__tcp_options__len(self) -> None:
         """
         Ensure '__len__()' returns the total serialized options length.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -300,6 +302,8 @@ class TestTcpOptionsAssembler(TestCase):
     def test__tcp_options__str(self) -> None:
         """
         Ensure '__str__()' returns the expected log string.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -311,6 +315,8 @@ class TestTcpOptionsAssembler(TestCase):
     def test__tcp_options__repr(self) -> None:
         """
         Ensure '__repr__()' returns the expected representation string.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -322,6 +328,8 @@ class TestTcpOptionsAssembler(TestCase):
     def test__tcp_options__bytes(self) -> None:
         """
         Ensure '__bytes__()' returns the expected wire-frame bytes.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -334,6 +342,8 @@ class TestTcpOptionsAssembler(TestCase):
         """
         Ensure the 'mss' property returns the first Mss option value (or
         None if no Mss option is present).
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -346,6 +356,8 @@ class TestTcpOptionsAssembler(TestCase):
         """
         Ensure the 'wscale' property returns the first Wscale option value
         (or None if no Wscale option is present).
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -358,6 +370,8 @@ class TestTcpOptionsAssembler(TestCase):
         """
         Ensure the 'sackperm' property returns True when a Sackperm option
         is present and None otherwise.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -370,6 +384,8 @@ class TestTcpOptionsAssembler(TestCase):
         """
         Ensure the 'sack' property returns the first Sack option block
         list (or None if no Sack option is present).
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -382,6 +398,8 @@ class TestTcpOptionsAssembler(TestCase):
         """
         Ensure the 'timestamps' property returns the first Timestamps
         option value (or None if no Timestamps option is present).
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         self.assertEqual(
@@ -483,6 +501,8 @@ class TestTcpOptionsParser(TestCase):
         """
         Ensure 'TcpOptions.from_buffer()' parses the wire frame into the
         expected TcpOptions container.
+
+        Reference: RFC 9293 §3.1 (TCP options block).
         """
 
         tcp_options = TcpOptions.from_buffer(self._buffer)
