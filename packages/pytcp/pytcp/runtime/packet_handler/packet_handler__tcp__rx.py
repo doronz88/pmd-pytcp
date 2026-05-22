@@ -137,16 +137,16 @@ class PacketHandlerTcpRx(ABC):
             tcp__sackperm=packet_rx.tcp.sackperm,
             tcp__sack_blocks=(
                 ()
-                if (sack_blocks := packet_rx.tcp._options.sack) is None
+                if (sack_blocks := packet_rx.tcp.options.sack) is None
                 else tuple((block.left, block.right) for block in sack_blocks)
             ),
-            tcp__tsval=(timestamps.tsval if (timestamps := packet_rx.tcp._options.timestamps) is not None else None),
+            tcp__tsval=(timestamps.tsval if (timestamps := packet_rx.tcp.options.timestamps) is not None else None),
             tcp__tsecr=(
-                packet_rx.tcp._options.timestamps.tsecr if packet_rx.tcp._options.timestamps is not None else None
+                packet_rx.tcp.options.timestamps.tsecr if packet_rx.tcp.options.timestamps is not None else None
             ),
-            tcp__fastopen_cookie=packet_rx.tcp._options.fastopen,
+            tcp__fastopen_cookie=packet_rx.tcp.options.fastopen,
             tcp__accecn0_counters=(
-                None if (accecn := packet_rx.tcp._options.accecn) is None else (accecn.ee0b, accecn.eceb, accecn.ee1b)
+                None if (accecn := packet_rx.tcp.options.accecn) is None else (accecn.ee0b, accecn.eceb, accecn.ee1b)
             ),
             tcp__data=packet_rx.tcp.payload,
             tracker=packet_rx.tracker,
