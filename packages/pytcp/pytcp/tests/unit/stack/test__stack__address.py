@@ -145,6 +145,28 @@ class TestIp4AddressApiAddHost(TestCase):
             msg="add_ifaddr must preserve pre-existing hosts.",
         )
 
+    def test__ip4_address_api__add_host_atomically_rebinds_list(self) -> None:
+        """
+        Ensure 'add_ifaddr' rebinds '_ip4_ifaddr' to a fresh list
+        object rather than mutating the existing list in place, so the
+        TX worker iterating the list during source-address selection
+        always reads a consistent snapshot (Phase 4 single-writer-safe
+        read — control-plane mutation must not be observable mid-update
+        by the reading TX thread).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        original_list = self._packet_handler._ip4_ifaddr
+
+        self._api.add_ifaddr(ip4_ifaddr=Ip4IfAddr("10.0.0.5/24"))
+
+        self.assertIsNot(
+            self._packet_handler._ip4_ifaddr,
+            original_list,
+            msg="add_ifaddr must rebind _ip4_ifaddr to a new list, not mutate the existing one in place.",
+        )
+
 
 class TestIp4AddressApiRemoveHost(TestCase):
     """

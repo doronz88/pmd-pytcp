@@ -162,7 +162,12 @@ class Ip4AddressApi:
         caller's responsibility; this method does not de-dup).
         """
 
-        self._packet_handler._ip4_ifaddr.append(ip4_ifaddr)
+        # Atomic-rebind rather than in-place '.append': the TX worker
+        # iterates '_ip4_ifaddr' during source-address selection on a
+        # different thread, so control-plane mutation must swap a fresh
+        # list reference (the reader sees the old or new list whole,
+        # never a mid-append state). Mirrors 'remove_ifaddr' below.
+        self._packet_handler._ip4_ifaddr = [*self._packet_handler._ip4_ifaddr, ip4_ifaddr]
         __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_ifaddr}")
 
     def remove_ifaddr(
