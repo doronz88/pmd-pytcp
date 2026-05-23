@@ -458,6 +458,39 @@ def egress_packet_handler(destination: Ip4Address | Ip6Address | None = None, /)
     )
 
 
+def egress_interface_mtu(destination: Ip4Address | Ip6Address, /) -> int | None:
+    """
+    Return the link MTU of the interface that egresses stack-originated
+    traffic toward 'destination', or None when no egress interface can be
+    resolved (a reduced context — no interface registered, or a multi-homed
+    host with no route covering the destination).
+
+    This is the per-destination successor to the retired
+    'stack.interface_mtu' global: TCP MSS computation and the UDP / socket
+    Path-MTU fall-back read the EGRESS interface's MTU, so a multi-homed
+    host sizes its segments to the interface the FIB selects for the peer.
+
+    Resolution mirrors 'egress_packet_handler' — FIB 'oif' first, then the
+    sole registered interface when the FIB does not resolve and exactly one
+    interface exists — but returns None instead of raising, so MSS / PMTU
+    callers degrade to their own conservative fall-back rather than failing
+    a send. The annotation-only 'ip4_fib' / 'ip6_fib' declarations create no
+    'globals()' entry until 'init()' / 'mock__init()' assign them, so the
+    membership test below is the "is the routing plane up?" guard.
+    """
+
+    handlers = interfaces.values()
+    if not handlers:
+        return None
+    if "ip4_fib" in globals() and "ip6_fib" in globals():
+        handler = _egress_handler_via_fib(destination)
+        if handler is not None:
+            return handler._interface_mtu
+    if len(handlers) == 1:
+        return handlers[0]._interface_mtu
+    return None
+
+
 def local_ip4_hosts() -> tuple[Ip4IfAddr, ...]:
     """
     Return every configured IPv4 interface address across ALL registered

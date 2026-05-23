@@ -2108,3 +2108,123 @@ class TestStackHasRouteTo(TestCase):
             stack.has_route_to(Ip4Address("8.8.8.8")),
             msg="has_route_to must be True for an off-link destination once a default route exists.",
         )
+
+
+class TestStackEgressInterfaceMtu(TestCase):
+    """
+    The 'stack.egress_interface_mtu(dst)' tests — the per-destination
+    successor to the retired 'stack.interface_mtu' global: TCP MSS
+    computation and the UDP / socket Path-MTU fall-back read the EGRESS
+    interface's link MTU, so a multi-homed host sizes segments to the
+    interface the FIB selects for the peer.
+    """
+
+    def setUp(self) -> None:
+        """
+        Install two interfaces on distinct subnets with distinct MTUs
+        (ifindex 1 -> 10.0.1.0/24 @ 1500, ifindex 2 -> 10.0.2.0/24 @ 9000)
+        and a fresh pair of FIBs.
+        """
+
+        from types import SimpleNamespace
+
+        from net_addr import (
+            Ip4Address,
+            Ip4IfAddr,
+            Ip4Network,
+            Ip6Address,
+            Ip6IfAddr,
+            Ip6Network,
+        )
+        from pytcp.runtime.fib import RouteTable
+
+        self._iface_1 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.1.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:1::7/64")],
+            _interface_mtu=1500,
+        )
+        self._iface_2 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.2.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:2::7/64")],
+            _interface_mtu=9000,
+        )
+        self._table = InterfaceTable()
+        self._table[1] = cast("PacketHandlerL2", self._iface_1)
+        self._table[2] = cast("PacketHandlerL2", self._iface_2)
+        self.enterContext(patch.object(stack, "interfaces", self._table))
+        self._ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        self._ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        self.enterContext(patch.object(stack, "ip4_fib", self._ip4_fib, create=True))
+        self.enterContext(patch.object(stack, "ip6_fib", self._ip6_fib, create=True))
+
+    def test__egress_interface_mtu__on_link_dst_returns_owning_interface_mtu(self) -> None:
+        """
+        Ensure an on-link destination yields the MTU of the interface
+        that owns its connected subnet (the matched connected route's
+        'oif'), not a global default.
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / longest-prefix match).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertEqual(
+            stack.egress_interface_mtu(Ip4Address("10.0.2.50")),
+            9000,
+            msg="egress_interface_mtu must return interface 2's MTU for an on-link dst on its subnet.",
+        )
+
+    def test__egress_interface_mtu__sole_interface_fallback(self) -> None:
+        """
+        Ensure an unresolved destination falls back to the SOLE
+        registered interface's MTU when exactly one interface exists
+        (the single-egress host case).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        solo = InterfaceTable()
+        solo[1] = cast("PacketHandlerL2", self._iface_1)
+        self.enterContext(patch.object(stack, "interfaces", solo))
+
+        self.assertEqual(
+            stack.egress_interface_mtu(Ip4Address("203.0.113.9")),
+            1500,
+            msg="egress_interface_mtu must fall back to the sole interface's MTU for an unrouted dst.",
+        )
+
+    def test__egress_interface_mtu__none_when_no_interface(self) -> None:
+        """
+        Ensure 'egress_interface_mtu' returns None when no interface is
+        registered — a reduced context with no egress to size against.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        self.enterContext(patch.object(stack, "interfaces", InterfaceTable()))
+
+        self.assertIsNone(
+            stack.egress_interface_mtu(Ip4Address("10.0.1.50")),
+            msg="egress_interface_mtu must be None when no interface is registered.",
+        )
+
+    def test__egress_interface_mtu__none_when_ambiguous(self) -> None:
+        """
+        Ensure 'egress_interface_mtu' returns None when more than one
+        interface is registered and the FIB cannot resolve an egress —
+        there is no single MTU to size against (it does not raise; MSS /
+        PMTU callers degrade to their own conservative fall-back).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertIsNone(
+            stack.egress_interface_mtu(Ip4Address("203.0.113.9")),
+            msg="egress_interface_mtu must be None for an unresolved dst with multiple interfaces.",
+        )
