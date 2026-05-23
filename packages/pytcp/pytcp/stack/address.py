@@ -140,19 +140,55 @@ class Ip4AddressApi:
     def __init__(
         self,
         *,
-        packet_handler: "PacketHandlerL2 | PacketHandlerL3",
+        packet_handler: "PacketHandlerL2 | PacketHandlerL3 | None" = None,
     ) -> None:
         """
-        Bind the API to a packet handler instance. The packet
-        handler owns the underlying '_ip4_ifaddr' list; the API is
-        the only sanctioned consumer of mutations to that list.
-        The conflict-subscription registry lives on the API
-        instance so per-address callback fan-out is local to
-        this binding.
+        Construct the address-control API. With no 'packet_handler'
+        this is the unbound, device-independent TOOL (the 'ip addr'
+        equivalent) — operate on a specific interface via
+        'interface(ifindex)'. With a 'packet_handler' (as returned by
+        'interface(ifindex)') it is a VIEW bound to that one interface;
+        its reads / mutations operate on that interface's '_ip4_ifaddr'
+        list only.
+
+        The conflict-subscription registry lives on the API instance so
+        per-address callback fan-out is local to this binding.
         """
 
         self._packet_handler = packet_handler
         self._subscriptions = _Subscriptions()
+
+    def _resolve_handler(self) -> "PacketHandlerL2 | PacketHandlerL3":
+        """
+        Return the interface this API operates on: the bound handler
+        for an 'interface(ifindex)' view, or — for the unbound tool —
+        the SOLE registered interface (transitional N=1 crutch). Raises
+        'RuntimeError' when the unbound tool is used with zero or more
+        than one interface registered, where the caller must select a
+        device via 'interface(ifindex)'.
+
+        Phase 6: the sole-interface fallback is the bridge while bare
+        consumers migrate to 'interface(ifindex)'; it is removed once
+        nothing reads the unbound tool without selecting a device.
+        """
+
+        if self._packet_handler is not None:
+            return self._packet_handler
+
+        from pytcp import stack
+
+        interfaces = stack.interfaces.values()
+        if len(interfaces) == 1:
+            return interfaces[0]
+        if not interfaces:
+            raise RuntimeError(
+                "No interface registered. Add one via 'stack.add_interface(...)' "
+                "or select a device via 'stack.address.interface(ifindex)'."
+            )
+        raise RuntimeError(
+            "Multiple interfaces registered; the bare address tool is ambiguous. "
+            "Select a device via 'stack.address.interface(ifindex)'."
+        )
 
     def interface(self, ifindex: int, /) -> "Ip4AddressApi":
         """
@@ -183,12 +219,13 @@ class Ip4AddressApi:
         caller's responsibility; this method does not de-dup).
         """
 
+        handler = self._resolve_handler()
         # Atomic-rebind rather than in-place '.append': the TX worker
         # iterates '_ip4_ifaddr' during source-address selection on a
         # different thread, so control-plane mutation must swap a fresh
         # list reference (the reader sees the old or new list whole,
         # never a mid-append state). Mirrors 'remove_ifaddr' below.
-        self._packet_handler._ip4_ifaddr = [*self._packet_handler._ip4_ifaddr, ip4_ifaddr]
+        handler._ip4_ifaddr = [*handler._ip4_ifaddr, ip4_ifaddr]
         __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_ifaddr}")
 
     def remove_ifaddr(
@@ -213,11 +250,10 @@ class Ip4AddressApi:
         if abort_bound_sessions:
             self._abort_bound_tcp_sessions(ip4_address)
 
-        before = len(self._packet_handler._ip4_ifaddr)
-        self._packet_handler._ip4_ifaddr = [
-            host for host in self._packet_handler._ip4_ifaddr if host.address != ip4_address
-        ]
-        removed = before - len(self._packet_handler._ip4_ifaddr)
+        handler = self._resolve_handler()
+        before = len(handler._ip4_ifaddr)
+        handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != ip4_address]
+        removed = before - len(handler._ip4_ifaddr)
         __debug__ and log(
             "stack",
             f"<lg>Address API</>: removed IPv4 address {ip4_address} "
@@ -261,7 +297,7 @@ class Ip4AddressApi:
         read-only" constraint from CLAUDE.md).
         """
 
-        return tuple(self._packet_handler._ip4_ifaddr)
+        return tuple(self._resolve_handler()._ip4_ifaddr)
 
     def probe(self, *, address: Ip4Address) -> ProbeResult:
         """
@@ -282,7 +318,7 @@ class Ip4AddressApi:
         precondition to mypy.
         """
 
-        handler = cast("PacketHandlerL2", self._packet_handler)
+        handler = cast("PacketHandlerL2", self._resolve_handler())
         success = handler._arp_dad_probe_address(address)
         peer_mac: MacAddress | None = None
         if not success:
@@ -310,7 +346,7 @@ class Ip4AddressApi:
         L2-only — see 'probe' for the L3 caveat.
         """
 
-        handler = cast("PacketHandlerL2", self._packet_handler)
+        handler = cast("PacketHandlerL2", self._resolve_handler())
         handler._arp_dad_announce_address(address)
 
     def claim_with_acd(self, *, ip4_ifaddr: Ip4IfAddr) -> ClaimResult:
@@ -349,7 +385,7 @@ class Ip4AddressApi:
         helper. L2-only — see 'probe' for the L3 caveat.
         """
 
-        handler = cast("PacketHandlerL2", self._packet_handler)
+        handler = cast("PacketHandlerL2", self._resolve_handler())
         handler._send_gratuitous_arp(ip4_unicast=address)
 
     def abort_bound_tcp_sessions(self, *, address: Ip4Address) -> None:

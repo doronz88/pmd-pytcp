@@ -956,3 +956,123 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
 
         with self.assertRaises(KeyError):
             self._api.interface(99)
+
+
+class TestIp4AddressApiUnboundTool(TestCase):
+    """
+    The 'Ip4AddressApi' unbound userspace-tool tests — an
+    'Ip4AddressApi()' built with no handler is the device-independent
+    tool ('ip addr'); bare reads / mutations resolve the sole registered
+    interface (transitional crutch) and explicit '.interface(ifindex)'
+    selection always works.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's '<stack>' log line.
+        """
+
+        self.enterContext(patch("pytcp.stack.address.log"))
+
+    def _install(self, count: int) -> list[_FakePacketHandler]:
+        """
+        Register 'count' fake interfaces in a fresh 'stack.interfaces'
+        table and return them.
+        """
+
+        ifaces = [_FakePacketHandler() for _ in range(count)]
+        table = InterfaceTable()
+        for iface in ifaces:
+            table.add(cast("PacketHandlerL2", iface))
+        self.enterContext(patch.object(stack, "interfaces", table))
+        return ifaces
+
+    def test__address_api__unbound_tool__bare_read_resolves_sole_interface(self) -> None:
+        """
+        Ensure a bare read on the unbound tool resolves to the single
+        registered interface when exactly one exists (the transitional
+        N=1 crutch).
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        (iface,) = self._install(1)
+        host = Ip4IfAddr("10.0.0.5/24")
+        iface._ip4_ifaddr = [host]
+        tool = Ip4AddressApi()
+
+        self.assertEqual(
+            tool.list_ip4_ifaddrs(),
+            (host,),
+            msg="The unbound tool must read the sole interface's address list.",
+        )
+
+    def test__address_api__unbound_tool__bare_mutation_resolves_sole_interface(self) -> None:
+        """
+        Ensure a bare mutation on the unbound tool lands on the single
+        registered interface when exactly one exists.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        (iface,) = self._install(1)
+        host = Ip4IfAddr("10.0.0.5/24")
+        tool = Ip4AddressApi()
+
+        tool.add_ifaddr(ip4_ifaddr=host)
+
+        self.assertEqual(
+            iface._ip4_ifaddr,
+            [host],
+            msg="The unbound tool's add_ifaddr must land on the sole interface.",
+        )
+
+    def test__address_api__unbound_tool__bare_read_raises_when_no_interface(self) -> None:
+        """
+        Ensure a bare read on the unbound tool raises when no interface
+        is registered — there is no device to report on.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        self._install(0)
+        tool = Ip4AddressApi()
+
+        with self.assertRaises(RuntimeError):
+            tool.list_ip4_ifaddrs()
+
+    def test__address_api__unbound_tool__bare_read_raises_when_ambiguous(self) -> None:
+        """
+        Ensure a bare read on the unbound tool raises when more than one
+        interface is registered — the caller must select a device via
+        'interface(ifindex)'.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        self._install(2)
+        tool = Ip4AddressApi()
+
+        with self.assertRaises(RuntimeError):
+            tool.list_ip4_ifaddrs()
+
+    def test__address_api__unbound_tool__interface_selector_works_when_ambiguous(self) -> None:
+        """
+        Ensure explicit 'interface(ifindex)' selection on the unbound
+        tool reads the named device even when several interfaces are
+        registered (where a bare read would be ambiguous).
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        ifaces = self._install(3)
+        host = Ip4IfAddr("10.0.2.7/24")
+        ifaces[1]._ip4_ifaddr = [host]
+        tool = Ip4AddressApi()
+
+        self.assertEqual(
+            tool.interface(2).list_ip4_ifaddrs(),
+            (host,),
+            msg="interface(2) on the unbound tool must read interface 2's address list.",
+        )
