@@ -40,6 +40,7 @@ from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -109,6 +110,17 @@ class _TcpSocketTestCase(TestCase):
             _make_packet_handler(),
         )
         self._handler_patch.start()
+
+        # Phase-6 seam: source-address validation spans all interfaces via
+        # 'stack.local_ip{4,6}_unicast()'. Make them follow the patched
+        # 'stack.packet_handler' stub.
+        for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
+            _p = patch(
+                f"pytcp.socket.tcp__socket.stack.{_helper}",
+                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+            )
+            _p.start()
+            self.addCleanup(_p.stop)
 
         self._session_cls_patch = patch(
             "pytcp.socket.tcp__socket.TcpSession",

@@ -1818,3 +1818,103 @@ class TestStackEgressPacketHandler(TestCase):
 
         with self.assertRaises(RuntimeError):
             stack.egress_packet_handler()
+
+
+class TestStackLocalAddressIntrospection(TestCase):
+    """
+    The 'stack.local_ip{4,6}_hosts()' / 'local_ip{4,6}_unicast()'
+    cross-interface introspection tests — the read-only address-union
+    seam that INADDR_ANY bind expansion and source-address validation
+    use on a multi-homed host.
+    """
+
+    def setUp(self) -> None:
+        """
+        Install two fake interfaces, each owning one IPv4/IPv6 host +
+        unicast address, in a fresh 'stack.interfaces' table.
+        """
+
+        from types import SimpleNamespace
+
+        from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
+
+        self._iface_1 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.1.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:1::7/64")],
+            ip4_unicast=[Ip4Address("10.0.1.7")],
+            ip6_unicast=[Ip6Address("2001:db8:0:1::7")],
+        )
+        self._iface_2 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.2.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:2::7/64")],
+            ip4_unicast=[Ip4Address("10.0.2.7")],
+            ip6_unicast=[Ip6Address("2001:db8:0:2::7")],
+        )
+        table = InterfaceTable()
+        table[1] = cast("PacketHandlerL2", self._iface_1)
+        table[2] = cast("PacketHandlerL2", self._iface_2)
+        self.enterContext(patch.object(stack, "interfaces", table))
+
+    def test__stack__local_ip4_unicast_unions_across_interfaces(self) -> None:
+        """
+        Ensure 'local_ip4_unicast()' returns the union of every
+        registered interface's IPv4 unicast addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertEqual(
+            set(stack.local_ip4_unicast()),
+            {Ip4Address("10.0.1.7"), Ip4Address("10.0.2.7")},
+            msg="local_ip4_unicast() must union every interface's IPv4 unicast addresses.",
+        )
+
+    def test__stack__local_ip6_unicast_unions_across_interfaces(self) -> None:
+        """
+        Ensure 'local_ip6_unicast()' returns the union of every
+        registered interface's IPv6 unicast addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip6Address
+
+        self.assertEqual(
+            set(stack.local_ip6_unicast()),
+            {Ip6Address("2001:db8:0:1::7"), Ip6Address("2001:db8:0:2::7")},
+            msg="local_ip6_unicast() must union every interface's IPv6 unicast addresses.",
+        )
+
+    def test__stack__local_ip4_hosts_unions_across_interfaces(self) -> None:
+        """
+        Ensure 'local_ip4_hosts()' returns the union of every
+        registered interface's IPv4 interface addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4IfAddr
+
+        self.assertEqual(
+            set(stack.local_ip4_hosts()),
+            {Ip4IfAddr("10.0.1.7/24"), Ip4IfAddr("10.0.2.7/24")},
+            msg="local_ip4_hosts() must union every interface's IPv4 interface addresses.",
+        )
+
+    def test__stack__local_ip6_hosts_unions_across_interfaces(self) -> None:
+        """
+        Ensure 'local_ip6_hosts()' returns the union of every
+        registered interface's IPv6 interface addresses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip6IfAddr
+
+        self.assertEqual(
+            set(stack.local_ip6_hosts()),
+            {Ip6IfAddr("2001:db8:0:1::7/64"), Ip6IfAddr("2001:db8:0:2::7/64")},
+            msg="local_ip6_hosts() must union every interface's IPv6 interface addresses.",
+        )

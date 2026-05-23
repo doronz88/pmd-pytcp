@@ -129,6 +129,18 @@ class _UdpSocketTestCase(TestCase):
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)
 
+        # Source-address validation now spans all interfaces via the
+        # 'stack.local_ip{4,6}_unicast()' introspection helpers (Phase-6
+        # cross-interface seam). Make them follow the patched
+        # 'stack.packet_handler' stub so the existing fixtures drive them.
+        for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
+            _p = patch(
+                f"pytcp.socket.udp__socket.stack.{_helper}",
+                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+            )
+            _p.start()
+            self.addCleanup(_p.stop)
+
         # is_address_in_use reads stack.sockets directly, so mirror the
         # patch on that module as well.
         self._helper_sockets_patch = patch(

@@ -78,7 +78,7 @@ def pick_local_ip6_address(
     otherwise return the unspecified address.
     """
 
-    ip6_hosts = stack.packet_handler.ip6_host
+    ip6_hosts = stack.local_ip6_hosts()
 
     for ip6_host in ip6_hosts:
         if remote_ip6_address in ip6_host.network:
@@ -115,7 +115,7 @@ def pick_local_ip4_address(
     otherwise return the unspecified address.
     """
 
-    ip4_hosts = stack.packet_handler.ip4_host
+    ip4_hosts = stack.local_ip4_hosts()
 
     for ip4_host in ip4_hosts:
         if remote_ip4_address in ip4_host.network:

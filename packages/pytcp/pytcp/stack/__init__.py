@@ -59,7 +59,14 @@ from pytcp.stack.link import LinkApi
 from pytcp.stack.route import RouteApi
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
+    from net_addr import (
+        Ip4Address,
+        Ip4IfAddr,
+        Ip4Network,
+        Ip6Address,
+        Ip6IfAddr,
+        Ip6Network,
+    )
     from pytcp.lib.plpmtud import PmtuSearch
     from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal
     from pytcp.runtime.fib import RouteTable
@@ -392,6 +399,61 @@ def egress_packet_handler() -> PacketHandlerL2 | PacketHandlerL3:
         "needs the Phase 7 FIB 'oif' lookup (not yet implemented). Until then "
         "the stack supports a single egress interface."
     )
+
+
+def local_ip4_hosts() -> tuple[Ip4IfAddr, ...]:
+    """
+    Return every configured IPv4 interface address across ALL registered
+    interfaces — a read-only, copy-by-value snapshot (the Phase-3
+    "introspection is read-only" contract). The cross-interface union is
+    the multi-homed-host semantics: INADDR_ANY bind expansion and
+    source-address selection consider every local address, not just one
+    interface's. Linux equivalent: 'ip -4 addr show'.
+    """
+
+    hosts: list[Ip4IfAddr] = []
+    for handler in interfaces.values():
+        hosts.extend(handler.ip4_host)
+    return tuple(hosts)
+
+
+def local_ip6_hosts() -> tuple[Ip6IfAddr, ...]:
+    """
+    Return every configured IPv6 interface address across ALL registered
+    interfaces — the IPv6 counterpart of 'local_ip4_hosts()'.
+    """
+
+    hosts: list[Ip6IfAddr] = []
+    for handler in interfaces.values():
+        hosts.extend(handler.ip6_host)
+    return tuple(hosts)
+
+
+def local_ip4_unicast() -> tuple[Ip4Address, ...]:
+    """
+    Return every configured IPv4 unicast address across ALL registered
+    interfaces — a read-only snapshot used to validate that a
+    socket-supplied source address is one the host owns (sendto / bind
+    'EADDRNOTAVAIL' checks). Cross-interface union = multi-homed
+    semantics. Linux 'ip -4 addr show' equivalent.
+    """
+
+    addresses: list[Ip4Address] = []
+    for handler in interfaces.values():
+        addresses.extend(handler.ip4_unicast)
+    return tuple(addresses)
+
+
+def local_ip6_unicast() -> tuple[Ip6Address, ...]:
+    """
+    Return every configured IPv6 unicast address across ALL registered
+    interfaces — the IPv6 counterpart of 'local_ip4_unicast()'.
+    """
+
+    addresses: list[Ip6Address] = []
+    for handler in interfaces.values():
+        addresses.extend(handler.ip6_unicast)
+    return tuple(addresses)
 
 
 # RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) outbound ICMP error rate

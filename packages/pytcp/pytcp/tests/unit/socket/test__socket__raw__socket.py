@@ -39,6 +39,7 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
+import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
@@ -104,6 +105,24 @@ class _RawSocketTestCase(TestCase):
         )
         self._handler_patch.start()
         self.addCleanup(self._handler_patch.stop)
+
+        # Phase-6 seams: socket-originated TX resolves its egress via
+        # 'stack.egress_packet_handler()' and source validation spans all
+        # interfaces via 'stack.local_ip{4,6}_unicast()'. Make both follow
+        # the patched 'stack.packet_handler' stub.
+        self._egress_patch = patch(
+            "pytcp.socket.raw__socket.stack.egress_packet_handler",
+            side_effect=lambda: _stack.packet_handler,
+        )
+        self._egress_patch.start()
+        self.addCleanup(self._egress_patch.stop)
+        for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
+            _p = patch(
+                f"pytcp.socket.raw__socket.stack.{_helper}",
+                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+            )
+            _p.start()
+            self.addCleanup(_p.stop)
 
 
 class TestRawSocketInit(_RawSocketTestCase):

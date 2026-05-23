@@ -72,7 +72,9 @@ class TestPickLocalIp6Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip6_host=[local_host])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True):
+        with patch(
+            "pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)
+        ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2001:db8::5"))
 
         self.assertEqual(
@@ -103,7 +105,7 @@ class TestPickLocalIp6Address(TestCase):
         )
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -135,7 +137,7 @@ class TestPickLocalIp6Address(TestCase):
         )
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -160,7 +162,7 @@ class TestPickLocalIp6Address(TestCase):
         fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -191,7 +193,9 @@ class TestPickLocalIp4Address(TestCase):
         )
         fake_handler = SimpleNamespace(ip4_host=[local_host])
 
-        with patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True):
+        with patch(
+            "pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)
+        ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
@@ -222,7 +226,7 @@ class TestPickLocalIp4Address(TestCase):
         )
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
@@ -254,7 +258,7 @@ class TestPickLocalIp4Address(TestCase):
         )
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
@@ -279,7 +283,7 @@ class TestPickLocalIp4Address(TestCase):
         fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.packet_handler", fake_handler, create=True),
+            patch("pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
             patch("pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))

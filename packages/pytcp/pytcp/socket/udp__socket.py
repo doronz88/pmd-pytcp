@@ -302,7 +302,7 @@ class UdpSocket(socket):
         match self._address_family:
             case AddressFamily.INET6:
                 try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.packet_handler.ip6_unicast) | {
+                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.local_ip6_unicast()) | {
                         Ip6Address()
                     }:
                         raise OSError(
@@ -314,7 +314,7 @@ class UdpSocket(socket):
 
             case AddressFamily.INET4:
                 try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.packet_handler.ip4_unicast) | {
+                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.local_ip4_unicast()) | {
                         Ip4Address()
                     }:
                         raise OSError(
