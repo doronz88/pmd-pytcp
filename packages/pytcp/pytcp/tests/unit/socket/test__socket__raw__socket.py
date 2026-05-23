@@ -39,7 +39,6 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
-import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
@@ -99,20 +98,15 @@ class _RawSocketTestCase(TestCase):
         self.addCleanup(self._sockets_patch.stop)
 
         self._handler = _make_packet_handler()
-        self._handler_patch = patch(
-            "pytcp.socket.raw__socket.stack.packet_handler",
-            self._handler,
-        )
-        self._handler_patch.start()
-        self.addCleanup(self._handler_patch.stop)
 
         # Phase-6 seams: socket-originated TX resolves its egress via
         # 'stack.egress_packet_handler()' and source validation spans all
-        # interfaces via 'stack.local_ip{4,6}_unicast()'. Make both follow
-        # the patched 'stack.packet_handler' stub.
+        # interfaces via 'stack.local_ip{4,6}_unicast()'. Point both at this
+        # fixture's local stub handler; reading 'self._handler' lazily lets
+        # a per-test reassignment transparently drive the send path.
         self._egress_patch = patch(
             "pytcp.socket.raw__socket.stack.egress_packet_handler",
-            side_effect=lambda *_a: _stack.packet_handler,
+            side_effect=lambda *_a: self._handler,
         )
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)
@@ -129,7 +123,7 @@ class _RawSocketTestCase(TestCase):
         for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
             _p = patch(
                 f"pytcp.socket.raw__socket.stack.{_helper}",
-                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+                side_effect=lambda attr=_attr: tuple(getattr(self._handler, attr)),
             )
             _p.start()
             self.addCleanup(_p.stop)
@@ -512,20 +506,21 @@ class TestRawSocketSend(_RawSocketTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _make_packet_handler()
-        handler.send_ip4_packet = lambda **_: None
-        with patch("pytcp.socket.raw__socket.stack.packet_handler", handler):
-            s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
-            with patch(
-                "pytcp.socket.raw__socket.pick_local_ip_address",
-                return_value=Ip4Address("10.0.0.1"),
-            ):
-                s.connect(("10.0.0.5", 7))
-            self.assertEqual(
-                s.send(b"data"),
-                4,
-                msg="send() must return len(data) — fire-and-forget accepts the packet regardless of drop.",
-            )
+        # Point the egress seam at a drop-everything stub (the fixture's
+        # 'egress_packet_handler' side_effect reads 'self._handler' lazily).
+        self._handler = _make_packet_handler()
+        self._handler.send_ip4_packet = lambda **_: None
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        with patch(
+            "pytcp.socket.raw__socket.pick_local_ip_address",
+            return_value=Ip4Address("10.0.0.1"),
+        ):
+            s.connect(("10.0.0.5", 7))
+        self.assertEqual(
+            s.send(b"data"),
+            4,
+            msg="send() must return len(data) — fire-and-forget accepts the packet regardless of drop.",
+        )
 
     def test__raw_socket__sendto_does_not_require_connect(self) -> None:
         """

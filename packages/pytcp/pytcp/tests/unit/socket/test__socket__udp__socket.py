@@ -39,7 +39,6 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
-import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
@@ -110,21 +109,15 @@ class _UdpSocketTestCase(TestCase):
         self.addCleanup(self._sockets_patch.stop)
 
         self._handler = _make_packet_handler()
-        self._handler_patch = patch(
-            "pytcp.socket.udp__socket.stack.packet_handler",
-            self._handler,
-        )
-        self._handler_patch.start()
-        self.addCleanup(self._handler_patch.stop)
 
-        # Socket-originated TX now resolves its egress interface through
-        # 'stack.egress_packet_handler()' (the Phase-6 seam). Make it
-        # follow the currently-patched 'stack.packet_handler' so the
-        # existing 'patch(... packet_handler, handler)' fixtures (here and
-        # in per-test 'with' blocks) transparently drive the send path.
+        # Socket-originated TX resolves its egress interface through
+        # 'stack.egress_packet_handler()' (the Phase-6 seam). Point it at
+        # this fixture's local stub handler; reading 'self._handler' lazily
+        # lets a per-test reassignment (e.g. a DROPPED-tx_status stub)
+        # transparently drive the send path.
         self._egress_patch = patch(
             "pytcp.socket.udp__socket.stack.egress_packet_handler",
-            side_effect=lambda *_a: _stack.packet_handler,
+            side_effect=lambda *_a: self._handler,
         )
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)
@@ -142,12 +135,11 @@ class _UdpSocketTestCase(TestCase):
 
         # Source-address validation now spans all interfaces via the
         # 'stack.local_ip{4,6}_unicast()' introspection helpers (Phase-6
-        # cross-interface seam). Make them follow the patched
-        # 'stack.packet_handler' stub so the existing fixtures drive them.
+        # cross-interface seam). Make them read this fixture's local stub.
         for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
             _p = patch(
                 f"pytcp.socket.udp__socket.stack.{_helper}",
-                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+                side_effect=lambda attr=_attr: tuple(getattr(self._handler, attr)),
             )
             _p.start()
             self.addCleanup(_p.stop)
@@ -504,14 +496,15 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         Reference: RFC 768 (UDP user interface).
         """
 
-        handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
-        with patch("pytcp.socket.udp__socket.stack.packet_handler", handler):
-            s = self._connected_socket()
-            self.assertEqual(
-                s.send(b"data"),
-                4,
-                msg="send() must return len(data) — fire-and-forget accepts the datagram regardless of drop.",
-            )
+        # Point the egress seam at a DROPPED-tx_status stub (the fixture's
+        # 'egress_packet_handler' side_effect reads 'self._handler' lazily).
+        self._handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
+        s = self._connected_socket()
+        self.assertEqual(
+            s.send(b"data"),
+            4,
+            msg="send() must return len(data) — fire-and-forget accepts the datagram regardless of drop.",
+        )
 
     def test__udp_socket__send_clears_unreachable_and_raises(self) -> None:
         """

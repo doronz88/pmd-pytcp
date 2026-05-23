@@ -40,7 +40,6 @@ from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address
 from net_proto.lib.enums import IpProto
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -85,8 +84,9 @@ class _TcpSocketTestCase(TestCase):
 
     def setUp(self) -> None:
         """
-        Install per-test patches on logging, 'stack.sockets',
-        'stack.packet_handler', and the 'TcpSession' class.
+        Install per-test patches on logging, 'stack.sockets', the
+        cross-interface source-address introspection helpers, and the
+        'TcpSession' class.
         """
 
         self._log_patch = patch("pytcp.socket.tcp__socket.log")
@@ -105,19 +105,15 @@ class _TcpSocketTestCase(TestCase):
         )
         self._helper_sockets_patch.start()
 
-        self._handler_patch = patch(
-            "pytcp.socket.tcp__socket.stack.packet_handler",
-            _make_packet_handler(),
-        )
-        self._handler_patch.start()
+        self._handler = _make_packet_handler()
 
         # Phase-6 seam: source-address validation spans all interfaces via
-        # 'stack.local_ip{4,6}_unicast()'. Make them follow the patched
-        # 'stack.packet_handler' stub.
+        # 'stack.local_ip{4,6}_unicast()'. Make them read this fixture's
+        # local stub handler.
         for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
             _p = patch(
                 f"pytcp.socket.tcp__socket.stack.{_helper}",
-                side_effect=lambda attr=_attr: tuple(getattr(_stack.packet_handler, attr)),
+                side_effect=lambda attr=_attr: tuple(getattr(self._handler, attr)),
             )
             _p.start()
             self.addCleanup(_p.stop)
@@ -136,7 +132,6 @@ class _TcpSocketTestCase(TestCase):
         self._log_patch.stop()
         self._sockets_patch.stop()
         self._helper_sockets_patch.stop()
-        self._handler_patch.stop()
         self._session_cls_patch.stop()
 
 
