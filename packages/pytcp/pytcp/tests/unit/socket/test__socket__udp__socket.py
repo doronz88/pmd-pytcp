@@ -129,6 +129,17 @@ class _UdpSocketTestCase(TestCase):
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)
 
+        # These fixtures stub the whole TX path via the egress handler
+        # above; routing is not under test, so the no-route EHOSTUNREACH
+        # check is pinned True (otherwise a FIB leaked into globals by an
+        # earlier suite test would spuriously fail these sends).
+        self._has_route_patch = patch(
+            "pytcp.socket.udp__socket.stack.has_route_to",
+            return_value=True,
+        )
+        self._has_route_patch.start()
+        self.addCleanup(self._has_route_patch.stop)
+
         # Source-address validation now spans all interfaces via the
         # 'stack.local_ip{4,6}_unicast()' introspection helpers (Phase-6
         # cross-interface seam). Make them follow the patched

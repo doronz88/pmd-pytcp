@@ -2017,3 +2017,94 @@ class TestStackEgressPacketHandlerFib(TestCase):
 
         with self.assertRaises(RuntimeError):
             stack.egress_packet_handler(Ip4Address("203.0.113.9"))
+
+
+class TestStackHasRouteTo(TestCase):
+    """
+    The 'stack.has_route_to(dst)' tests — the synchronous no-route
+    predicate the socket send/connect paths use to raise EHOSTUNREACH
+    (Linux parity) when the FIB cannot reach a destination.
+    """
+
+    def setUp(self) -> None:
+        """
+        Install one interface (10.0.1.0/24) and a fresh IPv4 FIB.
+        """
+
+        from types import SimpleNamespace
+
+        from net_addr import (
+            Ip4Address,
+            Ip4IfAddr,
+            Ip4Network,
+            Ip6Address,
+            Ip6IfAddr,
+            Ip6Network,
+        )
+        from pytcp.runtime.fib import RouteTable
+
+        self._iface = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.1.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:1::7/64")],
+        )
+        table = InterfaceTable()
+        table[1] = cast("PacketHandlerL2", self._iface)
+        self.enterContext(patch.object(stack, "interfaces", table))
+        self._ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        self._ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        self.enterContext(patch.object(stack, "ip4_fib", self._ip4_fib, create=True))
+        self.enterContext(patch.object(stack, "ip6_fib", self._ip6_fib, create=True))
+
+    def test__has_route_to__on_link_destination_true(self) -> None:
+        """
+        Ensure 'has_route_to' is True for an on-link destination (a
+        connected route covers it).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertTrue(
+            stack.has_route_to(Ip4Address("10.0.1.50")),
+            msg="has_route_to must be True for an on-link destination.",
+        )
+
+    def test__has_route_to__no_route_destination_false(self) -> None:
+        """
+        Ensure 'has_route_to' is False for a destination no connected or
+        explicit route covers (no default route installed).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertFalse(
+            stack.has_route_to(Ip4Address("8.8.8.8")),
+            msg="has_route_to must be False when no route covers the destination.",
+        )
+
+    def test__has_route_to__default_route_makes_off_link_true(self) -> None:
+        """
+        Ensure installing a default route makes an off-link destination
+        routable again.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address, Ip4Network
+        from pytcp.runtime.fib import Route, RouteProtocol
+
+        self._ip4_fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.1.1"),
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+
+        self.assertTrue(
+            stack.has_route_to(Ip4Address("8.8.8.8")),
+            msg="has_route_to must be True for an off-link destination once a default route exists.",
+        )

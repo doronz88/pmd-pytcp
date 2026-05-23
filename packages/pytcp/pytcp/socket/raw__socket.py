@@ -255,6 +255,11 @@ class RawSocket(socket):
                 "Destination address required - [Socket has no destination address set]",
             )
 
+        # RFC 1122 §3.3.1 / Linux parity: no route to the destination ->
+        # synchronous EHOSTUNREACH at send time.
+        if not stack.has_route_to(self._remote_ip_address):
+            raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
+
         match self._address_family:
             case AddressFamily.INET6:
                 stack.egress_packet_handler(cast(Ip6Address, self._remote_ip_address)).send_ip6_packet(
@@ -297,6 +302,11 @@ class RawSocket(socket):
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
+
+        # RFC 1122 §3.3.1 / Linux parity: no route to the destination ->
+        # synchronous EHOSTUNREACH at send time.
+        if not stack.has_route_to(remote_ip_address):
+            raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
         match self._address_family:
             case AddressFamily.INET6:

@@ -395,6 +395,27 @@ def _egress_handler_via_fib(destination: Ip4Address | Ip6Address, /) -> PacketHa
     return None
 
 
+def has_route_to(destination: Ip4Address | Ip6Address, /) -> bool:
+    """
+    Return whether the FIB resolves a usable egress route to
+    'destination'. The socket send / connect paths consult this to raise
+    a synchronous 'EHOSTUNREACH' (Linux parity: the route lookup happens
+    at send/connect time, before the datagram is queued) when no route
+    covers the destination.
+
+    Returns True when no routing state is available — a reduced context
+    (unit-test fixtures with no FIB installed) — so route-less fixtures
+    do not spuriously block sends. The annotation-only 'ip4_fib' /
+    'ip6_fib' declarations create no 'globals()' entry until 'init()' /
+    'mock__init()' assign them, so the membership test below is the "is
+    the routing plane up?" guard.
+    """
+
+    if "ip4_fib" not in globals() or "ip6_fib" not in globals():
+        return True
+    return _egress_handler_via_fib(destination) is not None
+
+
 def egress_packet_handler(destination: Ip4Address | Ip6Address | None = None, /) -> PacketHandlerL2 | PacketHandlerL3:
     """
     Return the packet handler for the interface that egresses

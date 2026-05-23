@@ -409,6 +409,12 @@ class UdpSocket(socket):
                 "Connection refused - [Remote host sent ICMP Unreachable]",
             )
 
+        # RFC 1122 §3.3.1 / Linux parity: the route lookup happens at
+        # send time. No route to the destination -> synchronous
+        # EHOSTUNREACH, before the datagram is queued on the TX worker.
+        if not stack.has_route_to(self._remote_ip_address):
+            raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
+
         stack.egress_packet_handler(self._remote_ip_address).send_udp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -460,6 +466,11 @@ class UdpSocket(socket):
         local_ip_address, remote_ip_address = self._get_ip_addresses(
             remote_address=address,
         )
+
+        # RFC 1122 §3.3.1 / Linux parity: no route to the destination ->
+        # synchronous EHOSTUNREACH at send time.
+        if not stack.has_route_to(remote_ip_address):
+            raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
         stack.egress_packet_handler(remote_ip_address).send_udp_packet(
             ip__local_address=local_ip_address,

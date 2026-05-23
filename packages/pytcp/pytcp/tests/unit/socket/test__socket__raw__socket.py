@@ -116,6 +116,16 @@ class _RawSocketTestCase(TestCase):
         )
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)
+
+        # Routing is not under test in these stubbed-TX fixtures; pin the
+        # no-route EHOSTUNREACH check True so a FIB leaked into globals by
+        # an earlier suite test cannot spuriously fail these sends.
+        self._has_route_patch = patch(
+            "pytcp.socket.raw__socket.stack.has_route_to",
+            return_value=True,
+        )
+        self._has_route_patch.start()
+        self.addCleanup(self._has_route_patch.stop)
         for _helper, _attr in (("local_ip4_unicast", "ip4_unicast"), ("local_ip6_unicast", "ip6_unicast")):
             _p = patch(
                 f"pytcp.socket.raw__socket.stack.{_helper}",
