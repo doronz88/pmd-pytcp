@@ -52,7 +52,7 @@ from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
-from pytcp.socket.socket_id import SocketId
+from pytcp.socket.socket_table import SocketTable
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
 from pytcp.stack.route import RouteApi
@@ -62,7 +62,6 @@ if TYPE_CHECKING:
     from pytcp.lib.plpmtud import PmtuSearch
     from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal
     from pytcp.runtime.fib import RouteTable
-    from pytcp.socket import socket
 
 
 assert sys.version_info >= (
@@ -321,7 +320,7 @@ stack_initialized: bool = False
 # suite.
 stack_running: bool = False
 interface_mtu: int
-sockets: dict[SocketId, socket] = {}
+sockets: SocketTable = SocketTable()
 # RFC 1191 §3 / RFC 8201 §4 per-destination Path-MTU cache. Keyed
 # by remote IP (v4 or v6); value is the most recently learned next-
 # hop MTU. Populated by ICMP Frag-Needed / Packet-Too-Big handlers
