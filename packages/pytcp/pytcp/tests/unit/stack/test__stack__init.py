@@ -1918,3 +1918,102 @@ class TestStackLocalAddressIntrospection(TestCase):
             {Ip6IfAddr("2001:db8:0:1::7/64"), Ip6IfAddr("2001:db8:0:2::7/64")},
             msg="local_ip6_hosts() must union every interface's IPv6 interface addresses.",
         )
+
+
+class TestStackEgressPacketHandlerFib(TestCase):
+    """
+    The destination-aware 'stack.egress_packet_handler(dst)' FIB-egress
+    tests — a multi-homed host picks the egress interface the routing
+    table selects ('Route.oif'), on-link directly and off-link via the
+    interface on which the gateway is reachable.
+    """
+
+    def setUp(self) -> None:
+        """
+        Install two interfaces on distinct subnets (ifindex 1 -> 10.0.1.0/24,
+        ifindex 2 -> 10.0.2.0/24) and a fresh pair of FIBs.
+        """
+
+        from types import SimpleNamespace
+
+        from net_addr import (
+            Ip4Address,
+            Ip4IfAddr,
+            Ip4Network,
+            Ip6Address,
+            Ip6IfAddr,
+            Ip6Network,
+        )
+        from pytcp.runtime.fib import RouteTable
+
+        self._iface_1 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.1.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:1::7/64")],
+        )
+        self._iface_2 = SimpleNamespace(
+            ip4_host=[Ip4IfAddr("10.0.2.7/24")],
+            ip6_host=[Ip6IfAddr("2001:db8:0:2::7/64")],
+        )
+        table = InterfaceTable()
+        table[1] = cast("PacketHandlerL2", self._iface_1)
+        table[2] = cast("PacketHandlerL2", self._iface_2)
+        self.enterContext(patch.object(stack, "interfaces", table))
+        self._ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        self._ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        self.enterContext(patch.object(stack, "ip4_fib", self._ip4_fib, create=True))
+        self.enterContext(patch.object(stack, "ip6_fib", self._ip6_fib, create=True))
+
+    def test__egress__on_link_dst_picks_owning_interface(self) -> None:
+        """
+        Ensure an on-link destination egresses the interface that owns
+        the connected subnet (the matched connected route's 'oif').
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / longest-prefix match).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertIs(
+            stack.egress_packet_handler(Ip4Address("10.0.2.50")),
+            self._iface_2,
+            msg="An on-link dst on interface 2's subnet must egress interface 2.",
+        )
+
+    def test__egress__off_link_dst_picks_gateway_interface(self) -> None:
+        """
+        Ensure an off-link destination egresses the interface on which
+        the route's gateway is on-link (the second connected lookup).
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection via gateway).
+        """
+
+        from net_addr import Ip4Address, Ip4Network
+        from pytcp.runtime.fib import Route, RouteProtocol
+
+        self._ip4_fib.add(
+            route=Route(
+                destination=Ip4Network("0.0.0.0/0"),
+                gateway=Ip4Address("10.0.1.1"),
+                protocol=RouteProtocol.BOOT,
+            )
+        )
+
+        self.assertIs(
+            stack.egress_packet_handler(Ip4Address("8.8.8.8")),
+            self._iface_1,
+            msg="An off-link dst via a gateway on interface 1's subnet must egress interface 1.",
+        )
+
+    def test__egress__unresolved_dst_raises_when_ambiguous(self) -> None:
+        """
+        Ensure a destination the FIB cannot resolve to an egress raises
+        when more than one interface is registered — there is no single
+        egress to fall back to.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        with self.assertRaises(RuntimeError):
+            stack.egress_packet_handler(Ip4Address("203.0.113.9"))

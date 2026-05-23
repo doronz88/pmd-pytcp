@@ -40,7 +40,7 @@ import sys
 from enum import IntFlag
 from typing import TYPE_CHECKING, Any
 
-from net_addr import MacAddress
+from net_addr import Ip4Address, Ip6Address, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.arp.arp__cache import ArpCache
@@ -59,14 +59,7 @@ from pytcp.stack.link import LinkApi
 from pytcp.stack.route import RouteApi
 
 if TYPE_CHECKING:
-    from net_addr import (
-        Ip4Address,
-        Ip4IfAddr,
-        Ip4Network,
-        Ip6Address,
-        Ip6IfAddr,
-        Ip6Network,
-    )
+    from net_addr import Ip4IfAddr, Ip4Network, Ip6IfAddr, Ip6Network
     from pytcp.lib.plpmtud import PmtuSearch
     from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal
     from pytcp.runtime.fib import RouteTable
@@ -366,24 +359,68 @@ def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
     return pmtu_cache.get(dst)
 
 
-def egress_packet_handler() -> PacketHandlerL2 | PacketHandlerL3:
+def _egress_handler_via_fib(destination: Ip4Address | Ip6Address, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+    """
+    Resolve the egress interface for 'destination' through the FIB:
+    longest-prefix match, then map the matched route's 'oif' to its
+    handler. For an on-link / connected destination the matched route
+    carries 'oif' directly; for an off-link (gatewayed) route whose own
+    'oif' is unset, the egress is the interface on which the gateway is
+    on-link (a second connected lookup). Returns None when the FIB
+    cannot resolve an egress interface (no route, or an oif not in the
+    registry) — the caller then falls back to the single-interface case.
+    """
+
+    if isinstance(destination, Ip4Address):
+        ip4_route = ip4_fib.lookup(destination, connected=connected_ip4_networks())
+        if ip4_route is None:
+            return None
+        if ip4_route.oif is not None and ip4_route.oif in interfaces:
+            return interfaces[ip4_route.oif]
+        if ip4_route.gateway is not None:
+            ip4_gw_route = ip4_fib.lookup(ip4_route.gateway, connected=connected_ip4_networks())
+            if ip4_gw_route is not None and ip4_gw_route.oif is not None and ip4_gw_route.oif in interfaces:
+                return interfaces[ip4_gw_route.oif]
+        return None
+
+    ip6_route = ip6_fib.lookup(destination, connected=connected_ip6_networks())
+    if ip6_route is None:
+        return None
+    if ip6_route.oif is not None and ip6_route.oif in interfaces:
+        return interfaces[ip6_route.oif]
+    if ip6_route.gateway is not None:
+        ip6_gw_route = ip6_fib.lookup(ip6_route.gateway, connected=connected_ip6_networks())
+        if ip6_gw_route is not None and ip6_gw_route.oif is not None and ip6_gw_route.oif in interfaces:
+            return interfaces[ip6_gw_route.oif]
+    return None
+
+
+def egress_packet_handler(destination: Ip4Address | Ip6Address | None = None, /) -> PacketHandlerL2 | PacketHandlerL3:
     """
     Return the packet handler for the interface that egresses
-    stack-originated traffic — socket sends (UDP / raw IP) and TCP
-    control segments. This is the single, centralized successor to the
-    bare 'stack.packet_handler' reach-through: every socket-originated
-    TX path resolves its egress interface through this one seam.
+    stack-originated traffic toward 'destination' — socket sends (UDP /
+    raw IP) and TCP control segments. This is the single, centralized
+    successor to the bare 'stack.packet_handler' reach-through: every
+    socket-originated TX path resolves its egress interface through this
+    one seam.
 
-    Phase 6 (host, single egress): resolves the SOLE registered
-    interface; raises 'RuntimeError' when zero or more than one
-    interface is registered. At N=1 this is identical to the retired
+    With a 'destination' the egress interface is resolved from the FIB
+    ('Route.oif') so a multi-homed host picks the interface the routing
+    table selects (Phase 7). When no 'destination' is given, or the FIB
+    cannot resolve an egress, it falls back to the SOLE registered
+    interface — the single-egress host case — raising 'RuntimeError'
+    when zero or more than one interface is registered (the caller must
+    add an interface, or the FIB must resolve a route).
+
+    At N=1 the FIB result and the sole-interface fallback are the same
+    interface, so behaviour is identical to the retired
     'stack.packet_handler' singleton.
-
-    Phase 7: becomes a per-destination FIB lookup ('Route.oif') so a
-    multi-homed host picks the egress interface from the routing table —
-    the signature will gain the destination address and the
-    "ambiguous" branch below is what that lookup replaces.
     """
+
+    if destination is not None:
+        handler = _egress_handler_via_fib(destination)
+        if handler is not None:
+            return handler
 
     handlers = interfaces.values()
     if len(handlers) == 1:
@@ -393,11 +430,10 @@ def egress_packet_handler() -> PacketHandlerL2 | PacketHandlerL3:
             "No interface registered; cannot egress stack-originated traffic. "
             "Add one via 'stack.add_interface(...)'."
         )
-    # Phase 7: replace with a per-destination FIB 'oif' lookup.
     raise RuntimeError(
-        "Multiple interfaces registered; socket-originated egress selection "
-        "needs the Phase 7 FIB 'oif' lookup (not yet implemented). Until then "
-        "the stack supports a single egress interface."
+        "Multiple interfaces registered and the FIB did not resolve an egress "
+        f"interface for the destination ({destination!r}); cannot pick a "
+        "single egress. Install a route covering the destination."
     )
 
 
