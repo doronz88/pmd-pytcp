@@ -58,8 +58,10 @@ class PacketHandlerUdpTx(ABC):
             RawAssembler,
         )
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.runtime.tx_ring import TxRing
 
         _packet_stats_tx: PacketStatsTx
+        _tx_ring: TxRing | None
 
         # pylint: disable=unused-argument
 
@@ -173,16 +175,25 @@ class PacketHandlerUdpTx(ABC):
         communication. 'udp__no_cksum' threads through the
         UdpSocket.send / sendto path to enable the RFC 6935 §5
         zero-checksum opt-in.
+
+        The '_phtx_udp' pipeline is marshaled onto this interface's
+        TX worker thread via 'TxRing.dispatch' (ring-handoff
+        single-writer): the calling app thread builds nothing but
+        the closure and blocks for the resulting 'TxStatus', so every
+        per-interface TX-state write happens on the worker thread.
         """
 
-        return self._phtx_udp(
-            ip__src=ip__local_address,
-            ip__dst=ip__remote_address,
-            udp__sport=udp__local_port,
-            udp__dport=udp__remote_port,
-            udp__payload=udp__payload,
-            udp__no_cksum=udp__no_cksum,
-            ip__ttl=ip__ttl,
-            ip__ecn=ip__ecn,
-            ip4__options=ip4__options,
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        return self._tx_ring.dispatch(
+            lambda: self._phtx_udp(
+                ip__src=ip__local_address,
+                ip__dst=ip__remote_address,
+                udp__sport=udp__local_port,
+                udp__dport=udp__remote_port,
+                udp__payload=udp__payload,
+                udp__no_cksum=udp__no_cksum,
+                ip__ttl=ip__ttl,
+                ip__ecn=ip__ecn,
+                ip4__options=ip4__options,
+            )
         )

@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
+from unittest.mock import create_autospec
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import UdpAssembler
@@ -40,6 +41,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__udp__tx import (
     PacketHandlerUdpTx,
 )
+from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -77,6 +79,13 @@ class _StubHandler(PacketHandlerUdpTx):
         self._packet_stats_tx = PacketStatsTx()
         self.ip4_tx_calls: list[dict[str, object]] = []
         self.ip6_tx_calls: list[dict[str, object]] = []
+        # 'send_udp_packet' marshals '_phtx_udp' through
+        # 'TxRing.dispatch'; with no worker under test, run the
+        # callable inline so the routing still reaches '_phtx_ip4' /
+        # '_phtx_ip6' synchronously.
+        mock_tx_ring = create_autospec(TxRing, spec_set=True)
+        mock_tx_ring.dispatch.side_effect = lambda run: run()
+        self._tx_ring = mock_tx_ring
 
     def _phtx_ip4(self, **kwargs: object) -> TxStatus:
         self.ip4_tx_calls.append(kwargs)

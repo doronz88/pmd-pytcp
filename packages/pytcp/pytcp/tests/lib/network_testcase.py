@@ -222,6 +222,11 @@ class NetworkTestCase(TestCase):
         # Mock the TxRing so we can record the assembled frames.
         mock_TxRing = create_autospec(TxRing, spec_set=True)
         mock_TxRing.enqueue.side_effect = _mock_enqueue
+        # 'dispatch' is the ring-handoff marshaling boundary; with no
+        # real worker thread under test, run the marshaled '_phtx_*'
+        # callable inline so frames land in the mocked 'enqueue' above
+        # and the caller still sees the real 'TxStatus'.
+        mock_TxRing.dispatch.side_effect = lambda run: run()
 
         # Mock the ArpCache so we can get predictable responses.
         def _mock_arp_find_entry(*, ip4_address: Ip4Address) -> MacAddress | None:
