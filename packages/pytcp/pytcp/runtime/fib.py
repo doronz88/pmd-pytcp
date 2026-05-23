@@ -86,10 +86,14 @@ class Route[
     metric: int = 0
     scope: RouteScope = RouteScope.UNIVERSE
     protocol: RouteProtocol = RouteProtocol.STATIC
+    # Output-interface index — the egress interface for traffic matching
+    # this route (Linux 'rtnetlink.h' RTA_OIF). None when egress is
+    # unresolved (e.g. an explicit default route whose oif is filled in
+    # at synthesis time, or a route installed before multi-interface
+    # egress selection). On a multi-homed host this is what binds a
+    # destination to the interface that originates traffic toward it.
+    oif: int | None = None
 
-    # Phase 2: 'oif' (output interface) — a single implicit
-    # interface exists in host mode; per-interface routing is a
-    # router-grade concern.
     # Phase 2: table id — only the Linux 'main' table (254)
     # exists in host mode; policy routing ('ip rule' / multiple
     # tables) is a router-grade concern.

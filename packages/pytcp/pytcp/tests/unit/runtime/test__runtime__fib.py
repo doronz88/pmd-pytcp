@@ -442,6 +442,28 @@ class TestRouteInvariants(TestCase):
             msg="Route 'protocol' must default to STATIC.",
         )
 
+    def test__runtime__fib__route__oif_defaults_none_and_round_trips(self) -> None:
+        """
+        Ensure the Route 'oif' (output interface index) field defaults
+        to None and round-trips an explicit ifindex — the per-route
+        egress-interface dimension a multi-homed host selects on.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        default_route = Route(destination=Ip4Network("0.0.0.0/0"))
+        self.assertIsNone(
+            default_route.oif,
+            msg="Route 'oif' must default to None (egress unresolved).",
+        )
+
+        tagged_route = Route(destination=Ip4Network("10.0.1.0/24"), oif=2)
+        self.assertEqual(
+            tagged_route.oif,
+            2,
+            msg="Route must expose the explicit 'oif' egress-interface index.",
+        )
+
     def test__runtime__fib__route__is_frozen(self) -> None:
         """
         Ensure Route is an immutable (frozen) value object.
