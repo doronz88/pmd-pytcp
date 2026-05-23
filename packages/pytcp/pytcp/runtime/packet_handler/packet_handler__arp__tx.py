@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
@@ -53,6 +54,8 @@ class PacketHandlerArpTx(ABC):
         _mac_unicast: MacAddress
         _ip4_support: bool
         _ip4_ifaddr: list[Ip4IfAddr]
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -144,14 +147,16 @@ class PacketHandlerArpTx(ABC):
         Send out ARP announcement to claim IP address.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
-            arp__oper=ArpOperation.REQUEST,
-            arp__sha=self._mac_unicast,
-            arp__spa=ip4_unicast,
-            arp__tha=MacAddress(),
-            arp__tpa=ip4_unicast,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
+                arp__oper=ArpOperation.REQUEST,
+                arp__sha=self._mac_unicast,
+                arp__spa=ip4_unicast,
+                arp__tha=MacAddress(),
+                arp__tpa=ip4_unicast,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
@@ -170,14 +175,16 @@ class PacketHandlerArpTx(ABC):
         Send out gratitous arp.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
-            arp__oper=ArpOperation.REPLY,
-            arp__sha=self._mac_unicast,
-            arp__spa=ip4_unicast,
-            arp__tha=MacAddress(),
-            arp__tpa=ip4_unicast,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
+                arp__oper=ArpOperation.REPLY,
+                arp__sha=self._mac_unicast,
+                arp__spa=ip4_unicast,
+                arp__tha=MacAddress(),
+                arp__tpa=ip4_unicast,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
@@ -196,14 +203,16 @@ class PacketHandlerArpTx(ABC):
         Send out ARP probe to detect possible IP conflict.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
-            arp__oper=ArpOperation.REQUEST,
-            arp__sha=self._mac_unicast,
-            arp__spa=Ip4Address(),
-            arp__tha=MacAddress(),
-            arp__tpa=ip4_unicast,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
+                arp__oper=ArpOperation.REQUEST,
+                arp__sha=self._mac_unicast,
+                arp__spa=Ip4Address(),
+                arp__tha=MacAddress(),
+                arp__tpa=ip4_unicast,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
@@ -229,15 +238,17 @@ class PacketHandlerArpTx(ABC):
         Send out ARP reply to respond to ARP request.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=arp__tha,
-            arp__oper=ArpOperation.REPLY,
-            arp__sha=self._mac_unicast,
-            arp__spa=arp__spa,
-            arp__tha=arp__tha,
-            arp__tpa=arp__tpa,
-            echo_tracker=tracker,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=arp__tha,
+                arp__oper=ArpOperation.REPLY,
+                arp__sha=self._mac_unicast,
+                arp__spa=arp__spa,
+                arp__tha=arp__tha,
+                arp__tpa=arp__tpa,
+                echo_tracker=tracker,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
@@ -256,14 +267,16 @@ class PacketHandlerArpTx(ABC):
         Enqueue ARP request packet with TX ring.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
-            arp__oper=ArpOperation.REQUEST,
-            arp__sha=self._mac_unicast,
-            arp__spa=self._select_arp_spa(arp__tpa),
-            arp__tha=MacAddress(),
-            arp__tpa=arp__tpa,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
+                arp__oper=ArpOperation.REQUEST,
+                arp__sha=self._mac_unicast,
+                arp__spa=self._select_arp_spa(arp__tpa),
+                arp__tha=MacAddress(),
+                arp__tpa=arp__tpa,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
@@ -302,14 +315,16 @@ class PacketHandlerArpTx(ABC):
         as None and rely on the interface-address fallback.
         """
 
-        tx_status = self._phtx_arp(
-            ethernet__src=self._mac_unicast,
-            ethernet__dst=ethernet__dst,
-            arp__oper=ArpOperation.REQUEST,
-            arp__sha=self._mac_unicast,
-            arp__spa=arp__spa if arp__spa is not None else self._select_arp_spa(arp__tpa),
-            arp__tha=MacAddress(),
-            arp__tpa=arp__tpa,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_arp(
+                ethernet__src=self._mac_unicast,
+                ethernet__dst=ethernet__dst,
+                arp__oper=ArpOperation.REQUEST,
+                arp__sha=self._mac_unicast,
+                arp__spa=arp__spa if arp__spa is not None else self._select_arp_spa(arp__tpa),
+                arp__tha=MacAddress(),
+                arp__tpa=arp__tpa,
+            )
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:

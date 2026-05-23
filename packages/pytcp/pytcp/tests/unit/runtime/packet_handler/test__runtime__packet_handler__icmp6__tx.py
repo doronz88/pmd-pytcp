@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp6__tx
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
 
 from net_addr import Ip6Address, Ip6IfAddr, MacAddress
@@ -79,6 +80,11 @@ class _StubHandler(PacketHandlerIcmp6Tx):
     """
     Minimal concrete subclass of 'PacketHandlerIcmp6Tx' for testing.
     """
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        return run()
 
     def __init__(self, *, ip6_multicast: list[Ip6Address] | None = None) -> None:
         self._packet_stats_tx = PacketStatsTx()

@@ -33,6 +33,7 @@ ver 3.0.6
 import struct
 import time as time_module
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
@@ -72,6 +73,8 @@ class PacketHandlerIp4Rx(ABC):
         _packet_stats_rx: PacketStatsRx
         _ip4_multicast: list[Ip4Address]
         _ip4_frag_table: IpFragTable
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -260,14 +263,16 @@ class PacketHandlerIp4Rx(ABC):
             return
 
         self._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable += 1
-        self._phtx_icmp4(
-            ip4__src=packet_rx.ip4.dst,
-            ip4__dst=packet_rx.ip4.src,
-            icmp4__message=Icmp4MessageDestinationUnreachable(
-                code=Icmp4DestinationUnreachableCode.PROTOCOL,
-                data=packet_rx.ip.packet_bytes,
-            ),
-            echo_tracker=packet_rx.tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp4(
+                ip4__src=packet_rx.ip4.dst,
+                ip4__dst=packet_rx.ip4.src,
+                icmp4__message=Icmp4MessageDestinationUnreachable(
+                    code=Icmp4DestinationUnreachableCode.PROTOCOL,
+                    data=packet_rx.ip.packet_bytes,
+                ),
+                echo_tracker=packet_rx.tracker,
+            )
         )
 
     def __phrx_ip4__emit_parameter_problem(self, packet_rx: PacketRx, pointer: int) -> None:
@@ -303,15 +308,17 @@ class PacketHandlerIp4Rx(ABC):
             return
 
         self._packet_stats_rx.ip4__sanity_error__respond_icmp4_param_problem += 1
-        self._phtx_icmp4(
-            ip4__src=packet_rx.ip4.dst,
-            ip4__dst=packet_rx.ip4.src,
-            icmp4__message=Icmp4MessageParameterProblem(
-                code=Icmp4ParameterProblemCode.POINTER_INDICATES_ERROR,
-                pointer=pointer,
-                data=packet_rx.ip.packet_bytes,
-            ),
-            echo_tracker=packet_rx.tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp4(
+                ip4__src=packet_rx.ip4.dst,
+                ip4__dst=packet_rx.ip4.src,
+                icmp4__message=Icmp4MessageParameterProblem(
+                    code=Icmp4ParameterProblemCode.POINTER_INDICATES_ERROR,
+                    pointer=pointer,
+                    data=packet_rx.ip.packet_bytes,
+                ),
+                echo_tracker=packet_rx.tracker,
+            )
         )
 
     def __defragment_ip4_packet(self, packet_rx: PacketRx) -> PacketRx | None:

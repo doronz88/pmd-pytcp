@@ -32,6 +32,7 @@ ver 3.0.6
 
 import time
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, IpVersion
@@ -69,6 +70,8 @@ class PacketHandlerUdpRx(ABC):
         _packet_stats_rx: PacketStatsRx
 
         # pylint: disable=unused-argument
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         def _phtx_udp(
             self,
@@ -228,12 +231,14 @@ class PacketHandlerUdpRx(ABC):
                 f"{packet_rx_md.tracker} - <INFO>Performing native " "UDP Echo operation</>",
             )
 
-            self._phtx_udp(
-                ip__src=packet_rx.ip.dst,
-                ip__dst=packet_rx.ip.src,
-                udp__sport=packet_rx.udp.dport,
-                udp__dport=packet_rx.udp.sport,
-                udp__payload=packet_rx.udp.payload,
+            self._marshal_tx(
+                lambda: self._phtx_udp(
+                    ip__src=packet_rx.ip.dst,
+                    ip__dst=packet_rx.ip.src,
+                    udp__sport=packet_rx.udp.dport,
+                    udp__dport=packet_rx.udp.sport,
+                    udp__payload=packet_rx.udp.payload,
+                )
             )
             return
 
@@ -270,23 +275,27 @@ class PacketHandlerUdpRx(ABC):
         match packet_rx.ip.ver:
             case IpVersion.IP6:
                 self._packet_stats_rx.udp__no_socket_match__respond_icmp6_unreachable += 1
-                self._phtx_icmp6(
-                    ip6__src=packet_rx.ip6.dst,
-                    ip6__dst=packet_rx.ip6.src,
-                    icmp6__message=Icmp6MessageDestinationUnreachable(
-                        code=Icmp6DestinationUnreachableCode.PORT,
-                        data=packet_rx.ip.packet_bytes,
-                    ),
-                    echo_tracker=packet_rx.tracker,
+                self._marshal_tx(
+                    lambda: self._phtx_icmp6(
+                        ip6__src=packet_rx.ip6.dst,
+                        ip6__dst=packet_rx.ip6.src,
+                        icmp6__message=Icmp6MessageDestinationUnreachable(
+                            code=Icmp6DestinationUnreachableCode.PORT,
+                            data=packet_rx.ip.packet_bytes,
+                        ),
+                        echo_tracker=packet_rx.tracker,
+                    )
                 )
             case IpVersion.IP4:
                 self._packet_stats_rx.udp__no_socket_match__respond_icmp4_unreachable += 1
-                self._phtx_icmp4(
-                    ip4__src=packet_rx.ip4.dst,
-                    ip4__dst=packet_rx.ip4.src,
-                    icmp4__message=Icmp4MessageDestinationUnreachable(
-                        code=Icmp4DestinationUnreachableCode.PORT,
-                        data=packet_rx.ip.packet_bytes,
-                    ),
-                    echo_tracker=packet_rx.tracker,
+                self._marshal_tx(
+                    lambda: self._phtx_icmp4(
+                        ip4__src=packet_rx.ip4.dst,
+                        ip4__dst=packet_rx.ip4.src,
+                        icmp4__message=Icmp4MessageDestinationUnreachable(
+                            code=Icmp4DestinationUnreachableCode.PORT,
+                            data=packet_rx.ip.packet_bytes,
+                        ),
+                        echo_tracker=packet_rx.tracker,
+                    )
                 )

@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp4__rx
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -83,6 +84,11 @@ class _StubHandler(PacketHandlerIcmp4Rx):
     """
     Minimal concrete subclass of 'PacketHandlerIcmp4Rx' for testing.
     """
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        return run()
 
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()

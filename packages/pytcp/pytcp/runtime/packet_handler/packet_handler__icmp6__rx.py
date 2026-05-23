@@ -32,6 +32,7 @@ ver 3.0.6
 
 import random
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip6Address, Ip6Network, IpVersion
@@ -128,6 +129,8 @@ class PacketHandlerIcmp6Rx(ABC):
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
         _mld2_query__pending_response_at_ms: int | None
         _mld2_query__handle: TimerHandle | None
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -804,16 +807,22 @@ class PacketHandlerIcmp6Rx(ABC):
             f"packet from {packet_rx.ip6.src}, sending reply</>",
         )
 
-        self._phtx_icmp6(
-            ip6__src=packet_rx.ip6.dst,
-            ip6__dst=packet_rx.ip6.src,
-            ip6__hop=255,
-            icmp6__message=Icmp6MessageEchoReply(
-                id=packet_rx.icmp6.message.id,
-                seq=packet_rx.icmp6.message.seq,
-                data=packet_rx.icmp6.message.data,
-            ),
-            echo_tracker=packet_rx.tracker,
+        # Build the reply message in the enclosing scope (where the
+        # isinstance-narrowing on 'packet_rx.icmp6.message' holds)
+        # rather than inside the marshaled closure.
+        echo_reply_message = Icmp6MessageEchoReply(
+            id=packet_rx.icmp6.message.id,
+            seq=packet_rx.icmp6.message.seq,
+            data=packet_rx.icmp6.message.data,
+        )
+        self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=packet_rx.ip6.dst,
+                ip6__dst=packet_rx.ip6.src,
+                ip6__hop=255,
+                icmp6__message=echo_reply_message,
+                echo_tracker=packet_rx.tracker,
+            )
         )
 
     def __phrx_icmp6__echo_reply(self, packet_rx: PacketRx) -> None:

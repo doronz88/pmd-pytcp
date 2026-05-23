@@ -32,6 +32,7 @@ ver 3.0.6
 
 import time as time_module
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
@@ -106,6 +107,8 @@ class PacketHandlerIp6Rx(ABC):
         _ip6_multicast: list[Ip6Address]
 
         # pylint: disable=unused-argument
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         def _phrx_ip6_frag(self, packet_rx: PacketRx, /) -> None: ...
         def _phrx_icmp6(self, packet_rx: PacketRx, /) -> None: ...
@@ -432,15 +435,17 @@ class PacketHandlerIp6Rx(ABC):
             return
 
         self._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem += 1
-        self._phtx_icmp6(
-            ip6__src=packet_rx.ip6.dst,
-            ip6__dst=packet_rx.ip6.src,
-            icmp6__message=Icmp6MessageParameterProblem(
-                code=Icmp6ParameterProblemCode.UNRECOGNIZED_NEXT_HEADER,
-                pointer=pointer,
-                data=packet_rx.ip.packet_bytes,
-            ),
-            echo_tracker=packet_rx.tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=packet_rx.ip6.dst,
+                ip6__dst=packet_rx.ip6.src,
+                icmp6__message=Icmp6MessageParameterProblem(
+                    code=Icmp6ParameterProblemCode.UNRECOGNIZED_NEXT_HEADER,
+                    pointer=pointer,
+                    data=packet_rx.ip.packet_bytes,
+                ),
+                echo_tracker=packet_rx.tracker,
+            )
         )
 
     def __phrx_ip6__emit_parameter_problem_unrecognized_option(self, packet_rx: PacketRx, /, *, pointer: int) -> None:
@@ -469,15 +474,17 @@ class PacketHandlerIp6Rx(ABC):
             return
 
         self._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
-        self._phtx_icmp6(
-            ip6__src=packet_rx.ip6.dst,
-            ip6__dst=packet_rx.ip6.src,
-            icmp6__message=Icmp6MessageParameterProblem(
-                code=Icmp6ParameterProblemCode.UNRECOGNIZED_IPV6_OPTION,
-                pointer=pointer,
-                data=packet_rx.ip.packet_bytes,
-            ),
-            echo_tracker=packet_rx.tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=packet_rx.ip6.dst,
+                ip6__dst=packet_rx.ip6.src,
+                icmp6__message=Icmp6MessageParameterProblem(
+                    code=Icmp6ParameterProblemCode.UNRECOGNIZED_IPV6_OPTION,
+                    pointer=pointer,
+                    data=packet_rx.ip.packet_bytes,
+                ),
+                echo_tracker=packet_rx.tracker,
+            )
         )
 
     def __phrx_ip6__emit_parameter_problem(self, packet_rx: PacketRx, pointer: int) -> None:
@@ -513,13 +520,15 @@ class PacketHandlerIp6Rx(ABC):
             return
 
         self._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
-        self._phtx_icmp6(
-            ip6__src=packet_rx.ip6.dst,
-            ip6__dst=packet_rx.ip6.src,
-            icmp6__message=Icmp6MessageParameterProblem(
-                code=Icmp6ParameterProblemCode.ERRONEOUS_HEADER_FIELD,
-                pointer=pointer,
-                data=packet_rx.ip.packet_bytes,
-            ),
-            echo_tracker=packet_rx.tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=packet_rx.ip6.dst,
+                ip6__dst=packet_rx.ip6.src,
+                icmp6__message=Icmp6MessageParameterProblem(
+                    code=Icmp6ParameterProblemCode.ERRONEOUS_HEADER_FIELD,
+                    pointer=pointer,
+                    data=packet_rx.ip.packet_bytes,
+                ),
+                echo_tracker=packet_rx.tracker,
+            )
         )

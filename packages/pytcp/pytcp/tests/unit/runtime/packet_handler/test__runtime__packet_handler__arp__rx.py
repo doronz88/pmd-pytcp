@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__rx.p
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
@@ -40,6 +41,7 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.runtime.packet_handler.packet_handler__arp__rx import (
     PacketHandlerArpRx,
@@ -132,6 +134,11 @@ class _StubHandler(PacketHandlerArpRx):
     """
     Minimal concrete subclass of 'PacketHandlerArpRx' for testing.
     """
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        return run()
 
     def __init__(self) -> None:
         """

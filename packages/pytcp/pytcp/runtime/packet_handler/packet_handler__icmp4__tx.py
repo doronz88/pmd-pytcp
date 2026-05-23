@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -56,6 +57,8 @@ class PacketHandlerIcmp4Tx(ABC):
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -139,10 +142,13 @@ class PacketHandlerIcmp4Tx(ABC):
     ) -> TxStatus:
         """
         Interface method for ICMPv4 Socket -> FPA communication.
+        Marshaled onto the interface's TX worker via '_marshal_tx'.
         """
 
-        return self._phtx_icmp4(
-            ip4__src=ip4__local_address,
-            ip4__dst=ip4__remote_address,
-            icmp4__message=icmp4__message,
+        return self._marshal_tx(
+            lambda: self._phtx_icmp4(
+                ip4__src=ip4__local_address,
+                ip4__dst=ip4__remote_address,
+                icmp4__message=icmp4__message,
+            )
         )

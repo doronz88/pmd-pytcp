@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 import threading
+from collections.abc import Callable
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -86,6 +87,11 @@ class _StubHandler(PacketHandlerIcmp6Rx):
     """
     Minimal concrete subclass of 'PacketHandlerIcmp6Rx' for testing.
     """
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        return run()
 
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()

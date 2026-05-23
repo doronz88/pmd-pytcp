@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__tx.p
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
@@ -75,6 +76,11 @@ class _StubHandler(PacketHandlerArpTx):
     """
     Minimal concrete subclass of 'PacketHandlerArpTx' for testing.
     """
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        return run()
 
     def __init__(
         self,

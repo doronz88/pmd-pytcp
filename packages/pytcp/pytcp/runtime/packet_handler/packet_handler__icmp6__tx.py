@@ -32,6 +32,7 @@ ver 3.0.6
 
 import struct
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from net_addr import Ip6Address, Ip6IfAddr, MacAddress
@@ -84,6 +85,8 @@ class PacketHandlerIcmp6Tx(ABC):
         _ip6_multicast: list[Ip6Address]
         _ip6_ifaddr: list[Ip6IfAddr]
         _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -184,14 +187,16 @@ class PacketHandlerIcmp6Tx(ABC):
         if nonce is not None:
             options.append(Icmp6NdOptionNonce(nonce=nonce))
 
-        tx_status = self._phtx_icmp6(
-            ip6__src=Ip6Address(),
-            ip6__dst=ip6_unicast_candidate.solicited_node_multicast,
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                target_address=ip6_unicast_candidate,
-                options=Icmp6NdOptions(*options),
-            ),
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=Ip6Address(),
+                ip6__dst=ip6_unicast_candidate.solicited_node_multicast,
+                ip6__hop=255,
+                icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                    target_address=ip6_unicast_candidate,
+                    options=Icmp6NdOptions(*options),
+                ),
+            )
         )
 
         if tx_status in {
@@ -287,11 +292,13 @@ class PacketHandlerIcmp6Tx(ABC):
         self._packet_stats_tx.icmp6__pre_assemble += 1
         self._packet_stats_tx.icmp6__mld2__report__send += 1
 
-        tx_status = self._phtx_ip6(
-            ip6__src=ip6__src,
-            ip6__dst=ip6__dst,
-            ip6__hop=1,
-            ip6__payload=hbh_packet_tx,
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_ip6(
+                ip6__src=ip6__src,
+                ip6__dst=ip6__dst,
+                ip6__hop=1,
+                ip6__payload=hbh_packet_tx,
+            )
         )
 
         if tx_status in {
@@ -316,15 +323,17 @@ class PacketHandlerIcmp6Tx(ABC):
         Send out ICMPv6 ND Router Solicitation.
         """
 
-        tx_status = self._phtx_icmp6(
-            ip6__src=self.ip6_unicast[0],
-            ip6__dst=Ip6Address("ff02::2"),
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageRouterSolicitation(
-                options=Icmp6NdOptions(
-                    Icmp6NdOptionSlla(slla=self._mac_unicast),
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=self.ip6_unicast[0],
+                ip6__dst=Ip6Address("ff02::2"),
+                ip6__hop=255,
+                icmp6__message=Icmp6NdMessageRouterSolicitation(
+                    options=Icmp6NdOptions(
+                        Icmp6NdOptionSlla(slla=self._mac_unicast),
+                    ),
                 ),
-            ),
+            )
         )
 
         if tx_status in {
@@ -353,14 +362,16 @@ class PacketHandlerIcmp6Tx(ABC):
                 ip6__src = ip6_host.address
 
         # Send out ND Neighbor Solicitation message
-        tx_status = self._phtx_icmp6(
-            ip6__src=ip6__src,
-            ip6__dst=icmp6_ns_target_address.solicited_node_multicast,
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                target_address=icmp6_ns_target_address,
-                options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
-            ),
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=ip6__src,
+                ip6__dst=icmp6_ns_target_address.solicited_node_multicast,
+                ip6__hop=255,
+                icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                    target_address=icmp6_ns_target_address,
+                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
+                ),
+            )
         )
 
         if tx_status in {
@@ -400,14 +411,16 @@ class PacketHandlerIcmp6Tx(ABC):
             if icmp6_ns_target_address in ip6_host.network:
                 ip6__src = ip6_host.address
 
-        tx_status = self._phtx_icmp6(
-            ip6__src=ip6__src,
-            ip6__dst=icmp6_ns_target_address,
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageNeighborSolicitation(
-                target_address=icmp6_ns_target_address,
-                options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
-            ),
+        tx_status = self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=ip6__src,
+                ip6__dst=icmp6_ns_target_address,
+                ip6__hop=255,
+                icmp6__message=Icmp6NdMessageNeighborSolicitation(
+                    target_address=icmp6_ns_target_address,
+                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
+                ),
+            )
         )
 
         if tx_status in {
@@ -464,18 +477,20 @@ class PacketHandlerIcmp6Tx(ABC):
 
         options = Icmp6NdOptions(Icmp6NdOptionTlla(tlla=self._mac_unicast)) if include_tlla else Icmp6NdOptions()
 
-        self._phtx_icmp6(
-            ip6__src=ip6__src,
-            ip6__dst=ip6__dst,
-            ip6__hop=255,
-            icmp6__message=Icmp6NdMessageNeighborAdvertisement(
-                flag_r=flag_r,
-                flag_s=flag_s,
-                flag_o=flag_o,
-                target_address=target_address,
-                options=options,
-            ),
-            echo_tracker=echo_tracker,
+        self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=ip6__src,
+                ip6__dst=ip6__dst,
+                ip6__hop=255,
+                icmp6__message=Icmp6NdMessageNeighborAdvertisement(
+                    flag_r=flag_r,
+                    flag_s=flag_s,
+                    flag_o=flag_o,
+                    target_address=target_address,
+                    options=options,
+                ),
+                echo_tracker=echo_tracker,
+            )
         )
 
     def send_icmp6_neighbor_advertisement_gratuitous(
@@ -521,12 +536,15 @@ class PacketHandlerIcmp6Tx(ABC):
         icmp6__message: Icmp6Message,
     ) -> TxStatus:
         """
-        Interface method for ICMPv4 Socket -> FPA communication.
+        Interface method for ICMPv6 Socket -> FPA communication.
+        Marshaled onto the interface's TX worker via '_marshal_tx'.
         """
 
-        return self._phtx_icmp6(
-            ip6__src=ip6__local_address,
-            ip6__dst=ip6__remote_address,
-            ip6__hop=ip6__hop,
-            icmp6__message=icmp6__message,
+        return self._marshal_tx(
+            lambda: self._phtx_icmp6(
+                ip6__src=ip6__local_address,
+                ip6__dst=ip6__remote_address,
+                ip6__hop=ip6__hop,
+                icmp6__message=icmp6__message,
+            )
         )
