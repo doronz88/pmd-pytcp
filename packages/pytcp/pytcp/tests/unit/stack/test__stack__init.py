@@ -38,11 +38,12 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import pytcp.stack as stack
+import pytcp.stack.lifecycle as lifecycle
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
-from pytcp.stack.lifecycle import add_interface
+from pytcp.stack.lifecycle import add_interface, remove_interface
 
 
 class TestStackModuleConstants(TestCase):
@@ -1251,3 +1252,166 @@ class TestStackAddInterfacePublicExport(TestCase):
             stack.__all__,
             msg="'add_interface' must be declared in pytcp.stack.__all__.",
         )
+
+    def test__remove_interface__exported_from_stack_namespace(self) -> None:
+        """
+        Ensure 'remove_interface' is reachable on the public
+        'pytcp.stack' namespace and declared in '__all__' — the
+        runtime interface-teardown control op (RTM_DELLINK).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIs(
+            stack.remove_interface,
+            remove_interface,
+            msg="pytcp.stack must re-export the lifecycle 'remove_interface'.",
+        )
+        self.assertIn(
+            "remove_interface",
+            stack.__all__,
+            msg="'remove_interface' must be declared in pytcp.stack.__all__.",
+        )
+
+
+class TestStackInterfaceLifecycleDynamic(TestCase):
+    """
+    The runtime (stack-running) 'add_interface' / 'remove_interface'
+    dynamic-lifecycle tests — interfaces start / stop their own
+    subsystem threads on the spot when added to / removed from a live
+    stack (RTM_NEWLINK / RTM_DELLINK).
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the interface registry + N=1 shims + running flag,
+        start from an empty registry with the interface-start/stop
+        helpers patched (so no real subsystem threads spawn), and
+        provide pipe fds as ring fd stand-ins.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self._start_iface = self.enterContext(patch.object(lifecycle, "_start_interface"))
+        self._stop_iface = self.enterContext(patch.object(lifecycle, "_stop_interface"))
+
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in ("interfaces", "packet_handler", "rx_ring", "tx_ring", "arp_cache", "nd_cache", "stack_running")
+        }
+        self._route_snapshot = getattr(stack, "route", self._sentinel)
+        if hasattr(stack, "route"):
+            delattr(stack, "route")
+
+        stack.interfaces = InterfaceTable(first_ifindex=stack.STACK__DEFAULT_IFINDEX)
+        stack.stack_running = False
+        self._fds = [os.pipe() for _ in range(2)]
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self) -> None:
+        """
+        Close the pipe fds and restore the snapshotted module state.
+        """
+
+        for read_fd, write_fd in self._fds:
+            for fd in (read_fd, write_fd):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+        if self._route_snapshot is not self._sentinel:
+            setattr(stack, "route", self._route_snapshot)
+
+    def _add_l2(self, fd_index: int) -> int:
+        """
+        Add an L2 interface on the given pipe-fd index; return ifindex.
+        """
+
+        return add_interface(
+            fd=self._fds[fd_index][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress(f"02:00:00:00:00:0{fd_index + 1}"),
+        )
+
+    def test__add_interface__starts_interface_when_stack_running(self) -> None:
+        """
+        Ensure adding an interface to an already-running stack starts
+        that interface's subsystems on the spot (the daemon RTM_NEWLINK
+        runtime path), rather than waiting for a 'stack.start()' that
+        already happened.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        ifindex = self._add_l2(0)
+
+        self._start_iface.assert_called_once_with(stack.interfaces[ifindex])
+
+    def test__add_interface__does_not_start_when_stack_stopped(self) -> None:
+        """
+        Ensure adding an interface before the stack is started does NOT
+        start its subsystems — the pending 'stack.start()' brings every
+        registered interface up.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = False
+        self._add_l2(0)
+
+        self._start_iface.assert_not_called()
+
+    def test__remove_interface__stops_and_deregisters_when_running(self) -> None:
+        """
+        Ensure removing an interface from a running stack stops its
+        subsystems and deregisters it from 'stack.interfaces',
+        returning the removed handler (RTM_DELLINK).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        ifindex = self._add_l2(0)
+        handler = stack.interfaces[ifindex]
+
+        removed = remove_interface(ifindex)
+
+        self.assertIs(removed, handler, msg="remove_interface must return the removed handler.")
+        self.assertNotIn(ifindex, stack.interfaces, msg="remove_interface must deregister the interface.")
+        self._stop_iface.assert_called_once_with(handler)
+
+    def test__remove_interface__deregisters_without_stop_when_stopped(self) -> None:
+        """
+        Ensure removing an interface from a stopped stack deregisters
+        it without stopping subsystems (nothing was started).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = False
+        ifindex = self._add_l2(0)
+
+        remove_interface(ifindex)
+
+        self.assertNotIn(ifindex, stack.interfaces, msg="remove_interface must deregister the interface.")
+        self._stop_iface.assert_not_called()
+
+    def test__remove_interface__unknown_ifindex_returns_none(self) -> None:
+        """
+        Ensure removing an unregistered ifindex returns None and stops
+        nothing.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+
+        self.assertIsNone(remove_interface(99), msg="remove_interface on an unknown ifindex must return None.")
+        self._stop_iface.assert_not_called()

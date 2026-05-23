@@ -439,6 +439,7 @@ from pytcp.stack.lifecycle import (  # noqa: E402, F401
     add_interface,
     init,
     mock__init,
+    remove_interface,
     start,
     stop,
 )
@@ -458,6 +459,7 @@ __all__ = [
     "add_interface",
     "init",
     "mock__init",
+    "remove_interface",
     "rx_ring",
     "start",
     "stop",

@@ -323,7 +323,44 @@ def add_interface(
         if arp_cache is not None:
             _stack.arp_cache = arp_cache
 
+    # Daemon runtime path (RTM_NEWLINK): when the stack is already
+    # running, bring the new interface's subsystem threads up on the
+    # spot. At boot the stack is not yet running, so the pending
+    # 'stack.start()' starts every registered interface instead.
+    if _stack.stack_running:
+        _start_interface(packet_handler)
+
     return ifindex
+
+
+def remove_interface(ifindex: int, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+    """
+    Remove the interface registered under 'ifindex' — the RTNETLINK
+    'RTM_DELLINK' equivalent. Deregisters it from 'stack.interfaces'
+    and, when the stack is running, stops its subsystem threads (handler
+    + rings + neighbor caches). Returns the removed handler, or None
+    when no interface is registered under 'ifindex'.
+
+    Phase 6 part 5 deliberately stops at thread-teardown + deregister:
+    the 'RTM_DELLINK' cascade for addresses on the removed interface —
+    evicting the peer neighbor caches and aborting TCP sessions bound to
+    those addresses — is deferred to its own slice.
+
+    NOTE: removing the interface that the N=1 back-compat singletons
+    ('stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
+    'nd_cache') point at does NOT yet clear those shims — they are
+    retired in Phase 6 part 6. Runtime removal targets non-shim
+    interfaces until then.
+    """
+
+    import pytcp.stack as _stack
+
+    iface = _stack.interfaces.pop(ifindex)
+    if iface is None:
+        return None
+    if _stack.stack_running:
+        _stop_interface(iface)
+    return iface
 
 
 def init(
@@ -519,6 +556,45 @@ def init(
     _stack.stack_initialized = True
 
 
+def _start_interface(iface: PacketHandlerL2 | PacketHandlerL3, /) -> None:
+    """
+    Start one interface's own subsystem threads — its neighbor
+    cache(s), TX / RX rings and packet handler (the handler owns its
+    injected '_rx_ring' / '_tx_ring' / '_arp_cache' / '_nd_cache').
+    Shared by 'stack.start()' (boot, every registered interface) and
+    'add_interface' (runtime add to an already-running stack).
+    """
+
+    if iface._arp_cache is not None:
+        iface._arp_cache.start()
+    assert iface._nd_cache is not None
+    iface._nd_cache.start()
+    assert iface._tx_ring is not None and iface._rx_ring is not None
+    iface._tx_ring.start()
+    iface._rx_ring.start()
+    iface.start()
+
+
+def _stop_interface(iface: PacketHandlerL2 | PacketHandlerL3, /) -> None:
+    """
+    Stop one interface's own subsystem threads — handler first (stop
+    TX producers), then its rings, then its neighbor cache(s); the
+    reverse of '_start_interface'. Used by 'remove_interface' to tear
+    down a single interface on a running stack. ('stack.stop()' keeps
+    its own global ordering — all handlers, then the shared timer, then
+    all rings/caches — so it does not call this per-interface helper.)
+    """
+
+    iface.stop()
+    assert iface._rx_ring is not None and iface._tx_ring is not None
+    iface._rx_ring.stop()
+    iface._tx_ring.stop()
+    if iface._arp_cache is not None:
+        iface._arp_cache.stop()
+    assert iface._nd_cache is not None
+    iface._nd_cache.stop()
+
+
 def start() -> None:
     """
     Start stack components.
@@ -532,18 +608,10 @@ def start() -> None:
 
     _stack.timer.start()
     # Per-interface subsystems: start each registered interface's own
-    # caches, rings and handler (the handler owns its injected
-    # '_rx_ring' / '_tx_ring' / '_arp_cache' / '_nd_cache'). At N=1
-    # this is the single boot interface; the loop is the N>1 path.
+    # caches, rings and handler. At N=1 this is the single boot
+    # interface; the loop is the N>1 path.
     for iface in _stack.interfaces.values():
-        if iface._arp_cache is not None:
-            iface._arp_cache.start()
-        assert iface._nd_cache is not None
-        iface._nd_cache.start()
-        assert iface._tx_ring is not None and iface._rx_ring is not None
-        iface._tx_ring.start()
-        iface._rx_ring.start()
-        iface.start()
+        _start_interface(iface)
 
     # RFC 3927 link-local autoconfig subsystem. Start BEFORE the
     # DHCP wait so the two FSMs run in parallel — the link-local
