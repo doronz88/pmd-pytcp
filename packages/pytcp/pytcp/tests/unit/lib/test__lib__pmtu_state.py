@@ -61,8 +61,6 @@ class TestPmtuStateRegistry(TestCase):
 
     _pmtu_state_prior: dict[Any, Any]
     _pmtu_cache_prior: dict[Any, Any]
-    _interface_mtu_set: bool
-    _interface_mtu_prior: Any
 
     @override
     def setUp(self) -> None:
@@ -70,9 +68,6 @@ class TestPmtuStateRegistry(TestCase):
         stack.pmtu_state.clear()
         self._pmtu_cache_prior = dict(stack.pmtu_cache)
         stack.pmtu_cache.clear()
-        self._interface_mtu_set = "interface_mtu" in stack.__dict__
-        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
-        stack.interface_mtu = 1500
 
     @override
     def tearDown(self) -> None:
@@ -80,10 +75,6 @@ class TestPmtuStateRegistry(TestCase):
         stack.pmtu_state.update(self._pmtu_state_prior)
         stack.pmtu_cache.clear()
         stack.pmtu_cache.update(self._pmtu_cache_prior)
-        if self._interface_mtu_set:
-            stack.interface_mtu = self._interface_mtu_prior
-        else:
-            stack.__dict__.pop("interface_mtu", None)
 
     def test__pmtu_state__attribute_exists(self) -> None:
         """
@@ -108,8 +99,8 @@ class TestPmtuStateRegistry(TestCase):
         """
         Ensure 'current_pmtu' returns None for a destination that
         has no entry in either 'pmtu_state' or 'pmtu_cache'.
-        Callers fall back to 'stack.interface_mtu' when None is
-        returned (matching Linux IP_MTU semantics).
+        Callers fall back to 'stack.egress_interface_mtu(dst)' when
+        None is returned (matching Linux IP_MTU semantics).
 
         Reference: RFC 8899 §3 #5 (PMTU parameter / fallback to link MTU).
         """

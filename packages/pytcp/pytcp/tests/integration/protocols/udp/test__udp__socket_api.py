@@ -54,7 +54,6 @@ from net_proto import (
     Ip4Assembler,
     UdpAssembler,
 )
-from pytcp import stack
 from pytcp.socket import (
     IP_MTU,
     IP_TTL,
@@ -356,9 +355,9 @@ class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
     def setUp(self) -> None:
         """
         Bind + connect a UDP socket to HOST_A:5555 so the
-        ICMPv4 demux finds it via the embedded 4-tuple. Force
-        a known 'stack.interface_mtu' so the "no cache entry"
-        fallback assertion is deterministic.
+        ICMPv4 demux finds it via the embedded 4-tuple. The
+        egress interface's MTU (1500 in the harness) is the
+        "no cache entry" fallback the assertions below pin.
         """
 
         super().setUp()
@@ -369,21 +368,11 @@ class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
             remote_ip=HOST_A__IP4_ADDRESS,
             remote_port=_REMOTE_PORT,
         )
-        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
-        stack.interface_mtu = 1500
-        self.addCleanup(self._restore_interface_mtu)
-
-    def _restore_interface_mtu(self) -> None:
-        """Restore the prior 'stack.interface_mtu' value."""
-        if self._interface_mtu_prior is None:
-            stack.__dict__.pop("interface_mtu", None)
-        else:
-            stack.interface_mtu = self._interface_mtu_prior
 
     def test__udp_socket_api__ip_mtu__fallback_to_interface_mtu_without_pmtud(self) -> None:
         """
-        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns
-        'stack.interface_mtu' when no ICMPv4 Frag-Needed has
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns the egress
+        interface's link MTU when no ICMPv4 Frag-Needed has
         landed for the connected peer yet.
 
         Reference: RFC 1122 §3.4 (GET_MAXSIZES; link-MTU is the
@@ -393,7 +382,7 @@ class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
         self.assertEqual(
             self._socket.getsockopt(IPPROTO_IP, IP_MTU),
             1500,
-            msg="IP_MTU must return stack.interface_mtu when pmtu_cache is empty.",
+            msg="IP_MTU must return the egress interface MTU when pmtu_cache is empty.",
         )
 
     def test__udp_socket_api__ip_mtu__updates_after_icmp_frag_needed(self) -> None:

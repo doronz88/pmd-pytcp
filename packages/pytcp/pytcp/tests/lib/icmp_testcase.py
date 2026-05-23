@@ -175,8 +175,6 @@ class IcmpTestCase(NetworkTestCase):
 
     _timer: FakeTimer
     _patches: list[_patch[Any]]
-    _interface_mtu_was_set: bool
-    _interface_mtu_prior: object
     _sockets_prior: dict[Any, Any]
     _tcp_stack_prior: TcpStack
     _pmtu_cache_prior: dict[Any, Any]
@@ -187,23 +185,17 @@ class IcmpTestCase(NetworkTestCase):
     def setUp(self) -> None:
         """
         Install a 'FakeTimer' over 'stack.timer' on top of the parent
-        mock-network setup, set 'stack.interface_mtu' so any
-        TCP/UDP-bearing path under test constructs successfully,
-        snapshot+clear the module-global 'stack.sockets' /
-        'stack.tcp_stack' / 'stack.pmtu_cache' state so tests start
-        with no leftover registrations, and initialize the patch
-        tracking list so per-test 'mock.patch' handles get torn down
-        deterministically.
+        mock-network setup, snapshot+clear the module-global
+        'stack.sockets' / 'stack.tcp_stack' / 'stack.pmtu_cache' state
+        so tests start with no leftover registrations, and initialize
+        the patch tracking list so per-test 'mock.patch' handles get
+        torn down deterministically.
         """
 
         super().setUp()
 
         self._timer = FakeTimer()
         stack.mock__init(mock__timer=cast(Timer, self._timer))
-
-        self._interface_mtu_was_set = hasattr(stack, "interface_mtu") and "interface_mtu" in stack.__dict__
-        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
-        stack.interface_mtu = 1500
 
         # 'stack.sockets' is a module-level dict that accumulates
         # registrations across tests if not cleared. Snapshot the prior
@@ -252,11 +244,6 @@ class IcmpTestCase(NetworkTestCase):
 
         while self._patches:
             self._patches.pop().stop()
-
-        if self._interface_mtu_was_set:
-            stack.interface_mtu = cast(int, self._interface_mtu_prior)
-        else:
-            stack.__dict__.pop("interface_mtu", None)
 
         stack.sockets.clear()
         stack.sockets.update(self._sockets_prior)

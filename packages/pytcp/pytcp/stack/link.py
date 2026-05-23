@@ -421,8 +421,8 @@ class LinkApi:
         set eth0 mtu N' equivalent. Validates the value
         against the RFC 791 §3.2 floor (68) and the uint16
         wire limit (65535); propagates the update to every
-        site that caches the MTU (the packet handler,
-        'stack.interface_mtu', the TX/RX rings if present).
+        site that caches the MTU (the packet handler and the
+        TX/RX rings if present).
 
         NOTE: values below 1280 break IPv6 (RFC 8200 §5).
         PyTCP does not currently enforce a higher floor —
@@ -440,21 +440,14 @@ class LinkApi:
                 f"{LINK_API__MTU__MAX} (uint16 wire limit)."
             )
 
-        from pytcp import stack
-
         handler = self._resolve_handler()
 
         # Canonical source of truth — the packet handler's
         # '_interface_mtu' is what the TX paths read for MSS
-        # / fragmentation decisions.
+        # / fragmentation decisions. TCP MSS / UDP & socket Path-MTU
+        # consumers reach it per-destination via
+        # 'stack.egress_interface_mtu(dst)' (no global denormalization).
         handler._interface_mtu = mtu
-
-        # Module-level slot — denormalized for legacy consumers that
-        # read 'stack.interface_mtu' directly (TCP/UDP MSS computation).
-        # Phase 7: this global is the boot-interface MTU; egress-
-        # interface-MTU lookup replaces it, after which a non-boot
-        # 'interface(ifindex).set_mtu' will stop writing it.
-        stack.interface_mtu = mtu
 
         # TX/RX rings cache the MTU as the writev / read size bound.
         # Resize the BOUND interface's own rings (not the global

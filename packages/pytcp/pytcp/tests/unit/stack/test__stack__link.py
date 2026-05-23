@@ -715,9 +715,10 @@ class TestLinkApiStats(TestCase):
 class TestLinkApiSetMtu(TestCase):
     """
     'LinkApi.set_mtu' validates and propagates an MTU
-    change to 'packet_handler._interface_mtu' and the
-    'stack.interface_mtu' module-level slot. Linux 'ip
-    link set eth0 mtu N' equivalent.
+    change to 'packet_handler._interface_mtu' (the canonical
+    per-interface source of truth read per-destination via
+    'stack.egress_interface_mtu'). Linux 'ip link set eth0
+    mtu N' equivalent.
     """
 
     def test__link_api__set_mtu__updates_packet_handler(self) -> None:
@@ -728,7 +729,6 @@ class TestLinkApiSetMtu(TestCase):
         Reference: PyTCP test infrastructure (Phase-3 Link API surface).
         """
 
-        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
         handler = _FakePacketHandlerL2(
             mac_unicast=MacAddress("02:00:00:00:00:07"),
             interface_mtu=1500,
@@ -743,30 +743,6 @@ class TestLinkApiSetMtu(TestCase):
             msg="set_mtu must update packet_handler._interface_mtu.",
         )
 
-    def test__link_api__set_mtu__updates_stack_module_global(self) -> None:
-        """
-        Ensure 'set_mtu' updates the module-level
-        'stack.interface_mtu' so legacy consumers reading
-        the global see the new value.
-
-        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
-        """
-
-        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
-        handler = _FakePacketHandlerL2(
-            mac_unicast=MacAddress("02:00:00:00:00:07"),
-            interface_mtu=1500,
-        )
-        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
-
-        api.set_mtu(mtu=1400)
-
-        self.assertEqual(
-            stack.interface_mtu,
-            1400,
-            msg="set_mtu must update stack.interface_mtu module-level slot.",
-        )
-
     def test__link_api__set_mtu__at_minimum_accepted(self) -> None:
         """
         Ensure 'set_mtu' accepts the canonical minimum
@@ -776,7 +752,6 @@ class TestLinkApiSetMtu(TestCase):
         Reference: RFC 791 §3.2 (minimum IPv4 link MTU floor).
         """
 
-        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
         handler = _FakePacketHandlerL2(
             mac_unicast=MacAddress("02:00:00:00:00:07"),
             interface_mtu=1500,
@@ -822,7 +797,6 @@ class TestLinkApiSetMtu(TestCase):
         Reference: PyTCP test infrastructure (Phase-3 Link API surface).
         """
 
-        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
         handler = _FakePacketHandlerL2(
             mac_unicast=MacAddress("02:00:00:00:00:07"),
             interface_mtu=1500,
@@ -1115,7 +1089,6 @@ class TestLinkApiInterfaceSelector(TestCase):
         Reference: PyTCP test infrastructure (Phase-3 Link API surface).
         """
 
-        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
         iface_1, iface_2 = self._install_two_interfaces()
         for iface in (iface_1, iface_2):
             iface._tx_ring = _FakeRing(mtu=iface._interface_mtu)

@@ -320,7 +320,6 @@ stack_initialized: bool = False
 # test so the flag does not leak across the integration
 # suite.
 stack_running: bool = False
-interface_mtu: int
 sockets: SocketTable = SocketTable()
 # RFC 1191 §3 / RFC 8201 §4 per-destination Path-MTU cache. Keyed
 # by remote IP (v4 or v6); value is the most recently learned next-
@@ -350,7 +349,7 @@ def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
     PLPMTUD engine state ('pmtu_state') over the legacy
     classical-PMTUD scalar cache ('pmtu_cache'). Returns None
     when no signal has been observed for the destination — the
-    caller should fall back to 'stack.interface_mtu'.
+    caller should fall back to 'egress_interface_mtu(dst)'.
     """
 
     engine = pmtu_state.get(dst)

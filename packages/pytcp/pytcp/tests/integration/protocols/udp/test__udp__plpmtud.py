@@ -43,9 +43,6 @@ pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py
 ver 3.0.6
 """
 
-from typing import Any, override
-
-from pytcp import stack
 from pytcp.lib.plpmtud import MAX_PROBES, MIN_PLPMTU__IP4, PmtuState
 from pytcp.socket import AddressFamily
 from pytcp.tests.lib.udp_testcase import (
@@ -60,28 +57,6 @@ class TestUdpPlpmtud(UdpTestCase):
     """
     The UDP PLPMTUD manual probe API tests.
     """
-
-    _interface_mtu_prior_set: bool
-    _interface_mtu_prior: Any
-
-    @override
-    def setUp(self) -> None:
-        super().setUp()
-        # PLPMTUD requires stack.interface_mtu to lazy-allocate
-        # the adapter. UdpTestCase doesn't set it by default;
-        # snapshot+set so probe_pmtu calls find a non-None
-        # interface MTU.
-        self._interface_mtu_prior_set = "interface_mtu" in stack.__dict__
-        self._interface_mtu_prior = stack.__dict__.get("interface_mtu")
-        stack.interface_mtu = 1500
-
-    @override
-    def tearDown(self) -> None:
-        if self._interface_mtu_prior_set:
-            stack.interface_mtu = self._interface_mtu_prior
-        else:
-            stack.__dict__.pop("interface_mtu", None)
-        super().tearDown()
 
     def test__udp__plpmtud__probe_pmtu_emits_sized_datagram(self) -> None:
         """

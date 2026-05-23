@@ -550,7 +550,6 @@ def init(
             ip6_lla_autoconfig=ip6_lla_autoconfig,
         )
 
-    _stack.interface_mtu = mtu
     _stack.stack_initialized = True
 
 
