@@ -453,18 +453,18 @@ def init(
         ip6_lla_autoconfig=ip6_lla_autoconfig,
     )
 
-    # Phase 4 commit A — IPv4 address-control API. Bound to the
-    # newly-constructed 'packet_handler' so DHCP / operator-config
-    # consumers never need to import the packet handler directly.
-    _stack.address = Ip4AddressApi(packet_handler=_stack.packet_handler)
-
-    # Link API Phase 0 — link-control surface. Bound to the same
-    # packet handler so DHCP / link-local construction (and any
-    # future operator-config consumer) reads link-level facts via
-    # 'stack.link.*' instead of reaching into
-    # 'packet_handler._mac_unicast' / '._interface_mtu' /
-    # '._interface_layer'. See 'docs/refactor/link_api.md'.
-    _stack.link = LinkApi(packet_handler=_stack.packet_handler)
+    # IPv4 address-control API + link-control surface — built as the
+    # UNBOUND, device-independent "userspace tools" (the 'ip addr' /
+    # 'ip link' model), NOT pinned to the boot interface. A bare op on
+    # the unbound tool resolves the SOLE registered interface
+    # (transitional N=1 crutch in '_resolve_handler'), so DHCP /
+    # link-local / operator-config consumers reading 'stack.address.*' /
+    # 'stack.link.*' work unchanged at N=1; '.interface(ifindex)' selects
+    # a device once N>1. This is the daemon-shaped target: no privileged
+    # boot interface bound into the control APIs. See
+    # 'docs/refactor/link_api.md' and the Phase-6 plan.
+    _stack.address = Ip4AddressApi()
+    _stack.link = LinkApi()
 
     # Host-mode routing table — Phase 3 of
     # 'docs/refactor/routing_table_host_mode.md'. Build the two
