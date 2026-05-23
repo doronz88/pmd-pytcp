@@ -1175,3 +1175,76 @@ class TestStackAddInterface(TestCase):
             boot_handler,
             msg="A second add_interface must not clobber the boot-interface shim.",
         )
+
+    def test__add_interface__second_l2_gets_isolated_neighbor_caches(self) -> None:
+        """
+        Ensure two L2 interfaces each own a distinct ARP cache and a
+        distinct ND cache, with every cache's owner back-reference
+        pointing at its own handler — so neighbor state is keyed per
+        interface the way Linux keys ARP / ND per ifindex.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = add_interface(
+            fd=self._fds[0][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+        )
+        second = add_interface(
+            fd=self._fds[1][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:02"),
+        )
+
+        iface_1 = stack.interfaces[first]
+        iface_2 = stack.interfaces[second]
+
+        self.assertIsNot(
+            iface_1._arp_cache,
+            iface_2._arp_cache,
+            msg="Each interface must own a distinct ARP cache.",
+        )
+        self.assertIsNot(
+            iface_1._nd_cache,
+            iface_2._nd_cache,
+            msg="Each interface must own a distinct ND cache.",
+        )
+        assert iface_2._arp_cache is not None and iface_2._nd_cache is not None
+        self.assertIs(
+            iface_2._arp_cache._owner,
+            iface_2,
+            msg="A second interface's ARP cache must point back at its own handler.",
+        )
+        self.assertIs(
+            iface_2._nd_cache._owner,
+            iface_2,
+            msg="A second interface's ND cache must point back at its own handler.",
+        )
+
+
+class TestStackAddInterfacePublicExport(TestCase):
+    """
+    The 'add_interface' public-namespace re-export tests.
+    """
+
+    def test__add_interface__exported_from_stack_namespace(self) -> None:
+        """
+        Ensure 'add_interface' is reachable on the public 'pytcp.stack'
+        namespace (the sanctioned stack-lifecycle API surface) and is
+        declared in '__all__', not only importable from the
+        implementation module 'pytcp.stack.lifecycle'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertIs(
+            stack.add_interface,
+            add_interface,
+            msg="pytcp.stack must re-export the lifecycle 'add_interface'.",
+        )
+        self.assertIn(
+            "add_interface",
+            stack.__all__,
+            msg="'add_interface' must be declared in pytcp.stack.__all__.",
+        )

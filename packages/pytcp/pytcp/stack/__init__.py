@@ -430,9 +430,17 @@ def initialize_interface__tun(interface_name: str) -> dict[str, Any]:
 
 # Lifecycle entry points live in pytcp/stack/lifecycle.py per
 # Phase 2 of docs/refactor/pytcp_directory_restructure.md; re-
-# exported here so 'pytcp.stack.{init,start,stop,mock__init}'
-# import paths stay stable.
-from pytcp.stack.lifecycle import init, mock__init, start, stop  # noqa: E402, F401
+# exported here so 'pytcp.stack.{init,start,stop,mock__init,
+# add_interface}' import paths stay stable. 'add_interface' is the
+# per-interface registration surface — the sanctioned way to attach
+# a second (and further) interface once N>1 is enabled.
+from pytcp.stack.lifecycle import (  # noqa: E402, F401
+    add_interface,
+    init,
+    mock__init,
+    start,
+    stop,
+)
 
 # Public API surface of the stack package (source_files.md §2.3:
 # __all__ lives only in package __init__.py). Required so mypy's
@@ -446,6 +454,7 @@ __all__ = [
     "PacketHandlerL2",
     "PacketHandlerL3",
     "TCP__ISS_SECRET",
+    "add_interface",
     "init",
     "mock__init",
     "rx_ring",
