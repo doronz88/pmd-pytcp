@@ -123,12 +123,16 @@ def mock__init(
         if mock__tx_ring is not None:
             mock__packet_handler._tx_ring = mock__tx_ring
         # Bind the per-interface neighbor caches to the handler the
-        # same way 'init()' does, so the RX/TX cache lookups go
-        # through 'self._{arp,nd}_cache' rather than the global shim.
+        # same way 'init()' does (both directions), so the RX/TX
+        # cache lookups go through 'self._{arp,nd}_cache' and the
+        # caches' solicit / flush callbacks route back through the
+        # owning handler rather than the global shims.
         if mock__arp_cache is not None:
             mock__packet_handler._arp_cache = mock__arp_cache
+            mock__arp_cache._owner = mock__packet_handler
         if mock__nd_cache is not None:
             mock__packet_handler._nd_cache = mock__nd_cache
+            mock__nd_cache._owner = mock__packet_handler
 
     # Phase 4 commit A — the Address API. If the test harness
     # passes a packet_handler, also build a default Address API
@@ -292,11 +296,15 @@ def init(
                 link_stats=_link_stats,
             )
             # Bind the per-interface neighbor caches to this handler
-            # (Linux keys ARP / ND per ifindex). Post-construction
-            # because the cache <-> handler relationship is
-            # bidirectional. ARP is L2-only; ND is used by both.
+            # (Linux keys ARP / ND per ifindex) and the reverse
+            # owner back-reference so the caches' solicit / flush
+            # callbacks route through this interface. Post-
+            # construction because the relationship is bidirectional.
+            # ARP is L2-only; ND is used by both.
             _stack.packet_handler._arp_cache = _stack.arp_cache
             _stack.packet_handler._nd_cache = _stack.nd_cache
+            _stack.arp_cache._owner = _stack.packet_handler
+            _stack.nd_cache._owner = _stack.packet_handler
         case InterfaceLayer.L3:
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
             _stack.packet_handler = PacketHandlerL3(
@@ -312,8 +320,10 @@ def init(
                 packet_stats_tx=_packet_stats_tx,
                 link_stats=_link_stats,
             )
-            # L3 (TUN) has no ARP; bind only the ND cache.
+            # L3 (TUN) has no ARP; bind only the ND cache (+ its
+            # owner back-reference).
             _stack.packet_handler._nd_cache = _stack.nd_cache
+            _stack.nd_cache._owner = _stack.packet_handler
 
     # Phase 4 commit A — IPv4 address-control API. Bound to the
     # newly-constructed 'packet_handler' so DHCP / operator-config

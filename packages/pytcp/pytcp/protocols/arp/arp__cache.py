@@ -38,12 +38,14 @@ pytcp/protocols/arp/arp__cache.py
 ver 3.0.6
 """
 
-from typing import override
+from typing import TYPE_CHECKING, override
 
 from net_addr import Ip4Address, MacAddress
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
-from pytcp import stack
 from pytcp.lib.neighbor import NeighborCache
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 
 class ArpCache(NeighborCache[Ip4Address, EthernetAssembler]):
@@ -57,6 +59,16 @@ class ArpCache(NeighborCache[Ip4Address, EthernetAssembler]):
     wrappers that match the established PyTCP convention
     ('ip4_address=', 'mac_address=', 'ethernet_packet_tx=').
     """
+
+    # Owning interface handler — injected after construction by
+    # 'stack.init()' (the cache <-> handler link is bidirectional).
+    # The solicit / flush callbacks route through this handler
+    # rather than the global 'stack.packet_handler' / 'stack.tx_ring'
+    # shims, so the cache stays bound to exactly one interface (the
+    # Linux per-ifindex ARP model). Class-level 'None' default
+    # (rather than an '__init__' assignment) so 'create_autospec'
+    # exposes the attribute as settable for the test harness.
+    _owner: "PacketHandlerL2 | None" = None
 
     @override
     def __init__(self) -> None:
@@ -151,31 +163,31 @@ class ArpCache(NeighborCache[Ip4Address, EthernetAssembler]):
         Fire an ARP Request — broadcast for INCOMPLETE state
         (cached_mac is None), unicast to the cached MAC for
         PROBE state (RFC 1122 §2.3.2.1 IMPL (2)). Routes
-        through the live PacketHandlerL2 instance on
-        'pytcp.stack'.
+        through the owning interface handler.
         """
 
-        # Late-resolved import keeps this module decoupled
-        # from the packet handler at module load time —
-        # 'pytcp.runtime.packet_handler' is only assigned by
-        # 'stack.init()'.
-        assert isinstance(stack.packet_handler, stack.PacketHandlerL2)
+        assert self._owner is not None, "ARP cache must be bound to an interface handler before soliciting."
         if cached_mac is None:
-            stack.packet_handler.send_arp_request(arp__tpa=ip4_address)
+            self._owner.send_arp_request(arp__tpa=ip4_address)
         else:
-            stack.packet_handler.send_arp_unicast_request(
+            self._owner.send_arp_unicast_request(
                 arp__tpa=ip4_address,
                 ethernet__dst=cached_mac,
             )
 
     def _flush_packet(self, packet: EthernetAssembler, mac_address: MacAddress) -> None:
         """
-        Dispatch a queued Ethernet packet through the TX ring
-        with the destination MAC rewritten to the resolved
-        value. The packet type is bound by the
+        Dispatch a queued Ethernet packet through the owning
+        interface's TX ring with the destination MAC rewritten to
+        the resolved value. The packet type is bound by the
         'NeighborCache[Ip4Address, EthernetAssembler]'
         subscription on the class header.
         """
 
+        assert self._owner is not None, "ARP cache must be bound to an interface handler before flushing."
+        assert self._owner._tx_ring is not None, "Owning interface handler must have a TX ring to flush."
         packet.dst = mac_address
-        stack.tx_ring.enqueue(packet)
+        # Phase 4: this direct enqueue becomes a ring-handoff TX
+        # request once the per-interface TX worker owns the
+        # send-out pipeline.
+        self._owner._tx_ring.enqueue(packet)

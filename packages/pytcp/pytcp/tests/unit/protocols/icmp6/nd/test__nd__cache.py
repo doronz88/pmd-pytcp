@@ -44,6 +44,7 @@ from unittest.mock import MagicMock, patch
 from net_addr import Ip6Address, MacAddress
 from pytcp.lib.neighbor import NudState
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+from pytcp.runtime.packet_handler import PacketHandlerL2
 from pytcp.stack import sysctl as sysctl_module
 
 
@@ -203,13 +204,11 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         Reference: RFC 4861 §7.2.2 (multicast NS for INCOMPLETE).
         """
 
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip6Address("2001:db8::1")
 
-        with patch("pytcp.protocols.icmp6.nd.nd__cache.stack.packet_handler", handler):
-            self._cache._solicit_ns(ip, None)
+        self._cache._owner = handler
+        self._cache._solicit_ns(ip, None)
 
         handler.send_icmp6_neighbor_solicitation.assert_called_once_with(
             icmp6_ns_target_address=ip,
@@ -229,14 +228,12 @@ class TestNdCacheSolicitCallback(_NdCacheFixture):
         Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast ARP cache-refresh probe).
         """
 
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip6Address("2001:db8::1")
         mac = MacAddress("02:00:00:00:00:01")
 
-        with patch("pytcp.protocols.icmp6.nd.nd__cache.stack.packet_handler", handler):
-            self._cache._solicit_ns(ip, mac)
+        self._cache._owner = handler
+        self._cache._solicit_ns(ip, mac)
 
         handler.send_icmp6_neighbor_solicitation_unicast.assert_called_once_with(
             icmp6_ns_target_address=ip,

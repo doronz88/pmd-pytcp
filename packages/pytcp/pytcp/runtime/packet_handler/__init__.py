@@ -124,20 +124,23 @@ class PacketHandler(Subsystem, ABC):
     # 'stack.init()' (the ring is fd-bound, hence per-interface).
     # The subsystem loop dequeues from this — never from the
     # global 'stack.rx_ring' shim. 'None' only for standalone
-    # unit-test handlers that never run the subsystem loop.
-    _rx_ring: RxRing | None
+    # unit-test handlers that never run the subsystem loop. The
+    # class-level 'None' default (rather than an annotation alone)
+    # keeps the attribute visible to 'create_autospec' so test
+    # fixtures can install a mock ring on a spec'd handler.
+    _rx_ring: RxRing | None = None
     # Per-interface TX ring (fd-bound). Injected at construction;
     # the TX-mixin send-out paths enqueue onto this — never onto
     # the global 'stack.tx_ring' shim. 'None' only for standalone
     # unit-test handlers that never enqueue.
-    _tx_ring: TxRing | None
+    _tx_ring: TxRing | None = None
     # Per-interface neighbor caches (Linux keys ARP / ND per
     # ifindex). Injected after construction by 'stack.init()'.
     # ARP is L2-only, so '_arp_cache' stays None on an L3 (TUN)
     # handler; '_nd_cache' is used by both layers. 'None' for
     # standalone unit-test handlers that never resolve a neighbor.
-    _arp_cache: ArpCache | None
-    _nd_cache: NdCache | None
+    _arp_cache: ArpCache | None = None
+    _nd_cache: NdCache | None = None
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool

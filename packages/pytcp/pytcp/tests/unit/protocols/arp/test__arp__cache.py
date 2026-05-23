@@ -39,12 +39,14 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, MacAddress
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp.lib.neighbor import NudState
 from pytcp.protocols.arp.arp__cache import ArpCache
+from pytcp.runtime.packet_handler import PacketHandlerL2
+from pytcp.runtime.tx_ring import TxRing
 from pytcp.stack import sysctl as sysctl_module
 
 
@@ -203,17 +205,12 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
         Reference: RFC 1122 §2.3.2.2 (queued-packet semantics).
         """
 
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
         ip = Ip4Address("10.0.0.1")
         # 'find_entry' on miss creates the INCOMPLETE anchor and
-        # fires the solicit callback, which asserts on
-        # 'stack.packet_handler' — stub it for the duration.
-        with patch(
-            "pytcp.protocols.arp.arp__cache.stack.packet_handler",
-            MagicMock(spec=PacketHandlerL2),
-        ):
-            self._cache.find_entry(ip4_address=ip)
+        # fires the solicit callback, which routes through the
+        # owning handler — bind a mock owner for the duration.
+        self._cache._owner = MagicMock(spec=PacketHandlerL2)
+        self._cache.find_entry(ip4_address=ip)
         # Use a real EthernetAssembler so the type guard in
         # '_flush_packet' has something genuine to dispatch.
         eth = EthernetAssembler()
@@ -243,18 +240,14 @@ class TestArpCacheSolicitCallback(_ArpCacheFixture):
         Reference: RFC 826 (broadcast ARP Request on cache miss).
         """
 
-        from pytcp import stack
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip4Address("10.0.0.1")
 
-        with patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler):
-            self._cache._solicit_arp(ip, None)
+        self._cache._owner = handler
+        self._cache._solicit_arp(ip, None)
 
         handler.send_arp_request.assert_called_once_with(arp__tpa=ip)
         handler.send_arp_unicast_request.assert_not_called()
-        del stack  # silence unused
 
     def test__arp_cache__solicit_probe_fires_unicast_request(self) -> None:
         """
@@ -267,14 +260,12 @@ class TestArpCacheSolicitCallback(_ArpCacheFixture):
         Reference: RFC 1122 §2.3.2.1 IMPL (2) (unicast cache-refresh probe).
         """
 
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
         handler = MagicMock(spec=PacketHandlerL2)
         ip = Ip4Address("10.0.0.1")
         mac = MacAddress("02:00:00:00:00:01")
 
-        with patch("pytcp.protocols.arp.arp__cache.stack.packet_handler", handler):
-            self._cache._solicit_arp(ip, mac)
+        self._cache._owner = handler
+        self._cache._solicit_arp(ip, mac)
 
         handler.send_arp_unicast_request.assert_called_once_with(
             arp__tpa=ip,
@@ -293,9 +284,9 @@ class TestArpCacheFlushCallback(_ArpCacheFixture):
         """
         Ensure '_flush_packet(packet, mac)' rewrites the
         Ethernet destination MAC on the queued frame and
-        dispatches it through 'stack.tx_ring.enqueue' — the
-        post-resolution delivery side of the queued-packet
-        contract.
+        dispatches it through the owning interface handler's TX
+        ring — the post-resolution delivery side of the
+        queued-packet contract.
 
         Reference: RFC 1122 §2.3.2.2 (transmit saved packet on resolution).
         """
@@ -303,9 +294,11 @@ class TestArpCacheFlushCallback(_ArpCacheFixture):
         eth = EthernetAssembler()
         mac = MacAddress("02:00:00:00:00:01")
 
-        tx_ring = MagicMock()
-        with patch("pytcp.protocols.arp.arp__cache.stack.tx_ring", tx_ring):
-            self._cache._flush_packet(eth, mac)
+        handler = MagicMock(spec=PacketHandlerL2)
+        tx_ring = create_autospec(TxRing, spec_set=True)
+        handler._tx_ring = tx_ring
+        self._cache._owner = handler
+        self._cache._flush_packet(eth, mac)
 
         self.assertEqual(
             eth.dst,
