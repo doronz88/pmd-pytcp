@@ -40,6 +40,7 @@ from unittest.mock import MagicMock, patch
 import pytcp.stack as stack
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.stack.lifecycle import add_interface
 
@@ -534,7 +535,7 @@ class TestStackMockInit(TestCase):
         stack.mock__init(mock__packet_handler=handler)
 
         self.assertEqual(
-            stack.interfaces,
+            dict(stack.interfaces),
             {1: handler},
             msg="mock__init must register the handler in stack.interfaces keyed by its ifindex.",
         )
@@ -618,7 +619,9 @@ class TestStackStopOrdering(TestCase):
         stack.packet_handler._tx_ring = stack.tx_ring
         stack.packet_handler._arp_cache = stack.arp_cache
         stack.packet_handler._nd_cache = stack.nd_cache
-        stack.interfaces = {1: stack.packet_handler}
+        _interfaces = InterfaceTable(first_ifindex=stack.STACK__DEFAULT_IFINDEX)
+        _interfaces[1] = stack.packet_handler
+        stack.interfaces = _interfaces
         stack.stack_initialized = True
 
     def tearDown(self) -> None:
@@ -1087,7 +1090,7 @@ class TestStackAddInterface(TestCase):
         if hasattr(stack, "route"):
             delattr(stack, "route")
 
-        stack.interfaces = {}
+        stack.interfaces = InterfaceTable(first_ifindex=stack.STACK__DEFAULT_IFINDEX)
 
         # Real pipe write-ends as fd stand-ins; the rings only touch
         # the fd once started, which these tests never do.

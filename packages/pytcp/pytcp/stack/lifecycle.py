@@ -60,6 +60,7 @@ from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.runtime.fib import RouteTable
+from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
@@ -138,8 +139,12 @@ def mock__init(
         # keyed by its own '_ifindex' (default 1 for the harness's
         # sole interface). Only when a handler is passed — a
         # timer-only 'mock__init' (e.g. IcmpTestCase's second call)
-        # must NOT wipe the registry the first call populated.
-        _stack.interfaces = {mock__packet_handler._ifindex: mock__packet_handler}
+        # must NOT wipe the registry the first call populated. Rebuild
+        # the table fresh (same reconstruct-per-test lifecycle as the
+        # FIBs below) and place the handler at its own ifindex.
+        _interfaces = InterfaceTable(first_ifindex=_stack.STACK__DEFAULT_IFINDEX)
+        _interfaces[mock__packet_handler._ifindex] = mock__packet_handler
+        _stack.interfaces = _interfaces
 
     # Phase 4 commit A — the Address API. If the test harness
     # passes a packet_handler, also build a default Address API
@@ -296,9 +301,10 @@ def add_interface(
             nd_cache._owner = packet_handler
 
     is_first = not _stack.interfaces
-    ifindex = _stack.STACK__DEFAULT_IFINDEX if is_first else max(_stack.interfaces) + 1
-    packet_handler._ifindex = ifindex
-    _stack.interfaces[ifindex] = packet_handler
+    # The table allocates the next ifindex (first_ifindex when empty,
+    # else max+1) and stamps it onto the handler, atomically under its
+    # lock so concurrent runtime adds cannot collide on an index.
+    ifindex = _stack.interfaces.add(packet_handler)
 
     # Route state is global (shared across interfaces). Inject the
     # Route API if it already exists (a runtime add_interface call);
@@ -391,9 +397,10 @@ def init(
     # ('stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
     # 'nd_cache') from this first interface; the global APIs (address /
     # link / route) and the DHCP / link-local subsystems below bind to
-    # that boot handler. The reset to '{}' makes a re-'init()' (common
-    # in long-running test harnesses) start from a single interface.
-    _stack.interfaces = {}
+    # that boot handler. The reset to a fresh empty table makes a
+    # re-'init()' (common in long-running test harnesses) start from
+    # zero interfaces.
+    _stack.interfaces = InterfaceTable(first_ifindex=_stack.STACK__DEFAULT_IFINDEX)
     add_interface(
         fd=fd,
         layer=layer,

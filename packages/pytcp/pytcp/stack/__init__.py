@@ -48,6 +48,7 @@ from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
+from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
@@ -266,7 +267,7 @@ packet_handler: PacketHandlerL2 | PacketHandlerL3
 # snapshot/restore). Phase 6 makes 'packet_handler' a shim over
 # this registry once N>1 interfaces are supported.
 STACK__DEFAULT_IFINDEX: int = 1
-interfaces: dict[int, PacketHandlerL2 | PacketHandlerL3] = {}
+interfaces: InterfaceTable = InterfaceTable(first_ifindex=STACK__DEFAULT_IFINDEX)
 # Phase 4 commit A — IPv4 address-control API, the kernel/userspace
 # boundary surface consumed by the DHCPv4 client and (eventually)
 # operator-config CLI tools. Mirrors Linux RTNETLINK 'RTM_NEWADDR'
