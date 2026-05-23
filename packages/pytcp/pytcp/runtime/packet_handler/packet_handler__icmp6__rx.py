@@ -117,10 +117,12 @@ class PacketHandlerIcmp6Rx(ABC):
         from pytcp.lib.dad_slot_registry import DadSlotRegistry
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
+        from pytcp.protocols.icmp6.nd.nd__cache import NdCache
         from pytcp.runtime.timer import TimerHandle
 
         _packet_stats_rx: PacketStatsRx
         _mac_unicast: MacAddress
+        _nd_cache: NdCache | None
         _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
         _icmp6_ra__event: Semaphore
         _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
@@ -1046,7 +1048,8 @@ class PacketHandlerIcmp6Rx(ABC):
         # SLLA is present.
         if not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast) and packet_rx.icmp6.message.slla:
             self._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
-            stack.nd_cache.add_entry(
+            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._nd_cache.add_entry(
                 ip6_address=packet_rx.ip6.src,
                 mac_address=packet_rx.icmp6.message.slla,
             )
@@ -1109,7 +1112,8 @@ class PacketHandlerIcmp6Rx(ABC):
         # Update ICMPv6 ND cache.
         if packet_rx.icmp6.message.tlla:
             self._packet_stats_rx.icmp6__nd_neighbor_advertisement__update_nd_cache += 1
-            stack.nd_cache.add_entry(
+            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._nd_cache.add_entry(
                 ip6_address=packet_rx.icmp6.message.target_address,
                 mac_address=packet_rx.icmp6.message.tlla,
             )
@@ -1176,7 +1180,8 @@ class PacketHandlerIcmp6Rx(ABC):
         tlla = packet_rx.icmp6.message.options.tlla
         if tlla is not None:
             self._packet_stats_rx.icmp6__nd_redirect__update_nd_cache += 1
-            stack.nd_cache.add_entry(ip6_address=target, mac_address=tlla)
+            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._nd_cache.add_entry(ip6_address=target, mac_address=tlla)
 
     def __phrx_icmp6__mld2_report(self, packet_rx: PacketRx) -> None:
         """

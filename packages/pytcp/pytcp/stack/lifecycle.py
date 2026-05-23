@@ -122,6 +122,13 @@ def mock__init(
             mock__packet_handler._rx_ring = mock__rx_ring
         if mock__tx_ring is not None:
             mock__packet_handler._tx_ring = mock__tx_ring
+        # Bind the per-interface neighbor caches to the handler the
+        # same way 'init()' does, so the RX/TX cache lookups go
+        # through 'self._{arp,nd}_cache' rather than the global shim.
+        if mock__arp_cache is not None:
+            mock__packet_handler._arp_cache = mock__arp_cache
+        if mock__nd_cache is not None:
+            mock__packet_handler._nd_cache = mock__nd_cache
 
     # Phase 4 commit A — the Address API. If the test harness
     # passes a packet_handler, also build a default Address API
@@ -284,6 +291,12 @@ def init(
                 packet_stats_tx=_packet_stats_tx,
                 link_stats=_link_stats,
             )
+            # Bind the per-interface neighbor caches to this handler
+            # (Linux keys ARP / ND per ifindex). Post-construction
+            # because the cache <-> handler relationship is
+            # bidirectional. ARP is L2-only; ND is used by both.
+            _stack.packet_handler._arp_cache = _stack.arp_cache
+            _stack.packet_handler._nd_cache = _stack.nd_cache
         case InterfaceLayer.L3:
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
             _stack.packet_handler = PacketHandlerL3(
@@ -299,6 +312,8 @@ def init(
                 packet_stats_tx=_packet_stats_tx,
                 link_stats=_link_stats,
             )
+            # L3 (TUN) has no ARP; bind only the ND cache.
+            _stack.packet_handler._nd_cache = _stack.nd_cache
 
     # Phase 4 commit A — IPv4 address-control API. Bound to the
     # newly-constructed 'packet_handler' so DHCP / operator-config

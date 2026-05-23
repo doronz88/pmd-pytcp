@@ -32,7 +32,7 @@ ver 3.0.6
 
 from types import SimpleNamespace
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from net_proto import ArpAssembler, ArpOperation
@@ -40,6 +40,7 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.runtime.packet_handler.packet_handler__arp__rx import (
     PacketHandlerArpRx,
 )
@@ -184,26 +185,18 @@ class _ArpRxTestBase(TestCase):
 
     def setUp(self) -> None:
         """
-        Build the stub handler and patch the stack singletons the ARP
-        handler reaches into.
+        Build the stub handler and inject the mock ARP cache it
+        updates on inbound ARP.
         """
 
         self._handler = _StubHandler()
 
-        # 'stack.arp_cache' is a bare forward declaration in
-        # 'pytcp/stack/__init__.py' (no assignment until the
-        # stack starts), so 'patch.object' needs 'create=True'
-        # to install the mock when the unit test runs without
-        # a live stack.
-        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock(), create=True)
-        self._arp_cache = self._arp_cache_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Restore the patched stack singletons.
-        """
-
-        self._arp_cache_patch.stop()
+        # The ARP cache is now injected per-interface; assign the
+        # mock to the handler's own '_arp_cache' rather than patching
+        # the global 'stack.arp_cache' (which the RX path no longer
+        # reads).
+        self._arp_cache = create_autospec(ArpCache, spec_set=True)
+        self._handler._arp_cache = self._arp_cache
 
 
 class TestPacketHandlerArpRxParseFail(_ArpRxTestBase):

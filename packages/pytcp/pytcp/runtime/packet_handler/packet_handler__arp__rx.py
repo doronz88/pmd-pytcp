@@ -52,10 +52,12 @@ class PacketHandlerArpRx(ABC):
         from net_proto import Tracker
         from pytcp.lib.packet_stats import PacketStatsRx
         from pytcp.lib.tx_status import TxStatus
+        from pytcp.protocols.arp.arp__cache import ArpCache
 
         _mac_unicast: MacAddress
         _ip4_ifaddr: list[Ip4IfAddr]
         _packet_stats_rx: PacketStatsRx
+        _arp_cache: ArpCache | None
         _ip4_ifaddr_candidate: list[Ip4IfAddr]
         _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
         _arp_defend__last_emitted: dict[Ip4Address, float]
@@ -230,7 +232,8 @@ class PacketHandlerArpRx(ABC):
                 case _:
                     raise ValueError("Invalid ARP operation")
 
-            stack.arp_cache.add_entry(
+            assert self._arp_cache is not None, "L2 handler updating the ARP cache must have one wired."
+            self._arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
                 mac_address=packet_rx.arp.sha,
             )

@@ -31,7 +31,7 @@ ver 3.0.6
 """
 
 from unittest import TestCase
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest.mock import create_autospec, patch
 
 from net_addr import (
     Ip4Address,
@@ -51,6 +51,8 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.arp.arp__cache import ArpCache
+from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.runtime.packet_handler.packet_handler__ethernet__tx import (
     PacketHandlerEthernetTx,
@@ -136,24 +138,23 @@ class _EthernetTxTestBase(TestCase):
 
     def setUp(self) -> None:
         """
-        Build the stub handler and patch stack singletons with MagicMocks.
+        Build the stub handler, inject mock TX ring / neighbor caches,
+        and patch the FIB singletons.
         """
 
         self._handler = _StubHandler()
 
-        # The TX ring is now injected per-interface; assign the mock
-        # to the handler's own '_tx_ring' rather than patching the
-        # global 'stack.tx_ring' (which the send-out path no longer
-        # reads). ARP / ND caches are still reached via 'stack.*'
-        # (handler-ownership lands in a later phase).
+        # TX ring and neighbor caches are now injected per-interface;
+        # assign the mocks to the handler's own attributes rather than
+        # patching the global 'stack.*' singletons (which the send-out
+        # / resolution paths no longer read).
         self._tx_ring = create_autospec(TxRing, spec_set=True)
         self._handler._tx_ring = self._tx_ring
 
-        self._arp_cache_patch = patch.object(stack, "arp_cache", MagicMock(), create=True)
-        self._nd_cache_patch = patch.object(stack, "nd_cache", MagicMock(), create=True)
-
-        self._arp_cache = self._arp_cache_patch.start()
-        self._nd_cache = self._nd_cache_patch.start()
+        self._arp_cache = create_autospec(ArpCache, spec_set=True)
+        self._nd_cache = create_autospec(NdCache, spec_set=True)
+        self._handler._arp_cache = self._arp_cache
+        self._handler._nd_cache = self._nd_cache
 
         # Post-Phase-2 the Ethernet-TX next hop is decided by the
         # FIB. Patch fresh real RouteTables (real lookup logic,
@@ -194,11 +195,9 @@ class _EthernetTxTestBase(TestCase):
 
     def tearDown(self) -> None:
         """
-        Restore the patched stack singletons.
+        Restore the patched FIB singletons.
         """
 
-        self._arp_cache_patch.stop()
-        self._nd_cache_patch.stop()
         self._ip4_fib_patch.stop()
         self._ip6_fib_patch.stop()
 
@@ -622,6 +621,25 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
             HOST_A__MAC,
             msg="Destination MAC must match the ARP cache response.",
         )
+
+    def test__stack__packet_handler__ethernet__tx__ip4_uses_injected_arp_cache(self) -> None:
+        """
+        Ensure IPv4 neighbor resolution consults the handler's own
+        injected '_arp_cache' and never reaches through to the global
+        'stack.arp_cache'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._arp_cache.find_entry.return_value = HOST_A__MAC
+
+        global_cache = create_autospec(ArpCache, spec_set=True)
+        with patch.object(stack, "arp_cache", global_cache, create=True):
+            ip4 = _build_ip4_assembler(src=STACK__IP4_HOST.address, dst=HOST_A__IP4)
+            self._handler._phtx_ethernet(ethernet__payload=ip4)
+
+        self._arp_cache.find_entry.assert_called_once_with(ip4_address=HOST_A__IP4)
+        global_cache.find_entry.assert_not_called()
 
     def test__stack__packet_handler__ethernet__tx__ip4_localnet_arp_miss(self) -> None:
         """

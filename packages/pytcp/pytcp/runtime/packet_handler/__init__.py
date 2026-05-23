@@ -104,6 +104,9 @@ from .packet_handler__udp__tx import PacketHandlerUdpTx
 if TYPE_CHECKING:
     from threading import Semaphore
 
+    from pytcp.protocols.arp.arp__cache import ArpCache
+    from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+
 
 class PacketHandler(Subsystem, ABC):
     """
@@ -128,6 +131,13 @@ class PacketHandler(Subsystem, ABC):
     # the global 'stack.tx_ring' shim. 'None' only for standalone
     # unit-test handlers that never enqueue.
     _tx_ring: TxRing | None
+    # Per-interface neighbor caches (Linux keys ARP / ND per
+    # ifindex). Injected after construction by 'stack.init()'.
+    # ARP is L2-only, so '_arp_cache' stays None on an L3 (TUN)
+    # handler; '_nd_cache' is used by both layers. 'None' for
+    # standalone unit-test handlers that never resolve a neighbor.
+    _arp_cache: ArpCache | None
+    _nd_cache: NdCache | None
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool
@@ -179,6 +189,14 @@ class PacketHandler(Subsystem, ABC):
         # None and never run '_subsystem_loop' / enqueue.
         self._rx_ring = rx_ring
         self._tx_ring = tx_ring
+
+        # Per-interface neighbor caches. Injected after construction
+        # by 'stack.init()' (the cache <-> handler relationship is
+        # bidirectional, so they cannot both be ctor args). Default
+        # None so standalone unit-test handlers have the attributes
+        # present without a cache wired.
+        self._arp_cache = None
+        self._nd_cache = None
 
         # Initialize data stores for packet statistics. When the
         # caller supplies pre-constructed stats objects (the
@@ -1135,13 +1153,12 @@ class PacketHandler(Subsystem, ABC):
             new_reach = reachable_time_ms
             self._packet_stats_rx.icmp6__nd_router_advertisement__reachable_time__update += 1
             # RFC 4861 §6.3.4 wires the captured value through
-            # to the IPv6 NUD cache as a per-cache override; ARP
-            # is unaffected. Guarded for the early-RX path where
-            # 'stack.nd_cache' has not yet been bound (test
-            # fixtures, mock__init).
-            nd_cache = getattr(stack, "nd_cache", None)
-            if nd_cache is not None:
-                nd_cache.set_reachable_time_override_ms(reachable_time_ms)
+            # to this interface's IPv6 NUD cache as a per-cache
+            # override; ARP is unaffected. Guarded for the early-RX
+            # path where the ND cache has not yet been injected
+            # (test fixtures, mock__init).
+            if self._nd_cache is not None:
+                self._nd_cache.set_reachable_time_override_ms(reachable_time_ms)
 
         if retrans_timer_ms > 0:
             new_retrans = retrans_timer_ms

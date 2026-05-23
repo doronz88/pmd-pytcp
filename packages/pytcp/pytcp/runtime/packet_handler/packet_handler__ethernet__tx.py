@@ -55,6 +55,8 @@ class PacketHandlerEthernetTx(ABC):
         from net_addr import Ip4IfAddr, Ip6IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
+        from pytcp.protocols.arp.arp__cache import ArpCache
+        from pytcp.protocols.icmp6.nd.nd__cache import NdCache
         from pytcp.runtime.tx_ring import TxRing
 
         _packet_stats_tx: PacketStatsTx
@@ -62,6 +64,8 @@ class PacketHandlerEthernetTx(ABC):
         _ip6_ifaddr: list[Ip6IfAddr]
         _ip4_ifaddr: list[Ip4IfAddr]
         _tx_ring: TxRing | None
+        _arp_cache: ArpCache | None
+        _nd_cache: NdCache | None
 
     def _phtx_ethernet(
         self,
@@ -153,8 +157,10 @@ class PacketHandlerEthernetTx(ABC):
                 )
                 return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP6
 
+            assert self._nd_cache is not None, "L2 handler resolving an IPv6 neighbor must have an ND cache."
+
             if ip6_route.gateway is not None:
-                if mac_address := stack.nd_cache.find_entry(ip6_address=ip6_route.gateway):
+                if mac_address := self._nd_cache.find_entry(ip6_address=ip6_route.gateway):
                     ethernet_packet_tx.dst = mac_address
                     self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send += 1
                     __debug__ and log(
@@ -169,7 +175,7 @@ class PacketHandlerEthernetTx(ABC):
                 # RFC 1122 §2.3.2.2 (IPv6 mirror): save the
                 # most recently dropped packet for delivery
                 # once the gateway MAC has been resolved.
-                stack.nd_cache.enqueue_pending(
+                self._nd_cache.enqueue_pending(
                     ip6_address=ip6_route.gateway,
                     ethernet_packet_tx=ethernet_packet_tx,
                 )
@@ -177,7 +183,7 @@ class PacketHandlerEthernetTx(ABC):
 
             # On-link (connected route, no gateway): resolve the
             # destination MAC directly from the ICMPv6 ND cache.
-            if mac_address := stack.nd_cache.find_entry(
+            if mac_address := self._nd_cache.find_entry(
                 ip6_address=ip6_dst,
             ):
                 self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send += 1
@@ -199,7 +205,7 @@ class PacketHandlerEthernetTx(ABC):
             # RFC 1122 §2.3.2.2 (IPv6 mirror): save the most
             # recently dropped packet for delivery once the
             # destination MAC has been resolved.
-            stack.nd_cache.enqueue_pending(
+            self._nd_cache.enqueue_pending(
                 ip6_address=ip6_dst,
                 ethernet_packet_tx=ethernet_packet_tx,
             )
@@ -276,8 +282,10 @@ class PacketHandlerEthernetTx(ABC):
                 )
                 return TxStatus.DROPPED__ETHERNET__DST_NO_GATEWAY_IP4
 
+            assert self._arp_cache is not None, "L2 handler resolving an IPv4 neighbor must have an ARP cache."
+
             if ip4_route.gateway is not None:
-                if mac_address := stack.arp_cache.find_entry(
+                if mac_address := self._arp_cache.find_entry(
                     ip4_address=ip4_route.gateway,
                 ):
                     self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send += 1
@@ -294,7 +302,7 @@ class PacketHandlerEthernetTx(ABC):
                 # RFC 1122 §2.3.2.2: save the most recently
                 # dropped packet for delivery once the gateway
                 # MAC has been resolved.
-                stack.arp_cache.enqueue_pending(
+                self._arp_cache.enqueue_pending(
                     ip4_address=ip4_route.gateway,
                     ethernet_packet_tx=ethernet_packet_tx,
                 )
@@ -303,7 +311,7 @@ class PacketHandlerEthernetTx(ABC):
             # On-link (connected route, no gateway): resolve the
             # destination MAC directly from the ARP cache, drop
             # otherwise.
-            if mac_address := stack.arp_cache.find_entry(
+            if mac_address := self._arp_cache.find_entry(
                 ip4_address=ip4_dst,
             ):
                 self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send += 1
@@ -325,7 +333,7 @@ class PacketHandlerEthernetTx(ABC):
             # RFC 1122 §2.3.2.2: save the most recently dropped
             # packet for delivery once the destination MAC has
             # been resolved.
-            stack.arp_cache.enqueue_pending(
+            self._arp_cache.enqueue_pending(
                 ip4_address=ip4_dst,
                 ethernet_packet_tx=ethernet_packet_tx,
             )

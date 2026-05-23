@@ -90,6 +90,11 @@ class TestArpResolutionFlow(ArpTestCase):
         super().setUp()
         self._real_cache_patch = patch.object(stack, "arp_cache", ArpCache())
         self._real_cache = self._real_cache_patch.start()
+        # The Ethernet TX path resolves via the handler's own
+        # injected '_arp_cache' (per-interface ownership), so swap
+        # the real cache onto the handler too — patching only the
+        # global 'stack.arp_cache' no longer reaches the TX path.
+        self._packet_handler._arp_cache = self._real_cache
         self._set_monotonic(1000.0)
 
     def tearDown(self) -> None:

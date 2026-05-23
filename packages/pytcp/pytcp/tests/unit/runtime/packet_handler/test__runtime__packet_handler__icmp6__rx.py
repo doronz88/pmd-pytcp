@@ -32,7 +32,7 @@ ver 3.0.6
 
 import threading
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import create_autospec, patch
 
 from net_addr import Ip6Address, Ip6Network, MacAddress
 from net_proto import (
@@ -51,6 +51,7 @@ from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.runtime.packet_handler.packet_handler__icmp6__rx import (
     PacketHandlerIcmp6Rx,
 )
@@ -181,17 +182,14 @@ class _Icmp6RxTestBase(TestCase):
         self._handler = _StubHandler()
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
-        # 'stack.nd_cache' is forward-declared at module scope but
-        # is only bound at runtime by 'stack.init()' / 'mock__init()'.
-        # Pass 'create=True' so this fixture works in isolation as
-        # well as inside a suite that also runs integration tests.
-        # Mirrors the ARP equivalent fix at commit f8cf5136.
-        self._nd_cache_patch = patch.object(stack, "nd_cache", object(), create=True)
-        self._nd_cache_patch.start()
+        # The ND cache is now injected per-interface; assign the mock
+        # to the handler's own '_nd_cache' rather than patching the
+        # global 'stack.nd_cache' (which the RX path no longer reads).
+        self._nd_cache = create_autospec(NdCache, spec_set=True)
+        self._handler._nd_cache = self._nd_cache
 
     def tearDown(self) -> None:
         self._sockets_patch.stop()
-        self._nd_cache_patch.stop()
 
 
 class TestPacketHandlerIcmp6RxParse(_Icmp6RxTestBase):
