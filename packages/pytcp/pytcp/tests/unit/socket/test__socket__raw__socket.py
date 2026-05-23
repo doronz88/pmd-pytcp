@@ -112,7 +112,7 @@ class _RawSocketTestCase(TestCase):
         # the patched 'stack.packet_handler' stub.
         self._egress_patch = patch(
             "pytcp.socket.raw__socket.stack.egress_packet_handler",
-            side_effect=lambda: _stack.packet_handler,
+            side_effect=lambda *_a: _stack.packet_handler,
         )
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)

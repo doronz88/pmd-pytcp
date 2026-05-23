@@ -124,7 +124,7 @@ class _UdpSocketTestCase(TestCase):
         # in per-test 'with' blocks) transparently drive the send path.
         self._egress_patch = patch(
             "pytcp.socket.udp__socket.stack.egress_packet_handler",
-            side_effect=lambda: _stack.packet_handler,
+            side_effect=lambda *_a: _stack.packet_handler,
         )
         self._egress_patch.start()
         self.addCleanup(self._egress_patch.stop)

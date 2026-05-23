@@ -48,6 +48,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
+from pytcp import stack
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -210,4 +211,34 @@ class TestMultiInterfaceRxReplyIsolation(IcmpTestCase, TestCase):
             probe.eth_dst,
             IFACE2__PEER__MAC_ADDRESS,
             msg=f"Reply dst MAC must be resolved via interface 2's own ARP cache. Got: {probe!r}",
+        )
+
+    def test__multi_interface__udp_send_to_iface2_subnet_egresses_iface2(self) -> None:
+        """
+        Ensure a stack-originated UDP datagram to a destination on the
+        second interface's subnet egresses the second interface — the
+        egress resolver picks the interface the FIB selects ('Route.oif'),
+        the frame lands on interface 2's TX ring, and interface 1 emits
+        nothing. This is the multi-homed-host originated-traffic payoff.
+
+        Reference: RFC 1122 §3.3.1 (next-hop selection / longest-prefix match).
+        """
+
+        stack.egress_packet_handler(IFACE2__PEER__IP4_ADDRESS).send_udp_packet(
+            ip__local_address=IFACE2__IP4_HOST.address,
+            ip__remote_address=IFACE2__PEER__IP4_ADDRESS,
+            udp__local_port=12345,
+            udp__remote_port=53,
+            udp__payload=b"query",
+        )
+
+        self.assertEqual(
+            len(self._iface2.frames_tx),
+            1,
+            msg="A UDP datagram to interface 2's subnet must egress interface 2's TX ring.",
+        )
+        self.assertEqual(
+            self._frames_tx,
+            [],
+            msg="Interface 1 must emit nothing for a datagram routed out interface 2.",
         )

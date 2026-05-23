@@ -1288,7 +1288,7 @@ class TcpSession:
         # comparison handles the 32-bit seq wrap correctly.
         is_retransmit = bool(data) and lt32(seq, self._snd_seq.max)
         ip__ecn = 2 if (self._ecn.enabled and data and not is_retransmit) else 0
-        stack.egress_packet_handler().send_tcp_packet(
+        stack.egress_packet_handler(self._remote_ip_address).send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
             ip__ecn=ip__ecn,
@@ -2371,7 +2371,7 @@ class TcpSession:
             self._socket._signal_readable()
             self._change_state(FsmState.CLOSED)
             return
-        stack.egress_packet_handler().send_tcp_packet(
+        stack.egress_packet_handler(self._remote_ip_address).send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
             tcp__local_port=self._local_port,

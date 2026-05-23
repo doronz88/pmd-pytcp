@@ -409,7 +409,7 @@ class UdpSocket(socket):
                 "Connection refused - [Remote host sent ICMP Unreachable]",
             )
 
-        stack.egress_packet_handler().send_udp_packet(
+        stack.egress_packet_handler(self._remote_ip_address).send_udp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
             udp__local_port=self._local_port,
@@ -461,7 +461,7 @@ class UdpSocket(socket):
             remote_address=address,
         )
 
-        stack.egress_packet_handler().send_udp_packet(
+        stack.egress_packet_handler(remote_ip_address).send_udp_packet(
             ip__local_address=local_ip_address,
             ip__remote_address=remote_ip_address,
             udp__local_port=self._local_port,

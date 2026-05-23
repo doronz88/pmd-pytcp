@@ -204,7 +204,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         lt32(session._snd_seq.una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_seq.max)
     ):
         if not packet_rx_md.tcp__flag_rst:
-            stack.egress_packet_handler().send_tcp_packet(
+            stack.egress_packet_handler(session._remote_ip_address).send_tcp_packet(
                 ip__local_address=session._local_ip_address,
                 ip__remote_address=session._remote_ip_address,
                 tcp__local_port=session._local_port,
