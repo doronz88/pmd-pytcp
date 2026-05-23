@@ -133,6 +133,12 @@ def mock__init(
         if mock__nd_cache is not None:
             mock__packet_handler._nd_cache = mock__nd_cache
             mock__nd_cache._owner = mock__packet_handler
+        # Register the handler in the per-ifindex interface registry
+        # keyed by its own '_ifindex' (default 1 for the harness's
+        # sole interface). Only when a handler is passed — a
+        # timer-only 'mock__init' (e.g. IcmpTestCase's second call)
+        # must NOT wipe the registry the first call populated.
+        _stack.interfaces = {mock__packet_handler._ifindex: mock__packet_handler}
 
     # Phase 4 commit A — the Address API. If the test harness
     # passes a packet_handler, also build a default Address API
@@ -336,6 +342,15 @@ def init(
             # owner back-reference).
             _stack.packet_handler._nd_cache = _stack.nd_cache
             _stack.nd_cache._owner = _stack.packet_handler
+
+    # Phase 2 of the multi-interface migration: assign the
+    # interface index and register the handler in the per-ifindex
+    # registry. Single-interface today, so exactly one entry at
+    # 'STACK__DEFAULT_IFINDEX'; 'packet_handler' above is that sole
+    # interface. 'add_interface()' replaces this with N entries in
+    # Phase 6.
+    _stack.packet_handler._ifindex = _stack.STACK__DEFAULT_IFINDEX
+    _stack.interfaces = {_stack.STACK__DEFAULT_IFINDEX: _stack.packet_handler}
 
     # Phase 4 commit A — IPv4 address-control API. Bound to the
     # newly-constructed 'packet_handler' so DHCP / operator-config

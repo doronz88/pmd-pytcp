@@ -148,6 +148,12 @@ class PacketHandler(Subsystem, ABC):
     # The RX RA path drives the default route through this. 'None'
     # until injected (early-RX / test contexts without a Route API).
     _route_api: RouteApi | None = None
+    # Per-interface index (Linux ifindex). The handler IS the
+    # interface object; 'stack.interfaces' maps this index to the
+    # handler. Class-level default 1 (the sole interface today /
+    # standalone unit-test handlers); 'stack.init()' assigns the
+    # real index per registered interface.
+    _ifindex: int = 1
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool

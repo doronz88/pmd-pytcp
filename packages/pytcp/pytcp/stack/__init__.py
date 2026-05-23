@@ -255,6 +255,19 @@ tx_ring: TxRing
 arp_cache: ArpCache
 nd_cache: NdCache
 packet_handler: PacketHandlerL2 | PacketHandlerL3
+# Phase 2 of the multi-interface migration: the per-ifindex
+# interface registry. Linux keys interfaces (and their ARP / ND
+# caches, addresses, MTU) per ifindex; PyTCP's 'PacketHandler'
+# instance IS the per-interface object, so the registry maps
+# 'ifindex -> handler'. Today the stack is single-interface, so
+# the registry holds exactly one entry at 'STACK__DEFAULT_IFINDEX'
+# and 'packet_handler' above is that sole interface. Rebuilt fresh
+# by 'init()' / 'mock__init()' (same reconstruct-per-test
+# lifecycle as 'packet_handler' / 'route', so it needs no
+# snapshot/restore). Phase 6 makes 'packet_handler' a shim over
+# this registry once N>1 interfaces are supported.
+STACK__DEFAULT_IFINDEX: int = 1
+interfaces: dict[int, PacketHandlerL2 | PacketHandlerL3] = {}
 # Phase 4 commit A — IPv4 address-control API, the kernel/userspace
 # boundary surface consumed by the DHCPv4 client and (eventually)
 # operator-config CLI tools. Mirrors Linux RTNETLINK 'RTM_NEWADDR'

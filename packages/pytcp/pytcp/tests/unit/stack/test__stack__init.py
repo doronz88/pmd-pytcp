@@ -39,6 +39,7 @@ from unittest.mock import MagicMock, patch
 import pytcp.stack as stack
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.runtime.packet_handler import PacketHandlerL2
 
 
 class TestStackModuleConstants(TestCase):
@@ -466,7 +467,7 @@ class TestStackMockInit(TestCase):
         self._sentinel = object()
         self._snapshot = {
             name: getattr(stack, name, self._sentinel)
-            for name in ("timer", "rx_ring", "tx_ring", "arp_cache", "nd_cache", "packet_handler")
+            for name in ("timer", "rx_ring", "tx_ring", "arp_cache", "nd_cache", "packet_handler", "interfaces")
         }
 
     def tearDown(self) -> None:
@@ -515,6 +516,31 @@ class TestStackMockInit(TestCase):
         self.assertIs(stack.arp_cache, fake_arp, msg="mock__init must wire the arp_cache mock.")
         self.assertIs(stack.nd_cache, fake_nd, msg="mock__init must wire the nd_cache mock.")
         self.assertIs(stack.packet_handler, fake_handler, msg="mock__init must wire the packet_handler mock.")
+
+    def test__stack__mock_init_registers_interface_by_ifindex(self) -> None:
+        """
+        Ensure 'mock__init' registers the wired packet handler in
+        'stack.interfaces' keyed by its 'ifindex', and that the sole
+        interface is the same object as 'stack.packet_handler'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = MagicMock(spec=PacketHandlerL2)
+        handler._ifindex = 1
+
+        stack.mock__init(mock__packet_handler=handler)
+
+        self.assertEqual(
+            stack.interfaces,
+            {1: handler},
+            msg="mock__init must register the handler in stack.interfaces keyed by its ifindex.",
+        )
+        self.assertIs(
+            stack.interfaces[1],
+            stack.packet_handler,
+            msg="The sole registered interface must be the same object as stack.packet_handler.",
+        )
 
     def test__stack__mock_init_leaves_unspecified_unchanged(self) -> None:
         """
