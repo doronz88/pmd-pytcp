@@ -43,10 +43,21 @@ from net_addr import MacAddress
 from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
+from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.stack.link import LinkApi, LinkFlag, LinkStats
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+
+
+class _FakeRing:
+    """
+    Minimal ring stand-in exposing only the '_mtu' attribute
+    'LinkApi.set_mtu' resizes.
+    """
+
+    def __init__(self, *, mtu: int) -> None:
+        self._mtu = mtu
 
 
 class _FakePacketHandlerL2:
@@ -78,6 +89,11 @@ class _FakePacketHandlerL2:
         self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
         self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
         self._link_stats = link_stats if link_stats is not None else LinkStatsCounters()
+        # Ring stand-ins so 'set_mtu' (which resizes the bound
+        # handler's own rings) has something to write; tests that
+        # assert per-interface ring resize replace these.
+        self._tx_ring: _FakeRing = _FakeRing(mtu=interface_mtu)
+        self._rx_ring: _FakeRing = _FakeRing(mtu=interface_mtu)
 
 
 class _FakePacketHandlerL3:
@@ -1021,3 +1037,95 @@ class TestLinkApiInterfaceLayer(TestCase):
             InterfaceLayer.L3,
             msg="LinkApi.interface_layer must report L3 for TUN handlers.",
         )
+
+
+class TestLinkApiInterfaceSelector(TestCase):
+    """
+    The 'LinkApi.interface(ifindex)' device-selector tests.
+    """
+
+    def _install_two_interfaces(self) -> tuple[_FakePacketHandlerL2, _FakePacketHandlerL2]:
+        """
+        Register two L2 fake interfaces (ifindex 1 @ MTU 1500, ifindex
+        2 @ MTU 9000) in a fresh 'stack.interfaces' table for the test.
+        """
+
+        iface_1 = _FakePacketHandlerL2(mac_unicast=MacAddress("02:00:00:00:00:01"), interface_mtu=1500)
+        iface_2 = _FakePacketHandlerL2(mac_unicast=MacAddress("02:00:00:00:00:02"), interface_mtu=9000)
+        table = InterfaceTable()
+        table[1] = cast("PacketHandlerL2", iface_1)
+        table[2] = cast("PacketHandlerL2", iface_2)
+        self.enterContext(patch.object(stack, "interfaces", table))
+        return iface_1, iface_2
+
+    def test__link_api__interface__reads_named_interface(self) -> None:
+        """
+        Ensure 'interface(ifindex)' returns a LinkApi bound to that
+        interface so its read properties reflect the named device, not
+        the interface the singleton was bound to.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        iface_1, _ = self._install_two_interfaces()
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", iface_1))
+
+        self.assertEqual(api.mtu, 1500, msg="The singleton binding reads interface 1.")
+        self.assertEqual(api.interface(2).mtu, 9000, msg="interface(2) must read interface 2's MTU.")
+        self.assertEqual(
+            api.interface(2).mac_address,
+            MacAddress("02:00:00:00:00:02"),
+            msg="interface(2) must read interface 2's MAC.",
+        )
+
+    def test__link_api__interface__unknown_ifindex_raises(self) -> None:
+        """
+        Ensure 'interface(ifindex)' on an unregistered ifindex raises
+        KeyError — the registry has no such device.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        iface_1, _ = self._install_two_interfaces()
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", iface_1))
+
+        with self.assertRaises(KeyError):
+            api.interface(99)
+
+    def test__link_api__list_interfaces__returns_registered_ifindexes(self) -> None:
+        """
+        Ensure 'list_interfaces' returns the registered ifindexes in
+        ascending order — the dump-all (no-selector) form, Linux
+        'ip link show' with no device equivalent.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        iface_1, _ = self._install_two_interfaces()
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", iface_1))
+
+        self.assertEqual(api.list_interfaces(), (1, 2), msg="list_interfaces must return the registered ifindexes.")
+
+    def test__link_api__interface__set_mtu_resizes_only_named_interface(self) -> None:
+        """
+        Ensure 'interface(ifindex).set_mtu' updates that interface's
+        own '_interface_mtu' and its own TX/RX rings, leaving other
+        interfaces' MTU and rings untouched.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self.enterContext(patch.object(stack, "interface_mtu", 1500, create=True))
+        iface_1, iface_2 = self._install_two_interfaces()
+        for iface in (iface_1, iface_2):
+            iface._tx_ring = _FakeRing(mtu=iface._interface_mtu)
+            iface._rx_ring = _FakeRing(mtu=iface._interface_mtu)
+
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", iface_1))
+        api.interface(2).set_mtu(mtu=1400)
+
+        self.assertEqual(iface_2._interface_mtu, 1400, msg="interface(2).set_mtu must update interface 2's MTU.")
+        self.assertEqual(iface_2._tx_ring._mtu, 1400, msg="interface(2).set_mtu must resize interface 2's TX ring.")
+        self.assertEqual(iface_2._rx_ring._mtu, 1400, msg="interface(2).set_mtu must resize interface 2's RX ring.")
+        self.assertEqual(iface_1._interface_mtu, 1500, msg="interface 1's MTU must be untouched.")
+        self.assertEqual(iface_1._tx_ring._mtu, 1500, msg="interface 1's TX ring must be untouched.")

@@ -239,6 +239,34 @@ class LinkApi:
 
         self._packet_handler = packet_handler
 
+    def interface(self, ifindex: int, /) -> "LinkApi":
+        """
+        Return a 'LinkApi' bound to the interface registered under
+        'ifindex' — the device selector, Linux 'ip link … dev <ifX>'
+        equivalent. Every read property and mutation on the returned
+        binding operates on that interface.
+
+        The bare singleton ('stack.link') stays bound to the boot
+        interface for the N=1 back-compat path; use 'interface(ifindex)'
+        to address any specific interface. Raises 'KeyError' when no
+        interface is registered under 'ifindex'.
+        """
+
+        from pytcp import stack
+
+        return LinkApi(packet_handler=stack.interfaces[ifindex])
+
+    def list_interfaces(self) -> tuple[int, ...]:
+        """
+        Return the registered interface indexes in ascending order —
+        the dump-all (no-selector) form, Linux 'ip link show' with no
+        device equivalent. Pair with 'interface(ifindex)' to read each.
+        """
+
+        from pytcp import stack
+
+        return tuple(sorted(stack.interfaces))
+
     @property
     def mac_address(self) -> MacAddress | None:
         """
@@ -388,21 +416,28 @@ class LinkApi:
         # / fragmentation decisions.
         self._packet_handler._interface_mtu = mtu
 
-        # Module-level slot — denormalized for legacy
-        # consumers that read 'stack.interface_mtu' directly.
+        # Module-level slot — denormalized for legacy consumers that
+        # read 'stack.interface_mtu' directly (TCP/UDP MSS computation).
+        # Phase 7: this global is the boot-interface MTU; egress-
+        # interface-MTU lookup replaces it, after which a non-boot
+        # 'interface(ifindex).set_mtu' will stop writing it.
         stack.interface_mtu = mtu
 
-        # TX/RX rings cache the MTU as the writev / read size
-        # bound. Update them if present and the underlying
-        # object accepts the write. Suppressed 'AttributeError'
-        # handles two cases without bespoke harness wiring:
-        # (a) 'mock__init' fixtures that skip ring construction,
-        # and (b) 'create_autospec(TxRing, spec_set=True)' mocks
-        # that the NetworkTestCase harness installs (spec_set
-        # blocks unknown-attribute writes — '_mtu' is declared
-        # on TxRing but the autospec proxy does not expose it).
-        for ring_name in ("tx_ring", "rx_ring"):
-            ring = getattr(stack, ring_name, None)
+        # TX/RX rings cache the MTU as the writev / read size bound.
+        # Resize the BOUND interface's own rings (not the global
+        # 'stack.{tx,rx}_ring' shims) so 'interface(ifindex).set_mtu'
+        # resizes the named device's rings, not the boot interface's.
+        # Suppressed 'AttributeError' handles two cases without bespoke
+        # harness wiring: (a) 'mock__init' fixtures that skip ring
+        # construction (the attribute is None → skipped), and
+        # (b) 'create_autospec(TxRing, spec_set=True)' mocks the
+        # NetworkTestCase harness installs (spec_set blocks unknown-
+        # attribute writes — '_mtu' is declared on TxRing but the
+        # autospec proxy does not expose it).
+        for ring in (
+            getattr(self._packet_handler, "_tx_ring", None),
+            getattr(self._packet_handler, "_rx_ring", None),
+        ):
             if ring is None:
                 continue
             try:
