@@ -55,6 +55,7 @@ from net_addr import (
 )
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
+from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
@@ -198,6 +199,127 @@ def mock__init(
     _stack.link_local = None
 
 
+def add_interface(
+    *,
+    fd: int,
+    layer: InterfaceLayer,
+    mtu: int = 1500,
+    mac_address: MacAddress | None = None,
+    interface_name: str | None = None,
+    ip4_support: bool = True,
+    ip4_host: Ip4IfAddr | None = None,
+    ip4_dhcp: bool = False,
+    ip6_support: bool = True,
+    ip6_host: Ip6IfAddr | None = None,
+    ip6_gua_autoconfig: bool = False,
+    ip6_lla_autoconfig: bool = True,
+) -> int:
+    """
+    Construct one network interface — its fd-bound RX / TX rings,
+    its per-ifindex neighbor cache(s) and its packet handler —
+    register it in 'stack.interfaces' under a freshly allocated
+    ifindex, and return that ifindex.
+
+    The handler instance IS the interface: it owns the injected
+    rings and the ARP / ND caches (Linux keys neighbors per
+    ifindex). The first interface added takes 'STACK__DEFAULT_IFINDEX'
+    and also populates the N=1 back-compat singletons
+    'stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
+    'nd_cache' (retired in a later phase); subsequent interfaces get
+    the next free index and leave those shims on the boot interface.
+
+    'init()' calls this once for the boot interface; the runtime
+    multi-interface path calls it again once N>1 is enabled.
+    """
+
+    import pytcp.stack as _stack
+
+    # Per-interface stats — each interface's rings + handler share
+    # one set, so ring drop counters and per-protocol counters land
+    # on a single dataclass per interface for unified-stats consumers.
+    packet_stats_rx = PacketStatsRx()
+    packet_stats_tx = PacketStatsTx()
+    link_stats = LinkStatsCounters()
+
+    tx_ring = TxRing(fd=fd, mtu=mtu, packet_stats=packet_stats_tx, link_stats=link_stats)
+    rx_ring = RxRing(fd=fd, mtu=mtu, packet_stats=packet_stats_rx, link_stats=link_stats)
+    nd_cache = NdCache()
+    arp_cache: ArpCache | None = None
+
+    packet_handler: PacketHandlerL2 | PacketHandlerL3
+    match layer:
+        case InterfaceLayer.L2:
+            assert mac_address is not None, "MAC address must be provided for Layer 2 (TAP) interface."
+            arp_cache = ArpCache()
+            packet_handler = PacketHandlerL2(
+                mac_address=mac_address,
+                interface_mtu=mtu,
+                interface_name=interface_name,
+                ip4_support=ip4_support,
+                ip4_host=ip4_host,
+                ip4_dhcp=ip4_dhcp,
+                ip6_support=ip6_support,
+                ip6_host=ip6_host,
+                ip6_gua_autoconfig=ip6_gua_autoconfig,
+                ip6_lla_autoconfig=ip6_lla_autoconfig,
+                rx_ring=rx_ring,
+                tx_ring=tx_ring,
+                packet_stats_rx=packet_stats_rx,
+                packet_stats_tx=packet_stats_tx,
+                link_stats=link_stats,
+            )
+            # Bind the per-interface neighbor caches to this handler
+            # and the reverse owner back-reference so the caches'
+            # solicit / flush callbacks route through this interface.
+            # ARP is L2-only; ND is used by both layers.
+            packet_handler._arp_cache = arp_cache
+            packet_handler._nd_cache = nd_cache
+            arp_cache._owner = packet_handler
+            nd_cache._owner = packet_handler
+        case InterfaceLayer.L3:
+            assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
+            packet_handler = PacketHandlerL3(
+                interface_mtu=mtu,
+                interface_name=interface_name,
+                ip4_support=ip4_support,
+                ip4_host=ip4_host,
+                ip6_support=ip6_support,
+                ip6_host=ip6_host,
+                rx_ring=rx_ring,
+                tx_ring=tx_ring,
+                packet_stats_rx=packet_stats_rx,
+                packet_stats_tx=packet_stats_tx,
+                link_stats=link_stats,
+            )
+            # L3 (TUN) has no ARP; bind only the ND cache + its owner.
+            packet_handler._nd_cache = nd_cache
+            nd_cache._owner = packet_handler
+
+    is_first = not _stack.interfaces
+    ifindex = _stack.STACK__DEFAULT_IFINDEX if is_first else max(_stack.interfaces) + 1
+    packet_handler._ifindex = ifindex
+    _stack.interfaces[ifindex] = packet_handler
+
+    # Route state is global (shared across interfaces). Inject the
+    # Route API if it already exists (a runtime add_interface call);
+    # for the boot interface 'init()' builds the FIB after this
+    # returns and injects the Route API itself.
+    route = getattr(_stack, "route", None)
+    if route is not None:
+        packet_handler._route_api = route
+
+    # First interface populates the N=1 back-compat singletons.
+    if is_first:
+        _stack.packet_handler = packet_handler
+        _stack.rx_ring = rx_ring
+        _stack.tx_ring = tx_ring
+        _stack.nd_cache = nd_cache
+        if arp_cache is not None:
+            _stack.arp_cache = arp_cache
+
+    return ifindex
+
+
 def init(
     *,
     fd: int,
@@ -263,94 +385,29 @@ def init(
 
     _stack.timer = Timer()
 
-    # Construct stats objects up front so the rings and the packet
-    # handler share the same instances — ring drop counters and
-    # per-protocol counters end up on a single dataclass for
-    # unified-stats consumers.
-    from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
-
-    _packet_stats_rx = PacketStatsRx()
-    _packet_stats_tx = PacketStatsTx()
-    # Link API Phase 3 — link-level aggregate counters (rx_bytes /
-    # tx_bytes). Shared instance bumped by RxRing on every
-    # successful 'os.read' and by TxRing on every successful
-    # 'enqueue'. Read by 'LinkApi.stats' for the
-    # 'rx_bytes' / 'tx_bytes' buckets.
-    _link_stats = LinkStatsCounters()
-
-    _stack.tx_ring = TxRing(
+    # Build the boot interface — its rings, neighbor caches and
+    # packet handler — and register it in 'stack.interfaces'.
+    # 'add_interface' also populates the N=1 back-compat singletons
+    # ('stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
+    # 'nd_cache') from this first interface; the global APIs (address /
+    # link / route) and the DHCP / link-local subsystems below bind to
+    # that boot handler. The reset to '{}' makes a re-'init()' (common
+    # in long-running test harnesses) start from a single interface.
+    _stack.interfaces = {}
+    add_interface(
         fd=fd,
+        layer=layer,
         mtu=mtu,
-        packet_stats=_packet_stats_tx,
-        link_stats=_link_stats,
+        mac_address=mac_address,
+        interface_name=interface_name,
+        ip4_support=ip4_support,
+        ip4_host=ip4_host,
+        ip4_dhcp=ip4_dhcp,
+        ip6_support=ip6_support,
+        ip6_host=ip6_host,
+        ip6_gua_autoconfig=ip6_gua_autoconfig,
+        ip6_lla_autoconfig=ip6_lla_autoconfig,
     )
-    _stack.rx_ring = RxRing(
-        fd=fd,
-        mtu=mtu,
-        packet_stats=_packet_stats_rx,
-        link_stats=_link_stats,
-    )
-    _stack.nd_cache = NdCache()
-
-    match layer:
-        case InterfaceLayer.L2:
-            assert mac_address is not None, "MAC address must be provided for Layer 2 (TAP) interface."
-            _stack.arp_cache = ArpCache()
-            _stack.packet_handler = PacketHandlerL2(
-                mac_address=mac_address,
-                interface_mtu=mtu,
-                interface_name=interface_name,
-                ip4_support=ip4_support,
-                ip4_host=ip4_host,
-                ip4_dhcp=ip4_dhcp,
-                ip6_support=ip6_support,
-                ip6_host=ip6_host,
-                ip6_gua_autoconfig=ip6_gua_autoconfig,
-                ip6_lla_autoconfig=ip6_lla_autoconfig,
-                rx_ring=_stack.rx_ring,
-                tx_ring=_stack.tx_ring,
-                packet_stats_rx=_packet_stats_rx,
-                packet_stats_tx=_packet_stats_tx,
-                link_stats=_link_stats,
-            )
-            # Bind the per-interface neighbor caches to this handler
-            # (Linux keys ARP / ND per ifindex) and the reverse
-            # owner back-reference so the caches' solicit / flush
-            # callbacks route through this interface. Post-
-            # construction because the relationship is bidirectional.
-            # ARP is L2-only; ND is used by both.
-            _stack.packet_handler._arp_cache = _stack.arp_cache
-            _stack.packet_handler._nd_cache = _stack.nd_cache
-            _stack.arp_cache._owner = _stack.packet_handler
-            _stack.nd_cache._owner = _stack.packet_handler
-        case InterfaceLayer.L3:
-            assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
-            _stack.packet_handler = PacketHandlerL3(
-                interface_mtu=mtu,
-                interface_name=interface_name,
-                ip4_support=ip4_support,
-                ip4_host=ip4_host,
-                ip6_support=ip6_support,
-                ip6_host=ip6_host,
-                rx_ring=_stack.rx_ring,
-                tx_ring=_stack.tx_ring,
-                packet_stats_rx=_packet_stats_rx,
-                packet_stats_tx=_packet_stats_tx,
-                link_stats=_link_stats,
-            )
-            # L3 (TUN) has no ARP; bind only the ND cache (+ its
-            # owner back-reference).
-            _stack.packet_handler._nd_cache = _stack.nd_cache
-            _stack.nd_cache._owner = _stack.packet_handler
-
-    # Phase 2 of the multi-interface migration: assign the
-    # interface index and register the handler in the per-ifindex
-    # registry. Single-interface today, so exactly one entry at
-    # 'STACK__DEFAULT_IFINDEX'; 'packet_handler' above is that sole
-    # interface. 'add_interface()' replaces this with N entries in
-    # Phase 6.
-    _stack.packet_handler._ifindex = _stack.STACK__DEFAULT_IFINDEX
-    _stack.interfaces = {_stack.STACK__DEFAULT_IFINDEX: _stack.packet_handler}
 
     # Phase 4 commit A — IPv4 address-control API. Bound to the
     # newly-constructed 'packet_handler' so DHCP / operator-config
@@ -467,12 +524,19 @@ def start() -> None:
     _stack.stack_running = True
 
     _stack.timer.start()
-    if hasattr(_stack.packet_handler, "arp_cache"):
-        _stack.arp_cache.start()
-    _stack.nd_cache.start()
-    _stack.tx_ring.start()
-    _stack.rx_ring.start()
-    _stack.packet_handler.start()
+    # Per-interface subsystems: start each registered interface's own
+    # caches, rings and handler (the handler owns its injected
+    # '_rx_ring' / '_tx_ring' / '_arp_cache' / '_nd_cache'). At N=1
+    # this is the single boot interface; the loop is the N>1 path.
+    for iface in _stack.interfaces.values():
+        if iface._arp_cache is not None:
+            iface._arp_cache.start()
+        assert iface._nd_cache is not None
+        iface._nd_cache.start()
+        assert iface._tx_ring is not None and iface._rx_ring is not None
+        iface._tx_ring.start()
+        iface._rx_ring.start()
+        iface.start()
 
     # RFC 3927 link-local autoconfig subsystem. Start BEFORE the
     # DHCP wait so the two FSMs run in parallel — the link-local
@@ -529,13 +593,21 @@ def stop() -> None:
         _stack.dhcp4_client.stop()
     if _stack.link_local is not None:
         _stack.link_local.stop()
-    _stack.packet_handler.stop()
+    # Per-interface handlers first (stop application-side TX
+    # producers), then the shared timer (so periodic callbacks cannot
+    # enqueue onto a stopped ring), then each interface's rings +
+    # caches. At N=1 this is the single boot interface.
+    for iface in _stack.interfaces.values():
+        iface.stop()
     _stack.timer.stop()
-    _stack.rx_ring.stop()
-    _stack.tx_ring.stop()
-    if hasattr(_stack.packet_handler, "arp_cache"):
-        _stack.arp_cache.stop()
-    _stack.nd_cache.stop()
+    for iface in _stack.interfaces.values():
+        assert iface._rx_ring is not None and iface._tx_ring is not None
+        iface._rx_ring.stop()
+        iface._tx_ring.stop()
+        if iface._arp_cache is not None:
+            iface._arp_cache.stop()
+        assert iface._nd_cache is not None
+        iface._nd_cache.stop()
 
     # Restore every registered sysctl to its compile-time default
     # so a follow-up 'stack.init()' (typical in long-running test

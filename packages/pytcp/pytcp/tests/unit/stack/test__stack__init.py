@@ -32,6 +32,7 @@ pytcp/tests/unit/stack/test__stack__init.py
 ver 3.0.6
 """
 
+import os
 import sys
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -39,7 +40,8 @@ from unittest.mock import MagicMock, patch
 import pytcp.stack as stack
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.runtime.packet_handler import PacketHandlerL2
+from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+from pytcp.stack.lifecycle import add_interface
 
 
 class TestStackModuleConstants(TestCase):
@@ -591,6 +593,7 @@ class TestStackStopOrdering(TestCase):
             "arp_cache": getattr(stack, "arp_cache", None),
             "nd_cache": getattr(stack, "nd_cache", None),
             "packet_handler": getattr(stack, "packet_handler", None),
+            "interfaces": getattr(stack, "interfaces", None),
         }
 
         self._call_log: list[str] = []
@@ -606,9 +609,16 @@ class TestStackStopOrdering(TestCase):
         stack.arp_cache = _make_subsystem("arp_cache")
         stack.nd_cache = _make_subsystem("nd_cache")
         stack.packet_handler = _make_subsystem("packet_handler")
-        # Make 'hasattr(packet_handler, "arp_cache")' True so the
-        # arp_cache.stop() branch fires.
-        stack.packet_handler.arp_cache = MagicMock()
+        # 'start()' / 'stop()' iterate 'stack.interfaces' and reach
+        # each interface's rings + caches via the handler's injected
+        # '_rx_ring' / '_tx_ring' / '_arp_cache' / '_nd_cache' (the
+        # handler IS the interface). Wire those to the recording mocks
+        # and register the handler as the sole interface.
+        stack.packet_handler._rx_ring = stack.rx_ring
+        stack.packet_handler._tx_ring = stack.tx_ring
+        stack.packet_handler._arp_cache = stack.arp_cache
+        stack.packet_handler._nd_cache = stack.nd_cache
+        stack.interfaces = {1: stack.packet_handler}
         stack.stack_initialized = True
 
     def tearDown(self) -> None:
@@ -1049,4 +1059,119 @@ class TestStackPythonVersionGuard(TestCase):
             sys.version_info,
             (3, 12),
             msg="pytcp/stack/__init__.py asserts Python >= 3.12; the running interpreter must meet that floor.",
+        )
+
+
+class TestStackAddInterface(TestCase):
+    """
+    The 'add_interface' per-interface construction / registration tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the module-level interface registry + N=1 back-compat
+        singletons, start from an empty registry, and silence the
+        subsystem-init log lines that 'add_interface' emits.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in ("interfaces", "packet_handler", "rx_ring", "tx_ring", "arp_cache", "nd_cache")
+        }
+        # Drop any leaked Route API so 'add_interface' does not inject
+        # one (the boot path injects it post-construction in 'init()').
+        self._route_snapshot = getattr(stack, "route", self._sentinel)
+        if hasattr(stack, "route"):
+            delattr(stack, "route")
+
+        stack.interfaces = {}
+
+        # Real pipe write-ends as fd stand-ins; the rings only touch
+        # the fd once started, which these tests never do.
+        self._fds = [os.pipe() for _ in range(2)]
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self) -> None:
+        """
+        Close every constructed interface's ring eventfds and the pipe
+        fds, then restore the snapshotted module state.
+        """
+
+        for iface in stack.interfaces.values():
+            for ring in (iface._rx_ring, iface._tx_ring):
+                if ring is not None:
+                    ring._stop()
+        for read_fd, write_fd in self._fds:
+            for fd in (read_fd, write_fd):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+        if self._route_snapshot is not self._sentinel:
+            setattr(stack, "route", self._route_snapshot)
+
+    def test__add_interface__first_takes_default_ifindex_and_sets_shims(self) -> None:
+        """
+        Ensure the first 'add_interface' takes 'STACK__DEFAULT_IFINDEX',
+        registers the handler in 'stack.interfaces', and populates the
+        N=1 back-compat singletons ('packet_handler' / 'rx_ring' /
+        'tx_ring' / 'arp_cache' / 'nd_cache') from that interface.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ifindex = add_interface(
+            fd=self._fds[0][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+        )
+
+        self.assertEqual(ifindex, stack.STACK__DEFAULT_IFINDEX, msg="First interface must take the default ifindex.")
+        handler = stack.interfaces[ifindex]
+        self.assertIs(stack.packet_handler, handler, msg="First interface must populate stack.packet_handler.")
+        self.assertIs(stack.rx_ring, handler._rx_ring, msg="First interface must populate stack.rx_ring.")
+        self.assertIs(stack.tx_ring, handler._tx_ring, msg="First interface must populate stack.tx_ring.")
+        self.assertIs(stack.arp_cache, handler._arp_cache, msg="L2 first interface must populate stack.arp_cache.")
+        self.assertIs(stack.nd_cache, handler._nd_cache, msg="First interface must populate stack.nd_cache.")
+
+    def test__add_interface__second_gets_next_ifindex_without_clobbering_shims(self) -> None:
+        """
+        Ensure a second 'add_interface' allocates the next free
+        ifindex, registers its own handler / rings / caches, and leaves
+        the N=1 back-compat singletons pointing at the first (boot)
+        interface.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = add_interface(
+            fd=self._fds[0][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+        )
+        boot_handler = stack.packet_handler
+
+        second = add_interface(
+            fd=self._fds[1][1],
+            layer=InterfaceLayer.L3,
+        )
+
+        self.assertEqual(second, first + 1, msg="Second interface must take the next free ifindex.")
+        self.assertEqual(set(stack.interfaces), {first, second}, msg="Both interfaces must be registered.")
+        self.assertIsInstance(stack.interfaces[first], PacketHandlerL2, msg="First interface is the L2 handler.")
+        self.assertIsInstance(stack.interfaces[second], PacketHandlerL3, msg="Second interface is the L3 handler.")
+        self.assertEqual(stack.interfaces[second]._ifindex, second, msg="Handler must record its ifindex.")
+        self.assertIs(
+            stack.packet_handler,
+            boot_handler,
+            msg="A second add_interface must not clobber the boot-interface shim.",
         )
