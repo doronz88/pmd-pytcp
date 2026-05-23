@@ -30,6 +30,7 @@ pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py
 ver 3.0.6
 """
 
+import errno
 from typing import Any, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -1758,6 +1759,37 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             client._lease,
             msg="No lease must be recorded on INIT-handler failure.",
         )
+
+    def test__dhcp4_client__subsystem_loop_halts_on_unexpected_exception(self) -> None:
+        """
+        Ensure an unexpected exception raised from a state handler does
+        not propagate out of '_subsystem_loop' — an escaping exception
+        would kill the 'Subsystem' worker thread and silently take the
+        DHCPv4 client down (the symptom seen when a send raised
+        EHOSTUNREACH). The loop instead logs the failure and signals the
+        stop event so the client halts cleanly.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        self.enterContext(
+            patch.object(
+                client,
+                "_do_init_to_bound",
+                side_effect=OSError(errno.EHOSTUNREACH, "No route to host"),
+            )
+        )
+
+        # Must return normally — a propagating exception would fail the
+        # test by escaping this call.
+        client._subsystem_loop()
+
+        self.assertTrue(
+            client._event__stop_subsystem.is_set(),
+            msg="An unexpected loop exception must signal the stop event, not crash the worker.",
+        )
+        self._mock_log.assert_called()
 
 
 class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):

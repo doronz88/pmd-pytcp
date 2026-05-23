@@ -324,30 +324,46 @@ class Dhcp4Client(Subsystem):
         exchanges.
         """
 
-        match self._state:
-            case Dhcp4State.INIT:
-                lease = self._do_init_to_bound()
-                if lease is not None:
-                    self._on_bound(lease)
-                else:
-                    # Phase 4 follow-up: retry policy. For now,
-                    # signal stop to avoid a tight retry loop.
-                    self._event__stop_subsystem.set()
-            case Dhcp4State.INIT_REBOOT:
-                self._do_init_reboot()
-            case Dhcp4State.BOUND:
-                self._do_bound()
-            case Dhcp4State.RENEWING:
-                self._do_renewing()
-            case Dhcp4State.REBINDING:
-                self._do_rebinding()
-            case _:
-                # SELECTING / REQUESTING / REBOOTING — collapsed
-                # into the synchronous wire exchanges inside
-                # '_do_init_to_bound' / '_do_init_reboot' so the
-                # FSM never observes them as separate states.
-                # Idle on stop event so 'stop()' is responsive.
-                self._event__stop_subsystem.wait(timeout=1.0)
+        # Daemon-loop guard: the base 'Subsystem' worker thread dies if
+        # '_subsystem_loop' raises (e.g. a wire send returning
+        # EHOSTUNREACH out of '_do_init_to_bound'), silently taking the
+        # DHCPv4 client down. Catch any unexpected exception, log it, and
+        # signal stop so the client halts cleanly instead of crashing the
+        # thread. ('Exception' — not 'BaseException' — so KeyboardInterrupt
+        # / SystemExit still propagate; Phase 4's retry policy will turn the
+        # halt into a backoff-and-retry.)
+        try:
+            match self._state:
+                case Dhcp4State.INIT:
+                    lease = self._do_init_to_bound()
+                    if lease is not None:
+                        self._on_bound(lease)
+                    else:
+                        # Phase 4 follow-up: retry policy. For now,
+                        # signal stop to avoid a tight retry loop.
+                        self._event__stop_subsystem.set()
+                case Dhcp4State.INIT_REBOOT:
+                    self._do_init_reboot()
+                case Dhcp4State.BOUND:
+                    self._do_bound()
+                case Dhcp4State.RENEWING:
+                    self._do_renewing()
+                case Dhcp4State.REBINDING:
+                    self._do_rebinding()
+                case _:
+                    # SELECTING / REQUESTING / REBOOTING — collapsed
+                    # into the synchronous wire exchanges inside
+                    # '_do_init_to_bound' / '_do_init_reboot' so the
+                    # FSM never observes them as separate states.
+                    # Idle on stop event so 'stop()' is responsive.
+                    self._event__stop_subsystem.wait(timeout=1.0)
+        except Exception as error:  # noqa: BLE001 — daemon-loop guard must not let the worker thread die
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>DHCPv4 client loop raised {type(error).__name__}: {error}; "
+                f"halting the client (state was {self._state})</>",
+            )
+            self._event__stop_subsystem.set()
 
     def _on_bound(self, lease: Dhcp4Lease, /) -> None:
         """
