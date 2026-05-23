@@ -106,6 +106,7 @@ if TYPE_CHECKING:
 
     from pytcp.protocols.arp.arp__cache import ArpCache
     from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+    from pytcp.stack.route import RouteApi
 
 
 class PacketHandler(Subsystem, ABC):
@@ -141,6 +142,12 @@ class PacketHandler(Subsystem, ABC):
     # standalone unit-test handlers that never resolve a neighbor.
     _arp_cache: ArpCache | None = None
     _nd_cache: NdCache | None = None
+    # Routing-control API (the host-mode FIB mutation surface).
+    # Global state shared across interfaces, but injected as an
+    # explicit dependency rather than reached via 'stack.route'.
+    # The RX RA path drives the default route through this. 'None'
+    # until injected (early-RX / test contexts without a Route API).
+    _route_api: RouteApi | None = None
     _interface_mtu: int
     _interface_name: str | None
     _ip6_support: bool
@@ -583,10 +590,9 @@ class PacketHandler(Subsystem, ABC):
         # router info is consumed — the per-IfAddr
         # 'ip6_host.gateway = ...' writes the SLAAC / RFC 8981 /
         # RFC 7217 paths used are gone (the FIB owns the next
-        # hop). 'getattr' guards reduced test contexts that drive
-        # this without a Route API bound (same pattern as the
-        # 'stack.nd_cache' getattr below).
-        route_api = getattr(stack, "route", None)
+        # hop). The injected '_route_api' may be None in reduced
+        # test contexts that drive this without a Route API bound.
+        route_api = self._route_api
 
         if router_lifetime > 0:
             normalised_prf = Icmp6NdRoutePreference.MEDIUM if prf is Icmp6NdRoutePreference.RESERVED else prf

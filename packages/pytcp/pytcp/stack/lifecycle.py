@@ -168,6 +168,18 @@ def mock__init(
     else:
         _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
+    # Inject the routing-control API into the current handler the
+    # same way 'init()' does, so the RX RA path drives the default
+    # route through 'self._route_api'. 'mock__init' rebuilds
+    # 'stack.route' on EVERY call (e.g. 'IcmpTestCase' calls it a
+    # second time, timer-only), so re-inject into whatever handler
+    # is currently bound — not just the one passed this call —
+    # otherwise the handler keeps a stale RouteApi wrapping the
+    # previous FIBs.
+    _current_handler = getattr(_stack, "packet_handler", None)
+    if _current_handler is not None:
+        _current_handler._route_api = _stack.route
+
     # Phase 4 commit B — DHCPv4 lifecycle. Default to None unless
     # the harness explicitly opts in; existing tests (NetworkTestCase
     # et al.) don't exercise the lifecycle and don't need a fake.
@@ -358,6 +370,13 @@ def init(
     _stack.ip4_fib = ip4_fib
     _stack.ip6_fib = ip6_fib
     _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
+
+    # Inject the routing-control API into the handler so the RX RA
+    # path drives the default route through 'self._route_api'
+    # instead of reaching 'stack.route'. Route state is global
+    # (shared across interfaces); the injection just makes the
+    # dependency explicit.
+    _stack.packet_handler._route_api = _stack.route
 
     # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
     # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
