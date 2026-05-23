@@ -1907,11 +1907,12 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="IP_MTU must return the cached PMTU for a connected IPv4 socket.",
         )
 
-    def test__udp_socket__ip_mtu_falls_back_to_interface_mtu(self) -> None:
+    def test__udp_socket__ip_mtu_falls_back_to_egress_interface_mtu(self) -> None:
         """
-        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns
-        'stack.interface_mtu' when 'stack.pmtu_cache' has no
-        entry for the connected remote — Linux's same fallback.
+        Ensure getsockopt(IPPROTO_IP, IP_MTU) returns the egress
+        interface's link MTU ('stack.egress_interface_mtu()') when
+        'stack.pmtu_cache' has no entry for the connected remote —
+        Linux's same per-destination link-MTU fallback.
 
         Reference: RFC 1122 §3.4 (GET_MAXSIZES fallback to link MTU).
         """
@@ -1924,11 +1925,11 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
         s._remote_ip_address = Ip4Address("10.0.0.99")
         s._remote_port = 5678
 
-        with patch.object(_stack, "interface_mtu", 1500, create=True):
+        with patch.object(_stack, "egress_interface_mtu", return_value=1500):
             self.assertEqual(
                 s.getsockopt(IPPROTO_IP, IP_MTU),
                 1500,
-                msg="IP_MTU must fall back to stack.interface_mtu when no PMTU is cached.",
+                msg="IP_MTU must fall back to the egress interface MTU when no PMTU is cached.",
             )
 
     def test__udp_socket__ip_mtu_unconnected_raises_enotconn(self) -> None:

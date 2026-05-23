@@ -381,9 +381,11 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
         Reference: RFC 2675 §5 (jumbogram MSS=65535 wire signal).
         """
 
-        # Force the interface MTU into the jumbogram regime.
-        original_mtu = stack.interface_mtu
-        stack.interface_mtu = 70000
+        # Force the egress interface's MTU into the jumbogram regime
+        # (MSS now derives from the egress interface's link MTU, not a
+        # global — see 'stack.egress_interface_mtu').
+        original_mtu = self._packet_handler._interface_mtu
+        self._packet_handler._interface_mtu = 70000
         try:
             session = self._make_active_session_ip6(iss=LOCAL__ISS)
             session.tcp_fsm(syscall=SysCall.CONNECT)
@@ -408,7 +410,7 @@ class TestTcpSession__Ip6(TcpSessionTestCase):
                 ),
             )
         finally:
-            stack.interface_mtu = original_mtu
+            self._packet_handler._interface_mtu = original_mtu
 
     def test__ipv6__inbound_mss_65535_clamped_by_local_mtu(self) -> None:
         """

@@ -605,9 +605,10 @@ class socket(ABC):
         (which prefers the active PLPMTUD engine state in
         'stack.pmtu_state' and falls back to the legacy
         classical-PMTUD scalar in 'stack.pmtu_cache') when
-        present, otherwise the configured 'stack.interface_mtu'
-        as a link-layer fallback (matching Linux's IP_MTU
-        semantics).
+        present, otherwise the link MTU of the interface the FIB
+        selects to egress toward the peer
+        ('stack.egress_interface_mtu()') as a link-layer fallback
+        (matching Linux's IP_MTU semantics).
 
         Raises 'OSError(ENOTCONN)' when the socket has no
         connected remote, mirroring Linux 'ip(7)' / 'ipv6(7)' —
@@ -624,7 +625,11 @@ class socket(ABC):
         current = _stack.current_pmtu(self._remote_ip_address)
         if current is not None:
             return current
-        return _stack.interface_mtu
+        # No PMTU signal yet — report the egress interface's link MTU
+        # (per-destination on a multi-homed host). Falls back to the
+        # default link MTU when no egress can be resolved, preserving the
+        # retired 'stack.interface_mtu' default value.
+        return _stack.egress_interface_mtu(self._remote_ip_address) or _stack.INTERFACE__TAP__MTU
 
     def _effective_ip4_options(self) -> Ip4Options | None:
         """

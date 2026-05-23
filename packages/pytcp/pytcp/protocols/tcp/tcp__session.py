@@ -200,7 +200,7 @@ class TcpSession:
         # snd_wsc, max_window, rcv_mss, rcv_wsc, rcv_wnd_max).
         # See 'state/tcp__state__window.py'.
         self._win: WindowState = WindowState()
-        self._win.rcv_mss = stack.interface_mtu - self._ip_tcp_overhead
+        self._win.rcv_mss = self._egress_interface_mtu() - self._ip_tcp_overhead
 
         # RFC 4821 / RFC 8899 per-session PLPMTUD adapter.
         # Wraps a PmtuSearch engine bound to the remote
@@ -211,7 +211,7 @@ class TcpSession:
         # state is shared across sessions to the same peer.
         self._plpmtud_adapter: TcpPlpmtudAdapter = TcpPlpmtudAdapter(
             remote_ip_address=remote_ip_address,
-            interface_mtu=stack.interface_mtu,
+            interface_mtu=self._egress_interface_mtu(),
         )
         # Linux 'tcp_mtu_probing' sysctl equivalent. Default
         # OFF matching Linux's tcp_mtu_probing=0 — operators
@@ -529,6 +529,17 @@ class TcpSession:
         # '_cancel_timer' / '_kick_pump' and the 'tcp_fsm' tail)
         # drives both logical-timer servicing and the 'tx_pump'
         # FSM-pump (§5.6/§5.7).
+
+    def _egress_interface_mtu(self) -> int:
+        """
+        Return the link MTU of the interface that egresses toward this
+        session's remote — the per-destination input to MSS computation
+        (RFC 6691 §2). Falls back to the default link MTU when no egress
+        can be resolved (a reduced context with no interface registered),
+        preserving the value the retired 'stack.interface_mtu' global held.
+        """
+
+        return stack.egress_interface_mtu(self._remote_ip_address) or stack.INTERFACE__TAP__MTU
 
     def _arm_timer(self, name: str, delay_ms: int, /) -> None:
         """
@@ -2167,7 +2178,7 @@ class TcpSession:
         # as 'option absent'.
         self._win.snd_mss = max(
             TCP__MIN_MSS,
-            min(packet_rx_md.tcp__mss, stack.interface_mtu - self._ip_tcp_overhead),
+            min(packet_rx_md.tcp__mss, self._egress_interface_mtu() - self._ip_tcp_overhead),
         )
         self._win.snd_wnd = packet_rx_md.tcp__win
         self._win.max_window = self._win.snd_wnd

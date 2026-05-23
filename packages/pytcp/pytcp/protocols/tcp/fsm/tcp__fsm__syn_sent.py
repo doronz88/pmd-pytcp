@@ -251,7 +251,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # malformed 0, is treated as 'option absent').
             session._win.snd_mss = max(
                 TCP__MIN_MSS,
-                min(packet_rx_md.tcp__mss, stack.interface_mtu - session._ip_tcp_overhead),
+                min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
             )
             # Initial '_snd_wnd' = peer's literal SYN+ACK win
             # (unshifted per RFC 7323 §2.2 - "WSopt is not used
@@ -468,7 +468,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             # 'TCP__MIN_MSS = 536'.
             session._win.snd_mss = max(
                 TCP__MIN_MSS,
-                min(packet_rx_md.tcp__mss, stack.interface_mtu - session._ip_tcp_overhead),
+                min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
             )
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2.

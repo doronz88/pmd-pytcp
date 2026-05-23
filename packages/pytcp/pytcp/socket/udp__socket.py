@@ -913,14 +913,16 @@ class UdpSocket(socket):
         Lazy-allocate the per-socket PLPMTUD adapter on first
         ICMP / probe event. Returns None when the socket has no
         connected remote (probing requires a fixed destination)
-        or 'stack.interface_mtu' is unset (unit-test fixtures).
+        or no egress interface MTU can be resolved for the peer
+        (a reduced context — e.g. unit-test fixtures with no
+        interface registered).
         """
 
         if self._plpmtud_adapter is not None:
             return self._plpmtud_adapter
         if self._remote_ip_address.is_unspecified:
             return None
-        iface_mtu = stack.__dict__.get("interface_mtu")
+        iface_mtu = stack.egress_interface_mtu(self._remote_ip_address)
         if iface_mtu is None:
             return None
         self._plpmtud_adapter = UdpPlpmtudAdapter(

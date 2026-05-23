@@ -43,7 +43,7 @@ from pytcp.protocols.tcp.tcp__session import TcpSession
 class _TcpSessionFixture(TestCase):
     """
     Shared fixture that patches 'stack.timer' (to avoid registering
-    a real timer callback) and 'stack.interface_mtu' (so the
+    a real timer callback) and 'stack.egress_interface_mtu' (so the
     session's MSS seed resolves deterministically).
     """
 
@@ -66,9 +66,8 @@ class _TcpSessionFixture(TestCase):
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.interface_mtu",
-            1500,
-            create=True,
+            "pytcp.protocols.tcp.tcp__session.stack.egress_interface_mtu",
+            return_value=1500,
         )
         self._mtu_patch.start()
 
@@ -195,7 +194,7 @@ class TestTcpSessionInit(_TcpSessionFixture):
         self.assertEqual(
             session._win.rcv_mss,
             1500 - 40,
-            msg="TcpSession._win.rcv_mss must default to stack.interface_mtu - 40.",
+            msg="TcpSession._win.rcv_mss must default to the egress interface MTU - 40.",
         )
 
     def test__tcp_session__init_syn_numbers_are_consistent(self) -> None:

@@ -69,9 +69,8 @@ class _TcpSessionFsmFixture(TestCase):
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.interface_mtu",
-            1500,
-            create=True,
+            "pytcp.protocols.tcp.tcp__session.stack.egress_interface_mtu",
+            return_value=1500,
         )
         self._mtu_patch.start()
 
