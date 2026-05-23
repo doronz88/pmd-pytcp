@@ -48,13 +48,18 @@ from net_addr import (
     MacAddress,
 )
 from net_proto.lib.buffer import Buffer
+from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
 from pytcp.runtime.fib import Route, RouteProtocol
-from pytcp.runtime.packet_handler import PacketHandlerL2, packet_handler__ip6_frag__tx
+from pytcp.runtime.packet_handler import (
+    PacketHandlerL2,
+    PacketHandlerL3,
+    packet_handler__ip6_frag__tx,
+)
 from pytcp.runtime.tx_ring import TxRing
 
 # # #  IPv4
@@ -150,6 +155,39 @@ _STACK__PATCHED_ATTRS: tuple[str, ...] = (
 )
 
 
+class AddedInterface:
+    """
+    Handle to an extra interface installed by
+    'NetworkTestCase._add_interface' — the multi-homed-host test
+    affordance. Exposes the per-interface packet handler, the list of
+    frames that interface has emitted (its own mocked TX ring records
+    into it), and a 'drive_rx' that feeds an inbound frame into THIS
+    interface and returns the frames it produced in response.
+    """
+
+    def __init__(self, *, handler: PacketHandlerL2, frames_tx: list[bytes]) -> None:
+        self.handler = handler
+        self.frames_tx = frames_tx
+
+    @property
+    def ifindex(self) -> int:
+        """
+        Return the registry index this interface was allocated.
+        """
+
+        return self.handler._ifindex
+
+    def drive_rx(self, *, frame: bytes) -> list[bytes]:
+        """
+        Feed 'frame' into this interface's handler and return the TX
+        frames it produced as a direct result.
+        """
+
+        before = len(self.frames_tx)
+        self.handler._phrx_ethernet(PacketRx(frame))
+        return list(self.frames_tx[before:])
+
+
 class NetworkTestCase(TestCase):
     """
     Base class for all unit tests that require mock network.
@@ -161,6 +199,7 @@ class NetworkTestCase(TestCase):
 
     _stack__attr_snapshot: dict[str, object]
     _ip6_flow_label_generation_prior: int
+    _interfaces_snapshot: dict[int, PacketHandlerL2 | PacketHandlerL3]
 
     def setUp(self) -> None:
         """
@@ -336,6 +375,89 @@ class NetworkTestCase(TestCase):
         )
         self._frag_id_patch.start()
 
+        # Snapshot the interface registry (just the boot interface that
+        # 'mock__init' installed) so any extra interface a test adds via
+        # '_add_interface' is removed in 'tearDown' and cannot leak into
+        # a sibling test (§5.4 module-state-on-touch).
+        self._interfaces_snapshot = dict(stack.interfaces)
+
+    def _add_interface(
+        self,
+        *,
+        mac_address: MacAddress,
+        ip4_host: Ip4IfAddr | None = None,
+        ip6_host: Ip6IfAddr | None = None,
+        arp_entries: dict[Ip4Address, MacAddress | None] | None = None,
+        nd_entries: dict[Ip6Address, MacAddress | None] | None = None,
+        interface_mtu: int = 1500,
+    ) -> AddedInterface:
+        """
+        Install an additional L2 interface alongside the boot interface
+        — the multi-homed-host (N>1) test affordance. Builds a real
+        'PacketHandlerL2' with its OWN mocked TX ring (recording into a
+        per-interface frame list), its own ARP / ND caches driven by the
+        supplied 'arp_entries' / 'nd_entries' tables (unknown lookups
+        raise, matching the boot interface's strict-mock semantics), and
+        the supplied addresses; registers it in 'stack.interfaces' under
+        a freshly allocated ifindex. Returns an 'AddedInterface' handle.
+        The registry is restored in 'tearDown' from the setUp snapshot.
+        """
+
+        frames_tx: list[bytes] = []
+
+        def _enqueue(packet_tx: EthernetAssembler) -> None:
+            buffers: list[Buffer] = []
+            packet_tx.assemble(buffers)
+            frames_tx.append(b"".join(buffers))
+
+        mock_tx_ring = create_autospec(TxRing, spec_set=True)
+        mock_tx_ring.enqueue.side_effect = _enqueue
+        mock_tx_ring.dispatch.side_effect = lambda run: run()
+        mock_tx_ring.dispatch_async.side_effect = lambda run: run()
+
+        arp_table = dict(arp_entries or {})
+
+        def _arp_find(*, ip4_address: Ip4Address) -> MacAddress | None:
+            if ip4_address not in arp_table:
+                raise AssertionError(f"Unexpected 'ArpCache.find_entry' call. Got: {ip4_address=}")
+            return arp_table[ip4_address]
+
+        mock_arp_cache = create_autospec(ArpCache, spec_set=True)
+        mock_arp_cache.find_entry.side_effect = _arp_find
+        mock_arp_cache.add_entry.return_value = None
+
+        nd_table = dict(nd_entries or {})
+
+        def _nd_find(*, ip6_address: Ip6Address) -> MacAddress | None:
+            if ip6_address not in nd_table:
+                raise AssertionError(f"Unexpected 'NdCache.find_entry' call. Got: {ip6_address=}")
+            return nd_table[ip6_address]
+
+        mock_nd_cache = create_autospec(NdCache, spec_set=True)
+        mock_nd_cache.find_entry.side_effect = _nd_find
+        mock_nd_cache.add_entry.return_value = None
+
+        handler = PacketHandlerL2(mac_address=mac_address, interface_mtu=interface_mtu)
+        handler._ip4_ifaddr = [ip4_host] if ip4_host is not None else []
+        handler._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
+        handler._ip6_ifaddr = [ip6_host] if ip6_host is not None else []
+        if ip6_host is not None:
+            handler._mac_multicast = [ip6_host.address.solicited_node_multicast.multicast_mac]
+            handler._ip6_multicast = [
+                IP6__MULTICAST__ALL_NODES,
+                ip6_host.address.solicited_node_multicast,
+            ]
+        handler._tx_ring = cast(TxRing, mock_tx_ring)
+        handler._arp_cache = cast(ArpCache, mock_arp_cache)
+        handler._nd_cache = cast(NdCache, mock_nd_cache)
+        handler._route_api = stack.route
+
+        # 'add' allocates the next free ifindex (boot interface is 1) and
+        # stamps it onto the handler, under the registry lock.
+        stack.interfaces.add(handler)
+
+        return AddedInterface(handler=handler, frames_tx=frames_tx)
+
     def tearDown(self) -> None:
         """
         Restore the stack globals patched in 'setUp' so test-only
@@ -344,6 +466,11 @@ class NetworkTestCase(TestCase):
         """
 
         self._frag_id_patch.stop()
+
+        # Drop any interface a test added via '_add_interface', restoring
+        # the registry to the boot-interface-only snapshot from setUp.
+        stack.interfaces.clear()
+        stack.interfaces.update(self._interfaces_snapshot)
 
         stack.__dict__.update(self._stack__attr_snapshot)
 

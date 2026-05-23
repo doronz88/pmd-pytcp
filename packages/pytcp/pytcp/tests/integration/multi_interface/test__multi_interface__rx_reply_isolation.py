@@ -40,28 +40,18 @@ pytcp/tests/integration/multi_interface/test__multi_interface__rx_reply_isolatio
 ver 3.0.6
 """
 
-from typing import cast
 from unittest import TestCase
-from unittest.mock import create_autospec
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip6IfAddr, MacAddress
 from net_proto import Icmp4MessageEchoRequest
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
-from pytcp import stack
-from pytcp.protocols.arp.arp__cache import ArpCache
-from pytcp.protocols.icmp6.nd.nd__cache import NdCache
-from pytcp.runtime.packet_handler import PacketHandlerL2
-from pytcp.runtime.tx_ring import TxRing
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
-    IP4__MULTICAST__ALL_NODES,
-    IP6__MULTICAST__ALL_NODES,
     STACK__IP4_HOST,
     STACK__MAC_ADDRESS,
 )
@@ -110,75 +100,35 @@ class TestMultiInterfaceRxReplyIsolation(IcmpTestCase, TestCase):
 
     def setUp(self) -> None:
         """
-        Build a second L2 interface on a distinct subnet on top of the
-        ICMP harness boot interface, give it its own TX ring (recording
-        into a separate frame list) and its own ARP / ND caches, and
-        register it in 'stack.interfaces' under ifindex 2. The registry
-        is snapshotted so 'tearDown' restores it.
+        Add a second L2 interface on a distinct subnet on top of the ICMP
+        harness boot interface via the reusable '_add_interface' helper —
+        it gets its own TX ring, its own ARP / ND caches (driven by the
+        iface-2 peer entry), and ifindex 2. The base harness snapshots /
+        restores 'stack.interfaces'.
         """
 
         super().setUp()
 
-        self._interfaces_prior = dict(stack.interfaces)
+        self._iface2 = self._add_interface(
+            mac_address=IFACE2__MAC_ADDRESS,
+            ip4_host=IFACE2__IP4_HOST,
+            ip6_host=IFACE2__IP6_HOST,
+            arp_entries={IFACE2__PEER__IP4_ADDRESS: IFACE2__PEER__MAC_ADDRESS},
+        )
 
-        self._frames_tx_2: list[bytes] = []
-
-        def _mock_enqueue_2(packet_tx: EthernetAssembler) -> None:
-            buffers: list[Buffer] = []
-            packet_tx.assemble(buffers)
-            self._frames_tx_2.append(b"".join(buffers))
-
-        mock_tx_ring_2 = create_autospec(TxRing, spec_set=True)
-        mock_tx_ring_2.enqueue.side_effect = _mock_enqueue_2
-        mock_tx_ring_2.dispatch.side_effect = lambda run: run()
-        mock_tx_ring_2.dispatch_async.side_effect = lambda run: run()
-
-        def _mock_arp_find_entry_2(*, ip4_address: Ip4Address) -> MacAddress | None:
-            if ip4_address == IFACE2__PEER__IP4_ADDRESS:
-                return IFACE2__PEER__MAC_ADDRESS
-            raise AssertionError(f"Unexpected iface-2 'ArpCache.find_entry' call. Got: {ip4_address=}")
-
-        mock_arp_cache_2 = create_autospec(ArpCache, spec_set=True)
-        mock_arp_cache_2.find_entry.side_effect = _mock_arp_find_entry_2
-        mock_nd_cache_2 = create_autospec(NdCache, spec_set=True)
-
-        handler_2 = PacketHandlerL2(mac_address=IFACE2__MAC_ADDRESS, interface_mtu=1500)
-        handler_2._ifindex = IFACE2__IFINDEX
-        handler_2._mac_multicast = [IFACE2__IP6_HOST.address.solicited_node_multicast.multicast_mac]
-        handler_2._ip4_ifaddr = [IFACE2__IP4_HOST]
-        handler_2._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
-        handler_2._ip6_ifaddr = [IFACE2__IP6_HOST]
-        handler_2._ip6_multicast = [
-            IP6__MULTICAST__ALL_NODES,
-            IFACE2__IP6_HOST.address.solicited_node_multicast,
-        ]
-        handler_2._tx_ring = cast(TxRing, mock_tx_ring_2)
-        handler_2._arp_cache = cast(ArpCache, mock_arp_cache_2)
-        handler_2._nd_cache = cast(NdCache, mock_nd_cache_2)
-        handler_2._route_api = stack.route
-
-        self._packet_handler_2 = handler_2
-        stack.interfaces[IFACE2__IFINDEX] = handler_2
-
-    def tearDown(self) -> None:
+    def test__multi_interface__second_interface_gets_next_ifindex(self) -> None:
         """
-        Restore the interface registry to its pre-test contents.
+        Ensure '_add_interface' allocates the next free ifindex after the
+        boot interface (ifindex 1), so the second interface is ifindex 2.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stack.interfaces.clear()
-        stack.interfaces.update(self._interfaces_prior)
-
-        super().tearDown()
-
-    def _drive_rx_iface2(self, *, frame: bytes) -> list[bytes]:
-        """
-        Feed 'frame' into the second interface's handler and return the
-        TX frames that interface produced as a direct result.
-        """
-
-        before = len(self._frames_tx_2)
-        self._packet_handler_2._phrx_ethernet(PacketRx(frame))
-        return list(self._frames_tx_2[before:])
+        self.assertEqual(
+            self._iface2.ifindex,
+            IFACE2__IFINDEX,
+            msg="The second interface must be allocated ifindex 2 (after the boot interface's 1).",
+        )
 
     def test__multi_interface__echo_to_iface1__reply_only_on_iface1(self) -> None:
         """
@@ -205,7 +155,7 @@ class TestMultiInterfaceRxReplyIsolation(IcmpTestCase, TestCase):
             msg="Echo Request to interface 1 must produce exactly one reply on interface 1.",
         )
         self.assertEqual(
-            self._frames_tx_2,
+            self._iface2.frames_tx,
             [],
             msg="Interface 2 must emit nothing for a frame that ingressed on interface 1.",
         )
@@ -226,7 +176,7 @@ class TestMultiInterfaceRxReplyIsolation(IcmpTestCase, TestCase):
         Reference: RFC 1122 §3.2.2.6 (host SHOULD reply to unicast Echo).
         """
 
-        frames_tx_2 = self._drive_rx_iface2(
+        frames_tx_2 = self._iface2.drive_rx(
             frame=_build_icmp4_echo_frame(
                 eth_src=IFACE2__PEER__MAC_ADDRESS,
                 eth_dst=IFACE2__MAC_ADDRESS,
