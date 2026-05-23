@@ -3551,10 +3551,18 @@ class TcpSession:
         not fire the hook.
         """
 
+        # The peer's neighbor entry lives in the EGRESS interface's
+        # cache (Linux keys ARP / ND per ifindex). Resolve the egress
+        # interface and feed its own cache — the Phase-6 successor to the
+        # bare 'stack.arp_cache' / 'stack.nd_cache' singletons.
+        # Phase 3: a dedicated neighbor-control API will replace this
+        # reach-through into the handler's '_arp_cache' / '_nd_cache'.
+        handler = stack.egress_packet_handler()
         if isinstance(self._remote_ip_address, Ip4Address):
-            stack.arp_cache.confirm_reachability(ip4_address=self._remote_ip_address)
-        else:
-            stack.nd_cache.confirm_reachability(ip6_address=self._remote_ip_address)
+            if handler._arp_cache is not None:
+                handler._arp_cache.confirm_reachability(ip4_address=self._remote_ip_address)
+        elif handler._nd_cache is not None:
+            handler._nd_cache.confirm_reachability(ip6_address=self._remote_ip_address)
 
     def _process_ack_packet(self, packet_rx_md: TcpMetadata) -> None:
         """
