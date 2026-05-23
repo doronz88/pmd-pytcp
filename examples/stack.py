@@ -211,17 +211,31 @@ def cli(
     if subsystems is None:
         subsystems = []
 
-    stack.init(
+    # Daemon-shaped boot: bring the stack core up with no interface,
+    # then attach the operator's interface as a runtime device. This is
+    # the 'ip link add' / RTM_NEWLINK flow — 'init()' is the kernel boot,
+    # 'add_interface()' registers the NIC, 'start()' brings it up.
+    stack.init()
+
+    # No static IPv4 address means autoconfigure via DHCPv4 (the legacy
+    # 'init()' None-resolution, made explicit here).
+    ip4_dhcp = stack__ip4_support and stack__ip4_host is None
+    # No static IPv6 address means SLAAC (GUA) autoconfiguration.
+    ip6_gua_autoconfig = stack__ip6_support and stack__ip6_host is None
+
+    stack.add_interface(
         **interface_args,
         ip6_support=stack__ip6_support,
         ip6_host=stack__ip6_host,
+        ip6_gua_autoconfig=ip6_gua_autoconfig,
         ip4_support=stack__ip4_support,
         ip4_host=stack__ip4_host,
+        ip4_dhcp=ip4_dhcp,
     )
 
     # The next hop is FIB state, not a per-IfAddr attribute.
     # Install the operator-supplied default gateway through the
-    # Route API after init() built the FIBs.
+    # Route API (the FIBs were built by 'init()').
     if stack__ip6_support and stack__ip6_gateway is not None:
         stack.route.replace_default_ip6(gateway=stack__ip6_gateway, protocol=RouteProtocol.BOOT)
     if stack__ip4_support and stack__ip4_gateway is not None:

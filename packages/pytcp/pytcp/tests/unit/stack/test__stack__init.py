@@ -1607,3 +1607,140 @@ class TestStackInitZeroInterface(TestCase):
             stack.interfaces,
             msg="add_interface after zero-interface init() must register the device.",
         )
+
+
+class TestAddInterfacePerInterfaceSubsystems(TestCase):
+    """
+    The 'add_interface' per-interface DHCPv4 / link-local construction
+    tests — the subsystems move out of 'init()' so each interface owns
+    its own client(s), bound to that interface via 'interface(ifindex)'.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bring the stack core up with a zero-interface 'init()' and
+        snapshot the singletons the tests rebind. Suppress log lines.
+        """
+
+        log_patch = patch("pytcp.stack.log")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+        subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
+        subsystem_log_patch.start()
+        self.addCleanup(subsystem_log_patch.stop)
+
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in (
+                "timer",
+                "interfaces",
+                "rx_ring",
+                "tx_ring",
+                "arp_cache",
+                "nd_cache",
+                "packet_handler",
+                "address",
+                "link",
+                "route",
+                "ip4_fib",
+                "ip6_fib",
+                "dhcp4_client",
+                "link_local",
+                "interface_mtu",
+                "stack_initialized",
+                "stack_running",
+            )
+        }
+        stack.init()
+        stack.stack_running = False
+        # Patch the per-interface subsystem build so construction is a
+        # cheap mock (autospec on the class) while the handler itself is
+        # real, so 'interface(ifindex).mac_address' resolves.
+        self._ring_patches = (
+            patch.object(stack.lifecycle, "TxRing"),
+            patch.object(stack.lifecycle, "RxRing"),
+            patch.object(stack.lifecycle, "ArpCache"),
+            patch.object(stack.lifecycle, "NdCache"),
+        )
+        for p in self._ring_patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def tearDown(self) -> None:
+        """
+        Restore the snapshot so subsequent tests start clean.
+        """
+
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+
+    def test__add_interface__builds_dhcp_client_when_requested(self) -> None:
+        """
+        Ensure 'add_interface' on an L2 interface with 'ip4_dhcp=True'
+        constructs a DHCPv4 client and installs it as the stack's
+        client — the per-interface DHCP subsystem owned by the device.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch.object(stack.lifecycle, "Dhcp4Client") as dhcp_cls:
+            add_interface(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+                ip4_dhcp=True,
+            )
+
+        self.assertIs(
+            stack.dhcp4_client,
+            dhcp_cls.return_value,
+            msg="add_interface(ip4_dhcp=True) must build and install a DHCPv4 client.",
+        )
+
+    def test__add_interface__no_dhcp_client_when_not_requested(self) -> None:
+        """
+        Ensure 'add_interface' with 'ip4_dhcp=False' (the default) builds
+        no DHCPv4 client — the slot stays None.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        add_interface(
+            fd=-1,
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+            ip4_dhcp=False,
+        )
+
+        self.assertIsNone(
+            stack.dhcp4_client,
+            msg="add_interface(ip4_dhcp=False) must not build a DHCPv4 client.",
+        )
+
+    def test__add_interface__builds_link_local_when_requested(self) -> None:
+        """
+        Ensure 'add_interface' on an L2 interface with
+        'ip4_link_local=True' constructs the RFC 3927 link-local client
+        and installs it as the stack's link-local subsystem.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pytcp.protocols.ip4.link_local.link_local__client.Ip4LinkLocal") as ll_cls:
+            add_interface(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+                ip4_link_local=True,
+            )
+
+        self.assertIs(
+            stack.link_local,
+            ll_cls.return_value,
+            msg="add_interface(ip4_link_local=True) must build and install a link-local client.",
+        )

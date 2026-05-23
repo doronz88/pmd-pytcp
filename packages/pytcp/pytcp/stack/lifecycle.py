@@ -214,6 +214,7 @@ def add_interface(
     ip4_support: bool = True,
     ip4_host: Ip4IfAddr | None = None,
     ip4_dhcp: bool = False,
+    ip4_link_local: bool = False,
     ip6_support: bool = True,
     ip6_host: Ip6IfAddr | None = None,
     ip6_gua_autoconfig: bool = False,
@@ -322,6 +323,49 @@ def add_interface(
         _stack.nd_cache = nd_cache
         if arp_cache is not None:
             _stack.arp_cache = arp_cache
+
+    # Per-interface DHCPv4 / RFC 3927 link-local subsystems (L2-only;
+    # both depend on Ethernet/ARP). Built HERE so the interface owns its
+    # own client(s) — each binds to THIS interface via the control tools'
+    # 'interface(ifindex)' view, never the bare singleton. The
+    # 'stack.dhcp4_client' / 'stack.link_local' module slots are boot
+    # shims (Phase 6: per-ifindex, parallel to 'stack.packet_handler').
+    # The control tools ('stack.address' / 'stack.link' / 'stack.route')
+    # are built by 'init()' before it delegates here, so the views
+    # resolve.
+    if layer is InterfaceLayer.L2 and ip4_dhcp:
+        # MAC + address operations route through the public Link / Address
+        # tools (bound to this interface), so DHCP construction has no
+        # reach-through into packet-handler internals. The assertion
+        # narrows 'MacAddress | None' → 'MacAddress' for mypy; on L2 the
+        # MAC is always populated.
+        address_view = _stack.address.interface(ifindex)
+        dhcp_mac = _stack.link.interface(ifindex).mac_address
+        assert dhcp_mac is not None, "L2 interface must expose a unicast MAC via the link tool."
+        _stack.dhcp4_client = Dhcp4Client(
+            mac_address=dhcp_mac,
+            arp_dad_verifier=lambda addr: address_view.probe(address=addr).success,
+            arp_dad_announcer=lambda addr: address_view.announce(address=addr),
+            address_api=address_view,
+            route_api=_stack.route,
+        )
+
+    if layer is InterfaceLayer.L2 and ip4_link_local:
+        ll_address_view = _stack.address.interface(ifindex)
+        ll_mac = _stack.link.interface(ifindex).mac_address
+        assert ll_mac is not None, "L2 interface must expose a unicast MAC via the link tool."
+        from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4State
+
+        def _is_dhcp_bound() -> bool:
+            return _stack.dhcp4_client is not None and _stack.dhcp4_client.state is Dhcp4State.BOUND
+
+        from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal as _Ip4LinkLocal
+
+        _stack.link_local = _Ip4LinkLocal(
+            mac_address=ll_mac,
+            address_api=ll_address_view,
+            is_dhcp_bound=_is_dhcp_bound,
+        )
 
     # Daemon runtime path (RTM_NEWLINK): when the stack is already
     # running, bring the new interface's subsystem threads up on the
@@ -440,62 +484,31 @@ def init(
     sysctl_module.finalize_validators()
 
     _stack.timer = Timer()
-
-    # Build the boot interface — its rings, neighbor caches and
-    # packet handler — and register it in 'stack.interfaces'.
-    # 'add_interface' also populates the N=1 back-compat singletons
-    # ('stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
-    # 'nd_cache') from this first interface; the global APIs (address /
-    # link / route) and the DHCP / link-local subsystems below bind to
-    # that boot handler. The reset to a fresh empty table makes a
-    # re-'init()' (common in long-running test harnesses) start from
-    # zero interfaces.
     _stack.interfaces = InterfaceTable(first_ifindex=_stack.STACK__DEFAULT_IFINDEX)
-    if has_interface:
-        assert fd is not None and layer is not None  # narrowed by 'has_interface'
-        add_interface(
-            fd=fd,
-            layer=layer,
-            mtu=mtu,
-            mac_address=mac_address,
-            interface_name=interface_name,
-            ip4_support=ip4_support,
-            ip4_host=ip4_host,
-            ip4_dhcp=ip4_dhcp,
-            ip6_support=ip6_support,
-            ip6_host=ip6_host,
-            ip6_gua_autoconfig=ip6_gua_autoconfig,
-            ip6_lla_autoconfig=ip6_lla_autoconfig,
-        )
 
     # IPv4 address-control API + link-control surface — built as the
     # UNBOUND, device-independent "userspace tools" (the 'ip addr' /
-    # 'ip link' model), NOT pinned to the boot interface. A bare op on
-    # the unbound tool resolves the SOLE registered interface
-    # (transitional N=1 crutch in '_resolve_handler'), so DHCP /
-    # link-local / operator-config consumers reading 'stack.address.*' /
-    # 'stack.link.*' work unchanged at N=1; '.interface(ifindex)' selects
-    # a device once N>1. This is the daemon-shaped target: no privileged
-    # boot interface bound into the control APIs. See
-    # 'docs/refactor/link_api.md' and the Phase-6 plan.
+    # 'ip link' model), NOT pinned to a boot interface. A bare op on the
+    # unbound tool resolves the SOLE registered interface (transitional
+    # N=1 crutch in '_resolve_handler'); '.interface(ifindex)' selects a
+    # device once N>1. Built BEFORE 'add_interface' so the per-interface
+    # DHCP / link-local subsystems it constructs can bind to their own
+    # 'interface(ifindex)' view. See 'docs/refactor/link_api.md'.
     _stack.address = Ip4AddressApi()
     _stack.link = LinkApi()
 
     # Host-mode routing table — Phase 3 of
-    # 'docs/refactor/routing_table_host_mode.md'. Build the two
-    # FIBs and install the static boot-config gateway as the
-    # 'protocol=BOOT' default route. The Phase-1 dual-write is
-    # gone: 'Ip{4,6}IfAddr.gateway' is no longer written (the
-    # ctor calls above dropped 'gateway='), so the FIB is the
-    # single source of truth for the next hop. DHCP / RA /
-    # autoconfig install their learned gateway at runtime via
+    # 'docs/refactor/routing_table_host_mode.md'. Build the two FIBs and
+    # the Route API BEFORE 'add_interface' so the latter injects
+    # '_route_api' into the new handler itself (no separate post-injection
+    # needed). The static boot-config gateway is a boot-interface
+    # convenience installed only when an interface is built; with zero
+    # interfaces the FIBs come up empty (a daemon adds routes as
+    # interfaces + addresses attach). The next hop is FIB state — DHCP /
+    # RA / autoconfig install their learned gateway at runtime via
     # 'RouteApi.replace_default_ip{4,6}'.
     ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
     ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
-    # The static boot-config gateway is a boot-interface convenience;
-    # with no interface there is nothing for that next hop to be on-link
-    # with, so the FIBs come up empty (a daemon adds routes as interfaces
-    # + addresses attach).
     if has_interface:
         install_boot_default_routes(
             ip4_fib=ip4_fib,
@@ -507,71 +520,35 @@ def init(
     _stack.ip6_fib = ip6_fib
     _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
-    # Inject the routing-control API into the boot handler so the RX RA
-    # path drives the default route through 'self._route_api' instead of
-    # reaching 'stack.route'. Route state is global (shared across
-    # interfaces); the injection just makes the dependency explicit.
-    # Skipped with no interface (no handler to inject into).
+    # Per-interface subsystem slots default to None; 'add_interface'
+    # populates them (boot shims) when it builds a DHCP / link-local
+    # client for an L2 interface. With zero interfaces they stay None.
+    _stack.dhcp4_client = None
+    _stack.link_local = None
+
+    # Boot interface (interim back-compat convenience): when 'fd' /
+    # 'layer' are supplied, delegate to 'add_interface', which builds the
+    # rings + neighbor caches + handler, populates the N=1 back-compat
+    # singletons, injects the Route API, and constructs this interface's
+    # own DHCPv4 / link-local subsystems. With no 'fd' / 'layer' the
+    # stack stays at zero interfaces (the daemon resting state).
     if has_interface:
-        _stack.packet_handler._route_api = _stack.route
-
-    # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
-    # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
-    # cannot do DHCP). Wired with the address API's RFC 5227 §2.1.1
-    # probe and §2.3 announce surfaces as callbacks; the lifecycle
-    # never reaches into 'packet_handler' internals directly — the
-    # API is the Phase-3-clean kernel/userspace boundary surface.
-    if ip4_dhcp and layer is InterfaceLayer.L2:
-        # MAC is read via the Link API surface so DHCP construction
-        # has no reach-through into packet handler internals. The
-        # 'mac is not None' assertion narrows
-        # 'MacAddress | None' → 'MacAddress' for mypy; on L2 the
-        # MAC is always populated.
-        dhcp_mac = _stack.link.mac_address
-        assert dhcp_mac is not None, "L2 stack must expose a unicast MAC via stack.link.mac_address."
-        # Adapters that match the callback shape DHCP expects while
-        # routing through the sanctioned address-API methods. The
-        # 'address' singleton is bound to 'packet_handler' above so
-        # the call chain ends up at the same RFC 5227 helpers, but
-        # via the public API surface rather than a reach-through.
-        _address_api = _stack.address
-        _stack.dhcp4_client = Dhcp4Client(
-            mac_address=dhcp_mac,
-            arp_dad_verifier=lambda addr: _address_api.probe(address=addr).success,
-            arp_dad_announcer=lambda addr: _address_api.announce(address=addr),
-            address_api=_stack.address,
-            route_api=_stack.route,
+        assert fd is not None and layer is not None  # narrowed by 'has_interface'
+        add_interface(
+            fd=fd,
+            layer=layer,
+            mtu=mtu,
+            mac_address=mac_address,
+            interface_name=interface_name,
+            ip4_support=ip4_support,
+            ip4_host=ip4_host,
+            ip4_dhcp=bool(ip4_dhcp),
+            ip4_link_local=ip4_link_local,
+            ip6_support=ip6_support,
+            ip6_host=ip6_host,
+            ip6_gua_autoconfig=bool(ip6_gua_autoconfig),
+            ip6_lla_autoconfig=ip6_lla_autoconfig,
         )
-    else:
-        _stack.dhcp4_client = None
-
-    # RFC 3927 IPv4 Link-Local autoconfig client subsystem.
-    # Constructed only on L2 (link-local depends on Ethernet/ARP);
-    # operator opts in via 'ip4_link_local=True'. The 'is_dhcp_bound'
-    # closure reads 'dhcp4_client.state' via the public 'state'
-    # property so the link-local subsystem can implement RFC 3927
-    # §1.9 / §2.11 coordination without reaching into DHCP
-    # internals. When no DHCP client exists the closure returns
-    # False and the link-local fallback timer kicks immediately.
-    if ip4_link_local and layer is InterfaceLayer.L2:
-        # MAC is read via the Link API surface, same pattern as
-        # the DHCP block above.
-        ll_mac = _stack.link.mac_address
-        assert ll_mac is not None, "L2 stack must expose a unicast MAC via stack.link.mac_address."
-        from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4State
-
-        def _is_dhcp_bound() -> bool:
-            return _stack.dhcp4_client is not None and _stack.dhcp4_client.state is Dhcp4State.BOUND
-
-        from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal as _Ip4LinkLocal
-
-        _stack.link_local = _Ip4LinkLocal(
-            mac_address=ll_mac,
-            address_api=_stack.address,
-            is_dhcp_bound=_is_dhcp_bound,
-        )
-    else:
-        _stack.link_local = None
 
     _stack.interface_mtu = mtu
     _stack.stack_initialized = True
