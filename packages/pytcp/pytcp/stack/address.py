@@ -154,6 +154,27 @@ class Ip4AddressApi:
         self._packet_handler = packet_handler
         self._subscriptions = _Subscriptions()
 
+    def interface(self, ifindex: int, /) -> "Ip4AddressApi":
+        """
+        Return an 'Ip4AddressApi' bound to the interface registered
+        under 'ifindex' — the device selector, Linux 'ip addr … dev
+        <ifX>' equivalent. Every read / mutation on the returned
+        binding operates on that interface's address list. Raises
+        'KeyError' when no interface is registered under 'ifindex'.
+
+        The returned binding has its OWN conflict-subscription registry
+        (subscriptions live on the API instance, per '__init__'), so a
+        consumer that subscribes via 'interface(ifindex)' must hold the
+        returned binding to later unsubscribe through it. Per-interface
+        conflict-event fan-out is not yet wired from the RX ARP path;
+        when it lands, subscription ownership moves to a per-ifindex
+        registry so events route to the right interface's subscribers.
+        """
+
+        from pytcp import stack
+
+        return Ip4AddressApi(packet_handler=stack.interfaces[ifindex])
+
     def add_ifaddr(self, *, ip4_ifaddr: Ip4IfAddr) -> None:
         """
         Install 'ip4_ifaddr' on the stack's IPv4 address list —

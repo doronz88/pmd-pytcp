@@ -36,6 +36,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
+from pytcp import stack
+from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.stack.address import (
     ConflictEvent,
     Ip4AddressApi,
@@ -883,3 +885,74 @@ class TestIp4AddressApiAbortBoundTcpSessionsPublic(TestCase):
             self._api.abort_bound_tcp_sessions(address=target)
 
         helper.assert_called_once_with(target)
+
+
+class TestIp4AddressApiInterfaceSelector(TestCase):
+    """
+    The 'Ip4AddressApi.interface(ifindex)' device-selector tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Register two fake interfaces in a fresh 'stack.interfaces'
+        table; bind the API singleton to interface 1.
+        """
+
+        self._iface_1 = _FakePacketHandler()
+        self._iface_2 = _FakePacketHandler()
+        table = InterfaceTable()
+        table[1] = cast("PacketHandlerL2", self._iface_1)
+        table[2] = cast("PacketHandlerL2", self._iface_2)
+        self.enterContext(patch.object(stack, "interfaces", table))
+        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._iface_1))
+
+    def test__address_api__interface__add_ifaddr_lands_on_named_interface(self) -> None:
+        """
+        Ensure 'interface(ifindex).add_ifaddr' installs the address on
+        that interface's own '_ip4_ifaddr' list, leaving other
+        interfaces' address lists untouched.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        host = Ip4IfAddr("10.0.2.7/24")
+        self._api.interface(2).add_ifaddr(ip4_ifaddr=host)
+
+        self.assertEqual(
+            self._iface_2._ip4_ifaddr,
+            [host],
+            msg="interface(2).add_ifaddr must install on interface 2's address list.",
+        )
+        self.assertEqual(
+            self._iface_1._ip4_ifaddr,
+            [],
+            msg="interface 1's address list must be untouched.",
+        )
+
+    def test__address_api__interface__list_reads_named_interface(self) -> None:
+        """
+        Ensure 'interface(ifindex).list_ip4_ifaddrs' reads that
+        interface's own address list.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        host = Ip4IfAddr("10.0.2.7/24")
+        self._iface_2._ip4_ifaddr = [host]
+
+        self.assertEqual(
+            self._api.interface(2).list_ip4_ifaddrs(),
+            (host,),
+            msg="interface(2).list_ip4_ifaddrs must read interface 2's address list.",
+        )
+
+    def test__address_api__interface__unknown_ifindex_raises(self) -> None:
+        """
+        Ensure 'interface(ifindex)' on an unregistered ifindex raises
+        KeyError — the registry has no such device.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        with self.assertRaises(KeyError):
+            self._api.interface(99)
