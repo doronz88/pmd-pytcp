@@ -30,8 +30,8 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__udp__tx.p
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
-from unittest.mock import create_autospec
 
 from net_addr import Ip4Address, Ip6Address
 from net_proto import UdpAssembler
@@ -41,7 +41,6 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__udp__tx import (
     PacketHandlerUdpTx,
 )
-from pytcp.runtime.tx_ring import TxRing
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -79,13 +78,14 @@ class _StubHandler(PacketHandlerUdpTx):
         self._packet_stats_tx = PacketStatsTx()
         self.ip4_tx_calls: list[dict[str, object]] = []
         self.ip6_tx_calls: list[dict[str, object]] = []
-        # 'send_udp_packet' marshals '_phtx_udp' through
-        # 'TxRing.dispatch'; with no worker under test, run the
-        # callable inline so the routing still reaches '_phtx_ip4' /
-        # '_phtx_ip6' synchronously.
-        mock_tx_ring = create_autospec(TxRing, spec_set=True)
-        mock_tx_ring.dispatch.side_effect = lambda run: run()
-        self._tx_ring = mock_tx_ring
+        self.marshal_tx_calls = 0
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # 'send_udp_packet' marshals '_phtx_udp' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline so the
+        # routing still reaches '_phtx_ip4' / '_phtx_ip6' synchronously.
+        self.marshal_tx_calls += 1
+        return run()
 
     def _phtx_ip4(self, **kwargs: object) -> TxStatus:
         self.ip4_tx_calls.append(kwargs)
@@ -189,3 +189,28 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         assert isinstance(payload, UdpAssembler)
         self.assertEqual(payload.sport, 12345)
         self.assertEqual(payload.dport, 54321)
+
+    def test__stack__packet_handler__udp__tx__send_udp_packet_routes_through_marshal_tx(self) -> None:
+        """
+        Ensure 'send_udp_packet' marshals the '_phtx_udp' pipeline
+        onto the interface's TX worker via '_marshal_tx' (ring-handoff
+        single-writer) rather than calling '_phtx_udp' directly on the
+        caller's thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _StubHandler()
+        handler.send_udp_packet(
+            ip__local_address=STACK__IP4_ADDRESS,
+            ip__remote_address=HOST_A__IP4,
+            udp__local_port=12345,
+            udp__remote_port=54321,
+            udp__payload=b"hello",
+        )
+
+        self.assertEqual(
+            handler.marshal_tx_calls,
+            1,
+            msg="send_udp_packet must route the TX through _marshal_tx exactly once.",
+        )

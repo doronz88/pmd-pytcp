@@ -55,6 +55,7 @@ from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
+from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.arp.arp__constants import (
     ARP__ANNOUNCE_INTERVAL,
     ARP__ANNOUNCE_NUM,
@@ -295,6 +296,25 @@ class PacketHandler(Subsystem, ABC):
 
         if ip4_host is not None:
             self._ip4_ifaddr_candidate.append(ip4_host)
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        """
+        Marshal a '_phtx_*' pipeline call onto this interface's TX
+        worker thread (ring-handoff single-writer) and return its
+        'TxStatus'. Every stack-originated or stack-generated TX
+        operation — socket sends, RX-thread replies, timer-thread
+        retransmits, neighbor solicitations / advertisements —
+        funnels through here so the per-interface TX state
+        ('_ip4_id', stat counters, the ifaddr lists read during
+        assembly) is written by one thread only. 'TxRing.dispatch'
+        runs the call inline when there is no live worker (unit-test
+        / boot path) or when the caller is already the worker (a
+        re-entrant solicitation emitted mid-pipeline), so wrapping
+        every entry point is safe even when they nest.
+        """
+
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        return self._tx_ring.dispatch(run)
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:

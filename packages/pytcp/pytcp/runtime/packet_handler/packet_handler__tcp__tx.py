@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, Ip6Address
@@ -75,6 +76,8 @@ class PacketHandlerTcpTx(ABC):
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -303,34 +306,39 @@ class PacketHandlerTcpTx(ABC):
         tcp__payload: bytes = bytes(),
     ) -> TxStatus:
         """
-        Interface method for TCP Socket -> FPA communication.
+        Interface method for TCP Socket -> FPA communication. The
+        '_phtx_tcp' pipeline is marshaled onto this interface's TX
+        worker via '_marshal_tx' (ring-handoff single-writer); the
+        calling app / FSM-timer thread blocks for the 'TxStatus'.
         """
 
-        return self._phtx_tcp(
-            ip__src=ip__local_address,
-            ip__ecn=ip__ecn,
-            tcp__flag_ns=tcp__flag_ns,
-            ip__dst=ip__remote_address,
-            tcp__sport=tcp__local_port,
-            tcp__dport=tcp__remote_port,
-            tcp__flag_syn=tcp__flag_syn,
-            tcp__flag_ack=tcp__flag_ack,
-            tcp__flag_fin=tcp__flag_fin,
-            tcp__flag_rst=tcp__flag_rst,
-            tcp__flag_psh=tcp__flag_psh,
-            tcp__flag_ece=tcp__flag_ece,
-            tcp__flag_cwr=tcp__flag_cwr,
-            tcp__seq=tcp__seq,
-            tcp__ack=tcp__ack,
-            tcp__win=tcp__win,
-            tcp__wscale=tcp__wscale,
-            tcp__mss=tcp__mss,
-            tcp__sackperm=tcp__sackperm,
-            tcp__sack_blocks=tcp__sack_blocks,
-            tcp__tsval=tcp__tsval,
-            tcp__tsecr=tcp__tsecr,
-            tcp__fastopen_cookie=tcp__fastopen_cookie,
-            tcp__accecn0_counters=tcp__accecn0_counters,
-            tcp__accecn1_counters=tcp__accecn1_counters,
-            tcp__payload=tcp__payload,
+        return self._marshal_tx(
+            lambda: self._phtx_tcp(
+                ip__src=ip__local_address,
+                ip__ecn=ip__ecn,
+                tcp__flag_ns=tcp__flag_ns,
+                ip__dst=ip__remote_address,
+                tcp__sport=tcp__local_port,
+                tcp__dport=tcp__remote_port,
+                tcp__flag_syn=tcp__flag_syn,
+                tcp__flag_ack=tcp__flag_ack,
+                tcp__flag_fin=tcp__flag_fin,
+                tcp__flag_rst=tcp__flag_rst,
+                tcp__flag_psh=tcp__flag_psh,
+                tcp__flag_ece=tcp__flag_ece,
+                tcp__flag_cwr=tcp__flag_cwr,
+                tcp__seq=tcp__seq,
+                tcp__ack=tcp__ack,
+                tcp__win=tcp__win,
+                tcp__wscale=tcp__wscale,
+                tcp__mss=tcp__mss,
+                tcp__sackperm=tcp__sackperm,
+                tcp__sack_blocks=tcp__sack_blocks,
+                tcp__tsval=tcp__tsval,
+                tcp__tsecr=tcp__tsecr,
+                tcp__fastopen_cookie=tcp__fastopen_cookie,
+                tcp__accecn0_counters=tcp__accecn0_counters,
+                tcp__accecn1_counters=tcp__accecn1_counters,
+                tcp__payload=tcp__payload,
+            )
         )

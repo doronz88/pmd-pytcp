@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 import threading
+from collections.abc import Callable
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -109,6 +110,13 @@ class _StubHandler(PacketHandlerIp4Tx):
 
         self.ethernet_tx_calls: list[dict[str, object]] = []
         self.ethernet_tx_status: TxStatus = TxStatus.PASSED__ETHERNET__TO_TX_RING
+        self.marshal_tx_calls = 0
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # 'send_ip4_packet' marshals '_phtx_ip4' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        self.marshal_tx_calls += 1
+        return run()
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:
@@ -487,3 +495,27 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
         payload = handler.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, Ip4Assembler)
         self.assertEqual(payload.proto, IpProto.UDP)
+
+    def test__stack__packet_handler__ip4__tx__send_ip4_packet_routes_through_marshal_tx(self) -> None:
+        """
+        Ensure 'send_ip4_packet' marshals the '_phtx_ip4' pipeline onto
+        the interface's TX worker via '_marshal_tx' (ring-handoff
+        single-writer) rather than calling '_phtx_ip4' directly on the
+        caller's thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _StubHandler()
+        handler.send_ip4_packet(
+            ip4__local_address=STACK__IP4_ADDRESS,
+            ip4__remote_address=HOST_A__IP4,
+            ip4__proto=IpProto.UDP,
+            ip4__payload=b"\x00" * 8,
+        )
+
+        self.assertEqual(
+            handler.marshal_tx_calls,
+            1,
+            msg="send_ip4_packet must route the TX through _marshal_tx exactly once.",
+        )

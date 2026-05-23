@@ -32,6 +32,7 @@ ver 3.0.6
 
 import time
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip6Address, MacAddress
@@ -79,6 +80,8 @@ class PacketHandlerIp6Tx(ABC):
         _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
         _icmp6_temp_addresses: list[Icmp6TempAddress]
         _tx_ring: TxRing | None
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -491,7 +494,7 @@ class PacketHandlerIp6Tx(ABC):
         }
         if ip6__hop is not None:
             kwargs["ip6__hop"] = ip6__hop
-        return self._phtx_ip6(**kwargs)
+        return self._marshal_tx(lambda: self._phtx_ip6(**kwargs))
 
     def __send_out_packet(self, ip6_packet_tx: Ip6Assembler) -> None:
         assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."

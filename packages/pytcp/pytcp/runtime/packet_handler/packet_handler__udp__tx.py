@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from net_addr import Ip4Address, Ip6Address
@@ -58,10 +59,10 @@ class PacketHandlerUdpTx(ABC):
             RawAssembler,
         )
         from pytcp.lib.packet_stats import PacketStatsTx
-        from pytcp.runtime.tx_ring import TxRing
 
         _packet_stats_tx: PacketStatsTx
-        _tx_ring: TxRing | None
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -177,14 +178,13 @@ class PacketHandlerUdpTx(ABC):
         zero-checksum opt-in.
 
         The '_phtx_udp' pipeline is marshaled onto this interface's
-        TX worker thread via 'TxRing.dispatch' (ring-handoff
+        TX worker thread via '_marshal_tx' (ring-handoff
         single-writer): the calling app thread builds nothing but
         the closure and blocks for the resulting 'TxStatus', so every
         per-interface TX-state write happens on the worker thread.
         """
 
-        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
-        return self._tx_ring.dispatch(
+        return self._marshal_tx(
             lambda: self._phtx_udp(
                 ip__src=ip__local_address,
                 ip__dst=ip__remote_address,

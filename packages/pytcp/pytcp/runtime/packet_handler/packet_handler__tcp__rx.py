@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import PacketRx, PacketValidationError, TcpParser
@@ -52,6 +53,8 @@ class PacketHandlerTcpRx(ABC):
         from pytcp.lib.tx_status import TxStatus
 
         _packet_stats_rx: PacketStatsRx
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -222,28 +225,32 @@ class PacketHandlerTcpRx(ABC):
             "packet.",
         )
         if packet_rx.tcp.flag_ack:
-            self._phtx_tcp(
-                ip__src=packet_rx.ip.dst,
-                ip__dst=packet_rx.ip.src,
-                tcp__sport=packet_rx.tcp.dport,
-                tcp__dport=packet_rx.tcp.sport,
-                tcp__seq=packet_rx.tcp.ack,
-                tcp__ack=0,
-                tcp__flag_rst=True,
-                tcp__flag_ack=False,
-                echo_tracker=packet_rx.tracker,
+            self._marshal_tx(
+                lambda: self._phtx_tcp(
+                    ip__src=packet_rx.ip.dst,
+                    ip__dst=packet_rx.ip.src,
+                    tcp__sport=packet_rx.tcp.dport,
+                    tcp__dport=packet_rx.tcp.sport,
+                    tcp__seq=packet_rx.tcp.ack,
+                    tcp__ack=0,
+                    tcp__flag_rst=True,
+                    tcp__flag_ack=False,
+                    echo_tracker=packet_rx.tracker,
+                )
             )
         else:
-            self._phtx_tcp(
-                ip__src=packet_rx.ip.dst,
-                ip__dst=packet_rx.ip.src,
-                tcp__sport=packet_rx.tcp.dport,
-                tcp__dport=packet_rx.tcp.sport,
-                tcp__seq=0,
-                tcp__ack=(
-                    packet_rx.tcp.seq + packet_rx.tcp.flag_syn + packet_rx.tcp.flag_fin + len(packet_rx.tcp.payload)
-                ),
-                tcp__flag_rst=True,
-                tcp__flag_ack=True,
-                echo_tracker=packet_rx.tracker,
+            self._marshal_tx(
+                lambda: self._phtx_tcp(
+                    ip__src=packet_rx.ip.dst,
+                    ip__dst=packet_rx.ip.src,
+                    tcp__sport=packet_rx.tcp.dport,
+                    tcp__dport=packet_rx.tcp.sport,
+                    tcp__seq=0,
+                    tcp__ack=(
+                        packet_rx.tcp.seq + packet_rx.tcp.flag_syn + packet_rx.tcp.flag_fin + len(packet_rx.tcp.payload)
+                    ),
+                    tcp__flag_rst=True,
+                    tcp__flag_ack=True,
+                    echo_tracker=packet_rx.tracker,
+                )
             )

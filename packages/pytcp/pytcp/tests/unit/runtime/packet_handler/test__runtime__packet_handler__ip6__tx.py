@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6__tx.p
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -103,6 +104,13 @@ class _StubHandler(PacketHandlerIp6Tx):
         self.frag_tx_calls: list[Ip6Assembler] = []
         self.ethernet_tx_status: TxStatus = TxStatus.PASSED__ETHERNET__TO_TX_RING
         self.frag_tx_status: TxStatus = TxStatus.PASSED__IP6__TO_TX_RING
+        self.marshal_tx_calls = 0
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # 'send_ip6_packet' marshals '_phtx_ip6' through '_marshal_tx';
+        # with no TX worker under test, run the callable inline.
+        self.marshal_tx_calls += 1
+        return run()
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:
@@ -363,3 +371,27 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
         payload = handler.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, Ip6Assembler)
         self.assertEqual(payload.next, IpProto.UDP)
+
+    def test__stack__packet_handler__ip6__tx__send_ip6_packet_routes_through_marshal_tx(self) -> None:
+        """
+        Ensure 'send_ip6_packet' marshals the '_phtx_ip6' pipeline onto
+        the interface's TX worker via '_marshal_tx' (ring-handoff
+        single-writer) rather than calling '_phtx_ip6' directly on the
+        caller's thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _StubHandler()
+        handler.send_ip6_packet(
+            ip6__local_address=STACK__IP6_ADDRESS,
+            ip6__remote_address=HOST_A__IP6,
+            ip6__next=IpProto.UDP,
+            ip6__payload=b"\x00" * 8,
+        )
+
+        self.assertEqual(
+            handler.marshal_tx_calls,
+            1,
+            msg="send_ip6_packet must route the TX through _marshal_tx exactly once.",
+        )

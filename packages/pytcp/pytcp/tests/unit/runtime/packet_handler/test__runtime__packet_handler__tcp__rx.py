@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__tcp__rx.p
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -76,6 +77,12 @@ class _StubHandler(PacketHandlerTcpRx):
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
         self.tcp_tx_calls: list[dict[str, object]] = []
+
+    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        # RST replies marshal '_phtx_tcp' through '_marshal_tx'; with no
+        # TX worker under test, run the callable inline so the recorded
+        # '_phtx_tcp' call still fires.
+        return run()
 
     def _phtx_tcp(self, **kwargs: object) -> TxStatus:
         self.tcp_tx_calls.append(kwargs)

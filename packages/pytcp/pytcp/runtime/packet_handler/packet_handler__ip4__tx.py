@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip4Address, MacAddress
@@ -79,6 +80,8 @@ class PacketHandlerIp4Tx(ABC):
         _ip4_support: bool
         _interface_mtu: int
         _tx_ring: TxRing | None
+
+        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
 
         # pylint: disable=unused-argument
 
@@ -552,7 +555,7 @@ class PacketHandlerIp4Tx(ABC):
         }
         if ip4__ttl is not None:
             kwargs["ip4__ttl"] = ip4__ttl
-        return self._phtx_ip4(**kwargs)
+        return self._marshal_tx(lambda: self._phtx_ip4(**kwargs))
 
     def __send_out_packet(
         self,
