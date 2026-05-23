@@ -1129,3 +1129,89 @@ class TestLinkApiInterfaceSelector(TestCase):
         self.assertEqual(iface_2._rx_ring._mtu, 1400, msg="interface(2).set_mtu must resize interface 2's RX ring.")
         self.assertEqual(iface_1._interface_mtu, 1500, msg="interface 1's MTU must be untouched.")
         self.assertEqual(iface_1._tx_ring._mtu, 1500, msg="interface 1's TX ring must be untouched.")
+
+
+class TestLinkApiUnboundTool(TestCase):
+    """
+    The 'LinkApi' unbound userspace-tool tests — a 'LinkApi()' built
+    with no handler is the device-independent tool ('ip link'); bare
+    reads resolve the sole registered interface (transitional crutch)
+    and explicit '.interface(ifindex)' selection always works.
+    """
+
+    def _install(self, count: int) -> list[_FakePacketHandlerL2]:
+        """
+        Register 'count' L2 fake interfaces in a fresh 'stack.interfaces'
+        table and return them.
+        """
+
+        ifaces = [
+            _FakePacketHandlerL2(mac_unicast=MacAddress(f"02:00:00:00:00:0{i + 1}"), interface_mtu=1500 + i * 100)
+            for i in range(count)
+        ]
+        table = InterfaceTable()
+        for iface in ifaces:
+            table.add(cast("PacketHandlerL2", iface))
+        self.enterContext(patch.object(stack, "interfaces", table))
+        return ifaces
+
+    def test__link_api__unbound_tool__bare_read_resolves_sole_interface(self) -> None:
+        """
+        Ensure a bare read on the unbound tool resolves to the single
+        registered interface when exactly one exists (the transitional
+        N=1 crutch).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        (iface,) = self._install(1)
+        tool = LinkApi()
+
+        self.assertEqual(tool.mtu, iface._interface_mtu, msg="The unbound tool must read the sole interface's MTU.")
+
+    def test__link_api__unbound_tool__bare_read_raises_when_no_interface(self) -> None:
+        """
+        Ensure a bare read on the unbound tool raises when no interface
+        is registered — there is no device to report on.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self._install(0)
+        tool = LinkApi()
+
+        with self.assertRaises(RuntimeError):
+            _ = tool.mtu
+
+    def test__link_api__unbound_tool__bare_read_raises_when_ambiguous(self) -> None:
+        """
+        Ensure a bare read on the unbound tool raises when more than one
+        interface is registered — the caller must select a device via
+        'interface(ifindex)'.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        self._install(2)
+        tool = LinkApi()
+
+        with self.assertRaises(RuntimeError):
+            _ = tool.mtu
+
+    def test__link_api__unbound_tool__interface_selector_works_when_ambiguous(self) -> None:
+        """
+        Ensure explicit 'interface(ifindex)' selection on the unbound
+        tool reads the named device even when several interfaces are
+        registered (where a bare read would be ambiguous).
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        ifaces = self._install(3)
+        tool = LinkApi()
+
+        self.assertEqual(
+            tool.interface(2).mtu,
+            ifaces[1]._interface_mtu,
+            msg="interface(2) on the unbound tool must read interface 2's MTU.",
+        )

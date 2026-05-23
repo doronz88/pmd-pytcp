@@ -228,27 +228,57 @@ class LinkApi:
     def __init__(
         self,
         *,
-        packet_handler: "PacketHandlerL2 | PacketHandlerL3",
+        packet_handler: "PacketHandlerL2 | PacketHandlerL3 | None" = None,
     ) -> None:
         """
-        Bind the API to a packet handler instance. The packet
-        handler owns the underlying link-level state; the API
-        is the only sanctioned consumer of reads against that
-        state.
+        Construct the link-control API. With no 'packet_handler' this
+        is the unbound, device-independent TOOL (the 'ip link'
+        equivalent) — operate on a specific interface via
+        'interface(ifindex)'. With a 'packet_handler' (as returned by
+        'interface(ifindex)') it is a VIEW bound to that one interface;
+        its reads / mutations operate on that interface only.
         """
 
         self._packet_handler = packet_handler
+
+    def _resolve_handler(self) -> "PacketHandlerL2 | PacketHandlerL3":
+        """
+        Return the interface this API operates on: the bound handler
+        for an 'interface(ifindex)' view, or — for the unbound tool —
+        the SOLE registered interface (transitional N=1 crutch). Raises
+        'RuntimeError' when the unbound tool is used with zero or more
+        than one interface registered, where the caller must select a
+        device via 'interface(ifindex)'.
+
+        Phase 6: the sole-interface fallback is the bridge while bare
+        consumers migrate to 'interface(ifindex)'; it is removed once
+        nothing reads the unbound tool without selecting a device.
+        """
+
+        if self._packet_handler is not None:
+            return self._packet_handler
+
+        from pytcp import stack
+
+        interfaces = stack.interfaces.values()
+        if len(interfaces) == 1:
+            return interfaces[0]
+        if not interfaces:
+            raise RuntimeError(
+                "No interface registered. Add one via 'stack.add_interface(...)' "
+                "or select a device via 'stack.link.interface(ifindex)'."
+            )
+        raise RuntimeError(
+            "Multiple interfaces registered; the bare link tool is ambiguous. "
+            "Select a device via 'stack.link.interface(ifindex)'."
+        )
 
     def interface(self, ifindex: int, /) -> "LinkApi":
         """
         Return a 'LinkApi' bound to the interface registered under
         'ifindex' — the device selector, Linux 'ip link … dev <ifX>'
         equivalent. Every read property and mutation on the returned
-        binding operates on that interface.
-
-        The bare singleton ('stack.link') stays bound to the boot
-        interface for the N=1 back-compat path; use 'interface(ifindex)'
-        to address any specific interface. Raises 'KeyError' when no
+        binding operates on that interface. Raises 'KeyError' when no
         interface is registered under 'ifindex'.
         """
 
@@ -280,7 +310,7 @@ class LinkApi:
         case without an isinstance check.
         """
 
-        return getattr(self._packet_handler, "_mac_unicast", None)
+        return getattr(self._resolve_handler(), "_mac_unicast", None)
 
     @property
     def mtu(self) -> int:
@@ -289,7 +319,7 @@ class LinkApi:
         'ip link show eth0 | grep mtu' equivalent.
         """
 
-        return self._packet_handler._interface_mtu
+        return self._resolve_handler()._interface_mtu
 
     @property
     def name(self) -> str | None:
@@ -304,7 +334,7 @@ class LinkApi:
         the name plumbing.
         """
 
-        return self._packet_handler._interface_name
+        return self._resolve_handler()._interface_name
 
     @property
     def interface_layer(self) -> InterfaceLayer:
@@ -313,7 +343,7 @@ class LinkApi:
         Linux 'ip link show eth0 | grep link/' equivalent.
         """
 
-        return self._packet_handler._interface_layer
+        return self._resolve_handler()._interface_layer
 
     @property
     def is_running(self) -> bool:
@@ -355,10 +385,11 @@ class LinkApi:
         vs other on TX).
         """
 
-        rx = self._packet_handler._packet_stats_rx
-        tx = self._packet_handler._packet_stats_tx
-        link = self._packet_handler._link_stats
-        layer = self._packet_handler._interface_layer
+        handler = self._resolve_handler()
+        rx = handler._packet_stats_rx
+        tx = handler._packet_stats_tx
+        link = handler._link_stats
+        layer = handler._interface_layer
 
         if layer is InterfaceLayer.L2:
             rx_packets = rx.ethernet__pre_parse + rx.ethernet_802_3__pre_parse
@@ -411,10 +442,12 @@ class LinkApi:
 
         from pytcp import stack
 
+        handler = self._resolve_handler()
+
         # Canonical source of truth — the packet handler's
         # '_interface_mtu' is what the TX paths read for MSS
         # / fragmentation decisions.
-        self._packet_handler._interface_mtu = mtu
+        handler._interface_mtu = mtu
 
         # Module-level slot — denormalized for legacy consumers that
         # read 'stack.interface_mtu' directly (TCP/UDP MSS computation).
@@ -435,8 +468,8 @@ class LinkApi:
         # attribute writes — '_mtu' is declared on TxRing but the
         # autospec proxy does not expose it).
         for ring in (
-            getattr(self._packet_handler, "_tx_ring", None),
-            getattr(self._packet_handler, "_rx_ring", None),
+            getattr(handler, "_tx_ring", None),
+            getattr(handler, "_rx_ring", None),
         ):
             if ring is None:
                 continue
@@ -479,10 +512,12 @@ class LinkApi:
 
         from pytcp import stack
 
+        handler = self._resolve_handler()
+
         if stack.stack_running:
             raise RuntimeError("Cannot set MAC address while the stack is running. " "Call 'stack.stop()' first.")
 
-        if self._packet_handler._interface_layer is not InterfaceLayer.L2:
+        if handler._interface_layer is not InterfaceLayer.L2:
             raise RuntimeError("Cannot set MAC address on L3 (TUN) interface — no Ethernet layer.")
 
         if not mac_address.is_unicast:
@@ -491,7 +526,7 @@ class LinkApi:
                 "(multicast bit must be clear and value must be non-zero)."
             )
 
-        self._packet_handler._mac_unicast = mac_address
+        handler._mac_unicast = mac_address
 
     @property
     def flags(self) -> frozenset[LinkFlag]:
@@ -512,4 +547,4 @@ class LinkApi:
         through the returned reference.
         """
 
-        return _FLAGS_BY_LAYER[self._packet_handler._interface_layer]
+        return _FLAGS_BY_LAYER[self._resolve_handler()._interface_layer]
