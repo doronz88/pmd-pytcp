@@ -2057,6 +2057,73 @@ class TestStackHasRouteTo(TestCase):
             msg="has_route_to must be True for an off-link destination once a default route exists.",
         )
 
+    def test__has_route_to__ip4_limited_broadcast_true(self) -> None:
+        """
+        Ensure 'has_route_to' is True for the IPv4 limited broadcast
+        (255.255.255.255) even with no route installed — it is delivered
+        directly on the egress link, never via the routing table, so a
+        DHCP DISCOVER (sent before any address/route exists) is not
+        spuriously blocked with EHOSTUNREACH.
+
+        Reference: RFC 2131 §4.1 (DHCP client broadcasts to 255.255.255.255 before configuration).
+        Reference: RFC 919 §7 (limited broadcast is link-scoped, not routed).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertTrue(
+            stack.has_route_to(Ip4Address("255.255.255.255")),
+            msg="has_route_to must be True for the IPv4 limited broadcast.",
+        )
+
+    def test__has_route_to__ip4_multicast_true(self) -> None:
+        """
+        Ensure 'has_route_to' is True for an IPv4 multicast destination
+        with no route installed — multicast is delivered on the egress
+        link and needs no unicast routing-table entry.
+
+        Reference: RFC 1112 §6.1 (IP multicast transmission needs no host route).
+        """
+
+        from net_addr import Ip4Address
+
+        self.assertTrue(
+            stack.has_route_to(Ip4Address("224.0.0.1")),
+            msg="has_route_to must be True for an IPv4 multicast destination.",
+        )
+
+    def test__has_route_to__ip6_multicast_true(self) -> None:
+        """
+        Ensure 'has_route_to' is True for an IPv6 multicast destination
+        with no route installed — multicast is delivered on the egress
+        link and needs no routing-table entry.
+
+        Reference: RFC 4291 §2.7 (IPv6 multicast addressing, link-scoped delivery).
+        """
+
+        from net_addr import Ip6Address
+
+        self.assertTrue(
+            stack.has_route_to(Ip6Address("ff02::1")),
+            msg="has_route_to must be True for an IPv6 multicast destination.",
+        )
+
+    def test__has_route_to__ip6_link_local_true(self) -> None:
+        """
+        Ensure 'has_route_to' is True for an IPv6 link-local destination
+        with no explicit route installed — link-local unicast is reachable
+        on-link and is not resolved through the routing table.
+
+        Reference: RFC 4291 §2.5.6 (link-local addresses are link-scoped).
+        """
+
+        from net_addr import Ip6Address
+
+        self.assertTrue(
+            stack.has_route_to(Ip6Address("fe80::2e0:67ff:fe26:88cb")),
+            msg="has_route_to must be True for an IPv6 link-local destination.",
+        )
+
 
 class TestStackEgressInterfaceMtu(TestCase):
     """

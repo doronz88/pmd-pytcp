@@ -404,6 +404,18 @@ def has_route_to(destination: Ip4Address | Ip6Address, /) -> bool:
 
     if "ip4_fib" not in globals() or "ip6_fib" not in globals():
         return True
+    # Link-scoped destinations are delivered directly on the egress link
+    # and need no routing-table entry, so they are reachable whenever the
+    # routing plane is up — Linux never returns EHOSTUNREACH for them:
+    #   - IPv4 limited broadcast (255.255.255.255): a DHCP DISCOVER target
+    #     sent before any address/route exists (RFC 2131 §4.1).
+    #   - IP multicast (RFC 1112 §6.1 / RFC 4291 §2.7).
+    #   - IPv6 link-local (RFC 4291 §2.5.6).
+    if isinstance(destination, Ip4Address):
+        if destination.is_limited_broadcast or destination.is_multicast:
+            return True
+    elif destination.is_multicast or destination.is_link_local:
+        return True
     return _egress_handler_via_fib(destination) is not None
 
 
