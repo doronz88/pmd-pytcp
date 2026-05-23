@@ -66,20 +66,25 @@ def _capture_stats_snapshot() -> dict[str, int]:
 
     import dataclasses
 
+    # Iterate the per-ifindex interface registry (the successor to the
+    # retired 'stack.packet_handler' / 'stack.{rx,tx}_ring' singletons).
+    # Counters are summed across interfaces; ring qsizes are reported
+    # per-ifindex live gauges.
     snap: dict[str, int] = {}
-    if hasattr(stack, "packet_handler") and stack.packet_handler is not None:
+    for ifindex, handler in stack.interfaces.items():
         for prefix, stats in (
-            ("rx", stack.packet_handler.packet_stats_rx),
-            ("tx", stack.packet_handler.packet_stats_tx),
+            ("rx", handler.packet_stats_rx),
+            ("tx", handler.packet_stats_tx),
         ):
             for field in dataclasses.fields(stats):
-                snap[f"{prefix}__{field.name}"] = getattr(stats, field.name)
-    # qsize is a live gauge, not a counter — keep it explicit so
-    # the renderer can show it even when delta is zero.
-    if hasattr(stack, "rx_ring") and stack.rx_ring is not None:
-        snap["rx_ring__qsize"] = stack.rx_ring.qsize
-    if hasattr(stack, "tx_ring") and stack.tx_ring is not None:
-        snap["tx_ring__qsize"] = stack.tx_ring.qsize
+                key = f"{prefix}__{field.name}"
+                snap[key] = snap.get(key, 0) + getattr(stats, field.name)
+        # qsize is a live gauge, not a counter — keep it explicit so
+        # the renderer can show it even when delta is zero.
+        if handler._rx_ring is not None:
+            snap[f"if{ifindex}__rx_ring__qsize"] = handler._rx_ring.qsize
+        if handler._tx_ring is not None:
+            snap[f"if{ifindex}__tx_ring__qsize"] = handler._tx_ring.qsize
     return snap
 
 

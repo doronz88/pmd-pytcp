@@ -42,12 +42,9 @@ pytcp/tests/integration/protocols/arp/test__arp__resolution_flow.py
 ver 3.0.6
 """
 
-from unittest.mock import patch
-
 from net_addr import Ip4Address, MacAddress
 from net_proto import ArpOperation, ArpParser, Ip4Assembler
 from net_proto.lib.packet_rx import PacketRx
-from pytcp import stack
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.tests.lib.arp_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -88,26 +85,17 @@ class TestArpResolutionFlow(ArpTestCase):
         """
 
         super().setUp()
-        self._real_cache_patch = patch.object(stack, "arp_cache", ArpCache())
-        self._real_cache = self._real_cache_patch.start()
-        # The Ethernet TX path resolves via the handler's own
-        # injected '_arp_cache' (per-interface ownership), so swap
-        # the real cache onto the handler too — patching only the
-        # global 'stack.arp_cache' no longer reaches the TX path.
-        # The reverse owner back-reference lets the cache's solicit /
-        # flush callbacks route through this handler.
+        # The ARP cache is per-interface state on the handler now (the
+        # global 'stack.arp_cache' singleton was retired); install a real
+        # one in place of the harness mock so the in-progress-resolution
+        # table and queued-packet flush behave as in production. The
+        # reverse owner back-reference lets the cache's solicit / flush
+        # callbacks route through this handler. The handler is rebuilt
+        # per-test by the harness, so no restore is needed.
+        self._real_cache = ArpCache()
         self._packet_handler._arp_cache = self._real_cache
         self._real_cache._owner = self._packet_handler
         self._set_monotonic(1000.0)
-
-    def tearDown(self) -> None:
-        """
-        Restore the mock 'ArpCache' the rest of the harness
-        consumers expect.
-        """
-
-        self._real_cache_patch.stop()
-        super().tearDown()
 
     # -- helpers ----------------------------------------------------------
 

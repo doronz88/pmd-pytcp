@@ -98,28 +98,14 @@ def mock__init(
     if mock__timer is not None:
         _stack.timer = mock__timer
 
-    if mock__tx_ring is not None:
-        _stack.tx_ring = mock__tx_ring
-
-    if mock__rx_ring is not None:
-        _stack.rx_ring = mock__rx_ring
-
-    if mock__arp_cache is not None:
-        _stack.arp_cache = mock__arp_cache
-
-    if mock__nd_cache is not None:
-        _stack.nd_cache = mock__nd_cache
-
     if mock__packet_handler is not None:
-        _stack.packet_handler = mock__packet_handler
         # Inject the RX / TX rings into the handler the same way the
         # real 'init()' does, so a test exercising the loop /
         # send-out paths through 'mock__init' dequeues from / enqueues
-        # onto the handler's own rings rather than the global shims.
-        # Harness tests that drive RX via '_phrx_ethernet' directly
-        # don't pass 'mock__rx_ring' and leave that None; the TX
-        # harness passes 'mock__tx_ring' and asserts on its recorded
-        # frames.
+        # onto the handler's own rings. Harness tests that drive RX via
+        # '_phrx_ethernet' directly don't pass 'mock__rx_ring' and leave
+        # that None; the TX harness passes 'mock__tx_ring' and asserts on
+        # its recorded frames.
         if mock__rx_ring is not None:
             mock__packet_handler._rx_ring = mock__rx_ring
         if mock__tx_ring is not None:
@@ -180,17 +166,15 @@ def mock__init(
     else:
         _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
-    # Inject the routing-control API into the current handler the
-    # same way 'init()' does, so the RX RA path drives the default
-    # route through 'self._route_api'. 'mock__init' rebuilds
-    # 'stack.route' on EVERY call (e.g. 'IcmpTestCase' calls it a
-    # second time, timer-only), so re-inject into whatever handler
-    # is currently bound — not just the one passed this call —
-    # otherwise the handler keeps a stale RouteApi wrapping the
-    # previous FIBs.
-    _current_handler = getattr(_stack, "packet_handler", None)
-    if _current_handler is not None:
-        _current_handler._route_api = _stack.route
+    # Inject the routing-control API into every registered interface the
+    # same way 'init()' does, so the RX RA path drives the default route
+    # through 'self._route_api'. 'mock__init' rebuilds 'stack.route' on
+    # EVERY call (e.g. 'IcmpTestCase' calls it a second time, timer-only),
+    # so re-inject into whatever interfaces are currently registered — not
+    # just the one passed this call — otherwise a handler keeps a stale
+    # RouteApi wrapping the previous FIBs.
+    for _registered_handler in _stack.interfaces.values():
+        _registered_handler._route_api = _stack.route
 
     # Phase 4 commit B — DHCPv4 lifecycle. Default to None unless
     # the harness explicitly opts in; existing tests (NetworkTestCase
@@ -301,7 +285,6 @@ def add_interface(
             packet_handler._nd_cache = nd_cache
             nd_cache._owner = packet_handler
 
-    is_first = not _stack.interfaces
     # The table allocates the next ifindex (first_ifindex when empty,
     # else max+1) and stamps it onto the handler, atomically under its
     # lock so concurrent runtime adds cannot collide on an index.
@@ -314,15 +297,6 @@ def add_interface(
     route = getattr(_stack, "route", None)
     if route is not None:
         packet_handler._route_api = route
-
-    # First interface populates the N=1 back-compat singletons.
-    if is_first:
-        _stack.packet_handler = packet_handler
-        _stack.rx_ring = rx_ring
-        _stack.tx_ring = tx_ring
-        _stack.nd_cache = nd_cache
-        if arp_cache is not None:
-            _stack.arp_cache = arp_cache
 
     # Per-interface DHCPv4 / RFC 3927 link-local subsystems (L2-only;
     # both depend on Ethernet/ARP). Built HERE so the interface owns its

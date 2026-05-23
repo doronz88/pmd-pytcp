@@ -474,10 +474,7 @@ class TestStackMockInit(TestCase):
         """
 
         self._sentinel = object()
-        self._snapshot = {
-            name: getattr(stack, name, self._sentinel)
-            for name in ("timer", "rx_ring", "tx_ring", "arp_cache", "nd_cache", "packet_handler", "interfaces")
-        }
+        self._snapshot = {name: getattr(stack, name, self._sentinel) for name in ("timer", "interfaces")}
 
     def tearDown(self) -> None:
         """
@@ -494,11 +491,12 @@ class TestStackMockInit(TestCase):
             else:
                 setattr(stack, name, value)
 
-    def test__stack__mock_init_assigns_provided_components(self) -> None:
+    def test__stack__mock_init_binds_rings_and_caches_to_handler(self) -> None:
         """
-        Ensure 'mock__init' wires every provided mock into the
-        corresponding module-level singleton. Missing mocks leave
-        their prior binding untouched.
+        Ensure 'mock__init' wires the timer global and injects every
+        provided ring / neighbor-cache mock into the supplied packet
+        handler (the per-interface object), not into any module-level
+        singleton.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -508,7 +506,8 @@ class TestStackMockInit(TestCase):
         fake_rx = MagicMock()
         fake_arp = MagicMock()
         fake_nd = MagicMock()
-        fake_handler = MagicMock()
+        fake_handler = MagicMock(spec=PacketHandlerL2)
+        fake_handler._ifindex = 1
 
         stack.mock__init(
             mock__timer=fake_timer,
@@ -520,17 +519,15 @@ class TestStackMockInit(TestCase):
         )
 
         self.assertIs(stack.timer, fake_timer, msg="mock__init must wire the timer mock.")
-        self.assertIs(stack.tx_ring, fake_tx, msg="mock__init must wire the tx_ring mock.")
-        self.assertIs(stack.rx_ring, fake_rx, msg="mock__init must wire the rx_ring mock.")
-        self.assertIs(stack.arp_cache, fake_arp, msg="mock__init must wire the arp_cache mock.")
-        self.assertIs(stack.nd_cache, fake_nd, msg="mock__init must wire the nd_cache mock.")
-        self.assertIs(stack.packet_handler, fake_handler, msg="mock__init must wire the packet_handler mock.")
+        self.assertIs(fake_handler._tx_ring, fake_tx, msg="mock__init must bind the tx_ring mock to the handler.")
+        self.assertIs(fake_handler._rx_ring, fake_rx, msg="mock__init must bind the rx_ring mock to the handler.")
+        self.assertIs(fake_handler._arp_cache, fake_arp, msg="mock__init must bind the arp_cache mock to the handler.")
+        self.assertIs(fake_handler._nd_cache, fake_nd, msg="mock__init must bind the nd_cache mock to the handler.")
 
     def test__stack__mock_init_registers_interface_by_ifindex(self) -> None:
         """
         Ensure 'mock__init' registers the wired packet handler in
-        'stack.interfaces' keyed by its 'ifindex', and that the sole
-        interface is the same object as 'stack.packet_handler'.
+        'stack.interfaces' keyed by its 'ifindex'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -545,25 +542,20 @@ class TestStackMockInit(TestCase):
             {1: handler},
             msg="mock__init must register the handler in stack.interfaces keyed by its ifindex.",
         )
-        self.assertIs(
-            stack.interfaces[1],
-            stack.packet_handler,
-            msg="The sole registered interface must be the same object as stack.packet_handler.",
-        )
 
-    def test__stack__mock_init_leaves_unspecified_unchanged(self) -> None:
+    def test__stack__mock_init_timer_only_preserves_interface_registry(self) -> None:
         """
-        Ensure 'mock__init' only overwrites the singletons the caller
-        passes a mock for — omitted ones stay at their prior value.
+        Ensure a timer-only 'mock__init' overwrites the timer global but
+        leaves the interface registry a prior call populated intact — the
+        invariant 'IcmpTestCase' relies on when it calls 'mock__init' a
+        second time (timer-only).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        # First assign all to sentinel values, then call mock__init with
-        # only one mock and verify the others are untouched.
-        pre_timer = MagicMock()
-        pre_tx = MagicMock()
-        stack.mock__init(mock__timer=pre_timer, mock__tx_ring=pre_tx)
+        handler = MagicMock(spec=PacketHandlerL2)
+        handler._ifindex = 1
+        stack.mock__init(mock__timer=MagicMock(), mock__packet_handler=handler)
 
         new_timer = MagicMock()
         stack.mock__init(mock__timer=new_timer)
@@ -573,10 +565,10 @@ class TestStackMockInit(TestCase):
             new_timer,
             msg="mock__init must overwrite the timer when one is supplied.",
         )
-        self.assertIs(
-            stack.tx_ring,
-            pre_tx,
-            msg="mock__init must leave tx_ring untouched when no replacement is supplied.",
+        self.assertEqual(
+            dict(stack.interfaces),
+            {1: handler},
+            msg="A timer-only mock__init must not wipe the interface registry a prior call populated.",
         )
 
 
@@ -595,11 +587,6 @@ class TestStackStopOrdering(TestCase):
         self._saved = {
             "stack_initialized": stack.stack_initialized,
             "timer": getattr(stack, "timer", None),
-            "rx_ring": getattr(stack, "rx_ring", None),
-            "tx_ring": getattr(stack, "tx_ring", None),
-            "arp_cache": getattr(stack, "arp_cache", None),
-            "nd_cache": getattr(stack, "nd_cache", None),
-            "packet_handler": getattr(stack, "packet_handler", None),
             "interfaces": getattr(stack, "interfaces", None),
         }
 
@@ -610,23 +597,21 @@ class TestStackStopOrdering(TestCase):
             m.stop.side_effect = lambda n=name: self._call_log.append(n)
             return m
 
+        # 'start()' / 'stop()' iterate 'stack.interfaces' and reach each
+        # interface's rings + caches via the handler's injected '_rx_ring' /
+        # '_tx_ring' / '_arp_cache' / '_nd_cache' (the handler IS the
+        # interface). Wire those to the recording mocks and register the
+        # handler as the sole interface; the timer is the only remaining
+        # module-level subsystem 'stop()' touches.
         stack.timer = _make_subsystem("timer")
-        stack.rx_ring = _make_subsystem("rx_ring")
-        stack.tx_ring = _make_subsystem("tx_ring")
-        stack.arp_cache = _make_subsystem("arp_cache")
-        stack.nd_cache = _make_subsystem("nd_cache")
-        stack.packet_handler = _make_subsystem("packet_handler")
-        # 'start()' / 'stop()' iterate 'stack.interfaces' and reach
-        # each interface's rings + caches via the handler's injected
-        # '_rx_ring' / '_tx_ring' / '_arp_cache' / '_nd_cache' (the
-        # handler IS the interface). Wire those to the recording mocks
-        # and register the handler as the sole interface.
-        stack.packet_handler._rx_ring = stack.rx_ring
-        stack.packet_handler._tx_ring = stack.tx_ring
-        stack.packet_handler._arp_cache = stack.arp_cache
-        stack.packet_handler._nd_cache = stack.nd_cache
+        handler = _make_subsystem("packet_handler")
+        handler._ifindex = 1
+        handler._rx_ring = _make_subsystem("rx_ring")
+        handler._tx_ring = _make_subsystem("tx_ring")
+        handler._arp_cache = _make_subsystem("arp_cache")
+        handler._nd_cache = _make_subsystem("nd_cache")
         _interfaces = InterfaceTable(first_ifindex=stack.STACK__DEFAULT_IFINDEX)
-        _interfaces[1] = stack.packet_handler
+        _interfaces[1] = handler
         stack.interfaces = _interfaces
         stack.stack_initialized = True
 
@@ -734,12 +719,6 @@ class TestStackInitSharedPacketStats(TestCase):
             name: getattr(stack, name, self._sentinel)
             for name in (
                 "timer",
-                "rx_ring",
-                "tx_ring",
-                "arp_cache",
-                "nd_cache",
-                "packet_handler",
-                "interface_mtu",
                 "stack_initialized",
             )
         }
@@ -923,12 +902,6 @@ class TestStackInitArpCacheConfig(TestCase):
             name: getattr(stack, name, self._sentinel)
             for name in (
                 "timer",
-                "rx_ring",
-                "tx_ring",
-                "arp_cache",
-                "nd_cache",
-                "packet_handler",
-                "interface_mtu",
                 "stack_initialized",
             )
         }
@@ -1086,10 +1059,7 @@ class TestStackAddInterface(TestCase):
         self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
         self._sentinel = object()
-        self._snapshot = {
-            name: getattr(stack, name, self._sentinel)
-            for name in ("interfaces", "packet_handler", "rx_ring", "tx_ring", "arp_cache", "nd_cache")
-        }
+        self._snapshot = {name: getattr(stack, name, self._sentinel) for name in ("interfaces",)}
         # Drop any leaked Route API so 'add_interface' does not inject
         # one (the boot path injects it post-construction in 'init()').
         self._route_snapshot = getattr(stack, "route", self._sentinel)
@@ -1128,12 +1098,12 @@ class TestStackAddInterface(TestCase):
         if self._route_snapshot is not self._sentinel:
             setattr(stack, "route", self._route_snapshot)
 
-    def test__add_interface__first_takes_default_ifindex_and_sets_shims(self) -> None:
+    def test__add_interface__first_takes_default_ifindex(self) -> None:
         """
-        Ensure the first 'add_interface' takes 'STACK__DEFAULT_IFINDEX',
-        registers the handler in 'stack.interfaces', and populates the
-        N=1 back-compat singletons ('packet_handler' / 'rx_ring' /
-        'tx_ring' / 'arp_cache' / 'nd_cache') from that interface.
+        Ensure the first 'add_interface' takes 'STACK__DEFAULT_IFINDEX'
+        and registers the handler — with its own rings + neighbor caches
+        — in 'stack.interfaces' (the single source of truth; no
+        privileged module-level singleton).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1146,18 +1116,17 @@ class TestStackAddInterface(TestCase):
 
         self.assertEqual(ifindex, stack.STACK__DEFAULT_IFINDEX, msg="First interface must take the default ifindex.")
         handler = stack.interfaces[ifindex]
-        self.assertIs(stack.packet_handler, handler, msg="First interface must populate stack.packet_handler.")
-        self.assertIs(stack.rx_ring, handler._rx_ring, msg="First interface must populate stack.rx_ring.")
-        self.assertIs(stack.tx_ring, handler._tx_ring, msg="First interface must populate stack.tx_ring.")
-        self.assertIs(stack.arp_cache, handler._arp_cache, msg="L2 first interface must populate stack.arp_cache.")
-        self.assertIs(stack.nd_cache, handler._nd_cache, msg="First interface must populate stack.nd_cache.")
+        self.assertEqual(handler._ifindex, ifindex, msg="The handler must record its own ifindex.")
+        self.assertIsNotNone(handler._rx_ring, msg="The interface must own its RX ring.")
+        self.assertIsNotNone(handler._tx_ring, msg="The interface must own its TX ring.")
+        self.assertIsNotNone(handler._arp_cache, msg="An L2 interface must own its ARP cache.")
+        self.assertIsNotNone(handler._nd_cache, msg="The interface must own its ND cache.")
 
-    def test__add_interface__second_gets_next_ifindex_without_clobbering_shims(self) -> None:
+    def test__add_interface__second_gets_next_ifindex(self) -> None:
         """
-        Ensure a second 'add_interface' allocates the next free
-        ifindex, registers its own handler / rings / caches, and leaves
-        the N=1 back-compat singletons pointing at the first (boot)
-        interface.
+        Ensure a second 'add_interface' allocates the next free ifindex
+        and registers its own handler / rings / caches alongside the
+        first, both reachable through 'stack.interfaces'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1167,7 +1136,6 @@ class TestStackAddInterface(TestCase):
             layer=InterfaceLayer.L2,
             mac_address=MacAddress("02:00:00:00:00:01"),
         )
-        boot_handler = stack.packet_handler
 
         second = add_interface(
             fd=self._fds[1][1],
@@ -1179,11 +1147,6 @@ class TestStackAddInterface(TestCase):
         self.assertIsInstance(stack.interfaces[first], PacketHandlerL2, msg="First interface is the L2 handler.")
         self.assertIsInstance(stack.interfaces[second], PacketHandlerL3, msg="Second interface is the L3 handler.")
         self.assertEqual(stack.interfaces[second]._ifindex, second, msg="Handler must record its ifindex.")
-        self.assertIs(
-            stack.packet_handler,
-            boot_handler,
-            msg="A second add_interface must not clobber the boot-interface shim.",
-        )
 
     def test__add_interface__second_l2_gets_isolated_neighbor_caches(self) -> None:
         """
@@ -1300,10 +1263,7 @@ class TestStackInterfaceLifecycleDynamic(TestCase):
         self._stop_iface = self.enterContext(patch.object(lifecycle, "_stop_interface"))
 
         self._sentinel = object()
-        self._snapshot = {
-            name: getattr(stack, name, self._sentinel)
-            for name in ("interfaces", "packet_handler", "rx_ring", "tx_ring", "arp_cache", "nd_cache", "stack_running")
-        }
+        self._snapshot = {name: getattr(stack, name, self._sentinel) for name in ("interfaces", "stack_running")}
         self._route_snapshot = getattr(stack, "route", self._sentinel)
         if hasattr(stack, "route"):
             delattr(stack, "route")
@@ -1451,11 +1411,6 @@ class TestStackInitZeroInterface(TestCase):
             for name in (
                 "timer",
                 "interfaces",
-                "rx_ring",
-                "tx_ring",
-                "arp_cache",
-                "nd_cache",
-                "packet_handler",
                 "address",
                 "link",
                 "route",
@@ -1463,7 +1418,6 @@ class TestStackInitZeroInterface(TestCase):
                 "ip6_fib",
                 "dhcp4_client",
                 "link_local",
-                "interface_mtu",
                 "stack_initialized",
             )
         }
@@ -1636,11 +1590,6 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
             for name in (
                 "timer",
                 "interfaces",
-                "rx_ring",
-                "tx_ring",
-                "arp_cache",
-                "nd_cache",
-                "packet_handler",
                 "address",
                 "link",
                 "route",
@@ -1648,7 +1597,6 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
                 "ip6_fib",
                 "dhcp4_client",
                 "link_local",
-                "interface_mtu",
                 "stack_initialized",
                 "stack_running",
             )

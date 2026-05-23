@@ -43,16 +43,12 @@ from typing import TYPE_CHECKING, Any
 from net_addr import Ip4Address, Ip6Address, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
-from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
-from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
-from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
-from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket.socket_table import SocketTable
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
@@ -250,22 +246,18 @@ LOG__OUTPUT = sys.stderr
 
 # Stack subsystems.
 timer: Timer
-rx_ring: RxRing
-tx_ring: TxRing
-arp_cache: ArpCache
-nd_cache: NdCache
-packet_handler: PacketHandlerL2 | PacketHandlerL3
-# Phase 2 of the multi-interface migration: the per-ifindex
-# interface registry. Linux keys interfaces (and their ARP / ND
-# caches, addresses, MTU) per ifindex; PyTCP's 'PacketHandler'
-# instance IS the per-interface object, so the registry maps
-# 'ifindex -> handler'. Today the stack is single-interface, so
-# the registry holds exactly one entry at 'STACK__DEFAULT_IFINDEX'
-# and 'packet_handler' above is that sole interface. Rebuilt fresh
-# by 'init()' / 'mock__init()' (same reconstruct-per-test
-# lifecycle as 'packet_handler' / 'route', so it needs no
-# snapshot/restore). Phase 6 makes 'packet_handler' a shim over
-# this registry once N>1 interfaces are supported.
+# The per-ifindex interface registry — the single source of truth for the
+# stack's interfaces. Linux keys interfaces (and their ARP / ND caches,
+# addresses, MTU) per ifindex; PyTCP's 'PacketHandler' instance IS the
+# per-interface object, so the registry maps 'ifindex -> handler'. A
+# multi-homed host registers one entry per interface; an interface is
+# reached via 'interfaces[ifindex]', 'egress_packet_handler(dst)' (TX
+# egress), or 'stack.link.interface(ifindex)' (control plane). Rebuilt
+# fresh by 'init()' / 'mock__init()' (same reconstruct-per-test lifecycle
+# as 'route', so it needs no snapshot/restore). The privileged
+# 'stack.{packet_handler,rx_ring,tx_ring,arp_cache,nd_cache}' boot-shim
+# singletons that pinned "interface 1" were retired in favour of this
+# registry + the egress seam (Phase 7 / Part-6 Slice 4).
 STACK__DEFAULT_IFINDEX: int = 1
 interfaces: InterfaceTable = InterfaceTable(first_ifindex=STACK__DEFAULT_IFINDEX)
 # Phase 4 commit A — IPv4 address-control API, the kernel/userspace
@@ -675,7 +667,6 @@ __all__ = [
     "init",
     "mock__init",
     "remove_interface",
-    "rx_ring",
     "start",
     "stop",
     "sysctl",

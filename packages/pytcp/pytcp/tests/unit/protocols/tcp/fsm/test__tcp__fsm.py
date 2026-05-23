@@ -1010,9 +1010,8 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
 
         handler = MagicMock()
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.packet_handler",
-            handler,
-            create=True,
+            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            return_value=handler,
         ):
             session = self._make_session()
             initial_nxt = session._snd_seq.nxt
@@ -1035,9 +1034,8 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
 
         handler = MagicMock()
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.packet_handler",
-            handler,
-            create=True,
+            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            return_value=handler,
         ):
             session = self._make_session()
             session._transmit_packet(flag_fin=True, flag_ack=True)

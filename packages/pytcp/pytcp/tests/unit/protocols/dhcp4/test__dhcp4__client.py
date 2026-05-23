@@ -2850,14 +2850,15 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         reply_delay_s: float = 0.0,
     ) -> MagicMock:
         """
-        Patch 'stack.arp_cache' so that a gateway entry exists
-        with a pre-probe 'state_changed_at' that ages by
-        'reply_delay_s' after the probe is sent. Returns the
-        mocked packet handler so the test can assert the
-        unicast ARP Request was emitted.
+        Patch 'stack.egress_packet_handler' to return a mocked packet
+        handler whose own '_arp_cache' has a gateway entry with a
+        pre-probe 'state_changed_at' that ages by 'reply_delay_s' after
+        the probe is sent. Returns the mocked packet handler so the test
+        can assert the unicast ARP Request was emitted.
         """
 
         from pytcp import stack
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         # Stage: pre-probe entry timestamp = 100.0; post-probe
         # update timestamp = 100.0 + reply_delay_s. The mocked
@@ -2878,11 +2879,16 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         def _advance_after_send(*_args: object, **_kwargs: object) -> None:
             mock_arp_cache._entries[self._GATEWAY_IP] = after_entry
 
-        mock_packet_handler = MagicMock(name="PacketHandlerL2")
+        # The handler must satisfy 'isinstance(handler, PacketHandlerL2)'
+        # in '_dnav4_probe' — DNAv4 is L2-only — so spec the mock to L2 and
+        # bind the mocked ARP cache to its own '_arp_cache'.
+        mock_packet_handler = MagicMock(name="PacketHandlerL2", spec=PacketHandlerL2)
+        mock_packet_handler._arp_cache = mock_arp_cache
         mock_packet_handler.send_arp_unicast_request.side_effect = _advance_after_send
 
-        self.enterContext(patch.object(stack, "arp_cache", mock_arp_cache, create=True))
-        self.enterContext(patch.object(stack, "packet_handler", mock_packet_handler, create=True))
+        self.enterContext(
+            patch.object(stack, "egress_packet_handler", return_value=mock_packet_handler),
+        )
 
         return mock_packet_handler
 
@@ -2977,6 +2983,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         """
 
         from pytcp import stack
+        from pytcp.runtime.packet_handler import PacketHandlerL2
 
         # Use a short window so the test does not actually wait
         # 1 second; pin the cache so 'state_changed_at' never
@@ -2987,10 +2994,12 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         stale_entry.state_changed_at = 100.0
         mock_arp_cache = MagicMock(name="ArpCache")
         mock_arp_cache._entries = {self._GATEWAY_IP: stale_entry}
-        mock_packet_handler = MagicMock(name="PacketHandlerL2")
-        # send_arp_unicast_request is a no-op; the entry never updates.
-        self.enterContext(patch.object(stack, "arp_cache", mock_arp_cache, create=True))
-        self.enterContext(patch.object(stack, "packet_handler", mock_packet_handler, create=True))
+        # L2-spec'd so '_dnav4_probe' isinstance-narrows; ARP cache bound
+        # to its own '_arp_cache'. send_arp_unicast_request is a no-op; the
+        # entry never updates (silent gateway).
+        mock_packet_handler = MagicMock(name="PacketHandlerL2", spec=PacketHandlerL2)
+        mock_packet_handler._arp_cache = mock_arp_cache
+        self.enterContext(patch.object(stack, "egress_packet_handler", return_value=mock_packet_handler))
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 

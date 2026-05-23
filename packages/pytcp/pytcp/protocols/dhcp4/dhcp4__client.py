@@ -936,8 +936,9 @@ class Dhcp4Client(Subsystem):
           - the cached lease has no recorded gateway_mac (first
             boot after a cold cache write; the gateway had not
             yet been resolved by ordinary traffic);
-          - 'stack.packet_handler' / 'stack.arp_cache' are not
-            wired up (sync-mode 'fetch()' invocations from tests).
+          - no interface egresses toward the gateway, or that
+            interface has no ARP cache (sync-mode 'fetch()'
+            invocations from tests, before 'stack.init()').
 
         On a True return the caller should adopt 'lease' as-is
         via '_on_bound(lease)' and skip the DHCP exchange. On a
@@ -955,9 +956,23 @@ class Dhcp4Client(Subsystem):
         # run before that and DNAv4 is moot then.
         from pytcp import stack as _stack  # noqa: PLC0415 — late stack access
 
-        arp_cache = getattr(_stack, "arp_cache", None)
-        packet_handler = getattr(_stack, "packet_handler", None)
-        if arp_cache is None or packet_handler is None:
+        # Resolve the interface that egresses toward the gateway and use
+        # its own ARP cache + ARP-TX (the per-interface successor to the
+        # retired 'stack.arp_cache' / 'stack.packet_handler' singletons).
+        # 'egress_packet_handler' raises when no interface is registered
+        # (sync-mode 'fetch()' before 'stack.init()') — DNAv4 is moot then.
+        from pytcp.runtime.packet_handler import PacketHandlerL2  # noqa: PLC0415
+
+        try:
+            packet_handler = _stack.egress_packet_handler(lease.gateway)
+        except RuntimeError:
+            return False
+        # DNAv4 is an ARP (L2) operation; an L3 (TUN) egress has no ARP
+        # cache and cannot run it. The ARP cache being present implies L2.
+        if not isinstance(packet_handler, PacketHandlerL2):
+            return False
+        arp_cache = packet_handler._arp_cache
+        if arp_cache is None:
             return False
 
         # Snapshot the gateway entry's 'state_changed_at' so we
