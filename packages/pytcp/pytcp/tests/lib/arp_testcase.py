@@ -135,11 +135,20 @@ class ArpTestCase(NetworkTestCase):
             side_effect=_read_monotonic,
         )
         self._monotonic_patch.start()
+        # Register the stop via addCleanup (NOT tearDown): these patch
+        # 'time.monotonic' / 'time.sleep' on the SHARED 'time' module, so a
+        # leaked patch is global. addCleanup runs even when a SUBCLASS setUp
+        # raises after 'super().setUp()' — tearDown does not. Without this a
+        # broken subclass setUp leaks a mocked 'time.monotonic' into every
+        # later test in the suite (e.g. the DHCPv4 '_dnav4_probe' busy-loop
+        # spins unboundedly on a mock clock and OOMs the run).
+        self.addCleanup(self._monotonic_patch.stop)
         self._arp_cache_monotonic_patch = patch(
             "pytcp.lib.neighbor.time.monotonic",
             side_effect=_read_monotonic,
         )
         self._arp_cache_monotonic_patch.start()
+        self.addCleanup(self._arp_cache_monotonic_patch.stop)
 
         # FIFO of callbacks invoked one per 'time.sleep' call from
         # 'PacketHandlerL2._create_stack_ip4_addressing'. The DAD
@@ -165,17 +174,7 @@ class ArpTestCase(NetworkTestCase):
             side_effect=_patched_sleep,
         )
         self._sleep_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Restore the patches installed in 'setUp', innermost first.
-        """
-
-        self._sleep_patch.stop()
-        self._arp_cache_monotonic_patch.stop()
-        self._monotonic_patch.stop()
-
-        super().tearDown()
+        self.addCleanup(self._sleep_patch.stop)
 
     # -- clock control ----------------------------------------------------
 
