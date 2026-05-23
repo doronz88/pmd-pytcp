@@ -814,7 +814,11 @@ class TcpSocket(socket):
         assert self._tcp_session is not None
 
         self._tcp_session.close()
-        self._close_io_runtime()
+        # '_mark_closed' sets '_closed' for consistency; TCP delivery
+        # ('process_tcp_packet') is drained by 'TcpSession._lock__fsm'
+        # (close() routes through the same FSM lock), not by the
+        # socket-level '_lock__io'.
+        self._mark_closed()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 

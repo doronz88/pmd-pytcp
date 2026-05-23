@@ -33,6 +33,7 @@ ver 3.0.6
 import errno
 import os
 import socket as _stdlib_socket
+import threading
 from abc import ABC
 from enum import IntEnum
 from types import TracebackType
@@ -409,6 +410,14 @@ class socket(ABC):
 
         del family, type, protocol  # consumed by concrete-class __init__.
         self._read_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
+        # Close-during-delivery drain (Phase 5): '_closed' is set under
+        # '_lock__io' by 'close()' (via '_mark_closed'); the RX-side
+        # delivery methods ('process_*_packet') take the same lock and
+        # drop the datagram when '_closed' so a packet is never queued
+        # onto a socket the application has already torn down. TCP
+        # delivery is instead serialized by 'TcpSession._lock__fsm'.
+        self._closed = False
+        self._lock__io = threading.Lock()
         self._blocking = True
         self._so_reuseaddr = False
         self._so_broadcast = False
@@ -903,6 +912,20 @@ class socket(ABC):
             os.close(fd)
         except OSError:
             pass
+
+    def _mark_closed(self) -> None:
+        """
+        Atomically mark the socket closed and release its OS-level
+        runtime, under '_lock__io'. Concrete 'close()' overrides call
+        this (after removing the socket from 'stack.sockets') so an
+        in-flight RX delivery either completes before the socket is
+        marked closed or observes '_closed' and drops the datagram —
+        'close()' thus drains in-flight deliveries.
+        """
+
+        with self._lock__io:
+            self._closed = True
+            self._close_io_runtime()
 
     def getsockname(self) -> tuple[str, int]:
         """

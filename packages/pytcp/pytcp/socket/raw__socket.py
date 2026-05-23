@@ -406,15 +406,20 @@ class RawSocket(socket):
         """
 
         stack.sockets.pop(self.socket_id, None)
-        self._close_io_runtime()
+        self._mark_closed()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
 
     def process_raw_packet(self, packet_rx_md: RawMetadata) -> None:
         """
-        Process incoming packet's metadata.
+        Process incoming packet's metadata. Dropped under the
+        close-during-delivery drain (Phase 5) when the socket has
+        already been closed.
         """
 
-        self._packet_rx_md.append(packet_rx_md)
-        self._packet_rx_md_ready.release()
+        with self._lock__io:
+            if self._closed:
+                return
+            self._packet_rx_md.append(packet_rx_md)
+            self._packet_rx_md_ready.release()
         self._signal_readable()
