@@ -34,7 +34,7 @@ pytcp/tests/lib/network_testcase.py
 ver 3.0.6
 """
 
-from typing import cast
+from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -196,6 +196,12 @@ class NetworkTestCase(TestCase):
     _frames_tx: list[bytes]
 
     _packet_handler: PacketHandlerL2
+    # The boot interface's mocked neighbor caches (also bound to
+    # '_packet_handler._arp_cache' / '._nd_cache'). Typed 'Any' so tests
+    # can assert on the autospec mock surface ('confirm_reachability',
+    # 'reset_mock', 'find_entry.side_effect') without per-call casts.
+    _arp_cache: Any
+    _nd_cache: Any
 
     _stack__attr_snapshot: dict[str, object]
     _ip6_flow_label_generation_prior: int
@@ -302,6 +308,14 @@ class NetworkTestCase(TestCase):
         mock_NdCache = create_autospec(NdCache, spec_set=True)
         mock_NdCache.find_entry.side_effect = _mock_nd_find_entry
         mock_NdCache.add_entry.return_value = None
+
+        # Expose the boot interface's neighbor-cache mocks as harness
+        # handles so tests assert on the egress interface's own caches
+        # ('_packet_handler._{arp,nd}_cache', which 'mock__init' binds to
+        # these same objects) instead of the retired 'stack.{arp,nd}_cache'
+        # singletons.
+        self._arp_cache = mock_ArpCache
+        self._nd_cache = mock_NdCache
 
         # Prepare PacketHandler object to be used with the tests.
         self._packet_handler = PacketHandlerL2(

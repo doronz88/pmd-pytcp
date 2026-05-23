@@ -83,11 +83,11 @@ class TestIp6RoutingNextHop(NetworkTestCase):
                 STACK__IP6_GATEWAY: STACK__IP6_GATEWAY_MAC_ADDRESS,
             }.get(ip6_address)
 
-        # The harness binds 'stack.nd_cache' to a strict
+        # The harness binds 'self._nd_cache' to a strict
         # autospec mock; the cast surfaces the test-time mock
         # type to mypy (typing.md §17 — test-time type fact mypy
         # cannot model through the harness swap).
-        cast(MagicMock, stack.nd_cache).find_entry.side_effect = _nd
+        cast(MagicMock, self._nd_cache).find_entry.side_effect = _nd
 
         status = self._packet_handler._phtx_ip6(
             ip6__src=STACK__IP6_HOST.address,

@@ -46,7 +46,6 @@ ver 3.0.6
 """
 
 from net_addr import Ip4Address, Ip6Address
-from pytcp import stack
 from pytcp.socket import AddressFamily
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -80,7 +79,7 @@ class TestTcpSessionNudReachability(TcpSessionTestCase):
         """
         Ensure an inbound cum-ACK that advances SND.UNA on an
         IPv4 TCP session calls
-        'stack.arp_cache.confirm_reachability(
+        'self._arp_cache.confirm_reachability(
         ip4_address=peer_ip)'. The handshake's SYN-ACK is the
         first cum-ACK that advances SND.UNA, so driving
         '_drive_handshake_to_established' is sufficient to
@@ -92,8 +91,8 @@ class TestTcpSessionNudReachability(TcpSessionTestCase):
         # Reset the mocks so 'reset_mock' clears any prior
         # confirm_reachability calls accumulated during fixture
         # setup (none expected in practice but belt-and-braces).
-        stack.arp_cache.reset_mock()  # type: ignore[attr-defined]
-        stack.nd_cache.reset_mock()  # type: ignore[attr-defined]
+        self._arp_cache.reset_mock()
+        self._nd_cache.reset_mock()
 
         self._drive_handshake_to_established(
             iss=LOCAL__ISS,
@@ -105,24 +104,24 @@ class TestTcpSessionNudReachability(TcpSessionTestCase):
             remote_port=PEER__PORT,
         )
 
-        stack.arp_cache.confirm_reachability.assert_called_with(  # type: ignore[attr-defined]
+        self._arp_cache.confirm_reachability.assert_called_with(
             ip4_address=PEER__IP4,
         )
-        stack.nd_cache.confirm_reachability.assert_not_called()  # type: ignore[attr-defined]
+        self._nd_cache.confirm_reachability.assert_not_called()
 
     def test__tcp__session__nud__ipv6_cum_ack_confirms_nd_reachability(self) -> None:
         """
         Ensure an inbound cum-ACK that advances SND.UNA on an
         IPv6 TCP session calls
-        'stack.nd_cache.confirm_reachability(
+        'self._nd_cache.confirm_reachability(
         ip6_address=peer_ip)'. The IPv6 mirror of the IPv4
         case above.
 
         Reference: RFC 4861 §7.3.1 (upper-layer reachability confirmation).
         """
 
-        stack.arp_cache.reset_mock()  # type: ignore[attr-defined]
-        stack.nd_cache.reset_mock()  # type: ignore[attr-defined]
+        self._arp_cache.reset_mock()
+        self._nd_cache.reset_mock()
 
         self._drive_handshake_to_established(
             iss=LOCAL__ISS,
@@ -134,7 +133,7 @@ class TestTcpSessionNudReachability(TcpSessionTestCase):
             remote_port=PEER__PORT,
         )
 
-        stack.nd_cache.confirm_reachability.assert_called_with(  # type: ignore[attr-defined]
+        self._nd_cache.confirm_reachability.assert_called_with(
             ip6_address=PEER__IP6,
         )
-        stack.arp_cache.confirm_reachability.assert_not_called()  # type: ignore[attr-defined]
+        self._arp_cache.confirm_reachability.assert_not_called()

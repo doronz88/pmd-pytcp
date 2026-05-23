@@ -1797,17 +1797,15 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
 
         super().setUp()
         from net_addr import Ip4IfAddr
-        from pytcp import stack
 
         self._packet_handler._ip4_ifaddr.append(Ip4IfAddr("169.254.42.42/16"))
 
-        # 'stack.arp_cache' is autospec'd from 'ArpCache' so
+        # 'self._arp_cache' is autospec'd from 'ArpCache' so
         # mypy sees the real method type — but at runtime each
         # method is a Mock with the usual 'side_effect'
-        # attribute. The narrow ignores below are local to this
-        # test fixture's mock wiring.
-        find_entry_mock = stack.arp_cache.find_entry
-        original_side_effect = find_entry_mock.side_effect  # type: ignore[attr-defined]
+        # attribute (the harness '_arp_cache' handle is typed 'Any').
+        find_entry_mock = self._arp_cache.find_entry
+        original_side_effect = find_entry_mock.side_effect
 
         def _lookup_with_link_local(*, ip4_address: Ip4Address) -> Any:
             """Return None for the link-local dst; delegate otherwise."""
@@ -1815,7 +1813,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
                 return None
             return original_side_effect(ip4_address=ip4_address)
 
-        find_entry_mock.side_effect = _lookup_with_link_local  # type: ignore[attr-defined]
+        find_entry_mock.side_effect = _lookup_with_link_local
         self.addCleanup(
             lambda: setattr(find_entry_mock, "side_effect", original_side_effect),
         )

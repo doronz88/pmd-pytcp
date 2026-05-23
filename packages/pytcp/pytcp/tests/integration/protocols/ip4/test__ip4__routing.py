@@ -181,11 +181,11 @@ class TestIp4RoutingNextHop(NetworkTestCase):
                 STACK__IP4_GATEWAY: STACK__IP4_GATEWAY_MAC_ADDRESS,
             }.get(ip4_address)
 
-        # The harness binds 'stack.arp_cache' to a strict
+        # The harness binds 'self._arp_cache' to a strict
         # autospec mock; the cast surfaces the test-time mock
         # type to mypy (typing.md §17 — test-time type fact mypy
         # cannot model through the harness swap).
-        cast(MagicMock, stack.arp_cache).find_entry.side_effect = _arp
+        cast(MagicMock, self._arp_cache).find_entry.side_effect = _arp
 
         status = self._packet_handler._phtx_ip4(
             ip4__src=STACK__IP4_HOST.address,
@@ -297,7 +297,7 @@ class TestIp4RoutingStaticRoute(NetworkTestCase):
                 HOST_A__IP4_ADDRESS: HOST_A__MAC_ADDRESS,
             }.get(ip4_address)
 
-        cast(MagicMock, stack.arp_cache).find_entry.side_effect = _arp
+        cast(MagicMock, self._arp_cache).find_entry.side_effect = _arp
 
     def test__ip4__routing__static_route_beats_default(self) -> None:
         """

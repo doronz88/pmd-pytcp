@@ -53,7 +53,6 @@ from net_addr import Ip6Address, MacAddress
 from net_proto import Ip6Parser, RawAssembler
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__parser import EthernetParser
-from pytcp import stack
 from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import (
@@ -289,12 +288,12 @@ class TestIcmp6Nd__RaConsumer__NudReachableTime(NdTestCase):
             ),
         )
 
-        # 'stack.nd_cache' is autospec'd — we assert against the
+        # 'self._nd_cache' is autospec'd — we assert against the
         # call record, not against the attribute itself (autospec
         # methods are mock callables, not real implementations).
-        nd_cache_mock = cast(Any, stack.nd_cache)
+        nd_cache_mock = cast(Any, self._nd_cache)
         nd_cache_mock.set_reachable_time_override_ms.assert_called_once_with(45000)
-        arp_cache_mock = cast(Any, stack.arp_cache)
+        arp_cache_mock = cast(Any, self._arp_cache)
         self.assertEqual(
             arp_cache_mock.set_reachable_time_override_ms.call_count,
             0,
