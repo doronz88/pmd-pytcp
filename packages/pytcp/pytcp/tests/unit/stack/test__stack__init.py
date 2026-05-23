@@ -41,9 +41,13 @@ import pytcp.stack as stack
 import pytcp.stack.lifecycle as lifecycle
 from net_addr import MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.runtime.fib import RouteTable
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.lifecycle import add_interface, remove_interface
+from pytcp.stack.link import LinkApi
+from pytcp.stack.route import RouteApi
 
 
 class TestStackModuleConstants(TestCase):
@@ -1415,3 +1419,191 @@ class TestStackInterfaceLifecycleDynamic(TestCase):
 
         self.assertIsNone(remove_interface(99), msg="remove_interface on an unknown ifindex must return None.")
         self._stop_iface.assert_not_called()
+
+
+class TestStackInitZeroInterface(TestCase):
+    """
+    The zero-interface 'stack.init()' tests — the daemon-shaped target
+    where 'init()' brings up only the stack core (timer, FIBs, unbound
+    control tools) with no network interface, and interfaces are added
+    later via 'add_interface'.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot the module-level singletons 'stack.init()' rebinds and
+        suppress the subsystem-init log lines. The Timer is constructed
+        (not started), so no thread leaks; the test never calls
+        'stack.start()'.
+        """
+
+        log_patch = patch("pytcp.stack.log")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+        subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
+        subsystem_log_patch.start()
+        self.addCleanup(subsystem_log_patch.stop)
+
+        self._sentinel = object()
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel)
+            for name in (
+                "timer",
+                "interfaces",
+                "rx_ring",
+                "tx_ring",
+                "arp_cache",
+                "nd_cache",
+                "packet_handler",
+                "address",
+                "link",
+                "route",
+                "ip4_fib",
+                "ip6_fib",
+                "dhcp4_client",
+                "link_local",
+                "interface_mtu",
+                "stack_initialized",
+            )
+        }
+
+    def tearDown(self) -> None:
+        """
+        Restore the snapshot so subsequent tests start clean.
+        """
+
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+
+    def test__stack__init_zero_interface_registers_no_interface(self) -> None:
+        """
+        Ensure 'stack.init()' called with no fd / layer brings the stack
+        up with an empty interface registry — the daemon's valid resting
+        state before any device attaches.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.init()
+
+        self.assertEqual(
+            len(stack.interfaces),
+            0,
+            msg="Zero-interface init() must register no interfaces.",
+        )
+        self.assertTrue(
+            stack.stack_initialized,
+            msg="Zero-interface init() must still mark the stack initialized.",
+        )
+
+    def test__stack__init_zero_interface_builds_unbound_tools(self) -> None:
+        """
+        Ensure 'stack.init()' with no interface builds the control APIs
+        as unbound tools (no packet handler bound), so a device can be
+        selected later via 'interface(ifindex)'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.init()
+
+        self.assertIsInstance(
+            stack.address,
+            Ip4AddressApi,
+            msg="Zero-interface init() must build an Ip4AddressApi tool.",
+        )
+        self.assertIsInstance(
+            stack.link,
+            LinkApi,
+            msg="Zero-interface init() must build a LinkApi tool.",
+        )
+        self.assertIsNone(
+            stack.address._packet_handler,
+            msg="The address tool must be unbound (no packet handler).",
+        )
+        self.assertIsNone(
+            stack.link._packet_handler,
+            msg="The link tool must be unbound (no packet handler).",
+        )
+
+    def test__stack__init_zero_interface_no_dhcp_or_link_local(self) -> None:
+        """
+        Ensure 'stack.init()' with no interface constructs neither the
+        DHCPv4 client nor the link-local subsystem — both are
+        per-interface L2 concerns with no device to attach to.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.init()
+
+        self.assertIsNone(
+            stack.dhcp4_client,
+            msg="Zero-interface init() must not build a DHCPv4 client.",
+        )
+        self.assertIsNone(
+            stack.link_local,
+            msg="Zero-interface init() must not build a link-local client.",
+        )
+
+    def test__stack__init_zero_interface_builds_global_routing(self) -> None:
+        """
+        Ensure 'stack.init()' with no interface still builds the global
+        routing state (the two FIBs + the Route API) — routing is
+        above interfaces, so it comes up with the stack core.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.init()
+
+        self.assertIsInstance(
+            stack.ip4_fib,
+            RouteTable,
+            msg="Zero-interface init() must build the IPv4 FIB.",
+        )
+        self.assertIsInstance(
+            stack.ip6_fib,
+            RouteTable,
+            msg="Zero-interface init() must build the IPv6 FIB.",
+        )
+        self.assertIsInstance(
+            stack.route,
+            RouteApi,
+            msg="Zero-interface init() must build the Route API.",
+        )
+
+    def test__stack__init_zero_then_add_interface(self) -> None:
+        """
+        Ensure an interface added after a zero-interface 'stack.init()'
+        lands in the registry and is reachable via the control tools'
+        'interface(ifindex)' selector — the daemon add-device path.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.init()
+        stack.stack_running = False
+
+        with (
+            patch.object(stack.lifecycle, "TxRing"),
+            patch.object(stack.lifecycle, "RxRing"),
+            patch.object(stack.lifecycle, "ArpCache"),
+            patch.object(stack.lifecycle, "NdCache"),
+            patch.object(stack.lifecycle, "PacketHandlerL2"),
+        ):
+            ifindex = add_interface(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+            )
+
+        self.assertIn(
+            ifindex,
+            stack.interfaces,
+            msg="add_interface after zero-interface init() must register the device.",
+        )

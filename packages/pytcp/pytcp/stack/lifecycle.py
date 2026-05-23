@@ -365,8 +365,8 @@ def remove_interface(ifindex: int, /) -> PacketHandlerL2 | PacketHandlerL3 | Non
 
 def init(
     *,
-    fd: int,
-    layer: InterfaceLayer,
+    fd: int | None = None,
+    layer: InterfaceLayer | None = None,
     mtu: int = 1500,
     mac_address: MacAddress | None = None,
     interface_name: str | None = None,
@@ -382,9 +382,22 @@ def init(
 ) -> None:
     """
     Initialize stack components.
+
+    With no 'fd' / 'layer' the stack comes up with ZERO interfaces —
+    the daemon-shaped resting state (timer, empty interface registry,
+    global FIBs + Route API, and the unbound control tools). Attach a
+    device afterwards with 'add_interface(...)'. With 'fd' / 'layer'
+    supplied (the interim back-compat convenience) 'init()' also builds
+    that one boot interface by delegating to 'add_interface', and wires
+    the per-interface DHCPv4 / link-local subsystems to it.
     """
 
     import pytcp.stack as _stack
+
+    # The boot interface is optional: 'init(fd=..., layer=...)' brings
+    # one up; bare 'init()' leaves the registry empty for a later
+    # 'add_interface'. Narrows 'fd' / 'layer' to non-None below.
+    has_interface = fd is not None and layer is not None
 
     # Resolve None-valued kwargs against the stack-level
     # config constants. The legacy form used these constants
@@ -438,20 +451,22 @@ def init(
     # re-'init()' (common in long-running test harnesses) start from
     # zero interfaces.
     _stack.interfaces = InterfaceTable(first_ifindex=_stack.STACK__DEFAULT_IFINDEX)
-    add_interface(
-        fd=fd,
-        layer=layer,
-        mtu=mtu,
-        mac_address=mac_address,
-        interface_name=interface_name,
-        ip4_support=ip4_support,
-        ip4_host=ip4_host,
-        ip4_dhcp=ip4_dhcp,
-        ip6_support=ip6_support,
-        ip6_host=ip6_host,
-        ip6_gua_autoconfig=ip6_gua_autoconfig,
-        ip6_lla_autoconfig=ip6_lla_autoconfig,
-    )
+    if has_interface:
+        assert fd is not None and layer is not None  # narrowed by 'has_interface'
+        add_interface(
+            fd=fd,
+            layer=layer,
+            mtu=mtu,
+            mac_address=mac_address,
+            interface_name=interface_name,
+            ip4_support=ip4_support,
+            ip4_host=ip4_host,
+            ip4_dhcp=ip4_dhcp,
+            ip6_support=ip6_support,
+            ip6_host=ip6_host,
+            ip6_gua_autoconfig=ip6_gua_autoconfig,
+            ip6_lla_autoconfig=ip6_lla_autoconfig,
+        )
 
     # IPv4 address-control API + link-control surface — built as the
     # UNBOUND, device-independent "userspace tools" (the 'ip addr' /
@@ -477,22 +492,28 @@ def init(
     # 'RouteApi.replace_default_ip{4,6}'.
     ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
     ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
-    install_boot_default_routes(
-        ip4_fib=ip4_fib,
-        ip6_fib=ip6_fib,
-        ip4_gateway=_stack.IP4_GATEWAY,
-        ip6_gateway=_stack.IP6_GATEWAY,
-    )
+    # The static boot-config gateway is a boot-interface convenience;
+    # with no interface there is nothing for that next hop to be on-link
+    # with, so the FIBs come up empty (a daemon adds routes as interfaces
+    # + addresses attach).
+    if has_interface:
+        install_boot_default_routes(
+            ip4_fib=ip4_fib,
+            ip6_fib=ip6_fib,
+            ip4_gateway=_stack.IP4_GATEWAY,
+            ip6_gateway=_stack.IP6_GATEWAY,
+        )
     _stack.ip4_fib = ip4_fib
     _stack.ip6_fib = ip6_fib
     _stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
 
-    # Inject the routing-control API into the handler so the RX RA
-    # path drives the default route through 'self._route_api'
-    # instead of reaching 'stack.route'. Route state is global
-    # (shared across interfaces); the injection just makes the
-    # dependency explicit.
-    _stack.packet_handler._route_api = _stack.route
+    # Inject the routing-control API into the boot handler so the RX RA
+    # path drives the default route through 'self._route_api' instead of
+    # reaching 'stack.route'. Route state is global (shared across
+    # interfaces); the injection just makes the dependency explicit.
+    # Skipped with no interface (no handler to inject into).
+    if has_interface:
+        _stack.packet_handler._route_api = _stack.route
 
     # Phase 4 commit B — DHCPv4 client subsystem. Construct only on
     # L2 (DHCP needs link-layer broadcast and a MAC address; L3/TUN
