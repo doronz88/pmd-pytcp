@@ -82,6 +82,7 @@ class PacketHandlerIp4Tx(ABC):
         _tx_ring: TxRing | None
 
         def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
+        def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None: ...
 
         # pylint: disable=unused-argument
 
@@ -539,9 +540,12 @@ class PacketHandlerIp4Tx(ABC):
         ip4__payload: bytes = bytes(),
         ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
-    ) -> TxStatus:
+    ) -> None:
         """
-        Interface method for RAW Socket -> Packet Assembler communication.
+        Interface method for RAW Socket -> Packet Assembler
+        communication. Handed to the TX worker fire-and-forget via
+        '_marshal_tx_async' (Phase 4b): the calling app thread does
+        not block for the 'TxStatus'.
         """
 
         kwargs: dict[str, Any] = {
@@ -555,7 +559,7 @@ class PacketHandlerIp4Tx(ABC):
         }
         if ip4__ttl is not None:
             kwargs["ip4__ttl"] = ip4__ttl
-        return self._marshal_tx(lambda: self._phtx_ip4(**kwargs))
+        self._marshal_tx_async(lambda: self._phtx_ip4(**kwargs))
 
     def __send_out_packet(
         self,

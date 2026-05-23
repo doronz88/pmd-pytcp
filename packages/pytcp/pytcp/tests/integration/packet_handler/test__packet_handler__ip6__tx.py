@@ -524,19 +524,15 @@ class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
         Reference: RFC 8200 §3 (IPv6 TX).
         """
 
-        tx_status = self._packet_handler.send_ip6_packet(
+        self._packet_handler.send_ip6_packet(
             ip6__local_address=STACK__IP6_HOST.address,
             ip6__remote_address=HOST_A__IP6_ADDRESS,
             ip6__next=IpProto.from_int(99),
             ip6__payload=b"\x00\x00\x00\x00",
         )
 
-        self.assertEqual(
-            tx_status,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="send_ip6_packet must propagate the underlying _phtx_ip6 TxStatus.",
-        )
-
+        # 'send_ip6_packet' is fire-and-forget (Phase 4b) — no
+        # TxStatus return; assert on the emitted frame and stats.
         self.assertEqual(
             len(self._frames_tx),
             1,

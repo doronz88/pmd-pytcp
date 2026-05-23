@@ -89,39 +89,50 @@ class _TxRequest:
 
     __slots__ = ("_run", "_event", "_result", "_exc")
 
-    def __init__(self, run: Callable[[], TxStatus], /) -> None:
+    def __init__(self, run: Callable[[], TxStatus], /, *, blocking: bool = True) -> None:
         """
-        Initialize the marshaled request from its callable.
+        Initialize the marshaled request from its callable. A
+        'blocking' request carries a 'threading.Event' the producer
+        waits on; a fire-and-forget request ('blocking=False', the
+        Phase 4b async-send path) has no event — the worker runs it
+        and discards the result.
         """
 
         self._run = run
-        self._event = threading.Event()
+        self._event = threading.Event() if blocking else None
         self._result: TxStatus | None = None
         self._exc: BaseException | None = None
 
     def execute(self) -> None:
         """
         Run the callable on the worker thread, capturing its result
-        or exception, and signal the waiting producer. The event is
-        set in a 'finally' so a raising callable never strands the
-        waiter.
+        or exception, and signal the waiting producer. For a blocking
+        request the event is set in a 'finally' so a raising callable
+        never strands the waiter; for a fire-and-forget request a
+        raise is logged (no caller to receive it) and swallowed so it
+        cannot kill the TX loop.
         """
 
         try:
             self._result = self._run()
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            # Captured and re-raised on the producer thread by
-            # 'result()'; a worker-side raise must not kill the TX
-            # loop or leave the blocked caller hung.
             self._exc = exc
+            if self._event is None:
+                __debug__ and log(
+                    "tx-ring",
+                    f"<CRIT>Fire-and-forget TX call raised, dropping: {exc!r}</>",
+                )
         finally:
-            self._event.set()
+            if self._event is not None:
+                self._event.set()
 
     def wait(self) -> None:
         """
         Block the producer until the worker has executed the call.
+        Only valid on a blocking request (one carrying an event).
         """
 
+        assert self._event is not None, "wait() called on a fire-and-forget TX request."
         self._event.wait()
 
     def result(self) -> TxStatus:
@@ -323,6 +334,33 @@ class TxRing(Subsystem):
             return run()
         request.wait()
         return request.result()
+
+    def dispatch_async(self, run: Callable[[], TxStatus], /) -> None:
+        """
+        Fire-and-forget variant of 'dispatch' (Phase 4b async send):
+        hand the '_phtx_*' call to the TX worker and return
+        immediately without waiting for the result. Used by the
+        UDP / raw socket send paths so the application thread is not
+        blocked on the worker; transmission failures are not surfaced
+        to the caller (the datagram is "accepted into the stack",
+        matching Linux's queued-on-send semantics). Same inline
+        fallback as 'dispatch' when there is no live worker or the
+        caller already IS the worker.
+        """
+
+        request = _TxRequest(run, blocking=False)
+        worker = self._thread
+        if worker is None or not worker.is_alive() or threading.current_thread() is worker:
+            request.execute()
+            return
+
+        self._tx_deque.append(request)
+        try:
+            os.eventfd_write(self._tx_event_fd, 1)
+        except OSError:
+            # Eventfd closed (stop in progress); run inline so the
+            # call is not silently lost on the dead deque.
+            request.execute()
 
     def _send_one(
         self,

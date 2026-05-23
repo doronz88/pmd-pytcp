@@ -947,3 +947,84 @@ class TestTxRingDispatch(_TxRingFixture):
             0,
             msg="The re-enqueued built frame must be drained in the same loop pass.",
         )
+
+
+class TestTxRingDispatchAsync(_TxRingFixture):
+    """
+    The 'TxRing.dispatch_async' fire-and-forget tests (Phase 4b). The
+    caller enqueues the marshaled '_phtx_*' call and returns
+    immediately without blocking for the worker's result; the worker
+    still runs it on its own thread (single-writer preserved).
+    """
+
+    def test__tx_ring__dispatch_async_runs_inline_when_no_worker(self) -> None:
+        """
+        Ensure 'dispatch_async' runs the callable inline on the
+        calling thread when no worker is live, returning None — the
+        unit-test / boot path with no worker to hand off to.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ran_on: list[threading.Thread] = []
+
+        def run() -> TxStatus:
+            ran_on.append(threading.current_thread())
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        self._ring.dispatch_async(run)
+
+        self.assertEqual(
+            ran_on,
+            [threading.current_thread()],
+            msg="With no worker, dispatch_async must run the callable on the calling thread.",
+        )
+
+    def test__tx_ring__dispatch_async_marshals_to_worker_without_blocking(self) -> None:
+        """
+        Ensure 'dispatch_async' from a non-worker thread hands the
+        callable to the worker thread for execution and returns None
+        immediately rather than waiting for a result.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500)
+        ring.start()
+        self.addCleanup(ring.stop)
+
+        ran_on: list[threading.Thread] = []
+        done = threading.Event()
+
+        def run() -> TxStatus:
+            ran_on.append(threading.current_thread())
+            done.set()
+            return TxStatus.PASSED__IP6__TO_TX_RING
+
+        ring.dispatch_async(run)
+
+        self.assertTrue(
+            done.wait(timeout=2.0),
+            msg="The worker must eventually execute the fire-and-forget callable.",
+        )
+        self.assertEqual(
+            ran_on,
+            [ring._thread],
+            msg="dispatch_async must execute the callable on the worker thread.",
+        )
+
+    def test__tx_ring__dispatch_async_swallows_exception(self) -> None:
+        """
+        Ensure an exception raised by a fire-and-forget callable is
+        swallowed (logged, not propagated) — there is no caller
+        blocked to receive it, and a raise must not kill the TX loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def run() -> TxStatus:
+            raise ValueError("boom-async")
+
+        # Must not raise (inline path, no worker) — the call returning
+        # at all is the assertion; a propagated exception fails the test.
+        self._ring.dispatch_async(run)

@@ -468,7 +468,7 @@ class TestPacketHandlerUdpTxSendUdpPacket(NetworkTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        tx_status = self._packet_handler.send_udp_packet(
+        self._packet_handler.send_udp_packet(
             ip__local_address=STACK__IP4_HOST.address,
             ip__remote_address=HOST_A__IP4_ADDRESS,
             udp__local_port=1000,
@@ -476,12 +476,8 @@ class TestPacketHandlerUdpTxSendUdpPacket(NetworkTestCase):
             udp__payload=b"hello",
         )
 
-        self.assertEqual(
-            tx_status,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="send_udp_packet must propagate the underlying _phtx_udp TxStatus.",
-        )
-
+        # 'send_udp_packet' is fire-and-forget (Phase 4b) — no
+        # TxStatus return; assert on the emitted frame and stats.
         self.assertEqual(
             len(self._frames_tx),
             1,

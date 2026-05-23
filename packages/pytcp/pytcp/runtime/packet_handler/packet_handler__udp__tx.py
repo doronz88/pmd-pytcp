@@ -63,6 +63,7 @@ class PacketHandlerUdpTx(ABC):
         _packet_stats_tx: PacketStatsTx
 
         def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
+        def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None: ...
 
         # pylint: disable=unused-argument
 
@@ -170,21 +171,22 @@ class PacketHandlerUdpTx(ABC):
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
         ip4__options: Ip4Options | None = None,
-    ) -> TxStatus:
+    ) -> None:
         """
         Interface method for UDP Socket -> Packet Assembler
         communication. 'udp__no_cksum' threads through the
         UdpSocket.send / sendto path to enable the RFC 6935 §5
         zero-checksum opt-in.
 
-        The '_phtx_udp' pipeline is marshaled onto this interface's
-        TX worker thread via '_marshal_tx' (ring-handoff
-        single-writer): the calling app thread builds nothing but
-        the closure and blocks for the resulting 'TxStatus', so every
-        per-interface TX-state write happens on the worker thread.
+        The '_phtx_udp' pipeline is handed to this interface's TX
+        worker fire-and-forget via '_marshal_tx_async' (Phase 4b):
+        the calling app thread does not block for the 'TxStatus'; the
+        datagram is accepted into the stack the moment it is queued,
+        matching Linux's queued-on-send UDP semantics. Delivery
+        failures surface asynchronously, not via the caller.
         """
 
-        return self._marshal_tx(
+        self._marshal_tx_async(
             lambda: self._phtx_udp(
                 ip__src=ip__local_address,
                 ip__dst=ip__remote_address,

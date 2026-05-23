@@ -455,10 +455,15 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         s = self._connected_socket()
         self.assertEqual(s.send(b"hello"), 5, msg="send() must return len(data) on success.")
 
-    def test__udp_socket__send_returns_zero_on_drop(self) -> None:
+    def test__udp_socket__send_returns_len_data_even_on_drop(self) -> None:
         """
-        Ensure send() returns 0 when the TX path reports a drop
-        status.
+        Ensure send() returns 'len(data)' even when the TX path would
+        ultimately drop the datagram. Phase 4b made the UDP send path
+        fire-and-forget: the datagram is "accepted into the stack" the
+        moment it is queued on the TX worker, matching Linux's
+        queued-on-send UDP semantics. Delivery failures surface
+        asynchronously (ICMP -> error queue), never via send()'s
+        return value.
 
         Reference: RFC 768 (UDP user interface).
         """
@@ -466,7 +471,11 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
         with patch("pytcp.socket.udp__socket.stack.packet_handler", handler):
             s = self._connected_socket()
-            self.assertEqual(s.send(b"data"), 0, msg="send() must return 0 when the packet is dropped.")
+            self.assertEqual(
+                s.send(b"data"),
+                4,
+                msg="send() must return len(data) — fire-and-forget accepts the datagram regardless of drop.",
+            )
 
     def test__udp_socket__send_clears_unreachable_and_raises(self) -> None:
         """

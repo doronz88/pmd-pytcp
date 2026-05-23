@@ -227,6 +227,10 @@ class NetworkTestCase(TestCase):
         # callable inline so frames land in the mocked 'enqueue' above
         # and the caller still sees the real 'TxStatus'.
         mock_TxRing.dispatch.side_effect = lambda run: run()
+        # Phase 4b fire-and-forget marshaling boundary — run the
+        # callable inline (discard the result) so async sends still
+        # land frames in the mocked 'enqueue' under test.
+        mock_TxRing.dispatch_async.side_effect = lambda run: run()
 
         # Mock the ArpCache so we can get predictable responses.
         def _mock_arp_find_entry(*, ip4_address: Ip4Address) -> MacAddress | None:

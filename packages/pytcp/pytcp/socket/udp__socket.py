@@ -49,7 +49,6 @@ from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_enum import ProtoEnum
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.udp.udp__plpmtud_adapter import UdpPlpmtudAdapter
 from pytcp.socket import (
     IP_OPTIONS,
@@ -84,25 +83,6 @@ from pytcp.socket.socket__bind_helpers import (
 
 if TYPE_CHECKING:
     from pytcp.socket.udp__metadata import UdpMetadata
-
-# TxStatus values that mean the datagram was accepted by the
-# stack: either placed on a TX ring, or queued pending ARP/ND
-# resolution (the RFC 1122 §2.3.2.2 per-neighbour queue delivers
-# it once the Reply arrives). 'send'/'sendto' report the full
-# byte count for any of these, matching Linux — which returns
-# success the moment the datagram is accepted, regardless of
-# neighbour-resolution state.
-_TX_ACCEPTED: frozenset[TxStatus] = frozenset(
-    {
-        TxStatus.PASSED__ETHERNET__TO_TX_RING,
-        TxStatus.PASSED__IP4__TO_TX_RING,
-        TxStatus.PASSED__IP6__TO_TX_RING,
-        TxStatus.DROPPED__ETHERNET__DST_ARP_CACHE_MISS,
-        TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ARP_CACHE_MISS,
-        TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
-        TxStatus.DROPPED__ETHERNET__DST_GATEWAY_ND_CACHE_MISS,
-    }
-)
 
 
 class UdpSocket(socket):
@@ -429,7 +409,7 @@ class UdpSocket(socket):
                 "Connection refused - [Remote host sent ICMP Unreachable]",
             )
 
-        tx_status = stack.packet_handler.send_udp_packet(
+        stack.packet_handler.send_udp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
             udp__local_port=self._local_port,
@@ -441,7 +421,13 @@ class UdpSocket(socket):
             ip4__options=self._effective_ip4_options(),
         )
 
-        sent_data_len = len(data) if tx_status in _TX_ACCEPTED else 0
+        # Phase 4b fire-and-forget: the datagram is accepted into the
+        # stack the moment 'send_udp_packet' queues it on the TX
+        # worker; report the full byte count without waiting for the
+        # wire-level result, matching Linux's queued-on-send UDP
+        # semantics. Delivery failures surface asynchronously
+        # (ICMP -> error queue / IP_RECVERR), not via the return value.
+        sent_data_len = len(data)
 
         __debug__ and log(
             "socket",
@@ -475,7 +461,7 @@ class UdpSocket(socket):
             remote_address=address,
         )
 
-        tx_status = stack.packet_handler.send_udp_packet(
+        stack.packet_handler.send_udp_packet(
             ip__local_address=local_ip_address,
             ip__remote_address=remote_ip_address,
             udp__local_port=self._local_port,
@@ -487,7 +473,8 @@ class UdpSocket(socket):
             ip4__options=self._effective_ip4_options(),
         )
 
-        sent_data_len = len(data) if tx_status in _TX_ACCEPTED else 0
+        # Phase 4b fire-and-forget — see 'send' above.
+        sent_data_len = len(data)
 
         __debug__ and log(
             "socket",

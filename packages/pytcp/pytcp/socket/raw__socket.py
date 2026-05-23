@@ -46,7 +46,6 @@ from net_addr import (
 from net_proto.lib.enums import IpProto
 from pytcp import stack
 from pytcp.lib.logger import log
-from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
     IPPROTO_IP,
     IPPROTO_IPV6,
@@ -258,7 +257,7 @@ class RawSocket(socket):
 
         match self._address_family:
             case AddressFamily.INET6:
-                tx_status = stack.packet_handler.send_ip6_packet(
+                stack.packet_handler.send_ip6_packet(
                     ip6__local_address=cast(Ip6Address, self._local_ip_address),
                     ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
                     ip6__next=self._ip_proto,
@@ -267,7 +266,7 @@ class RawSocket(socket):
                     ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
-                tx_status = stack.packet_handler.send_ip4_packet(
+                stack.packet_handler.send_ip4_packet(
                     ip4__local_address=cast(Ip4Address, self._local_ip_address),
                     ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
                     ip4__proto=self._ip_proto,
@@ -276,7 +275,10 @@ class RawSocket(socket):
                     ip4__ecn=self._effective_ip_ecn(),
                 )
 
-        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
+        # Phase 4b fire-and-forget: the packet is accepted into the
+        # stack the moment it is queued on the TX worker; report the
+        # full byte count without waiting for the wire-level result.
+        sent_data_len = len(data)
 
         __debug__ and log(
             "socket",
@@ -298,7 +300,7 @@ class RawSocket(socket):
 
         match self._address_family:
             case AddressFamily.INET6:
-                tx_status = stack.packet_handler.send_ip6_packet(
+                stack.packet_handler.send_ip6_packet(
                     ip6__local_address=cast(Ip6Address, local_ip_address),
                     ip6__remote_address=cast(Ip6Address, remote_ip_address),
                     ip6__next=self._ip_proto,
@@ -307,7 +309,7 @@ class RawSocket(socket):
                     ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
-                tx_status = stack.packet_handler.send_ip4_packet(
+                stack.packet_handler.send_ip4_packet(
                     ip4__local_address=cast(Ip4Address, local_ip_address),
                     ip4__remote_address=cast(Ip4Address, remote_ip_address),
                     ip4__proto=self._ip_proto,
@@ -316,7 +318,8 @@ class RawSocket(socket):
                     ip4__ecn=self._effective_ip_ecn(),
                 )
 
-        sent_data_len = len(data) if tx_status is TxStatus.PASSED__ETHERNET__TO_TX_RING else 0
+        # Phase 4b fire-and-forget — see 'send' above.
+        sent_data_len = len(data)
 
         __debug__ and log(
             "socket",

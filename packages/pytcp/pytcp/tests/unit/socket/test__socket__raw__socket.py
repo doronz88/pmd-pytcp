@@ -472,16 +472,19 @@ class TestRawSocketSend(_RawSocketTestCase):
             msg="send() on an IPv6 raw socket must route through send_ip6_packet.",
         )
 
-    def test__raw_socket__send_returns_zero_on_drop(self) -> None:
+    def test__raw_socket__send_returns_len_data_even_on_drop(self) -> None:
         """
-        Ensure send() returns 0 when the TX path reports any status
-        other than 'PASSED__ETHERNET__TO_TX_RING'.
+        Ensure send() returns 'len(data)' even when the TX path would
+        ultimately drop the packet. Phase 4b made the raw send path
+        fire-and-forget: the packet is accepted into the stack the
+        moment it is queued on the TX worker; delivery failures
+        surface asynchronously, never via send()'s return value.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         handler = _make_packet_handler()
-        handler.send_ip4_packet = lambda **_: TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
+        handler.send_ip4_packet = lambda **_: None
         with patch("pytcp.socket.raw__socket.stack.packet_handler", handler):
             s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
             with patch(
@@ -491,8 +494,8 @@ class TestRawSocketSend(_RawSocketTestCase):
                 s.connect(("10.0.0.5", 7))
             self.assertEqual(
                 s.send(b"data"),
-                0,
-                msg="send() must return 0 when the packet is dropped on the TX path.",
+                4,
+                msg="send() must return len(data) — fire-and-forget accepts the packet regardless of drop.",
             )
 
     def test__raw_socket__sendto_does_not_require_connect(self) -> None:

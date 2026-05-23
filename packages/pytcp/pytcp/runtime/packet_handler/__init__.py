@@ -316,6 +316,22 @@ class PacketHandler(Subsystem, ABC):
         assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
         return self._tx_ring.dispatch(run)
 
+    def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None:
+        """
+        Fire-and-forget variant of '_marshal_tx' (Phase 4b async
+        send): hand a '_phtx_*' call to this interface's TX worker
+        and return immediately without waiting for the 'TxStatus'.
+        The UDP / raw socket send paths use this so the application
+        thread is not blocked on the worker; the datagram is
+        "accepted into the stack" the moment it is queued, matching
+        Linux's queued-on-send UDP semantics. Delivery failures
+        (no route, ARP timeout, ICMP error) surface asynchronously,
+        not through the send() return value.
+        """
+
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.dispatch_async(run)
+
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:
         """

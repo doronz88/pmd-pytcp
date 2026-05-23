@@ -82,6 +82,7 @@ class PacketHandlerIp6Tx(ABC):
         _tx_ring: TxRing | None
 
         def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
+        def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None: ...
 
         # pylint: disable=unused-argument
 
@@ -478,9 +479,12 @@ class PacketHandlerIp6Tx(ABC):
         ip6__payload: bytes = bytes(),
         ip6__hop: int | None = None,
         ip6__ecn: int = 0,
-    ) -> TxStatus:
+    ) -> None:
         """
-        Interface method for RAW Socket -> Packet Assembler communication.
+        Interface method for RAW Socket -> Packet Assembler
+        communication. Handed to the TX worker fire-and-forget via
+        '_marshal_tx_async' (Phase 4b): the calling app thread does
+        not block for the 'TxStatus'.
         """
 
         kwargs: dict[str, Any] = {
@@ -494,7 +498,7 @@ class PacketHandlerIp6Tx(ABC):
         }
         if ip6__hop is not None:
             kwargs["ip6__hop"] = ip6__hop
-        return self._marshal_tx(lambda: self._phtx_ip6(**kwargs))
+        self._marshal_tx_async(lambda: self._phtx_ip6(**kwargs))
 
     def __send_out_packet(self, ip6_packet_tx: Ip6Assembler) -> None:
         assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."

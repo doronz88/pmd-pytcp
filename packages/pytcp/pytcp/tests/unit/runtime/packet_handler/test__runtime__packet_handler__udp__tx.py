@@ -78,14 +78,15 @@ class _StubHandler(PacketHandlerUdpTx):
         self._packet_stats_tx = PacketStatsTx()
         self.ip4_tx_calls: list[dict[str, object]] = []
         self.ip6_tx_calls: list[dict[str, object]] = []
-        self.marshal_tx_calls = 0
+        self.marshal_tx_async_calls = 0
 
-    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
-        # 'send_udp_packet' marshals '_phtx_udp' through '_marshal_tx';
-        # with no TX worker under test, run the callable inline so the
-        # routing still reaches '_phtx_ip4' / '_phtx_ip6' synchronously.
-        self.marshal_tx_calls += 1
-        return run()
+    def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None:
+        # 'send_udp_packet' fire-and-forget marshals '_phtx_udp' through
+        # '_marshal_tx_async'; with no TX worker under test, run the
+        # callable inline so the routing still reaches '_phtx_ip4' /
+        # '_phtx_ip6' synchronously.
+        self.marshal_tx_async_calls += 1
+        run()
 
     def _phtx_ip4(self, **kwargs: object) -> TxStatus:
         self.ip4_tx_calls.append(kwargs)
@@ -174,7 +175,7 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         """
 
         handler = _StubHandler()
-        status = handler.send_udp_packet(
+        handler.send_udp_packet(
             ip__local_address=STACK__IP4_ADDRESS,
             ip__remote_address=HOST_A__IP4,
             udp__local_port=12345,
@@ -182,7 +183,6 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
             udp__payload=b"hello",
         )
 
-        self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
         self.assertEqual(handler._packet_stats_tx.udp__send, 1)
         self.assertEqual(len(handler.ip4_tx_calls), 1)
         payload = handler.ip4_tx_calls[0]["ip4__payload"]
@@ -190,12 +190,12 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         self.assertEqual(payload.sport, 12345)
         self.assertEqual(payload.dport, 54321)
 
-    def test__stack__packet_handler__udp__tx__send_udp_packet_routes_through_marshal_tx(self) -> None:
+    def test__stack__packet_handler__udp__tx__send_udp_packet_routes_through_marshal_tx_async(self) -> None:
         """
-        Ensure 'send_udp_packet' marshals the '_phtx_udp' pipeline
-        onto the interface's TX worker via '_marshal_tx' (ring-handoff
-        single-writer) rather than calling '_phtx_udp' directly on the
-        caller's thread.
+        Ensure 'send_udp_packet' hands the '_phtx_udp' pipeline to the
+        interface's TX worker fire-and-forget via '_marshal_tx_async'
+        (Phase 4b) rather than calling '_phtx_udp' directly on the
+        caller's thread or blocking for a result.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -210,7 +210,7 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         )
 
         self.assertEqual(
-            handler.marshal_tx_calls,
+            handler.marshal_tx_async_calls,
             1,
-            msg="send_udp_packet must route the TX through _marshal_tx exactly once.",
+            msg="send_udp_packet must route the TX through _marshal_tx_async exactly once.",
         )

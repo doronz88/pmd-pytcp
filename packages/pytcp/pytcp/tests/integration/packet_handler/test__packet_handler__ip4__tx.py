@@ -1191,19 +1191,15 @@ class TestPacketHandlerIp4TxSendIp4Packet(NetworkTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        tx_status = self._packet_handler.send_ip4_packet(
+        self._packet_handler.send_ip4_packet(
             ip4__local_address=STACK__IP4_HOST.address,
             ip4__remote_address=HOST_A__IP4_ADDRESS,
             ip4__proto=IpProto.from_int(99),
             ip4__payload=b"\x00\x00\x00\x00",
         )
 
-        self.assertEqual(
-            tx_status,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="send_ip4_packet must propagate the underlying _phtx_ip4 TxStatus.",
-        )
-
+        # 'send_ip4_packet' is fire-and-forget (Phase 4b) — no
+        # TxStatus return; assert on the emitted frame and stats.
         self.assertEqual(
             len(self._frames_tx),
             1,
