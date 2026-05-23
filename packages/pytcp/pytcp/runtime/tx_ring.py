@@ -33,6 +33,8 @@ ver 3.0.6
 import collections
 import os
 import select
+import threading
+from collections.abc import Callable
 from typing import override
 
 from net_proto import (
@@ -49,7 +51,14 @@ from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
 )
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsTx
+from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+
+# A fully-built outbound frame ready for 'os.writev'. The TX
+# deque carries these alongside '_TxRequest' marshaled-call
+# descriptors (see the ring-handoff design): the worker writes
+# a 'TxFrame' directly and runs a '_TxRequest' callable.
+type TxFrame = EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler
 
 # Per-protocol-class dispatch table mapping the TX-side Assembler
 # concrete class to its (Ethernet-type prefix, MTU overhead) tuple.
@@ -67,6 +76,66 @@ _TX_PROTO_DISPATCH: dict[type, tuple[bytes, int]] = {
 }
 
 
+class _TxRequest:
+    """
+    A marshaled '_phtx_*' pipeline call handed off to the TX
+    worker thread. The producing thread (an app 'send_*_packet'
+    caller, an RX-thread reply, a timer-thread retransmit) builds
+    the descriptor and blocks on its event; the single TX worker
+    thread runs the callable so every per-interface TX-state write
+    happens on one thread (single-writer). The callable's
+    'TxStatus' (or any exception) is handed back to the waiter.
+    """
+
+    __slots__ = ("_run", "_event", "_result", "_exc")
+
+    def __init__(self, run: Callable[[], TxStatus], /) -> None:
+        """
+        Initialize the marshaled request from its callable.
+        """
+
+        self._run = run
+        self._event = threading.Event()
+        self._result: TxStatus | None = None
+        self._exc: BaseException | None = None
+
+    def execute(self) -> None:
+        """
+        Run the callable on the worker thread, capturing its result
+        or exception, and signal the waiting producer. The event is
+        set in a 'finally' so a raising callable never strands the
+        waiter.
+        """
+
+        try:
+            self._result = self._run()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Captured and re-raised on the producer thread by
+            # 'result()'; a worker-side raise must not kill the TX
+            # loop or leave the blocked caller hung.
+            self._exc = exc
+        finally:
+            self._event.set()
+
+    def wait(self) -> None:
+        """
+        Block the producer until the worker has executed the call.
+        """
+
+        self._event.wait()
+
+    def result(self) -> TxStatus:
+        """
+        Return the worker-side 'TxStatus', re-raising any exception
+        the callable raised on the worker thread.
+        """
+
+        if self._exc is not None:
+            raise self._exc
+        assert self._result is not None
+        return self._result
+
+
 class TxRing(Subsystem):
     """
     Support for sending packets to the network.
@@ -78,9 +147,7 @@ class TxRing(Subsystem):
     _mtu: int
     _queue_max_size: int
 
-    _tx_deque: collections.deque[
-        EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler
-    ]
+    _tx_deque: collections.deque[TxFrame | _TxRequest]
     _tx_event_fd: int
     _queue_full_drop_count: int
     _os_error_drop_count: int
@@ -208,8 +275,15 @@ class TxRing(Subsystem):
             pass
 
         while self._tx_deque:
-            packet_tx = self._tx_deque.popleft()
-            if not self._send_one(packet_tx):
+            item = self._tx_deque.popleft()
+            if isinstance(item, _TxRequest):
+                # A marshaled '_phtx_*' call: run it here on the
+                # worker thread (single-writer). The callable itself
+                # enqueues the built frame back onto this deque, which
+                # the inner drain then writes in the same pass.
+                item.execute()
+                continue
+            if not self._send_one(item):
                 # 'os.writev' errored — stop draining. Re-arm the
                 # eventfd so the next outer pass picks up where we
                 # left off; otherwise pending packets would wait
@@ -221,9 +295,38 @@ class TxRing(Subsystem):
                         pass
                 return
 
+    def dispatch(self, run: Callable[[], TxStatus], /) -> TxStatus:
+        """
+        Run a '_phtx_*' pipeline call on the TX worker thread and
+        return its 'TxStatus' (ring-handoff single-writer). Marshals
+        the callable to the worker and blocks for the result, EXCEPT:
+
+        - No live worker (not started, or stopped) — run inline; the
+          unit-test path and the pre-'start()' boot path both hit
+          this, and there is no worker to hand off to.
+        - Called from the worker thread itself (a re-entrant
+          solicitation emitted mid-pipeline) — run inline; enqueuing
+          onto our own deque and waiting would deadlock.
+        """
+
+        worker = self._thread
+        if worker is None or not worker.is_alive() or threading.current_thread() is worker:
+            return run()
+
+        request = _TxRequest(run)
+        self._tx_deque.append(request)
+        try:
+            os.eventfd_write(self._tx_event_fd, 1)
+        except OSError:
+            # Eventfd closed (stop in progress); the request will not
+            # be serviced. Surfacing a drop is better than hanging.
+            return run()
+        request.wait()
+        return request.result()
+
     def _send_one(
         self,
-        packet_tx: EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler,
+        packet_tx: TxFrame,
     ) -> bool:
         """
         Build the wire-buffer list for a single packet and call
@@ -286,14 +389,16 @@ class TxRing(Subsystem):
 
     def enqueue(
         self,
-        packet_tx: EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler,
+        packet_tx: TxFrame,
     ) -> None:
         """
-        Enqueue outbound packet into TX Ring. Single producer
-        thread (the packet handler) — the 'len() >= cap' check is
-        race-free because no other producer competes for the slot.
-        On full deque the packet is dropped; the drop counter
-        increments so monitors can spot saturation.
+        Enqueue a fully-built outbound frame into the TX Ring. The
+        'len() >= cap' check tolerates concurrent producers (the
+        worker re-enqueues built frames while app / RX / timer
+        threads also enqueue) — 'deque.append' is atomic, and an
+        occasional off-by-one against the cap only over/under-fills
+        by one slot. On a full deque the frame is dropped; the drop
+        counter increments so monitors can spot saturation.
         """
 
         if len(self._tx_deque) >= self._queue_max_size:

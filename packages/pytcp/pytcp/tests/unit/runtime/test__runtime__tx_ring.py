@@ -31,7 +31,8 @@ ver 3.0.6
 """
 
 import os
-from typing import Any
+import threading
+from typing import Any, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -44,6 +45,7 @@ from net_proto import (
     Ip6Assembler,
 )
 from net_proto.lib.buffer import Buffer
+from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.tx_ring import TxRing
 
 
@@ -54,41 +56,37 @@ class _TxRingFixture(TestCase):
     suppresses module-level logging.
     """
 
+    @override
     def setUp(self) -> None:
         """
         Install the logging patches and open the pipe.
         """
 
-        self._log_patch = patch("pytcp.runtime.tx_ring.log")
-        self._log_patch.start()
-        self._subsystem_log_patch = patch("pytcp.runtime.subsystem.log")
-        self._subsystem_log_patch.start()
+        # Register the log patches via 'enterContext' so their
+        # cleanup runs LAST (LIFO) — after any 'addCleanup(ring.stop)'
+        # a test registers — keeping start/stop log output silenced
+        # while a started worker is torn down.
+        self.enterContext(patch("pytcp.runtime.tx_ring.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
         self._read_fd, self._write_fd = os.pipe()
+        self.addCleanup(self._close_fd, self._read_fd)
+        self.addCleanup(self._close_fd, self._write_fd)
         self._ring = TxRing(fd=self._write_fd, mtu=1500)
+        # Release the ring's eventfd back to the kernel; '_stop' is
+        # idempotent and safe on a never-started ring.
+        self.addCleanup(self._ring._stop)
 
-    def tearDown(self) -> None:
+    @staticmethod
+    def _close_fd(fd: int) -> None:
         """
-        Close the pipe endpoints and the ring's eventfd, then stop
-        the log patches.
+        Close a file descriptor, tolerating an already-closed fd.
         """
 
-        # Close the ring's eventfd via _stop so the kernel resource
-        # is released back; '_stop' is idempotent.
         try:
-            self._ring._stop()
+            os.close(fd)
         except OSError:
             pass
-        try:
-            os.close(self._read_fd)
-        except OSError:
-            pass
-        try:
-            os.close(self._write_fd)
-        except OSError:
-            pass
-        self._log_patch.stop()
-        self._subsystem_log_patch.stop()
 
 
 class TestTxRingInit(_TxRingFixture):
@@ -737,4 +735,215 @@ class TestTxRingDispatchFastPath(_TxRingFixture):
             writev.call_count,
             1,
             msg="_send_one must invoke os.writev exactly once on a successful dispatch.",
+        )
+
+
+class TestTxRingDispatch(_TxRingFixture):
+    """
+    The 'TxRing.dispatch' ring-handoff (single-writer) tests. The
+    TX worker thread is the sole executor of a marshaled '_phtx_*'
+    pipeline; 'dispatch' marshals the callable to the worker and
+    blocks for its 'TxStatus' result, except when there is no live
+    worker (unit-test / pre-start path) or the caller IS the worker
+    (re-entrant solicitation), in which case it runs inline.
+    """
+
+    def test__tx_ring__dispatch_runs_inline_when_no_worker(self) -> None:
+        """
+        Ensure 'dispatch' runs the callable inline on the calling
+        thread when the worker has not been started, and returns its
+        'TxStatus'. With no worker to hand off to, blocking would
+        deadlock; running inline preserves the synchronous contract.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ran_on: list[threading.Thread] = []
+
+        def run() -> TxStatus:
+            ran_on.append(threading.current_thread())
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        result = self._ring.dispatch(run)
+
+        self.assertEqual(
+            result,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="dispatch must return the callable's TxStatus when running inline.",
+        )
+        self.assertEqual(
+            ran_on,
+            [threading.current_thread()],
+            msg="With no worker, dispatch must run the callable on the calling thread.",
+        )
+
+    def test__tx_ring__dispatch_marshals_to_worker_thread(self) -> None:
+        """
+        Ensure 'dispatch' from a non-worker thread, with a live
+        worker, executes the callable on the worker thread (not the
+        caller's) and blocks until the worker returns the result.
+        This is the single-writer guarantee: the per-interface
+        '_phtx_*' state writes happen only on the worker thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500)
+        ring.start()
+        self.addCleanup(ring.stop)
+
+        ran_on: list[threading.Thread] = []
+
+        def run() -> TxStatus:
+            ran_on.append(threading.current_thread())
+            return TxStatus.PASSED__IP6__TO_TX_RING
+
+        result = ring.dispatch(run)
+
+        self.assertEqual(
+            result,
+            TxStatus.PASSED__IP6__TO_TX_RING,
+            msg="dispatch must block for and return the worker's TxStatus result.",
+        )
+        self.assertEqual(
+            ran_on,
+            [ring._thread],
+            msg="dispatch from a non-worker thread must execute the callable on the worker thread.",
+        )
+
+    def test__tx_ring__dispatch_runs_inline_when_called_from_worker(self) -> None:
+        """
+        Ensure a 'dispatch' issued from within a callable already
+        running on the worker thread (the re-entrant solicitation
+        case — a '_phtx_*' pipeline emitting an ARP/ND probe) runs
+        the nested callable inline rather than re-enqueuing onto its
+        own queue and deadlocking waiting for itself.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500)
+        ring.start()
+        self.addCleanup(ring.stop)
+
+        outer_thread: list[threading.Thread] = []
+        inner_thread: list[threading.Thread] = []
+
+        def inner() -> TxStatus:
+            inner_thread.append(threading.current_thread())
+            return TxStatus.PASSED__IP4__TO_TX_RING
+
+        def outer() -> TxStatus:
+            outer_thread.append(threading.current_thread())
+            return ring.dispatch(inner)
+
+        result = ring.dispatch(outer)
+
+        self.assertEqual(
+            result,
+            TxStatus.PASSED__IP4__TO_TX_RING,
+            msg="A re-entrant dispatch must return the nested callable's result without deadlock.",
+        )
+        self.assertEqual(
+            inner_thread,
+            outer_thread,
+            msg="A re-entrant dispatch must run the nested callable on the same (worker) thread inline.",
+        )
+        self.assertEqual(
+            outer_thread,
+            [ring._thread],
+            msg="The outer marshaled callable must run on the worker thread.",
+        )
+
+    def test__tx_ring__dispatch_propagates_exception_when_marshaled(self) -> None:
+        """
+        Ensure an exception raised by the callable on the worker
+        thread is re-raised to the blocked caller, so 'send_*_packet'
+        surfaces the same error it would have raised running inline.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500)
+        ring.start()
+        self.addCleanup(ring.stop)
+
+        def run() -> TxStatus:
+            raise ValueError("boom")
+
+        with self.assertRaises(ValueError) as ctx:
+            ring.dispatch(run)
+
+        self.assertEqual(
+            str(ctx.exception),
+            "boom",
+            msg="dispatch must re-raise the worker-side exception verbatim to the caller.",
+        )
+
+    def test__tx_ring__dispatch_propagates_exception_when_inline(self) -> None:
+        """
+        Ensure an exception raised by the callable on the inline (no
+        worker) path propagates directly to the caller.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def run() -> TxStatus:
+            raise ValueError("boom-inline")
+
+        with self.assertRaises(ValueError) as ctx:
+            self._ring.dispatch(run)
+
+        self.assertEqual(
+            str(ctx.exception),
+            "boom-inline",
+            msg="Inline dispatch must propagate the callable's exception unchanged.",
+        )
+
+    def test__tx_ring__loop_executes_request_and_drains_reenqueued_frame(self) -> None:
+        """
+        Ensure the worker loop, on popping a '_TxRequest', executes
+        its callable (which itself enqueues the built frame back onto
+        the same deque) and continues the inner drain to write that
+        frame in the same pass — proving the queue carries both
+        request and built-frame item kinds.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def _make_ethernet() -> MagicMock:
+            pkt = MagicMock(spec=EthernetAssembler)
+            pkt.__len__.return_value = 64
+            pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+            return pkt
+
+        executed: list[bool] = []
+
+        def run() -> TxStatus:
+            executed.append(True)
+            self._ring.enqueue(_make_ethernet())
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        request = tx_ring_module._TxRequest(run)
+        self._ring._tx_deque.append(request)
+        os.eventfd_write(self._ring._tx_event_fd, 1)
+
+        with patch("pytcp.runtime.tx_ring.os.writev") as mock_writev:
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            executed,
+            [True],
+            msg="The worker loop must execute the _TxRequest callable exactly once.",
+        )
+        self.assertEqual(
+            request.result(),
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="The executed request must expose the callable's TxStatus result.",
+        )
+        mock_writev.assert_called_once()
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The re-enqueued built frame must be drained in the same loop pass.",
         )
