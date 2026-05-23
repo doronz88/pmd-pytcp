@@ -950,9 +950,11 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
 
     def test__tcp_session__transmit_packet_routes_through_packet_handler(self) -> None:
         """
-        Ensure '_transmit_packet' delegates to
-        'stack.packet_handler.send_tcp_packet' with the expected
-        keyword arguments (local/remote IPs, ports, seq, ack, flags).
+        Ensure '_transmit_packet' delegates to the egress interface's
+        'send_tcp_packet' (resolved via 'stack.egress_packet_handler()')
+        with the expected keyword arguments (local/remote IPs, ports,
+        seq, ack, flags).
+
         Reference: RFC 9293 §3.10.3 (SEND call) — segment construction.
         """
 
@@ -960,9 +962,8 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
         handler.send_tcp_packet = MagicMock()
 
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.packet_handler",
-            handler,
-            create=True,
+            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            return_value=handler,
         ):
             session = self._make_session()
             session._transmit_packet(flag_ack=True, data=b"payload")

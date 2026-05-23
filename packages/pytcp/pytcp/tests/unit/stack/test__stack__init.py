@@ -34,6 +34,7 @@ ver 3.0.6
 
 import os
 import sys
+from typing import cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -1744,3 +1745,76 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
             ll_cls.return_value,
             msg="add_interface(ip4_link_local=True) must build and install a link-local client.",
         )
+
+
+class TestStackEgressPacketHandler(TestCase):
+    """
+    The 'stack.egress_packet_handler()' resolver tests — the single
+    seam that socket-originated TX (UDP / raw / TCP sends) routes
+    through to pick the egress interface, the centralized successor to
+    the bare 'stack.packet_handler' reach-through.
+    """
+
+    def setUp(self) -> None:
+        """
+        Snapshot 'stack.interfaces' so each test installs its own table.
+        """
+
+        self._interfaces_prior = dict(stack.interfaces)
+        self.addCleanup(self._restore)
+
+    def _restore(self) -> None:
+        stack.interfaces.clear()
+        stack.interfaces.update(self._interfaces_prior)
+
+    def _install(self, count: int) -> list[object]:
+        table = InterfaceTable()
+        handlers = [object() for _ in range(count)]
+        for i, handler in enumerate(handlers, start=1):
+            table[i] = cast("PacketHandlerL2", handler)
+        self.enterContext(patch.object(stack, "interfaces", table))
+        return handlers
+
+    def test__egress_packet_handler__resolves_sole_interface(self) -> None:
+        """
+        Ensure 'egress_packet_handler()' returns the single registered
+        interface when exactly one exists (the Phase-6 single-egress
+        host resolution).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        (handler,) = self._install(1)
+
+        self.assertIs(
+            stack.egress_packet_handler(),
+            handler,
+            msg="egress_packet_handler() must return the sole registered interface.",
+        )
+
+    def test__egress_packet_handler__raises_when_no_interface(self) -> None:
+        """
+        Ensure 'egress_packet_handler()' raises when no interface is
+        registered — there is nothing to egress through.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._install(0)
+
+        with self.assertRaises(RuntimeError):
+            stack.egress_packet_handler()
+
+    def test__egress_packet_handler__raises_when_ambiguous(self) -> None:
+        """
+        Ensure 'egress_packet_handler()' raises when more than one
+        interface is registered — single-egress selection is ambiguous
+        until the Phase 7 FIB 'oif' lookup lands.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._install(2)
+
+        with self.assertRaises(RuntimeError):
+            stack.egress_packet_handler()

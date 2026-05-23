@@ -39,6 +39,7 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
+import pytcp.stack as _stack
 from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
@@ -115,6 +116,18 @@ class _UdpSocketTestCase(TestCase):
         )
         self._handler_patch.start()
         self.addCleanup(self._handler_patch.stop)
+
+        # Socket-originated TX now resolves its egress interface through
+        # 'stack.egress_packet_handler()' (the Phase-6 seam). Make it
+        # follow the currently-patched 'stack.packet_handler' so the
+        # existing 'patch(... packet_handler, handler)' fixtures (here and
+        # in per-test 'with' blocks) transparently drive the send path.
+        self._egress_patch = patch(
+            "pytcp.socket.udp__socket.stack.egress_packet_handler",
+            side_effect=lambda: _stack.packet_handler,
+        )
+        self._egress_patch.start()
+        self.addCleanup(self._egress_patch.stop)
 
         # is_address_in_use reads stack.sockets directly, so mirror the
         # patch on that module as well.

@@ -359,6 +359,41 @@ def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
     return pmtu_cache.get(dst)
 
 
+def egress_packet_handler() -> PacketHandlerL2 | PacketHandlerL3:
+    """
+    Return the packet handler for the interface that egresses
+    stack-originated traffic — socket sends (UDP / raw IP) and TCP
+    control segments. This is the single, centralized successor to the
+    bare 'stack.packet_handler' reach-through: every socket-originated
+    TX path resolves its egress interface through this one seam.
+
+    Phase 6 (host, single egress): resolves the SOLE registered
+    interface; raises 'RuntimeError' when zero or more than one
+    interface is registered. At N=1 this is identical to the retired
+    'stack.packet_handler' singleton.
+
+    Phase 7: becomes a per-destination FIB lookup ('Route.oif') so a
+    multi-homed host picks the egress interface from the routing table —
+    the signature will gain the destination address and the
+    "ambiguous" branch below is what that lookup replaces.
+    """
+
+    handlers = interfaces.values()
+    if len(handlers) == 1:
+        return handlers[0]
+    if not handlers:
+        raise RuntimeError(
+            "No interface registered; cannot egress stack-originated traffic. "
+            "Add one via 'stack.add_interface(...)'."
+        )
+    # Phase 7: replace with a per-destination FIB 'oif' lookup.
+    raise RuntimeError(
+        "Multiple interfaces registered; socket-originated egress selection "
+        "needs the Phase 7 FIB 'oif' lookup (not yet implemented). Until then "
+        "the stack supports a single egress interface."
+    )
+
+
 # RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) outbound ICMP error rate
 # limiters. One per L3 version so a flood of v4 errors cannot
 # starve legitimate v6 error generation (and vice versa). Consumed

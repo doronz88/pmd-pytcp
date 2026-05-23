@@ -257,7 +257,7 @@ class RawSocket(socket):
 
         match self._address_family:
             case AddressFamily.INET6:
-                stack.packet_handler.send_ip6_packet(
+                stack.egress_packet_handler().send_ip6_packet(
                     ip6__local_address=cast(Ip6Address, self._local_ip_address),
                     ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
                     ip6__next=self._ip_proto,
@@ -266,7 +266,7 @@ class RawSocket(socket):
                     ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
-                stack.packet_handler.send_ip4_packet(
+                stack.egress_packet_handler().send_ip4_packet(
                     ip4__local_address=cast(Ip4Address, self._local_ip_address),
                     ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
                     ip4__proto=self._ip_proto,
@@ -300,7 +300,7 @@ class RawSocket(socket):
 
         match self._address_family:
             case AddressFamily.INET6:
-                stack.packet_handler.send_ip6_packet(
+                stack.egress_packet_handler().send_ip6_packet(
                     ip6__local_address=cast(Ip6Address, local_ip_address),
                     ip6__remote_address=cast(Ip6Address, remote_ip_address),
                     ip6__next=self._ip_proto,
@@ -309,7 +309,7 @@ class RawSocket(socket):
                     ip6__ecn=self._effective_ip_ecn(),
                 )
             case AddressFamily.INET4:
-                stack.packet_handler.send_ip4_packet(
+                stack.egress_packet_handler().send_ip4_packet(
                     ip4__local_address=cast(Ip4Address, local_ip_address),
                     ip4__remote_address=cast(Ip4Address, remote_ip_address),
                     ip4__proto=self._ip_proto,
