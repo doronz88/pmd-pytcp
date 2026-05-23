@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip4__tx.p
 ver 3.0.6
 """
 
+import threading
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -98,6 +99,9 @@ class _StubHandler(PacketHandlerIp4Tx):
         self._ip4_ifaddr = ip4_hosts if ip4_hosts is not None else [STACK__IP4_HOST]
         self._ip4_multicast = [STACK__IP4_MULTICAST]
         self._ip4_id = 0
+        # Lock guarding the masked IP-id increment ('_next_ip4_id').
+        # The stub doesn't run the base ctor that normally builds it.
+        self._lock__ip4_id = threading.Lock()
         # Per-interface TX ring — injected by the L3-enqueue tests
         # that exercise '__send_out_packet'; None for the L2 tests
         # whose '_phtx_ethernet' override records calls instead.

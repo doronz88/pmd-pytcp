@@ -63,6 +63,8 @@ class PacketHandlerIp4Tx(ABC):
     """
 
     if TYPE_CHECKING:
+        import threading
+
         from net_addr import Ip4IfAddr
         from net_proto import EthernetPayload
         from pytcp.lib.packet_stats import PacketStatsTx
@@ -73,6 +75,7 @@ class PacketHandlerIp4Tx(ABC):
         _ip4_ifaddr: list[Ip4IfAddr]
         _ip4_multicast: list[Ip4Address]
         _ip4_id: int
+        _lock__ip4_id: threading.Lock
         _ip4_support: bool
         _interface_mtu: int
         _tx_ring: TxRing | None
@@ -94,6 +97,23 @@ class PacketHandlerIp4Tx(ABC):
 
         @property
         def _ip4_broadcast(self) -> list[Ip4Address]: ...
+
+    def _next_ip4_id(self) -> int:
+        """
+        Generate the next IPv4 Identification value for this
+        interface — an atomic, 16-bit-masked pre-increment of the
+        per-interface counter. Masking wraps 0xFFFF -> 0 instead of
+        overflowing the 16-bit wire field; the lock makes the
+        read-modify-write atomic so concurrent fragmented sends never
+        collide on an Identification (which would corrupt reassembly
+        at the peer).
+
+        Reference: RFC 791 §2.3 (Identification field).
+        """
+
+        with self._lock__ip4_id:
+            self._ip4_id = (self._ip4_id + 1) & 0xFFFF
+            return self._ip4_id
 
     def _phtx_ip4(
         self,
@@ -254,7 +274,10 @@ class PacketHandlerIp4Tx(ABC):
             *(Ip4OptionNop() for _ in range(copy_options_padding)),
         )
 
-        self._ip4_id += 1
+        # One Identification per datagram, captured into a local so
+        # concurrent fragmented sends can't read each other's value
+        # (the generator's masked increment is atomic).
+        ip4_id = self._next_ip4_id()
         outbound_tx_status: set[TxStatus] = set()
         for offset, chunk, is_last in iter_fragment_chunks(
             bytes(ip4_packet_tx.payload),
@@ -269,7 +292,7 @@ class PacketHandlerIp4Tx(ABC):
                 ip4_frag__payload=chunk,
                 ip4_frag__offset=offset,
                 ip4_frag__flag_mf=not is_last,
-                ip4_frag__id=self._ip4_id,
+                ip4_frag__id=ip4_id,
                 ip4_frag__proto=ip4_packet_tx.proto,
             )
             __debug__ and log("ip4", f"{ip4_frag_tx.tracker} - {ip4_frag_tx}")

@@ -30,6 +30,7 @@ pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__init.py
 ver 3.0.6
 """
 
+import threading
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
@@ -100,7 +101,7 @@ class TestPacketHandlerBaseConstruction(TestCase):
     def test__stack__packet_handler__init__empty_defaults(self) -> None:
         """
         Ensure the base constructor creates empty host / candidate /
-        multicast lists and zeroed IP id counters.
+        multicast lists and a zeroed IPv4 IP-id counter.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -116,7 +117,6 @@ class TestPacketHandlerBaseConstruction(TestCase):
         self.assertEqual(h._ip4_multicast, [])
         self.assertEqual(h._ip6_multicast, [])
         self.assertEqual(h._ip4_id, 0)
-        self.assertEqual(h._ip6_id, 0)
         self.assertEqual(h._ip4_frag_table.flows, {})
         self.assertEqual(h._ip6_frag_table.flows, {})
         self.assertEqual(h._interface_mtu, 1500)
@@ -516,3 +516,84 @@ class TestPacketHandlerTxRingInjection(TestCase):
 
         injected.enqueue.assert_called_once()
         global_ring.enqueue.assert_not_called()
+
+
+class TestPacketHandlerIp4IdGenerator(TestCase):
+    """
+    The per-interface IPv4 Identification generator tests.
+    """
+
+    def test__stack__packet_handler__init__ip4_id_first_value_is_one(self) -> None:
+        """
+        Ensure the first generated IPv4 Identification is 1 (the
+        counter starts at 0 and pre-increments), preserving the
+        legacy first-fragmented-packet value.
+
+        Reference: RFC 791 §2.3 (Identification field).
+        """
+
+        h = _build_l2_handler()
+
+        self.assertEqual(
+            h._next_ip4_id(),
+            1,
+            msg="The first generated IPv4 Identification must be 1.",
+        )
+
+    def test__stack__packet_handler__init__ip4_id_wraps_at_16_bits(self) -> None:
+        """
+        Ensure the IPv4 Identification generator wraps modulo 2^16
+        instead of overflowing past the 16-bit wire field — the
+        value after 0xFFFF must be 0, then 1.
+
+        Reference: RFC 791 §2.3 (Identification is a 16-bit field).
+        """
+
+        h = _build_l2_handler()
+        h._ip4_id = 0xFFFF
+
+        self.assertEqual(
+            h._next_ip4_id(),
+            0,
+            msg="The IPv4 Identification must wrap from 0xFFFF to 0, not overflow to 0x10000.",
+        )
+        self.assertEqual(
+            h._next_ip4_id(),
+            1,
+            msg="The IPv4 Identification must continue from 0 to 1 after wrapping.",
+        )
+
+    def test__stack__packet_handler__init__ip4_id_concurrent_values_are_unique(self) -> None:
+        """
+        Ensure concurrent IPv4 Identification generation hands every
+        caller a distinct value — the masked counter increment is
+        atomic, so no two of N concurrent fragmented sends collide
+        (which would corrupt reassembly at the peer).
+
+        Reference: RFC 791 §2.3 (Identification distinguishes
+        fragments of distinct datagrams).
+        """
+
+        h = _build_l2_handler()
+        count = 500
+        results: list[int] = []
+        results_lock = threading.Lock()
+        barrier = threading.Barrier(parties=count)
+
+        def _worker() -> None:
+            barrier.wait()
+            value = h._next_ip4_id()
+            with results_lock:
+                results.append(value)
+
+        threads = [threading.Thread(target=_worker) for _ in range(count)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(
+            len(set(results)),
+            count,
+            msg="Concurrent IPv4 Identification generation must hand every caller a distinct value.",
+        )

@@ -113,7 +113,6 @@ class PacketHandlerIp6FragTx(ABC):
         from pytcp.lib.packet_stats import PacketStatsTx
 
         _packet_stats_tx: PacketStatsTx
-        _ip6_id: int
         _interface_mtu: int
 
         # pylint: disable=unused-argument
@@ -152,7 +151,11 @@ class PacketHandlerIp6FragTx(ABC):
         if isinstance(ip6_packet_tx.payload, (TcpAssembler, UdpAssembler, Icmp6Assembler)):
             ip6_packet_tx.payload.pshdr_sum = ip6_packet_tx.pshdr_sum
 
-        self._ip6_id = _generate_ip6_frag_id()
+        # One Fragment Identification per datagram, held as a
+        # loop-local rather than on 'self' so concurrent fragmented
+        # sends cannot read each other's value (which would corrupt
+        # reassembly at the peer).
+        ip6_frag_id = _generate_ip6_frag_id()
         ip6_tx_status: set[TxStatus] = set()
         for offset, chunk, is_last in iter_fragment_chunks(
             bytes(ip6_packet_tx.payload),
@@ -162,7 +165,7 @@ class PacketHandlerIp6FragTx(ABC):
                 ip6_frag__next=ip6_packet_tx.next,
                 ip6_frag__offset=offset,
                 ip6_frag__flag_mf=not is_last,
-                ip6_frag__id=self._ip6_id,
+                ip6_frag__id=ip6_frag_id,
                 ip6_frag__payload=chunk,
             )
             __debug__ and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")

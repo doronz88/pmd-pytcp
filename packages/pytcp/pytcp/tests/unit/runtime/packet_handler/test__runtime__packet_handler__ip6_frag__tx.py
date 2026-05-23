@@ -74,7 +74,6 @@ class _StubHandler(PacketHandlerIp6FragTx):
 
     def __init__(self, *, interface_mtu: int = 200, ip6_tx_status: TxStatus | None = None) -> None:
         self._packet_stats_tx = PacketStatsTx()
-        self._ip6_id = 0
         self._interface_mtu = interface_mtu
 
         self.ip6_tx_calls: list[dict[str, object]] = []
@@ -120,8 +119,14 @@ class TestPacketHandlerIp6FragTx(TestCase):
 
         ids: list[int] = []
         for _ in range(10):
+            handler.ip6_tx_calls.clear()
             handler._phtx_ip6_frag(ip6_packet_tx=ip6_packet)
-            ids.append(handler._ip6_id)
+            # The Fragment Identification is now a loop-local rather
+            # than a handler attribute, so read it back off the
+            # emitted fragment instead of 'handler._ip6_id'.
+            payload = handler.ip6_tx_calls[-1]["ip6__payload"]
+            assert isinstance(payload, Ip6FragAssembler)
+            ids.append(payload.id)
 
         deltas = [ids[i + 1] - ids[i] for i in range(9)]
         self.assertNotEqual(

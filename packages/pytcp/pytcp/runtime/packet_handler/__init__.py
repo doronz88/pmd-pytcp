@@ -164,8 +164,15 @@ class PacketHandler(Subsystem, ABC):
     _ip4_ifaddr: list[Ip4IfAddr]
     _ip6_multicast: list[Ip6Address]
     _ip4_multicast: list[Ip4Address]
-    _ip6_id: int
+    # IPv4 Identification counter + the lock guarding its masked
+    # read-modify-write. Per-interface (the counter is interface
+    # state); the tiny lock makes '_next_ip4_id' atomic under the
+    # current app-thread TX model and stays cheap (uncontended)
+    # once Phase 4 makes TX single-writer. IPv6 has no counterpart:
+    # its Fragment Identification is a fresh random per datagram
+    # (a loop-local in '_phtx_ip6_frag'), not stored on the handler.
     _ip4_id: int
+    _lock__ip4_id: threading.Lock
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
@@ -253,9 +260,12 @@ class PacketHandler(Subsystem, ABC):
         self._ip6_multicast = []
         self._ip4_multicast = []
 
-        # Used to keep IPv4 and IPv6 packet ID last value.
+        # IPv4 Identification counter (last value) + its lock. The
+        # IPv6 Fragment Identification is generated fresh per
+        # datagram as a loop-local in '_phtx_ip6_frag', so there is
+        # no IPv6 counter to store here.
         self._ip4_id: int = 0
-        self._ip6_id: int = 0
+        self._lock__ip4_id = threading.Lock()
 
         # Used to defragment IPv4 and IPv6 packets.
         self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT)
