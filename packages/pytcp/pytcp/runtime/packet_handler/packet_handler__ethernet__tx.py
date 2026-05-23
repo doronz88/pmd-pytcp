@@ -61,6 +61,7 @@ class PacketHandlerEthernetTx(ABC):
 
         _packet_stats_tx: PacketStatsTx
         _mac_unicast: MacAddress
+        _ifindex: int
         _ip6_ifaddr: list[Ip6IfAddr]
         _ip4_ifaddr: list[Ip4IfAddr]
         _tx_ring: TxRing | None
@@ -147,7 +148,7 @@ class PacketHandlerEthernetTx(ABC):
             # this same 'lookup' for transit packets.
             ip6_route = stack.ip6_fib.lookup(
                 ip6_dst,
-                connected=[ip6_host.network for ip6_host in self._ip6_ifaddr],
+                connected=[(ip6_host.network, self._ifindex) for ip6_host in self._ip6_ifaddr],
             )
             if ip6_route is None:
                 self._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop += 1
@@ -272,7 +273,7 @@ class PacketHandlerEthernetTx(ABC):
             # host".
             ip4_route = stack.ip4_fib.lookup(
                 ip4_dst,
-                connected=[ip4_host.network for ip4_host in self._ip4_ifaddr],
+                connected=[(ip4_host.network, self._ifindex) for ip4_host in self._ip4_ifaddr],
             )
             if ip4_route is None:
                 self._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop += 1

@@ -456,6 +456,35 @@ def local_ip6_unicast() -> tuple[Ip6Address, ...]:
     return tuple(addresses)
 
 
+def connected_ip4_networks() -> tuple[tuple[Ip4Network, int], ...]:
+    """
+    Return every directly-connected IPv4 network paired with the index
+    of the interface that owns it — the '(network, oif)' input the FIB
+    'lookup()' synthesizes connected routes from. Spans all registered
+    interfaces so cross-interface source selection sees every connected
+    network tagged with its egress interface.
+    """
+
+    networks: list[tuple[Ip4Network, int]] = []
+    for ifindex, handler in interfaces.items():
+        for host in handler.ip4_host:
+            networks.append((host.network, ifindex))
+    return tuple(networks)
+
+
+def connected_ip6_networks() -> tuple[tuple[Ip6Network, int], ...]:
+    """
+    Return every directly-connected IPv6 network paired with its owning
+    interface index — the IPv6 counterpart of 'connected_ip4_networks()'.
+    """
+
+    networks: list[tuple[Ip6Network, int]] = []
+    for ifindex, handler in interfaces.items():
+        for host in handler.ip6_host:
+            networks.append((host.network, ifindex))
+    return tuple(networks)
+
+
 # RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) outbound ICMP error rate
 # limiters. One per L3 version so a flood of v4 errors cannot
 # starve legitimate v6 error generation (and vice versa). Consumed

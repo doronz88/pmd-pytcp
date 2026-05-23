@@ -69,6 +69,9 @@ _STATIC4_ROUTE = Route(
 # '_CONNECTED4_NET' — scope LINK, no gateway, protocol KERNEL,
 # default metric, no prefsrc. Deterministic synthesis means a
 # whole-object equality assertion is sound.
+# The owning interface index the connected network is tagged with;
+# 'lookup' stamps it onto the synthesized connected route's 'oif'.
+_CONNECTED4_OIF = 1
 _CONNECTED4_ROUTE = Route(
     destination=_CONNECTED4_NET,
     gateway=None,
@@ -76,6 +79,7 @@ _CONNECTED4_ROUTE = Route(
     metric=0,
     scope=RouteScope.LINK,
     protocol=RouteProtocol.KERNEL,
+    oif=_CONNECTED4_OIF,
 )
 
 
@@ -85,21 +89,21 @@ _CONNECTED4_ROUTE = Route(
             "_description": "On-link destination resolves to the derived "
             "connected route, not the default route (longest-prefix wins).",
             "_table_routes": [_DEFAULT4_ROUTE, _STATIC4_ROUTE],
-            "_connected": [_CONNECTED4_NET],
+            "_connected": [(_CONNECTED4_NET, _CONNECTED4_OIF)],
             "_query": Ip4Address("10.0.1.50"),
             "_expected": _CONNECTED4_ROUTE,
         },
         {
             "_description": "Destination inside a static /16 resolves to the " "static route, beating the /0 default.",
             "_table_routes": [_DEFAULT4_ROUTE, _STATIC4_ROUTE],
-            "_connected": [_CONNECTED4_NET],
+            "_connected": [(_CONNECTED4_NET, _CONNECTED4_OIF)],
             "_query": Ip4Address("10.9.1.1"),
             "_expected": _STATIC4_ROUTE,
         },
         {
             "_description": "Destination matching only the default route " "resolves to the default route.",
             "_table_routes": [_DEFAULT4_ROUTE, _STATIC4_ROUTE],
-            "_connected": [_CONNECTED4_NET],
+            "_connected": [(_CONNECTED4_NET, _CONNECTED4_OIF)],
             "_query": Ip4Address("8.8.8.8"),
             "_expected": _DEFAULT4_ROUTE,
         },
@@ -120,14 +124,14 @@ _CONNECTED4_ROUTE = Route(
         {
             "_description": "Connected route alone matches an in-subnet " "destination with no gateway.",
             "_table_routes": [],
-            "_connected": [_CONNECTED4_NET],
+            "_connected": [(_CONNECTED4_NET, _CONNECTED4_OIF)],
             "_query": Ip4Address("10.0.1.9"),
             "_expected": _CONNECTED4_ROUTE,
         },
         {
             "_description": "Connected route alone does not match an " "out-of-subnet destination.",
             "_table_routes": [],
-            "_connected": [_CONNECTED4_NET],
+            "_connected": [(_CONNECTED4_NET, _CONNECTED4_OIF)],
             "_query": Ip4Address("10.0.2.9"),
             "_expected": None,
         },
@@ -140,7 +144,7 @@ class TestRouteTableLookupIp4(TestCase):
 
     _description: str
     _table_routes: list[Route[Ip4Address, Ip4Network]]
-    _connected: list[Ip4Network]
+    _connected: list[tuple[Ip4Network, int]]
     _query: Ip4Address
     _expected: Route[Ip4Address, Ip4Network] | None
 
@@ -227,7 +231,7 @@ class TestRouteTableLookupTiebreaks(TestCase):
 
         result = table.lookup(
             Ip4Address("10.0.1.50"),
-            connected=[Ip4Network("10.0.1.0/24")],
+            connected=[(Ip4Network("10.0.1.0/24"), 1)],
         )
 
         self.assertIsNone(
@@ -266,11 +270,11 @@ class TestRouteTableLookupIp6(TestCase):
 
         on_link = table.lookup(
             Ip6Address("2001:db8:0:1::50"),
-            connected=[Ip6Network("2001:db8:0:1::/64")],
+            connected=[(Ip6Network("2001:db8:0:1::/64"), 1)],
         )
         off_link = table.lookup(
             Ip6Address("2606:4700:4700::1111"),
-            connected=[Ip6Network("2001:db8:0:1::/64")],
+            connected=[(Ip6Network("2001:db8:0:1::/64"), 1)],
         )
 
         self.assertEqual(

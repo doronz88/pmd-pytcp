@@ -167,19 +167,23 @@ class RouteTable[
         ]
         return before - len(self._routes)
 
-    def lookup(self, destination: A, /, *, connected: Iterable[N]) -> Route[A, N] | None:
+    def lookup(self, destination: A, /, *, connected: Iterable[tuple[N, int]]) -> Route[A, N] | None:
         """
         Resolve 'destination' to its next-hop route via
         longest-prefix match over the explicit routes plus the
-        connected routes synthesized from 'connected'. Ties are
-        broken by lowest metric, then by preferring a direct
-        (no-gateway) route over a gatewayed one. Returns None
-        when no candidate covers the destination ("no route to
-        host").
+        connected routes synthesized from 'connected'. Each
+        'connected' entry is a '(network, oif)' pair — the directly
+        connected network and the index of the interface that owns it
+        — so the synthesized connected route carries its egress
+        interface (the matched route's '.oif' identifies the egress
+        for an on-link destination). Ties are broken by lowest metric,
+        then by preferring a direct (no-gateway) route over a gatewayed
+        one. Returns None when no candidate covers the destination
+        ("no route to host").
         """
 
         candidates: list[Route[A, N]] = list(self._routes)
-        for network in connected:
+        for network, oif in connected:
             candidates.append(
                 Route(
                     destination=network,
@@ -188,6 +192,7 @@ class RouteTable[
                     metric=0,
                     scope=RouteScope.LINK,
                     protocol=RouteProtocol.KERNEL,
+                    oif=oif,
                 )
             )
 

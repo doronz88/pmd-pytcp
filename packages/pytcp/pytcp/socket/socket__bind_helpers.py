@@ -91,7 +91,7 @@ def pick_local_ip6_address(
     if ip6_fib is not None:
         route = ip6_fib.lookup(
             remote_ip6_address,
-            connected=[ip6_host.network for ip6_host in ip6_hosts],
+            connected=stack.connected_ip6_networks(),
         )
         if route is not None:
             if route.prefsrc is not None:
@@ -128,7 +128,7 @@ def pick_local_ip4_address(
     if ip4_fib is not None:
         route = ip4_fib.lookup(
             remote_ip4_address,
-            connected=[ip4_host.network for ip4_host in ip4_hosts],
+            connected=stack.connected_ip4_networks(),
         )
         if route is not None:
             if route.prefsrc is not None:

@@ -111,6 +111,7 @@ class _StubHandler(PacketHandlerEthernetTx):
 
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
+        self._ifindex = 1
         self._ip4_ifaddr = [STACK__IP4_HOST]
         self._ip6_ifaddr = [STACK__IP6_HOST]
 
