@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler UDP TX operations.
+This module contains integration tests for the UDP TX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__udp__tx.py
+pytcp/tests/integration/protocols/udp/test__udp__tx.py
 
 ver 3.0.6
 """
@@ -45,8 +45,8 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     STACK__IP4_HOST,
     STACK__IP6_HOST,
-    NetworkTestCase,
 )
+from pytcp.tests.lib.udp_testcase import UdpTestCase
 
 
 @parameterized_class(
@@ -360,9 +360,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerUdpTx(NetworkTestCase):
+class TestUdpTx(UdpTestCase):
     """
-    Test the Packet Handler UDP TX operations (success path).
+    The UDP TX packet-handler path tests (success path).
     """
 
     _description: str
@@ -373,7 +373,7 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__udp__tx(self) -> None:
+    def test__udp__tx(self) -> None:
         """
         Ensure the Packet Handler UDP TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
@@ -424,16 +424,16 @@ class TestPacketHandlerUdpTx(NetworkTestCase):
         },
     ]
 )
-class TestPacketHandlerUdpTxErrors(NetworkTestCase):
+class TestUdpTxErrors(UdpTestCase):
     """
-    Test the Packet Handler UDP TX operations (error path).
+    The UDP TX packet-handler path tests (error path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
     _expected__error: Exception
 
-    def test__packet_handler__udp__tx__error(self) -> None:
+    def test__udp__tx__error(self) -> None:
         """
         Ensure '_phtx_udp' raises the expected exception for invalid
         IP address version combinations.
@@ -451,13 +451,13 @@ class TestPacketHandlerUdpTxErrors(NetworkTestCase):
         )
 
 
-class TestPacketHandlerUdpTxSendUdpPacket(NetworkTestCase):
+class TestUdpTxSendUdpPacket(UdpTestCase):
     """
     Test the public 'send_udp_packet' wrapper, which forwards into
     '_phtx_udp' renaming the addressing and port kwargs.
     """
 
-    def test__packet_handler__udp__tx__send_udp_packet(self) -> None:
+    def test__udp__tx__send_udp_packet(self) -> None:
         """
         Ensure 'send_udp_packet' renames its kwargs ('ip__local_address'
         / 'ip__remote_address' → 'ip__src' / 'ip__dst', 'udp__local_port'

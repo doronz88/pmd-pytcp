@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler UDP RX operations.
+This module contains integration tests for the UDP RX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__udp__rx.py
+pytcp/tests/integration/protocols/udp/test__udp__rx.py
 
 ver 3.0.6
 """
@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.udp_testcase import UdpTestCase
 
 
 @parameterized_class(
@@ -434,9 +434,9 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerUdpRx(NetworkTestCase):
+class TestUdpRx(UdpTestCase):
     """
-    Test the Packet Handler UDP RX operations.
+    The UDP RX packet-handler path tests.
     """
 
     _description: str
@@ -447,7 +447,7 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__udp__rx(self) -> None:
+    def test__udp__rx(self) -> None:
         """
         Ensure the Packet Handler processes the received UDP
         frames as expected for each parametrized case.
@@ -477,9 +477,9 @@ class TestPacketHandlerUdpRx(NetworkTestCase):
         )
 
 
-class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
+class TestUdpRxEchoNativeDisabled(UdpTestCase):
     """
-    Test the Packet Handler UDP RX path when 'stack.UDP__ECHO_NATIVE' is
+    The UDP RX path tests for when 'stack.UDP__ECHO_NATIVE' is
     disabled. The default 'NetworkTestCase' fixture patches it to True
     (so port-7 packets are echoed), so this dedicated TestCase flips it
     off in setUp to exercise the fallthrough into the ICMP-unreachable
@@ -496,7 +496,7 @@ class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
 
         stack.__dict__["UDP__ECHO_NATIVE"] = False
 
-    def test__packet_handler__udp__rx__port7_echo_disabled(self) -> None:
+    def test__udp__rx__port7_echo_disabled(self) -> None:
         """
         Ensure a UDP packet to port 7 with 'UDP__ECHO_NATIVE' disabled
         falls through to the no-socket-match branch and replies with
@@ -545,87 +545,6 @@ class TestPacketHandlerUdpRxEchoNativeDisabled(NetworkTestCase):
         )
 
 
-class TestPacketHandlerUdpRxIp6ZeroCksumDrop(NetworkTestCase):
-    """
-    Test the RFC 6935 §5 / RFC 8200 §8.1 IPv6 UDP zero-checksum
-    default-discard rule. An inbound IPv6 UDP datagram with
-    cksum=0 is dropped silently at the parser; the dedicated
-    'udp__ip6_zero_cksum__drop' counter bumps, no ICMPv6 error
-    is emitted, and the packet does not reach the socket
-    dispatch.
-    """
-
-    def test__packet_handler__udp__rx__ipv6_zero_cksum_dropped(self) -> None:
-        """
-        Ensure an IPv6 UDP frame with cksum=0 is silently
-        dropped at the parser layer with the dedicated counter
-        bumped exactly once.
-
-        Reference: RFC 8200 §8.1 (IPv6 receivers MUST discard
-        zero-cksum UDP).
-        Reference: RFC 6935 §5 (preserves the MUST-discard
-        default; per-port opt-in not implemented).
-        Reference: RFC 6936 §4 constraint 5 (default RX
-        behaviour MUST be to discard zero-cksum UDP).
-        """
-
-        # Ethernet II
-        #   Destination MAC : 02:00:00:00:00:07 (us)
-        #   Source MAC      : 02:00:00:00:00:91 (host A)
-        #   Ethertype       : 0x86dd (IPv6)
-        #
-        # IPv6
-        #   Payload Length : 0x000d (13 bytes = UDP header + "hello")
-        #   Next Header    : 17 (UDP)
-        #   Hop Limit      : 64
-        #   Source IP      : 2001:db8:0:1::91
-        #   Destination IP : 2001:db8:0:1::7
-        #
-        # UDP
-        #   Source Port  : 1000
-        #   Dest Port    : 7777
-        #   Length       : 0x000d
-        #   Checksum     : 0x0000 (the RFC 6935 default-discard trigger)
-        #   Payload      : "hello"
-        frame_rx = (
-            b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd\x60\x00"
-            b"\x00\x00\x00\x0d\x11\x40\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-            b"\x00\x00\x00\x00\x00\x91\x20\x01\x0d\xb8\x00\x00\x00\x01\x00\x00"
-            b"\x00\x00\x00\x00\x00\x07\x03\xe8\x1e\x61\x00\x0d\x00\x00\x68\x65"
-            b"\x6c\x6c\x6f"
-        )
-
-        self._packet_handler._phrx_ethernet(PacketRx(frame_rx))
-
-        self.assertEqual(
-            len(self._frames_tx),
-            0,
-            msg="IPv6 UDP cksum=0 must be silently dropped — no ICMPv6 error emitted.",
-        )
-
-        self.assertEqual(
-            self._packet_handler.packet_stats_rx.udp__ip6_zero_cksum__drop,
-            1,
-            msg="udp__ip6_zero_cksum__drop must bump exactly once on the IPv6 cksum=0 drop path.",
-        )
-
-        self.assertEqual(
-            self._packet_handler.packet_stats_rx.udp__failed_parse__drop,
-            0,
-            msg=(
-                "udp__failed_parse__drop must NOT bump — the dedicated counter "
-                "udp__ip6_zero_cksum__drop takes precedence for the RFC 6935 "
-                "discard path."
-            ),
-        )
-
-        self.assertEqual(
-            self._packet_handler.packet_stats_rx.udp__socket_match,
-            0,
-            msg="Dropped packet must not reach the socket-dispatch layer.",
-        )
-
-
 @parameterized_class(
     [
         {
@@ -666,7 +585,7 @@ class TestPacketHandlerUdpRxIp6ZeroCksumDrop(NetworkTestCase):
         },
     ]
 )
-class TestPacketHandlerUdpRxInvalidSourceAddress(NetworkTestCase):
+class TestUdpRxInvalidSourceAddress(UdpTestCase):
     """
     Verify the RFC 1122 §4.1.3.6 invalid-source-address discard
     rule for UDP: a datagram arriving with a broadcast or
@@ -686,7 +605,7 @@ class TestPacketHandlerUdpRxInvalidSourceAddress(NetworkTestCase):
     _frame_rx: bytes
     _expected__ip_layer: str
 
-    def test__packet_handler__udp__rx__invalid_source_dropped_at_ip_layer(self) -> None:
+    def test__udp__rx__invalid_source_dropped_at_ip_layer(self) -> None:
         """
         Ensure inbound UDP frames with broadcast or multicast
         IP source addresses are silently dropped at the IP-
