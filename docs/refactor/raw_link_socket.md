@@ -2,7 +2,7 @@
 
 | Field  | Value |
 |--------|-------|
-| Status | **Planned** — not started. Created 2026-05-23. |
+| Status | **In progress.** Phases 0-3 (socket) + 4.1-4.3 (ACD engine, DHCP probe/announce, link-local) shipped & pushed on `PyTCP_3_0_6`. Phase 4.4-4.5 (full "B" — delete the RX conflict detector) outstanding; design + blockers captured in §10. Created 2026-05-23. |
 | Branch | `PyTCP_3_0_6` |
 | Motivation | Linux-faithful client-side ACD (DHCPv4 / RFC 3927 link-local), and a general L2 send/capture substrate. Unblocks the paused *IPv6 Address API / ACD-off-the-Address-API* refactor — see `packet_handler_rewrite_plan.md` Phase 8 and the ACD discussion below. |
 
@@ -166,3 +166,51 @@ Address API slice rides on (4)).
 - Rules: `.claude/rules/pytcp.md` (socket facade §5, factory §5.1),
   `enums.md` (stdlib-parity bare-alias pattern for `AF_PACKET` /
   `ETH_P_*` / `PACKET_*`).
+
+---
+
+## 10. Phase 4 execution status + the full-"B" ACD migration
+
+### 10.1 What shipped (pushed, green — 11355 tests)
+
+| Sub-phase | Commit | Summary |
+|-----------|--------|---------|
+| 4.1 | `21dd1c79` | `Ip4Acd` engine (`protocols/ip4/acd/ip4_acd.py`): `probe` + `announce` over the AF_PACKET socket; conflict detect by reading ARP off the socket. The Linux `sd-ipv4acd` model. |
+| 4.1 | `981ba5fa` | `Ip4Acd` ongoing-defense lifecycle: `claim` (probe+announce, holds the socket), `poll_conflict` (§2.4 drain → peer MAC), `defend` (gratuitous ARP), `release`. |
+| 4.2 | `a9cdd077` | DHCPv4 `arp_dad_verifier`/`announcer` repointed from `Ip4AddressApi.probe/announce` to `Ip4Acd.probe/announce` (lifecycle glue only). |
+| 4.3 | `5ae0839a` | RFC 3927 link-local fully off the Address-API ACD surface: `_do_claiming` → `Ip4Acd.claim` + `add_ifaddr`; BOUND tick polls `Ip4Acd.poll_conflict` → §2.5 `defend`/abandon. |
+
+So **probe + announce + link-local ongoing defense are Linux-faithful userspace ACD today.** What remains (4.4-4.5) is moving *static* and *DHCP* ongoing defense off the stack's ARP RX path so the RX conflict detector can be deleted entirely.
+
+### 10.2 The architecture the code actually has (discovered reading it)
+
+- **Ongoing §2.4 defense for ALL installed IPv4 addresses** (static, DHCP, *and* link-local) lives in the ARP RX path: `packet_handler__arp__rx._handle_arp_conflict` (+ `_abandon_ipv4_address`, the `_arp_defend__last_conflict_at` / `_arp_defend__last_emitted` dicts), triggered from the two `spa in self._ip4_unicast and sha != _mac` branches (arp__rx lines ~262/269 and ~422). It is **not dead code** — it is the only defender for static/DHCP addresses.
+- **`DadSlotRegistry`** (`lib/dad_slot_registry.py`) is **shared with IPv6 ND DAD** (`_icmp6_nd_dad__registry`, used by `packet_handler__icmp6__rx` + `_perform_ip6_nd_dad`). The class **stays**; only the IPv4 `_ip4_arp_dad__registry` usage is removable.
+- **Static-host claim** (`packet_handler.__init__._create_stack_ip4_addressing`) still calls `stack.address.claim_with_acd` → `Ip4AddressApi.probe/announce` → `handler._arp_dad_probe_address` / `_arp_dad_announce_address`. A remaining consumer of the old path.
+- **Latent double-defense bug (introduced by 4.3):** a link-local address is installed in `_ip4_ifaddr`, so a conflicting ARP for it is now handled **twice** — by the RX `_handle_arp_conflict` AND by link-local's own `Ip4Acd.poll_conflict`. They can race (RX `_abandon` yanks the address while link-local still thinks it is BOUND). Only resolved by deleting the RX detector (§10.3 step 3). No clean interim fix exists because the RX path legitimately still defends static/DHCP until they migrate.
+
+### 10.3 Full-"B" plan (the chosen, Linux-faithful end state)
+
+Per-address `Ip4Acd` everywhere (the Linux model: each managed address has its own acd doing probe+announce+ongoing-defense on its own socket; the kernel does no IPv4 ACD).
+
+1. **4.4a — static-host → `Ip4Acd`.** Rewire `_create_stack_ip4_addressing`: `Ip4Acd(mac, ifindex).probe()` → on clean, `announce()` + install (`self._ip4_ifaddr = [*..., host]`). **Static gets probe+announce only, NO ongoing defender** — matches a bare Linux `ip addr add` (ongoing defense is a managing-daemon job; static config is the bare assignment). Add `from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd` (verified no import cycle).
+2. **4.4b — DHCP ongoing defense.** Restructure the DHCPv4 `Subsystem` so the BOUND state holds an `Ip4Acd.claim` on the lease address and polls `poll_conflict` each tick; abandon → DHCPDECLINE + FSM restart. (networkd-equivalent; the SHOULD per RFC 5227 §2.4 / RFC 2131.)
+3. **4.4c — delete the RX conflict detector + probe-time DAD machinery.** Remove `_handle_arp_conflict`, `_abandon_ipv4_address`, `_arp_defend__last_conflict_at` / `_arp_defend__last_emitted`, the two RX conflict-trigger branches; `_arp_dad_probe_address`, `_arp_dad_announce_address`, `_ip4_arp_dad__registry`, the IPv4 `try_signal_conflict` branches (arp__rx ~287/311/439/471), `_send_arp_probe`, `_send_arp_announcement`. **This is the step that fixes the double-defense.** Keep `_send_gratuitous_arp` only if still referenced (it is by `_handle_arp_conflict` → goes away with it; check `Ip4AddressApi.send_gratuitous_arp` first). Keep `DadSlotRegistry` (IPv6).
+4. **4.5 — strip `Ip4AddressApi`.** Remove `probe` / `announce` / `claim_with_acd` / `send_gratuitous_arp` / `subscribe_conflicts` / `unsubscribe_conflicts` / `_fire_conflict_event` / `ProbeResult` / `ClaimResult` / `ConflictEvent` / `SubscriptionHandle` / `_OnConflict` / `_Subscriptions`. Keep `add_ifaddr` / `remove_ifaddr` (aborts bound sessions) / `replace_ifaddr` / `list_ip4_ifaddrs`. Check whether `abort_bound_tcp_sessions` has any remaining caller (link-local now relies on `remove_ifaddr`'s default abort; `_abandon_ipv4_address` inlines its own) — if none, remove it too. Result: the Address API is the pure `RTM_NEWADDR` / `ip addr` surface.
+
+### 10.4 The blocker that makes this multi-commit: ACD real-timing vs patched-sleep tests
+
+`Ip4Acd` runs **real** RFC 5227 timing (`time.monotonic` / `time.sleep` / `random.uniform`, ~5-9 s per probe). The DAD-adjacent integration tests were built around the **old patched-sleep** loop (`ArpTestCase._drive_dad` patches `link_local__client.time.sleep`, not `ip4_acd`'s). So the moment a path under test routes through `Ip4Acd`, the test runs real-time and **hangs** (confirmed: 4.4a made `test__arp__dad` time out). Every DAD-adjacent test must be reworked to (a) collapse the `arp.*` timers to ~0 via `patch.object(arp__constants, ...)` + `patch("...ip4_acd.random.uniform", return_value=0.0)`, and (b) inject conflicts onto the **ACD socket** (the RX tap `_phrx_ethernet` delivers ARP to it) rather than asserting on the `DadSlotRegistry`.
+
+**Test-rework inventory (must accompany the code deletions):**
+- `tests/integration/protocols/arp/test__arp__dad.py` — rewire to ACD timing/injection (the hang).
+- `tests/integration/protocols/arp/test__arp__defend_interval.py` — §2.4 defense now lives in `Ip4Acd`/consumers, not the RX path.
+- `tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__rx.py` — drop the conflict-branch assertions.
+- `tests/unit/runtime/packet_handler/test__runtime__packet_handler__init.py` — `_create_stack_ip4_addressing` no longer calls `claim_with_acd`.
+- `tests/unit/stack/test__stack__address.py` — drop the stripped-method tests.
+- DHCP client tests — the BOUND-defense restructure (4.4b).
+- RFC adherence: refresh `docs/rfc/arp/rfc5227__*/adherence.md` (and any RFC 3927 record) — ACD now lives in `Ip4Acd` + the per-consumer clients, the RX path no longer does conflict detection.
+
+### 10.5 Sequencing constraint
+
+`Ip4AddressApi.probe` (4.5 target) **calls** `handler._arp_dad_probe_address` (4.4c target), and `_create_stack_ip4_addressing` (4.4a) **calls** `claim_with_acd` (4.5 target). So the order is fixed: **4.4a → 4.4b → 4.4c → 4.5** (migrate every caller before deleting the callee). Each is a focused commit with its test rework + `make lint` + full-suite green + the §7.2 docstring audit.
