@@ -419,13 +419,28 @@ class TestSocketFactory(TestCase):
         """
         Suppress socket construction log output so the factory-path
         tests can exercise concrete subclass '__init__' without the
-        real 'log()' writing to the shared stderr stream.
+        real 'log()' writing to the shared stderr stream. Isolate the
+        process-wide packet-socket registry so the PACKET factory cases
+        (which self-register on construction) do not leak into the
+        global tap target.
         """
 
         self.enterContext(patch("pytcp.socket.raw__socket.log"))
         self.enterContext(patch("pytcp.socket.tcp__socket.log"))
         self.enterContext(patch("pytcp.socket.udp__socket.log"))
         self.enterContext(patch("pytcp.socket.packet__socket.log"))
+
+        from pytcp import stack
+
+        prior = stack.packet_sockets.snapshot()
+        stack.packet_sockets.clear()
+
+        def _restore() -> None:
+            stack.packet_sockets.clear()
+            for sock in prior:
+                stack.packet_sockets.register(sock)
+
+        self.addCleanup(_restore)
 
     def test__socket__stream_creates_tcp_socket(self) -> None:
         """

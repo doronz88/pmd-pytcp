@@ -206,6 +206,7 @@ class NetworkTestCase(TestCase):
     _stack__attr_snapshot: dict[str, object]
     _ip6_flow_label_generation_prior: int
     _interfaces_snapshot: dict[int, PacketHandlerL2 | PacketHandlerL3]
+    _packet_sockets_prior: list[Any]
 
     def setUp(self) -> None:
         """
@@ -395,6 +396,14 @@ class NetworkTestCase(TestCase):
         # a sibling test (§5.4 module-state-on-touch).
         self._interfaces_snapshot = dict(stack.interfaces)
 
+        # Snapshot + clear the process-wide AF_PACKET socket registry so
+        # a packet socket a test binds (and the RX tap delivers to) does
+        # not leak into a sibling test, and so a leaked registration from
+        # an earlier unit test cannot make this test's tap deliver to a
+        # stale socket (§5.4 module-state-on-touch).
+        self._packet_sockets_prior = stack.packet_sockets.snapshot()
+        stack.packet_sockets.clear()
+
     def _add_interface(
         self,
         *,
@@ -485,6 +494,11 @@ class NetworkTestCase(TestCase):
         # the registry to the boot-interface-only snapshot from setUp.
         stack.interfaces.clear()
         stack.interfaces.update(self._interfaces_snapshot)
+
+        # Restore the AF_PACKET socket registry to its pre-test snapshot.
+        stack.packet_sockets.clear()
+        for packet_sock in self._packet_sockets_prior:
+            stack.packet_sockets.register(packet_sock)
 
         stack.__dict__.update(self._stack__attr_snapshot)
 

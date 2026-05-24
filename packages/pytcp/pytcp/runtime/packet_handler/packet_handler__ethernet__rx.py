@@ -34,7 +34,12 @@ from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import EthernetParser, EtherType, PacketRx, PacketValidationError
+from net_proto.lib.buffer import Buffer
+from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.socket import PacketType
+from pytcp.socket.packet__metadata import PacketMetadata
+from pytcp.socket.sockaddr_ll import SockAddrLl
 
 
 class PacketHandlerEthernetRx(ABC):
@@ -50,6 +55,8 @@ class PacketHandlerEthernetRx(ABC):
         _mac_unicast: MacAddress
         _mac_multicast: list[MacAddress]
         _mac_broadcast: MacAddress
+
+        _ifindex: int
 
         _ip4_support: bool
         _ip6_support: bool
@@ -67,6 +74,13 @@ class PacketHandlerEthernetRx(ABC):
 
         self._packet_stats_rx.ethernet__pre_parse += 1
 
+        # Capture the full-frame view BEFORE the parser advances
+        # 'packet_rx.frame' past the Ethernet header — the AF_PACKET tap
+        # below needs the complete link-layer frame. O(1): the parser
+        # reassigns the attribute to a sub-slice; this reference still
+        # spans the whole frame.
+        frame = packet_rx.frame
+
         try:
             EthernetParser(packet_rx)
 
@@ -79,6 +93,13 @@ class PacketHandlerEthernetRx(ABC):
             return
 
         __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet}")
+
+        # AF_PACKET tap — fan a copy of the parsed frame to every bound
+        # packet socket whose filter matches, BEFORE the EtherType -> IP
+        # demux. The tap is parallel to normal IP delivery (a packet
+        # socket observes, it does not consume), so the rest of this
+        # method is unaffected.
+        self._deliver_to_packet_sockets(packet_rx, frame)
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet.dst not in {
@@ -115,3 +136,34 @@ class PacketHandlerEthernetRx(ABC):
                     "ether",
                     f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
                 )
+
+    def _deliver_to_packet_sockets(self, packet_rx: PacketRx, frame: Buffer, /) -> None:
+        """
+        Fan a copy of the parsed frame to every AF_PACKET socket whose
+        '(ifindex, ethertype)' filter matches. A cheap empty-registry
+        check short-circuits the no-packet-socket hot path. Each socket
+        gets a detached 'bytes' copy of the complete link-layer frame,
+        never an alias of the RX-ring buffer.
+        """
+
+        if not stack.packet_sockets:
+            return
+
+        matches = stack.packet_sockets.matching(
+            ifindex=self._ifindex,
+            ethertype=packet_rx.ethernet.type,
+        )
+        if not matches:
+            return
+
+        # Phase 3 refines 'pkttype' (HOST / BROADCAST / MULTICAST /
+        # OTHERHOST) from the destination MAC; Phase 1 reports HOST.
+        sockaddr_ll = SockAddrLl(
+            ifindex=self._ifindex,
+            ethertype=packet_rx.ethernet.type,
+            pkttype=PacketType.PACKET_HOST,
+            mac=packet_rx.ethernet.src,
+        )
+        packet_rx_md = PacketMetadata(frame=bytes(frame), sockaddr_ll=sockaddr_ll)
+        for sock in matches:
+            sock.process_packet(packet_rx_md)

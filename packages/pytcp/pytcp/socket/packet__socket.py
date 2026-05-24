@@ -39,11 +39,17 @@ pytcp/socket/packet__socket.py
 ver 3.0.6
 """
 
+import errno
+import os
+import threading
 from typing import override
 
 from net_proto.lib.enums import EtherType
+from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.socket import ETH_P_ALL, AddressFamily, SocketType, socket
+from pytcp.socket.packet__metadata import PacketMetadata
+from pytcp.socket.sockaddr_ll import SockAddrLl
 
 
 class PacketSocket(socket):
@@ -79,6 +85,17 @@ class PacketSocket(socket):
         # ifindex 0 = unbound (every interface); set by 'bind()' later.
         self._ifindex = 0
 
+        # RX queue: the Ethernet tap appends a 'PacketMetadata' per
+        # matching frame; 'recv' / 'recvfrom' drain it. The semaphore
+        # mirrors 'RawSocket' — one release per queued frame.
+        self._packet_rx_md: list[PacketMetadata] = []
+        self._packet_rx_md_ready = threading.Semaphore(0)
+
+        # Register the capture filter immediately: Linux starts
+        # delivering matching frames the moment 'socket(AF_PACKET, ...)'
+        # returns, before any 'bind' (Phase 3 narrows the ifindex).
+        stack.packet_sockets.register(self)
+
         __debug__ and log("socket", f"<g>[{self}]</> - Created packet socket")
 
     @override
@@ -104,3 +121,81 @@ class PacketSocket(socket):
         """
 
         return self._ifindex
+
+    def process_packet(self, packet_rx_md: PacketMetadata, /) -> None:
+        """
+        Queue a captured frame's metadata for delivery to 'recv' /
+        'recvfrom'. Called by the Ethernet RX tap for each matching
+        frame. Dropped under the close-during-delivery drain when the
+        socket has already been closed.
+        """
+
+        with self._lock__io:
+            if self._closed:
+                return
+            self._packet_rx_md.append(packet_rx_md)
+            self._packet_rx_md_ready.release()
+        self._signal_readable()
+
+    def _recv_md(self, timeout: float | None, /) -> PacketMetadata:
+        """
+        Block until a captured frame is available (honoring the
+        blocking flag and SO_RCVTIMEO) and return its metadata. Raises
+        'BlockingIOError(EAGAIN)' on a non-blocking empty queue and
+        'TimeoutError' when a timeout elapses.
+        """
+
+        # SO_RCVTIMEO supplies the default if no per-call timeout.
+        effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
+        if effective_timeout is None and not self._blocking:
+            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+        else:
+            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+
+        if not acquired:
+            if effective_timeout is None and not self._blocking:
+                raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
+            raise TimeoutError("PACKET Socket - Receive operation timed out.")
+
+        packet_rx_md = self._packet_rx_md.pop(0)
+        if not self._packet_rx_md:
+            self._drain_readable()
+            if self._packet_rx_md:
+                self._signal_readable()
+        return packet_rx_md
+
+    @override
+    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
+        """
+        Read one captured frame from the socket. 'bufsize' truncates the
+        returned frame (POSIX recv(2) on SOCK_RAW discards the
+        remainder).
+        """
+
+        packet_rx_md = self._recv_md(timeout)
+        data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
+        __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
+        return data
+
+    @override
+    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, SockAddrLl]:
+        """
+        Read one captured frame and the 'sockaddr_ll' describing how it
+        arrived (interface, ethertype, packet type, source MAC).
+        """
+
+        packet_rx_md = self._recv_md(timeout)
+        data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
+        __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
+        return data, packet_rx_md.sockaddr_ll
+
+    @override
+    def close(self) -> None:
+        """
+        Close the socket: deregister its capture filter and release its
+        OS-level runtime.
+        """
+
+        stack.packet_sockets.unregister(self)
+        self._mark_closed()
+        __debug__ and log("socket", f"<g>[{self}]</> - Closed packet socket")

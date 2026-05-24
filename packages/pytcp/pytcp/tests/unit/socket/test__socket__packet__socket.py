@@ -36,33 +36,49 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import patch
 
+from net_addr import MacAddress
 from net_proto.lib.enums import EtherType
+from pytcp import stack
 from pytcp.socket import (
     ETH_P_ALL,
     ETH_P_ARP,
     AddressFamily,
+    PacketType,
     SocketType,
 )
+from pytcp.socket.packet__metadata import PacketMetadata
 from pytcp.socket.packet__socket import PacketSocket
+from pytcp.socket.sockaddr_ll import SockAddrLl
 
 
 class TestPacketSocket(TestCase):
     """
-    The AF_PACKET 'PacketSocket' Phase-0 skeleton tests.
+    The AF_PACKET 'PacketSocket' skeleton + RX-side tests.
     """
 
     @override
     def setUp(self) -> None:
         """
-        Suppress packet-socket construction log output and register
-        cleanup of each socket's backing eventfd.
+        Suppress packet-socket construction log output and isolate the
+        process-wide packet-socket registry (snapshot, clear, restore)
+        so register-on-construct does not leak across tests.
         """
 
         self.enterContext(patch("pytcp.socket.packet__socket.log"))
+        prior = stack.packet_sockets.snapshot()
+        stack.packet_sockets.clear()
+
+        def _restore() -> None:
+            stack.packet_sockets.clear()
+            for sock in prior:
+                stack.packet_sockets.register(sock)
+
+        self.addCleanup(_restore)
 
     def _make(self, *, protocol: EtherType | int | None = None) -> PacketSocket:
         """
-        Build a 'PacketSocket' and register its eventfd for cleanup.
+        Build a 'PacketSocket' and register its close for cleanup (which
+        unregisters it from the registry and releases its eventfd).
         """
 
         sock = PacketSocket(
@@ -70,7 +86,7 @@ class TestPacketSocket(TestCase):
             type=SocketType.RAW,
             protocol=protocol,
         )
-        self.addCleanup(sock._close_io_runtime)
+        self.addCleanup(sock.close)
         return sock
 
     def test__packet_socket__family_and_type(self) -> None:
@@ -162,3 +178,121 @@ class TestPacketSocket(TestCase):
                 type=SocketType.DGRAM,
                 protocol=ETH_P_ALL,
             )
+
+    def test__packet_socket__registers_on_construct(self) -> None:
+        """
+        Ensure a packet socket registers itself in the process-wide
+        registry at construction — Linux starts capturing matching
+        frames the moment 'socket(AF_PACKET, ...)' returns, before any
+        bind.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+
+        self.assertIn(
+            sock,
+            stack.packet_sockets.snapshot(),
+            msg="A PacketSocket must register itself in stack.packet_sockets on construction.",
+        )
+
+    def test__packet_socket__close_unregisters(self) -> None:
+        """
+        Ensure closing a packet socket removes it from the registry so
+        the RX tap stops delivering to it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+
+        sock.close()
+
+        self.assertNotIn(
+            sock,
+            stack.packet_sockets.snapshot(),
+            msg="close() must unregister the packet socket from stack.packet_sockets.",
+        )
+
+    def test__packet_socket__recv_returns_queued_frame(self) -> None:
+        """
+        Ensure 'recv' returns the raw bytes of a frame previously
+        delivered to the socket via 'process_packet'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06payload"
+        sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=SockAddrLl(ifindex=1, ethertype=ETH_P_ARP)))
+
+        self.assertEqual(
+            sock.recv(),
+            frame,
+            msg="recv() must return the raw bytes of the queued frame.",
+        )
+
+    def test__packet_socket__recvfrom_returns_frame_and_sockaddr(self) -> None:
+        """
+        Ensure 'recvfrom' returns the frame bytes paired with the
+        originating 'sockaddr_ll' describing the arrival interface,
+        ethertype, packet type, and source MAC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06payload"
+        sockaddr = SockAddrLl(
+            ifindex=1,
+            ethertype=ETH_P_ARP,
+            pkttype=PacketType.PACKET_BROADCAST,
+            mac=MacAddress("02:00:00:00:00:91"),
+        )
+        sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=sockaddr))
+
+        data, addr = sock.recvfrom()
+
+        self.assertEqual(data, frame, msg="recvfrom() must return the raw frame bytes.")
+        self.assertEqual(addr, sockaddr, msg="recvfrom() must return the originating sockaddr_ll.")
+
+    def test__packet_socket__recv_truncates_to_bufsize(self) -> None:
+        """
+        Ensure 'recv(bufsize)' truncates the returned frame to 'bufsize'
+        bytes, matching POSIX recv(2) on SOCK_RAW.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+        frame = b"0123456789"
+        sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=SockAddrLl()))
+
+        self.assertEqual(
+            sock.recv(4),
+            b"0123",
+            msg="recv(bufsize) must truncate the frame to bufsize bytes.",
+        )
+
+    def test__packet_socket__recv_nonblocking_empty_raises_eagain(self) -> None:
+        """
+        Ensure a non-blocking 'recv' on an empty queue raises
+        'BlockingIOError(EAGAIN)' rather than blocking.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        sock = self._make(protocol=ETH_P_ARP)
+        sock.setblocking(False)
+
+        with self.assertRaises(BlockingIOError) as context:
+            sock.recv()
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.EAGAIN,
+            msg="A non-blocking recv on an empty queue must raise BlockingIOError(EAGAIN).",
+        )

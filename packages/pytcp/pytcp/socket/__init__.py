@@ -1071,9 +1071,15 @@ class socket(ABC):
         self,
         bufsize: int | None = None,
         timeout: float | None = None,
-    ) -> tuple[bytes, tuple[str, int]]:
+    ) -> tuple[bytes, Any]:
         """
         The 'recvfrom()' socket API placeholder.
+
+        The address half is typed 'Any' because it is address-family
+        dependent: IP sockets return '(ip_str, port)', while an
+        AF_PACKET socket returns a 'SockAddrLl'. Each concrete subclass
+        narrows the return to its own precise address type (mirroring
+        typeshed's 'socket.recvfrom() -> tuple[bytes, Any]').
         """
 
         raise NotImplementedError
