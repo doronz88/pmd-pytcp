@@ -149,24 +149,35 @@ consolidation; not required for unification.)
 
 ## 7. Implementation plan (tests-first, one focused commit or a small series)
 
-1. **Rename + widen, IPv4 behaviour unchanged.** `Ip4AddressApi` →
-   `AddressApi`; `add_ifaddr`→`add`, `remove_ifaddr`→`remove`,
-   `replace_ifaddr`→`replace`, `list_ip4_ifaddrs`→`list_ifaddrs(family=)`.
-   Verbs still IPv4-only internally but signatures accept the unions.
-   Widen `_abort_bound_tcp_sessions` to `Ip4Address | Ip6Address`.
-   Update every consumer + the `stack.address` annotation + lifecycle
-   wiring in the same commit (no back-compat shim — no installed base).
-   Tests: rename the address-API unit tests; assert IPv4 behaviour
-   unchanged.
-2. **Add the IPv6 dispatch arm.** `add`/`remove`/`replace`/`list_ifaddrs`
-   handle `Ip6IfAddr` / `Ip6Address` — SNM join/leave via the
-   (rebind-fixed) `_assign_ip6_host` / `_remove_ip6_host`, family filter
-   on `list_ifaddrs`, v6 session abort. Tests: a parallel IPv6 matrix +
-   mixed-family `list_ifaddrs(family=None)`.
-3. **Route the IPv6 boot/SLAAC install through the API where it is the
-   external boundary** (decision point in §6 — likely leave intra-handler
-   calls as-is). Confirm DHCP / link-local consumers compile against the
-   renamed verbs.
+1. **DONE (`5d3cb453`) — Rename, IPv4 behaviour unchanged.**
+   `Ip4AddressApi` → `AddressApi`; `add_ifaddr`→`add`,
+   `remove_ifaddr`→`remove`, `replace_ifaddr`→`replace`,
+   `list_ip4_ifaddrs`→`list_ifaddrs`. Every consumer + the
+   `stack.address` annotation + lifecycle wiring migrated in the same
+   commit (no back-compat shim). Signatures kept IPv4-typed (the
+   union-widening folded into step 2 — it needs no consumer re-touch,
+   so splitting it out bought nothing and would have left a window
+   where a v6 value was silently mishandled).
+2. **DONE (`5dd20b22`) — IPv6 dispatch arm.**
+   `add`/`remove`/`replace` widen to the unions and dispatch on value
+   type; IPv6 `add`/`remove` do their own atomic-rebind of
+   `_ip6_ifaddr` + join/leave the solicited-node multicast group via
+   `_assign_ip6_multicast`/`_remove_ip6_multicast` (NOT via the
+   packet handler's in-place `_assign_ip6_host`, so the v6 control
+   path is TX-reader-safe like v4). `list_ifaddrs` gains the `family=`
+   filter; `_abort_bound_tcp_sessions` widened. Parallel IPv6 test
+   matrix added.
+3. **RESOLVED (no code) — IPv6 boot/SLAAC stays intra-handler.** Per §6
+   the packet handler's own SLAAC/boot/RA calls to `_assign_ip6_host` /
+   `_remove_ip6_host` are intra-handler, not userspace reach-through, so
+   they need not route through the API. There is no *external* IPv6
+   address consumer today (no DHCPv6 client; link-local is IPv4), so
+   nothing remains to migrate. The unified `AddressApi` is ready for the
+   first external IPv6 consumer (DHCPv6 / operator tooling) when it
+   lands.
+
+**The unification (steps 1-3) is complete.** Remaining: the §9
+Route/Neighbor normalization follow-up.
 
 Each step: `make lint` + full `make test` + §7.2 docstring audit;
 refresh the address-API references in the RFC adherence docs if any cite
