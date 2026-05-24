@@ -38,8 +38,9 @@ ver 3.0.6
 
 from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, Ip4IfAddr
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
 from pytcp.lib.logger import log
+from pytcp.socket import AddressFamily
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -131,36 +132,48 @@ class AddressApi:
 
         return AddressApi(packet_handler=stack.interfaces[ifindex])
 
-    def add(self, *, ifaddr: Ip4IfAddr) -> None:
+    def add(self, *, ifaddr: Ip4IfAddr | Ip6IfAddr) -> None:
         """
         Install 'ifaddr' on the stack's address list — Linux
-        'RTM_NEWADDR' / 'ip addr add' equivalent. Idempotent against
+        'RTM_NEWADDR' / 'ip addr add' equivalent. The family is
+        inferred from the value type. Idempotent against
         duplicate-address installs (the caller's responsibility;
         this method does not de-dup).
 
-        Step 1: IPv4 only. The 'Ip6IfAddr' dispatch arm (joining the
-        solicited-node multicast group) lands in step 2.
+        An IPv6 host additionally joins its solicited-node multicast
+        group (RFC 4291 §2.7.1; on L2 that also adds the derived
+        multicast MAC + an MLD report). This verb installs the
+        address directly — it does NOT run DAD; DAD is the SLAAC /
+        boot path's concern, the same way ARP ACD is the per-protocol
+        engine's concern, not an address-plane verb.
         """
 
         handler = self._resolve_handler()
         # Atomic-rebind rather than in-place '.append': the TX worker
-        # iterates '_ip4_ifaddr' during source-address selection on a
-        # different thread, so control-plane mutation must swap a fresh
-        # list reference (the reader sees the old or new list whole,
-        # never a mid-append state). Mirrors 'remove' below.
+        # iterates the address list during source-address selection on
+        # a different thread, so control-plane mutation must swap a
+        # fresh list reference (the reader sees the old or new list
+        # whole, never a mid-append state). Mirrors 'remove' below.
+        if isinstance(ifaddr, Ip6IfAddr):
+            handler._ip6_ifaddr = [*handler._ip6_ifaddr, ifaddr]
+            handler._assign_ip6_multicast(ifaddr.address.solicited_node_multicast)
+            __debug__ and log("stack", f"<lg>Address API</>: added IPv6 host {ifaddr}")
+            return
         handler._ip4_ifaddr = [*handler._ip4_ifaddr, ifaddr]
         __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ifaddr}")
 
     def remove(
         self,
         *,
-        address: Ip4Address,
+        address: Ip4Address | Ip6Address,
         abort_bound_sessions: bool = True,
     ) -> None:
         """
         Remove every host whose '.address' equals 'address' from the
         stack's address list — Linux 'RTM_DELADDR' / 'ip addr del'
-        equivalent.
+        equivalent. The family is inferred from the value type; an
+        IPv6 host additionally leaves its solicited-node multicast
+        group.
 
         'abort_bound_sessions=True' (the default) actively
         ABORTs every TCP session bound to the removed address
@@ -168,15 +181,23 @@ class AddressApi:
         from Linux's "silent rot" behaviour. Pass False for
         diagnostics or where the caller has its own
         teardown discipline.
-
-        Step 1: IPv4 only. The 'Ip6Address' dispatch arm (leaving the
-        solicited-node multicast group) lands in step 2.
         """
 
         if abort_bound_sessions:
             self._abort_bound_tcp_sessions(address)
 
         handler = self._resolve_handler()
+        if isinstance(address, Ip6Address):
+            removed_hosts = [host for host in handler._ip6_ifaddr if host.address == address]
+            handler._ip6_ifaddr = [host for host in handler._ip6_ifaddr if host.address != address]
+            for host in removed_hosts:
+                handler._remove_ip6_multicast(host.address.solicited_node_multicast)
+            __debug__ and log(
+                "stack",
+                f"<lg>Address API</>: removed IPv6 address {address} "
+                f"({len(removed_hosts)} host(s); abort_bound_sessions={abort_bound_sessions})",
+            )
+            return
         before = len(handler._ip4_ifaddr)
         handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != address]
         removed = before - len(handler._ip4_ifaddr)
@@ -189,8 +210,8 @@ class AddressApi:
     def replace(
         self,
         *,
-        old_address: Ip4Address,
-        new_ifaddr: Ip4IfAddr,
+        old_address: Ip4Address | Ip6Address,
+        new_ifaddr: Ip4IfAddr | Ip6IfAddr,
         abort_bound_sessions: bool = True,
     ) -> None:
         """
@@ -213,40 +234,45 @@ class AddressApi:
             abort_bound_sessions=abort_bound_sessions,
         )
 
-    def list_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
+    def list_ifaddrs(
+        self,
+        *,
+        family: AddressFamily | None = None,
+    ) -> tuple[Ip4IfAddr | Ip6IfAddr, ...]:
         """
         Return a read-only copy-by-value snapshot of the stack's
-        host-address list. Linux equivalent: 'ip addr show'. The
-        returned tuple is immutable; the caller cannot mutate stack
-        state through it (matches the Phase-3 north-star
-        "introspection is read-only" constraint from CLAUDE.md).
-
-        Step 1: IPv4 only, no 'family' filter. The family-filterable
-        IPv6-inclusive form ('family=' kwarg) lands in step 2.
+        host-address list — Linux 'ip addr show' equivalent. With no
+        'family' the snapshot covers both families (IPv4 first, then
+        IPv6); pass 'AddressFamily.INET4' / 'INET6' to filter (the
+        Linux 'ip -4' / 'ip -6' selectors). The returned tuple is
+        immutable; the caller cannot mutate stack state through it
+        (matches the Phase-3 north-star "introspection is read-only"
+        constraint from CLAUDE.md).
         """
 
-        return tuple(self._resolve_handler()._ip4_ifaddr)
+        handler = self._resolve_handler()
+        ifaddrs: list[Ip4IfAddr | Ip6IfAddr] = []
+        if family in (None, AddressFamily.INET4):
+            ifaddrs.extend(handler._ip4_ifaddr)
+        if family in (None, AddressFamily.INET6):
+            ifaddrs.extend(handler._ip6_ifaddr)
+        return tuple(ifaddrs)
 
     @staticmethod
-    def _abort_bound_tcp_sessions(ip4_address: Ip4Address) -> None:
+    def _abort_bound_tcp_sessions(address: Ip4Address | Ip6Address) -> None:
         """
         Issue 'SysCall.ABORT' to every TCP session whose local
-        address equals 'ip4_address'. The ABORT syscall emits
-        RST and tears the session down per RFC 9293 §3.10.7.4.
-
-        The same primitive lives inline in
-        'packet_handler__arp__rx._abandon_ipv4_address' for the
-        RFC 5227 §2.4(b) conflict-driven path. Phase-3 cleanup
-        may unify the two; for Phase 4 commit A the duplication
-        is bounded (~6 lines) and the contexts log differently
-        anyway.
+        address equals 'address'. The ABORT syscall emits RST and
+        tears the session down per RFC 9293 §3.10.7.4. Family-
+        agnostic — 'socket_id.local_address' matches either an
+        Ip4Address or an Ip6Address.
         """
 
         from pytcp import stack
         from pytcp.protocols.tcp.tcp__enums import SysCall
 
         for socket_id in list(stack.sockets):
-            if socket_id.local_address == ip4_address:
+            if socket_id.local_address == address:
                 sock = stack.sockets[socket_id]
                 session = getattr(sock, "_tcp_session", None)
                 if session is not None:

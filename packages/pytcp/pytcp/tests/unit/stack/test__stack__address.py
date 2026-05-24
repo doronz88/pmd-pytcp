@@ -35,9 +35,10 @@ from typing import TYPE_CHECKING, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from net_addr import Ip4Address, Ip4IfAddr
+from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
 from pytcp import stack
 from pytcp.runtime.interface_table import InterfaceTable
+from pytcp.socket import AddressFamily
 from pytcp.stack.address import (
     AddressApi,
 )
@@ -49,13 +50,25 @@ if TYPE_CHECKING:
 class _FakePacketHandler:
     """
     Minimal packet-handler stand-in for 'AddressApi' tests —
-    exposes only the '_ip4_ifaddr' attribute the API mutates.
-    Using a hand-rolled class avoids the autospec ceremony for
-    a 50-attribute production class.
+    exposes the '_ip4_ifaddr' / '_ip6_ifaddr' lists the API mutates
+    plus the IPv6 solicited-node-multicast join/leave hooks. Using a
+    hand-rolled class avoids the autospec ceremony for a 50-attribute
+    production class.
     """
 
     def __init__(self) -> None:
         self._ip4_ifaddr: list[Ip4IfAddr] = []
+        self._ip6_ifaddr: list[Ip6IfAddr] = []
+        # Record the solicited-node-multicast groups the API joins /
+        # leaves so the v6 tests can assert on SNM management.
+        self.joined_snm: list[Ip6Address] = []
+        self.left_snm: list[Ip6Address] = []
+
+    def _assign_ip6_multicast(self, ip6_multicast: Ip6Address, /) -> None:
+        self.joined_snm.append(ip6_multicast)
+
+    def _remove_ip6_multicast(self, ip6_multicast: Ip6Address, /) -> None:
+        self.left_snm.append(ip6_multicast)
 
 
 class TestAddressApiAddHost(TestCase):
@@ -373,6 +386,187 @@ class TestAddressApiListIp4Hosts(TestCase):
             len(snapshot),
             before_len,
             msg="The returned snapshot must be decoupled from subsequent stack mutations.",
+        )
+
+
+class TestAddressApiIp6(TestCase):
+    """
+    The 'AddressApi' IPv6 dispatch arm — 'add' / 'remove' /
+    'replace' / 'list_ifaddrs' route Ip6IfAddr / Ip6Address through
+    the '_ip6_ifaddr' list and the solicited-node-multicast join /
+    leave hooks, with the same atomic-rebind discipline as IPv4.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the API's log line and stand up a fake packet
+        handler the API mutates.
+        """
+
+        self.enterContext(patch("pytcp.stack.address.log"))
+        self._packet_handler = _FakePacketHandler()
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+
+    def test__address_api__add_ip6_appends_and_joins_solicited_node_multicast(self) -> None:
+        """
+        Ensure 'add' with an Ip6IfAddr installs it on '_ip6_ifaddr'
+        and joins the address's solicited-node multicast group,
+        leaving '_ip4_ifaddr' untouched.
+
+        Reference: RFC 4291 §2.7.1 (solicited-node multicast address).
+        """
+
+        host = Ip6IfAddr("2001:db8::5/64")
+
+        self._api.add(ifaddr=host)
+
+        self.assertEqual(
+            self._packet_handler._ip6_ifaddr,
+            [host],
+            msg="add(Ip6IfAddr) must append the host to '_ip6_ifaddr'.",
+        )
+        self.assertEqual(
+            self._packet_handler.joined_snm,
+            [host.address.solicited_node_multicast],
+            msg="add(Ip6IfAddr) must join the host's solicited-node multicast group.",
+        )
+        self.assertEqual(
+            self._packet_handler._ip4_ifaddr,
+            [],
+            msg="add(Ip6IfAddr) must not touch the IPv4 address list.",
+        )
+
+    def test__address_api__add_ip6_atomically_rebinds_list(self) -> None:
+        """
+        Ensure 'add' with an Ip6IfAddr rebinds '_ip6_ifaddr' to a
+        fresh list object rather than mutating in place, so the TX
+        worker reading the list on another thread always sees a
+        consistent snapshot.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        original_list = self._packet_handler._ip6_ifaddr
+
+        self._api.add(ifaddr=Ip6IfAddr("2001:db8::5/64"))
+
+        self.assertIsNot(
+            self._packet_handler._ip6_ifaddr,
+            original_list,
+            msg="add(Ip6IfAddr) must rebind '_ip6_ifaddr' to a new list, not mutate in place.",
+        )
+
+    def test__address_api__remove_ip6_drops_address_and_leaves_multicast(self) -> None:
+        """
+        Ensure 'remove' with an Ip6Address drops every matching host
+        from '_ip6_ifaddr' and leaves the solicited-node multicast
+        group, rebinding the list.
+
+        Reference: RFC 4291 §2.7.1 (solicited-node multicast address).
+        """
+
+        target = Ip6IfAddr("2001:db8::5/64")
+        other = Ip6IfAddr("2001:db8::6/64")
+        self._packet_handler._ip6_ifaddr = [target, other]
+        original_list = self._packet_handler._ip6_ifaddr
+
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions"):
+            self._api.remove(address=Ip6Address("2001:db8::5"))
+
+        self.assertEqual(
+            self._packet_handler._ip6_ifaddr,
+            [other],
+            msg="remove(Ip6Address) must drop only the matching host.",
+        )
+        self.assertEqual(
+            self._packet_handler.left_snm,
+            [target.address.solicited_node_multicast],
+            msg="remove(Ip6Address) must leave the removed host's solicited-node multicast group.",
+        )
+        self.assertIsNot(
+            self._packet_handler._ip6_ifaddr,
+            original_list,
+            msg="remove(Ip6Address) must rebind '_ip6_ifaddr' to a new list.",
+        )
+
+    def test__address_api__remove_ip6_aborts_bound_sessions_by_default(self) -> None:
+        """
+        Ensure 'remove' with an Ip6Address defaults to ABORTing TCP
+        sessions bound to the address — the same abort policy the
+        IPv4 arm applies, via the family-agnostic abort helper.
+
+        Reference: RFC 5227 §2.4 final paragraph (reset existing connections).
+        """
+
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
+            self._api.remove(address=Ip6Address("2001:db8::5"))
+
+        mock_abort.assert_called_once_with(Ip6Address("2001:db8::5"))
+
+    def test__address_api__replace_ip6_installs_new_before_removing_old(self) -> None:
+        """
+        Ensure 'replace' with IPv6 arguments installs the new host
+        and then removes the old one — the family-agnostic verb
+        dispatches both legs through the IPv6 arm.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        old = Ip6IfAddr("2001:db8::5/64")
+        new = Ip6IfAddr("2001:db8::9/64")
+        self._packet_handler._ip6_ifaddr = [old]
+
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions"):
+            self._api.replace(old_address=Ip6Address("2001:db8::5"), new_ifaddr=new)
+
+        self.assertEqual(
+            self._packet_handler._ip6_ifaddr,
+            [new],
+            msg="replace must end with only the new IPv6 host installed.",
+        )
+
+    def test__address_api__list_ifaddrs_no_family_returns_both(self) -> None:
+        """
+        Ensure 'list_ifaddrs()' with no family filter returns every
+        host of both families — IPv4 first, then IPv6.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        v4 = Ip4IfAddr("10.0.0.5/24")
+        v6 = Ip6IfAddr("2001:db8::5/64")
+        self._packet_handler._ip4_ifaddr = [v4]
+        self._packet_handler._ip6_ifaddr = [v6]
+
+        self.assertEqual(
+            self._api.list_ifaddrs(),
+            (v4, v6),
+            msg="list_ifaddrs() must return both families, IPv4 first.",
+        )
+
+    def test__address_api__list_ifaddrs_family_filters(self) -> None:
+        """
+        Ensure 'list_ifaddrs(family=...)' returns only the hosts of
+        the requested family.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        v4 = Ip4IfAddr("10.0.0.5/24")
+        v6 = Ip6IfAddr("2001:db8::5/64")
+        self._packet_handler._ip4_ifaddr = [v4]
+        self._packet_handler._ip6_ifaddr = [v6]
+
+        self.assertEqual(
+            self._api.list_ifaddrs(family=AddressFamily.INET4),
+            (v4,),
+            msg="list_ifaddrs(INET4) must return only the IPv4 hosts.",
+        )
+        self.assertEqual(
+            self._api.list_ifaddrs(family=AddressFamily.INET6),
+            (v6,),
+            msg="list_ifaddrs(INET6) must return only the IPv6 hosts.",
         )
 
 
