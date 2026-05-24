@@ -35,6 +35,7 @@ ver 3.0.6
 from typing import override
 from unittest.mock import patch
 
+from net_addr import MacAddress
 from net_proto import ArpAssembler, ArpOperation, EthernetAssembler, EtherType
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.socket import (
@@ -50,23 +51,29 @@ from pytcp.socket.packet__socket import PacketSocket
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
+    MAC__BROADCAST,
     STACK__IP4_HOST,
     STACK__MAC_ADDRESS,
     NetworkTestCase,
 )
 
+# An IPv4 multicast group MAC (224.0.0.1 -> 01:00:5e:00:00:01); its
+# I/G bit is set, so 'MacAddress.is_multicast' is True.
+_MULTICAST_MAC = MacAddress("01:00:5e:00:00:01")
 
-def _arp_request_frame() -> bytes:
+
+def _arp_request_frame(*, ethernet_dst: MacAddress = STACK__MAC_ADDRESS) -> bytes:
     """
-    Build a unicast ARP request from HOST_A asking for the stack's IPv4
-    address — a frame that elicits an ARP reply (so normal delivery is
-    observable) and carries the ARP ethertype (so packet-socket filters
-    can be exercised).
+    Build an ARP request from HOST_A asking for the stack's IPv4
+    address, addressed at the link layer to 'ethernet_dst' (defaults to
+    the stack MAC — a frame that elicits an ARP reply so normal delivery
+    is observable). Carries the ARP ethertype so packet-socket filters
+    can be exercised.
     """
 
     return bytes(
         EthernetAssembler(
-            ethernet__dst=STACK__MAC_ADDRESS,
+            ethernet__dst=ethernet_dst,
             ethernet__src=HOST_A__MAC_ADDRESS,
             ethernet__payload=ArpAssembler(
                 arp__oper=ArpOperation.REQUEST,
@@ -171,3 +178,31 @@ class TestPacketSocketRxTap(NetworkTestCase):
 
         with self.assertRaises(BlockingIOError):
             ip_sock.recv()
+
+    def test__packet_socket__rx_tap__pkttype_classification(self) -> None:
+        """
+        Ensure the 'sockaddr_ll.pkttype' reflects how the frame was
+        addressed at the link layer relative to this interface: the
+        stack's unicast MAC is HOST, the broadcast MAC is BROADCAST, a
+        multicast group MAC is MULTICAST, and any other unicast MAC is
+        OTHERHOST.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._packet_socket(protocol=ETH_P_ALL)
+
+        for dst_mac, expected in (
+            (STACK__MAC_ADDRESS, PacketType.PACKET_HOST),
+            (MAC__BROADCAST, PacketType.PACKET_BROADCAST),
+            (_MULTICAST_MAC, PacketType.PACKET_MULTICAST),
+            (HOST_A__MAC_ADDRESS, PacketType.PACKET_OTHERHOST),
+        ):
+            with self.subTest(dst=dst_mac):
+                self._packet_handler._phrx_ethernet(PacketRx(_arp_request_frame(ethernet_dst=dst_mac)))
+                _, addr = sock.recvfrom()
+                self.assertEqual(
+                    addr.pkttype,
+                    expected,
+                    msg=f"A frame to {dst_mac} must classify as {expected.name}.",
+                )

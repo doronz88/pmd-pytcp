@@ -156,14 +156,30 @@ class PacketHandlerEthernetRx(ABC):
         if not matches:
             return
 
-        # Phase 3 refines 'pkttype' (HOST / BROADCAST / MULTICAST /
-        # OTHERHOST) from the destination MAC; Phase 1 reports HOST.
         sockaddr_ll = SockAddrLl(
             ifindex=self._ifindex,
             ethertype=packet_rx.ethernet.type,
-            pkttype=PacketType.PACKET_HOST,
+            pkttype=self._classify_pkttype(packet_rx.ethernet.dst),
             mac=packet_rx.ethernet.src,
         )
         packet_rx_md = PacketMetadata(frame=bytes(frame), sockaddr_ll=sockaddr_ll)
         for sock in matches:
             sock.process_packet(packet_rx_md)
+
+    def _classify_pkttype(self, dst: "MacAddress", /) -> PacketType:
+        """
+        Classify an inbound frame's link-layer destination relative to
+        this interface (Linux 'sll_pkttype'): the stack's own unicast
+        MAC -> HOST; the link broadcast -> BROADCAST; any other
+        multicast -> MULTICAST; otherwise -> OTHERHOST (a frame
+        addressed to a different host that the interface still
+        observed — e.g. captured by an ETH_P_ALL packet socket).
+        """
+
+        if dst == self._mac_unicast:
+            return PacketType.PACKET_HOST
+        if dst.is_broadcast:
+            return PacketType.PACKET_BROADCAST
+        if dst.is_multicast:
+            return PacketType.PACKET_MULTICAST
+        return PacketType.PACKET_OTHERHOST

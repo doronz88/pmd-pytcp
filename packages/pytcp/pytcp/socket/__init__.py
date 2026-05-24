@@ -989,10 +989,15 @@ class socket(ABC):
 
     def bind(
         self,
-        address: tuple[str, int],
+        address: Any,
     ) -> None:
         """
         The 'bind()' socket API method placeholder.
+
+        The address is typed 'Any' because it is address-family
+        dependent: IP sockets take '(ip_str, port)', while an
+        AF_PACKET socket takes a 'SockAddrLl'. Each concrete subclass
+        narrows the parameter to its own precise address type.
         """
 
         raise NotImplementedError

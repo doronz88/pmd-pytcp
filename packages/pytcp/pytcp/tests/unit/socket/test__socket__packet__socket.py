@@ -32,16 +32,20 @@ pytcp/tests/unit/socket/test__socket__packet__socket.py
 ver 3.0.6
 """
 
-from typing import override
+from types import SimpleNamespace
+from typing import cast, override
 from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import MacAddress
 from net_proto.lib.enums import EtherType
 from pytcp import stack
+from pytcp.runtime.interface_table import InterfaceTable
+from pytcp.runtime.packet_handler import PacketHandlerL2
 from pytcp.socket import (
     ETH_P_ALL,
     ETH_P_ARP,
+    ETH_P_IP,
     AddressFamily,
     PacketType,
     SocketType,
@@ -295,4 +299,61 @@ class TestPacketSocket(TestCase):
             context.exception.errno,
             errno.EAGAIN,
             msg="A non-blocking recv on an empty queue must raise BlockingIOError(EAGAIN).",
+        )
+
+    def test__packet_socket__bind_sets_ifindex_and_ethertype(self) -> None:
+        """
+        Ensure 'bind' scopes the socket to the address ifindex AND sets
+        the ethertype filter from the address — the SockAddrLl fully
+        describes the binding (Linux sll_protocol takes effect on bind),
+        so binding an ARP-filtered socket with the default ETH_P_ALL
+        address widens it back to capture-all.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = InterfaceTable()
+        table[1] = cast(PacketHandlerL2, SimpleNamespace(_ifindex=1))
+        self.enterContext(patch.object(stack, "interfaces", table))
+
+        sock = self._make(protocol=ETH_P_ARP)
+        sock.bind(SockAddrLl(ifindex=1, ethertype=ETH_P_IP))
+
+        self.assertEqual(sock.ifindex, 1, msg="bind must scope the socket to the address ifindex.")
+        self.assertEqual(sock.ethertype, EtherType.IP4, msg="bind must set the ethertype filter from the address.")
+
+    def test__packet_socket__bind_ifindex_zero_means_all_interfaces(self) -> None:
+        """
+        Ensure binding with ifindex 0 is accepted without an interface
+        lookup — it scopes the socket to all interfaces (the unbound
+        default).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sock = self._make(protocol=ETH_P_ARP)
+        sock.bind(SockAddrLl(ifindex=0, ethertype=ETH_P_ALL))
+
+        self.assertEqual(sock.ifindex, 0, msg="bind(ifindex=0) must scope the socket to all interfaces.")
+
+    def test__packet_socket__bind_unknown_ifindex_raises_enodev(self) -> None:
+        """
+        Ensure binding to an ifindex with no registered interface raises
+        'OSError(ENODEV)'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import errno
+
+        self.enterContext(patch.object(stack, "interfaces", InterfaceTable()))
+        sock = self._make(protocol=ETH_P_ARP)
+
+        with self.assertRaises(OSError) as context:
+            sock.bind(SockAddrLl(ifindex=7))
+
+        self.assertEqual(
+            context.exception.errno,
+            errno.ENODEV,
+            msg="bind to an unregistered ifindex must raise OSError(ENODEV).",
         )

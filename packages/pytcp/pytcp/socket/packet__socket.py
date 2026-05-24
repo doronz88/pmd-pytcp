@@ -203,6 +203,27 @@ class PacketSocket(socket):
         self._mark_closed()
         __debug__ and log("socket", f"<g>[{self}]</> - Closed packet socket")
 
+    @override
+    def bind(self, address: SockAddrLl) -> None:
+        """
+        Scope the socket to '(address.ifindex, address.ethertype)'. The
+        SockAddrLl fully describes the binding (Linux sll_protocol takes
+        effect on bind): ifindex 0 captures on every interface, a
+        specific ifindex scopes to that one; the ethertype is set as the
+        capture filter (so binding with the default ETH_P_ALL widens an
+        ethertype-filtered socket back to capture-all). The registry's
+        'matching()' reads these attributes live, so no re-registration
+        is needed. Raises 'OSError(ENODEV)' when a non-zero ifindex names
+        no registered interface.
+        """
+
+        if address.ifindex != 0 and address.ifindex not in stack.interfaces:
+            raise OSError(errno.ENODEV, f"No interface registered under ifindex {address.ifindex}")
+
+        self._ifindex = address.ifindex
+        self._ethertype = address.ethertype
+        __debug__ and log("socket", f"<g>[{self}]</> - Bound")
+
     def _egress_handler(self, ifindex: int, /) -> "PacketHandlerL2":
         """
         Resolve the L2 interface a frame egresses: the interface
