@@ -27,9 +27,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv4 TX operations.
+This module contains integration tests for the IPv4 TX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip4__tx.py
+pytcp/tests/integration/protocols/ip4/test__ip4__tx.py
 
 ver 3.0.6
 """
@@ -945,9 +945,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerIp4Tx(NetworkTestCase):
+class TestIp4Tx(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 TX operations (success path).
+    The IPv4 TX packet-handler path tests (success path).
     """
 
     _description: str
@@ -959,7 +959,7 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip4__tx(self) -> None:
+    def test__ip4__tx(self) -> None:
         """
         Ensure the Packet Handler IPv4 TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
@@ -1011,16 +1011,16 @@ class TestPacketHandlerIp4Tx(NetworkTestCase):
         },
     ]
 )
-class TestPacketHandlerIp4TxErrors(NetworkTestCase):
+class TestIp4TxErrors(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 TX operations (error path).
+    The IPv4 TX packet-handler path tests (error path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
     _expected__error: Exception
 
-    def test__packet_handler__ip4__tx__error(self) -> None:
+    def test__ip4__tx__error(self) -> None:
         """
         Ensure '_phtx_ip4' raises the expected exception for invalid
         kwargs.
@@ -1040,14 +1040,14 @@ class TestPacketHandlerIp4TxErrors(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxMtuExceedDf(NetworkTestCase):
+class TestIp4TxMtuExceedDf(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 TX path's RFC 791 §3.1 DF
+    The IPv4 TX packet-handler path tests for RFC 791 §3.1 DF
     enforcement: an IPv4 packet whose size exceeds the link MTU and
     whose DF=1 must be dropped — not fragmented.
     """
 
-    def test__packet_handler__ip4__tx__mtu_exceed_df__drops(self) -> None:
+    def test__ip4__tx__mtu_exceed_df__drops(self) -> None:
         """
         Ensure '_phtx_ip4' returns DROPPED__IP4__MTU_EXCEED_DF and
         emits no frame when the assembled packet exceeds the
@@ -1087,7 +1087,7 @@ class TestPacketHandlerIp4TxMtuExceedDf(NetworkTestCase):
             msg="With DF=1, the fragment-path counter must NOT bump.",
         )
 
-    def test__packet_handler__ip4__tx__mtu_exceed_no_df__fragments(self) -> None:
+    def test__ip4__tx__mtu_exceed_no_df__fragments(self) -> None:
         """
         Ensure '_phtx_ip4' still fragments when the packet exceeds
         the MTU and DF=0 — the legacy default. Verifies the DF
@@ -1123,9 +1123,9 @@ class TestPacketHandlerIp4TxMtuExceedDf(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
+class TestIp4TxNoIp4Support(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 TX path when IPv4 protocol support is
+    The IPv4 TX packet-handler path tests for when IPv4 protocol support is
     disabled — '_phtx_ip4' must short-circuit before assembly.
     """
 
@@ -1138,7 +1138,7 @@ class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
         super().setUp()
         self._packet_handler._ip4_support = False
 
-    def test__packet_handler__ip4__tx__no_ip4_support(self) -> None:
+    def test__ip4__tx__no_ip4_support(self) -> None:
         """
         Ensure '_phtx_ip4' returns 'DROPPED__IP4__NO_PROTOCOL_SUPPORT'
         and bumps 'ip4__no_proto_support__drop' without emitting any
@@ -1174,14 +1174,14 @@ class TestPacketHandlerIp4TxNoIp4Support(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxSendIp4Packet(NetworkTestCase):
+class TestIp4TxSendIp4Packet(NetworkTestCase):
     """
     Test the public 'send_ip4_packet' wrapper, which forwards into
     '_phtx_ip4' wrapping the user payload as a 'RawAssembler' and
     renaming the addressing kwargs.
     """
 
-    def test__packet_handler__ip4__tx__send_ip4_packet(self) -> None:
+    def test__ip4__tx__send_ip4_packet(self) -> None:
         """
         Ensure 'send_ip4_packet' wraps the call to '_phtx_ip4' with
         a 'RawAssembler' payload using the supplied 'ip4__proto' and
@@ -1227,7 +1227,7 @@ _IP4__ID_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 4
 _IP4__TTL_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 8
 
 
-class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
+class TestIp4TxRfc1112MulticastTtl(NetworkTestCase):
     """
     The RFC 1112 §6.1 multicast outbound TTL default tests.
 
@@ -1236,7 +1236,7 @@ class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
     local link unless the caller explicitly raises the TTL.
     """
 
-    def test__phtx_ip4__multicast_dst_no_caller_ttl__defaults_to_1(self) -> None:
+    def test__ip4__tx__multicast_dst_no_caller_ttl__defaults_to_1(self) -> None:
         """
         Ensure outbound IPv4 datagrams with a multicast
         destination ship with TTL=1 when the caller does not
@@ -1266,7 +1266,7 @@ class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
             msg="Multicast outbound datagrams must default to TTL=1.",
         )
 
-    def test__phtx_ip4__multicast_dst_caller_overrides_ttl__preserved(self) -> None:
+    def test__ip4__tx__multicast_dst_caller_overrides_ttl__preserved(self) -> None:
         """
         Ensure a caller-supplied 'ip4__ttl' overrides the
         multicast-default of 1 — the operator can choose to
@@ -1289,7 +1289,7 @@ class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
             msg="Caller-supplied multicast TTL must be preserved verbatim.",
         )
 
-    def test__phtx_ip4__unicast_dst_no_caller_ttl__defaults_to_64(self) -> None:
+    def test__ip4__tx__unicast_dst_no_caller_ttl__defaults_to_64(self) -> None:
         """
         Ensure outbound IPv4 datagrams with a unicast destination
         retain the legacy IP4__DEFAULT_TTL=64 default — regression
@@ -1313,7 +1313,7 @@ class TestPacketHandlerIp4TxRfc1112MulticastTtl(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase):
+class TestIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase):
     """
     The RFC 791 §3.1 option-copy-flag fragmentation tests.
 
@@ -1338,7 +1338,7 @@ class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase)
             Ip4OptionNop(),
         )
 
-    def test__phtx_ip4__fragmentation_preserves_copy_flag_options(self) -> None:
+    def test__ip4__tx__fragmentation_preserves_copy_flag_options(self) -> None:
         """
         Ensure a fragmented datagram with mixed copy-flag
         options ships the **full** option set on the first
@@ -1410,7 +1410,7 @@ class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase)
             msg="Final fragment must have MF=0.",
         )
 
-    def test__phtx_ip4__fragmentation_with_only_copy_false_options(self) -> None:
+    def test__ip4__tx__fragmentation_with_only_copy_false_options(self) -> None:
         """
         Ensure a fragmented datagram with only copy_flag=False
         options ships those options on the first fragment and
@@ -1449,7 +1449,7 @@ class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase)
             msg="Subsequent fragments must carry no options when all originals are copy_flag=False.",
         )
 
-    def test__phtx_ip4__fragmentation_with_no_options_unchanged(self) -> None:
+    def test__ip4__tx__fragmentation_with_no_options_unchanged(self) -> None:
         """
         Ensure a fragmented datagram with no options ships no
         options on either fragment — regression net for the
@@ -1476,7 +1476,7 @@ class TestPacketHandlerIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase)
             )
 
 
-class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
+class TestIp4TxRfc6864AtomicId(NetworkTestCase):
     """
     The RFC 6864 §4.1 atomic-datagram Identification tests.
 
@@ -1485,7 +1485,7 @@ class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
     PyTCP follows the Linux-canonical choice of 0.
     """
 
-    def test__phtx_ip4__atomic_datagram__ip4_id_is_zero(self) -> None:
+    def test__ip4__tx__atomic_datagram__ip4_id_is_zero(self) -> None:
         """
         Ensure outbound IPv4 datagrams that are not fragmented
         carry Identification = 0 — the spec permits any value,
@@ -1515,7 +1515,7 @@ class TestPacketHandlerIp4TxRfc6864AtomicId(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
+class TestIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
     """
     The RFC 1122 §3.2.1.7 'ip4.default_ttl' sysctl override tests.
 
@@ -1526,7 +1526,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
     restarting the stack.
     """
 
-    def test__phtx_ip4__unicast_dst_sysctl_override__honoured_on_wire(self) -> None:
+    def test__ip4__tx__unicast_dst_sysctl_override__honoured_on_wire(self) -> None:
         """
         Ensure that overriding 'ip4.default_ttl' at runtime
         changes the TTL of subsequent outbound unicast
@@ -1558,7 +1558,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
             msg="Unicast outbound TTL must reflect the live ip4.default_ttl sysctl value.",
         )
 
-    def test__phtx_ip4__unicast_dst_sysctl_default__matches_baseline(self) -> None:
+    def test__ip4__tx__unicast_dst_sysctl_default__matches_baseline(self) -> None:
         """
         Ensure the live sysctl value at boot equals 64 — the
         baseline configurable default — so a stack started with
@@ -1580,7 +1580,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
             msg="Default unicast TTL must equal 64 with no sysctl override.",
         )
 
-    def test__phtx_ip4__multicast_dst_unaffected_by_sysctl(self) -> None:
+    def test__ip4__tx__multicast_dst_unaffected_by_sysctl(self) -> None:
         """
         Ensure that an operator override of 'ip4.default_ttl'
         does NOT affect multicast destinations — the multicast
@@ -1607,7 +1607,7 @@ class TestPacketHandlerIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
+class TestIp4TxRfc919AllowBroadcast(NetworkTestCase):
     """
     The 'ip4.allow_broadcast' policy gate tests.
 
@@ -1619,7 +1619,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
     cannot complete a lease without broadcasting.
     """
 
-    def test__phtx_ip4__limited_broadcast_dst_default_deny__dropped(self) -> None:
+    def test__ip4__tx__limited_broadcast_dst_default_deny__dropped(self) -> None:
         """
         Ensure that with 'ip4.allow_broadcast' at its default
         value (0) an outbound datagram to 255.255.255.255 with
@@ -1655,7 +1655,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
             msg="ip4__dst_broadcast_disallowed__drop counter must bump on the drop.",
         )
 
-    def test__phtx_ip4__limited_broadcast_dst_sysctl_allow__permitted(self) -> None:
+    def test__ip4__tx__limited_broadcast_dst_sysctl_allow__permitted(self) -> None:
         """
         Ensure that flipping 'ip4.allow_broadcast' to 1 allows
         the same outbound datagram through to the wire — the
@@ -1685,7 +1685,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
             msg="Allow-broadcast must emit exactly one frame.",
         )
 
-    def test__phtx_ip4__network_broadcast_dst_default_deny__dropped(self) -> None:
+    def test__ip4__tx__network_broadcast_dst_default_deny__dropped(self) -> None:
         """
         Ensure that the gate also drops outbound datagrams to a
         subnet-directed broadcast (e.g. 10.0.1.255 for the
@@ -1712,7 +1712,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
             msg="Default-deny must drop subnet-directed broadcast destinations.",
         )
 
-    def test__phtx_ip4__dhcp_client_path_bypasses_gate(self) -> None:
+    def test__ip4__tx__dhcp_client_path_bypasses_gate(self) -> None:
         """
         Ensure the DHCP-client outbound path (src=0.0.0.0, UDP
         sport=68, dport=67, dst=255.255.255.255) bypasses the
@@ -1742,7 +1742,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
             msg="DHCP-client outbound must emit exactly one frame.",
         )
 
-    def test__phtx_ip4__unicast_dst_unaffected_by_gate(self) -> None:
+    def test__ip4__tx__unicast_dst_unaffected_by_gate(self) -> None:
         """
         Ensure unicast destinations are unaffected by the gate
         — the policy applies only to limited or subnet-directed
@@ -1766,7 +1766,7 @@ class TestPacketHandlerIp4TxRfc919AllowBroadcast(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
+class TestIp4TxRfc3927ScopeGate(NetworkTestCase):
     """
     The RFC 3927 §2.6 source/destination link-local scope-
     mismatch gate tests.
@@ -1818,7 +1818,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
             lambda: setattr(find_entry_mock, "side_effect", original_side_effect),
         )
 
-    def test__phtx_ip4__link_local_src__global_dst__dropped(self) -> None:
+    def test__ip4__tx__link_local_src__global_dst__dropped(self) -> None:
         """
         Ensure an outbound datagram with a link-local source
         and a non-link-local destination is dropped with the
@@ -1852,7 +1852,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
             msg="ip4__link_local_scope_mismatch__drop counter must bump on the drop.",
         )
 
-    def test__phtx_ip4__global_src__link_local_dst__dropped(self) -> None:
+    def test__ip4__tx__global_src__link_local_dst__dropped(self) -> None:
         """
         Ensure the symmetric direction is also dropped — a
         non-link-local source MUST NOT be used to address a
@@ -1873,7 +1873,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
             msg="Global src + link-local dst must drop with the scope-mismatch TxStatus.",
         )
 
-    def test__phtx_ip4__link_local_src__link_local_dst__allowed(self) -> None:
+    def test__ip4__tx__link_local_src__link_local_dst__allowed(self) -> None:
         """
         Ensure two link-local addresses (matching scope on
         both sides) are not gated — matching link-local
@@ -1901,7 +1901,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
             msg="Link-local src + link-local dst must not trip the §2.6 scope gate.",
         )
 
-    def test__phtx_ip4__global_src__global_dst__unaffected(self) -> None:
+    def test__ip4__tx__global_src__global_dst__unaffected(self) -> None:
         """
         Ensure the common global-to-global path is unaffected
         — the gate fires only when one of src/dst is link-
@@ -1924,7 +1924,7 @@ class TestPacketHandlerIp4TxRfc3927ScopeGate(NetworkTestCase):
             msg="Global src + global dst must succeed unaffected by the §2.6 gate.",
         )
 
-    def test__phtx_ip4__dhcp_path_unaffected_by_gate(self) -> None:
+    def test__ip4__tx__dhcp_path_unaffected_by_gate(self) -> None:
         """
         Ensure the DHCP-client outbound path (src=0.0.0.0,
         UDP sport=68/dport=67, dst=255.255.255.255) does not

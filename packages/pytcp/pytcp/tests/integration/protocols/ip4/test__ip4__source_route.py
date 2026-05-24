@@ -30,7 +30,7 @@ default. Operators that genuinely need source-route acceptance can
 flip the stack flag and the existing handlers process the packet as
 before (including the Echo Reply LSRR/SSRR reversal path).
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip4__rx__source_route.py
+pytcp/tests/integration/protocols/ip4/test__ip4__source_route.py
 
 ver 3.0.6
 """

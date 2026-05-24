@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler IPv4 RX operations.
+This module contains integration tests for the IPv4 RX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip4__rx.py
+pytcp/tests/integration/protocols/ip4/test__ip4__rx.py
 
 ver 3.0.6
 """
@@ -1410,9 +1410,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerIp4Rx(NetworkTestCase):
+class TestIp4Rx(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 RX operations.
+    The IPv4 RX packet-handler path tests.
     """
 
     _description: str
@@ -1423,7 +1423,7 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip4__rx(self) -> None:
+    def test__ip4__rx(self) -> None:
         """
         Ensure the Packet Handler processes the received IPv4
         frames as expected for each parametrized case.
@@ -1453,9 +1453,9 @@ class TestPacketHandlerIp4Rx(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
+class TestIp4RxDhcpClientNoUnicast(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 RX path when no unicast IPv4 address
+    The IPv4 RX packet-handler path tests for when no unicast IPv4 address
     is configured on the stack — the DHCP-client-startup scenario.
 
     Source line 106 short-circuits the dst-unknown check via
@@ -1473,7 +1473,7 @@ class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
         super().setUp()
         self._packet_handler._ip4_ifaddr = []
 
-    def test__packet_handler__ip4__rx__dhcp_client_no_unicast(self) -> None:
+    def test__ip4__rx__dhcp_client_no_unicast(self) -> None:
         """
         Ensure an inbound IPv4 packet addressed to an arbitrary unicast
         IP (not ours) is accepted when no unicast address is configured,
@@ -1518,9 +1518,9 @@ class TestPacketHandlerIp4RxDhcpClientNoUnicast(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
+class TestIp4RxMulticast(NetworkTestCase):
     """
-    Test the Packet Handler IPv4 RX classifier on a packet addressed to
+    The IPv4 RX packet-handler classifier tests for a packet addressed to
     an IPv4 multicast group the stack has joined. The default
     'NetworkTestCase' fixture only joins the IPv6 solicited-node MAC,
     so this dedicated TestCase additionally joins the IPv4 all-nodes
@@ -1538,7 +1538,7 @@ class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
         super().setUp()
         self._packet_handler._mac_multicast.append(self._ALL_NODES__IP4__MULTICAST_MAC)
 
-    def test__packet_handler__ip4__rx__dst_multicast(self) -> None:
+    def test__ip4__rx__dst_multicast(self) -> None:
         """
         Ensure an IPv4 frame addressed to 224.0.0.1 (all-nodes
         multicast) bumps both 'ethernet__dst_multicast' (classifier
@@ -1582,7 +1582,7 @@ class TestPacketHandlerIp4RxMulticast(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
+class TestIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
     """
     The RFC 815 §6 / RFC 791 §3.1 option-preservation-on-
     reassembly tests.
@@ -1627,7 +1627,7 @@ class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
         )
         return bytes(eth)
 
-    def test__rx__reassembly_preserves_first_fragment_options(self) -> None:
+    def test__ip4__rx__reassembly_preserves_first_fragment_options(self) -> None:
         """
         Ensure two received IPv4 fragments where the first
         carries [Router Alert + RR + NOP] and the second
@@ -1716,7 +1716,7 @@ class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
             msg="Reassembled Total Length must equal header bytes (incl. options) + payload bytes.",
         )
 
-    def test__rx__reassembly_with_no_options_uses_minimum_ihl(self) -> None:
+    def test__ip4__rx__reassembly_with_no_options_uses_minimum_ihl(self) -> None:
         """
         Ensure a no-options two-fragment reassembly produces a
         reassembled datagram with IHL=5 (no options) — regression
@@ -1762,7 +1762,7 @@ class TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
+class TestIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
     """
     The RFC 3168 §5.3 ECN-aggregation-on-reassembly tests.
 
@@ -1840,7 +1840,7 @@ class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
         self._packet_handler._phrx_ethernet(PacketRx(frame_first))
         self._packet_handler._phrx_ethernet(PacketRx(frame_second))
 
-    def test__rx__reassembly_same_ecn_propagates_codepoint(self) -> None:
+    def test__ip4__rx__reassembly_same_ecn_propagates_codepoint(self) -> None:
         """
         Ensure two fragments that both carry ECT(0) reassemble
         into a datagram whose ECN field is ECT(0) — the all-
@@ -1867,7 +1867,7 @@ class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
             msg="ECT(0)+ECT(0) reassembly must propagate ECT(0) on the wire.",
         )
 
-    def test__rx__reassembly_ce_plus_ect_aggregates_to_ce(self) -> None:
+    def test__ip4__rx__reassembly_ce_plus_ect_aggregates_to_ce(self) -> None:
         """
         Ensure two fragments — one CE, one ECT(0) — reassemble
         into a datagram whose ECN field is CE; the §5.3
@@ -1896,7 +1896,7 @@ class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
             msg="CE+ECT(0) reassembly must propagate CE on the wire.",
         )
 
-    def test__rx__reassembly_ect0_plus_ect1_aggregates_to_ect0(self) -> None:
+    def test__ip4__rx__reassembly_ect0_plus_ect1_aggregates_to_ect0(self) -> None:
         """
         Ensure two fragments — one ECT(0), one ECT(1) —
         reassemble into a datagram whose ECN field is ECT(0);
@@ -1924,7 +1924,7 @@ class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
             msg="ECT(0)+ECT(1) reassembly must propagate ECT(0) on the wire.",
         )
 
-    def test__rx__reassembly_not_ect_plus_ect_drops(self) -> None:
+    def test__ip4__rx__reassembly_not_ect_plus_ect_drops(self) -> None:
         """
         Ensure two fragments — one Not-ECT, one ECT(0) — fail
         reassembly and the inconsistent datagram is silently
@@ -1950,7 +1950,7 @@ class TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
             msg="ip4__frag__ecn_mixed__drop counter must bump on the dropped reassembly.",
         )
 
-    def test__rx__reassembly_not_ect_plus_ce_drops(self) -> None:
+    def test__ip4__rx__reassembly_not_ect_plus_ce_drops(self) -> None:
         """
         Ensure two fragments — one Not-ECT, one CE — fail
         reassembly. A Not-ECT-marked sender did not opt in to
