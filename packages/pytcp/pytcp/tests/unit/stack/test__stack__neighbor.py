@@ -76,52 +76,52 @@ class TestStackNeighborApi(TestCase):
         )
         self._api = NeighborApi(packet_handler=self._handler)
 
-    def test__neighbor__add_static_arp_then_list(self) -> None:
+    def test__neighbor__add_arp_then_list(self) -> None:
         """
         Ensure a static ARP entry added through the Neighbor API appears
-        in 'list_arp' as a PERMANENT neighbour with the configured MAC.
+        in 'list_neighbors' as a PERMANENT neighbour with the configured MAC.
 
         Reference: RFC 826 (ARP — static address resolution mapping).
         """
 
-        self._api.add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
+        self._api.add(ip=_ARP_IP, mac=_ARP_MAC)
 
-        snaps = self._api.list_arp()
+        snaps = self._api.list_neighbors(family=AddressFamily.INET4)
         self.assertEqual(
             snaps,
             (NeighborSnapshot(address=_ARP_IP, mac_address=_ARP_MAC, state=NudState.PERMANENT),),
-            msg="add_static_arp must install one PERMANENT ARP neighbour visible via list_arp.",
+            msg="add must install one PERMANENT ARP neighbour visible via list_neighbors.",
         )
 
-    def test__neighbor__add_static_nd_then_list(self) -> None:
+    def test__neighbor__add_nd_then_list(self) -> None:
         """
         Ensure a static ND entry added through the Neighbor API appears
-        in 'list_nd' as a PERMANENT neighbour with the configured MAC.
+        in 'list_neighbors' as a PERMANENT neighbour with the configured MAC.
 
         Reference: RFC 4861 §7.2 (Neighbor Cache — static entry).
         """
 
-        self._api.add_static_nd(ip=_ND_IP, mac=_ND_MAC)
+        self._api.add(ip=_ND_IP, mac=_ND_MAC)
 
-        snaps = self._api.list_nd()
+        snaps = self._api.list_neighbors(family=AddressFamily.INET6)
         self.assertEqual(
             snaps,
             (NeighborSnapshot(address=_ND_IP, mac_address=_ND_MAC, state=NudState.PERMANENT),),
-            msg="add_static_nd must install one PERMANENT ND neighbour visible via list_nd.",
+            msg="add must install one PERMANENT ND neighbour visible via list_neighbors.",
         )
 
     def test__neighbor__list_is_copy_by_value(self) -> None:
         """
-        Ensure 'list_arp' returns a point-in-time snapshot — a later
+        Ensure 'list_neighbors' returns a point-in-time snapshot — a later
         mutation does not change a tuple already returned to the caller.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._api.add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
-        before = self._api.list_arp()
+        self._api.add(ip=_ARP_IP, mac=_ARP_MAC)
+        before = self._api.list_neighbors(family=AddressFamily.INET4)
 
-        self._api.add_static_arp(ip=Ip4Address("10.0.1.51"), mac=MacAddress("02:00:00:00:00:51"))
+        self._api.add(ip=Ip4Address("10.0.1.51"), mac=MacAddress("02:00:00:00:00:51"))
 
         self.assertEqual(
             len(before),
@@ -137,12 +137,12 @@ class TestStackNeighborApi(TestCase):
         Reference: RFC 826 (ARP — neighbour mapping removal).
         """
 
-        self._api.add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
+        self._api.add(ip=_ARP_IP, mac=_ARP_MAC)
 
         self._api.remove(ip=_ARP_IP)
 
         self.assertEqual(
-            self._api.list_arp(),
+            self._api.list_neighbors(family=AddressFamily.INET4),
             (),
             msg="remove(ip=<IPv4>) must delete the matching ARP neighbour.",
         )
@@ -155,12 +155,12 @@ class TestStackNeighborApi(TestCase):
         Reference: RFC 4861 §7.2 (Neighbor Cache — entry removal).
         """
 
-        self._api.add_static_nd(ip=_ND_IP, mac=_ND_MAC)
+        self._api.add(ip=_ND_IP, mac=_ND_MAC)
 
         self._api.remove(ip=_ND_IP)
 
         self.assertEqual(
-            self._api.list_nd(),
+            self._api.list_neighbors(family=AddressFamily.INET6),
             (),
             msg="remove(ip=<IPv6>) must delete the matching ND neighbour.",
         )
@@ -173,18 +173,18 @@ class TestStackNeighborApi(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._api.add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
-        self._api.add_static_nd(ip=_ND_IP, mac=_ND_MAC)
+        self._api.add(ip=_ARP_IP, mac=_ARP_MAC)
+        self._api.add(ip=_ND_IP, mac=_ND_MAC)
 
         self._api.flush(family=AddressFamily.INET4)
 
         self.assertEqual(
-            self._api.list_arp(),
+            self._api.list_neighbors(family=AddressFamily.INET4),
             (),
             msg="flush(INET4) must clear the ARP cache.",
         )
         self.assertEqual(
-            len(self._api.list_nd()),
+            len(self._api.list_neighbors(family=AddressFamily.INET6)),
             1,
             msg="flush(INET4) must leave the ND cache untouched.",
         )
@@ -197,18 +197,18 @@ class TestStackNeighborApi(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._api.add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
-        self._api.add_static_nd(ip=_ND_IP, mac=_ND_MAC)
+        self._api.add(ip=_ARP_IP, mac=_ARP_MAC)
+        self._api.add(ip=_ND_IP, mac=_ND_MAC)
 
         self._api.flush(family=AddressFamily.INET6)
 
         self.assertEqual(
-            self._api.list_nd(),
+            self._api.list_neighbors(family=AddressFamily.INET6),
             (),
             msg="flush(INET6) must clear the ND cache.",
         )
         self.assertEqual(
-            len(self._api.list_arp()),
+            len(self._api.list_neighbors(family=AddressFamily.INET4)),
             1,
             msg="flush(INET6) must leave the ARP cache untouched.",
         )
@@ -225,10 +225,10 @@ class TestStackNeighborApi(TestCase):
         table[1] = self._handler
         self.enterContext(patch.object(stack, "interfaces", table))
 
-        NeighborApi().interface(1).add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
+        NeighborApi().interface(1).add(ip=_ARP_IP, mac=_ARP_MAC)
 
         self.assertEqual(
-            self._api.list_arp(),
+            self._api.list_neighbors(family=AddressFamily.INET4),
             (NeighborSnapshot(address=_ARP_IP, mac_address=_ARP_MAC, state=NudState.PERMANENT),),
             msg="interface(ifindex) must bind mutations to that interface's ARP cache.",
         )
@@ -245,10 +245,10 @@ class TestStackNeighborApi(TestCase):
         table[1] = self._handler
         self.enterContext(patch.object(stack, "interfaces", table))
 
-        NeighborApi().add_static_arp(ip=_ARP_IP, mac=_ARP_MAC)
+        NeighborApi().add(ip=_ARP_IP, mac=_ARP_MAC)
 
         self.assertEqual(
-            len(self._api.list_arp()),
+            len(self._api.list_neighbors(family=AddressFamily.INET4)),
             1,
             msg="The unbound tool must resolve the sole interface and mutate its ARP cache.",
         )

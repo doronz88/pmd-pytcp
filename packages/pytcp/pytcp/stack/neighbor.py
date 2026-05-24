@@ -164,27 +164,21 @@ class NeighborApi:
         assert cache is not None, "ND cache unavailable — the bound interface is not L2."
         return cache
 
-    def add_static_arp(self, *, ip: Ip4Address, mac: MacAddress) -> None:
+    def add(self, *, ip: Ip4Address | Ip6Address, mac: MacAddress) -> None:
         """
-        Install a permanent IPv4 → MAC entry in the interface's ARP
-        cache — Linux 'ip neighbor add <ip> lladdr <mac> nud permanent'.
-        The entry never ages out and dynamic learning never overrides
-        it.
+        Install a permanent neighbour entry mapping 'ip' → 'mac' —
+        Linux 'ip neighbor add <ip> lladdr <mac> nud permanent'. The
+        family is inferred from 'ip': an IPv4 address lands in the
+        interface's ARP cache, an IPv6 address in its ND cache. The
+        entry never ages out and dynamic learning never overrides it.
         """
 
+        if isinstance(ip, Ip6Address):
+            self._nd_cache()._add_permanent_entry(ip, mac)
+            __debug__ and log("stack", f"<lg>Neighbor API</>: added static ND {ip} -> {mac}")
+            return
         self._arp_cache()._add_permanent_entry(ip, mac)
         __debug__ and log("stack", f"<lg>Neighbor API</>: added static ARP {ip} -> {mac}")
-
-    def add_static_nd(self, *, ip: Ip6Address, mac: MacAddress) -> None:
-        """
-        Install a permanent IPv6 → MAC entry in the interface's ND
-        cache — Linux 'ip neighbor add <ip> lladdr <mac> nud permanent'.
-        The entry never ages out and dynamic learning never overrides
-        it.
-        """
-
-        self._nd_cache()._add_permanent_entry(ip, mac)
-        __debug__ and log("stack", f"<lg>Neighbor API</>: added static ND {ip} -> {mac}")
 
     def remove(self, *, ip: Ip4Address | Ip6Address) -> None:
         """
@@ -208,24 +202,28 @@ class NeighborApi:
         count = cache._flush()
         __debug__ and log("stack", f"<lg>Neighbor API</>: flushed {count} {family.name} neighbour(s)")
 
-    def list_arp(self) -> tuple[NeighborSnapshot, ...]:
+    def list_neighbors(
+        self,
+        *,
+        family: AddressFamily | None = None,
+    ) -> tuple[NeighborSnapshot, ...]:
         """
         Return a read-only copy-by-value snapshot of the interface's
-        ARP cache — Linux 'ip -4 neighbor show'.
+        neighbour caches — Linux 'ip neighbor show'. With no 'family'
+        the snapshot covers both caches (ARP first, then ND); pass
+        'AddressFamily.INET4' / 'INET6' to filter (the Linux 'ip -4' /
+        'ip -6' selectors).
         """
 
-        return tuple(
-            NeighborSnapshot(address=entry.address, mac_address=entry.mac_address, state=entry.state)
-            for entry in self._arp_cache()._snapshot()
-        )
-
-    def list_nd(self) -> tuple[NeighborSnapshot, ...]:
-        """
-        Return a read-only copy-by-value snapshot of the interface's
-        ND cache — Linux 'ip -6 neighbor show'.
-        """
-
-        return tuple(
-            NeighborSnapshot(address=entry.address, mac_address=entry.mac_address, state=entry.state)
-            for entry in self._nd_cache()._snapshot()
-        )
+        snapshots: list[NeighborSnapshot] = []
+        if family in (None, AddressFamily.INET4):
+            snapshots.extend(
+                NeighborSnapshot(address=entry.address, mac_address=entry.mac_address, state=entry.state)
+                for entry in self._arp_cache()._snapshot()
+            )
+        if family in (None, AddressFamily.INET6):
+            snapshots.extend(
+                NeighborSnapshot(address=entry.address, mac_address=entry.mac_address, state=entry.state)
+                for entry in self._nd_cache()._snapshot()
+            )
+        return tuple(snapshots)
