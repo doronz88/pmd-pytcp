@@ -96,8 +96,8 @@ from .packet_handler__arp__rx import ArpRxHandler
 from .packet_handler__arp__tx import ArpTxHandler
 from .packet_handler__ethernet_802_3__rx import Ethernet8023RxHandler
 from .packet_handler__ethernet_802_3__tx import Ethernet8023TxHandler
-from .packet_handler__ethernet__rx import PacketHandlerEthernetRx
-from .packet_handler__ethernet__tx import PacketHandlerEthernetTx
+from .packet_handler__ethernet__rx import EthernetRxHandler
+from .packet_handler__ethernet__tx import EthernetTxHandler
 from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import Icmp6RxHandler
@@ -1930,8 +1930,6 @@ class PacketHandler(Subsystem, ABC):
 
 class PacketHandlerL2(
     PacketHandler,
-    PacketHandlerEthernetRx,
-    PacketHandlerEthernetTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 2 (TAP) interface.
@@ -1950,6 +1948,9 @@ class PacketHandlerL2(
     # IEEE 802.3 / LLC / SNAP framing is L2-only.
     _ethernet_802_3_rx: Ethernet8023RxHandler
     _ethernet_802_3_tx: Ethernet8023TxHandler
+    # Ethernet II framing + the link-layer RX demux hub are L2-only.
+    _ethernet_rx: EthernetRxHandler
+    _ethernet_tx: EthernetTxHandler
 
     _ip4_dhcp: bool
     _ip6_lla_autoconfig: bool
@@ -2004,6 +2005,8 @@ class PacketHandlerL2(
         self._arp_tx = ArpTxHandler(interface=self)
         self._ethernet_802_3_rx = Ethernet8023RxHandler(interface=self)
         self._ethernet_802_3_tx = Ethernet8023TxHandler(interface=self)
+        self._ethernet_rx = EthernetRxHandler(interface=self)
+        self._ethernet_tx = EthernetTxHandler(interface=self)
 
         self._ip4_dhcp = ip4_dhcp
         self._ip6_lla_autoconfig = ip6_lla_autoconfig
@@ -2100,7 +2103,6 @@ class PacketHandlerL2(
     # in the composed 'ArpRxHandler' / 'ArpTxHandler' sub-handlers.
     ###
 
-    @override
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         """
         Handle an inbound ARP packet (delegates to the ARP RX sub-handler).
@@ -2206,6 +2208,48 @@ class PacketHandlerL2(
             ethernet_802_3__dst=ethernet_802_3__dst,
             ethernet_802_3__payload=ethernet_802_3__payload,
         )
+
+    ###
+    # Ethernet II delegators — the link-layer RX demux hub + outbound
+    # framing. Logic lives in the composed 'EthernetRxHandler' /
+    # 'EthernetTxHandler'. L2-only ('PacketHandlerL3' has no Ethernet
+    # layer). '_phtx_ethernet' carries '@override' because the base
+    # 'PacketHandler' declares it (TYPE_CHECKING-only) so the shared
+    # IPv4 / IPv6 TX sub-handlers can reach it through their union.
+    ###
+
+    def _phrx_ethernet(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound Ethernet packet (delegates to the Ethernet RX sub-handler).
+        """
+
+        self._ethernet_rx._phrx_ethernet(packet_rx)
+
+    @override
+    def _phtx_ethernet(
+        self,
+        *,
+        ethernet__src: MacAddress = MacAddress(),
+        ethernet__dst: MacAddress = MacAddress(),
+        ethernet__payload: EthernetPayload = RawAssembler(),
+    ) -> TxStatus:
+        """
+        Handle an outbound Ethernet packet (delegates to the Ethernet TX sub-handler).
+        """
+
+        return self._ethernet_tx._phtx_ethernet(
+            ethernet__src=ethernet__src,
+            ethernet__dst=ethernet__dst,
+            ethernet__payload=ethernet__payload,
+        )
+
+    def send_link_frame(self, frame: Buffer, /) -> None:
+        """
+        Enqueue a pre-built link-layer frame for verbatim transmission
+        (delegates to the Ethernet TX sub-handler).
+        """
+
+        self._ethernet_tx.send_link_frame(frame)
 
     @override
     def _subsystem_loop(self) -> None:

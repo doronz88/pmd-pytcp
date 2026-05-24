@@ -23,14 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerEthernetRx' mixin.
+This module contains unit tests for the 'EthernetRxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet__rx.py
 
 ver 3.0.6
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
@@ -40,8 +40,11 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.runtime.packet_handler.packet_handler__ethernet__rx import (
-    PacketHandlerEthernetRx,
+    EthernetRxHandler,
 )
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -119,14 +122,23 @@ _FRAME_ETH__UNSUPPORTED_PROTO = b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x
 _FRAME_ETH__TRUNCATED = b"\x02\x00\x00\x00\x00\x07\x52\x54\x00\xdf\x85\x37\x08"
 
 
-class _StubHandler(PacketHandlerEthernetRx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerEthernetRx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
+
+    Carries the RX-stat counters, the stack MAC addresses, the IPv4 /
+    IPv6 support flags, and the upper-layer dispatch spies ('_phrx_arp'
+    / '_phrx_ip4' / '_phrx_ip6') the Ethernet RX demux hub reaches
+    through 'self._if', recording each call for assertions. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which autospec
+    walks) cannot evaluate at runtime.
     """
 
     def __init__(self, *, ip4_support: bool = True, ip6_support: bool = True) -> None:
         """
-        Initialize the stub handler with attributes and spies for the
+        Initialize the stub interface with attributes and spies for the
         upper-layer dispatch methods.
         """
 
@@ -147,6 +159,23 @@ class _StubHandler(PacketHandlerEthernetRx):
 
     def _phrx_ip6(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("ip6")
+
+
+def _make_ethernet_rx(
+    *,
+    ip4_support: bool = True,
+    ip6_support: bool = True,
+) -> tuple[EthernetRxHandler, _StubInterface]:
+    """
+    Build an 'EthernetRxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(ip4_support=ip4_support, ip6_support=ip6_support)
+    return (
+        EthernetRxHandler(interface=cast("PacketHandlerL2", interface)),
+        interface,
+    )
 
 
 @parameterized_class(
@@ -228,7 +257,7 @@ class _StubHandler(PacketHandlerEthernetRx):
 )
 class TestPacketHandlerEthernetRx(TestCase):
     """
-    The 'PacketHandlerEthernetRx._phrx_ethernet' behaviour tests.
+    The 'EthernetRxHandler._phrx_ethernet' behaviour tests.
     """
 
     _description: str
@@ -241,7 +270,7 @@ class TestPacketHandlerEthernetRx(TestCase):
         Build the stub handler and run the frame through the mixin method.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ethernet_rx()
         self._handler._phrx_ethernet(PacketRx(self._frame))
 
     def test__stack__packet_handler__ethernet__rx__dispatch(self) -> None:
@@ -254,7 +283,7 @@ class TestPacketHandlerEthernetRx(TestCase):
         """
 
         self.assertEqual(
-            self._handler.dispatched,
+            self._if.dispatched,
             self._expected_dispatch,
             msg=f"Unexpected dispatch chain for case: {self._description}",
         )
@@ -269,7 +298,7 @@ class TestPacketHandlerEthernetRx(TestCase):
 
         expected = PacketStatsRx(**self._results)
         self.assertEqual(
-            self._handler._packet_stats_rx,
+            self._if._packet_stats_rx,
             expected,
             msg=f"Unexpected RX packet statistics for case: {self._description}",
         )
@@ -277,7 +306,7 @@ class TestPacketHandlerEthernetRx(TestCase):
 
 class TestPacketHandlerEthernetRxProtocolGating(TestCase):
     """
-    The 'PacketHandlerEthernetRx' IPv4/IPv6 support-flag gating tests.
+    The 'EthernetRxHandler' IPv4/IPv6 support-flag gating tests.
     """
 
     def test__stack__packet_handler__ethernet__rx__ip4_disabled_drops_ip4(self) -> None:
@@ -289,16 +318,16 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
         Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
-        handler = _StubHandler(ip4_support=False)
+        handler, iface = _make_ethernet_rx(ip4_support=False)
         handler._phrx_ethernet(PacketRx(_FRAME_ETH__IP4_UNICAST))
 
         self.assertEqual(
-            handler.dispatched,
+            iface.dispatched,
             [],
             msg="IPv4 frame must not dispatch when _ip4_support is False.",
         )
         self.assertEqual(
-            handler._packet_stats_rx.ethernet__no_proto_support__drop,
+            iface._packet_stats_rx.ethernet__no_proto_support__drop,
             1,
             msg="ethernet__no_proto_support__drop must be incremented when IPv4 support is disabled.",
         )
@@ -310,16 +339,16 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
         Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
-        handler = _StubHandler(ip6_support=False)
+        handler, iface = _make_ethernet_rx(ip6_support=False)
         handler._phrx_ethernet(PacketRx(_FRAME_ETH__IP6_UNICAST))
 
         self.assertEqual(
-            handler.dispatched,
+            iface.dispatched,
             [],
             msg="IPv6 frame must not dispatch when _ip6_support is False.",
         )
         self.assertEqual(
-            handler._packet_stats_rx.ethernet__no_proto_support__drop,
+            iface._packet_stats_rx.ethernet__no_proto_support__drop,
             1,
             msg="ethernet__no_proto_support__drop must be incremented when IPv6 support is disabled.",
         )
@@ -332,16 +361,16 @@ class TestPacketHandlerEthernetRxProtocolGating(TestCase):
         Reference: RFC 894 (Ethernet II RX dispatch).
         """
 
-        handler = _StubHandler(ip4_support=False)
+        handler, iface = _make_ethernet_rx(ip4_support=False)
         handler._phrx_ethernet(PacketRx(_FRAME_ETH__ARP_UNICAST))
 
         self.assertEqual(
-            handler.dispatched,
+            iface.dispatched,
             [],
             msg="ARP frame must not dispatch when _ip4_support is False.",
         )
         self.assertEqual(
-            handler._packet_stats_rx.ethernet__no_proto_support__drop,
+            iface._packet_stats_rx.ethernet__no_proto_support__drop,
             1,
             msg="ethernet__no_proto_support__drop must be incremented when ARP is dropped.",
         )

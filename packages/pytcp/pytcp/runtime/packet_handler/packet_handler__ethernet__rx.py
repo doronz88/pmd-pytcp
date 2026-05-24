@@ -30,9 +30,9 @@ pytcp/runtime/packet_handler/packet_handler__ethernet__rx.py
 ver 3.0.6
 """
 
-from abc import ABC
 from typing import TYPE_CHECKING
 
+from net_addr import MacAddress
 from net_proto import EthernetParser, EtherType, PacketRx, PacketValidationError
 from net_proto.lib.buffer import Buffer
 from pytcp import stack
@@ -41,38 +41,30 @@ from pytcp.socket import PacketType
 from pytcp.socket.packet__metadata import PacketMetadata
 from pytcp.socket.sockaddr_ll import SockAddrLl
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
-class PacketHandlerEthernetRx(ABC):
+
+class EthernetRxHandler:
     """
-    Class implements packet handler for the inbound Ethernet packets.
+    Packet handler for the inbound Ethernet packets.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import MacAddress
-        from pytcp.lib.packet_stats import PacketStatsRx
+    _if: PacketHandlerL2
 
-        _packet_stats_rx: PacketStatsRx
-        _mac_unicast: MacAddress
-        _mac_multicast: list[MacAddress]
-        _mac_broadcast: MacAddress
+    def __init__(self, *, interface: PacketHandlerL2) -> None:
+        """
+        Initialize the Ethernet RX sub-handler.
+        """
 
-        _ifindex: int
-
-        _ip4_support: bool
-        _ip6_support: bool
-
-        # pylint: disable=unused-argument
-
-        def _phrx_arp(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_ip6(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_ip4(self, packet_rx: PacketRx, /) -> None: ...
+        self._if = interface
 
     def _phrx_ethernet(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound Ethernet packets.
         """
 
-        self._packet_stats_rx.ethernet__pre_parse += 1
+        self._if._packet_stats_rx.ethernet__pre_parse += 1
 
         # Capture the full-frame view BEFORE the parser advances
         # 'packet_rx.frame' past the Ethernet header — the AF_PACKET tap
@@ -85,7 +77,7 @@ class PacketHandlerEthernetRx(ABC):
             EthernetParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.ethernet__failed_parse__drop += 1
+            self._if._packet_stats_rx.ethernet__failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -103,35 +95,35 @@ class PacketHandlerEthernetRx(ABC):
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet.dst not in {
-            self._mac_unicast,
-            *self._mac_multicast,
-            self._mac_broadcast,
+            self._if._mac_unicast,
+            *self._if._mac_multicast,
+            self._if._mac_broadcast,
         }:
-            self._packet_stats_rx.ethernet__dst_unknown__drop += 1
+            self._if._packet_stats_rx.ethernet__dst_unknown__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - Ethernet packet not destined for this " "stack, dropping",
             )
             return
 
-        if packet_rx.ethernet.dst == self._mac_unicast:
-            self._packet_stats_rx.ethernet__dst_unicast += 1
+        if packet_rx.ethernet.dst == self._if._mac_unicast:
+            self._if._packet_stats_rx.ethernet__dst_unicast += 1
 
-        if packet_rx.ethernet.dst in self._mac_multicast:
-            self._packet_stats_rx.ethernet__dst_multicast += 1
+        if packet_rx.ethernet.dst in self._if._mac_multicast:
+            self._if._packet_stats_rx.ethernet__dst_multicast += 1
 
-        if packet_rx.ethernet.dst == self._mac_broadcast:
-            self._packet_stats_rx.ethernet__dst_broadcast += 1
+        if packet_rx.ethernet.dst == self._if._mac_broadcast:
+            self._if._packet_stats_rx.ethernet__dst_broadcast += 1
 
         match packet_rx.ethernet.type:
-            case EtherType.ARP if self._ip4_support:
-                self._phrx_arp(packet_rx)
-            case EtherType.IP4 if self._ip4_support:
-                self._phrx_ip4(packet_rx)
-            case EtherType.IP6 if self._ip6_support:
-                self._phrx_ip6(packet_rx)
+            case EtherType.ARP if self._if._ip4_support:
+                self._if._phrx_arp(packet_rx)
+            case EtherType.IP4 if self._if._ip4_support:
+                self._if._phrx_ip4(packet_rx)
+            case EtherType.IP6 if self._if._ip6_support:
+                self._if._phrx_ip6(packet_rx)
             case _:
-                self._packet_stats_rx.ethernet__no_proto_support__drop += 1
+                self._if._packet_stats_rx.ethernet__no_proto_support__drop += 1
                 __debug__ and log(
                     "ether",
                     f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
@@ -150,14 +142,14 @@ class PacketHandlerEthernetRx(ABC):
             return
 
         matches = stack.packet_sockets.matching(
-            ifindex=self._ifindex,
+            ifindex=self._if._ifindex,
             ethertype=packet_rx.ethernet.type,
         )
         if not matches:
             return
 
         sockaddr_ll = SockAddrLl(
-            ifindex=self._ifindex,
+            ifindex=self._if._ifindex,
             ethertype=packet_rx.ethernet.type,
             pkttype=self._classify_pkttype(packet_rx.ethernet.dst),
             mac=packet_rx.ethernet.src,
@@ -166,7 +158,7 @@ class PacketHandlerEthernetRx(ABC):
         for sock in matches:
             sock.process_packet(packet_rx_md)
 
-    def _classify_pkttype(self, dst: "MacAddress", /) -> PacketType:
+    def _classify_pkttype(self, dst: MacAddress, /) -> PacketType:
         """
         Classify an inbound frame's link-layer destination relative to
         this interface (Linux 'sll_pkttype'): the stack's own unicast
@@ -176,7 +168,7 @@ class PacketHandlerEthernetRx(ABC):
         observed — e.g. captured by an ETH_P_ALL packet socket).
         """
 
-        if dst == self._mac_unicast:
+        if dst == self._if._mac_unicast:
             return PacketType.PACKET_HOST
         if dst.is_broadcast:
             return PacketType.PACKET_BROADCAST

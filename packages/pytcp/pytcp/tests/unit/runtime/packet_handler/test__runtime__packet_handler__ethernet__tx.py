@@ -23,13 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerEthernetTx' mixin.
+This module contains unit tests for the 'EthernetTxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet__tx.py
 
 ver 3.0.6
 """
 
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -55,9 +56,12 @@ from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
 from pytcp.runtime.packet_handler.packet_handler__ethernet__tx import (
-    PacketHandlerEthernetTx,
+    EthernetTxHandler,
 )
 from pytcp.runtime.tx_ring import TxRing
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -99,14 +103,23 @@ HOST_C__IP4 = Ip4Address("10.0.2.50")  # external-net
 HOST_C__IP6 = Ip6Address("2001:db8:0:2::50")  # external-net
 
 
-class _StubHandler(PacketHandlerEthernetTx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerEthernetTx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
+
+    Carries the TX-stat counters, the stack MAC / address lists, the
+    'ifindex', and (injected by the test 'setUp') the TX ring and the
+    ARP / ND caches the Ethernet TX sub-handler reaches through
+    'self._if'. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which autospec
+    walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
         """
-        Initialize the stub handler with the bare attributes the mixin reads.
+        Initialize the stub interface with the bare attributes the
+        sub-handler reads.
         """
 
         self._packet_stats_tx = PacketStatsTx()
@@ -114,6 +127,23 @@ class _StubHandler(PacketHandlerEthernetTx):
         self._ifindex = 1
         self._ip4_ifaddr = [STACK__IP4_HOST]
         self._ip6_ifaddr = [STACK__IP6_HOST]
+        # Injected by the test 'setUp' (per-interface TX ring + caches).
+        self._tx_ring: TxRing | None = None
+        self._arp_cache: ArpCache | None = None
+        self._nd_cache: NdCache | None = None
+
+
+def _make_ethernet_tx() -> tuple[EthernetTxHandler, _StubInterface]:
+    """
+    Build an 'EthernetTxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface()
+    return (
+        EthernetTxHandler(interface=cast("PacketHandlerL2", interface)),
+        interface,
+    )
 
 
 def _build_ip4_assembler(*, src: Ip4Address, dst: Ip4Address) -> Ip4Assembler:
@@ -143,19 +173,19 @@ class _EthernetTxTestBase(TestCase):
         and patch the FIB singletons.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ethernet_tx()
 
         # TX ring and neighbor caches are now injected per-interface;
         # assign the mocks to the handler's own attributes rather than
         # patching the global 'stack.*' singletons (which the send-out
         # / resolution paths no longer read).
         self._tx_ring = create_autospec(TxRing, spec_set=True)
-        self._handler._tx_ring = self._tx_ring
+        self._if._tx_ring = self._tx_ring
 
         self._arp_cache = create_autospec(ArpCache, spec_set=True)
         self._nd_cache = create_autospec(NdCache, spec_set=True)
-        self._handler._arp_cache = self._arp_cache
-        self._handler._nd_cache = self._nd_cache
+        self._if._arp_cache = self._arp_cache
+        self._if._nd_cache = self._nd_cache
 
         # Post-Phase-2 the Ethernet-TX next hop is decided by the
         # FIB. Patch fresh real RouteTables (real lookup logic,
@@ -230,7 +260,7 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         self._arp_cache.find_entry.assert_not_called()
         self._nd_cache.find_entry.assert_not_called()
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet__dst_spec__send,
+            self._if._packet_stats_tx.ethernet__dst_spec__send,
             1,
             msg="ethernet__dst_spec__send must be incremented on the direct-send path.",
         )
@@ -255,7 +285,7 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
             msg="The enqueued packet's src MAC must be set to the stack unicast MAC.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet__src_unspec__fill,
+            self._if._packet_stats_tx.ethernet__src_unspec__fill,
             1,
             msg="ethernet__src_unspec__fill must be incremented when src is unspecified.",
         )
@@ -282,7 +312,7 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
             msg="The enqueued packet's src MAC must equal the supplied src.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet__src_spec,
+            self._if._packet_stats_tx.ethernet__src_spec,
             1,
             msg="ethernet__src_spec must be incremented when a src MAC is supplied.",
         )
@@ -304,7 +334,7 @@ class TestPacketHandlerEthernetTxDirect(_EthernetTxTestBase):
         )
         self._tx_ring.enqueue.assert_not_called()
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet__dst_unspec__drop,
+            self._if._packet_stats_tx.ethernet__dst_unspec__drop,
             1,
             msg="ethernet__dst_unspec__drop must be incremented on the fallthrough drop.",
         )
@@ -455,7 +485,7 @@ class TestPacketHandlerEthernetTxIp6Lookup(_EthernetTxTestBase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._handler._ip6_ifaddr = [STACK__IP6_HOST__NO_GW]
+        self._if._ip6_ifaddr = [STACK__IP6_HOST__NO_GW]
         # No default route ⇒ the off-link destination has no
         # route (the post-Phase-2 "no route to host" drop).
         self._ip6_fib.remove(destination=Ip6Network("::/0"))
@@ -728,7 +758,7 @@ class TestPacketHandlerEthernetTxIp4Lookup(_EthernetTxTestBase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._handler._ip4_ifaddr = [STACK__IP4_HOST__NO_GW]
+        self._if._ip4_ifaddr = [STACK__IP4_HOST__NO_GW]
         # No default route ⇒ the off-link destination has no
         # route (the post-Phase-2 "no route to host" drop).
         self._ip4_fib.remove(destination=Ip4Network("0.0.0.0/0"))
