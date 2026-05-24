@@ -31,43 +31,43 @@ ver 3.0.6
 """
 
 import struct
-from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import Ip6FragParser, PacketRx, PacketValidationError
 from pytcp.lib.logger import log
 from pytcp.protocols.ip.ip_frag import IpFragFlowId
-from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
+from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 
-class PacketHandlerIp6FragRx(ABC):
+class Ip6FragRxHandler:
     """
-    Class implements packet handler for inbound the IPv6 fragment extension.
+    Packet handler for the inbound IPv6 fragment extension header.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip6Address
-        from pytcp.lib.packet_stats import PacketStatsRx
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
-        _ip6_frag_table: IpFragTable
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Initialize the IPv6 fragment RX sub-handler.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _phrx_ip6(self, packet_rx: PacketRx, /) -> None: ...
+        self._if = interface
 
     def _phrx_ip6_frag(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound IPv6 fragment extension header.
         """
 
-        self._packet_stats_rx.ip6_frag__pre_parse += 1
+        self._if._packet_stats_rx.ip6_frag__pre_parse += 1
 
         try:
             Ip6FragParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.ip6_frag__failed_parse += 1
+            self._if._packet_stats_rx.ip6_frag__failed_parse += 1
             __debug__ and log(
                 "ip6",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -77,10 +77,10 @@ class PacketHandlerIp6FragRx(ABC):
         __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6_frag}")
 
         if defragmented_packet_rx := self.__defragment_ip6_packet(packet_rx):
-            self._packet_stats_rx.ip6_frag__defrag += 1
+            self._if._packet_stats_rx.ip6_frag__defrag += 1
             if packet_rx.ip6_frag.offset == 0 and not packet_rx.ip6_frag.flag_mf:
-                self._packet_stats_rx.ip6_frag__atomic__defrag += 1
-            self._phrx_ip6(
+                self._if._packet_stats_rx.ip6_frag__atomic__defrag += 1
+            self._if._phrx_ip6(
                 defragmented_packet_rx,
             )
 
@@ -97,7 +97,7 @@ class PacketHandlerIp6FragRx(ABC):
             f"{'' if packet_rx.ip6_frag.flag_mf else ', last'}",
         )
 
-        result = self._ip6_frag_table.add_fragment(
+        result = self._if._ip6_frag_table.add_fragment(
             flow_id=IpFragFlowId(
                 src=packet_rx.ip6.src,
                 dst=packet_rx.ip6.dst,
@@ -110,10 +110,10 @@ class PacketHandlerIp6FragRx(ABC):
             ecn=packet_rx.ip6.ecn,
         )
         if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
-            self._packet_stats_rx.ip6_frag__overlap__drop += 1
+            self._if._packet_stats_rx.ip6_frag__overlap__drop += 1
             return None
         if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
-            self._packet_stats_rx.ip6_frag__ecn_mixed__drop += 1
+            self._if._packet_stats_rx.ip6_frag__ecn_mixed__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv6 datagram: "

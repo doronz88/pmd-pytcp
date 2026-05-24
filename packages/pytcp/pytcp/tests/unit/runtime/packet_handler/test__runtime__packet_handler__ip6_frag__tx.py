@@ -23,14 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp6FragTx' mixin.
+This module contains unit tests for the 'Ip6FragTxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6_frag__tx.py
 
 ver 3.0.6
 """
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip6Address
@@ -39,8 +39,11 @@ from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ip6_frag__tx import (
-    PacketHandlerIp6FragTx,
+    Ip6FragTxHandler,
 )
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -67,9 +70,18 @@ STACK__IP6_ADDRESS = Ip6Address("2001:db8:0:1::7")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 
 
-class _StubHandler(PacketHandlerIp6FragTx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp6FragTx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters and the interface MTU the
+    IPv6-fragment TX sub-handler reaches through 'self._if', plus a
+    '_phtx_ip6' spy that records each per-fragment call and returns a
+    configurable 'TxStatus'. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which autospec
+    walks) cannot evaluate at runtime.
     """
 
     def __init__(self, *, interface_mtu: int = 200, ip6_tx_status: TxStatus | None = None) -> None:
@@ -84,9 +96,26 @@ class _StubHandler(PacketHandlerIp6FragTx):
         return self.ip6_tx_status
 
 
+def _make_ip6_frag_tx(
+    *,
+    interface_mtu: int = 200,
+    ip6_tx_status: TxStatus | None = None,
+) -> tuple[Ip6FragTxHandler, _StubInterface]:
+    """
+    Build an 'Ip6FragTxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(interface_mtu=interface_mtu, ip6_tx_status=ip6_tx_status)
+    return (
+        Ip6FragTxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)),
+        interface,
+    )
+
+
 class TestPacketHandlerIp6FragTx(TestCase):
     """
-    The 'PacketHandlerIp6FragTx._phtx_ip6_frag' behaviour tests.
+    The 'Ip6FragTxHandler._phtx_ip6_frag' behaviour tests.
     """
 
     def _build_ip6_packet(self, *, payload_size: int) -> Ip6Assembler:
@@ -114,17 +143,17 @@ class TestPacketHandlerIp6FragTx(TestCase):
         fragmentation attacks).
         """
 
-        handler = _StubHandler(interface_mtu=200)
+        handler, iface = _make_ip6_frag_tx(interface_mtu=200)
         ip6_packet = self._build_ip6_packet(payload_size=400)
 
         ids: list[int] = []
         for _ in range(10):
-            handler.ip6_tx_calls.clear()
+            iface.ip6_tx_calls.clear()
             handler._phtx_ip6_frag(ip6_packet_tx=ip6_packet)
             # The Fragment Identification is now a loop-local rather
             # than a handler attribute, so read it back off the
             # emitted fragment instead of 'handler._ip6_id'.
-            payload = handler.ip6_tx_calls[-1]["ip6__payload"]
+            payload = iface.ip6_tx_calls[-1]["ip6__payload"]
             assert isinstance(payload, Ip6FragAssembler)
             ids.append(payload.id)
 
@@ -147,7 +176,7 @@ class TestPacketHandlerIp6FragTx(TestCase):
         Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
-        handler = _StubHandler(interface_mtu=200)
+        handler, iface = _make_ip6_frag_tx(interface_mtu=200)
         ip6_packet = self._build_ip6_packet(payload_size=400)
 
         status = handler._phtx_ip6_frag(ip6_packet_tx=ip6_packet)
@@ -158,21 +187,21 @@ class TestPacketHandlerIp6FragTx(TestCase):
             msg="Fragmentation with every fragment passing must return PASSED__ETHERNET__TO_TX_RING.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.ip6_frag__pre_assemble,
+            iface._packet_stats_tx.ip6_frag__pre_assemble,
             1,
             msg="ip6_frag__pre_assemble must be incremented once per outbound packet.",
         )
         self.assertGreaterEqual(
-            handler._packet_stats_tx.ip6_frag__send,
+            iface._packet_stats_tx.ip6_frag__send,
             2,
             msg="At least two fragments must be sent for a payload exceeding one MTU.",
         )
         self.assertGreaterEqual(
-            len(handler.ip6_tx_calls),
+            len(iface.ip6_tx_calls),
             2,
             msg="At least two '_phtx_ip6' calls must be issued (one per fragment).",
         )
-        for call in handler.ip6_tx_calls:
+        for call in iface.ip6_tx_calls:
             self.assertIsInstance(
                 call["ip6__payload"],
                 Ip6FragAssembler,
@@ -192,11 +221,11 @@ class TestPacketHandlerIp6FragTx(TestCase):
         per-burst, not per-fragment).
         """
 
-        handler = _StubHandler(interface_mtu=200)
+        handler, iface = _make_ip6_frag_tx(interface_mtu=200)
 
         handler._phtx_ip6_frag(ip6_packet_tx=self._build_ip6_packet(payload_size=400))
 
-        ids_in_burst = [int(cast(Ip6FragAssembler, call["ip6__payload"]).id) for call in handler.ip6_tx_calls]
+        ids_in_burst = [int(cast(Ip6FragAssembler, call["ip6__payload"]).id) for call in iface.ip6_tx_calls]
         self.assertGreater(
             len(ids_in_burst),
             1,
@@ -216,7 +245,7 @@ class TestPacketHandlerIp6FragTx(TestCase):
         Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
-        handler = _StubHandler(
+        handler, iface = _make_ip6_frag_tx(
             interface_mtu=200,
             ip6_tx_status=TxStatus.DROPPED__ETHERNET__DST_ND_CACHE_MISS,
         )
@@ -238,7 +267,7 @@ class TestPacketHandlerIp6FragTx(TestCase):
         Reference: RFC 8200 §4.5 (IPv6 fragmentation).
         """
 
-        handler = _StubHandler(
+        handler, iface = _make_ip6_frag_tx(
             interface_mtu=200,
             ip6_tx_status=TxStatus.PASSED__IP6__TO_TX_RING,
         )

@@ -57,6 +57,7 @@ from net_proto import (
     Icmp4Message,
     Icmp6Message,
     Icmp6NdRoutePreference,
+    Ip6Assembler,
     PacketRx,
     RawAssembler,
     Tracker,
@@ -101,8 +102,8 @@ from .packet_handler__ip4__rx import PacketHandlerIp4Rx
 from .packet_handler__ip4__tx import PacketHandlerIp4Tx
 from .packet_handler__ip6__rx import PacketHandlerIp6Rx
 from .packet_handler__ip6__tx import PacketHandlerIp6Tx
-from .packet_handler__ip6_frag__rx import PacketHandlerIp6FragRx
-from .packet_handler__ip6_frag__tx import PacketHandlerIp6FragTx
+from .packet_handler__ip6_frag__rx import Ip6FragRxHandler
+from .packet_handler__ip6_frag__tx import Ip6FragTxHandler
 from .packet_handler__tcp__rx import TcpRxHandler
 from .packet_handler__tcp__tx import TcpTxHandler
 from .packet_handler__udp__rx import UdpRxHandler
@@ -137,6 +138,8 @@ class PacketHandler(Subsystem, ABC):
     _icmp4_tx: Icmp4TxHandler
     _icmp6_rx: Icmp6RxHandler
     _icmp6_tx: Icmp6TxHandler
+    _ip6_frag_rx: Ip6FragRxHandler
+    _ip6_frag_tx: Ip6FragTxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -347,6 +350,8 @@ class PacketHandler(Subsystem, ABC):
         self._icmp4_tx = Icmp4TxHandler(interface=_if)
         self._icmp6_rx = Icmp6RxHandler(interface=_if)
         self._icmp6_tx = Icmp6TxHandler(interface=_if)
+        self._ip6_frag_rx = Ip6FragRxHandler(interface=_if)
+        self._ip6_frag_tx = Ip6FragTxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1755,6 +1760,26 @@ class PacketHandler(Subsystem, ABC):
             icmp6__message=icmp6__message,
         )
 
+    ###
+    # IPv6 fragment delegators — logic lives in the composed
+    # 'Ip6FragRxHandler' / 'Ip6FragTxHandler'. Shared by both layers,
+    # so they sit on the base.
+    ###
+
+    def _phrx_ip6_frag(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound IPv6 fragment (delegates to the IPv6 fragment RX sub-handler).
+        """
+
+        self._ip6_frag_rx._phrx_ip6_frag(packet_rx)
+
+    def _phtx_ip6_frag(self, *, ip6_packet_tx: Ip6Assembler) -> TxStatus:
+        """
+        Handle an outbound IPv6 fragment (delegates to the IPv6 fragment TX sub-handler).
+        """
+
+        return self._ip6_frag_tx._phtx_ip6_frag(ip6_packet_tx=ip6_packet_tx)
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -1764,8 +1789,6 @@ class PacketHandlerL2(
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
     PacketHandlerIp6Tx,
-    PacketHandlerIp6FragRx,
-    PacketHandlerIp6FragTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 2 (TAP) interface.
@@ -2581,8 +2604,6 @@ class PacketHandlerL3(
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
     PacketHandlerIp6Tx,
-    PacketHandlerIp6FragRx,
-    PacketHandlerIp6FragTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 3 (TUN) interface.

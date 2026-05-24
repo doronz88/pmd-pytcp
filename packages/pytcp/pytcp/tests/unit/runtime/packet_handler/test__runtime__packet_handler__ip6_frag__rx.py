@@ -23,13 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp6FragRx' mixin.
+This module contains unit tests for the 'Ip6FragRxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6_frag__rx.py
 
 ver 3.0.6
 """
 
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip6Address
@@ -41,8 +42,11 @@ from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.protocols.ip.ip_frag import IpFragFlowId
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.packet_handler.packet_handler__ip6_frag__rx import (
-    PacketHandlerIp6FragRx,
+    Ip6FragRxHandler,
 )
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -69,9 +73,18 @@ STACK__IP6_ADDRESS = Ip6Address("2001:db8:0:1::7")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 
 
-class _StubHandler(PacketHandlerIp6FragRx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp6FragRx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters and the IPv6 fragment flow table the
+    IPv6-fragment RX sub-handler reaches through 'self._if', plus a
+    '_phrx_ip6' spy that records each reassembled packet forwarded to
+    the IPv6 RX path. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which autospec
+    walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
@@ -129,11 +142,12 @@ def _ip6_frag_packet_rx(
 
 class TestPacketHandlerIp6FragRx(TestCase):
     """
-    The 'PacketHandlerIp6FragRx._phrx_ip6_frag' behaviour tests.
+    The 'Ip6FragRxHandler._phrx_ip6_frag' behaviour tests.
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
+        self._handler = Ip6FragRxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", self._if))
 
     def test__stack__packet_handler__ip6_frag__rx__first_fragment_stored(self) -> None:
         """
@@ -152,22 +166,22 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__pre_parse,
+            self._if._packet_stats_rx.ip6_frag__pre_parse,
             1,
             msg="ip6_frag__pre_parse must be incremented on every inbound fragment.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__defrag,
+            self._if._packet_stats_rx.ip6_frag__defrag,
             0,
             msg="Incomplete fragment set must not trigger defrag counter.",
         )
         self.assertEqual(
-            len(self._handler._ip6_frag_table.flows),
+            len(self._if._ip6_frag_table.flows),
             1,
             msg="The first fragment must be stored in the flow table.",
         )
         self.assertEqual(
-            self._handler.ip6_reassembled,
+            self._if.ip6_reassembled,
             [],
             msg="Incomplete fragment set must not dispatch to _phrx_ip6.",
         )
@@ -197,17 +211,17 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag1)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__defrag,
+            self._if._packet_stats_rx.ip6_frag__defrag,
             1,
             msg="Successful reassembly must increment ip6_frag__defrag.",
         )
         self.assertEqual(
-            self._handler._ip6_frag_table.flows,
+            self._if._ip6_frag_table.flows,
             {},
             msg="Flow entry must be cleared after full reassembly.",
         )
         self.assertEqual(
-            len(self._handler.ip6_reassembled),
+            len(self._if.ip6_reassembled),
             1,
             msg="Reassembled packet must be forwarded to _phrx_ip6 exactly once.",
         )
@@ -230,11 +244,11 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag1)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__defrag,
+            self._if._packet_stats_rx.ip6_frag__defrag,
             0,
             msg="Out-of-order final fragment alone must not trigger reassembly.",
         )
-        self.assertEqual(self._handler.ip6_reassembled, [])
+        self.assertEqual(self._if.ip6_reassembled, [])
 
     def test__stack__packet_handler__ip6_frag__rx__same_fragment_twice_drops_flow(self) -> None:
         """
@@ -272,11 +286,11 @@ class TestPacketHandlerIp6FragRx(TestCase):
             id=4444,
         )
         self.assertTrue(
-            self._handler._ip6_frag_table.flows[flow].discarded,
+            self._if._ip6_frag_table.flows[flow].discarded,
             msg="Repeated fragment must mark the flow discarded.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__overlap__drop,
+            self._if._packet_stats_rx.ip6_frag__overlap__drop,
             1,
             msg="Overlap detection must increment 'ip6_frag__overlap__drop'.",
         )
@@ -303,22 +317,22 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(atomic)
 
         self.assertEqual(
-            len(self._handler.ip6_reassembled),
+            len(self._if.ip6_reassembled),
             1,
             msg="An atomic fragment must dispatch to '_phrx_ip6' once.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__defrag,
+            self._if._packet_stats_rx.ip6_frag__defrag,
             1,
             msg="An atomic fragment must increment 'ip6_frag__defrag'.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__atomic__defrag,
+            self._if._packet_stats_rx.ip6_frag__atomic__defrag,
             1,
             msg="An atomic fragment must increment 'ip6_frag__atomic__defrag'.",
         )
         self.assertEqual(
-            self._handler._ip6_frag_table.flows,
+            self._if._ip6_frag_table.flows,
             {},
             msg="An atomic fragment must not allocate a flow-table entry.",
         )
@@ -351,12 +365,12 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag_b)
 
         self.assertEqual(
-            self._handler.ip6_reassembled,
+            self._if.ip6_reassembled,
             [],
             msg="An overlapping flow must not dispatch to '_phrx_ip6'.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6_frag__overlap__drop,
+            self._if._packet_stats_rx.ip6_frag__overlap__drop,
             1,
             msg="Overlap detection must increment 'ip6_frag__overlap__drop'.",
         )
@@ -366,7 +380,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
             id=5454,
         )
         self.assertTrue(
-            self._handler._ip6_frag_table.flows[flow].discarded,
+            self._if._ip6_frag_table.flows[flow].discarded,
             msg="Overlap detection must mark the flow as discarded.",
         )
 
@@ -410,11 +424,11 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag_a)
 
         self.assertEqual(
-            len(self._handler.ip6_reassembled),
+            len(self._if.ip6_reassembled),
             1,
             msg="Reassembled datagram must dispatch to _phrx_ip6 exactly once.",
         )
-        reassembled = self._handler.ip6_reassembled[0]
+        reassembled = self._if.ip6_reassembled[0]
         Ip6Parser(reassembled)
         self.assertEqual(
             bytes(reassembled.ip6.payload_bytes),
@@ -464,7 +478,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
         self._handler._phrx_ip6_frag(frag_a)
         self._handler._phrx_ip6_frag(frag_b)
 
-        reassembled = self._handler.ip6_reassembled[0]
+        reassembled = self._if.ip6_reassembled[0]
         Ip6Parser(reassembled)
         ip6 = reassembled.ip6
 
@@ -542,13 +556,13 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self.assertIn(
             stale_flow_id,
-            self._handler._ip6_frag_table.flows,
+            self._if._ip6_frag_table.flows,
             msg="Precondition: the stale flow must exist after the first fragment.",
         )
 
         # Backdate the stored fragment's timestamp past the timeout
         # so the next defragment pass should reap it.
-        stale_flow = self._handler._ip6_frag_table.flows[stale_flow_id]
+        stale_flow = self._if._ip6_frag_table.flows[stale_flow_id]
         object.__setattr__(
             stale_flow,
             "timestamp",
@@ -567,7 +581,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
 
         self.assertNotIn(
             stale_flow_id,
-            self._handler._ip6_frag_table.flows,
+            self._if._ip6_frag_table.flows,
             msg=(
                 "A flow whose timestamp predates 'time() - IP6__FRAG_FLOW_TIMEOUT' "
                 "must be removed by the cleanup pass at the start of "
@@ -581,11 +595,11 @@ class TestPacketHandlerIp6FragRx(TestCase):
         )
         self.assertIn(
             fresh_flow_id,
-            self._handler._ip6_frag_table.flows,
+            self._if._ip6_frag_table.flows,
             msg="The new fragment's flow must be admitted alongside the cleanup.",
         )
         self.assertEqual(
-            len(self._handler._ip6_frag_table.flows),
+            len(self._if._ip6_frag_table.flows),
             1,
             msg="After cleanup the stale flow is gone and only the fresh flow remains.",
         )

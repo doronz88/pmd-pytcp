@@ -31,7 +31,6 @@ ver 3.0.6
 """
 
 import secrets
-from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import (
@@ -47,6 +46,9 @@ from net_proto.protocols.icmp6.message.icmp6__message import Icmp6Type
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # RFC 6980 §5 — NDP (Neighbor Discovery Protocol) message
 # types that MUST NOT use IPv6 fragmentation. A host that
@@ -98,40 +100,26 @@ def _generate_ip6_frag_id() -> int:
     return secrets.randbelow(2**32)
 
 
-class PacketHandlerIp6FragTx(ABC):
+class Ip6FragTxHandler:
     """
     Packet handler for the outbound IPv6 fragment extension header.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip6Address
-        from net_proto import (
-            IP6__DEFAULT_HOP_LIMIT,
-            Ip6Payload,
-            RawAssembler,
-        )
-        from pytcp.lib.packet_stats import PacketStatsTx
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_tx: PacketStatsTx
-        _interface_mtu: int
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Initialize the IPv6 fragment TX sub-handler.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _phtx_ip6(
-            self,
-            *,
-            ip6__dst: Ip6Address,
-            ip6__src: Ip6Address,
-            ip6__hop: int | None = None,
-            ip6__payload: Ip6Payload = RawAssembler(),
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phtx_ip6_frag(self, *, ip6_packet_tx: Ip6Assembler) -> TxStatus:
         """
         Handle outbound IPv6 fagment extension header.
         """
 
-        self._packet_stats_tx.ip6_frag__pre_assemble += 1
+        self._if._packet_stats_tx.ip6_frag__pre_assemble += 1
 
         # RFC 6980 §5 — NDP and SEND messages MUST NOT use
         # IPv6 fragmentation. The receiver silently discards
@@ -140,7 +128,7 @@ class PacketHandlerIp6FragTx(ABC):
         # to fragment in the first place so we never emit a
         # frame that would be discarded.
         if is_ndp_message(ip6_packet_tx.payload):
-            self._packet_stats_tx.ip6_frag__nd_message__drop += 1
+            self._if._packet_stats_tx.ip6_frag__nd_message__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{ip6_packet_tx.tracker} - <WARN>NDP message exceeds MTU; "
@@ -159,7 +147,7 @@ class PacketHandlerIp6FragTx(ABC):
         ip6_tx_status: set[TxStatus] = set()
         for offset, chunk, is_last in iter_fragment_chunks(
             bytes(ip6_packet_tx.payload),
-            max_chunk_bytes=self._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN,
+            max_chunk_bytes=self._if._interface_mtu - IP6__HEADER__LEN - IP6_FRAG__HEADER__LEN,
         ):
             ip6_frag_tx = Ip6FragAssembler(
                 ip6_frag__next=ip6_packet_tx.next,
@@ -169,9 +157,9 @@ class PacketHandlerIp6FragTx(ABC):
                 ip6_frag__payload=chunk,
             )
             __debug__ and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")
-            self._packet_stats_tx.ip6_frag__send += 1
+            self._if._packet_stats_tx.ip6_frag__send += 1
             ip6_tx_status.add(
-                self._phtx_ip6(
+                self._if._phtx_ip6(
                     ip6__src=ip6_packet_tx.src,
                     ip6__dst=ip6_packet_tx.dst,
                     ip6__payload=ip6_frag_tx,
