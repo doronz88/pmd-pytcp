@@ -7,7 +7,11 @@ packet-handler mixin is now a composed sub-handler over a typed
 `PacketHandler` back-reference, and both `PacketHandlerL2` /
 `PacketHandlerL3` inherit zero mixins.
 
-**Status: SCOPING ONLY — no code, awaiting sign-off on §4 decisions.**
+**Status: SIGNED OFF 2026-05-24 — §4 decisions locked, execution under way.**
+Decisions: 1→(b) fold into `protocols/<proto>/` + delete smoke file;
+2→keep direct construction (drop the link/address-API aspiration);
+3→hard no-coverage-loss diff bar; 4→leave the 3 `test__packet_socket__*`
+files; 5→per-protocol commit pairs.
 This document deliberately *corrects* the §8 sketch in
 `packet_handler_composition.md`, which was written before the current
 test layout was verified and is wrong on its central premise (see §1).
