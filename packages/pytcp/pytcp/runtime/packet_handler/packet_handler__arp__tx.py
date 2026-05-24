@@ -30,47 +30,31 @@ pytcp/runtime/packet_handler/packet_handler__arp__tx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, Ip4IfAddr, MacAddress
+from net_addr import Ip4Address, MacAddress
 from net_proto import ArpAssembler, ArpOperation, Tracker
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.arp import arp__constants
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
-class PacketHandlerArpTx(ABC):
+
+class ArpTxHandler:
     """
-    Packet handler for the outbound ARP packets.
+    The outbound ARP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_proto import EthernetPayload
-        from pytcp.lib.packet_stats import PacketStatsTx
+    _if: PacketHandlerL2
 
-        _packet_stats_tx: PacketStatsTx
-        _mac_unicast: MacAddress
-        _ip4_support: bool
-        _ip4_ifaddr: list[Ip4IfAddr]
+    def __init__(self, *, interface: PacketHandlerL2) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ethernet(
-            self,
-            *,
-            ethernet__src: MacAddress = MacAddress(),
-            ethernet__dst: MacAddress = MacAddress(),
-            ethernet__payload: EthernetPayload | None = None,
-        ) -> TxStatus: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def _ip4_unicast(self) -> list[Ip4Address]: ...
+        self._if = interface
 
     def _select_arp_spa(self, /, arp__tpa: Ip4Address) -> Ip4Address:
         """
@@ -83,15 +67,15 @@ class PacketHandlerArpTx(ABC):
         address is configured.
         """
 
-        if not self._ip4_unicast:
+        if not self._if._ip4_unicast:
             return Ip4Address()
 
         if arp__constants.ARP__ANNOUNCE in (1, 2):
-            for host in self._ip4_ifaddr:
+            for host in self._if._ip4_ifaddr:
                 if arp__tpa in host.network:
                     return host.address
 
-        return self._ip4_unicast[0]
+        return self._if._ip4_unicast[0]
 
     def _phtx_arp(
         self,
@@ -109,19 +93,19 @@ class PacketHandlerArpTx(ABC):
         Handle outbound ARP packets.
         """
 
-        self._packet_stats_tx.arp__pre_assemble += 1
+        self._if._packet_stats_tx.arp__pre_assemble += 1
 
         # Check if IPv4 protocol support is enabled, if not then silently
         # drop the packet.
-        if not self._ip4_support:
-            self._packet_stats_tx.arp__no_proto_support__drop += 1
+        if not self._if._ip4_support:
+            self._if._packet_stats_tx.arp__no_proto_support__drop += 1
             return TxStatus.DROPPED__ARP__NO_PROTOCOL_SUPPORT
 
         match arp__oper:
             case ArpOperation.REQUEST:
-                self._packet_stats_tx.arp__op_request__send += 1
+                self._if._packet_stats_tx.arp__op_request__send += 1
             case ArpOperation.REPLY:
-                self._packet_stats_tx.arp__op_reply__send += 1
+                self._if._packet_stats_tx.arp__op_reply__send += 1
             case _:
                 raise ValueError(f"Invalid ARP operation: {arp__oper}")
 
@@ -136,7 +120,7 @@ class PacketHandlerArpTx(ABC):
 
         __debug__ and log("arp", f"{arp_packet_tx.tracker} - {arp_packet_tx}")
 
-        return self._phtx_ethernet(
+        return self._if._phtx_ethernet(
             ethernet__src=ethernet__src,
             ethernet__dst=ethernet__dst,
             ethernet__payload=arp_packet_tx,
@@ -154,12 +138,12 @@ class PacketHandlerArpTx(ABC):
         Send out ARP reply to respond to ARP request.
         """
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_arp(
-                ethernet__src=self._mac_unicast,
+                ethernet__src=self._if._mac_unicast,
                 ethernet__dst=arp__tha,
                 arp__oper=ArpOperation.REPLY,
-                arp__sha=self._mac_unicast,
+                arp__sha=self._if._mac_unicast,
                 arp__spa=arp__spa,
                 arp__tha=arp__tha,
                 arp__tpa=arp__tpa,
@@ -183,12 +167,12 @@ class PacketHandlerArpTx(ABC):
         Enqueue ARP request packet with TX ring.
         """
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_arp(
-                ethernet__src=self._mac_unicast,
+                ethernet__src=self._if._mac_unicast,
                 ethernet__dst=MacAddress(0xFFFFFFFFFFFF),
                 arp__oper=ArpOperation.REQUEST,
-                arp__sha=self._mac_unicast,
+                arp__sha=self._if._mac_unicast,
                 arp__spa=self._select_arp_spa(arp__tpa),
                 arp__tha=MacAddress(),
                 arp__tpa=arp__tpa,
@@ -231,12 +215,12 @@ class PacketHandlerArpTx(ABC):
         as None and rely on the interface-address fallback.
         """
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_arp(
-                ethernet__src=self._mac_unicast,
+                ethernet__src=self._if._mac_unicast,
                 ethernet__dst=ethernet__dst,
                 arp__oper=ArpOperation.REQUEST,
-                arp__sha=self._mac_unicast,
+                arp__sha=self._if._mac_unicast,
                 arp__spa=arp__spa if arp__spa is not None else self._select_arp_spa(arp__tpa),
                 arp__tha=MacAddress(),
                 arp__tpa=arp__tpa,

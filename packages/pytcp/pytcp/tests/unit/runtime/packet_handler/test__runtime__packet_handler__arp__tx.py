@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerArpTx' mixin.
+This module contains unit tests for the 'ArpTxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__tx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
@@ -38,9 +39,10 @@ from net_proto import ArpAssembler, ArpOperation
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__arp__tx import (
-    PacketHandlerArpTx,
-)
+from pytcp.runtime.packet_handler.packet_handler__arp__tx import ArpTxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -72,9 +74,18 @@ MAC__UNSPEC = MacAddress()
 IP4__UNSPEC = Ip4Address()
 
 
-class _StubHandler(PacketHandlerArpTx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerArpTx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
+
+    Carries exactly the state and cross-call surface the ARP TX
+    sub-handler reaches through 'self._if' (the TX marshal seam and
+    the Ethernet TX path), plus spies that record every
+    '_phtx_ethernet' call. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' because the god-class still
+    carries 'TYPE_CHECKING'-only annotations that 'inspect.signature'
+    (which autospec walks) cannot evaluate at runtime — the smell the
+    composition refactor is removing.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -90,7 +101,7 @@ class _StubHandler(PacketHandlerArpTx):
         ip4_host: list[Ip4IfAddr] | None = None,
     ) -> None:
         """
-        Initialize the stub handler and record every _phtx_ethernet call.
+        Initialize the stub interface and record every _phtx_ethernet call.
         """
 
         self._packet_stats_tx = PacketStatsTx()
@@ -124,6 +135,21 @@ class _StubHandler(PacketHandlerArpTx):
         return self.ethernet_tx_status
 
 
+def _make_arp_tx(
+    *,
+    ip4_support: bool = True,
+    ip4_unicast: list[Ip4Address] | None = None,
+    ip4_host: list[Ip4IfAddr] | None = None,
+) -> tuple[ArpTxHandler, _StubInterface]:
+    """
+    Build an 'ArpTxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(ip4_support=ip4_support, ip4_unicast=ip4_unicast, ip4_host=ip4_host)
+    return ArpTxHandler(interface=cast("PacketHandlerL2", interface)), interface
+
+
 class TestPacketHandlerArpTx(TestCase):
     """
     The 'PacketHandlerArpTx._phtx_arp' behaviour tests.
@@ -137,7 +163,7 @@ class TestPacketHandlerArpTx(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip4_support=False)
+        handler, iface = _make_arp_tx(ip4_support=False)
 
         status = handler._phtx_arp(
             ethernet__src=STACK__MAC_UNICAST,
@@ -155,12 +181,12 @@ class TestPacketHandlerArpTx(TestCase):
             msg="ARP TX with IPv4 disabled must return DROPPED__ARP__NO_PROTOCOL_SUPPORT.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.arp__no_proto_support__drop,
+            iface._packet_stats_tx.arp__no_proto_support__drop,
             1,
             msg="arp__no_proto_support__drop must be incremented on the disabled-IPv4 path.",
         )
         self.assertEqual(
-            handler.ethernet_tx_calls,
+            iface.ethernet_tx_calls,
             [],
             msg="IPv4-disabled drop must not hit the Ethernet TX layer.",
         )
@@ -173,7 +199,7 @@ class TestPacketHandlerArpTx(TestCase):
         Reference: RFC 826 (ARP Request wire format).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_arp_tx()
 
         status = handler._phtx_arp(
             ethernet__src=STACK__MAC_UNICAST,
@@ -191,21 +217,21 @@ class TestPacketHandlerArpTx(TestCase):
             msg="ARP TX must return the TxStatus returned by the Ethernet TX layer.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.arp__pre_assemble,
+            iface._packet_stats_tx.arp__pre_assemble,
             1,
             msg="arp__pre_assemble must be incremented on the TX entry.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.arp__op_request__send,
+            iface._packet_stats_tx.arp__op_request__send,
             1,
             msg="arp__op_request__send must be incremented on REQUEST.",
         )
         self.assertEqual(
-            len(handler.ethernet_tx_calls),
+            len(iface.ethernet_tx_calls),
             1,
             msg="Exactly one _phtx_ethernet call must have been issued.",
         )
-        call = handler.ethernet_tx_calls[0]
+        call = iface.ethernet_tx_calls[0]
         self.assertEqual(
             call["ethernet__src"],
             STACK__MAC_UNICAST,
@@ -230,7 +256,7 @@ class TestPacketHandlerArpTx(TestCase):
         Reference: RFC 826 (ARP Reply wire format).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_arp_tx()
 
         handler._phtx_arp(
             ethernet__src=STACK__MAC_UNICAST,
@@ -243,12 +269,12 @@ class TestPacketHandlerArpTx(TestCase):
         )
 
         self.assertEqual(
-            handler._packet_stats_tx.arp__op_reply__send,
+            iface._packet_stats_tx.arp__op_reply__send,
             1,
             msg="arp__op_reply__send must be incremented on REPLY.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.arp__op_request__send,
+            iface._packet_stats_tx.arp__op_request__send,
             0,
             msg="arp__op_request__send must NOT be incremented on REPLY.",
         )
@@ -265,7 +291,7 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         Build a fresh stub handler for each case.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_arp_tx()
 
     def _last_call(self) -> dict[str, object]:
         """
@@ -274,11 +300,11 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         """
 
         self.assertEqual(
-            len(self._handler.ethernet_tx_calls),
+            len(self._if.ethernet_tx_calls),
             1,
             msg="Exactly one _phtx_ethernet call is expected from each ARP helper.",
         )
-        return self._handler.ethernet_tx_calls[0]
+        return self._if.ethernet_tx_calls[0]
 
     def test__stack__packet_handler__arp__tx__reply_helper_targets_requester(self) -> None:
         """
@@ -327,10 +353,10 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
         Reference: RFC 826 (Sender Protocol Address sourcing).
         """
 
-        handler = _StubHandler(ip4_unicast=[])
+        handler, iface = _make_arp_tx(ip4_unicast=[])
         handler.send_arp_request(arp__tpa=HOST_A__IP4)
 
-        payload = handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = iface.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,
@@ -407,7 +433,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         observable.
         """
 
-        self._handler = _StubHandler(
+        self._handler, self._if = _make_arp_tx(
             ip4_host=[
                 Ip4IfAddr("10.0.1.7/24"),
                 Ip4IfAddr("192.168.5.20/24"),
@@ -436,7 +462,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
 
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,
@@ -462,7 +488,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         with sysctl_module.override("arp.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
 
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,
@@ -485,7 +511,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         with sysctl_module.override("arp.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("172.16.0.1"))
 
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,
@@ -508,7 +534,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
         with sysctl_module.override("arp.announce", 2):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
 
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,
@@ -533,7 +559,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
                 ethernet__dst=MacAddress("02:00:00:00:00:91"),
             )
 
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, ArpAssembler)
         self.assertEqual(
             payload.spa,

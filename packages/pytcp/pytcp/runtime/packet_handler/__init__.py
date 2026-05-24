@@ -49,7 +49,14 @@ from net_addr import (
     Ip6Network,
     MacAddress,
 )
-from net_proto import ETHERNET_802_3__PACKET__MAX_LEN, EtherType, Icmp6NdRoutePreference
+from net_proto import (
+    ETHERNET_802_3__PACKET__MAX_LEN,
+    ArpOperation,
+    EtherType,
+    Icmp6NdRoutePreference,
+    PacketRx,
+    Tracker,
+)
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -74,8 +81,8 @@ from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
 
-from .packet_handler__arp__rx import PacketHandlerArpRx
-from .packet_handler__arp__tx import PacketHandlerArpTx
+from .packet_handler__arp__rx import ArpRxHandler
+from .packet_handler__arp__tx import ArpTxHandler
 from .packet_handler__ethernet_802_3__rx import PacketHandlerEthernet8023Rx
 from .packet_handler__ethernet_802_3__tx import PacketHandlerEthernet8023Tx
 from .packet_handler__ethernet__rx import PacketHandlerEthernetRx
@@ -1305,8 +1312,6 @@ class PacketHandler(Subsystem, ABC):
 
 class PacketHandlerL2(
     PacketHandler,
-    PacketHandlerArpRx,
-    PacketHandlerArpTx,
     PacketHandlerEthernetRx,
     PacketHandlerEthernetTx,
     PacketHandlerEthernet8023Rx,
@@ -1331,6 +1336,15 @@ class PacketHandlerL2(
     """
 
     _interface_layer = InterfaceLayer.L2
+
+    # Composed per-protocol sub-handlers (see
+    # docs/refactor/packet_handler_composition.md). Each holds a
+    # typed back-reference to this interface and reaches shared
+    # state through it; the handler keeps thin '_phrx_*' / 'send_*'
+    # delegators below so the external + cross-call surface is
+    # unchanged. ARP is L2-only — no counterpart on L3.
+    _arp_rx: ArpRxHandler
+    _arp_tx: ArpTxHandler
 
     _ip4_dhcp: bool
     _ip6_lla_autoconfig: bool
@@ -1381,6 +1395,13 @@ class PacketHandlerL2(
             packet_stats_tx=packet_stats_tx,
             link_stats=link_stats,
         )
+
+        # Composed per-protocol sub-handlers. Each stores a typed
+        # back-reference to this interface and resolves shared state
+        # lazily through it, so constructing them here (before the
+        # rest of the L2 state is set) is safe.
+        self._arp_rx = ArpRxHandler(interface=self)
+        self._arp_tx = ArpTxHandler(interface=self)
 
         self._ip4_dhcp = ip4_dhcp
         self._ip6_lla_autoconfig = ip6_lla_autoconfig
@@ -1470,6 +1491,89 @@ class PacketHandlerL2(
             cur_hop_limit=None,
             reachable_time_ms=None,
             retrans_timer_ms=None,
+        )
+
+    ###
+    # ARP delegators — the stable RX / TX surface; the logic lives
+    # in the composed 'ArpRxHandler' / 'ArpTxHandler' sub-handlers.
+    ###
+
+    @override
+    def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound ARP packet (delegates to the ARP RX sub-handler).
+        """
+
+        self._arp_rx._phrx_arp(packet_rx)
+
+    def _phtx_arp(
+        self,
+        *,
+        ethernet__src: MacAddress,
+        ethernet__dst: MacAddress,
+        arp__oper: ArpOperation,
+        arp__sha: MacAddress,
+        arp__spa: Ip4Address,
+        arp__tha: MacAddress,
+        arp__tpa: Ip4Address,
+        echo_tracker: Tracker | None = None,
+    ) -> TxStatus:
+        """
+        Handle an outbound ARP packet (delegates to the ARP TX sub-handler).
+        """
+
+        return self._arp_tx._phtx_arp(
+            ethernet__src=ethernet__src,
+            ethernet__dst=ethernet__dst,
+            arp__oper=arp__oper,
+            arp__sha=arp__sha,
+            arp__spa=arp__spa,
+            arp__tha=arp__tha,
+            arp__tpa=arp__tpa,
+            echo_tracker=echo_tracker,
+        )
+
+    def _send_arp_reply(
+        self,
+        *,
+        arp__spa: Ip4Address,
+        arp__tha: MacAddress,
+        arp__tpa: Ip4Address,
+        tracker: Tracker | None = None,
+    ) -> None:
+        """
+        Send an ARP Reply (delegates to the ARP TX sub-handler).
+        """
+
+        self._arp_tx._send_arp_reply(
+            arp__spa=arp__spa,
+            arp__tha=arp__tha,
+            arp__tpa=arp__tpa,
+            tracker=tracker,
+        )
+
+    def send_arp_request(self, *, arp__tpa: Ip4Address) -> None:
+        """
+        Send a broadcast ARP Request (delegates to the ARP TX sub-handler).
+        """
+
+        self._arp_tx.send_arp_request(arp__tpa=arp__tpa)
+
+    def send_arp_unicast_request(
+        self,
+        *,
+        arp__tpa: Ip4Address,
+        ethernet__dst: MacAddress,
+        arp__spa: Ip4Address | None = None,
+    ) -> None:
+        """
+        Send a unicast ARP Request (delegates to the ARP TX sub-handler).
+        """
+
+        self._arp_tx.send_arp_unicast_request(
+            arp__tpa=arp__tpa,
+            ethernet__dst=ethernet__dst,
+            arp__spa=arp__spa,
         )
 
     @override

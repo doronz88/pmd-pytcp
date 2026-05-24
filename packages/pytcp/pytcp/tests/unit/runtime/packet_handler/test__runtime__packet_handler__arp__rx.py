@@ -23,15 +23,15 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerArpRx' mixin.
+This module contains unit tests for the 'ArpRxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__rx.py
 
 ver 3.0.6
 """
 
-from collections.abc import Callable
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -40,11 +40,11 @@ from net_proto import ArpAssembler, ArpOperation
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
-from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.arp.arp__cache import ArpCache
-from pytcp.runtime.packet_handler.packet_handler__arp__rx import (
-    PacketHandlerArpRx,
-)
+from pytcp.runtime.packet_handler.packet_handler__arp__rx import ArpRxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -129,25 +129,29 @@ def _make_packet_rx(
     return packet_rx
 
 
-class _StubHandler(PacketHandlerArpRx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerArpRx' for testing.
-    """
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
 
-    def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
-        # Marshaled TX entry points route '_phtx_*' through '_marshal_tx';
-        # with no TX worker under test, run the callable inline.
-        return run()
+    Carries exactly the state and cross-call surface the ARP RX
+    sub-handler reads through 'self._if'. A purpose-built double is
+    used rather than 'create_autospec(PacketHandlerL2)' because the
+    god-class still carries 'TYPE_CHECKING'-only annotations that
+    'inspect.signature' (which autospec walks) cannot evaluate at
+    runtime — that smell is exactly what the composition refactor is
+    removing.
+    """
 
     def __init__(self) -> None:
         """
-        Initialize the stub handler. Spies record the arguments passed
-        to the TX-side methods invoked from the RX handler.
+        Initialize the stub interface. The spy records the arguments
+        passed to the TX-side reply the RX handler invokes.
         """
 
         self._packet_stats_rx = PacketStatsRx()
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_ifaddr = [STACK__IP4_HOST]
+        self._arp_cache: ArpCache | None = None
 
         self.arp_replies_sent: list[dict[str, object]] = []
 
@@ -174,18 +178,19 @@ class _ArpRxTestBase(TestCase):
 
     def setUp(self) -> None:
         """
-        Build the stub handler and inject the mock ARP cache it
-        updates on inbound ARP.
+        Build the ARP RX sub-handler over a stub interface and inject
+        the mock ARP cache it updates on inbound ARP.
         """
 
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
 
-        # The ARP cache is now injected per-interface; assign the
-        # mock to the handler's own '_arp_cache' rather than patching
-        # the global 'stack.arp_cache' (which the RX path no longer
-        # reads).
+        # The ARP cache is injected per-interface; assign the mock to
+        # the stub interface's own '_arp_cache' (the RX path reads it
+        # through 'self._if').
         self._arp_cache = create_autospec(ArpCache, spec_set=True)
-        self._handler._arp_cache = self._arp_cache
+        self._if._arp_cache = self._arp_cache
+
+        self._arp_rx = ArpRxHandler(interface=cast("PacketHandlerL2", self._if))
 
 
 class TestPacketHandlerArpRxParseFail(_ArpRxTestBase):
@@ -210,15 +215,15 @@ class TestPacketHandlerArpRxParseFail(_ArpRxTestBase):
         )[:10]
 
         packet_rx = _make_packet_rx(truncated, ethernet_dst=STACK__MAC_UNICAST)
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__pre_parse,
+            self._if._packet_stats_rx.arp__pre_parse,
             1,
             msg="arp__pre_parse must be incremented before the parse attempt.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__failed_parse__drop,
+            self._if._packet_stats_rx.arp__failed_parse__drop,
             1,
             msg="Malformed frame must be counted in arp__failed_parse__drop.",
         )
@@ -250,15 +255,15 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
             ethernet_src=STACK__MAC_UNICAST,
         )
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__looped__drop,
+            self._if._packet_stats_rx.arp__op_request__looped__drop,
             1,
             msg="Looped own-MAC ARP request must be counted in arp__op_request__looped__drop.",
         )
         self.assertEqual(
-            self._handler.arp_replies_sent,
+            self._if.arp_replies_sent,
             [],
             msg="Looped ARP request must not trigger a reply.",
         )
@@ -280,15 +285,15 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__gratuitous,
+            self._if._packet_stats_rx.arp__op_request__gratuitous,
             1,
             msg="Gratuitous ARP request must be counted in arp__op_request__gratuitous.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__update_arp_cache,
+            self._if._packet_stats_rx.arp__op_request__update_arp_cache,
             1,
             msg="Gratuitous ARP request must update the ARP cache.",
         )
@@ -314,15 +319,15 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__tpa_unknown,
+            self._if._packet_stats_rx.arp__op_request__tpa_unknown,
             1,
             msg="ARP request for a TPA not owned by the stack must be counted as tpa_unknown.",
         )
         self.assertEqual(
-            self._handler.arp_replies_sent,
+            self._if.arp_replies_sent,
             [],
             msg="ARP request for an unknown TPA must not trigger a reply.",
         )
@@ -345,19 +350,19 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__probe,
+            self._if._packet_stats_rx.arp__op_request__probe,
             1,
             msg="ARP probe request for a stack TPA must be counted.",
         )
         self.assertEqual(
-            len(self._handler.arp_replies_sent),
+            len(self._if.arp_replies_sent),
             1,
             msg="Probe request must trigger exactly one ARP reply.",
         )
-        reply = self._handler.arp_replies_sent[0]
+        reply = self._if.arp_replies_sent[0]
         self.assertEqual(
             reply["arp__spa"],
             STACK__IP4_ADDRESS,
@@ -386,20 +391,20 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=STACK__MAC_UNICAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__tpa_stack,
+            self._if._packet_stats_rx.arp__op_request__tpa_stack,
             1,
             msg="Regular ARP request for our TPA must be counted as tpa_stack.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__respond,
+            self._if._packet_stats_rx.arp__op_request__respond,
             1,
             msg="Regular ARP request must trigger a respond stat.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_request__update_arp_cache,
+            self._if._packet_stats_rx.arp__op_request__update_arp_cache,
             1,
             msg="Regular ARP request must update the ARP cache.",
         )
@@ -433,15 +438,15 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
 
         packet_rx = _make_packet_rx(bytes(valid), ethernet_dst=STACK__MAC_UNICAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__failed_parse__drop,
+            self._if._packet_stats_rx.arp__failed_parse__drop,
             1,
             msg="Unknown ARP operation must be rejected at parse time (arp__failed_parse__drop).",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_unknown__drop,
+            self._if._packet_stats_rx.arp__op_unknown__drop,
             0,
             msg="The match-case fallthrough must not fire; parser blocks unknown opers first.",
         )
@@ -478,10 +483,10 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
             "pytcp.runtime.packet_handler.packet_handler__arp__rx.ArpParser",
             side_effect=_stub_parser,
         ):
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_unknown__drop,
+            self._if._packet_stats_rx.arp__op_unknown__drop,
             1,
             msg="The handler's unknown-operation fallthrough must bump arp__op_unknown__drop.",
         )
@@ -513,10 +518,10 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
             ethernet_src=STACK__MAC_UNICAST,
         )
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_reply__looped__drop,
+            self._if._packet_stats_rx.arp__op_reply__looped__drop,
             1,
             msg="Looped own-MAC ARP reply must be counted in arp__op_reply__looped__drop.",
         )
@@ -538,15 +543,15 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=STACK__MAC_UNICAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_reply__direct,
+            self._if._packet_stats_rx.arp__op_reply__direct,
             1,
             msg="Direct ARP reply must be counted in arp__op_reply__direct.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_reply__update_arp_cache,
+            self._if._packet_stats_rx.arp__op_reply__update_arp_cache,
             1,
             msg="Direct ARP reply must update the ARP cache.",
         )
@@ -572,10 +577,10 @@ class TestPacketHandlerArpRxReply(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.arp__op_reply__gratuitous,
+            self._if._packet_stats_rx.arp__op_reply__gratuitous,
             1,
             msg="Gratuitous ARP reply must be counted in arp__op_reply__gratuitous.",
         )
@@ -629,7 +634,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self._arp_cache.add_entry.assert_not_called()
 
@@ -655,7 +660,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self._arp_cache.add_entry.assert_called_once_with(
             ip4_address=OFF_NET__IP4,
@@ -682,10 +687,10 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
         )
         packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
 
-        self._handler._phrx_arp(packet_rx)
+        self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            len(self._handler.arp_replies_sent),
+            len(self._if.arp_replies_sent),
             1,
             msg="With arp.ignore=1 (default), an on-subnet Request for our IP must trigger a Reply.",
         )
@@ -714,10 +719,10 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler.arp_replies_sent,
+            self._if.arp_replies_sent,
             [],
             msg=(
                 "With arp.ignore=2, an off-subnet sender must NOT receive an ARP "
@@ -746,10 +751,10 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            len(self._handler.arp_replies_sent),
+            len(self._if.arp_replies_sent),
             1,
             msg=(
                 "With arp.ignore=2, an on-subnet sender for our target IP must "
@@ -778,10 +783,10 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler.arp_replies_sent,
+            self._if.arp_replies_sent,
             [],
             msg=(
                 "With arp.ignore=8, even a legitimate on-subnet Request for "
@@ -815,10 +820,10 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self.assertEqual(
-            self._handler.arp_replies_sent,
+            self._if.arp_replies_sent,
             [],
             msg="arp.ignore=2 must drop the Reply when SPA is off-subnet.",
         )
@@ -849,7 +854,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
                 tpa=STACK__IP4_ADDRESS,
             )
             packet_rx = _make_packet_rx(frame, ethernet_dst=MAC__BROADCAST)
-            self._handler._phrx_arp(packet_rx)
+            self._arp_rx._phrx_arp(packet_rx)
 
         self._arp_cache.add_entry.assert_called_once_with(
             ip4_address=HOST_A__IP4,

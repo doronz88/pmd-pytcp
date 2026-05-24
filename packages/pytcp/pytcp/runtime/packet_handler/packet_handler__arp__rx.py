@@ -30,72 +30,42 @@ pytcp/runtime/packet_handler/packet_handler__arp__rx.py
 ver 3.0.6
 """
 
-from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
 from pytcp.lib.logger import log
 from pytcp.protocols.arp import arp__constants
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
-class PacketHandlerArpRx(ABC):
+
+class ArpRxHandler:
     """
-    Class implementing packet handler for the inbound ARP packets.
+    The inbound ARP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip4Address, Ip4IfAddr, MacAddress
-        from net_proto import Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
-        from pytcp.protocols.arp.arp__cache import ArpCache
+    _if: PacketHandlerL2
 
-        _mac_unicast: MacAddress
-        _ip4_ifaddr: list[Ip4IfAddr]
-        _packet_stats_rx: PacketStatsRx
-        _arp_cache: ArpCache | None
+    def __init__(self, *, interface: PacketHandlerL2) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _phtx_arp(
-            self,
-            *,
-            ethernet__src: MacAddress,
-            ethernet__dst: MacAddress,
-            arp__oper: ArpOperation,
-            arp__sha: MacAddress,
-            arp__spa: Ip4Address,
-            arp__tha: MacAddress,
-            arp__tpa: Ip4Address,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        def _send_arp_reply(
-            self,
-            *,
-            arp__spa: Ip4Address,
-            arp__tha: MacAddress,
-            arp__tpa: Ip4Address,
-            tracker: Tracker | None = None,
-        ) -> None: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def _ip4_unicast(self) -> list[Ip4Address]: ...
+        self._if = interface
 
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound ARP packets.
         """
 
-        self._packet_stats_rx.arp__pre_parse += 1
+        self._if._packet_stats_rx.arp__pre_parse += 1
 
         try:
             ArpParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.arp__failed_parse__drop += 1
+            self._if._packet_stats_rx.arp__failed_parse__drop += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -110,7 +80,7 @@ class PacketHandlerArpRx(ABC):
             case ArpOperation.REPLY:
                 self.__phrx_arp__reply(packet_rx)
             case _:
-                self._packet_stats_rx.arp__op_unknown__drop += 1
+                self._if._packet_stats_rx.arp__op_unknown__drop += 1
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - Unsupported operation " f"{packet_rx.arp.oper}, dropping.",
@@ -136,22 +106,22 @@ class PacketHandlerArpRx(ABC):
         # do not update cache if SPA matches one of our IP
         # addresses to avoid updating cache with our own IP
         # address that could be spoofed by an attacker.
-        spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._ip4_ifaddr)
+        spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._if._ip4_ifaddr)
         if (
             (spa_on_local_subnet or arp__constants.ARP__ACCEPT == 1)
-            and (packet_rx.ethernet.dst == self._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
-            and packet_rx.arp.spa not in self._ip4_unicast
+            and (packet_rx.ethernet.dst == self._if._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
+            and packet_rx.arp.spa not in self._if._ip4_unicast
         ):
             match operation:
                 case ArpOperation.REQUEST:
-                    self._packet_stats_rx.arp__op_request__update_arp_cache += 1
+                    self._if._packet_stats_rx.arp__op_request__update_arp_cache += 1
                 case ArpOperation.REPLY:
-                    self._packet_stats_rx.arp__op_reply__update_arp_cache += 1
+                    self._if._packet_stats_rx.arp__op_reply__update_arp_cache += 1
                 case _:
                     raise ValueError("Invalid ARP operation")
 
-            assert self._arp_cache is not None, "L2 handler updating the ARP cache must have one wired."
-            self._arp_cache.add_entry(
+            assert self._if._arp_cache is not None, "L2 handler updating the ARP cache must have one wired."
+            self._if._arp_cache.add_entry(
                 ip4_address=packet_rx.arp.spa,
                 mac_address=packet_rx.arp.sha,
             )
@@ -161,13 +131,13 @@ class PacketHandlerArpRx(ABC):
         Handle inbound ARP request packets.
         """
 
-        self._packet_stats_rx.arp__op_request += 1
+        self._if._packet_stats_rx.arp__op_request += 1
 
         # Drop any ARP request if it is originated from us and looped for whatever.
         if (
-            packet_rx.arp.spa in self._ip4_unicast or packet_rx.arp.spa.is_unspecified
-        ) and packet_rx.arp.sha == self._mac_unicast:
-            self._packet_stats_rx.arp__op_request__looped__drop += 1
+            packet_rx.arp.spa in self._if._ip4_unicast or packet_rx.arp.spa.is_unspecified
+        ) and packet_rx.arp.sha == self._if._mac_unicast:
+            self._if._packet_stats_rx.arp__op_request__looped__drop += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP Received our own ARP request for "
@@ -187,7 +157,7 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.arp.spa == packet_rx.arp.tpa
             and packet_rx.arp.tha.is_unspecified
         ):
-            self._packet_stats_rx.arp__op_request__gratuitous += 1
+            self._if._packet_stats_rx.arp__op_request__gratuitous += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <INFO>Received gratuitous ARP request, "
@@ -195,8 +165,8 @@ class PacketHandlerArpRx(ABC):
             )
 
         # Note receiving ARP request not for our IP address.
-        elif packet_rx.arp.tpa not in self._ip4_unicast:
-            self._packet_stats_rx.arp__op_request__tpa_unknown += 1
+        elif packet_rx.arp.tpa not in self._if._ip4_unicast:
+            self._if._packet_stats_rx.arp__op_request__tpa_unknown += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <INFO>Dropping ARP request for unknown TPA "
@@ -206,7 +176,7 @@ class PacketHandlerArpRx(ABC):
         else:
             # Note receiving ARP probe (RFC 5227).
             if packet_rx.arp.spa.is_unspecified:
-                self._packet_stats_rx.arp__op_request__probe += 1
+                self._if._packet_stats_rx.arp__op_request__probe += 1
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>Replying to the ARP probe for TPA "
@@ -215,7 +185,7 @@ class PacketHandlerArpRx(ABC):
 
             # Note receiving regular ARP request.
             elif packet_rx.arp.spa.is_unicast:
-                self._packet_stats_rx.arp__op_request__tpa_stack += 1
+                self._if._packet_stats_rx.arp__op_request__tpa_stack += 1
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>Replying to ARP request for TPA "
@@ -246,7 +216,7 @@ class PacketHandlerArpRx(ABC):
                 should_reply = False
             else:
                 sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
-                    packet_rx.arp.spa in host.network for host in self._ip4_ifaddr
+                    packet_rx.arp.spa in host.network for host in self._if._ip4_ifaddr
                 )
                 if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
                     __debug__ and log(
@@ -257,9 +227,11 @@ class PacketHandlerArpRx(ABC):
                     should_reply = False
 
             # Send ARP reply packet to requester.
-            if should_reply and (packet_rx.ethernet.dst.is_broadcast or packet_rx.ethernet.dst == self._mac_unicast):
-                self._packet_stats_rx.arp__op_request__respond += 1
-                self._send_arp_reply(
+            if should_reply and (
+                packet_rx.ethernet.dst.is_broadcast or packet_rx.ethernet.dst == self._if._mac_unicast
+            ):
+                self._if._packet_stats_rx.arp__op_request__respond += 1
+                self._if._send_arp_reply(
                     arp__spa=packet_rx.arp.tpa,
                     arp__tha=packet_rx.arp.sha,
                     arp__tpa=packet_rx.arp.spa,
@@ -276,11 +248,11 @@ class PacketHandlerArpRx(ABC):
         Handle inbound ARP reply packets.
         """
 
-        self._packet_stats_rx.arp__op_reply += 1
+        self._if._packet_stats_rx.arp__op_reply += 1
 
         # Drop any ARP reply if it is originated from us and looped for whatever.
-        if packet_rx.arp.spa in self._ip4_unicast and packet_rx.arp.sha == self._mac_unicast:
-            self._packet_stats_rx.arp__op_reply__looped__drop += 1
+        if packet_rx.arp.spa in self._if._ip4_unicast and packet_rx.arp.sha == self._if._mac_unicast:
+            self._if._packet_stats_rx.arp__op_reply__looped__drop += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <WARN>IP Received our own ARP reply for "
@@ -289,8 +261,8 @@ class PacketHandlerArpRx(ABC):
             return
 
         # Note receiving packet as direct ARP reply.
-        if packet_rx.ethernet.dst == self._mac_unicast:
-            self._packet_stats_rx.arp__op_reply__direct += 1
+        if packet_rx.ethernet.dst == self._if._mac_unicast:
+            self._if._packet_stats_rx.arp__op_reply__direct += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <INFO>Received direct ARP reply, "
@@ -303,7 +275,7 @@ class PacketHandlerArpRx(ABC):
             and packet_rx.arp.spa == packet_rx.arp.tpa
             and packet_rx.arp.tha.is_unspecified
         ):
-            self._packet_stats_rx.arp__op_reply__gratuitous += 1
+            self._if._packet_stats_rx.arp__op_reply__gratuitous += 1
             __debug__ and log(
                 "arp",
                 f"{packet_rx.tracker} - <INFO>Received gratuitous ARP reply, "
