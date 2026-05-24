@@ -195,28 +195,27 @@ the old verb names.
 - `stack/__init__.py` — `address: Ip4AddressApi` annotation + import.
 - `stack/route.py` — docstring reference to `Ip4AddressApi.replace_ifaddr`.
 
-## 9. Out of scope — tracked follow-up: normalize Route + Neighbor
+## 9. DONE — Route + Neighbor normalized to match
 
-The same single-verb / family-agnostic principle applies to the other
-control APIs, which currently diverge from the netlink model:
+The same single-verb / family-agnostic principle was applied to the
+other two control APIs so all three control planes are now uniformly
+Linux-shaped (single verbs; family inferred from the value type or an
+explicit `family=` field, never a verb-name suffix):
 
-- **`RouteApi`** uses **fully family-split verbs** (`add_ip4_route` /
-  `add_ip6_route`, `replace_default_ip4` / `replace_default_ip6`,
-  `list_ip4_routes` / `list_ip6_routes`) — Linux is one `RTM_NEWROUTE`
-  verb + `rtm_family`. **Not aligned.**
-- **`NeighborApi`** is a **hybrid** — `remove(ip: Ip4 | Ip6)` and
-  `flush(family=)` are family-agnostic, but `add_static_arp` /
-  `add_static_nd` and `list_arp` / `list_nd` are split. Linux is one
-  `RTM_NEWNEIGH` + `ndm_family`. **Partially aligned.**
+- **`RouteApi`** (`a4d9dede`) — `add_ip4_route`/`add_ip6_route` →
+  `add_route`; `remove_ip{4,6}_route` → `remove_route`;
+  `replace_default_ip{4,6}` → `replace_default`; `list_ip{4,6}_routes`
+  → `list_routes(family=None)`; `remove_default_ip{4,6}` →
+  `remove_default(family=)`. Matches one `RTM_*ROUTE` + `rtm_family`.
+- **`NeighborApi`** (`578d9953`) — `add_static_arp`/`add_static_nd` →
+  `add(ip, mac)`; `list_arp`/`list_nd` → `list_neighbors(family=None)`;
+  `remove(ip)` / `flush(family=)` were already agnostic. Matches one
+  `RTM_NEWNEIGH` + `ndm_family`.
 
-**Follow-up item (after this unification lands):** normalize `RouteApi`
-and `NeighborApi` to the single-verb / family-agnostic shape
-(`add(route)` / `delete(route)` / `replace_default(gateway)` /
-`list_routes(family=None)`; `add(ip, mac)` / `delete(ip)` /
-`flush(...)` / `list_neighbors(family=None)`), so all three control
-planes are uniformly Linux-shaped. This is a separate, larger pass (every
-caller + the route/neighbor consumers + their tests) and is deliberately
-deferred — `AddressApi` sets the correct precedent first.
+All callers + tests migrated in the respective commits; mypy narrows the
+discriminated unions from the destination / ip value type (no casts on
+the add paths). The control-plane API surface is now consistent across
+address / route / neighbor.
 
 ## 10. Test plan
 
