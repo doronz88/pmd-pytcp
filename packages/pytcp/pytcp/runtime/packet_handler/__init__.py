@@ -52,9 +52,11 @@ from net_addr import (
 from net_proto import (
     ETHERNET_802_3__PACKET__MAX_LEN,
     ArpOperation,
+    Ethernet8023Payload,
     EtherType,
     Icmp6NdRoutePreference,
     PacketRx,
+    RawAssembler,
     Tracker,
 )
 from pytcp import stack
@@ -83,8 +85,8 @@ from pytcp.socket import AddressFamily
 
 from .packet_handler__arp__rx import ArpRxHandler
 from .packet_handler__arp__tx import ArpTxHandler
-from .packet_handler__ethernet_802_3__rx import PacketHandlerEthernet8023Rx
-from .packet_handler__ethernet_802_3__tx import PacketHandlerEthernet8023Tx
+from .packet_handler__ethernet_802_3__rx import Ethernet8023RxHandler
+from .packet_handler__ethernet_802_3__tx import Ethernet8023TxHandler
 from .packet_handler__ethernet__rx import PacketHandlerEthernetRx
 from .packet_handler__ethernet__tx import PacketHandlerEthernetTx
 from .packet_handler__icmp4__rx import PacketHandlerIcmp4Rx
@@ -1314,8 +1316,6 @@ class PacketHandlerL2(
     PacketHandler,
     PacketHandlerEthernetRx,
     PacketHandlerEthernetTx,
-    PacketHandlerEthernet8023Rx,
-    PacketHandlerEthernet8023Tx,
     PacketHandlerIcmp6Rx,
     PacketHandlerIcmp6Tx,
     PacketHandlerIcmp4Rx,
@@ -1345,6 +1345,9 @@ class PacketHandlerL2(
     # unchanged. ARP is L2-only — no counterpart on L3.
     _arp_rx: ArpRxHandler
     _arp_tx: ArpTxHandler
+    # IEEE 802.3 / LLC / SNAP framing is L2-only.
+    _ethernet_802_3_rx: Ethernet8023RxHandler
+    _ethernet_802_3_tx: Ethernet8023TxHandler
 
     _ip4_dhcp: bool
     _ip6_lla_autoconfig: bool
@@ -1402,6 +1405,8 @@ class PacketHandlerL2(
         # rest of the L2 state is set) is safe.
         self._arp_rx = ArpRxHandler(interface=self)
         self._arp_tx = ArpTxHandler(interface=self)
+        self._ethernet_802_3_rx = Ethernet8023RxHandler(interface=self)
+        self._ethernet_802_3_tx = Ethernet8023TxHandler(interface=self)
 
         self._ip4_dhcp = ip4_dhcp
         self._ip6_lla_autoconfig = ip6_lla_autoconfig
@@ -1574,6 +1579,35 @@ class PacketHandlerL2(
             arp__tpa=arp__tpa,
             ethernet__dst=ethernet__dst,
             arp__spa=arp__spa,
+        )
+
+    ###
+    # IEEE 802.3 delegators — logic lives in the composed
+    # 'Ethernet8023RxHandler' / 'Ethernet8023TxHandler'.
+    ###
+
+    def _phrx_ethernet_802_3(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound 802.3 frame (delegates to the 802.3 RX sub-handler).
+        """
+
+        self._ethernet_802_3_rx._phrx_ethernet_802_3(packet_rx)
+
+    def _phtx_ethernet_802_3(
+        self,
+        *,
+        ethernet_802_3__src: MacAddress = MacAddress(),
+        ethernet_802_3__dst: MacAddress = MacAddress(),
+        ethernet_802_3__payload: Ethernet8023Payload = RawAssembler(),
+    ) -> TxStatus:
+        """
+        Handle an outbound 802.3 frame (delegates to the 802.3 TX sub-handler).
+        """
+
+        return self._ethernet_802_3_tx._phtx_ethernet_802_3(
+            ethernet_802_3__src=ethernet_802_3__src,
+            ethernet_802_3__dst=ethernet_802_3__dst,
+            ethernet_802_3__payload=ethernet_802_3__payload,
         )
 
     @override

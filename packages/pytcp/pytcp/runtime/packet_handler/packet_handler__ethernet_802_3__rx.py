@@ -39,7 +39,6 @@ pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py
 ver 3.0.6
 """
 
-from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import (
@@ -55,27 +54,23 @@ from net_proto import (
 from net_proto.lib.enums import EtherType
 from pytcp.lib.logger import log
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
-class PacketHandlerEthernet8023Rx(ABC):
+
+class Ethernet8023RxHandler:
     """
-    Class implements packet handler for the inbound IEEE
-    802.3 Ethernet packets.
+    The inbound IEEE 802.3 Ethernet packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import MacAddress
-        from pytcp.lib.packet_stats import PacketStatsRx
+    _if: PacketHandlerL2
 
-        _packet_stats_rx: PacketStatsRx
-        _mac_unicast: MacAddress
-        _mac_multicast: list[MacAddress]
-        _mac_broadcast: MacAddress
+    def __init__(self, *, interface: PacketHandlerL2) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _phrx_arp(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_ip6(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_ip4(self, packet_rx: PacketRx, /) -> None: ...
+        self._if = interface
 
     def _phrx_ethernet_802_3(self, packet_rx: PacketRx, /) -> None:
         """
@@ -86,13 +81,13 @@ class PacketHandlerEthernet8023Rx(ABC):
         otherwise.
         """
 
-        self._packet_stats_rx.ethernet_802_3__pre_parse += 1
+        self._if._packet_stats_rx.ethernet_802_3__pre_parse += 1
 
         try:
             Ethernet8023Parser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.ethernet_802_3__failed_parse__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -103,25 +98,25 @@ class PacketHandlerEthernet8023Rx(ABC):
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet_802_3.dst not in {
-            self._mac_unicast,
-            *self._mac_multicast,
-            self._mac_broadcast,
+            self._if._mac_unicast,
+            *self._if._mac_multicast,
+            self._if._mac_broadcast,
         }:
-            self._packet_stats_rx.ethernet_802_3__dst_unknown__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__dst_unknown__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - Ethernet 802.3 packet not destined for this " "stack, dropping",
             )
             return
 
-        if packet_rx.ethernet_802_3.dst == self._mac_unicast:
-            self._packet_stats_rx.ethernet_802_3__dst_unicast += 1
+        if packet_rx.ethernet_802_3.dst == self._if._mac_unicast:
+            self._if._packet_stats_rx.ethernet_802_3__dst_unicast += 1
 
-        if packet_rx.ethernet_802_3.dst in self._mac_multicast:
-            self._packet_stats_rx.ethernet_802_3__dst_multicast += 1
+        if packet_rx.ethernet_802_3.dst in self._if._mac_multicast:
+            self._if._packet_stats_rx.ethernet_802_3__dst_multicast += 1
 
-        if packet_rx.ethernet_802_3.dst == self._mac_broadcast:
-            self._packet_stats_rx.ethernet_802_3__dst_broadcast += 1
+        if packet_rx.ethernet_802_3.dst == self._if._mac_broadcast:
+            self._if._packet_stats_rx.ethernet_802_3__dst_broadcast += 1
 
         # LLC dispatch — parse the 3-byte LLC header and
         # route by DSAP. PyTCP supports only U-frame
@@ -131,7 +126,7 @@ class PacketHandlerEthernet8023Rx(ABC):
         try:
             LlcParser(packet_rx)
         except PacketValidationError as error:
-            self._packet_stats_rx.ethernet_802_3__llc_failed_parse__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__llc_failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -143,7 +138,7 @@ class PacketHandlerEthernet8023Rx(ABC):
         dsap = packet_rx.llc.dsap
         if dsap is LlcSap.LAYER_MGMT:
             # IEEE 802.1D Spanning Tree Protocol BPDU.
-            self._packet_stats_rx.ethernet_802_3__llc_stp_bpdu__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__llc_stp_bpdu__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>STP BPDU</> from " f"{packet_rx.ethernet_802_3.src}, dropping",
@@ -151,7 +146,7 @@ class PacketHandlerEthernet8023Rx(ABC):
             return
 
         if dsap is LlcSap.NOVELL_IPX:
-            self._packet_stats_rx.ethernet_802_3__llc_novell_ipx__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__llc_novell_ipx__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Novell IPX over 802.2</>, dropping",
@@ -159,7 +154,7 @@ class PacketHandlerEthernet8023Rx(ABC):
             return
 
         if dsap is LlcSap.GLOBAL:
-            self._packet_stats_rx.ethernet_802_3__llc_global_dsap__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__llc_global_dsap__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Global DSAP (Novell raw 802.3)</>, dropping",
@@ -167,7 +162,7 @@ class PacketHandlerEthernet8023Rx(ABC):
             return
 
         if dsap is not LlcSap.SNAP:
-            self._packet_stats_rx.ethernet_802_3__llc_unknown_dsap__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__llc_unknown_dsap__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Unknown DSAP {dsap}</> from " f"{packet_rx.ethernet_802_3.src}, dropping",
@@ -179,7 +174,7 @@ class PacketHandlerEthernet8023Rx(ABC):
         try:
             SnapParser(packet_rx)
         except PacketValidationError as error:
-            self._packet_stats_rx.ethernet_802_3__snap_failed_parse__drop += 1
+            self._if._packet_stats_rx.ethernet_802_3__snap_failed_parse__drop += 1
             __debug__ and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -204,7 +199,7 @@ class PacketHandlerEthernet8023Rx(ABC):
 
         # Unknown SNAP OUI (IEEE 802.1, Apple, etc., or a
         # vendor OUI we don't recognise).
-        self._packet_stats_rx.ethernet_802_3__snap_unknown_oui__drop += 1
+        self._if._packet_stats_rx.ethernet_802_3__snap_unknown_oui__drop += 1
         __debug__ and log(
             "ether",
             f"{packet_rx.tracker} - <INFO>Unknown SNAP OUI 0x{snap_oui:06x} "
@@ -222,19 +217,19 @@ class PacketHandlerEthernet8023Rx(ABC):
         # comparisons go through 'int(...)' so equality is
         # well-defined against the int 'ether_type' value.
         if ether_type == int(EtherType.IP4):
-            self._packet_stats_rx.ethernet_802_3__snap_rfc1042_ip4 += 1
-            self._phrx_ip4(packet_rx)
+            self._if._packet_stats_rx.ethernet_802_3__snap_rfc1042_ip4 += 1
+            self._if._phrx_ip4(packet_rx)
             return
         if ether_type == int(EtherType.IP6):
-            self._packet_stats_rx.ethernet_802_3__snap_rfc1042_ip6 += 1
-            self._phrx_ip6(packet_rx)
+            self._if._packet_stats_rx.ethernet_802_3__snap_rfc1042_ip6 += 1
+            self._if._phrx_ip6(packet_rx)
             return
         if ether_type == int(EtherType.ARP):
-            self._packet_stats_rx.ethernet_802_3__snap_rfc1042_arp += 1
-            self._phrx_arp(packet_rx)
+            self._if._packet_stats_rx.ethernet_802_3__snap_rfc1042_arp += 1
+            self._if._phrx_arp(packet_rx)
             return
 
-        self._packet_stats_rx.ethernet_802_3__snap_rfc1042_unknown__drop += 1
+        self._if._packet_stats_rx.ethernet_802_3__snap_rfc1042_unknown__drop += 1
         __debug__ and log(
             "ether",
             f"{packet_rx.tracker} - <INFO>RFC 1042 SNAP with unsupported " f"EtherType 0x{ether_type:04x}</>, dropping",
@@ -253,28 +248,28 @@ class PacketHandlerEthernet8023Rx(ABC):
 
         match pid:
             case SnapCiscoProtocol.CDP:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_cdp__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cdp__drop += 1
                 proto = "CDP"
             case SnapCiscoProtocol.CGMP:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_cgmp__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cgmp__drop += 1
                 proto = "CGMP"
             case SnapCiscoProtocol.VTP:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_vtp__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vtp__drop += 1
                 proto = "VTP"
             case SnapCiscoProtocol.DTP:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_dtp__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_dtp__drop += 1
                 proto = "DTP"
             case SnapCiscoProtocol.PVST_PLUS_BPDU:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_pvst_plus__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_pvst_plus__drop += 1
                 proto = "PVST+ BPDU"
             case SnapCiscoProtocol.VLAN_BRIDGE:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_vlan_bridge__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vlan_bridge__drop += 1
                 proto = "VLAN-Bridge"
             case SnapCiscoProtocol.UDLD:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_udld__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_udld__drop += 1
                 proto = "UDLD"
             case _:
-                self._packet_stats_rx.ethernet_802_3__snap_cisco_unknown__drop += 1
+                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_unknown__drop += 1
                 proto = f"Cisco-unknown(0x{pid:04x})"
 
         __debug__ and log(

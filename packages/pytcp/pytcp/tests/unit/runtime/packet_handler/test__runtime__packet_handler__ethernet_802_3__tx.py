@@ -23,13 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerEthernet8023Tx' mixin.
+This module contains unit tests for the 'Ethernet8023TxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet_802_3__tx.py
 
 ver 3.0.6
 """
 
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -38,10 +39,11 @@ from net_proto import Ethernet8023Assembler, RawAssembler
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__ethernet_802_3__tx import (
-    PacketHandlerEthernet8023Tx,
-)
+from pytcp.runtime.packet_handler.packet_handler__ethernet_802_3__tx import Ethernet8023TxHandler
 from pytcp.runtime.tx_ring import TxRing
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -68,38 +70,50 @@ STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
 PEER__MAC_ADDRESS = MacAddress("02:00:00:00:00:91")
 
 
-class _StubHandler(PacketHandlerEthernet8023Tx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerEthernet8023Tx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
+
+    Carries the TX-stat counters, the stack MAC, and the per-interface
+    TX ring the 802.3 TX sub-handler reaches through 'self._if'. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
         """
-        Initialize the stub handler with the bare attributes the mixin reads.
+        Initialize the stub interface with the bare attributes the
+        sub-handler reads.
         """
 
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
+        self._tx_ring: TxRing | None = None
 
 
 class TestPacketHandlerEthernet8023Tx(TestCase):
     """
-    The 'PacketHandlerEthernet8023Tx._phtx_ethernet_802_3' behaviour tests.
+    The 'Ethernet8023TxHandler._phtx_ethernet_802_3' behaviour tests.
     """
 
     def setUp(self) -> None:
         """
-        Inject a mock TX ring into the handler so assemble()-enqueue
-        calls can be inspected without touching a real file descriptor.
+        Build the 802.3 TX sub-handler over a stub interface and inject
+        a mock TX ring so assemble()-enqueue calls can be inspected
+        without touching a real file descriptor.
         """
 
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
 
         # The TX ring is injected per-interface; assign the mock to the
-        # handler's own '_tx_ring' (the send-out path no longer reads
-        # the global 'stack.tx_ring').
+        # stub interface's own '_tx_ring' (the send-out path reads it
+        # through 'self._if').
         self._tx_ring = create_autospec(TxRing, spec_set=True)
-        self._handler._tx_ring = self._tx_ring
+        self._if._tx_ring = self._tx_ring
+
+        self._tx = Ethernet8023TxHandler(interface=cast("PacketHandlerL2", self._if))
 
     def test__stack__packet_handler__ethernet_802_3__tx__fills_unspecified_src(self) -> None:
         """
@@ -109,7 +123,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
-        status = self._handler._phtx_ethernet_802_3(
+        status = self._tx._phtx_ethernet_802_3(
             ethernet_802_3__dst=PEER__MAC_ADDRESS,
             ethernet_802_3__payload=RawAssembler(),
         )
@@ -120,17 +134,17 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
             msg="Handler must return PASSED__ETHERNET_802_3__TO_TX_RING when dst is specified.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__pre_assemble,
+            self._if._packet_stats_tx.ethernet_802_3__pre_assemble,
             1,
             msg="ethernet_802_3__pre_assemble must be incremented exactly once.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__src_unspec__fill,
+            self._if._packet_stats_tx.ethernet_802_3__src_unspec__fill,
             1,
             msg="ethernet_802_3__src_unspec__fill must be incremented when src is unspecified.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__dst_spec__send,
+            self._if._packet_stats_tx.ethernet_802_3__dst_spec__send,
             1,
             msg="ethernet_802_3__dst_spec__send must be incremented when dst is specified.",
         )
@@ -163,7 +177,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
 
         custom_src = MacAddress("02:00:00:00:00:aa")
 
-        status = self._handler._phtx_ethernet_802_3(
+        status = self._tx._phtx_ethernet_802_3(
             ethernet_802_3__src=custom_src,
             ethernet_802_3__dst=PEER__MAC_ADDRESS,
             ethernet_802_3__payload=RawAssembler(),
@@ -175,12 +189,12 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
             msg="Handler must return PASSED__ETHERNET_802_3__TO_TX_RING when dst is specified.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__src_spec,
+            self._if._packet_stats_tx.ethernet_802_3__src_spec,
             1,
             msg="ethernet_802_3__src_spec must be incremented when a src MAC is supplied.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__src_unspec__fill,
+            self._if._packet_stats_tx.ethernet_802_3__src_unspec__fill,
             0,
             msg="ethernet_802_3__src_unspec__fill must NOT be incremented when src is supplied.",
         )
@@ -202,7 +216,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
-        status = self._handler._phtx_ethernet_802_3(
+        status = self._tx._phtx_ethernet_802_3(
             ethernet_802_3__payload=RawAssembler(),
         )
 
@@ -212,12 +226,12 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
             msg="Handler must return DROPPED__ETHERNET_802_3__DST_RESOLUTION_FAIL when dst is unspecified.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__dst_unspec__drop,
+            self._if._packet_stats_tx.ethernet_802_3__dst_unspec__drop,
             1,
             msg="ethernet_802_3__dst_unspec__drop must be incremented when dst is unspecified.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__dst_spec__send,
+            self._if._packet_stats_tx.ethernet_802_3__dst_spec__send,
             0,
             msg="ethernet_802_3__dst_spec__send must NOT be incremented when the packet is dropped.",
         )
@@ -231,7 +245,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
         Reference: IEEE 802.3 §3 (802.3 TX).
         """
 
-        status = self._handler._phtx_ethernet_802_3()
+        status = self._tx._phtx_ethernet_802_3()
 
         self.assertEqual(
             status,
@@ -239,7 +253,7 @@ class TestPacketHandlerEthernet8023Tx(TestCase):
             msg="Handler with no kwargs must drop the packet (dst defaults to unspecified).",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.ethernet_802_3__src_unspec__fill,
+            self._if._packet_stats_tx.ethernet_802_3__src_unspec__fill,
             1,
             msg="Even when dropping, the unspecified src is still filled before the dst check.",
         )

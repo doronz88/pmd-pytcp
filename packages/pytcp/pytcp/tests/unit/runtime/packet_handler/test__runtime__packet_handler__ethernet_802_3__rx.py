@@ -23,14 +23,14 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerEthernet8023Rx' mixin.
+This module contains unit tests for the 'Ethernet8023RxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ethernet_802_3__rx.py
 
 ver 3.0.6
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
@@ -39,9 +39,10 @@ from net_addr import MacAddress
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
-from pytcp.runtime.packet_handler.packet_handler__ethernet_802_3__rx import (
-    PacketHandlerEthernet8023Rx,
-)
+from pytcp.runtime.packet_handler.packet_handler__ethernet_802_3__rx import Ethernet8023RxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -101,20 +102,52 @@ _FRAME_802_3__DST_UNKNOWN = b"\x02\x00\x00\x99\x99\x99" b"\x52\x54\x00\xdf\x85\x
 _FRAME_802_3__TRUNCATED = b"\x02\x00\x00\x00\x00\x07" b"\x52\x54\x00\xdf\x85\x37" b"\x00"
 
 
-class _StubHandler(PacketHandlerEthernet8023Rx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerEthernet8023Rx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' interface.
+
+    Carries the MAC-filter state and the upper-layer cross-call
+    surface ('_phrx_arp' / '_phrx_ip4' / '_phrx_ip6') the 802.3 RX
+    sub-handler reaches through 'self._if', recording any dispatch
+    in 'self.dispatched'. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
         """
-        Initialize the stub handler with the bare attributes the mixin reads.
+        Initialize the stub interface with the bare attributes the
+        sub-handler reads, plus a dispatch recorder.
         """
 
         self._packet_stats_rx = PacketStatsRx()
         self._mac_unicast = STACK__MAC_UNICAST
         self._mac_multicast = [STACK__MAC_MULTICAST]
         self._mac_broadcast = STACK__MAC_BROADCAST
+
+        self.dispatched: list[str] = []
+
+    def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
+        """
+        Record an ARP dispatch.
+        """
+
+        self.dispatched.append("arp")
+
+    def _phrx_ip4(self, packet_rx: PacketRx, /) -> None:
+        """
+        Record an IPv4 dispatch.
+        """
+
+        self.dispatched.append("ip4")
+
+    def _phrx_ip6(self, packet_rx: PacketRx, /) -> None:
+        """
+        Record an IPv6 dispatch.
+        """
+
+        self.dispatched.append("ip6")
 
 
 @parameterized_class(
@@ -175,11 +208,13 @@ class TestPacketHandlerEthernet8023Rx(TestCase):
 
     def setUp(self) -> None:
         """
-        Build the stub handler and run the frame through the mixin method.
+        Build the 802.3 RX sub-handler over a stub interface and run
+        the frame through it.
         """
 
-        self._handler = _StubHandler()
-        self._handler._phrx_ethernet_802_3(PacketRx(self._frame))
+        self._if = _StubInterface()
+        self._rx = Ethernet8023RxHandler(interface=cast("PacketHandlerL2", self._if))
+        self._rx._phrx_ethernet_802_3(PacketRx(self._frame))
 
     def test__stack__packet_handler__ethernet_802_3__rx__packet_stats_rx(self) -> None:
         """
@@ -191,7 +226,7 @@ class TestPacketHandlerEthernet8023Rx(TestCase):
 
         expected = PacketStatsRx(**self._results)
         self.assertEqual(
-            self._handler._packet_stats_rx,
+            self._if._packet_stats_rx,
             expected,
             msg=f"Unexpected RX packet statistics for case: {self._description}",
         )
@@ -212,17 +247,13 @@ class TestPacketHandlerEthernet8023RxDispatch(TestCase):
         Reference: IEEE 802.3 §3 (802.3 RX dispatch).
         """
 
-        handler = _StubHandler()
+        iface = _StubInterface()
+        rx = Ethernet8023RxHandler(interface=cast("PacketHandlerL2", iface))
 
-        dispatched: list[str] = []
-        handler._phrx_arp = lambda packet_rx, /: dispatched.append("arp")  # type: ignore[method-assign]
-        handler._phrx_ip4 = lambda packet_rx, /: dispatched.append("ip4")  # type: ignore[method-assign]
-        handler._phrx_ip6 = lambda packet_rx, /: dispatched.append("ip6")  # type: ignore[method-assign]
-
-        handler._phrx_ethernet_802_3(PacketRx(_FRAME_802_3__DST_UNICAST))
+        rx._phrx_ethernet_802_3(PacketRx(_FRAME_802_3__DST_UNICAST))
 
         self.assertEqual(
-            dispatched,
+            iface.dispatched,
             [],
-            msg="PacketHandlerEthernet8023Rx must not dispatch to any upper-layer _phrx_* method.",
+            msg="Ethernet8023RxHandler must not dispatch to any upper-layer _phrx_* method.",
         )
