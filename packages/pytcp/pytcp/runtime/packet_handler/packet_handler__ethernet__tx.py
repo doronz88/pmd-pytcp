@@ -41,6 +41,7 @@ from net_proto import (
     Ip6Assembler,
     RawAssembler,
 )
+from net_proto.lib.buffer import Buffer
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
@@ -352,3 +353,15 @@ class PacketHandlerEthernetTx(ABC):
         __debug__ and log("ether", f"{ethernet_packet_tx.tracker} - {ethernet_packet_tx}")
         assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
         self._tx_ring.enqueue(ethernet_packet_tx)
+
+    def send_link_frame(self, frame: Buffer, /) -> None:
+        """
+        Enqueue a complete, pre-built link-layer frame for verbatim
+        transmission on this interface — the AF_PACKET (SOCK_RAW)
+        egress seam. Bypasses the assembler / IP layers entirely; the
+        frame is written to the wire as-is, the destination MAC and
+        ethertype taken from the caller-supplied bytes.
+        """
+
+        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._tx_ring.enqueue_raw_frame(frame)

@@ -1028,3 +1028,71 @@ class TestTxRingDispatchAsync(_TxRingFixture):
         # Must not raise (inline path, no worker) — the call returning
         # at all is the assertion; a propagated exception fails the test.
         self._ring.dispatch_async(run)
+
+
+class TestTxRingRawFrame(_TxRingFixture):
+    """
+    The 'TxRing.enqueue_raw_frame' / verbatim-frame TX tests.
+    """
+
+    def test__tx_ring__enqueue_raw_frame_appends(self) -> None:
+        """
+        Ensure 'enqueue_raw_frame' places the verbatim frame bytes on
+        the internal deque (the AF_PACKET egress primitive that skips
+        the assembler / IP layers).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
+        self._ring.enqueue_raw_frame(frame)
+
+        self.assertEqual(
+            list(self._ring._tx_deque),
+            [frame],
+            msg="enqueue_raw_frame() must place the verbatim frame on the TX ring.",
+        )
+
+    def test__tx_ring__enqueue_raw_frame_drops_when_full(self) -> None:
+        """
+        Ensure 'enqueue_raw_frame' silently drops the frame when the
+        deque is already at capacity.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
+        self.addCleanup(ring._stop)
+        ring.enqueue_raw_frame(b"first-frame")
+
+        ring.enqueue_raw_frame(b"second-frame")  # must not raise
+
+        self.assertEqual(
+            len(ring._tx_deque),
+            1,
+            msg="enqueue_raw_frame() on a full TX ring must drop the new frame.",
+        )
+
+    def test__tx_ring__loop_writes_raw_frame_verbatim(self) -> None:
+        """
+        Ensure the subsystem loop writes a queued raw frame to the TX fd
+        verbatim via 'os.writev', without prepending any ethertype
+        framing prefix.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
+        self._ring.enqueue_raw_frame(frame)
+
+        with patch("pytcp.runtime.tx_ring.os.writev") as mock_writev:
+            self._ring._subsystem_loop()
+
+        mock_writev.assert_called_once()
+        fd_arg, buffers_arg = mock_writev.call_args.args
+        self.assertEqual(fd_arg, self._write_fd, msg="os.writev must target the TX ring fd.")
+        self.assertEqual(
+            b"".join(bytes(b) for b in buffers_arg),
+            frame,
+            msg="A raw frame must be written verbatim, with no framing prefix added.",
+        )

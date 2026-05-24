@@ -42,7 +42,7 @@ ver 3.0.6
 import errno
 import os
 import threading
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
 from net_proto.lib.enums import EtherType
 from pytcp import stack
@@ -50,6 +50,9 @@ from pytcp.lib.logger import log
 from pytcp.socket import ETH_P_ALL, AddressFamily, SocketType, socket
 from pytcp.socket.packet__metadata import PacketMetadata
 from pytcp.socket.sockaddr_ll import SockAddrLl
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2
 
 
 class PacketSocket(socket):
@@ -199,3 +202,55 @@ class PacketSocket(socket):
         stack.packet_sockets.unregister(self)
         self._mark_closed()
         __debug__ and log("socket", f"<g>[{self}]</> - Closed packet socket")
+
+    def _egress_handler(self, ifindex: int, /) -> "PacketHandlerL2":
+        """
+        Resolve the L2 interface a frame egresses: the interface
+        registered under 'ifindex', or — when 'ifindex' is 0 (an
+        unbound socket / address) — the sole registered interface (the
+        transitional N=1 crutch, as in the other stack control tools).
+        Raises 'OSError(ENODEV)' when no matching interface exists and
+        'OSError(ENXIO)' when the bare resolution is ambiguous (N>1 with
+        no ifindex given). Packet sockets are L2-only; the cast encodes
+        that precondition (Phase 3's 'bind' rejects an L3 ifindex).
+        """
+
+        if ifindex == 0:
+            interfaces = stack.interfaces.values()
+            if len(interfaces) == 1:
+                handler = interfaces[0]
+            elif not interfaces:
+                raise OSError(errno.ENODEV, "No interface available for AF_PACKET send")
+            else:
+                raise OSError(errno.ENXIO, "Ambiguous egress interface; bind the packet socket to an ifindex")
+        else:
+            if ifindex not in stack.interfaces:
+                raise OSError(errno.ENODEV, f"No interface registered under ifindex {ifindex}")
+            handler = stack.interfaces[ifindex]
+
+        return cast("PacketHandlerL2", handler)
+
+    @override
+    def send(self, data: bytes) -> int:
+        """
+        Send a complete link-layer frame verbatim out the interface the
+        socket is bound to ('bind' sets the ifindex; an unbound socket
+        egresses the sole interface). Returns the byte count accepted
+        into the stack.
+        """
+
+        self._egress_handler(self._ifindex).send_link_frame(data)
+        __debug__ and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
+        return len(data)
+
+    @override
+    def sendto(self, data: bytes, address: SockAddrLl) -> int:
+        """
+        Send a complete link-layer frame verbatim out the interface
+        named by 'address.ifindex' (0 = the sole interface). Returns the
+        byte count accepted into the stack.
+        """
+
+        self._egress_handler(address.ifindex).send_link_frame(data)
+        __debug__ and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
+        return len(data)

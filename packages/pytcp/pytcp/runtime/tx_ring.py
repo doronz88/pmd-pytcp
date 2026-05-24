@@ -158,7 +158,7 @@ class TxRing(Subsystem):
     _mtu: int
     _queue_max_size: int
 
-    _tx_deque: collections.deque[TxFrame | _TxRequest]
+    _tx_deque: collections.deque[TxFrame | _TxRequest | Buffer]
     _tx_event_fd: int
     _queue_full_drop_count: int
     _os_error_drop_count: int
@@ -294,6 +294,17 @@ class TxRing(Subsystem):
                 # the inner drain then writes in the same pass.
                 item.execute()
                 continue
+            if isinstance(item, (bytes, bytearray, memoryview)):
+                # A verbatim pre-built frame from an AF_PACKET socket:
+                # write it as-is, no assembler / ethertype framing.
+                if not self._send_raw_frame(item):
+                    if self._tx_deque:
+                        try:
+                            os.eventfd_write(self._tx_event_fd, 1)
+                        except OSError:
+                            pass
+                    return
+                continue
             if not self._send_one(item):
                 # 'os.writev' errored — stop draining. Re-arm the
                 # eventfd so the next outer pass picks up where we
@@ -424,6 +435,59 @@ class TxRing(Subsystem):
             f"{len(packet_tx)} bytes",
         )
         return True
+
+    def _send_raw_frame(self, frame: Buffer, /) -> bool:
+        """
+        Write a verbatim pre-built link-layer frame (from an AF_PACKET
+        socket) to the TX fd via 'os.writev', adding no framing prefix.
+        Returns True on success (the contract '_subsystem_loop' expects)
+        and False on 'os.writev' OSError so the drain can break early.
+        """
+
+        try:
+            os.writev(self._fd, [frame])
+        except OSError as error:
+            if self._packet_stats is not None:
+                self._packet_stats.tx_ring__os_error__drop += 1
+            else:
+                self._os_error_drop_count += 1
+            __debug__ and log(
+                "tx-ring",
+                f"<CRIT>Unable to send raw frame, OSError: {error}</>",
+            )
+            return False
+
+        __debug__ and log("tx-ring", f"<B><lr>[TX]</> - sent raw frame, {len(frame)} bytes")
+        return True
+
+    def enqueue_raw_frame(self, frame: Buffer, /) -> None:
+        """
+        Enqueue a verbatim pre-built link-layer frame for transmission —
+        the AF_PACKET (SOCK_RAW) egress primitive. Unlike 'enqueue',
+        which takes an Assembler the worker serializes, this puts the
+        finished frame bytes straight on the ring; the worker writes
+        them as-is, skipping the IP / assembler layers. Same full-queue
+        drop and 'tx_bytes' accounting as 'enqueue'.
+        """
+
+        if len(self._tx_deque) >= self._queue_max_size:
+            if self._packet_stats is not None:
+                self._packet_stats.tx_ring__queue_full__drop += 1
+            else:
+                self._queue_full_drop_count += 1
+            __debug__ and log("tx-ring", "TX Queue is full, dropping raw frame")
+            return
+
+        self._tx_deque.append(frame)
+        try:
+            os.eventfd_write(self._tx_event_fd, 1)
+        except OSError:
+            pass
+
+        if self._link_stats is not None:
+            self._link_stats.tx_bytes += len(frame)
+
+        __debug__ and log("tx-ring", f"TX Queue len: {len(self._tx_deque)}")
 
     def enqueue(
         self,
