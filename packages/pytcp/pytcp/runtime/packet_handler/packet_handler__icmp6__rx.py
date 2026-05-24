@@ -31,8 +31,6 @@ ver 3.0.6
 """
 
 import random
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip6Address, Ip6Network, IpVersion
@@ -76,6 +74,9 @@ from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+
 
 def _mld2_mrc_to_mrd_ms(mrc: int) -> int:
     """
@@ -105,105 +106,26 @@ def _mld2_mrc_to_mrd_ms(mrc: int) -> int:
     return (mant | 0x1000) << (exp + 3)
 
 
-class PacketHandlerIcmp6Rx(ABC):
+class Icmp6RxHandler:
     """
-    Class implements packet handler for the inbound ICMPv6 packets.
+    The inbound ICMPv6 packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from threading import Semaphore
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        from net_addr import Ip6Network, MacAddress
-        from net_proto import Icmp6Message, Icmp6NdRoutePreference, Tracker
-        from pytcp.lib.dad_slot_registry import DadSlotRegistry
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
-        from pytcp.protocols.icmp6.nd.nd__cache import NdCache
-        from pytcp.runtime.timer import TimerHandle
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        _packet_stats_rx: PacketStatsRx
-        _mac_unicast: MacAddress
-        _nd_cache: NdCache | None
-        _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
-        _icmp6_ra__event: Semaphore
-        _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
-        _mld2_query__pending_response_at_ms: int | None
-        _mld2_query__handle: TimerHandle | None
-
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_icmp6(
-            self,
-            *,
-            ip6__src: Ip6Address,
-            ip6__dst: Ip6Address,
-            ip6__hop: int | None = None,
-            icmp6__message: Icmp6Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        def send_icmp6_neighbor_advertisement(
-            self,
-            *,
-            ip6__src: Ip6Address,
-            ip6__dst: Ip6Address,
-            target_address: Ip6Address,
-            flag_r: bool = False,
-            flag_s: bool = False,
-            flag_o: bool = False,
-            include_tlla: bool = True,
-            echo_tracker: Tracker | None = None,
-        ) -> None: ...
-
-        def _send_icmp6_multicast_listener_report(self) -> None: ...
-
-        def _update_icmp6_default_router(
-            self,
-            *,
-            address: Ip6Address,
-            router_lifetime: int,
-            prf: Icmp6NdRoutePreference = ...,
-        ) -> None: ...
-
-        def _update_icmp6_temp_address(
-            self,
-            *,
-            prefix: Ip6Network,
-            valid_lifetime: int,
-            preferred_lifetime: int,
-            router_address: Ip6Address,
-        ) -> None: ...
-
-        def _update_icmp6_slaac_address(
-            self,
-            *,
-            prefix: Ip6Network,
-            valid_lifetime: int,
-            preferred_lifetime: int,
-            router_address: Ip6Address,
-        ) -> None: ...
-
-        def _update_icmp6_ra_parameters(
-            self,
-            *,
-            cur_hop_limit: int,
-            reachable_time_ms: int,
-            retrans_timer_ms: int,
-        ) -> None: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def ip6_unicast(self) -> list[Ip6Address]: ...
+        self._if = interface
 
     def _phrx_icmp6(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound ICMPv6 packets.
         """
 
-        self._packet_stats_rx.icmp6__pre_parse += 1
+        self._if._packet_stats_rx.icmp6__pre_parse += 1
 
         try:
             Icmp6Parser(packet_rx)
@@ -213,7 +135,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 "icmp6",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
-            self._packet_stats_rx.icmp6__failed_parse__drop += 1
+            self._if._packet_stats_rx.icmp6__failed_parse__drop += 1
             return
 
         __debug__ and log("icmp6", f"{packet_rx.tracker} - {packet_rx.icmp6}")
@@ -230,7 +152,7 @@ class PacketHandlerIcmp6Rx(ABC):
             Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
             Icmp6Type.ND__REDIRECT,
         }:
-            self._packet_stats_rx.icmp6__nd_message__fragmented__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_message__fragmented__drop += 1
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <WARN>Dropping fragmented ND message "
@@ -275,7 +197,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageDestinationUnreachable)
 
-        self._packet_stats_rx.icmp6__destination_unreachable += 1
+        self._if._packet_stats_rx.icmp6__destination_unreachable += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Unreachable packet "
@@ -382,7 +304,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -405,7 +327,7 @@ class PacketHandlerIcmp6Rx(ABC):
             offender_ip=packet_rx.ip6.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp6__destination_unreachable__tcp__notify += 1
+        self._if._packet_stats_rx.icmp6__destination_unreachable__tcp__notify += 1
 
     def __phrx_icmp6__time_exceeded(self, packet_rx: PacketRx) -> None:
         """
@@ -424,7 +346,7 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv6 Time Exceeded packet "
             f"from {packet_rx.ip6.src}, code={message.code}",
         )
-        self._packet_stats_rx.icmp6__time_exceeded += 1
+        self._if._packet_stats_rx.icmp6__time_exceeded += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP6)
         if embedded is None:
@@ -482,7 +404,7 @@ class PacketHandlerIcmp6Rx(ABC):
                     offender_ip=packet_rx.ip6.src,
                     embedded_datagram=embedded_datagram,
                 )
-                self._packet_stats_rx.icmp6__time_exceeded__udp__notify += 1
+                self._if._packet_stats_rx.icmp6__time_exceeded__udp__notify += 1
                 return
 
         __debug__ and log(
@@ -518,7 +440,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp6__time_exceeded__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp6__time_exceeded__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -540,7 +462,7 @@ class PacketHandlerIcmp6Rx(ABC):
             offender_ip=packet_rx.ip6.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp6__time_exceeded__tcp__notify += 1
+        self._if._packet_stats_rx.icmp6__time_exceeded__tcp__notify += 1
 
     def __phrx_icmp6__parameter_problem(self, packet_rx: PacketRx) -> None:
         """
@@ -558,7 +480,7 @@ class PacketHandlerIcmp6Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv6 Parameter Problem packet "
             f"from {packet_rx.ip6.src}, code={message.code}, pointer={message.pointer}",
         )
-        self._packet_stats_rx.icmp6__parameter_problem += 1
+        self._if._packet_stats_rx.icmp6__parameter_problem += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP6)
         if embedded is None:
@@ -616,7 +538,7 @@ class PacketHandlerIcmp6Rx(ABC):
                     offender_ip=packet_rx.ip6.src,
                     embedded_datagram=embedded_datagram,
                 )
-                self._packet_stats_rx.icmp6__parameter_problem__udp__notify += 1
+                self._if._packet_stats_rx.icmp6__parameter_problem__udp__notify += 1
                 return
 
         __debug__ and log(
@@ -652,7 +574,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp6__parameter_problem__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp6__parameter_problem__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -675,7 +597,7 @@ class PacketHandlerIcmp6Rx(ABC):
             offender_ip=packet_rx.ip6.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp6__parameter_problem__tcp__notify += 1
+        self._if._packet_stats_rx.icmp6__parameter_problem__tcp__notify += 1
 
     def __phrx_icmp6__packet_too_big(self, packet_rx: PacketRx) -> None:
         """
@@ -696,7 +618,7 @@ class PacketHandlerIcmp6Rx(ABC):
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Packet Too Big " f"from {packet_rx.ip6.src}, mtu={message.mtu}",
         )
-        self._packet_stats_rx.icmp6__packet_too_big += 1
+        self._if._packet_stats_rx.icmp6__packet_too_big += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP6)
         if embedded is None:
@@ -722,7 +644,7 @@ class PacketHandlerIcmp6Rx(ABC):
                         offender_ip=packet_rx.ip6.src,
                         embedded_datagram=bytes(message.data),
                     )
-                    self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
+                    self._if._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
                     return
             return
 
@@ -760,7 +682,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp6__packet_too_big__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp6__packet_too_big__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -785,7 +707,7 @@ class PacketHandlerIcmp6Rx(ABC):
             offender_ip=packet_rx.ip6.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
+        self._if._packet_stats_rx.icmp6__packet_too_big__notify_pmtu += 1
 
     def __phrx_icmp6__echo_request(self, packet_rx: PacketRx) -> None:
         """
@@ -800,7 +722,7 @@ class PacketHandlerIcmp6Rx(ABC):
         if not should_emit_echo_reply():
             return
 
-        self._packet_stats_rx.icmp6__echo_request__respond_echo_reply += 1
+        self._if._packet_stats_rx.icmp6__echo_request__respond_echo_reply += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Received ICMPv6 Echo Request "
@@ -815,8 +737,8 @@ class PacketHandlerIcmp6Rx(ABC):
             seq=packet_rx.icmp6.message.seq,
             data=packet_rx.icmp6.message.data,
         )
-        self._marshal_tx(
-            lambda: self._phtx_icmp6(
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp6(
                 ip6__src=packet_rx.ip6.dst,
                 ip6__dst=packet_rx.ip6.src,
                 ip6__hop=255,
@@ -832,7 +754,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoReply)
 
-        self._packet_stats_rx.icmp6__echo_reply += 1
+        self._if._packet_stats_rx.icmp6__echo_reply += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Echo Reply packet " f"from {packet_rx.ip6.src}",
@@ -851,7 +773,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.raw__socket_match += 1
+                self._if._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "raw",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
@@ -866,7 +788,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterSolicitation)
 
-        self._packet_stats_rx.icmp6__nd_router_solicitation += 1
+        self._if._packet_stats_rx.icmp6__nd_router_solicitation += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Router Solicitation " f"packet from {packet_rx.ip6.src}",
@@ -901,7 +823,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement)
 
-        self._packet_stats_rx.icmp6__nd_router_advertisement += 1
+        self._if._packet_stats_rx.icmp6__nd_router_advertisement += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Router Advertisement " f"packet from {packet_rx.ip6.src}",
@@ -918,7 +840,7 @@ class PacketHandlerIcmp6Rx(ABC):
             elif option.preferred_lifetime > option.valid_lifetime:
                 reason = "RFC 4862 §5.5.3 (e)(3): preferred_lifetime > valid_lifetime"
             if reason is not None:
-                self._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop += 1
+                self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop += 1
                 __debug__ and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <WARN>Dropping RA Prefix "
@@ -934,7 +856,7 @@ class PacketHandlerIcmp6Rx(ABC):
             # '_icmp6_ra__prefixes' below; the new table tracks
             # lifetimes for §12b state-machine work.
             if accept_pinfo:
-                self._update_icmp6_slaac_address(
+                self._if._update_icmp6_slaac_address(
                     prefix=option.prefix,
                     valid_lifetime=option.valid_lifetime,
                     preferred_lifetime=option.preferred_lifetime,
@@ -945,17 +867,17 @@ class PacketHandlerIcmp6Rx(ABC):
                 # (default); when enabled it generates a random
                 # IID, claims via the §20.1 async DAD worker,
                 # and tracks the entry in '_icmp6_temp_addresses'.
-                self._update_icmp6_temp_address(
+                self._if._update_icmp6_temp_address(
                     prefix=option.prefix,
                     valid_lifetime=option.valid_lifetime,
                     preferred_lifetime=option.preferred_lifetime,
                     router_address=packet_rx.ip6.src,
                 )
             else:
-                self._packet_stats_rx.icmp6__nd_router_advertisement__pi__pinfo_disabled__drop += 1
+                self._if._packet_stats_rx.icmp6__nd_router_advertisement__pi__pinfo_disabled__drop += 1
 
-        self._icmp6_ra__prefixes = admitted
-        self._icmp6_ra__event.release()
+        self._if._icmp6_ra__prefixes = admitted
+        self._if._icmp6_ra__event.release()
 
         # RFC 4861 §6.3.4 default-router list maintenance —
         # independent of the SLAAC prefix path above. Gated by the
@@ -963,18 +885,18 @@ class PacketHandlerIcmp6Rx(ABC):
         # host still consumes the prefix-info options but does not
         # learn the RA source as a default router.
         if nd__constants.ICMP6__ACCEPT_RA_DEFRTR:
-            self._update_icmp6_default_router(
+            self._if._update_icmp6_default_router(
                 address=packet_rx.ip6.src,
                 router_lifetime=packet_rx.icmp6.message.router_lifetime,
                 prf=packet_rx.icmp6.message.prf,
             )
         else:
-            self._packet_stats_rx.icmp6__nd_router_advertisement__defrtr__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement__defrtr__drop += 1
 
         # RFC 4861 §6.3.4 host-parameter mirror — Cur-Hop-Limit /
         # Reachable Time / Retrans Timer. Always processed; field
         # value 0 ("unspecified") preserves the prior host value.
-        self._update_icmp6_ra_parameters(
+        self._if._update_icmp6_ra_parameters(
             cur_hop_limit=packet_rx.icmp6.message.hop,
             reachable_time_ms=packet_rx.icmp6.message.reachable_time,
             retrans_timer_ms=packet_rx.icmp6.message.retrans_timer,
@@ -987,7 +909,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborSolicitation)
 
-        self._packet_stats_rx.icmp6__nd_neighbor_solicitation += 1
+        self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation += 1
 
         # RFC 4862 §5.4.3 case (b) — simultaneous-probe DAD conflict:
         # if a peer's NS targets an address we are currently
@@ -1006,7 +928,7 @@ class PacketHandlerIcmp6Rx(ABC):
         # worker thread cannot tear down the slot between the
         # check and the signal.
         target_address = packet_rx.icmp6.message.target_address
-        dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
+        dad_signal = self._if._icmp6_nd_dad__registry.try_signal_conflict(
             target_address,
             peer_info=None,
             inbound_nonce=packet_rx.icmp6.message.nonce,
@@ -1016,7 +938,7 @@ class PacketHandlerIcmp6Rx(ABC):
             # one we emitted for this candidate means this NS is
             # a loop-hairpin echo of our own probe (a switch
             # reflecting traffic back). Drop silently.
-            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <INFO>Loop-hairpin DAD echo "
@@ -1025,7 +947,7 @@ class PacketHandlerIcmp6Rx(ABC):
             )
             return
         if dad_signal is DadSignalResult.SIGNALED:
-            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <CRIT>Simultaneous-probe DAD conflict: "
@@ -1035,7 +957,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         # Check if request is for one of stack's IPv6 unicast addresses.
-        if packet_rx.icmp6.message.target_address not in self.ip6_unicast:
+        if packet_rx.icmp6.message.target_address not in self._if.ip6_unicast:
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - Received ICMPv6 Neighbor "
@@ -1043,7 +965,7 @@ class PacketHandlerIcmp6Rx(ABC):
                 "not matching any of stack's IPv6 unicast addresses, "
                 "dropping",
             )
-            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_unknown__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_unknown__drop += 1
             return
 
         __debug__ and log(
@@ -1056,9 +978,9 @@ class PacketHandlerIcmp6Rx(ABC):
         # Update ICMPv6 ND cache if valid IPv6 source is set and the ND option
         # SLLA is present.
         if not (packet_rx.ip6.src.is_unspecified or packet_rx.ip6.src.is_multicast) and packet_rx.icmp6.message.slla:
-            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
-            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
-            self._nd_cache.add_entry(
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__update_nd_cache += 1
+            assert self._if._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._if._nd_cache.add_entry(
                 ip6_address=packet_rx.ip6.src,
                 mac_address=packet_rx.icmp6.message.slla,
             )
@@ -1066,14 +988,14 @@ class PacketHandlerIcmp6Rx(ABC):
         # Determine if request is part of DAD request by examining its source
         # address (absence of slla is already tested by sanity check).
         if ip6_nd_dad := packet_rx.ip6.src.is_unspecified:
-            self._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad += 1
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad += 1
 
         # Send response. Routes through the public NA emission
         # helper rather than inlining '_phtx_icmp6' (the helper
         # is shared with the DAD-success gratuitous-NA path —
         # see 'send_icmp6_neighbor_advertisement_gratuitous').
-        self._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_stack__respond += 1
-        self.send_icmp6_neighbor_advertisement(
+        self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_stack__respond += 1
+        self._if.send_icmp6_neighbor_advertisement(
             ip6__src=packet_rx.icmp6.message.target_address,
             ip6__dst=(
                 Ip6Address("ff02::1") if ip6_nd_dad else packet_rx.ip6.src
@@ -1093,7 +1015,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborAdvertisement)
 
-        self._packet_stats_rx.icmp6__nd_neighbor_advertisement += 1
+        self._if._packet_stats_rx.icmp6__nd_neighbor_advertisement += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Neighbor Advertisement "
@@ -1109,20 +1031,20 @@ class PacketHandlerIcmp6Rx(ABC):
         # (RFC 4861 §4.4), so 'inbound_nonce=None' skips the
         # hairpin check.
         target_address = packet_rx.icmp6.message.target_address
-        dad_signal = self._icmp6_nd_dad__registry.try_signal_conflict(
+        dad_signal = self._if._icmp6_nd_dad__registry.try_signal_conflict(
             target_address,
             peer_info=packet_rx.icmp6.message.tlla,
             inbound_nonce=None,
         )
         if dad_signal is DadSignalResult.SIGNALED:
-            self._packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad += 1
+            self._if._packet_stats_rx.icmp6__nd_neighbor_advertisement__run_dad += 1
             return
 
         # Update ICMPv6 ND cache.
         if packet_rx.icmp6.message.tlla:
-            self._packet_stats_rx.icmp6__nd_neighbor_advertisement__update_nd_cache += 1
-            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
-            self._nd_cache.add_entry(
+            self._if._packet_stats_rx.icmp6__nd_neighbor_advertisement__update_nd_cache += 1
+            assert self._if._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._if._nd_cache.add_entry(
                 ip6_address=packet_rx.icmp6.message.target_address,
                 mac_address=packet_rx.icmp6.message.tlla,
             )
@@ -1154,7 +1076,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRedirect)
 
-        self._packet_stats_rx.icmp6__nd_redirect += 1
+        self._if._packet_stats_rx.icmp6__nd_redirect += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Redirect "
@@ -1165,7 +1087,7 @@ class PacketHandlerIcmp6Rx(ABC):
 
         # 1. 'icmp6.accept_redirects' kill switch.
         if nd__constants.ICMP6__ACCEPT_REDIRECTS == 0:
-            self._packet_stats_rx.icmp6__nd_redirect__accept_redirects_zero__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_redirect__accept_redirects_zero__drop += 1
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <INFO>icmp6.accept_redirects=0 " f"dropped Redirect</>",
@@ -1176,7 +1098,7 @@ class PacketHandlerIcmp6Rx(ABC):
         target = packet_rx.icmp6.message.target_address
         destination = packet_rx.icmp6.message.destination_address
         if not target.is_link_local and target != destination:
-            self._packet_stats_rx.icmp6__nd_redirect__bad_target__drop += 1
+            self._if._packet_stats_rx.icmp6__nd_redirect__bad_target__drop += 1
             __debug__ and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <WARN>Redirect Target {target} is "
@@ -1188,9 +1110,9 @@ class PacketHandlerIcmp6Rx(ABC):
         # 3. §8.3 cache override: learn (Target, TLLA) if option present.
         tlla = packet_rx.icmp6.message.options.tlla
         if tlla is not None:
-            self._packet_stats_rx.icmp6__nd_redirect__update_nd_cache += 1
-            assert self._nd_cache is not None, "Handler updating the ND cache must have one wired."
-            self._nd_cache.add_entry(ip6_address=target, mac_address=tlla)
+            self._if._packet_stats_rx.icmp6__nd_redirect__update_nd_cache += 1
+            assert self._if._nd_cache is not None, "Handler updating the ND cache must have one wired."
+            self._if._nd_cache.add_entry(ip6_address=target, mac_address=tlla)
 
     def __phrx_icmp6__mld2_report(self, packet_rx: PacketRx) -> None:
         """
@@ -1214,7 +1136,7 @@ class PacketHandlerIcmp6Rx(ABC):
         # group memberships from inbound Reports.
         """
 
-        self._packet_stats_rx.icmp6__mld2_report += 1
+        self._if._packet_stats_rx.icmp6__mld2_report += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet " f"from {packet_rx.ip6.src}",
@@ -1250,7 +1172,7 @@ class PacketHandlerIcmp6Rx(ABC):
         listener.
         """
 
-        self._packet_stats_rx.icmp6__mld2_query += 1
+        self._if._packet_stats_rx.icmp6__mld2_query += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Query packet " f"from {packet_rx.ip6.src}",
@@ -1272,7 +1194,7 @@ class PacketHandlerIcmp6Rx(ABC):
             return
 
         response_at = stack.timer.now_ms + delay_ms
-        pending = self._mld2_query__pending_response_at_ms
+        pending = self._if._mld2_query__pending_response_at_ms
         if pending is not None and pending <= response_at:
             # Existing pending Report fires sooner than this new
             # Query would; absorb the Query per §5.1.10
@@ -1281,13 +1203,13 @@ class PacketHandlerIcmp6Rx(ABC):
 
         if pending is not None:
             # Newer Query supersedes: cancel the old timer.
-            if self._mld2_query__handle is not None:
-                stack.timer.cancel(self._mld2_query__handle)
-            self._packet_stats_rx.icmp6__mld2_query__superseded += 1
+            if self._if._mld2_query__handle is not None:
+                stack.timer.cancel(self._if._mld2_query__handle)
+            self._if._packet_stats_rx.icmp6__mld2_query__superseded += 1
 
-        self._mld2_query__pending_response_at_ms = response_at
-        self._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
-        self._packet_stats_rx.icmp6__mld2_query__scheduled += 1
+        self._if._mld2_query__pending_response_at_ms = response_at
+        self._if._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
+        self._if._packet_stats_rx.icmp6__mld2_query__scheduled += 1
 
     def _mld2_query__pick_response_delay_ms(self, mrd_ms: int) -> int:
         """
@@ -1305,8 +1227,8 @@ class PacketHandlerIcmp6Rx(ABC):
         Report and clears the per-handler pending state.
         """
 
-        self._mld2_query__pending_response_at_ms = None
-        self._mld2_query__handle = None
+        self._if._mld2_query__pending_response_at_ms = None
+        self._if._mld2_query__handle = None
         self._mld2_query__send_now()
 
     def _mld2_query__send_now(self) -> None:
@@ -1317,15 +1239,15 @@ class PacketHandlerIcmp6Rx(ABC):
         the deferred-send (timer-fired) path.
         """
 
-        self._send_icmp6_multicast_listener_report()
-        self._packet_stats_rx.icmp6__mld2_query__respond += 1
+        self._if._send_icmp6_multicast_listener_report()
+        self._if._packet_stats_rx.icmp6__mld2_query__respond += 1
 
     def __phrx_icmp6__unknown(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound unknown ICMPv6 packets.
         """
 
-        self._packet_stats_rx.icmp6__unknown += 1
+        self._if._packet_stats_rx.icmp6__unknown += 1
         __debug__ and log(
             "icmp6",
             f"{packet_rx.tracker} - Received unknown ICMPv6 packet " f"from {packet_rx.ip6.src}",

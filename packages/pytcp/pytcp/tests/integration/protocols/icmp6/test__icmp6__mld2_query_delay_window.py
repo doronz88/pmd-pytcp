@@ -156,7 +156,7 @@ class TestIcmp6Mld2QueryDelayWindow(IcmpTestCase):
     def _patch_delay_picker(self, *, returns_ms: int) -> None:
         """Force the delay picker to return a deterministic value."""
 
-        self._packet_handler._mld2_query__pick_response_delay_ms = (  # type: ignore[method-assign]
+        self._packet_handler._icmp6_rx._mld2_query__pick_response_delay_ms = (  # type: ignore[method-assign]
             lambda mrd_ms: returns_ms
         )
 

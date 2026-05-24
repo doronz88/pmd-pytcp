@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIcmp6Tx' mixin.
+This module contains unit tests for the 'Icmp6TxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp6__tx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip6Address, Ip6IfAddr, MacAddress
@@ -45,9 +46,11 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__icmp6__tx import (
-    PacketHandlerIcmp6Tx,
-)
+from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
+from pytcp.runtime.packet_handler.packet_handler__icmp6__tx import Icmp6TxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -76,9 +79,18 @@ STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 
 
-class _StubHandler(PacketHandlerIcmp6Tx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIcmp6Tx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters, the IPv6 addressing state, the
+    Optimistic-DAD state map, and the IPv6 TX seam ('_phtx_ip6') the
+    ICMPv6 TX sub-handler reaches through 'self._if', recording each
+    call. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -91,7 +103,7 @@ class _StubHandler(PacketHandlerIcmp6Tx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip6_ifaddr = [STACK__IP6_HOST]
         self._ip6_multicast = ip6_multicast if ip6_multicast is not None else []
-        self._icmp6_dad__states = {}
+        self._icmp6_dad__states: dict[Ip6Address, Icmp6DadState] = {}
 
         self.ip6_tx_calls: list[dict[str, object]] = []
         self.ip6_tx_status: TxStatus = TxStatus.PASSED__ETHERNET__TO_TX_RING
@@ -105,13 +117,23 @@ class _StubHandler(PacketHandlerIcmp6Tx):
         return self.ip6_tx_status
 
 
+def _make_icmp6_tx(*, ip6_multicast: list[Ip6Address] | None = None) -> tuple[Icmp6TxHandler, _StubInterface]:
+    """
+    Build an 'Icmp6TxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(ip6_multicast=ip6_multicast)
+    return Icmp6TxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)), interface
+
+
 class TestPacketHandlerIcmp6Tx(TestCase):
     """
-    The 'PacketHandlerIcmp6Tx._phtx_icmp6' behaviour tests.
+    The 'Icmp6TxHandler._phtx_icmp6' behaviour tests.
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_icmp6_tx()
 
     def test__stack__packet_handler__icmp6__tx__echo_reply_counted(self) -> None:
         """
@@ -128,9 +150,9 @@ class TestPacketHandlerIcmp6Tx(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(self._handler._packet_stats_tx.icmp6__echo_reply__send, 1)
-        self.assertEqual(len(self._handler.ip6_tx_calls), 1)
-        self.assertIsInstance(self._handler.ip6_tx_calls[0]["ip6__payload"], Icmp6Assembler)
+        self.assertEqual(self._if._packet_stats_tx.icmp6__echo_reply__send, 1)
+        self.assertEqual(len(self._if.ip6_tx_calls), 1)
+        self.assertIsInstance(self._if.ip6_tx_calls[0]["ip6__payload"], Icmp6Assembler)
 
     def test__stack__packet_handler__icmp6__tx__echo_request_counted(self) -> None:
         """
@@ -145,7 +167,7 @@ class TestPacketHandlerIcmp6Tx(TestCase):
             icmp6__message=Icmp6MessageEchoRequest(id=1, seq=1, data=b"hello"),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.icmp6__echo_request__send, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp6__echo_request__send, 1)
 
 
 class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
@@ -154,15 +176,15 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_icmp6_tx()
 
     def _last_call(self) -> dict[str, object]:
         self.assertEqual(
-            len(self._handler.ip6_tx_calls),
+            len(self._if.ip6_tx_calls),
             1,
             msg="Exactly one _phtx_ip6 call is expected from each helper.",
         )
-        return self._handler.ip6_tx_calls[0]
+        return self._if.ip6_tx_calls[0]
 
     def test__stack__packet_handler__icmp6__tx__dad_message_uses_unspecified_src_hop_255(self) -> None:
         """
@@ -181,7 +203,7 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         self.assertEqual(call["ip6__hop"], 255)
         self.assertIsInstance(call["ip6__payload"], Icmp6Assembler)
         self.assertEqual(
-            self._handler._packet_stats_tx.icmp6__nd__neighbor_solicitation__send,
+            self._if._packet_stats_tx.icmp6__nd__neighbor_solicitation__send,
             1,
             msg="DAD message must be counted as an NS send.",
         )
@@ -195,11 +217,11 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         """
 
         group = Ip6Address("ff02::1:3")
-        handler = _StubHandler(ip6_multicast=[Ip6Address("ff02::1"), group])
+        handler, iface = _make_icmp6_tx(ip6_multicast=[Ip6Address("ff02::1"), group])
         handler._send_icmp6_multicast_listener_report()
 
-        self.assertEqual(len(handler.ip6_tx_calls), 1)
-        call = handler.ip6_tx_calls[0]
+        self.assertEqual(len(iface.ip6_tx_calls), 1)
+        call = iface.ip6_tx_calls[0]
         self.assertEqual(call["ip6__dst"], Ip6Address("ff02::16"))
         self.assertEqual(call["ip6__hop"], 1)
         # The MLDv2 Report is wrapped in an HBH+RouterAlert per RFC
@@ -208,7 +230,7 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
 
         self.assertIsInstance(call["ip6__payload"], Ip6HbhAssembler)
         self.assertEqual(
-            handler._packet_stats_tx.icmp6__mld2__report__send,
+            iface._packet_stats_tx.icmp6__mld2__report__send,
             1,
             msg="MLDv2 report must be counted.",
         )
@@ -221,11 +243,11 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         Reference: RFC 3810 §5.2 (MLDv2 Multicast Listener Report).
         """
 
-        handler = _StubHandler(ip6_multicast=[Ip6Address("ff02::1")])
+        handler, iface = _make_icmp6_tx(ip6_multicast=[Ip6Address("ff02::1")])
         handler._send_icmp6_multicast_listener_report()
 
         self.assertEqual(
-            handler.ip6_tx_calls,
+            iface.ip6_tx_calls,
             [],
             msg="MLDv2 report must not be sent when only the all-nodes group is joined.",
         )
@@ -302,7 +324,7 @@ class TestPacketHandlerIcmp6TxConvenienceHelpers(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(self._handler._packet_stats_tx.icmp6__echo_request__send, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp6__echo_request__send, 1)
 
 
 class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
@@ -318,7 +340,7 @@ class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
         Build a stub handler.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_icmp6_tx()
 
     def _last_payload(self) -> object:
         """
@@ -328,8 +350,8 @@ class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
 
         from net_proto import Icmp6Assembler
 
-        self.assertEqual(len(self._handler.ip6_tx_calls), 1)
-        payload = self._handler.ip6_tx_calls[0]["ip6__payload"]
+        self.assertEqual(len(self._if.ip6_tx_calls), 1)
+        payload = self._if.ip6_tx_calls[0]["ip6__payload"]
         assert isinstance(payload, Icmp6Assembler)
         return payload._message
 
@@ -353,7 +375,7 @@ class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
             flag_o=False,
         )
 
-        call = self._handler.ip6_tx_calls[0]
+        call = self._if.ip6_tx_calls[0]
         self.assertEqual(call["ip6__hop"], 255)
         msg = self._last_payload()
         assert isinstance(msg, Icmp6NdMessageNeighborAdvertisement)
@@ -387,7 +409,7 @@ class TestPacketHandlerIcmp6TxNeighborAdvertisement(TestCase):
         assert isinstance(msg, Icmp6NdMessageNeighborAdvertisement)
         self.assertEqual(msg.flag_s, False)
         self.assertEqual(msg.flag_o, True)
-        self.assertEqual(self._handler.ip6_tx_calls[0]["ip6__dst"], Ip6Address("ff02::1"))
+        self.assertEqual(self._if.ip6_tx_calls[0]["ip6__dst"], Ip6Address("ff02::1"))
 
 
 class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
@@ -402,7 +424,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
         teardown so per-test overrides do not leak.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_icmp6_tx()
         self.addCleanup(self._reset_sysctls)
 
     def _reset_sysctls(self) -> None:
@@ -432,11 +454,11 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
         )
 
         self.assertEqual(
-            len(self._handler.ip6_tx_calls),
+            len(self._if.ip6_tx_calls),
             1,
             msg="Default icmp6.gratuitous_na_count must produce exactly one NA.",
         )
-        call = self._handler.ip6_tx_calls[0]
+        call = self._if.ip6_tx_calls[0]
         self.assertEqual(
             call["ip6__src"],
             STACK__IP6_ADDRESS,
@@ -483,7 +505,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
             )
 
         self.assertEqual(
-            len(self._handler.ip6_tx_calls),
+            len(self._if.ip6_tx_calls),
             3,
             msg="Three NAs must be emitted when icmp6.gratuitous_na_count = 3.",
         )
@@ -507,7 +529,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
             )
 
         self.assertEqual(
-            self._handler.ip6_tx_calls,
+            self._if.ip6_tx_calls,
             [],
             msg="Zero-count must suppress gratuitous NA emission entirely.",
         )
@@ -526,7 +548,7 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_icmp6_tx()
         handler._phtx_icmp6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=Ip6Address("ff02::16"),
@@ -535,7 +557,7 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
         )
 
         self.assertEqual(
-            handler._packet_stats_tx.icmp6__mld2__report__send,
+            iface._packet_stats_tx.icmp6__mld2__report__send,
             1,
             msg="MLDv2 report must be counted in icmp6__mld2__report__send.",
         )
@@ -552,7 +574,7 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_icmp6_tx()
         status = handler._phtx_icmp6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=HOST_A__IP6,
@@ -569,7 +591,7 @@ class TestPacketHandlerIcmp6TxUnsupported(TestCase):
             msg="Unsupported ICMPv6 type must return DROPPED__ICMP6__UNKNOWN.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.icmp6__unknown__drop,
+            iface._packet_stats_tx.icmp6__unknown__drop,
             1,
             msg="Unsupported ICMPv6 type must bump 'icmp6__unknown__drop'.",
         )

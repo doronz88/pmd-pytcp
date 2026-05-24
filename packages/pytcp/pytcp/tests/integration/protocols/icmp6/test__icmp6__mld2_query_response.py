@@ -132,7 +132,9 @@ class TestIcmp6Mld2QueryResponse(IcmpTestCase):
         # suite; here, force delay=0 so the Report is emitted
         # synchronously and these wire-format assertions stay
         # straightforward.
-        self._packet_handler._mld2_query__pick_response_delay_ms = lambda mrd_ms: 0  # type: ignore[method-assign]
+        self._packet_handler._icmp6_rx._mld2_query__pick_response_delay_ms = (  # type: ignore[method-assign]
+            lambda mrd_ms: 0
+        )
 
     def test__icmp6__mld2_query__triggers_report_on_wire(self) -> None:
         """

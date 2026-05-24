@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIcmp6Rx' mixin.
+This module contains unit tests for the 'Icmp6RxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp6__rx.py
 
@@ -32,6 +32,7 @@ ver 3.0.6
 
 import threading
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -53,9 +54,10 @@ from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
-from pytcp.runtime.packet_handler.packet_handler__icmp6__rx import (
-    PacketHandlerIcmp6Rx,
-)
+from pytcp.runtime.packet_handler.packet_handler__icmp6__rx import Icmp6RxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -83,9 +85,18 @@ STACK__MAC_UNICAST = MacAddress("02:00:00:00:00:07")
 HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 
 
-class _StubHandler(PacketHandlerIcmp6Rx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIcmp6Rx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters, the DAD/RA link-layer state, and the
+    cross-protocol TX / state-mutator entry points the ICMPv6 RX
+    sub-handler reaches through 'self._if', recording each TX call. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -98,7 +109,8 @@ class _StubHandler(PacketHandlerIcmp6Rx):
         self._mac_unicast = STACK__MAC_UNICAST
         self._icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address] = DadSlotRegistry()
         self._icmp6_ra__event = threading.Semaphore(0)
-        self._icmp6_ra__prefixes = []
+        self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
+        self._nd_cache: NdCache | None = None
 
         self.icmp6_tx_calls: list[dict[str, object]] = []
 
@@ -185,14 +197,15 @@ class _Icmp6RxTestBase(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
+        self._icmp6_rx = Icmp6RxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", self._if))
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
         # The ND cache is now injected per-interface; assign the mock
         # to the handler's own '_nd_cache' rather than patching the
         # global 'stack.nd_cache' (which the RX path no longer reads).
         self._nd_cache = create_autospec(NdCache, spec_set=True)
-        self._handler._nd_cache = self._nd_cache
+        self._if._nd_cache = self._nd_cache
 
     def tearDown(self) -> None:
         self._sockets_patch.stop()
@@ -222,15 +235,15 @@ class TestPacketHandlerIcmp6RxParse(_Icmp6RxTestBase):
         ip6[42] = 0xDE
         ip6[43] = 0xAD
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(bytes(ip6)))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(bytes(ip6)))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__pre_parse,
+            self._if._packet_stats_rx.icmp6__pre_parse,
             1,
             msg="icmp6__pre_parse must be incremented before the parse attempt.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__failed_parse__drop,
+            self._if._packet_stats_rx.icmp6__failed_parse__drop,
             1,
             msg="Malformed ICMPv6 must be counted in icmp6__failed_parse__drop.",
         )
@@ -255,19 +268,19 @@ class TestPacketHandlerIcmp6RxEcho(_Icmp6RxTestBase):
             message=Icmp6MessageEchoRequest(id=42, seq=7, data=b"hello"),
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__echo_request__respond_echo_reply,
+            self._if._packet_stats_rx.icmp6__echo_request__respond_echo_reply,
             1,
             msg="Echo Request must be counted in icmp6__echo_request__respond_echo_reply.",
         )
         self.assertEqual(
-            len(self._handler.icmp6_tx_calls),
+            len(self._if.icmp6_tx_calls),
             1,
             msg="Echo Request must invoke exactly one _phtx_icmp6.",
         )
-        call = self._handler.icmp6_tx_calls[0]
+        call = self._if.icmp6_tx_calls[0]
         self.assertEqual(call["ip6__src"], STACK__IP6_ADDRESS)
         self.assertEqual(call["ip6__dst"], HOST_A__IP6)
         self.assertIsInstance(call["icmp6__message"], Icmp6MessageEchoReply)
@@ -307,20 +320,20 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
         packet_rx = _packet_rx_from_ip6_icmp6(ip6)
         packet_rx.was_fragmented = True
 
-        self._handler._phrx_icmp6(packet_rx)
+        self._icmp6_rx._phrx_icmp6(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_message__fragmented__drop,
+            self._if._packet_stats_rx.icmp6__nd_message__fragmented__drop,
             1,
             msg=("A fragmented ND message must increment " "'icmp6__nd_message__fragmented__drop'."),
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_neighbor_solicitation,
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation,
             0,
             msg="A fragmented NS must not progress to the per-type counter.",
         )
         self.assertEqual(
-            self._handler.icmp6_tx_calls,
+            self._if.icmp6_tx_calls,
             [],
             msg="A fragmented ND message must not trigger any TX dispatch.",
         )
@@ -345,15 +358,15 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
         packet_rx = _packet_rx_from_ip6_icmp6(ip6)
         packet_rx.was_fragmented = True
 
-        self._handler._phrx_icmp6(packet_rx)
+        self._icmp6_rx._phrx_icmp6(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_message__fragmented__drop,
+            self._if._packet_stats_rx.icmp6__nd_message__fragmented__drop,
             0,
             msg="Echo Request must not bump the ND-fragmented-drop counter.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__echo_request__respond_echo_reply,
+            self._if._packet_stats_rx.icmp6__echo_request__respond_echo_reply,
             1,
             msg="A fragmented Echo Request must still produce an Echo Reply.",
         )
@@ -394,15 +407,15 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ra_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertEqual(
-            self._handler._icmp6_ra__prefixes,
+            self._if._icmp6_ra__prefixes,
             [],
             msg=("A non-autonomous Prefix Information option must not be added to " "'_icmp6_ra__prefixes'."),
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
             1,
             msg=(
                 "A filtered Prefix Information option must increment "
@@ -445,15 +458,15 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ra_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertEqual(
-            self._handler._icmp6_ra__prefixes,
+            self._if._icmp6_ra__prefixes,
             [],
             msg="A link-local Prefix Information option must not be added to '_icmp6_ra__prefixes'.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
             1,
             msg="A link-local PI option must bump the prefix_info drop counter.",
         )
@@ -493,15 +506,15 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ra_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertEqual(
-            self._handler._icmp6_ra__prefixes,
+            self._if._icmp6_ra__prefixes,
             [],
             msg=("A PI option with preferred_lifetime > valid_lifetime must not " "be added to '_icmp6_ra__prefixes'."),
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
             1,
             msg=("A PI option with preferred_lifetime > valid_lifetime must bump " "the prefix_info drop counter."),
         )
@@ -541,15 +554,15 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ra_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertEqual(
-            len(self._handler._icmp6_ra__prefixes),
+            len(self._if._icmp6_ra__prefixes),
             1,
             msg="A well-formed PI option must be admitted to '_icmp6_ra__prefixes'.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop,
             0,
             msg="A well-formed PI option must not bump the drop counter.",
         )
@@ -578,10 +591,10 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ra_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertGreaterEqual(
-            self._handler._packet_stats_rx.icmp6__nd_router_advertisement,
+            self._if._packet_stats_rx.icmp6__nd_router_advertisement,
             1,
             msg="Router Advertisement must be counted in icmp6__nd_router_advertisement.",
         )
@@ -605,10 +618,10 @@ class TestPacketHandlerIcmp6RxNd(_Icmp6RxTestBase):
             message=ns_message,
         )
 
-        self._handler._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
+        self._icmp6_rx._phrx_icmp6(_packet_rx_from_ip6_icmp6(ip6))
 
         self.assertGreaterEqual(
-            self._handler._packet_stats_rx.icmp6__nd_neighbor_solicitation,
+            self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation,
             1,
             msg="Neighbor Solicitation must be counted in icmp6__nd_neighbor_solicitation.",
         )

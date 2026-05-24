@@ -31,11 +31,9 @@ ver 3.0.6
 """
 
 import struct
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from net_addr import Ip6Address, Ip6IfAddr, MacAddress
+from net_addr import Ip6Address
 from net_proto import (
     Icmp6Assembler,
     Icmp6DestinationUnreachableCode,
@@ -69,41 +67,23 @@ from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.icmp6.nd import nd__constants
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerIcmp6Tx(ABC):
+
+class Icmp6TxHandler:
     """
-    Class defines methods for handling outbound ICMPv6 packets.
+    The outbound ICMPv6 packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_proto import IP6__DEFAULT_HOP_LIMIT, Ip6Payload, RawAssembler
-        from pytcp.lib.packet_stats import PacketStatsTx
-        from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_tx: PacketStatsTx
-        _mac_unicast: MacAddress
-        _ip6_multicast: list[Ip6Address]
-        _ip6_ifaddr: list[Ip6IfAddr]
-        _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ip6(
-            self,
-            *,
-            ip6__dst: Ip6Address,
-            ip6__src: Ip6Address,
-            ip6__hop: int | None = None,
-            ip6__ecn: int = 0,
-            ip6__payload: Ip6Payload = RawAssembler(),
-        ) -> TxStatus: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def ip6_unicast(self) -> list[Ip6Address]: ...
+        self._if = interface
 
     def _phtx_icmp6(
         self,
@@ -118,7 +98,7 @@ class PacketHandlerIcmp6Tx(ABC):
         Handle outbound ICMPv6 packets.
         """
 
-        self._packet_stats_tx.icmp6__pre_assemble += 1
+        self._if._packet_stats_tx.icmp6__pre_assemble += 1
 
         icmp6_packet_tx = Icmp6Assembler(
             icmp6__message=icmp6__message,
@@ -129,32 +109,32 @@ class PacketHandlerIcmp6Tx(ABC):
 
         match icmp6__message.type, icmp6__message.code:
             case Icmp6Type.ECHO_REPLY, _:
-                self._packet_stats_tx.icmp6__echo_reply__send += 1
+                self._if._packet_stats_tx.icmp6__echo_reply__send += 1
             case Icmp6Type.ECHO_REQUEST, _:
-                self._packet_stats_tx.icmp6__echo_request__send += 1
+                self._if._packet_stats_tx.icmp6__echo_request__send += 1
             case (
                 Icmp6Type.DESTINATION_UNREACHABLE,
                 Icmp6DestinationUnreachableCode.PORT,
             ):
-                self._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
+                self._if._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
             case Icmp6Type.PARAMETER_PROBLEM, _:
-                self._packet_stats_tx.icmp6__parameter_problem__send += 1
+                self._if._packet_stats_tx.icmp6__parameter_problem__send += 1
             case Icmp6Type.ND__ROUTER_SOLICITATION, _:
-                self._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
+                self._if._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
             case Icmp6Type.ND__ROUTER_ADVERTISEMENT, _:
-                self._packet_stats_tx.icmp6__nd__router_advertisement__send += 1
+                self._if._packet_stats_tx.icmp6__nd__router_advertisement__send += 1
             case Icmp6Type.ND__NEIGHBOR_SOLICITATION, _:
-                self._packet_stats_tx.icmp6__nd__neighbor_solicitation__send += 1
+                self._if._packet_stats_tx.icmp6__nd__neighbor_solicitation__send += 1
             case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT, _:
-                self._packet_stats_tx.icmp6__nd__neighbor_advertisement__send += 1
+                self._if._packet_stats_tx.icmp6__nd__neighbor_advertisement__send += 1
             case Icmp6Type.MLD2__REPORT, _:
-                self._packet_stats_tx.icmp6__mld2__report__send += 1
+                self._if._packet_stats_tx.icmp6__mld2__report__send += 1
             case _:
                 # Defensive drop: unsupported ICMPv6 type/code shouldn't
                 # reach the TX path (the call sites enumerate their
                 # message types), but if one does, count + drop is
                 # robust where 'raise' would crash the calling thread.
-                self._packet_stats_tx.icmp6__unknown__drop += 1
+                self._if._packet_stats_tx.icmp6__unknown__drop += 1
                 __debug__ and log(
                     "icmp6",
                     f"{icmp6_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv6 "
@@ -162,7 +142,7 @@ class PacketHandlerIcmp6Tx(ABC):
                 )
                 return TxStatus.DROPPED__ICMP6__UNKNOWN
 
-        return self._phtx_ip6(
+        return self._if._phtx_ip6(
             ip6__src=ip6__src,
             ip6__dst=ip6__dst,
             ip6__hop=ip6__hop,
@@ -187,7 +167,7 @@ class PacketHandlerIcmp6Tx(ABC):
         if nonce is not None:
             options.append(Icmp6NdOptionNonce(nonce=nonce))
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_icmp6(
                 ip6__src=Ip6Address(),
                 ip6__dst=ip6_unicast_candidate.solicited_node_multicast,
@@ -232,14 +212,14 @@ class PacketHandlerIcmp6Tx(ABC):
                 type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
                 multicast_address=multicast_address,
             )
-            for multicast_address in self._ip6_multicast
+            for multicast_address in self._if._ip6_multicast
             if multicast_address not in {Ip6Address("ff02::1")}
         }
 
         if not icmp6_mlr2_multicast_address_record:
             return
 
-        ip6__src = self.ip6_unicast[0] if self.ip6_unicast else Ip6Address()
+        ip6__src = self._if.ip6_unicast[0] if self._if.ip6_unicast else Ip6Address()
         ip6__dst = Ip6Address("ff02::16")
 
         # Build the ICMPv6 MLDv2 Report packet.
@@ -289,11 +269,11 @@ class PacketHandlerIcmp6Tx(ABC):
             echo_tracker=icmp6_packet_tx.tracker,
         )
 
-        self._packet_stats_tx.icmp6__pre_assemble += 1
-        self._packet_stats_tx.icmp6__mld2__report__send += 1
+        self._if._packet_stats_tx.icmp6__pre_assemble += 1
+        self._if._packet_stats_tx.icmp6__mld2__report__send += 1
 
-        tx_status = self._marshal_tx(
-            lambda: self._phtx_ip6(
+        tx_status = self._if._marshal_tx(
+            lambda: self._if._phtx_ip6(
                 ip6__src=ip6__src,
                 ip6__dst=ip6__dst,
                 ip6__hop=1,
@@ -323,14 +303,14 @@ class PacketHandlerIcmp6Tx(ABC):
         Send out ICMPv6 ND Router Solicitation.
         """
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_icmp6(
-                ip6__src=self.ip6_unicast[0],
+                ip6__src=self._if.ip6_unicast[0],
                 ip6__dst=Ip6Address("ff02::2"),
                 ip6__hop=255,
                 icmp6__message=Icmp6NdMessageRouterSolicitation(
                     options=Icmp6NdOptions(
-                        Icmp6NdOptionSlla(slla=self._mac_unicast),
+                        Icmp6NdOptionSlla(slla=self._if._mac_unicast),
                     ),
                 ),
             )
@@ -357,19 +337,19 @@ class PacketHandlerIcmp6Tx(ABC):
 
         # Pick appropriate source address
         ip6__src = Ip6Address()
-        for ip6_host in self._ip6_ifaddr:
+        for ip6_host in self._if._ip6_ifaddr:
             if icmp6_ns_target_address in ip6_host.network:
                 ip6__src = ip6_host.address
 
         # Send out ND Neighbor Solicitation message
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_icmp6(
                 ip6__src=ip6__src,
                 ip6__dst=icmp6_ns_target_address.solicited_node_multicast,
                 ip6__hop=255,
                 icmp6__message=Icmp6NdMessageNeighborSolicitation(
                     target_address=icmp6_ns_target_address,
-                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
+                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._if._mac_unicast)),
                 ),
             )
         )
@@ -407,18 +387,18 @@ class PacketHandlerIcmp6Tx(ABC):
         # multicast variant since the target is on a known
         # local subnet (we already have a cache entry for it).
         ip6__src = Ip6Address()
-        for ip6_host in self._ip6_ifaddr:
+        for ip6_host in self._if._ip6_ifaddr:
             if icmp6_ns_target_address in ip6_host.network:
                 ip6__src = ip6_host.address
 
-        tx_status = self._marshal_tx(
+        tx_status = self._if._marshal_tx(
             lambda: self._phtx_icmp6(
                 ip6__src=ip6__src,
                 ip6__dst=icmp6_ns_target_address,
                 ip6__hop=255,
                 icmp6__message=Icmp6NdMessageNeighborSolicitation(
                     target_address=icmp6_ns_target_address,
-                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._mac_unicast)),
+                    options=Icmp6NdOptions(Icmp6NdOptionSlla(slla=self._if._mac_unicast)),
                 ),
             )
         )
@@ -472,12 +452,12 @@ class PacketHandlerIcmp6Tx(ABC):
 
         from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
 
-        if self._icmp6_dad__states.get(ip6__src) is Icmp6DadState.OPTIMISTIC:
+        if self._if._icmp6_dad__states.get(ip6__src) is Icmp6DadState.OPTIMISTIC:
             flag_o = False
 
-        options = Icmp6NdOptions(Icmp6NdOptionTlla(tlla=self._mac_unicast)) if include_tlla else Icmp6NdOptions()
+        options = Icmp6NdOptions(Icmp6NdOptionTlla(tlla=self._if._mac_unicast)) if include_tlla else Icmp6NdOptions()
 
-        self._marshal_tx(
+        self._if._marshal_tx(
             lambda: self._phtx_icmp6(
                 ip6__src=ip6__src,
                 ip6__dst=ip6__dst,
@@ -540,7 +520,7 @@ class PacketHandlerIcmp6Tx(ABC):
         Marshaled onto the interface's TX worker via '_marshal_tx'.
         """
 
-        return self._marshal_tx(
+        return self._if._marshal_tx(
             lambda: self._phtx_icmp6(
                 ip6__src=ip6__local_address,
                 ip6__dst=ip6__remote_address,

@@ -55,6 +55,7 @@ from net_proto import (
     Ethernet8023Payload,
     EtherType,
     Icmp4Message,
+    Icmp6Message,
     Icmp6NdRoutePreference,
     PacketRx,
     RawAssembler,
@@ -94,8 +95,8 @@ from .packet_handler__ethernet__rx import PacketHandlerEthernetRx
 from .packet_handler__ethernet__tx import PacketHandlerEthernetTx
 from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
-from .packet_handler__icmp6__rx import PacketHandlerIcmp6Rx
-from .packet_handler__icmp6__tx import PacketHandlerIcmp6Tx
+from .packet_handler__icmp6__rx import Icmp6RxHandler
+from .packet_handler__icmp6__tx import Icmp6TxHandler
 from .packet_handler__ip4__rx import PacketHandlerIp4Rx
 from .packet_handler__ip4__tx import PacketHandlerIp4Tx
 from .packet_handler__ip6__rx import PacketHandlerIp6Rx
@@ -134,6 +135,8 @@ class PacketHandler(Subsystem, ABC):
     _tcp_tx: TcpTxHandler
     _icmp4_rx: Icmp4RxHandler
     _icmp4_tx: Icmp4TxHandler
+    _icmp6_rx: Icmp6RxHandler
+    _icmp6_tx: Icmp6TxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -203,6 +206,18 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_ra_parameters: Icmp6RaParameters
     _icmp6_dad__states: dict[Ip6Address, Icmp6DadState]
     _ip6_addressing_complete: bool
+    # ICMPv6 ND / RA / MLD link-layer state. Annotated on the base
+    # so the shared 'Icmp6RxHandler' (typed over PacketHandlerL2 |
+    # PacketHandlerL3) can read it; initialised only in
+    # 'PacketHandlerL2.__init__' since the link-layer paths that use
+    # it are L2-only (TUN has no DAD / RA-solicit / MLD) — same
+    # annotate-on-base, init-on-L2 split the '_icmp6_*' state above
+    # already uses.
+    _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
+    _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
+    _icmp6_ra__event: Semaphore
+    _mld2_query__pending_response_at_ms: int | None
+    _mld2_query__handle: TimerHandle | None
 
     @override
     def __init__(
@@ -330,6 +345,8 @@ class PacketHandler(Subsystem, ABC):
         self._tcp_tx = TcpTxHandler(interface=_if)
         self._icmp4_rx = Icmp4RxHandler(interface=_if)
         self._icmp4_tx = Icmp4TxHandler(interface=_if)
+        self._icmp6_rx = Icmp6RxHandler(interface=_if)
+        self._icmp6_tx = Icmp6TxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1609,13 +1626,140 @@ class PacketHandler(Subsystem, ABC):
             icmp4__message=icmp4__message,
         )
 
+    ###
+    # ICMPv6 delegators — logic lives in the composed 'Icmp6RxHandler'
+    # / 'Icmp6TxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_icmp6(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound ICMPv6 packet (delegates to the ICMPv6 RX sub-handler).
+        """
+
+        self._icmp6_rx._phrx_icmp6(packet_rx)
+
+    def _phtx_icmp6(
+        self,
+        *,
+        ip6__src: Ip6Address,
+        ip6__dst: Ip6Address,
+        ip6__hop: int | None = None,
+        icmp6__message: Icmp6Message,
+        echo_tracker: Tracker | None = None,
+    ) -> TxStatus:
+        """
+        Handle an outbound ICMPv6 packet (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        return self._icmp6_tx._phtx_icmp6(
+            ip6__src=ip6__src,
+            ip6__dst=ip6__dst,
+            ip6__hop=ip6__hop,
+            icmp6__message=icmp6__message,
+            echo_tracker=echo_tracker,
+        )
+
+    def _send_icmp6_nd_dad_message(
+        self,
+        *,
+        ip6_unicast_candidate: Ip6Address,
+        nonce: bytes | None = None,
+    ) -> None:
+        """
+        Send an ICMPv6 ND DAD message (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx._send_icmp6_nd_dad_message(
+            ip6_unicast_candidate=ip6_unicast_candidate,
+            nonce=nonce,
+        )
+
+    def _send_icmp6_multicast_listener_report(self) -> None:
+        """
+        Send an ICMPv6 MLDv2 Report (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx._send_icmp6_multicast_listener_report()
+
+    def _send_icmp6_nd_router_solicitation(self) -> None:
+        """
+        Send an ICMPv6 ND Router Solicitation (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx._send_icmp6_nd_router_solicitation()
+
+    def send_icmp6_neighbor_solicitation(self, *, icmp6_ns_target_address: Ip6Address) -> None:
+        """
+        Send a multicast ICMPv6 ND NS (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx.send_icmp6_neighbor_solicitation(icmp6_ns_target_address=icmp6_ns_target_address)
+
+    def send_icmp6_neighbor_solicitation_unicast(self, *, icmp6_ns_target_address: Ip6Address) -> None:
+        """
+        Send a unicast ICMPv6 ND NS (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx.send_icmp6_neighbor_solicitation_unicast(icmp6_ns_target_address=icmp6_ns_target_address)
+
+    def send_icmp6_neighbor_advertisement(
+        self,
+        *,
+        ip6__src: Ip6Address,
+        ip6__dst: Ip6Address,
+        target_address: Ip6Address,
+        flag_r: bool = False,
+        flag_s: bool = False,
+        flag_o: bool = False,
+        include_tlla: bool = True,
+        echo_tracker: Tracker | None = None,
+    ) -> None:
+        """
+        Send an ICMPv6 ND Neighbor Advertisement (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx.send_icmp6_neighbor_advertisement(
+            ip6__src=ip6__src,
+            ip6__dst=ip6__dst,
+            target_address=target_address,
+            flag_r=flag_r,
+            flag_s=flag_s,
+            flag_o=flag_o,
+            include_tlla=include_tlla,
+            echo_tracker=echo_tracker,
+        )
+
+    def send_icmp6_neighbor_advertisement_gratuitous(self, *, ip6_unicast: Ip6Address) -> None:
+        """
+        Send gratuitous ICMPv6 ND NAs (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        self._icmp6_tx.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast)
+
+    def send_icmp6_packet(
+        self,
+        *,
+        ip6__local_address: Ip6Address,
+        ip6__remote_address: Ip6Address,
+        ip6__hop: int | None = None,
+        icmp6__message: Icmp6Message,
+    ) -> TxStatus:
+        """
+        Enqueue an outbound ICMPv6 packet (delegates to the ICMPv6 TX sub-handler).
+        """
+
+        return self._icmp6_tx.send_icmp6_packet(
+            ip6__local_address=ip6__local_address,
+            ip6__remote_address=ip6__remote_address,
+            ip6__hop=ip6__hop,
+            icmp6__message=icmp6__message,
+        )
+
 
 class PacketHandlerL2(
     PacketHandler,
     PacketHandlerEthernetRx,
     PacketHandlerEthernetTx,
-    PacketHandlerIcmp6Rx,
-    PacketHandlerIcmp6Tx,
     PacketHandlerIp4Rx,
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
@@ -1647,11 +1791,6 @@ class PacketHandlerL2(
     _mac_unicast: MacAddress
     _mac_multicast: list[MacAddress]
     _mac_broadcast: MacAddress
-    _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
-    _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
-    _icmp6_ra__event: Semaphore
-    _mld2_query__pending_response_at_ms: int | None
-    _mld2_query__handle: TimerHandle | None
 
     @override
     def __init__(
@@ -2438,8 +2577,6 @@ class PacketHandlerL2(
 
 class PacketHandlerL3(
     PacketHandler,
-    PacketHandlerIcmp6Rx,
-    PacketHandlerIcmp6Tx,
     PacketHandlerIp4Rx,
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
