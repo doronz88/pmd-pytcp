@@ -27,9 +27,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv6 Frag TX operations.
+This module contains integration tests for IPv6 fragmentation on the TX path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip6_frag__tx.py
+pytcp/tests/integration/protocols/ip6/test__ip6__fragmentation.py
 
 ver 3.0.6
 """
@@ -42,10 +42,10 @@ from net_proto import Icmp6Assembler, Icmp6MessageEchoRequest, TcpAssembler
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     STACK__IP6_HOST,
-    NetworkTestCase,
 )
 
 
@@ -632,9 +632,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerIp6FragTx(NetworkTestCase):
+class TestIp6Fragmentation(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 Frag TX operations.
+    The IPv6 fragmentation TX-path tests.
     """
 
     _description: str
@@ -645,7 +645,7 @@ class TestPacketHandlerIp6FragTx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip6_frag__tx(self) -> None:
+    def test__ip6__fragmentation(self) -> None:
         """
         Ensure the Packet Handler IPv6 fragmentation TX path
         produces the expected frames, statuses, and statistics for
@@ -673,7 +673,7 @@ class TestPacketHandlerIp6FragTx(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
+class TestIp6FragmentationPshdrSumForwarding(Ip6TestCase):
     """
     Verify that '_phtx_ip6_frag' forwards 'pshdr_sum' onto TCP and
     ICMPv6 payloads (lines 88-89 of source). These are heavyweight
@@ -702,7 +702,7 @@ class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
             ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send=frag_count,
         )
 
-    def test__packet_handler__ip6_frag__tx__tcp_payload_pshdr_sum(self) -> None:
+    def test__ip6__fragmentation__tcp_payload_pshdr_sum(self) -> None:
         """
         Ensure a large TCP payload triggers fragmentation and the
         TCP isinstance branch in '_phtx_ip6_frag' fires.
@@ -736,7 +736,7 @@ class TestPacketHandlerIp6FragTxPshdrSumForwarding(NetworkTestCase):
             msg="TX stats must match the canonical 2-fragment TCP shape.",
         )
 
-    def test__packet_handler__ip6_frag__tx__icmp6_payload_pshdr_sum(self) -> None:
+    def test__ip6__fragmentation__icmp6_payload_pshdr_sum(self) -> None:
         """
         Ensure a large ICMPv6 payload triggers fragmentation and the
         Icmp6 isinstance branch in '_phtx_ip6_frag' fires.

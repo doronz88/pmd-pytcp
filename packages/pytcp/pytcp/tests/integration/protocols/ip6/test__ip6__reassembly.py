@@ -27,9 +27,9 @@
 
 
 """
-This module contains unit tests for the Packet Handler IPv6 Frag RX operations.
+This module contains integration tests for IPv6 fragment reassembly.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip6_frag__rx.py
+pytcp/tests/integration/protocols/ip6/test__ip6__reassembly.py
 
 ver 3.0.6
 """
@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 
 @parameterized_class(
@@ -1677,9 +1677,9 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerIp6FragRx(NetworkTestCase):
+class TestIp6Reassembly(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 Frag RX operations.
+    The IPv6 fragment reassembly RX-path tests.
     """
 
     _description: str
@@ -1690,7 +1690,7 @@ class TestPacketHandlerIp6FragRx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip6_frag__rx(self) -> None:
+    def test__ip6__reassembly(self) -> None:
         """
         Ensure the Packet Handler processes the received IPv6
         fragments and reassembles them as expected for each
