@@ -34,6 +34,7 @@ ver 3.0.6
 import errno
 import fcntl
 import select
+from typing import override
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -43,6 +44,8 @@ from pytcp.socket import (
     AF_INET,
     AF_INET4,
     AF_INET6,
+    AF_PACKET,
+    ETH_P_ALL,
     IPPROTO_ICMP,
     IPPROTO_ICMP4,
     IPPROTO_ICMP6,
@@ -62,6 +65,7 @@ from pytcp.socket import (
     gaierror,
     socket,
 )
+from pytcp.socket.packet__socket import PacketSocket
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.socket_id import SocketId
 from pytcp.socket.tcp__socket import TcpSocket
@@ -201,6 +205,26 @@ class TestAddressFamily(TestCase):
             AddressFamily.from_ver(IpVersion.IP6),
             AddressFamily.INET6,
             msg="AddressFamily.from_ver(IP6) must return AddressFamily.INET6.",
+        )
+
+    def test__socket__address_family_packet_member(self) -> None:
+        """
+        Ensure the 'AddressFamily' enum carries a 'PACKET' member with
+        the canonical Linux 'AF_PACKET' integer value 17, and that the
+        'AF_PACKET' module-level alias resolves to it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            int(AddressFamily.PACKET),
+            17,
+            msg="AddressFamily.PACKET must carry the canonical Linux AF_PACKET value 17.",
+        )
+        self.assertIs(
+            AF_PACKET,
+            AddressFamily.PACKET,
+            msg="AF_PACKET alias must resolve to AddressFamily.PACKET.",
         )
 
 
@@ -390,6 +414,7 @@ class TestSocketFactory(TestCase):
     The 'socket.__new__' factory dispatch tests.
     """
 
+    @override
     def setUp(self) -> None:
         """
         Suppress socket construction log output so the factory-path
@@ -397,21 +422,10 @@ class TestSocketFactory(TestCase):
         real 'log()' writing to the shared stderr stream.
         """
 
-        self._log_patch = patch("pytcp.socket.raw__socket.log")
-        self._tcp_log_patch = patch("pytcp.socket.tcp__socket.log")
-        self._udp_log_patch = patch("pytcp.socket.udp__socket.log")
-        self._log_patch.start()
-        self._tcp_log_patch.start()
-        self._udp_log_patch.start()
-
-    def tearDown(self) -> None:
-        """
-        Remove the log-suppression patches.
-        """
-
-        self._log_patch.stop()
-        self._tcp_log_patch.stop()
-        self._udp_log_patch.stop()
+        self.enterContext(patch("pytcp.socket.raw__socket.log"))
+        self.enterContext(patch("pytcp.socket.tcp__socket.log"))
+        self.enterContext(patch("pytcp.socket.udp__socket.log"))
+        self.enterContext(patch("pytcp.socket.packet__socket.log"))
 
     def test__socket__stream_creates_tcp_socket(self) -> None:
         """
@@ -503,6 +517,70 @@ class TestSocketFactory(TestCase):
             s,
             RawSocket,
             msg="socket(INET6, RAW, ICMP6) must dispatch to RawSocket.",
+        )
+
+    def test__socket__packet_raw_creates_packet_socket(self) -> None:
+        """
+        Ensure passing 'AddressFamily.PACKET' together with
+        'SocketType.RAW' returns a 'PacketSocket' instance, both with an
+        explicit ethertype and with the implicit (None) protocol that
+        defaults to the ETH_P_ALL capture filter.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        explicit = socket(
+            family=AddressFamily.PACKET,
+            type=SocketType.RAW,
+            protocol=ETH_P_ALL,
+        )
+        implicit = socket(family=AddressFamily.PACKET, type=SocketType.RAW)
+
+        self.assertIsInstance(
+            explicit,
+            PacketSocket,
+            msg="socket(PACKET, RAW, ETH_P_ALL) must dispatch to PacketSocket.",
+        )
+        self.assertIsInstance(
+            implicit,
+            PacketSocket,
+            msg="socket(PACKET, RAW) with implicit protocol must dispatch to PacketSocket.",
+        )
+
+    def test__socket__packet_stream_raises_value_error(self) -> None:
+        """
+        Ensure 'socket(AF_PACKET, SOCK_STREAM)' is rejected with
+        'ValueError' — the PACKET family supports SOCK_RAW only in the
+        Phase-0 skeleton (the cooked SOCK_DGRAM variant lands later).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError) as context:
+            socket(family=AddressFamily.PACKET, type=SocketType.STREAM)
+
+        self.assertIn(
+            "Invalid socket",
+            str(context.exception),
+            msg="socket(PACKET, STREAM) must raise ValueError naming the rejected tuple.",
+        )
+
+    def test__socket__packet_dgram_raises_value_error(self) -> None:
+        """
+        Ensure 'socket(AF_PACKET, SOCK_DGRAM)' is rejected with
+        'ValueError' in the Phase-0 skeleton — the cooked link-layer
+        variant is deferred.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError) as context:
+            socket(family=AddressFamily.PACKET, type=SocketType.DGRAM)
+
+        self.assertIn(
+            "Invalid socket",
+            str(context.exception),
+            msg="socket(PACKET, DGRAM) must raise ValueError in the Phase-0 skeleton.",
         )
 
     def test__socket__invalid_combination_raises(self) -> None:

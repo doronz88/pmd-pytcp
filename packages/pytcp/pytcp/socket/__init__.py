@@ -40,7 +40,7 @@ from types import TracebackType
 from typing import Any, override
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
-from net_proto.lib.enums import IpProto
+from net_proto.lib.enums import EtherType, IpProto
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN
 from net_proto.protocols.ip4.options.ip4__options import (
@@ -301,6 +301,7 @@ class AddressFamily(NameEnum):
 
     INET4 = 1
     INET6 = 2
+    PACKET = 17  # Linux AF_PACKET (<bits/socket.h>): raw link-layer access.
 
     @staticmethod
     def from_ver(ver: IpVersion) -> AddressFamily:
@@ -328,10 +329,45 @@ class SocketType(NameEnum):
 AF_INET = AddressFamily.INET4
 AF_INET4 = AddressFamily.INET4
 AF_INET6 = AddressFamily.INET6
+AF_PACKET = AddressFamily.PACKET
 
 SOCK_STREAM = SocketType.STREAM
 SOCK_DGRAM = SocketType.DGRAM
 SOCK_RAW = SocketType.RAW
+
+# AF_PACKET ethertype protocol filter (Linux <linux/if_ether.h>;
+# matches the stdlib 'socket.ETH_P_*' surface on Linux). The real
+# ethertypes alias the 'EtherType' wire-codepoint members so the
+# packet-socket filter shares one namespace with the parser layer;
+# 'ETH_P_ALL' is the capture-all pseudo-ethertype sentinel (0x0003 is
+# not a real wire ethertype, so it stays a plain int rather than an
+# 'EtherType' member — analogous to the 'INADDR_*' sentinels).
+ETH_P_ALL: int = 0x0003
+ETH_P_IP = EtherType.IP4
+ETH_P_ARP = EtherType.ARP
+ETH_P_IPV6 = EtherType.IP6
+
+
+class PacketType(IntEnum):
+    """
+    AF_PACKET 'struct sockaddr_ll.sll_pkttype' classification values
+    (Linux <linux/if_packet.h>; matches the stdlib 'socket.PACKET_*'
+    surface on Linux). Set on RX to describe how the frame was
+    addressed relative to this host's interface.
+    """
+
+    PACKET_HOST = 0  # frame addressed to this host's unicast MAC
+    PACKET_BROADCAST = 1  # frame addressed to the link broadcast MAC
+    PACKET_MULTICAST = 2  # frame addressed to a multicast MAC this host joined
+    PACKET_OTHERHOST = 3  # frame addressed to some other host (promiscuous)
+    PACKET_OUTGOING = 4  # frame originated by this host (loopback of egress)
+
+
+PACKET_HOST = PacketType.PACKET_HOST
+PACKET_BROADCAST = PacketType.PACKET_BROADCAST
+PACKET_MULTICAST = PacketType.PACKET_MULTICAST
+PACKET_OTHERHOST = PacketType.PACKET_OTHERHOST
+PACKET_OUTGOING = PacketType.PACKET_OUTGOING
 
 # DNS / hostname resolution lives outside the TCP/IP stack scope:
 # 'getaddrinfo' / 'gethostbyname' / 'getnameinfo' / 'getfqdn' are
@@ -392,7 +428,7 @@ class socket(ABC):
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-        protocol: IpProto | int | None = None,
+        protocol: IpProto | EtherType | int | None = None,
         **__: Any,
     ) -> None:
         """
@@ -671,7 +707,7 @@ class socket(ABC):
         cls,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-        protocol: IpProto | int | None = None,
+        protocol: IpProto | EtherType | int | None = None,
         **__: Any,
     ) -> socket:
         """
@@ -679,6 +715,7 @@ class socket(ABC):
         """
 
         if cls is socket:
+            from pytcp.socket.packet__socket import PacketSocket
             from pytcp.socket.raw__socket import RawSocket
             from pytcp.socket.tcp__socket import TcpSocket
             from pytcp.socket.udp__socket import UdpSocket
@@ -691,6 +728,10 @@ class socket(ABC):
                 protocol = None
 
             match family, type, protocol:
+                case (AddressFamily.PACKET, SocketType.RAW, _):
+                    return cls.__new__(PacketSocket)
+                case (AddressFamily.PACKET, _, _):
+                    raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
                 case _, SocketType.STREAM, IpProto.TCP | None:
                     return cls.__new__(TcpSocket)
                 case _, SocketType.DGRAM, IpProto.UDP | None:
