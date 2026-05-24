@@ -82,13 +82,23 @@ class TestIp4AcdConflict(TestCase):
 
     def _is_conflict(self, *, oper: ArpOperation, sha: MacAddress, spa: Ip4Address, tpa: Ip4Address) -> bool:
         """
-        Parse a built ARP frame and run it through the conflict
-        predicate against the candidate address.
+        Parse a built ARP frame and run it through the probe-time
+        conflict predicate against the candidate address.
         """
 
         arp = self._acd._parse_arp(_arp_frame(oper=oper, sha=sha, spa=spa, tpa=tpa))
         assert arp is not None
         return self._acd._is_conflict(arp, _CANDIDATE)
+
+    def _is_ongoing(self, *, oper: ArpOperation, sha: MacAddress, spa: Ip4Address, tpa: Ip4Address) -> bool:
+        """
+        Parse a built ARP frame and run it through the ongoing-defense
+        conflict predicate against the claimed address.
+        """
+
+        arp = self._acd._parse_arp(_arp_frame(oper=oper, sha=sha, spa=spa, tpa=tpa))
+        assert arp is not None
+        return self._acd._is_ongoing_conflict(arp, _CANDIDATE)
 
     def test__ip4_acd__parse_arp_extracts_fields(self) -> None:
         """
@@ -197,4 +207,45 @@ class TestIp4AcdConflict(TestCase):
         self.assertFalse(
             self._is_conflict(oper=ArpOperation.REQUEST, sha=_PEER_MAC, spa=_UNSPEC, tpa=_OTHER_IP),
             msg="A peer probe for a different address must not conflict.",
+        )
+
+    def test__ip4_acd__ongoing_conflict_peer_uses_address(self) -> None:
+        """
+        Ensure ongoing-defense conflict detection flags a peer actively
+        using the claimed address (sender protocol address == ours).
+
+        Reference: RFC 5227 §2.4 (ongoing defense — peer using address).
+        """
+
+        self.assertTrue(
+            self._is_ongoing(oper=ArpOperation.REQUEST, sha=_PEER_MAC, spa=_CANDIDATE, tpa=_OTHER_IP),
+            msg="A peer whose sender-IP == claimed address must be an ongoing conflict.",
+        )
+
+    def test__ip4_acd__ongoing_conflict_ignores_bare_probe(self) -> None:
+        """
+        Ensure ongoing-defense detection does NOT flag a bare Probe
+        (sender 0.0.0.0) for the claimed address — the stack's ARP RX
+        path answers such Probes for an owned address.
+
+        Reference: RFC 5227 §2.4 (ongoing defense ignores bare Probes).
+        """
+
+        self.assertFalse(
+            self._is_ongoing(oper=ArpOperation.REQUEST, sha=_PEER_MAC, spa=_UNSPEC, tpa=_CANDIDATE),
+            msg="A bare Probe for the claimed address must not be an ongoing conflict.",
+        )
+
+    def test__ip4_acd__ongoing_conflict_ignores_own_frame(self) -> None:
+        """
+        Ensure ongoing-defense detection never flags a frame from our
+        own MAC carrying the claimed address (our own Announcement /
+        defensive ARP).
+
+        Reference: RFC 5227 §2.4 (a host ignores its own ARP).
+        """
+
+        self.assertFalse(
+            self._is_ongoing(oper=ArpOperation.REPLY, sha=_OUR_MAC, spa=_CANDIDATE, tpa=_CANDIDATE),
+            msg="A frame from our own MAC must not be an ongoing conflict.",
         )

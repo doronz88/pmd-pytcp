@@ -105,6 +105,13 @@ class Ip4Acd:
 
         self._mac = mac_address
         self._ifindex = ifindex
+        # Long-lived defense socket + the address it is monitoring,
+        # held open between 'claim' and 'release' so RFC 5227 §2.4
+        # ongoing conflict detection reads ARP off the same socket the
+        # probe / announce used (the Linux one-socket lifecycle). None
+        # when no address is currently claimed for defense.
+        self._sock: socket | None = None
+        self._claimed: Ip4Address | None = None
 
     def probe(self, *, address: Ip4Address) -> AcdResult:
         """
@@ -135,6 +142,72 @@ class Ip4Acd:
             self._run_announce(sock, address)
         finally:
             sock.close()
+
+    def claim(self, *, address: Ip4Address) -> AcdResult:
+        """
+        Claim 'address' for ongoing defense: run the RFC 5227 §2.1.1
+        Probe and, on a clean probe, the §2.3 Announcement, then KEEP
+        the socket open so 'poll_conflict' / 'defend' can guard the
+        address over its lifetime (the Linux one-socket ACD flow). On a
+        clean claim the engine holds the socket (call 'release' to drop
+        it); on conflict the socket is closed and the conflicting peer
+        MAC is reported.
+        """
+
+        sock = self._open_socket()
+        result = self._run_probe(sock, address)
+        if not result.success:
+            sock.close()
+            return result
+        self._run_announce(sock, address)
+        self._sock = sock
+        self._claimed = address
+        return result
+
+    def poll_conflict(self) -> MacAddress | None:
+        """
+        Non-blocking RFC 5227 §2.4 ongoing-conflict check on the claimed
+        address: drain any ARP queued on the defense socket and return
+        the first peer MAC that is using the address (sender protocol
+        address == ours, from another MAC), or 'None' if none is
+        pending. Requires an active claim ('claim' succeeded, no
+        'release' since).
+        """
+
+        assert self._sock is not None and self._claimed is not None, "poll_conflict requires an active claim"
+        while True:
+            try:
+                frame, _ = self._sock.recvfrom()
+            except BlockingIOError, TimeoutError:
+                return None
+            arp = self._parse_arp(frame)
+            if arp is not None and self._is_ongoing_conflict(arp, self._claimed):
+                __debug__ and log("stack", f"<lg>ACD</>: ongoing conflict for {self._claimed} from {arp.sha}")
+                return arp.sha
+
+    def defend(self) -> None:
+        """
+        Broadcast a single defensive gratuitous ARP for the claimed
+        address (RFC 5227 §2.4(b)) — an ARP Reply with sender = target =
+        the claimed address — so a conflicting peer refreshes its cache
+        to our MAC. Requires an active claim.
+        """
+
+        assert self._sock is not None and self._claimed is not None, "defend requires an active claim"
+        self._send(self._sock, oper=ArpOperation.REPLY, spa=self._claimed, tpa=self._claimed)
+        __debug__ and log("stack", f"<lg>ACD</>: defended {self._claimed}")
+
+    def release(self) -> None:
+        """
+        Drop the claim: close the defense socket and forget the
+        monitored address. Idempotent — safe to call when nothing is
+        claimed.
+        """
+
+        if self._sock is not None:
+            self._sock.close()
+            self._sock = None
+        self._claimed = None
 
     def _open_socket(self) -> socket:
         """
@@ -264,3 +337,16 @@ class Ip4Acd:
         if arp.spa == address:
             return True
         return bool(arp.spa.is_unspecified and arp.tpa == address)
+
+    def _is_ongoing_conflict(self, arp: ArpParser, address: Ip4Address, /) -> bool:
+        """
+        Decide whether an inbound ARP conflicts with a CLAIMED address
+        (RFC 5227 §2.4): a peer actively using the address — its sender
+        protocol address equals ours, from a different MAC. Unlike
+        '_is_conflict', a bare Probe (sender 0.0.0.0) for the address is
+        not an ongoing conflict here: the stack's ARP RX path answers
+        such Probes for an owned address, which makes the prober back
+        off.
+        """
+
+        return arp.sha != self._mac and arp.spa == address
