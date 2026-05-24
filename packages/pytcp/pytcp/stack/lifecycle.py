@@ -330,11 +330,9 @@ def add_interface(
         # delegate to the Ip4Acd engine, NOT the Address API. The
         # Address API stays only for the BOUND-transition address
         # install (RTM_NEWADDR).
-        dhcp_acd = Ip4Acd(mac_address=dhcp_mac, ifindex=ifindex)
         _stack.dhcp4_client = Dhcp4Client(
             mac_address=dhcp_mac,
-            arp_dad_verifier=lambda addr: dhcp_acd.probe(address=addr).success,
-            arp_dad_announcer=lambda addr: dhcp_acd.announce(address=addr),
+            acd=Ip4Acd(mac_address=dhcp_mac, ifindex=ifindex),
             address_api=address_view,
             route_api=_stack.route,
         )

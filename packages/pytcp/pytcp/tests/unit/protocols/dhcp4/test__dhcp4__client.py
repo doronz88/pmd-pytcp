@@ -31,14 +31,15 @@ ver 3.0.6
 """
 
 import errno
-from typing import Any, override
+from typing import Any, cast, override
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
+from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.stack import sysctl
@@ -50,6 +51,26 @@ from pytcp.tests.lib.dhcp4_mock_server import (
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:01")
 _DEFAULT_CID = build_client_id(_DEFAULT_MAC)
 _PINNED_XID = 0xDEADBEEF
+
+
+def _acd_mock(*, probe_results: list[bool] | bool = True, conflict_mac: MacAddress | None = None) -> MagicMock:
+    """
+    Build an autospec-locked 'Ip4Acd' whose 'probe' returns a clean
+    or conflicting 'AcdResult'. 'probe_results' may be a single bool
+    (every probe returns that verdict) or a list consumed in order.
+    'start_defense' / 'poll_conflict' / 'release' default to no-ops.
+    """
+
+    acd = create_autospec(Ip4Acd, spec_set=True)
+    verdicts = probe_results if isinstance(probe_results, list) else None
+
+    def _probe(*, address: Ip4Address) -> AcdResult:
+        verdict = verdicts.pop(0) if verdicts is not None else cast(bool, probe_results)
+        return AcdResult(success=verdict, address=address, conflict_mac=None if verdict else conflict_mac)
+
+    acd.probe.side_effect = _probe
+    acd.poll_conflict.return_value = None
+    return cast(MagicMock, acd)
 
 
 class TestDhcp4ClientInit(TestCase):
@@ -1190,44 +1211,43 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
 
 class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
     """
-    Phase 2.2 — ARP DAD verification + DHCPDECLINE on conflict.
-    'Dhcp4Client.__init__' accepts an optional 'arp_dad_verifier'
-    callback that 'fetch()' invokes against the leased address
-    after a valid ACK; on False, the client emits DHCPDECLINE and
-    restarts from DISCOVER per RFC 2131 §3.1 step 5.
+    ARP DAD verification + DHCPDECLINE on conflict.
+    'Dhcp4Client.__init__' accepts an optional 'acd' engine whose
+    'probe' 'fetch()' runs against the leased address after a valid
+    ACK; on conflict, the client emits DHCPDECLINE and restarts from
+    DISCOVER per RFC 2131 §3.1 step 5.
     """
 
-    def test__dhcp4_client__fetch_invokes_arp_dad_verifier_with_leased_address(self) -> None:
+    def test__dhcp4_client__fetch_probes_leased_address_via_acd(self) -> None:
         """
-        Ensure 'fetch()' invokes the caller-supplied
-        'arp_dad_verifier' callback exactly once with the
+        Ensure 'fetch()' runs the ACD probe exactly once against the
         server-assigned 'yiaddr' after a valid ACK.
 
         Reference: RFC 2131 §3.1 step 5 (client SHOULD probe the offered address).
         Reference: RFC 5227 §2.1 (host MUST probe before claiming).
         """
 
-        verifier = MagicMock(return_value=True)
+        acd = _acd_mock(probe_results=True)
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
         result = Dhcp4Client(
             mac_address=_DEFAULT_MAC,
-            arp_dad_verifier=verifier,
+            acd=acd,
         ).fetch()
 
         self.assertIsInstance(
             result,
             Dhcp4Lease,
-            msg="fetch() must return the lease when the verifier reports no conflict.",
+            msg="fetch() must return the lease when the ACD probe reports no conflict.",
         )
-        verifier.assert_called_once_with(Ip4Address("10.0.0.100"))
+        acd.probe.assert_called_once_with(address=Ip4Address("10.0.0.100"))
 
-    def test__dhcp4_client__fetch_without_verifier_returns_lease_unverified(self) -> None:
+    def test__dhcp4_client__fetch_without_acd_returns_lease_unverified(self) -> None:
         """
-        Ensure 'fetch()' returns the lease unverified when no
-        'arp_dad_verifier' callback is supplied (backward
-        compatibility with the Phase 0 / 1 / 2.1 invocation form).
+        Ensure 'fetch()' returns the lease unverified when no 'acd'
+        engine is supplied (sync-mode callers that own conflict
+        detection themselves).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -1240,12 +1260,12 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self.assertIsInstance(
             result,
             Dhcp4Lease,
-            msg="fetch() without a verifier must still return the lease unverified.",
+            msg="fetch() without an ACD engine must still return the lease unverified.",
         )
 
-    def test__dhcp4_client__fetch_verifier_conflict_emits_decline_message(self) -> None:
+    def test__dhcp4_client__fetch_probe_conflict_emits_decline_message(self) -> None:
         """
-        Ensure a verifier conflict triggers a DHCPDECLINE TX whose
+        Ensure an ACD probe conflict triggers a DHCPDECLINE TX whose
         message type, Server Identifier, Requested IP Address, and
         Client Identifier echo all carry the values from the offered
         lease.
@@ -1259,11 +1279,11 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        verifier = MagicMock(return_value=False)
+        acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
         Dhcp4Client(
             mac_address=_DEFAULT_MAC,
-            arp_dad_verifier=verifier,
+            acd=acd,
         ).fetch()
 
         # tx_log: [DISCOVER, REQUEST, DECLINE]
@@ -1299,9 +1319,9 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="DECLINE must carry the same Client Identifier as DISCOVER / REQUEST.",
         )
 
-    def test__dhcp4_client__fetch_verifier_false_then_true_restarts_and_returns_lease(self) -> None:
+    def test__dhcp4_client__fetch_probe_false_then_true_restarts_and_returns_lease(self) -> None:
         """
-        Ensure a verifier that reports False once and then True on
+        Ensure a probe that reports conflict once and then clean on
         the retry produces a usable lease: 'fetch()' emits the
         DECLINE, restarts from DISCOVER, and succeeds on the
         second round.
@@ -1315,17 +1335,17 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        verifier = MagicMock(side_effect=[False, True])
+        acd = _acd_mock(probe_results=[False, True])
 
         result = Dhcp4Client(
             mac_address=_DEFAULT_MAC,
-            arp_dad_verifier=verifier,
+            acd=acd,
         ).fetch()
 
         self.assertIsInstance(
             result,
             Dhcp4Lease,
-            msg="fetch() must return the lease when the second-round verifier reports no conflict.",
+            msg="fetch() must return the lease when the second-round probe reports no conflict.",
         )
         # tx_log: [DISCOVER, REQUEST, DECLINE, DISCOVER, REQUEST]
         self.assertEqual(
@@ -1339,9 +1359,9 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="Third TX must be the DECLINE bridging the two rounds.",
         )
 
-    def test__dhcp4_client__fetch_verifier_always_false_exhausts_restart_budget(self) -> None:
+    def test__dhcp4_client__fetch_probe_always_false_exhausts_restart_budget(self) -> None:
         """
-        Ensure a verifier that always reports conflict exhausts the
+        Ensure a probe that always reports conflict exhausts the
         shared restart budget ('dhcp.nak_max_restarts' = 3 means
         initial + 3 restarts = 4 rounds) and 'fetch()' returns None.
         Four DECLINEs are emitted, one per round.
@@ -1354,11 +1374,11 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             self._server.enqueue_offer()
             self._server.enqueue_ack()
 
-        verifier = MagicMock(return_value=False)
+        acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
         result = Dhcp4Client(
             mac_address=_DEFAULT_MAC,
-            arp_dad_verifier=verifier,
+            acd=acd,
         ).fetch()
 
         self.assertIsNone(
@@ -1390,12 +1410,12 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        verifier = MagicMock(return_value=False)
+        acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
         with patch("pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep:
             Dhcp4Client(
                 mac_address=_DEFAULT_MAC,
-                arp_dad_verifier=verifier,
+                acd=acd,
             ).fetch()
 
         # Initial-delay sleep is disabled by the fixture; only the
@@ -1794,9 +1814,9 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
 
 class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
     """
-    Phase 4 commit B — daemon-mode BOUND wiring. On the INIT →
-    BOUND transition the lifecycle calls 'address_api.add_ifaddr',
-    invokes 'arp_dad_announcer', and signals
+    Daemon-mode BOUND wiring. On the INIT → BOUND transition the
+    client calls 'address_api.add_ifaddr', begins RFC 5227 §2.4
+    ongoing defense via 'acd.start_defense', and signals
     'start_and_wait_for_bind' watchers via '_event__bound'.
     """
 
@@ -1883,25 +1903,26 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         mock_route_api.remove_default_ip4.assert_called_once_with()
 
-    def test__dhcp4_client__bound_transition_invokes_arp_dad_announcer(self) -> None:
+    def test__dhcp4_client__bound_transition_begins_acd_defense(self) -> None:
         """
-        Ensure the daemon-mode INIT → BOUND transition invokes
-        the 'arp_dad_announcer' callback with the leased address
-        — the gratuitous ARP Announcement loop refreshing peer
-        ARP caches.
+        Ensure the daemon-mode INIT → BOUND transition begins
+        ongoing conflict defense via 'acd.start_defense' with the
+        leased address — the engine emits the Announcement burst and
+        holds the defense socket for poll_conflict.
 
         Reference: RFC 5227 §2.3 (host MUST broadcast ANNOUNCE_NUM Announcements after a successful claim).
+        Reference: RFC 5227 §2.4 (begin ongoing defense of the committed address).
         """
 
         self._server.enqueue_offer()
         self._server.enqueue_ack()
-        announcer = MagicMock(name="arp_dad_announcer")
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC, arp_dad_announcer=announcer)
+        acd = _acd_mock(probe_results=True)
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
 
         client._subsystem_loop()
 
         assert client._lease is not None
-        announcer.assert_called_once_with(client._lease.ip4_host.address)
+        acd.start_defense.assert_called_once_with(address=client._lease.ip4_host.address)
 
     def test__dhcp4_client__bound_transition_sets_event_bound(self) -> None:
         """
@@ -1927,12 +1948,12 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             msg="INIT → BOUND transition must set '_event__bound'.",
         )
 
-    def test__dhcp4_client__bound_transition_skips_callbacks_when_none(self) -> None:
+    def test__dhcp4_client__bound_transition_skips_collaborators_when_none(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition silently
-        skips the address-API and announcer calls when neither
-        callback is supplied. This is the test-default — most
-        existing tests pass no callbacks and still expect a
+        skips the address-API and ACD calls when neither
+        collaborator is supplied. This is the test-default — most
+        existing tests pass no collaborators and still expect a
         successful BOUND transition.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -2107,6 +2128,81 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         )
         # Remaining = 1800 - 100 = 1700; verify wait called with that.
         mock_wait.assert_called_once_with(timeout=1700.0)
+
+    def test__dhcp4_client__do_bound_polls_acd_when_no_conflict(self) -> None:
+        """
+        Ensure '_do_bound' polls the ACD conflict signal each tick;
+        when 'poll_conflict' reports no conflict the handler falls
+        through to the normal T1 lease-lifecycle logic.
+
+        Reference: RFC 5227 §2.4 (ongoing conflict polling on a claimed address).
+        """
+
+        acd = _acd_mock()  # poll_conflict returns None
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
+        client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
+        client._state = Dhcp4State.BOUND
+
+        with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1801.0):
+            client._do_bound()
+
+        acd.poll_conflict.assert_called_once_with()
+        self.assertIs(
+            client._state,
+            Dhcp4State.RENEWING,
+            msg="A clean ACD poll must let '_do_bound' proceed to the T1 transition.",
+        )
+
+    def test__dhcp4_client__do_bound_conflict_declines_and_resets_to_init(self) -> None:
+        """
+        Ensure a BOUND-state ACD conflict makes the client yield the
+        leased address: emit DHCPDECLINE to the leasing server, drop
+        the held ACD claim, and re-enter INIT to re-acquire.
+
+        Reference: RFC 5227 §2.4 (host yields a claimed address on sustained conflict).
+        Reference: RFC 2131 §3.1 step 5 (DHCPDECLINE then restart configuration).
+        """
+
+        acd = _acd_mock()
+        acd.poll_conflict.return_value = MacAddress("02:00:00:00:00:99")
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
+        client._lease = self._make_lease()
+        client._state = Dhcp4State.BOUND
+
+        client._do_bound()
+
+        self.assertEqual(
+            self._server.tx_log[-1].message_type,
+            Dhcp4MessageType.DECLINE,
+            msg="A BOUND conflict must emit a DHCPDECLINE to the leasing server.",
+        )
+        self.assertEqual(
+            self._server.tx_log[-1].req_ip_addr,
+            Ip4Address("10.0.0.100"),
+            msg="The BOUND-conflict DECLINE must name the abandoned leased address.",
+        )
+        self.assertIs(
+            client._state,
+            Dhcp4State.INIT,
+            msg="A BOUND conflict must reset the FSM to INIT to re-acquire.",
+        )
+        acd.release.assert_called_once_with()
+
+    def test__dhcp4_client__reset_to_init_releases_acd_claim(self) -> None:
+        """
+        Ensure '_reset_to_init' drops the held ongoing-defense
+        claim (closes the ACD socket) on any lease-loss path.
+
+        Reference: RFC 5227 §2.4 (release the defense socket when the address is relinquished).
+        """
+
+        acd = _acd_mock()
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
+        client._lease = self._make_lease()
+
+        client._reset_to_init(remove_lease_host=True)
+
+        acd.release.assert_called_once_with()
 
     def test__dhcp4_client__do_renewing_returns_to_bound_on_ack(self) -> None:
         """

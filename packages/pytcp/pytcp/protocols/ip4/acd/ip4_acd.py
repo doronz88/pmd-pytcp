@@ -164,6 +164,24 @@ class Ip4Acd:
         self._claimed = address
         return result
 
+    def start_defense(self, *, address: Ip4Address) -> None:
+        """
+        Begin RFC 5227 §2.4 ongoing defense of an address the caller has
+        already probed clean elsewhere: open the defense socket, emit the
+        §2.3 Announcement, and hold the socket so 'poll_conflict' /
+        'defend' can guard the address over its lifetime. This is 'claim'
+        without the probe — the entry point for a client whose §2.1.1
+        Probe and commit-to-use are separated by a wire exchange (the
+        DHCPv4 client probes the offered address on the ACK, then begins
+        defense only once the lease is committed). Call 'release' to drop
+        the claim.
+        """
+
+        sock = self._open_socket()
+        self._run_announce(sock, address)
+        self._sock = sock
+        self._claimed = address
+
     def poll_conflict(self) -> MacAddress | None:
         """
         Non-blocking RFC 5227 §2.4 ongoing-conflict check on the claimed

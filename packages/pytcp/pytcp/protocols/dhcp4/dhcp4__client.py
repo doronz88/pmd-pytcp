@@ -93,6 +93,7 @@ from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     write_cached_lease,
 )
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
+from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
@@ -203,25 +204,30 @@ class Dhcp4Client(Subsystem):
         self,
         *,
         mac_address: MacAddress,
-        arp_dad_verifier: "Callable[[Ip4Address], bool] | None" = None,
-        arp_dad_announcer: "Callable[[Ip4Address], None] | None" = None,
+        acd: Ip4Acd | None = None,
         address_api: "Ip4AddressApi | None" = None,
         route_api: "RouteApi | None" = None,
     ) -> None:
         """
         Initialize the DHCPv4 client.
 
-        The optional 'arp_dad_verifier' callback is invoked against
-        the offered 'yiaddr' after a valid ACK; on False, the
-        INIT-state handler emits DHCPDECLINE per RFC 2131 §3.1
-        step 5 and restarts from DISCOVER. The packet handler
-        wires this to its RFC 5227 §2.1.1 probe loop.
+        The optional 'acd' is the RFC 5227 IPv4 Address Conflict
+        Detection engine (the userspace 'sd-ipv4acd' equivalent over
+        the AF_PACKET socket). When supplied:
 
-        The optional 'arp_dad_announcer' callback is invoked on
-        BOUND transition (daemon mode only) to emit the RFC 5227
-        §2.3 ANNOUNCE_NUM gratuitous ARP Announcements that
-        refresh peer ARP caches. The packet handler wires this to
-        '_arp_dad_announce_address'.
+          - the INIT path runs the RFC 2131 §3.1-step-5 / RFC 5227
+            §2.1.1 ARP Probe against the offered 'yiaddr' after a
+            valid ACK ('acd.probe'); on conflict the client emits
+            DHCPDECLINE and restarts from DISCOVER;
+          - the BOUND transition (daemon mode only) begins ongoing
+            §2.4 conflict defense via 'acd.start_defense' (emit the
+            §2.3 Announcement burst + hold the defense socket), and
+            each BOUND tick polls 'acd.poll_conflict' — a sustained
+            conflict makes the client DECLINE and re-acquire.
+
+        Sync 'fetch()' uses only the probe (no ongoing defender — the
+        caller owns the returned lease and there is no FSM loop to
+        poll or release the held socket).
 
         The optional 'address_api' is the kernel/userspace
         boundary surface (Phase-3 north-star); on BOUND transition
@@ -233,8 +239,7 @@ class Dhcp4Client(Subsystem):
 
         super().__init__(info=str(mac_address))
         self._mac_address = mac_address
-        self._arp_dad_verifier = arp_dad_verifier
-        self._arp_dad_announcer = arp_dad_announcer
+        self._acd = acd
         self._address_api = address_api
         self._route_api = route_api
         # Set at the top of '_do_init_to_bound'; reused by every
@@ -313,15 +318,13 @@ class Dhcp4Client(Subsystem):
         iteration per call. The 'Subsystem' base class loop wraps
         this in 'while not stop_event'.
 
-        Commit-B scope: INIT runs '_do_init_to_bound', installs
-        the lease on the stack via 'address_api.add_ifaddr', emits
-        the RFC 5227 §2.3 announcements via the
-        'arp_dad_announcer' callback, signals
-        'self._event__bound', and transitions to BOUND. The
-        BOUND/RENEWING/REBINDING handlers idle on the stop
-        event; Phase 4 commits C/D wire the timer-driven
-        transitions and the RENEW/REBIND/RELEASE wire
-        exchanges.
+        INIT runs '_do_init_to_bound', installs the lease on the
+        stack via 'address_api.add_ifaddr', begins RFC 5227 §2.4
+        ongoing conflict defense via 'acd.start_defense' (which emits
+        the §2.3 Announcements and holds the defense socket), signals
+        'self._event__bound', and transitions to BOUND. The BOUND
+        handler polls the ACD conflict signal each tick and drives
+        the T1/T2/expiry lease-lifecycle transitions.
         """
 
         # Daemon-loop guard: the base 'Subsystem' worker thread dies if
@@ -368,11 +371,13 @@ class Dhcp4Client(Subsystem):
     def _on_bound(self, lease: Dhcp4Lease, /) -> None:
         """
         Transition to BOUND: install the lease's Ip4IfAddr via the
-        address API, emit RFC 5227 §2.3 gratuitous ARP
-        Announcements via the announcer callback, persist the
-        lease to disk for the next boot's INIT-REBOOT fast-path
-        (Phase 5), and signal 'start_and_wait_for_bind' watchers
-        via the 'self._event__bound' event.
+        address API, begin RFC 5227 §2.4 ongoing conflict defense of
+        the committed address via 'acd.start_defense' (which emits
+        the §2.3 ANNOUNCE_NUM gratuitous-ARP burst and holds the
+        defense socket for 'poll_conflict'), persist the lease to
+        disk for the next boot's INIT-REBOOT fast-path (Phase 5),
+        and signal 'start_and_wait_for_bind' watchers via the
+        'self._event__bound' event.
         """
 
         self._lease = lease
@@ -388,8 +393,8 @@ class Dhcp4Client(Subsystem):
                 gateway=lease.gateway,
                 protocol=RouteProtocol.DHCP,
             )
-        if self._arp_dad_announcer is not None:
-            self._arp_dad_announcer(lease.ip4_host.address)
+        if self._acd is not None:
+            self._acd.start_defense(address=lease.ip4_host.address)
         write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
         self._state = Dhcp4State.BOUND
         self._event__bound.set()
@@ -507,15 +512,22 @@ class Dhcp4Client(Subsystem):
 
     def _do_bound(self) -> None:
         """
-        BOUND-state handler. Checks T1; if elapsed, transitions
-        to RENEWING. Otherwise blocks on the stop event up to
-        'remaining_until_T1' so 'stop()' is responsive while the
-        thread sleeps through the lease's BOUND interval.
+        BOUND-state handler. First drains the RFC 5227 §2.4 ACD
+        conflict signal: a peer using our leased address makes the
+        client abandon the lease (DHCPDECLINE + re-acquire). Then
+        checks T1; if elapsed, transitions to RENEWING. Otherwise
+        blocks on the stop event up to 'remaining_until_T1' so
+        'stop()' is responsive while the thread sleeps through the
+        lease's BOUND interval.
 
+        Reference: RFC 5227 §2.4 (defend / abandon a claimed address on conflict).
         Reference: RFC 2131 §4.4.5 (T1 = 0.5 × lease default).
         """
 
         assert self._lease is not None
+        if self._acd is not None and (peer_mac := self._acd.poll_conflict()) is not None:
+            self._handle_bound_conflict(peer_mac)
+            return
         now = time.monotonic()
         t1 = self._t1_deadline()
         if now >= t1:
@@ -714,8 +726,12 @@ class Dhcp4Client(Subsystem):
                         dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                     ),
                 )
-            if self._arp_dad_announcer is not None:
-                self._arp_dad_announcer(outcome.ip4_host.address)
+            # Move the RFC 5227 §2.4 defense claim to the new
+            # address: drop the old claim's held socket and begin
+            # defending the swapped-in address (announce + hold).
+            if self._acd is not None:
+                self._acd.release()
+                self._acd.start_defense(address=outcome.ip4_host.address)
             self._lease = outcome
             self._state = Dhcp4State.BOUND
 
@@ -750,6 +766,11 @@ class Dhcp4Client(Subsystem):
         # whether sync-mode fetch() owned the address).
         if remove_lease_host:
             delete_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH)
+        # Drop the RFC 5227 §2.4 defense claim (closes the held ACD
+        # socket). Idempotent — safe whether or not a claim was held
+        # (sync 'fetch()' never starts defense; a NAK on RENEW does).
+        if self._acd is not None:
+            self._acd.release()
         self._lease = None
         self._state = Dhcp4State.INIT
         self._event__bound.clear()
@@ -762,6 +783,61 @@ class Dhcp4Client(Subsystem):
         """
 
         self._reset_to_init(remove_lease_host=True)
+
+    def _handle_bound_conflict(self, peer_mac: MacAddress, /) -> None:
+        """
+        RFC 5227 §2.4 / RFC 2131 §3.1 ongoing-conflict handler for a
+        BOUND DHCP address: a peer ('peer_mac') is using our leased
+        IPv4 address. A DHCP-assigned address is the server's to give,
+        so PyTCP yields it (the systemd-networkd / dhcpcd response) —
+        send DHCPDECLINE to the leasing server, then drop the address
+        (and the held ACD claim) and re-enter INIT to acquire a fresh
+        lease.
+
+        Reference: RFC 5227 §2.4 (host yields a claimed address on sustained conflict).
+        Reference: RFC 2131 §3.1 step 5 (DHCPDECLINE then restart configuration).
+        """
+
+        assert self._lease is not None
+        __debug__ and log(
+            "dhcp4",
+            f"<WARN>ACD reported ongoing conflict on leased "
+            f"{self._lease.ip4_host.address} from {peer_mac}; "
+            f"declining and re-acquiring</>",
+        )
+        self._decline_leased_address(
+            address=self._lease.ip4_host.address,
+            server_id=self._lease.server_id,
+        )
+        self._reset_to_init(remove_lease_host=True)
+
+    def _decline_leased_address(self, *, address: Ip4Address, server_id: Ip4Address) -> None:
+        """
+        Open a one-shot UDP socket and emit a single DHCPDECLINE for a
+        previously-BOUND address whose ACD detected an ongoing
+        conflict (RFC 2131 §3.1 step 5). Unlike the INIT-path decline,
+        there is no in-flight DISCOVER socket to reuse, so this opens
+        and tears down its own. Best-effort — a socket error must not
+        block the abandon-and-reacquire path.
+        """
+
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        try:
+            client_socket.bind(("0.0.0.0", 68))
+            client_socket.connect((str(server_id), 67))
+            self._send_decline(
+                client_socket,
+                xid=random.randint(0, 0xFFFFFFFF),
+                srv_id=server_id,
+                yiaddr=address,
+            )
+        except OSError as error:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>DHCPDECLINE on BOUND conflict raised {type(error).__name__}: {error}</>",
+            )
+        finally:
+            client_socket.close()
 
     # ------------------------------------------------------------
     # RFC 2131 §4.4.2 INIT-REBOOT (Phase 5)
@@ -1204,6 +1280,10 @@ class Dhcp4Client(Subsystem):
             # '_reset_to_init').
             if self._route_api is not None:
                 self._route_api.remove_default_ip4()
+            # Drop the RFC 5227 §2.4 defense claim (closes the held
+            # ACD socket) so shutdown leaves no dangling AF_PACKET fd.
+            if self._acd is not None:
+                self._acd.release()
 
     def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """
@@ -1342,8 +1422,11 @@ class Dhcp4Client(Subsystem):
         # RFC 2131 §3.1 step 5 — probe the offered address before
         # claiming it. On conflict, emit DHCPDECLINE, wait at
         # least 10 s, and restart from DISCOVER via the same
-        # outer-loop sentinel used by the NAK path.
-        if self._arp_dad_verifier is not None and not self._arp_dad_verifier(ip4_host.address):
+        # outer-loop sentinel used by the NAK path. The probe runs
+        # over the userspace RFC 5227 ACD engine ('acd.probe'); the
+        # daemon-mode BOUND transition later begins ongoing defense
+        # of the committed address via 'acd.start_defense'.
+        if self._acd is not None and not self._acd.probe(address=ip4_host.address).success:
             __debug__ and log(
                 "dhcp4",
                 f"<WARN>ARP DAD reported conflict on {ip4_host.address}; sending DHCPDECLINE</>",

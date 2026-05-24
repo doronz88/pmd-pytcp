@@ -322,6 +322,23 @@ predicate: `arp.spa in self._ip4_unicast` AND `arp.sha !=
 self._mac_unicast`. Both feed the shared
 `_handle_arp_conflict` helper at `:95-131`.
 
+**Migration note (Phase 4.4).** Ongoing §2.4 detection is
+moving into userspace, per-managed-address, over the
+`Ip4Acd` engine's held defense socket — the Linux
+`sd-ipv4acd` model where the kernel ARP path does no ACD.
+As of Phase 4.4b the **DHCPv4** client polls
+`Ip4Acd.poll_conflict` each BOUND tick and, on a sustained
+conflict, yields the lease (DHCPDECLINE + re-acquire — the
+§2.4 (a)-style abandon for a server-assigned address; see
+`Dhcp4Client._handle_bound_conflict`). The **RFC 3927
+link-local** client already polls `Ip4Acd.poll_conflict`
+for its §2.5 defend / abandon decision (Phase 4.3). The RX
+`_handle_arp_conflict` detector below therefore still
+fires for these addresses today (a transitional
+double-cover); it is removed in Phase 4.4c, after which the
+RX path performs no conflict detection and every managed
+address is defended solely by its own `Ip4Acd`.
+
 > "(a) Upon receiving a conflicting ARP packet, a host MAY
 > elect to immediately cease using the address ..."
 

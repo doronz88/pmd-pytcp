@@ -181,6 +181,37 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="A clean claim must emit PROBE_NUM Probes plus ANNOUNCE_NUM Announcements.",
         )
 
+    def test__ip4_acd__start_defense_announces_and_holds_socket(self) -> None:
+        """
+        Ensure 'start_defense' announces an already-probed address
+        (ANNOUNCE_NUM gratuitous ARPs) and holds the defense socket
+        open for ongoing conflict polling, WITHOUT re-running the
+        probe — the entry point a client whose probe and commit are
+        separated by a wire exchange (DHCPv4) uses to begin §2.4
+        defense after the lease ACK.
+
+        Reference: RFC 5227 §2.3 (Announcements after claim).
+        Reference: RFC 5227 §2.4 (ongoing defense over the held socket).
+        """
+
+        self._acd.start_defense(address=_CANDIDATE)
+        self.addCleanup(self._acd.release)
+
+        self.assertIsNotNone(
+            self._acd._sock,
+            msg="start_defense must hold the defense socket open.",
+        )
+        self.assertEqual(
+            self._acd._claimed,
+            _CANDIDATE,
+            msg="start_defense must record the claimed address for poll_conflict / defend.",
+        )
+        self.assertEqual(
+            self._tx_ring.enqueue_raw_frame.call_count,
+            arp__constants.ARP__ANNOUNCE_NUM,
+            msg="start_defense must emit exactly ANNOUNCE_NUM Announcements and no Probes.",
+        )
+
     def test__ip4_acd__poll_conflict_detects_then_drains(self) -> None:
         """
         Ensure 'poll_conflict' reports the peer MAC of an ARP using the
