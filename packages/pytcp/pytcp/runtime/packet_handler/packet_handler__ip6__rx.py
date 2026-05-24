@@ -130,6 +130,34 @@ class PacketHandlerIp6Rx(ABC):
         @property
         def _ip6_unicast(self) -> list[Ip6Address]: ...
 
+    def _forward_or_deliver_ip6(self, packet_rx: PacketRx, /) -> bool:
+        """
+        RFC 1812 §5.2.1 forward-or-deliver split for an inbound IPv6
+        datagram (the host equivalent). Return True to deliver it up
+        the local stack, False if the forward path consumed it.
+
+        Phase 1 (host): deliver iff the destination is one of our
+        addresses — unicast or joined multicast (which covers
+        link-local, solicited-node, and the all-nodes group). Any
+        other destination is not ours to deliver.
+
+        # Phase 2: the forward branch runs the FIB next-hop lookup,
+        # the Hop-Limit decrement + ICMPv6 Time-Exceeded on expiry,
+        # and ICMPv6 Redirect generation. A host has no forwarding
+        # plane, so it drops non-local datagrams here (counted in
+        # 'ip6__dst_unknown__drop').
+        """
+
+        if packet_rx.ip6.dst in {*self._ip6_unicast, *self._ip6_multicast}:
+            return True
+
+        self._packet_stats_rx.ip6__dst_unknown__drop += 1
+        __debug__ and log(
+            "ip6",
+            f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
+        )
+        return False
+
     def _phrx_ip6(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound IPv6 packets.
@@ -154,14 +182,12 @@ class PacketHandlerIp6Rx(ABC):
 
         __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6}")
 
-        # Check if received packet has been sent to us directly or by unicast
-        # or multicast.
-        if packet_rx.ip6.dst not in {*self._ip6_unicast, *self._ip6_multicast}:
-            self._packet_stats_rx.ip6__dst_unknown__drop += 1
-            __debug__ and log(
-                "ip6",
-                f"{packet_rx.tracker} - IP packet not destined for this stack, " "dropping",
-            )
+        # RFC 1812 §5.2 forward-or-deliver decision (the IPv6 host
+        # equivalent). Phase 1 delivers locally-addressed datagrams
+        # and drops the rest; Phase 2 fills the forward branch — see
+        # '_forward_or_deliver_ip6'. Keeping this a separable step is
+        # the CLAUDE.md Phase-2 north-star constraint.
+        if not self._forward_or_deliver_ip6(packet_rx):
             return
 
         if packet_rx.ip6.dst in self._ip6_unicast:

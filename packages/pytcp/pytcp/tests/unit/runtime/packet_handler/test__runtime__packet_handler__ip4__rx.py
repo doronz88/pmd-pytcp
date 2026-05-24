@@ -35,7 +35,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import Ip4Address
-from net_proto import Ip4FragAssembler, IpProto
+from net_proto import Ip4FragAssembler, Ip4Parser, IpProto
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
@@ -306,6 +306,73 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
             self._handler._packet_stats_rx.ip4__dst_broadcast,
             1,
             msg="Broadcast dst must be counted in ip4__dst_broadcast.",
+        )
+
+
+class TestPacketHandlerIp4RxForwardOrDeliver(_Ip4RxTestBase):
+    """
+    The RFC 1812 §5.2.1 forward-or-deliver seam
+    ('PacketHandlerIp4Rx._forward_or_deliver_ip4') — the separable
+    delivery decision the Phase-2 router fills the forward branch of.
+    """
+
+    @staticmethod
+    def _parsed(dst: Ip4Address) -> PacketRx:
+        """
+        Build and parse an IPv4 PacketRx addressed to 'dst'.
+        """
+
+        packet_rx = PacketRx(_ip4_frame(dst=dst, proto=IpProto.UDP, payload=b"\x00" * 8))
+        Ip4Parser(packet_rx)
+        return packet_rx
+
+    def test__stack__packet_handler__ip4__rx__forward_or_deliver__local_unicast_delivers(self) -> None:
+        """
+        Ensure the seam returns True for a datagram addressed to one
+        of the stack's unicast addresses — it is delivered locally.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: local delivery).
+        """
+
+        self.assertTrue(
+            self._handler._forward_or_deliver_ip4(self._parsed(STACK__IP4_ADDRESS)),
+            msg="A locally-addressed unicast datagram must be delivered (True).",
+        )
+
+    def test__stack__packet_handler__ip4__rx__forward_or_deliver__non_local_does_not_deliver(self) -> None:
+        """
+        Ensure the seam returns False and bumps 'ip4__dst_unknown__drop'
+        for a datagram addressed elsewhere — a host has no forwarding
+        plane, so the forward branch drops it.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: non-local datagram).
+        """
+
+        self.assertFalse(
+            self._handler._forward_or_deliver_ip4(self._parsed(OFF_NET__IP4)),
+            msg="A non-local datagram must not be delivered locally (False).",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip4__dst_unknown__drop,
+            1,
+            msg="The host forward-stub must drop the non-local datagram (ip4__dst_unknown__drop).",
+        )
+
+    def test__stack__packet_handler__ip4__rx__forward_or_deliver__no_unicast_delivers_any(self) -> None:
+        """
+        Ensure the seam returns True for any destination when no
+        unicast is configured — the DHCP-client accept-all bootstrap.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: local delivery).
+        """
+
+        handler = _StubHandler(ip4_unicast=[])
+        packet_rx = PacketRx(_ip4_frame(dst=OFF_NET__IP4, proto=IpProto.UDP, payload=b"\x00" * 8))
+        Ip4Parser(packet_rx)
+
+        self.assertTrue(
+            handler._forward_or_deliver_ip4(packet_rx),
+            msg="With no unicast configured, any destination must be delivered (True).",
         )
 
 

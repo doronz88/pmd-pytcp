@@ -35,7 +35,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip6Address
-from net_proto import Ip6Assembler, IpProto, RawAssembler
+from net_proto import Ip6Assembler, Ip6Parser, IpProto, RawAssembler
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
@@ -220,6 +220,69 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=STACK__IP6_MULTICAST, payload=b"\x00" * 8)))
 
         self.assertEqual(self._handler._packet_stats_rx.ip6__dst_multicast, 1)
+
+
+class TestPacketHandlerIp6RxForwardOrDeliver(_Ip6RxTestBase):
+    """
+    The RFC 1812 §5.2.1 forward-or-deliver seam
+    ('PacketHandlerIp6Rx._forward_or_deliver_ip6') — the separable
+    delivery decision the Phase-2 router fills the forward branch of.
+    """
+
+    @staticmethod
+    def _parsed(dst: Ip6Address) -> PacketRx:
+        """
+        Build and parse an IPv6 PacketRx addressed to 'dst'.
+        """
+
+        packet_rx = PacketRx(_ip6_frame(dst=dst, payload=b"\x00" * 8))
+        Ip6Parser(packet_rx)
+        return packet_rx
+
+    def test__stack__packet_handler__ip6__rx__forward_or_deliver__local_unicast_delivers(self) -> None:
+        """
+        Ensure the seam returns True for a datagram addressed to one
+        of the stack's unicast addresses — it is delivered locally.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: local delivery).
+        """
+
+        self.assertTrue(
+            self._handler._forward_or_deliver_ip6(self._parsed(STACK__IP6_ADDRESS)),
+            msg="A locally-addressed unicast datagram must be delivered (True).",
+        )
+
+    def test__stack__packet_handler__ip6__rx__forward_or_deliver__local_multicast_delivers(self) -> None:
+        """
+        Ensure the seam returns True for a datagram addressed to a
+        joined multicast group.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: local delivery).
+        """
+
+        self.assertTrue(
+            self._handler._forward_or_deliver_ip6(self._parsed(STACK__IP6_MULTICAST)),
+            msg="A joined-multicast datagram must be delivered (True).",
+        )
+
+    def test__stack__packet_handler__ip6__rx__forward_or_deliver__non_local_does_not_deliver(self) -> None:
+        """
+        Ensure the seam returns False and bumps 'ip6__dst_unknown__drop'
+        for a datagram addressed elsewhere — a host has no forwarding
+        plane, so the forward branch drops it.
+
+        Reference: RFC 1812 §5.2.1 (forward-or-deliver: non-local datagram).
+        """
+
+        self.assertFalse(
+            self._handler._forward_or_deliver_ip6(self._parsed(OFF_NET__IP6)),
+            msg="A non-local datagram must not be delivered locally (False).",
+        )
+        self.assertEqual(
+            self._handler._packet_stats_rx.ip6__dst_unknown__drop,
+            1,
+            msg="The host forward-stub must drop the non-local datagram (ip6__dst_unknown__drop).",
+        )
 
 
 class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):

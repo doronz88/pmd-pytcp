@@ -99,6 +99,41 @@ class PacketHandlerIp4Rx(ABC):
         @property
         def _ip4_broadcast(self) -> list[Ip4Address]: ...
 
+    def _forward_or_deliver_ip4(self, packet_rx: PacketRx, /) -> bool:
+        """
+        RFC 1812 §5.2.1 forward-or-deliver split for an inbound IPv4
+        datagram. Return True to deliver it up the local stack, False
+        if the forward path consumed it.
+
+        Phase 1 (host): deliver iff the destination is one of our
+        addresses — unicast, joined multicast, or broadcast — or no
+        unicast is configured yet (the DHCP-client accept-all
+        bootstrap, where the OFFER / ACK arrive before an address is
+        claimed). Any other destination is not ours to deliver.
+
+        # Phase 2: the forward branch runs the FIB next-hop lookup,
+        # the TTL decrement + ICMPv4 Time-Exceeded on expiry, and the
+        # ICMPv4 Redirect generation. A host has no forwarding plane,
+        # so it drops non-local datagrams here (counted in
+        # 'ip4__dst_unknown__drop'; the forward-specific counter lands
+        # with the forwarding plane).
+        """
+
+        deliver_locally = (not self._ip4_unicast) or packet_rx.ip4.dst in {
+            *self._ip4_unicast,
+            *self._ip4_multicast,
+            *self._ip4_broadcast,
+        }
+        if deliver_locally:
+            return True
+
+        self._packet_stats_rx.ip4__dst_unknown__drop += 1
+        __debug__ and log(
+            "ip4",
+            f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
+        )
+        return False
+
     def _phrx_ip4(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound IPv4 packets.
@@ -161,19 +196,12 @@ class PacketHandlerIp4Rx(ABC):
             )
             return
 
-        # Check if received packet has been sent to us directly or by
-        # unicast/broadcast, allow any destination if no unicast address
-        # is configured (for DHCP client).
-        if self._ip4_unicast and packet_rx.ip4.dst not in {
-            *self._ip4_unicast,
-            *self._ip4_multicast,
-            *self._ip4_broadcast,
-        }:
-            self._packet_stats_rx.ip4__dst_unknown__drop += 1
-            __debug__ and log(
-                "ip4",
-                f"{packet_rx.tracker} - IP packet not destined for this stack, " "dropping",
-            )
+        # RFC 1812 §5.2 forward-or-deliver decision. Phase 1 (host)
+        # delivers locally-addressed datagrams and drops the rest;
+        # Phase 2 (router) fills the forward branch — see
+        # '_forward_or_deliver_ip4'. Keeping this a separable step is
+        # the CLAUDE.md Phase-2 north-star constraint.
+        if not self._forward_or_deliver_ip4(packet_rx):
             return
 
         if packet_rx.ip4.dst in self._ip4_unicast:
