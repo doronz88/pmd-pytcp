@@ -67,6 +67,7 @@ from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi, install_boot_default_routes
 
 
@@ -149,6 +150,13 @@ def mock__init(
         _stack.link = mock__link
     elif mock__packet_handler is not None:
         _stack.link = LinkApi(packet_handler=mock__packet_handler)
+
+    # Neighbor API — same pattern as 'address' / 'link'. A default
+    # 'NeighborApi' bound to the mocked handler lets consumer code
+    # reading 'stack.neighbor.*' work in isolation without bespoke
+    # harness wiring.
+    if mock__packet_handler is not None:
+        _stack.neighbor = NeighborApi(packet_handler=mock__packet_handler)
 
     # Host-mode routing table — Phase 1. Rebuild the two FIBs
     # fresh every 'mock__init' (i.e. every harness 'setUp') so
@@ -470,6 +478,7 @@ def init(
     # 'interface(ifindex)' view. See 'docs/refactor/link_api.md'.
     _stack.address = Ip4AddressApi()
     _stack.link = LinkApi()
+    _stack.neighbor = NeighborApi()
 
     # Host-mode routing table — Phase 3 of
     # 'docs/refactor/routing_table_host_mode.md'. Build the two FIBs and

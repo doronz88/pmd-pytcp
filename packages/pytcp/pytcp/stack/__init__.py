@@ -52,6 +52,7 @@ from pytcp.runtime.timer import Timer
 from pytcp.socket.socket_table import SocketTable
 from pytcp.stack.address import Ip4AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi
 
 if TYPE_CHECKING:
@@ -274,6 +275,13 @@ address: Ip4AddressApi
 # RFC 3927 link-local construction. See
 # 'docs/refactor/link_api.md' for the full plan.
 link: LinkApi
+# Neighbor API — neighbour-control surface (static ARP / ND
+# entries, cache flush, neighbour inspection) over each
+# interface's ARP / ND caches. Mirrors Linux 'ip neighbor' /
+# RTNETLINK 'RTM_NEWNEIGH' / 'RTM_DELNEIGH'. Constructed by
+# 'init()' / 'mock__init()' alongside 'address' / 'link'; same
+# reconstruct-per-test lifecycle, so it needs no snapshot/restore.
+neighbor: NeighborApi
 # Host-mode routing table (FIB) — Phase 1 of
 # 'docs/refactor/routing_table_host_mode.md'. One per address
 # family. Reconstructed fresh by 'init()' / 'mock__init()'
