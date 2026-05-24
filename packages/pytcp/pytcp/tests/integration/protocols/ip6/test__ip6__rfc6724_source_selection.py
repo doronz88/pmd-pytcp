@@ -30,7 +30,7 @@
 Integration tests for the RFC 6724 default source-address
 selection algorithm — rules 1, 2, 3, and 8.
 
-Exercises 'PacketHandler._select_ip6_source' against an in-memory
+Exercises 'Ip6TxHandler._select_ip6_source' against an in-memory
 host list with mixed scopes, deprecated/preferred SLAAC entries,
 and overlapping prefixes. Rule 7 (temporary-address preference)
 is covered by a separate file.
@@ -89,7 +89,7 @@ class TestRfc6724Rule1SameAddress(Ip6TestCase):
         Reference: RFC 6724 §5 rule 1 (Prefer same address).
         """
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_HOST_PREFIX_A.address,
         )
 
@@ -126,7 +126,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
         Reference: RFC 4007 §5 (Scope of an IPv6 address).
         """
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_OUTSIDE_ALL,
         )
 
@@ -145,7 +145,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
         Reference: RFC 6724 §5 rule 2 (Prefer appropriate scope).
         """
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_LINK_LOCAL,
         )
 
@@ -176,7 +176,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
 
         self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_OUTSIDE_ALL,
         )
 
@@ -205,7 +205,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
 
         self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=Ip6Address("ff02::1"),
         )
 
@@ -231,7 +231,7 @@ class TestRfc6724Rule2Scope(Ip6TestCase):
 
         self._packet_handler._ip6_ifaddr = [_HOST_LINK_LOCAL]
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=Ip6Address("ff0e::1"),
         )
 
@@ -285,7 +285,7 @@ class TestRfc6724Rule3Deprecated(Ip6TestCase):
         Reference: RFC 4862 §5.5.4 (PREFERRED / DEPRECATED state machine).
         """
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_IN_PREFIX_A,
         )
 
@@ -316,7 +316,7 @@ class TestRfc6724Rule3Deprecated(Ip6TestCase):
             a for a in self._packet_handler._icmp6_slaac_addresses if a.address == _HOST_PREFIX_A.address
         ]
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_IN_PREFIX_A,
         )
 
@@ -363,7 +363,7 @@ class TestRfc6724Rule8LongestMatch(Ip6TestCase):
         Reference: RFC 6724 §2.2 (CommonPrefixLen definition).
         """
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_IN_PREFIX_B,
         )
 
@@ -384,8 +384,8 @@ class TestRfc6724Rule8LongestMatch(Ip6TestCase):
         Reference: RFC 6724 §5 rule 8 (Use longest matching prefix).
         """
 
-        result_a = self._packet_handler._select_ip6_source(ip6__dst=_DST_OUTSIDE_ALL)
-        result_b = self._packet_handler._select_ip6_source(ip6__dst=_DST_OUTSIDE_ALL)
+        result_a = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_OUTSIDE_ALL)
+        result_b = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_OUTSIDE_ALL)
 
         self.assertIsNotNone(result_a, msg="Rule 8 must always return a candidate when one exists.")
         self.assertEqual(
@@ -397,7 +397,7 @@ class TestRfc6724Rule8LongestMatch(Ip6TestCase):
 
 class TestRfc6724SelectorBoundaries(Ip6TestCase):
     """
-    The 'PacketHandler._select_ip6_source' boundary tests.
+    The 'Ip6TxHandler._select_ip6_source' boundary tests.
     """
 
     def test__ip6__rfc6724__no_candidates_returns_none(self) -> None:
@@ -412,7 +412,7 @@ class TestRfc6724SelectorBoundaries(Ip6TestCase):
 
         self._packet_handler._ip6_ifaddr = []
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_DST_OUTSIDE_ALL,
         )
 
@@ -455,7 +455,7 @@ class TestRfc6724SelectorBoundaries(Ip6TestCase):
             ),
         ]
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=_HOST_PREFIX_A.address,
         )
 

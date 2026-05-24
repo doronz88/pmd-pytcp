@@ -31,12 +31,9 @@ ver 3.0.6
 """
 
 import time as time_module
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
-    Icmp6Message,
     Icmp6MessageParameterProblem,
     Icmp6ParameterProblemCode,
     Ip6Parser,
@@ -72,6 +69,9 @@ from pytcp.protocols.ip6.ip6__ext_hdr_limits import (
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+
 # RFC 8200 §4.1 — IPv6 extension headers walked in chain order.
 _IP6_EXTENSION_HEADERS: frozenset[IpProto] = frozenset(
     {
@@ -92,43 +92,19 @@ _IP6__NEXT_HEADER__OFFSET = 6
 _IP6__HEADER__LEN = 40
 
 
-class PacketHandlerIp6Rx(ABC):
+class Ip6RxHandler:
     """
-    Class implements packet handler for the inbound IPv6 packets.
+    Packet handler for the inbound IPv6 packets.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip6Address
-        from net_proto import Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
-        _ip6_multicast: list[Ip6Address]
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Initialize the IPv6 RX sub-handler.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        def _phrx_ip6_frag(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_icmp6(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_udp(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_tcp(self, packet_rx: PacketRx, /) -> None: ...
-
-        def _phtx_icmp6(
-            self,
-            *,
-            ip6__src: Ip6Address,
-            ip6__dst: Ip6Address,
-            ip6__hop: int | None = None,
-            icmp6__message: Icmp6Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def _ip6_unicast(self) -> list[Ip6Address]: ...
+        self._if = interface
 
     def _forward_or_deliver_ip6(self, packet_rx: PacketRx, /) -> bool:
         """
@@ -148,10 +124,10 @@ class PacketHandlerIp6Rx(ABC):
         # 'ip6__dst_unknown__drop').
         """
 
-        if packet_rx.ip6.dst in {*self._ip6_unicast, *self._ip6_multicast}:
+        if packet_rx.ip6.dst in {*self._if._ip6_unicast, *self._if._ip6_multicast}:
             return True
 
-        self._packet_stats_rx.ip6__dst_unknown__drop += 1
+        self._if._packet_stats_rx.ip6__dst_unknown__drop += 1
         __debug__ and log(
             "ip6",
             f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
@@ -163,20 +139,20 @@ class PacketHandlerIp6Rx(ABC):
         Handle inbound IPv6 packets.
         """
 
-        self._packet_stats_rx.ip6__pre_parse += 1
+        self._if._packet_stats_rx.ip6__pre_parse += 1
 
         try:
             Ip6Parser(packet_rx)
 
         except Ip6SanityError as error:
-            self._packet_stats_rx.ip6__failed_parse__drop += 1
+            self._if._packet_stats_rx.ip6__failed_parse__drop += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             if error.pointer is not None:
                 self.__phrx_ip6__emit_parameter_problem(packet_rx, error.pointer)
             return
 
         except PacketValidationError as error:
-            self._packet_stats_rx.ip6__failed_parse__drop += 1
+            self._if._packet_stats_rx.ip6__failed_parse__drop += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return
 
@@ -190,11 +166,11 @@ class PacketHandlerIp6Rx(ABC):
         if not self._forward_or_deliver_ip6(packet_rx):
             return
 
-        if packet_rx.ip6.dst in self._ip6_unicast:
-            self._packet_stats_rx.ip6__dst_unicast += 1
+        if packet_rx.ip6.dst in self._if._ip6_unicast:
+            self._if._packet_stats_rx.ip6__dst_unicast += 1
 
-        if packet_rx.ip6.dst in self._ip6_multicast:
-            self._packet_stats_rx.ip6__dst_multicast += 1
+        if packet_rx.ip6.dst in self._if._ip6_multicast:
+            self._if._packet_stats_rx.ip6__dst_multicast += 1
 
         # Create RawMetadata object and try to find matching RAW socket.
         packet_rx_md = RawMetadata(
@@ -208,7 +184,7 @@ class PacketHandlerIp6Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.raw__socket_match += 1
+                self._if._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "ip6",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
@@ -247,7 +223,7 @@ class PacketHandlerIp6Rx(ABC):
                         # header. Out-of-order HBH is a §4 unrecognized-
                         # next-header equivalent — emit Param Problem
                         # code 1 with pointer at this header byte.
-                        self._packet_stats_rx.ip6__hbh__not_first__drop += 1
+                        self._if._packet_stats_rx.ip6__hbh__not_first__drop += 1
                         self.__phrx_ip6__emit_parameter_problem_unrecognized_next_header(
                             packet_rx, pointer=chain_offset
                         )
@@ -263,7 +239,7 @@ class PacketHandlerIp6Rx(ABC):
                     chain_offset += (packet_rx.ip6_routing.hdr_ext_len + 1) * 8
                     current_next = packet_rx.ip6_routing.next
                 case IpProto.IP6_FRAG:
-                    self._phrx_ip6_frag(packet_rx)
+                    self._if._phrx_ip6_frag(packet_rx)
                     return  # Frag handles re-entry on reassembly.
                 case IpProto.IP6_DEST_OPTS:
                     if not self._phrx_ip6_dest_opts(packet_rx, chain_offset=chain_offset):
@@ -286,21 +262,21 @@ class PacketHandlerIp6Rx(ABC):
         # Transport / chain-terminator dispatch.
         match current_next:
             case IpProto.ICMP6:
-                self._phrx_icmp6(packet_rx)
+                self._if._phrx_icmp6(packet_rx)
             case IpProto.UDP:
-                self._phrx_udp(packet_rx)
+                self._if._phrx_udp(packet_rx)
             case IpProto.TCP:
-                self._phrx_tcp(packet_rx)
+                self._if._phrx_tcp(packet_rx)
             case IpProto.IP6_NO_NEXT_HEADER:
                 # RFC 8200 §4.7: chain terminator. Drop silently;
                 # nothing to dispatch.
-                self._packet_stats_rx.ip6__no_next_header += 1
+                self._if._packet_stats_rx.ip6__no_next_header += 1
                 __debug__ and log(
                     "ip6",
                     f"{packet_rx.tracker} - IP6_NO_NEXT_HEADER terminator, dropping silently.",
                 )
             case _:
-                self._packet_stats_rx.ip6__no_proto_support__drop += 1
+                self._if._packet_stats_rx.ip6__no_proto_support__drop += 1
                 __debug__ and log(
                     "ip6",
                     f"{packet_rx.tracker} - Unsupported protocol {current_next}, dropping.",
@@ -314,11 +290,11 @@ class PacketHandlerIp6Rx(ABC):
         on parse error (chain walker must stop).
         """
 
-        self._packet_stats_rx.ip6_hbh__pre_parse += 1
+        self._if._packet_stats_rx.ip6_hbh__pre_parse += 1
         try:
             Ip6HbhParser(packet_rx)
         except Ip6HbhIntegrityError as error:
-            self._packet_stats_rx.ip6_hbh__failed_parse += 1
+            self._if._packet_stats_rx.ip6_hbh__failed_parse += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         except Ip6HbhSanityError as error:
@@ -330,7 +306,7 @@ class PacketHandlerIp6Rx(ABC):
         try:
             check_ext_hdr_option_caps(packet_rx.ip6_hbh.options)
         except Ip6ExtHdrCapViolation as error:
-            self._packet_stats_rx.ip6_hbh__option_cap_exceeded__drop += 1
+            self._if._packet_stats_rx.ip6_hbh__option_cap_exceeded__drop += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         return True
@@ -342,17 +318,17 @@ class PacketHandlerIp6Rx(ABC):
         emits ICMPv6 Parameter Problem code 0.
         """
 
-        self._packet_stats_rx.ip6_routing__pre_parse += 1
+        self._if._packet_stats_rx.ip6_routing__pre_parse += 1
         try:
             Ip6RoutingParser(packet_rx)
         except Ip6RoutingIntegrityError as error:
-            self._packet_stats_rx.ip6_routing__failed_parse += 1
+            self._if._packet_stats_rx.ip6_routing__failed_parse += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             if error.pointer is not None:
                 # RFC 5095 §3: RH0 hard-drop emits Param Problem
                 # code 0 (erroneous header field) with pointer at
                 # the Routing Type byte.
-                self._packet_stats_rx.ip6_routing__rh0__drop += 1
+                self._if._packet_stats_rx.ip6_routing__rh0__drop += 1
                 self.__phrx_ip6__emit_parameter_problem(packet_rx, pointer=chain_offset + error.pointer)
             return False
         return True
@@ -362,11 +338,11 @@ class PacketHandlerIp6Rx(ABC):
         Parse the IPv6 Destination Options extension header.
         """
 
-        self._packet_stats_rx.ip6_dest_opts__pre_parse += 1
+        self._if._packet_stats_rx.ip6_dest_opts__pre_parse += 1
         try:
             Ip6DestOptsParser(packet_rx)
         except Ip6DestOptsIntegrityError as error:
-            self._packet_stats_rx.ip6_dest_opts__failed_parse += 1
+            self._if._packet_stats_rx.ip6_dest_opts__failed_parse += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         except Ip6DestOptsSanityError as error:
@@ -378,7 +354,7 @@ class PacketHandlerIp6Rx(ABC):
         try:
             check_ext_hdr_option_caps(packet_rx.ip6_dest_opts.options)
         except Ip6ExtHdrCapViolation as error:
-            self._packet_stats_rx.ip6_dest_opts__option_cap_exceeded__drop += 1
+            self._if._packet_stats_rx.ip6_dest_opts__option_cap_exceeded__drop += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         return True
@@ -443,7 +419,7 @@ class PacketHandlerIp6Rx(ABC):
         # No configured unicast IPv6 address: cannot emit because the
         # source-IP reflection from packet_rx.ip6.dst would not be a
         # valid stack address.
-        if not self._ip6_unicast:
+        if not self._if._ip6_unicast:
             return
 
         verdict = try_emit_icmp_error(
@@ -452,7 +428,7 @@ class PacketHandlerIp6Rx(ABC):
             now=time_module.monotonic(),
         )
         if verdict is not None:
-            self._packet_stats_rx.ip6__no_proto_support__icmp6_param_problem_suppressed += 1
+            self._if._packet_stats_rx.ip6__no_proto_support__icmp6_param_problem_suppressed += 1
             __debug__ and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Unrecognized Next Header "
@@ -460,9 +436,9 @@ class PacketHandlerIp6Rx(ABC):
             )
             return
 
-        self._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem += 1
-        self._marshal_tx(
-            lambda: self._phtx_icmp6(
+        self._if._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem += 1
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp6(
                 ip6__src=packet_rx.ip6.dst,
                 ip6__dst=packet_rx.ip6.src,
                 icmp6__message=Icmp6MessageParameterProblem(
@@ -487,7 +463,7 @@ class PacketHandlerIp6Rx(ABC):
         Reference: RFC 4443 §3.4 (Parameter Problem code 2 wire format).
         """
 
-        if not self._ip6_unicast:
+        if not self._if._ip6_unicast:
             return
 
         verdict = try_emit_icmp_error(
@@ -496,12 +472,12 @@ class PacketHandlerIp6Rx(ABC):
             now=time_module.monotonic(),
         )
         if verdict is not None:
-            self._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
+            self._if._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
             return
 
-        self._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
-        self._marshal_tx(
-            lambda: self._phtx_icmp6(
+        self._if._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp6(
                 ip6__src=packet_rx.ip6.dst,
                 ip6__dst=packet_rx.ip6.src,
                 icmp6__message=Icmp6MessageParameterProblem(
@@ -528,7 +504,7 @@ class PacketHandlerIp6Rx(ABC):
         # No configured unicast IPv6 address: cannot emit because the
         # source-IP reflection from packet_rx.ip6.dst would not be a
         # valid stack address.
-        if not self._ip6_unicast:
+        if not self._if._ip6_unicast:
             return
 
         verdict = try_emit_icmp_error(
@@ -537,7 +513,7 @@ class PacketHandlerIp6Rx(ABC):
             now=time_module.monotonic(),
         )
         if verdict is not None:
-            self._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
+            self._if._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
             __debug__ and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Parameter Problem "
@@ -545,9 +521,9 @@ class PacketHandlerIp6Rx(ABC):
             )
             return
 
-        self._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
-        self._marshal_tx(
-            lambda: self._phtx_icmp6(
+        self._if._packet_stats_rx.ip6__sanity_error__respond_icmp6_param_problem += 1
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp6(
                 ip6__src=packet_rx.ip6.dst,
                 ip6__dst=packet_rx.ip6.src,
                 icmp6__message=Icmp6MessageParameterProblem(

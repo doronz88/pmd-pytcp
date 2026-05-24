@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp6Rx' mixin.
+This module contains unit tests for the 'Ip6RxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6__rx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -41,8 +42,11 @@ from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ip6__rx import (
-    PacketHandlerIp6Rx,
+    Ip6RxHandler,
 )
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -71,9 +75,19 @@ HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 OFF_NET__IP6 = Ip6Address("2001:db8:ffff::99")
 
 
-class _StubHandler(PacketHandlerIp6Rx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp6Rx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters, the address lists, the TX marshal
+    seam, and the upper-layer / cross-protocol dispatch spies
+    ('_phrx_ip6_frag' / '_phrx_icmp6' / '_phrx_udp' / '_phrx_tcp',
+    '_phtx_icmp6') the IPv6 RX sub-handler reaches through 'self._if',
+    recording each call for assertions. A purpose-built double is used
+    rather than 'create_autospec(PacketHandlerL2)' — the god-class still
+    carries 'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -118,6 +132,19 @@ class _StubHandler(PacketHandlerIp6Rx):
         return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
 
+def _make_ip6_rx() -> tuple[Ip6RxHandler, _StubInterface]:
+    """
+    Build an 'Ip6RxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface()
+    return (
+        Ip6RxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)),
+        interface,
+    )
+
+
 def _ip6_frame(
     *,
     src: Ip6Address = HOST_A__IP6,
@@ -149,7 +176,7 @@ class _Ip6RxTestBase(TestCase):
         Build the stub handler and isolate the stack sockets dict.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ip6_rx()
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
 
@@ -163,7 +190,7 @@ class _Ip6RxTestBase(TestCase):
 
 class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
     """
-    The parse-and-filter branches of 'PacketHandlerIp6Rx._phrx_ip6'.
+    The parse-and-filter branches of 'Ip6RxHandler._phrx_ip6'.
     """
 
     def test__stack__packet_handler__ip6__rx__parse_fail_drops(self) -> None:
@@ -177,7 +204,7 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         self._handler._phrx_ip6(PacketRx(b"\x60\x00\x00"))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6__failed_parse__drop,
+            self._if._packet_stats_rx.ip6__failed_parse__drop,
             1,
             msg="Truncated IPv6 frame must be counted in ip6__failed_parse__drop.",
         )
@@ -192,7 +219,7 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=OFF_NET__IP6)))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6__dst_unknown__drop,
+            self._if._packet_stats_rx.ip6__dst_unknown__drop,
             1,
             msg="Unknown IPv6 destination must be counted in ip6__dst_unknown__drop.",
         )
@@ -207,7 +234,7 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=STACK__IP6_ADDRESS, payload=b"\x00" * 8)))
 
-        self.assertEqual(self._handler._packet_stats_rx.ip6__dst_unicast, 1)
+        self.assertEqual(self._if._packet_stats_rx.ip6__dst_unicast, 1)
 
     def test__stack__packet_handler__ip6__rx__multicast_dst_counts(self) -> None:
         """
@@ -219,13 +246,13 @@ class TestPacketHandlerIp6RxParseAndFilter(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(dst=STACK__IP6_MULTICAST, payload=b"\x00" * 8)))
 
-        self.assertEqual(self._handler._packet_stats_rx.ip6__dst_multicast, 1)
+        self.assertEqual(self._if._packet_stats_rx.ip6__dst_multicast, 1)
 
 
 class TestPacketHandlerIp6RxForwardOrDeliver(_Ip6RxTestBase):
     """
     The RFC 1812 §5.2.1 forward-or-deliver seam
-    ('PacketHandlerIp6Rx._forward_or_deliver_ip6') — the separable
+    ('Ip6RxHandler._forward_or_deliver_ip6') — the separable
     delivery decision the Phase-2 router fills the forward branch of.
     """
 
@@ -279,7 +306,7 @@ class TestPacketHandlerIp6RxForwardOrDeliver(_Ip6RxTestBase):
             msg="A non-local datagram must not be delivered locally (False).",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6__dst_unknown__drop,
+            self._if._packet_stats_rx.ip6__dst_unknown__drop,
             1,
             msg="The host forward-stub must drop the non-local datagram (ip6__dst_unknown__drop).",
         )
@@ -299,7 +326,7 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.UDP, payload=b"\x00" * 8)))
 
-        self.assertEqual(self._handler.dispatched, ["udp"])
+        self.assertEqual(self._if.dispatched, ["udp"])
 
     def test__stack__packet_handler__ip6__rx__tcp_dispatches(self) -> None:
         """
@@ -310,7 +337,7 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.TCP, payload=b"\x00" * 20)))
 
-        self.assertEqual(self._handler.dispatched, ["tcp"])
+        self.assertEqual(self._if.dispatched, ["tcp"])
 
     def test__stack__packet_handler__ip6__rx__icmp6_dispatches(self) -> None:
         """
@@ -321,7 +348,7 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.ICMP6, payload=b"\x00" * 8)))
 
-        self.assertEqual(self._handler.dispatched, ["icmp6"])
+        self.assertEqual(self._if.dispatched, ["icmp6"])
 
     def test__stack__packet_handler__ip6__rx__frag_dispatches(self) -> None:
         """
@@ -332,7 +359,7 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
 
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.IP6_FRAG, payload=b"\x00" * 8)))
 
-        self.assertEqual(self._handler.dispatched, ["ip6_frag"])
+        self.assertEqual(self._if.dispatched, ["ip6_frag"])
 
     def test__stack__packet_handler__ip6__rx__unsupported_proto_drops(self) -> None:
         """
@@ -345,15 +372,15 @@ class TestPacketHandlerIp6RxDispatch(_Ip6RxTestBase):
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.RAW, payload=b"\x00" * 8)))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6__no_proto_support__drop,
+            self._if._packet_stats_rx.ip6__no_proto_support__drop,
             1,
             msg="Unsupported IPv6 next-header must be counted in ip6__no_proto_support__drop.",
         )
         # SHOULD-emit Parameter Problem code 1 per RFC 8200 §4 — the stub
         # records the outbound dispatch via 'phtx_icmp6'.
-        self.assertEqual(self._handler.dispatched, ["phtx_icmp6"])
+        self.assertEqual(self._if.dispatched, ["phtx_icmp6"])
         self.assertEqual(
-            self._handler._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem,
+            self._if._packet_stats_rx.ip6__no_proto_support__respond_icmp6_param_problem,
             1,
             msg="Unsupported next-header must trigger the Param Problem emit counter.",
         )
@@ -385,9 +412,9 @@ class TestPacketHandlerIp6RxRawSocketMatch(_Ip6RxTestBase):
         self._handler._phrx_ip6(PacketRx(_ip6_frame(ip_proto=IpProto.UDP, payload=b"\x00" * 8)))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.raw__socket_match,
+            self._if._packet_stats_rx.raw__socket_match,
             1,
             msg="A matched RAW socket must increment raw__socket_match.",
         )
         fake_socket.process_raw_packet.assert_called_once()
-        self.assertEqual(self._handler.dispatched, [])
+        self.assertEqual(self._if.dispatched, [])

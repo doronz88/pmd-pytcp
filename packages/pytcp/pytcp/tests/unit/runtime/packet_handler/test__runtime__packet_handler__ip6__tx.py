@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp6Tx' mixin.
+This module contains unit tests for the 'Ip6TxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6__tx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -40,10 +41,17 @@ from pytcp import stack
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.protocols.icmp6.nd.nd__router_state import (
+    Icmp6SlaacAddress,
+    Icmp6TempAddress,
+)
 from pytcp.runtime.packet_handler.packet_handler__ip6__tx import (
-    PacketHandlerIp6Tx,
+    Ip6TxHandler,
 )
 from pytcp.runtime.tx_ring import TxRing
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -73,9 +81,20 @@ HOST_A__IP6 = Ip6Address("2001:db8:0:1::91")
 OFF_NET__IP6 = Ip6Address("2001:db8:ffff::99")
 
 
-class _StubHandler(PacketHandlerIp6Tx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp6Tx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters, the address lists, the interface MTU /
+    layer, the TX ring, the SLAAC / temp-address tables, and the
+    '_phtx_ethernet' / '_phtx_ip6_frag' / '_marshal_tx_async' /
+    '_effective_ip6_hop_limit' seams the IPv6 TX sub-handler reaches
+    through 'self._if', recording each call for assertions. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which autospec
+    walks) cannot evaluate at runtime.
     """
 
     def __init__(
@@ -92,8 +111,8 @@ class _StubHandler(PacketHandlerIp6Tx):
         self._interface_mtu = interface_mtu
         self._ip6_ifaddr = ip6_hosts if ip6_hosts is not None else [STACK__IP6_HOST]
         self._ip6_multicast = [STACK__IP6_MULTICAST]
-        self._icmp6_slaac_addresses = []
-        self._icmp6_temp_addresses = []
+        self._icmp6_slaac_addresses: list[Icmp6SlaacAddress] = []
+        self._icmp6_temp_addresses: list[Icmp6TempAddress] = []
 
         # Per-interface TX ring — injected by the L3-enqueue test that
         # exercises '__send_out_packet'; None for the L2 tests whose
@@ -133,6 +152,30 @@ class _StubHandler(PacketHandlerIp6Tx):
         return 64
 
 
+def _make_ip6_tx(
+    *,
+    ip6_support: bool = True,
+    interface_layer: InterfaceLayer = InterfaceLayer.L2,
+    interface_mtu: int = 1500,
+    ip6_hosts: list[Ip6IfAddr] | None = None,
+) -> tuple[Ip6TxHandler, _StubInterface]:
+    """
+    Build an 'Ip6TxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(
+        ip6_support=ip6_support,
+        interface_layer=interface_layer,
+        interface_mtu=interface_mtu,
+        ip6_hosts=ip6_hosts,
+    )
+    return (
+        Ip6TxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)),
+        interface,
+    )
+
+
 class TestPacketHandlerIp6TxGating(TestCase):
     """
     The IPv6-support-flag gating tests.
@@ -145,7 +188,7 @@ class TestPacketHandlerIp6TxGating(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip6_support=False)
+        handler, iface = _make_ip6_tx(ip6_support=False)
         status = handler._phtx_ip6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=HOST_A__IP6,
@@ -153,7 +196,7 @@ class TestPacketHandlerIp6TxGating(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP6__NO_PROTOCOL_SUPPORT)
-        self.assertEqual(handler._packet_stats_tx.ip6__no_proto_support__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip6__no_proto_support__drop, 1)
 
 
 class TestPacketHandlerIp6TxValidation(TestCase):
@@ -162,7 +205,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ip6_tx()
 
     def test__stack__packet_handler__ip6__tx__src_not_owned_drops(self) -> None:
         """
@@ -178,7 +221,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_NOT_OWNED)
-        self.assertEqual(self._handler._packet_stats_tx.ip6__src_not_owned__drop, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip6__src_not_owned__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__src_multicast_replaced(self) -> None:
         """
@@ -193,7 +236,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip6__src_multicast__replace, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip6__src_multicast__replace, 1)
 
     def test__stack__packet_handler__ip6__tx__src_multicast_no_unicast_drops(self) -> None:
         """
@@ -202,7 +245,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip6_hosts=[])
+        handler, iface = _make_ip6_tx(ip6_hosts=[])
         status = handler._phtx_ip6(
             ip6__src=STACK__IP6_MULTICAST,
             ip6__dst=HOST_A__IP6,
@@ -210,7 +253,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_MULTICAST)
-        self.assertEqual(handler._packet_stats_tx.ip6__src_multicast__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip6__src_multicast__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__src_unspec_local_dst_replaced(self) -> None:
         """
@@ -225,7 +268,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip6__src_network_unspecified__replace_local, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip6__src_network_unspecified__replace_local, 1)
 
     def test__stack__packet_handler__ip6__tx__src_unspec_external_gateway_replaced(self) -> None:
         """
@@ -241,7 +284,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
             ip6__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip6__src_network_unspecified__replace_external, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip6__src_network_unspecified__replace_external, 1)
 
     def test__stack__packet_handler__ip6__tx__src_unspec_no_replacement_drops(self) -> None:
         """
@@ -250,7 +293,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip6_hosts=[])
+        handler, iface = _make_ip6_tx(ip6_hosts=[])
         status = handler._phtx_ip6(
             ip6__src=Ip6Address(),
             ip6__dst=HOST_A__IP6,
@@ -258,7 +301,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP6__SRC_UNSPECIFIED)
-        self.assertEqual(handler._packet_stats_tx.ip6__src_unspecified__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip6__src_unspecified__drop, 1)
 
     def test__stack__packet_handler__ip6__tx__dst_unspecified_drops(self) -> None:
         """
@@ -274,7 +317,7 @@ class TestPacketHandlerIp6TxValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP6__DST_UNSPECIFIED)
-        self.assertEqual(self._handler._packet_stats_tx.ip6__dst_unspecified__drop, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip6__dst_unspecified__drop, 1)
 
 
 class TestPacketHandlerIp6TxSend(TestCase):
@@ -290,7 +333,7 @@ class TestPacketHandlerIp6TxSend(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L2)
+        handler, iface = _make_ip6_tx(interface_layer=InterfaceLayer.L2)
         status = handler._phtx_ip6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=HOST_A__IP6,
@@ -298,8 +341,8 @@ class TestPacketHandlerIp6TxSend(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(handler._packet_stats_tx.ip6__mtu_ok__send, 1)
-        self.assertEqual(len(handler.ethernet_tx_calls), 1)
+        self.assertEqual(iface._packet_stats_tx.ip6__mtu_ok__send, 1)
+        self.assertEqual(len(iface.ethernet_tx_calls), 1)
 
     def test__stack__packet_handler__ip6__tx__l3_enqueues_on_tx_ring(self) -> None:
         """
@@ -309,9 +352,9 @@ class TestPacketHandlerIp6TxSend(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L3)
+        handler, iface = _make_ip6_tx(interface_layer=InterfaceLayer.L3)
         mock_tx_ring = create_autospec(TxRing, spec_set=True)
-        handler._tx_ring = mock_tx_ring
+        iface._tx_ring = mock_tx_ring
         status = handler._phtx_ip6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=HOST_A__IP6,
@@ -319,7 +362,7 @@ class TestPacketHandlerIp6TxSend(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__IP6__TO_TX_RING)
-        self.assertEqual(handler._packet_stats_tx.ip6__mtu_ok__send, 1)
+        self.assertEqual(iface._packet_stats_tx.ip6__mtu_ok__send, 1)
         mock_tx_ring.enqueue.assert_called_once()
 
     def test__stack__packet_handler__ip6__tx__over_mtu_delegates_to_frag(self) -> None:
@@ -330,9 +373,9 @@ class TestPacketHandlerIp6TxSend(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_mtu=200)
+        handler, iface = _make_ip6_tx(interface_mtu=200)
         payload = RawAssembler(raw__payload=b"\x00" * 400)
-        handler.frag_tx_status = TxStatus.PASSED__IP6__TO_TX_RING
+        iface.frag_tx_status = TxStatus.PASSED__IP6__TO_TX_RING
         status = handler._phtx_ip6(
             ip6__src=STACK__IP6_ADDRESS,
             ip6__dst=HOST_A__IP6,
@@ -340,9 +383,9 @@ class TestPacketHandlerIp6TxSend(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__IP6__TO_TX_RING)
-        self.assertEqual(handler._packet_stats_tx.ip6__mtu_exceed__frag, 1)
-        self.assertEqual(len(handler.frag_tx_calls), 1)
-        self.assertIsInstance(handler.frag_tx_calls[0], Ip6Assembler)
+        self.assertEqual(iface._packet_stats_tx.ip6__mtu_exceed__frag, 1)
+        self.assertEqual(len(iface.frag_tx_calls), 1)
+        self.assertIsInstance(iface.frag_tx_calls[0], Ip6Assembler)
 
 
 class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
@@ -358,7 +401,7 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_ip6_tx()
         handler.send_ip6_packet(
             ip6__local_address=STACK__IP6_ADDRESS,
             ip6__remote_address=HOST_A__IP6,
@@ -366,8 +409,8 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
             ip6__payload=b"\x00" * 8,
         )
 
-        self.assertEqual(len(handler.ethernet_tx_calls), 1)
-        payload = handler.ethernet_tx_calls[0]["ethernet__payload"]
+        self.assertEqual(len(iface.ethernet_tx_calls), 1)
+        payload = iface.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, Ip6Assembler)
         self.assertEqual(payload.next, IpProto.UDP)
 
@@ -381,7 +424,7 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_ip6_tx()
         handler.send_ip6_packet(
             ip6__local_address=STACK__IP6_ADDRESS,
             ip6__remote_address=HOST_A__IP6,
@@ -390,7 +433,7 @@ class TestPacketHandlerIp6TxSendIp6PacketHelper(TestCase):
         )
 
         self.assertEqual(
-            handler.marshal_tx_async_calls,
+            iface.marshal_tx_async_calls,
             1,
             msg="send_ip6_packet must route the TX through _marshal_tx_async exactly once.",
         )

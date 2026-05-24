@@ -108,7 +108,7 @@ class Ip6TestCase(NetworkTestCase):
         """
         Replace the stack's '_ip6_ifaddr' list with the given
         hosts. Used by source-selection tests that exercise
-        'PacketHandler._select_ip6_source' against a controlled
+        'Ip6TxHandler._select_ip6_source' against a controlled
         owned-address list.
         """
 

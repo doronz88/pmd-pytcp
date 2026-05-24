@@ -79,7 +79,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
-        result = self._packet_handler._select_ip6_source(ip6__dst=Ip6Address("2003::1"))
+        result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=Ip6Address("2003::1"))
 
         self.assertEqual(
             result,
@@ -113,7 +113,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=Ip6Address("2002:cb00::1"),
         )
 
@@ -139,7 +139,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = []
         self._packet_handler._icmp6_temp_addresses = []
 
-        result = self._packet_handler._select_ip6_source(ip6__dst=Ip6Address("fd99::1"))
+        result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=Ip6Address("fd99::1"))
 
         self.assertEqual(
             result,
@@ -168,7 +168,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         # dst label 1 (GUA catch-all). Neither candidate matches.
         # Rule 8: 6to4 has 5 common bits with 2620::; ULA
         # has 0. 6to4 wins on prefix length.
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=Ip6Address("2620:0:1::100"),
         )
 
@@ -211,7 +211,7 @@ class TestRfc6724Rule6PolicyLabel(Ip6TestCase):
         ]
         self._packet_handler._icmp6_temp_addresses = []
 
-        result = self._packet_handler._select_ip6_source(
+        result = self._packet_handler._ip6_tx._select_ip6_source(
             ip6__dst=Ip6Address("2002:cb00::1"),  # label 2
         )
 

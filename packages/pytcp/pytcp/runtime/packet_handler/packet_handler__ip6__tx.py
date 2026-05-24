@@ -31,8 +31,6 @@ ver 3.0.6
 """
 
 import time
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from net_addr import Ip6Address, MacAddress
@@ -41,8 +39,10 @@ from net_proto import (
     Icmp6Mld2MessageReport,
     Icmp6NdMessageNeighborSolicitation,
     Ip6Assembler,
+    Ip6Payload,
     IpProto,
     RawAssembler,
+    Tracker,
 )
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
@@ -55,53 +55,23 @@ from pytcp.protocols.ip6.ip6__source_selection import (
     ip6_address_scope,
 )
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerIp6Tx(ABC):
+
+class Ip6TxHandler:
     """
-    Class implements packet handler for the outbound IPv6 packets.
+    Packet handler for the outbound IPv6 packets.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip6IfAddr
-        from net_proto import EthernetPayload, Ip6Payload, Tracker
-        from pytcp.lib.packet_stats import PacketStatsTx
-        from pytcp.protocols.icmp6.nd.nd__router_state import (
-            Icmp6SlaacAddress,
-            Icmp6TempAddress,
-        )
-        from pytcp.runtime.tx_ring import TxRing
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _interface_layer: InterfaceLayer
-        _packet_stats_tx: PacketStatsTx
-        _ip6_ifaddr: list[Ip6IfAddr]
-        _ip6_multicast: list[Ip6Address]
-        _ip6_support: bool
-        _interface_mtu: int
-        _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
-        _icmp6_temp_addresses: list[Icmp6TempAddress]
-        _tx_ring: TxRing | None
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Initialize the IPv6 TX sub-handler.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-        def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ethernet(
-            self,
-            *,
-            ethernet__src: MacAddress = MacAddress(),
-            ethernet__dst: MacAddress = MacAddress(),
-            ethernet__payload: EthernetPayload = RawAssembler(),
-        ) -> TxStatus: ...
-
-        def _phtx_ip6_frag(self, *, ip6_packet_tx: Ip6Assembler) -> TxStatus: ...
-
-        def _effective_ip6_hop_limit(self) -> int: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def _ip6_unicast(self) -> list[Ip6Address]: ...
+        self._if = interface
 
     def _phtx_ip6(
         self,
@@ -124,17 +94,17 @@ class PacketHandlerIp6Tx(ABC):
         lookup.
         """
 
-        self._packet_stats_tx.ip6__pre_assemble += 1
+        self._if._packet_stats_tx.ip6__pre_assemble += 1
 
         if ip6__hop is None:
-            ip6__hop = self._effective_ip6_hop_limit()
+            ip6__hop = self._if._effective_ip6_hop_limit()
 
         assert 0 < ip6__hop < 256
 
         # Check if IPv6 protocol support is enabled, if not then silently
         # drop the packet.
-        if not self._ip6_support:
-            self._packet_stats_tx.ip6__no_proto_support__drop += 1
+        if not self._if._ip6_support:
+            self._if._packet_stats_tx.ip6__no_proto_support__drop += 1
             return TxStatus.DROPPED__IP6__NO_PROTOCOL_SUPPORT
 
         # Validate source address.
@@ -182,12 +152,12 @@ class PacketHandlerIp6Tx(ABC):
 
         # Check if IP packet can be sent out without fragmentation,
         # if so send it out.
-        if len(ip6_packet_tx) <= self._interface_mtu:
-            self._packet_stats_tx.ip6__mtu_ok__send += 1
+        if len(ip6_packet_tx) <= self._if._interface_mtu:
+            self._if._packet_stats_tx.ip6__mtu_ok__send += 1
             __debug__ and log("ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}")
-            match self._interface_layer:
+            match self._if._interface_layer:
                 case InterfaceLayer.L2:
-                    return self._phtx_ethernet(
+                    return self._if._phtx_ethernet(
                         ethernet__src=MacAddress(),
                         ethernet__dst=MacAddress(),
                         ethernet__payload=ip6_packet_tx,
@@ -197,12 +167,12 @@ class PacketHandlerIp6Tx(ABC):
                     return TxStatus.PASSED__IP6__TO_TX_RING
 
         # Fragment packet and send out.
-        self._packet_stats_tx.ip6__mtu_exceed__frag += 1
+        self._if._packet_stats_tx.ip6__mtu_exceed__frag += 1
         __debug__ and log(
             "ip6",
             f"{ip6_packet_tx.tracker} - IPv6 packet len " f"{len(ip6_packet_tx)} bytes, fragmentation needed",
         )
-        return self._phtx_ip6_frag(ip6_packet_tx=ip6_packet_tx)
+        return self._if._phtx_ip6_frag(ip6_packet_tx=ip6_packet_tx)
 
     def __validate_src_ip6_address(
         self,
@@ -221,11 +191,11 @@ class PacketHandlerIp6Tx(ABC):
         # Check if the the source IP address belongs to this stack
         # or its unspecified.
         if ip6__src not in {
-            *self._ip6_unicast,
-            *self._ip6_multicast,
+            *self._if._ip6_unicast,
+            *self._if._ip6_multicast,
             Ip6Address(),
         }:
-            self._packet_stats_tx.ip6__src_not_owned__drop += 1
+            self._if._packet_stats_tx.ip6__src_not_owned__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, stack "
@@ -235,17 +205,17 @@ class PacketHandlerIp6Tx(ABC):
 
         # If packet is a response to multicast then replace source address with link
         # local address of the stack.
-        if ip6__src in self._ip6_multicast:
-            if self._ip6_unicast:
-                self._packet_stats_tx.ip6__src_multicast__replace += 1
-                ip6__src = self._ip6_unicast[0]
+        if ip6__src in self._if._ip6_multicast:
+            if self._if._ip6_unicast:
+                self._if._packet_stats_tx.ip6__src_multicast__replace += 1
+                ip6__src = self._if._ip6_unicast[0]
                 __debug__ and log(
                     "ip6",
                     f"{tracker} - Packet is response to multicast, replaced "
                     f"source with stack link local IPv6 address {ip6__src}",
                 )
                 return ip6__src
-            self._packet_stats_tx.ip6__src_multicast__drop += 1
+            self._if._packet_stats_tx.ip6__src_multicast__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, no stack "
@@ -270,7 +240,7 @@ class PacketHandlerIp6Tx(ABC):
             and isinstance(ip6__payload.message, Icmp6NdMessageNeighborSolicitation)
             and ip6__payload.message.slla is None
         ):
-            self._packet_stats_tx.ip6__src_unspecified__send += 1
+            self._if._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - Packet source is unspecified, ICMPv6 ND DAD " "packet, sending",
@@ -283,7 +253,7 @@ class PacketHandlerIp6Tx(ABC):
             and isinstance(ip6__payload, Icmp6)
             and isinstance(ip6__payload.message, Icmp6Mld2MessageReport)
         ):
-            self._packet_stats_tx.ip6__src_unspecified__send += 1
+            self._if._packet_stats_tx.ip6__src_unspecified__send += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - Packet source is unspecified, ICMPv6 MLDv2 " "report, sending",
@@ -304,10 +274,10 @@ class PacketHandlerIp6Tx(ABC):
         if ip6__src.is_unspecified and ip6__dst.is_unicast:
             selected = self._select_ip6_source(ip6__dst=ip6__dst)
             if selected is not None:
-                if any(ip6__dst in host.network for host in self._ip6_ifaddr):
-                    self._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
+                if any(ip6__dst in host.network for host in self._if._ip6_ifaddr):
+                    self._if._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
                 else:
-                    self._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
+                    self._if._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
                 __debug__ and log(
                     "ip6",
                     f"{tracker} - Packet source is unspecified, RFC 6724 "
@@ -317,7 +287,7 @@ class PacketHandlerIp6Tx(ABC):
 
         # If src is unspecified and stack can't replace it.
         if ip6__src.is_unspecified:
-            self._packet_stats_tx.ip6__src_unspecified__drop += 1
+            self._if._packet_stats_tx.ip6__src_unspecified__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
@@ -334,7 +304,7 @@ class PacketHandlerIp6Tx(ABC):
         # ENETUNREACH; we gate here since PyTCP has no route
         # layer to fall through to.
         if ip6_address_scope(ip6__src) < ip6_address_scope(ip6__dst):
-            self._packet_stats_tx.ip6__src_scope_mismatch__drop += 1
+            self._if._packet_stats_tx.ip6__src_scope_mismatch__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Source {ip6__src} has smaller scope than "
@@ -371,7 +341,7 @@ class PacketHandlerIp6Tx(ABC):
         DROPPED__IP6__SRC_UNSPECIFIED handling.
         """
 
-        candidates = [host.address for host in self._ip6_ifaddr]
+        candidates = [host.address for host in self._if._ip6_ifaddr]
         if not candidates:
             return None
 
@@ -382,21 +352,23 @@ class PacketHandlerIp6Tx(ABC):
         now = time.monotonic()
         deprecated_addresses = {
             entry.address
-            for entry in self._icmp6_slaac_addresses
+            for entry in self._if._icmp6_slaac_addresses
             if entry.state(now) is Icmp6SlaacAddressState.DEPRECATED
         }
         # RFC 8981 temp addresses share the §5.5.4 PREFERRED /
         # DEPRECATED semantics with their stable siblings —
         # 'preferred_until <= now < valid_until' is DEPRECATED.
         deprecated_addresses |= {
-            entry.address for entry in self._icmp6_temp_addresses if entry.preferred_until <= now < entry.valid_until
+            entry.address
+            for entry in self._if._icmp6_temp_addresses
+            if entry.preferred_until <= now < entry.valid_until
         }
         # Only collect temp-address membership when the policy
         # actively prefers them ('use_tempaddr=2'); for values 0
         # and 1 the rule-7 score is 0 for every candidate and
         # the membership set never needs to be consulted.
         prefer_temp = nd__constants.ICMP6__USE_TEMPADDR == 2
-        temp_addresses = {entry.address for entry in self._icmp6_temp_addresses} if prefer_temp else set()
+        temp_addresses = {entry.address for entry in self._if._icmp6_temp_addresses} if prefer_temp else set()
         dst_scope = ip6_address_scope(ip6__dst)
         _, dst_label = ip6_policy_lookup(ip6__dst)
 
@@ -461,7 +433,7 @@ class PacketHandlerIp6Tx(ABC):
 
         # Drop packet if the destination address is unspecified.
         if ip6__dst.is_unspecified:
-            self._packet_stats_tx.ip6__dst_unspecified__drop += 1
+            self._if._packet_stats_tx.ip6__dst_unspecified__drop += 1
             __debug__ and log(
                 "ip6",
                 f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
@@ -498,8 +470,8 @@ class PacketHandlerIp6Tx(ABC):
         }
         if ip6__hop is not None:
             kwargs["ip6__hop"] = ip6__hop
-        self._marshal_tx_async(lambda: self._phtx_ip6(**kwargs))
+        self._if._marshal_tx_async(lambda: self._phtx_ip6(**kwargs))
 
     def __send_out_packet(self, ip6_packet_tx: Ip6Assembler) -> None:
-        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
-        self._tx_ring.enqueue(ip6_packet_tx)
+        assert self._if._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
+        self._if._tx_ring.enqueue(ip6_packet_tx)

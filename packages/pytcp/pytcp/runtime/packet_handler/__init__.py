@@ -53,12 +53,14 @@ from net_proto import (
     ETHERNET_802_3__PACKET__MAX_LEN,
     ArpOperation,
     Ethernet8023Payload,
+    EthernetPayload,
     EtherType,
     Icmp4Message,
     Icmp6Message,
     Icmp6NdRoutePreference,
     Ip4Payload,
     Ip6Assembler,
+    Ip6Payload,
     IpProto,
     PacketRx,
     RawAssembler,
@@ -102,8 +104,8 @@ from .packet_handler__icmp6__rx import Icmp6RxHandler
 from .packet_handler__icmp6__tx import Icmp6TxHandler
 from .packet_handler__ip4__rx import Ip4RxHandler
 from .packet_handler__ip4__tx import Ip4TxHandler
-from .packet_handler__ip6__rx import PacketHandlerIp6Rx
-from .packet_handler__ip6__tx import PacketHandlerIp6Tx
+from .packet_handler__ip6__rx import Ip6RxHandler
+from .packet_handler__ip6__tx import Ip6TxHandler
 from .packet_handler__ip6_frag__rx import Ip6FragRxHandler
 from .packet_handler__ip6_frag__tx import Ip6FragTxHandler
 from .packet_handler__tcp__rx import TcpRxHandler
@@ -144,6 +146,27 @@ class PacketHandler(Subsystem, ABC):
     _ip6_frag_tx: Ip6FragTxHandler
     _ip4_rx: Ip4RxHandler
     _ip4_tx: Ip4TxHandler
+    _ip6_rx: Ip6RxHandler
+    _ip6_tx: Ip6TxHandler
+
+    if TYPE_CHECKING:
+        # '_phtx_ethernet' is provided by the L2-only
+        # 'PacketHandlerEthernetTx' mixin. The shared IPv4 / IPv6 TX
+        # sub-handlers reach it through their 'self._if:
+        # PacketHandlerL2 | PacketHandlerL3' union, but only ever on
+        # the 'InterfaceLayer.L2' branch — an L3 (TUN) interface emits
+        # via the TX ring directly and never calls this. The
+        # declaration here is the typing fiction that lets the union
+        # see the method; it is 'TYPE_CHECKING'-only so the running
+        # 'PacketHandlerL3' is not given a non-functional Ethernet
+        # emitter. Drops out once L2/L3 are themselves restructured.
+        def _phtx_ethernet(
+            self,
+            *,
+            ethernet__src: MacAddress = MacAddress(),
+            ethernet__dst: MacAddress = MacAddress(),
+            ethernet__payload: EthernetPayload = RawAssembler(),
+        ) -> TxStatus: ...
 
     _event__stop_subsystem: threading.Event
 
@@ -358,6 +381,8 @@ class PacketHandler(Subsystem, ABC):
         self._ip6_frag_tx = Ip6FragTxHandler(interface=_if)
         self._ip4_rx = Ip4RxHandler(interface=_if)
         self._ip4_tx = Ip4TxHandler(interface=_if)
+        self._ip6_rx = Ip6RxHandler(interface=_if)
+        self._ip6_tx = Ip6TxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1846,13 +1871,67 @@ class PacketHandler(Subsystem, ABC):
 
         return self._ip6_frag_tx._phtx_ip6_frag(ip6_packet_tx=ip6_packet_tx)
 
+    ###
+    # IPv6 delegators — logic lives in the composed 'Ip6RxHandler' /
+    # 'Ip6TxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_ip6(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound IPv6 packet (delegates to the IPv6 RX sub-handler).
+        """
+
+        self._ip6_rx._phrx_ip6(packet_rx)
+
+    def _phtx_ip6(
+        self,
+        *,
+        ip6__dst: Ip6Address,
+        ip6__src: Ip6Address,
+        ip6__hop: int | None = None,
+        ip6__ecn: int = 0,
+        ip6__payload: Ip6Payload = RawAssembler(),
+    ) -> TxStatus:
+        """
+        Handle an outbound IPv6 packet (delegates to the IPv6 TX sub-handler).
+        """
+
+        return self._ip6_tx._phtx_ip6(
+            ip6__dst=ip6__dst,
+            ip6__src=ip6__src,
+            ip6__hop=ip6__hop,
+            ip6__ecn=ip6__ecn,
+            ip6__payload=ip6__payload,
+        )
+
+    def send_ip6_packet(
+        self,
+        *,
+        ip6__local_address: Ip6Address,
+        ip6__remote_address: Ip6Address,
+        ip6__next: IpProto,
+        ip6__payload: bytes = bytes(),
+        ip6__hop: int | None = None,
+        ip6__ecn: int = 0,
+    ) -> None:
+        """
+        Enqueue an outbound IPv6 RAW datagram (delegates to the IPv6 TX sub-handler).
+        """
+
+        self._ip6_tx.send_ip6_packet(
+            ip6__local_address=ip6__local_address,
+            ip6__remote_address=ip6__remote_address,
+            ip6__next=ip6__next,
+            ip6__payload=ip6__payload,
+            ip6__hop=ip6__hop,
+            ip6__ecn=ip6__ecn,
+        )
+
 
 class PacketHandlerL2(
     PacketHandler,
     PacketHandlerEthernetRx,
     PacketHandlerEthernetTx,
-    PacketHandlerIp6Rx,
-    PacketHandlerIp6Tx,
 ):
     """
     Pick up and respond to incoming packets on Layer 2 (TAP) interface.
@@ -2664,8 +2743,6 @@ class PacketHandlerL2(
 
 class PacketHandlerL3(
     PacketHandler,
-    PacketHandlerIp6Rx,
-    PacketHandlerIp6Tx,
 ):
     """
     Pick up and respond to incoming packets on Layer 3 (TUN) interface.
