@@ -30,8 +30,6 @@ pytcp/runtime/packet_handler/packet_handler__tcp__rx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import PacketRx, PacketValidationError, TcpParser
@@ -40,70 +38,36 @@ from pytcp.lib.logger import log
 from pytcp.socket.tcp__metadata import TcpMetadata
 from pytcp.socket.tcp__socket import TcpSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerTcpRx(ABC):
+
+class TcpRxHandler:
     """
-    Class implements packet handler for the inbound TCP packets.
+    The inbound TCP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import IpAddress
-        from net_proto import Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_tcp(
-            self,
-            *,
-            ip__src: IpAddress,
-            ip__dst: IpAddress,
-            ip__ecn: int = 0,
-            tcp__sport: int,
-            tcp__dport: int,
-            tcp__seq: int = 0,
-            tcp__ack: int = 0,
-            tcp__flag_ns: bool = False,
-            tcp__flag_cwr: bool = False,
-            tcp__flag_ece: bool = False,
-            tcp__flag_urg: bool = False,
-            tcp__flag_ack: bool = False,
-            tcp__flag_psh: bool = False,
-            tcp__flag_rst: bool = False,
-            tcp__flag_syn: bool = False,
-            tcp__flag_fin: bool = False,
-            tcp__mss: int | None = None,
-            tcp__wscale: int | None = None,
-            tcp__sackperm: bool = False,
-            tcp__sack_blocks: list[tuple[int, int]] | None = None,
-            tcp__tsval: int | None = None,
-            tcp__tsecr: int | None = None,
-            tcp__fastopen_cookie: bytes | None = None,
-            tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None,
-            tcp__accecn1_counters: tuple[int | None, int | None, int | None] | None = None,
-            tcp__win: int = 0,
-            tcp__urg: int = 0,
-            tcp__payload: bytes = bytes(),
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phrx_tcp(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound TCP packets.
         """
 
-        self._packet_stats_rx.tcp__pre_parse += 1
+        self._if._packet_stats_rx.tcp__pre_parse += 1
 
         try:
             TcpParser(packet_rx)
 
         except PacketValidationError as error:
-            self._packet_stats_rx.tcp__failed_parse__drop += 1
+            self._if._packet_stats_rx.tcp__failed_parse__drop += 1
             __debug__ and log(
                 "tcp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -157,7 +121,7 @@ class PacketHandlerTcpRx(ABC):
 
         # Check if incoming packet matches active TCP socket.
         if tcp_socket := cast(TcpSocket, stack.sockets.get(packet_rx_md.socket_id, None)):
-            self._packet_stats_rx.tcp__socket_match_active__forward_to_socket += 1
+            self._if._packet_stats_rx.tcp__socket_match_active__forward_to_socket += 1
             __debug__ and log(
                 "tcp",
                 f"{packet_rx_md.tracker} - <INFO>TCP packet is part of active " f"socket [{tcp_socket}]</>",
@@ -179,7 +143,7 @@ class PacketHandlerTcpRx(ABC):
                     TcpSocket,
                     stack.sockets.get(tcp_listening_socket_pattern, None),
                 ):
-                    self._packet_stats_rx.tcp__socket_match_listening__forward_to_socket += 1
+                    self._if._packet_stats_rx.tcp__socket_match_listening__forward_to_socket += 1
                     __debug__ and log(
                         "tcp",
                         f"{packet_rx_md.tracker} - <INFO>TCP packet matches " f"listening socket [{tcp_socket}]</>",
@@ -190,7 +154,7 @@ class PacketHandlerTcpRx(ABC):
         # In case packet doesn't match any active or listening socket
         # and it carries RST flag then drop it silently.
         if packet_rx_md.tcp__flag_rst:
-            self._packet_stats_rx.tcp__no_socket_match__rst__drop += 1
+            self._if._packet_stats_rx.tcp__no_socket_match__rst__drop += 1
             __debug__ and log(
                 "tcp",
                 f"{packet_rx.tracker} - TCP RST packet from {packet_rx.ip.src} to "
@@ -217,7 +181,7 @@ class PacketHandlerTcpRx(ABC):
         # form was correct only for ACK-less offending segments; for
         # ACK-bearing ones (such as SYN+ACK or rogue bare ACK arriving
         # at a listening port) the spec requires the bare-RST form.
-        self._packet_stats_rx.tcp__no_socket_match__respond_rst += 1
+        self._if._packet_stats_rx.tcp__no_socket_match__respond_rst += 1
         __debug__ and log(
             "tcp",
             f"{packet_rx.tracker} - TCP packet from {packet_rx.ip.src} to "
@@ -225,8 +189,8 @@ class PacketHandlerTcpRx(ABC):
             "packet.",
         )
         if packet_rx.tcp.flag_ack:
-            self._marshal_tx(
-                lambda: self._phtx_tcp(
+            self._if._marshal_tx(
+                lambda: self._if._phtx_tcp(
                     ip__src=packet_rx.ip.dst,
                     ip__dst=packet_rx.ip.src,
                     tcp__sport=packet_rx.tcp.dport,
@@ -239,8 +203,8 @@ class PacketHandlerTcpRx(ABC):
                 )
             )
         else:
-            self._marshal_tx(
-                lambda: self._phtx_tcp(
+            self._if._marshal_tx(
+                lambda: self._if._phtx_tcp(
                     ip__src=packet_rx.ip.dst,
                     ip__dst=packet_rx.ip.src,
                     tcp__sport=packet_rx.tcp.dport,

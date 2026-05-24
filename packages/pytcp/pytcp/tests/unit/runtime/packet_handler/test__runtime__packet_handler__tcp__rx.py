@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerTcpRx' mixin.
+This module contains unit tests for the 'TcpRxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__tcp__rx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -40,9 +41,10 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__tcp__rx import (
-    PacketHandlerTcpRx,
-)
+from pytcp.runtime.packet_handler.packet_handler__tcp__rx import TcpRxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -69,9 +71,18 @@ STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
 HOST_A__IP4 = Ip4Address("10.0.1.91")
 
 
-class _StubHandler(PacketHandlerTcpRx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerTcpRx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters, the TX marshal seam, and the
+    '_phtx_tcp' entry the TCP RX sub-handler reaches through 'self._if'
+    to emit a RST to an unmatched segment, recording each call. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
@@ -131,7 +142,8 @@ class _TcpRxTestBase(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
+        self._tcp_rx = TcpRxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", self._if))
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
 
@@ -166,15 +178,15 @@ class TestPacketHandlerTcpRxParse(_TcpRxTestBase):
 
         packet_rx = PacketRx(bytes(frame))
         Ip4Parser(packet_rx)
-        self._handler._phrx_tcp(packet_rx)
+        self._tcp_rx._phrx_tcp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__pre_parse,
+            self._if._packet_stats_rx.tcp__pre_parse,
             1,
             msg="tcp__pre_parse must be incremented before the parse attempt.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__failed_parse__drop,
+            self._if._packet_stats_rx.tcp__failed_parse__drop,
             1,
             msg="Malformed TCP must be counted in tcp__failed_parse__drop.",
         )
@@ -204,16 +216,16 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         self._sockets_patch.start()
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_ack=True, payload=b"x")
-        self._handler._phrx_tcp(packet_rx)
+        self._tcp_rx._phrx_tcp(packet_rx)
 
         fake_socket.process_tcp_packet.assert_called_once()
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__socket_match_active__forward_to_socket,
+            self._if._packet_stats_rx.tcp__socket_match_active__forward_to_socket,
             1,
             msg="Active-socket forward must increment tcp__socket_match_active__forward_to_socket.",
         )
         self.assertEqual(
-            self._handler.tcp_tx_calls,
+            self._if.tcp_tx_calls,
             [],
             msg="Active-socket forward must not send any RST.",
         )
@@ -227,15 +239,15 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_rst=True, flag_ack=True)
-        self._handler._phrx_tcp(packet_rx)
+        self._tcp_rx._phrx_tcp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__no_socket_match__rst__drop,
+            self._if._packet_stats_rx.tcp__no_socket_match__rst__drop,
             1,
             msg="Unmatched RST must be counted in tcp__no_socket_match__rst__drop.",
         )
         self.assertEqual(
-            self._handler.tcp_tx_calls,
+            self._if.tcp_tx_calls,
             [],
             msg="Unmatched RST must NOT trigger a reply.",
         )
@@ -252,15 +264,15 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_syn=True, seq=100, payload=b"hi")
-        self._handler._phrx_tcp(packet_rx)
+        self._tcp_rx._phrx_tcp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__no_socket_match__respond_rst,
+            self._if._packet_stats_rx.tcp__no_socket_match__respond_rst,
             1,
             msg="Unmatched non-RST segment must be counted in tcp__no_socket_match__respond_rst.",
         )
-        self.assertEqual(len(self._handler.tcp_tx_calls), 1)
-        call = self._handler.tcp_tx_calls[0]
+        self.assertEqual(len(self._if.tcp_tx_calls), 1)
+        call = self._if.tcp_tx_calls[0]
         self.assertEqual(call["ip__src"], STACK__IP4_ADDRESS)
         self.assertEqual(call["ip__dst"], HOST_A__IP4)
         self.assertEqual(call["tcp__sport"], 80)
@@ -291,15 +303,15 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
         """
 
         packet_rx = _packet_rx_from_ip4_tcp(flag_ack=True, seq=100, ack=0xCAFE, payload=b"hi")
-        self._handler._phrx_tcp(packet_rx)
+        self._tcp_rx._phrx_tcp(packet_rx)
 
         self.assertEqual(
-            self._handler._packet_stats_rx.tcp__no_socket_match__respond_rst,
+            self._if._packet_stats_rx.tcp__no_socket_match__respond_rst,
             1,
             msg="Unmatched non-RST segment must be counted in tcp__no_socket_match__respond_rst.",
         )
-        self.assertEqual(len(self._handler.tcp_tx_calls), 1)
-        call = self._handler.tcp_tx_calls[0]
+        self.assertEqual(len(self._if.tcp_tx_calls), 1)
+        call = self._if.tcp_tx_calls[0]
         self.assertEqual(call["ip__src"], STACK__IP4_ADDRESS)
         self.assertEqual(call["ip__dst"], HOST_A__IP4)
         self.assertEqual(call["tcp__sport"], 80)

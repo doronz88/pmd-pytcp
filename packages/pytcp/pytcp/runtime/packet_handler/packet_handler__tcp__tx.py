@@ -30,8 +30,6 @@ pytcp/runtime/packet_handler/packet_handler__tcp__tx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, Ip6Address
@@ -56,51 +54,23 @@ from net_proto.protocols.tcp.options.tcp__option__timestamps import TcpOptionTim
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerTcpTx(ABC):
+
+class TcpTxHandler:
     """
-    Class implements packet handler for the outbound TCP packets.
+    The outbound TCP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import IpAddress
-        from net_proto import (
-            IP6__DEFAULT_HOP_LIMIT,
-            Icmp4Assembler,
-            Icmp6Assembler,
-            Ip4Payload,
-            Ip6FragAssembler,
-            Ip6Payload,
-            RawAssembler,
-        )
-        from pytcp.lib.packet_stats import PacketStatsTx
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_tx: PacketStatsTx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ip6(
-            self,
-            *,
-            ip6__dst: Ip6Address,
-            ip6__src: Ip6Address,
-            ip6__hop: int | None = None,
-            ip6__ecn: int = 0,
-            ip6__payload: Ip6Payload = RawAssembler(),
-        ) -> TxStatus: ...
-
-        def _phtx_ip4(
-            self,
-            *,
-            ip4__dst: Ip4Address,
-            ip4__src: Ip4Address,
-            ip4__ttl: int | None = None,
-            ip4__ecn: int = 0,
-            ip4__flag_df: bool = False,
-            ip4__payload: Ip4Payload = RawAssembler(),
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phtx_tcp(
         self,
@@ -139,7 +109,7 @@ class PacketHandlerTcpTx(ABC):
         Handle outbound TCP packets.
         """
 
-        self._packet_stats_tx.tcp__pre_assemble += 1
+        self._if._packet_stats_tx.tcp__pre_assemble += 1
 
         # Build the option list cumulatively so multiple options
         # can co-exist on the wire (an MSS-only SYN, a WSCALE-only
@@ -153,25 +123,25 @@ class PacketHandlerTcpTx(ABC):
         opts: list[TcpOption] = []
 
         if tcp__mss:
-            self._packet_stats_tx.tcp__opt_mss += 1
+            self._if._packet_stats_tx.tcp__opt_mss += 1
             opts.append(TcpOptionMss(mss=tcp__mss))
 
         if tcp__sackperm:
-            self._packet_stats_tx.tcp__opt_sackperm += 1
+            self._if._packet_stats_tx.tcp__opt_sackperm += 1
             opts.append(TcpOptionSackperm())
 
         if tcp__wscale:
-            self._packet_stats_tx.tcp__opt_nop += 1
-            self._packet_stats_tx.tcp__opt_wscale += 1
+            self._if._packet_stats_tx.tcp__opt_nop += 1
+            self._if._packet_stats_tx.tcp__opt_wscale += 1
             opts.append(TcpOptionNop())
             opts.append(TcpOptionWscale(wscale=tcp__wscale))
 
         if tcp__sack_blocks:
-            self._packet_stats_tx.tcp__opt_sack += 1
+            self._if._packet_stats_tx.tcp__opt_sack += 1
             opts.append(TcpOptionSack(blocks=[TcpSackBlock(left, right) for left, right in tcp__sack_blocks]))
 
         if tcp__tsval is not None and tcp__tsecr is not None:
-            self._packet_stats_tx.tcp__opt_timestamps += 1
+            self._if._packet_stats_tx.tcp__opt_timestamps += 1
             opts.append(TcpOptionTimestamps(tsval=tcp__tsval, tsecr=tcp__tsecr))
 
         if tcp__fastopen_cookie is not None:
@@ -222,50 +192,50 @@ class PacketHandlerTcpTx(ABC):
         )
 
         if tcp__flag_ns:
-            self._packet_stats_tx.tcp__flag_ns += 1
+            self._if._packet_stats_tx.tcp__flag_ns += 1
 
         if tcp__flag_cwr:
-            self._packet_stats_tx.tcp__flag_cwr += 1
+            self._if._packet_stats_tx.tcp__flag_cwr += 1
 
         if tcp__flag_ece:
-            self._packet_stats_tx.tcp__flag_ece += 1
+            self._if._packet_stats_tx.tcp__flag_ece += 1
 
         if tcp__flag_urg:
-            self._packet_stats_tx.tcp__flag_urg += 1
+            self._if._packet_stats_tx.tcp__flag_urg += 1
 
         if tcp__flag_ack:
-            self._packet_stats_tx.tcp__flag_ack += 1
+            self._if._packet_stats_tx.tcp__flag_ack += 1
 
         if tcp__flag_psh:
-            self._packet_stats_tx.tcp__flag_psh += 1
+            self._if._packet_stats_tx.tcp__flag_psh += 1
 
         if tcp__flag_rst:
-            self._packet_stats_tx.tcp__flag_rst += 1
+            self._if._packet_stats_tx.tcp__flag_rst += 1
 
         if tcp__flag_syn:
-            self._packet_stats_tx.tcp__flag_syn += 1
+            self._if._packet_stats_tx.tcp__flag_syn += 1
 
         if tcp__flag_fin:
-            self._packet_stats_tx.tcp__flag_fin += 1
+            self._if._packet_stats_tx.tcp__flag_fin += 1
 
         __debug__ and log("tcp", f"{tcp_packet_tx.tracker} - {tcp_packet_tx}")
 
         match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
             case True, True, False, False:
-                self._packet_stats_tx.tcp__send += 1
-                return self._phtx_ip6(
+                self._if._packet_stats_tx.tcp__send += 1
+                return self._if._phtx_ip6(
                     ip6__src=cast(Ip6Address, ip__src),
                     ip6__dst=cast(Ip6Address, ip__dst),
                     ip6__ecn=ip__ecn,
                     ip6__payload=tcp_packet_tx,
                 )
             case False, False, True, True:
-                self._packet_stats_tx.tcp__send += 1
+                self._if._packet_stats_tx.tcp__send += 1
                 # RFC 1191 §3 / RFC 9293 §3.7.5: outbound TCP segments
                 # set DF=1 to elicit ICMP Frag-Needed for path-MTU
                 # discovery rather than allowing in-network
                 # fragmentation.
-                return self._phtx_ip4(
+                return self._if._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
                     ip4__ecn=ip__ecn,
@@ -312,7 +282,7 @@ class PacketHandlerTcpTx(ABC):
         calling app / FSM-timer thread blocks for the 'TxStatus'.
         """
 
-        return self._marshal_tx(
+        return self._if._marshal_tx(
             lambda: self._phtx_tcp(
                 ip__src=ip__local_address,
                 ip__ecn=ip__ecn,

@@ -101,8 +101,8 @@ from .packet_handler__ip6__rx import PacketHandlerIp6Rx
 from .packet_handler__ip6__tx import PacketHandlerIp6Tx
 from .packet_handler__ip6_frag__rx import PacketHandlerIp6FragRx
 from .packet_handler__ip6_frag__tx import PacketHandlerIp6FragTx
-from .packet_handler__tcp__rx import PacketHandlerTcpRx
-from .packet_handler__tcp__tx import PacketHandlerTcpTx
+from .packet_handler__tcp__rx import TcpRxHandler
+from .packet_handler__tcp__tx import TcpTxHandler
 from .packet_handler__udp__rx import UdpRxHandler
 from .packet_handler__udp__tx import UdpTxHandler
 
@@ -129,6 +129,8 @@ class PacketHandler(Subsystem, ABC):
     # cross-call surface is unchanged.
     _udp_rx: UdpRxHandler
     _udp_tx: UdpTxHandler
+    _tcp_rx: TcpRxHandler
+    _tcp_tx: TcpTxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -321,6 +323,8 @@ class PacketHandler(Subsystem, ABC):
         _if = cast("PacketHandlerL2 | PacketHandlerL3", self)
         self._udp_rx = UdpRxHandler(interface=_if)
         self._udp_tx = UdpTxHandler(interface=_if)
+        self._tcp_rx = TcpRxHandler(interface=_if)
+        self._tcp_tx = TcpTxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1406,6 +1410,150 @@ class PacketHandler(Subsystem, ABC):
             ip4__options=ip4__options,
         )
 
+    ###
+    # TCP delegators — logic lives in the composed 'TcpRxHandler' /
+    # 'TcpTxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_tcp(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound TCP packet (delegates to the TCP RX sub-handler).
+        """
+
+        self._tcp_rx._phrx_tcp(packet_rx)
+
+    def _phtx_tcp(
+        self,
+        *,
+        ip__src: Ip6Address | Ip4Address,
+        ip__dst: Ip6Address | Ip4Address,
+        ip__ecn: int = 0,
+        tcp__sport: int,
+        tcp__dport: int,
+        tcp__seq: int = 0,
+        tcp__ack: int = 0,
+        tcp__flag_ns: bool = False,
+        tcp__flag_cwr: bool = False,
+        tcp__flag_ece: bool = False,
+        tcp__flag_urg: bool = False,
+        tcp__flag_ack: bool = False,
+        tcp__flag_psh: bool = False,
+        tcp__flag_rst: bool = False,
+        tcp__flag_syn: bool = False,
+        tcp__flag_fin: bool = False,
+        tcp__mss: int | None = None,
+        tcp__wscale: int | None = None,
+        tcp__sackperm: bool = False,
+        tcp__sack_blocks: list[tuple[int, int]] | None = None,
+        tcp__tsval: int | None = None,
+        tcp__tsecr: int | None = None,
+        tcp__fastopen_cookie: bytes | None = None,
+        tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None,
+        tcp__accecn1_counters: tuple[int | None, int | None, int | None] | None = None,
+        tcp__win: int = 0,
+        tcp__urg: int = 0,
+        tcp__payload: bytes = bytes(),
+        echo_tracker: Tracker | None = None,
+    ) -> TxStatus:
+        """
+        Handle an outbound TCP packet (delegates to the TCP TX sub-handler).
+        """
+
+        return self._tcp_tx._phtx_tcp(
+            ip__src=ip__src,
+            ip__dst=ip__dst,
+            ip__ecn=ip__ecn,
+            tcp__sport=tcp__sport,
+            tcp__dport=tcp__dport,
+            tcp__seq=tcp__seq,
+            tcp__ack=tcp__ack,
+            tcp__flag_ns=tcp__flag_ns,
+            tcp__flag_cwr=tcp__flag_cwr,
+            tcp__flag_ece=tcp__flag_ece,
+            tcp__flag_urg=tcp__flag_urg,
+            tcp__flag_ack=tcp__flag_ack,
+            tcp__flag_psh=tcp__flag_psh,
+            tcp__flag_rst=tcp__flag_rst,
+            tcp__flag_syn=tcp__flag_syn,
+            tcp__flag_fin=tcp__flag_fin,
+            tcp__mss=tcp__mss,
+            tcp__wscale=tcp__wscale,
+            tcp__sackperm=tcp__sackperm,
+            tcp__sack_blocks=tcp__sack_blocks,
+            tcp__tsval=tcp__tsval,
+            tcp__tsecr=tcp__tsecr,
+            tcp__fastopen_cookie=tcp__fastopen_cookie,
+            tcp__accecn0_counters=tcp__accecn0_counters,
+            tcp__accecn1_counters=tcp__accecn1_counters,
+            tcp__win=tcp__win,
+            tcp__urg=tcp__urg,
+            tcp__payload=tcp__payload,
+            echo_tracker=echo_tracker,
+        )
+
+    def send_tcp_packet(
+        self,
+        *,
+        ip__local_address: Ip6Address | Ip4Address,
+        ip__remote_address: Ip6Address | Ip4Address,
+        ip__ecn: int = 0,
+        tcp__local_port: int,
+        tcp__remote_port: int,
+        tcp__flag_syn: bool = False,
+        tcp__flag_ack: bool = False,
+        tcp__flag_fin: bool = False,
+        tcp__flag_rst: bool = False,
+        tcp__flag_psh: bool = False,
+        tcp__flag_ece: bool = False,
+        tcp__flag_cwr: bool = False,
+        tcp__flag_ns: bool = False,
+        tcp__seq: int = 0,
+        tcp__ack: int = 0,
+        tcp__win: int = 0,
+        tcp__wscale: int | None = None,
+        tcp__mss: int | None = None,
+        tcp__sackperm: bool = False,
+        tcp__sack_blocks: list[tuple[int, int]] | None = None,
+        tcp__tsval: int | None = None,
+        tcp__tsecr: int | None = None,
+        tcp__fastopen_cookie: bytes | None = None,
+        tcp__accecn0_counters: tuple[int | None, int | None, int | None] | None = None,
+        tcp__accecn1_counters: tuple[int | None, int | None, int | None] | None = None,
+        tcp__payload: bytes = bytes(),
+    ) -> TxStatus:
+        """
+        Enqueue an outbound TCP segment (delegates to the TCP TX sub-handler).
+        """
+
+        return self._tcp_tx.send_tcp_packet(
+            ip__local_address=ip__local_address,
+            ip__remote_address=ip__remote_address,
+            ip__ecn=ip__ecn,
+            tcp__local_port=tcp__local_port,
+            tcp__remote_port=tcp__remote_port,
+            tcp__flag_syn=tcp__flag_syn,
+            tcp__flag_ack=tcp__flag_ack,
+            tcp__flag_fin=tcp__flag_fin,
+            tcp__flag_rst=tcp__flag_rst,
+            tcp__flag_psh=tcp__flag_psh,
+            tcp__flag_ece=tcp__flag_ece,
+            tcp__flag_cwr=tcp__flag_cwr,
+            tcp__flag_ns=tcp__flag_ns,
+            tcp__seq=tcp__seq,
+            tcp__ack=tcp__ack,
+            tcp__win=tcp__win,
+            tcp__wscale=tcp__wscale,
+            tcp__mss=tcp__mss,
+            tcp__sackperm=tcp__sackperm,
+            tcp__sack_blocks=tcp__sack_blocks,
+            tcp__tsval=tcp__tsval,
+            tcp__tsecr=tcp__tsecr,
+            tcp__fastopen_cookie=tcp__fastopen_cookie,
+            tcp__accecn0_counters=tcp__accecn0_counters,
+            tcp__accecn1_counters=tcp__accecn1_counters,
+            tcp__payload=tcp__payload,
+        )
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -1421,8 +1569,6 @@ class PacketHandlerL2(
     PacketHandlerIp6Tx,
     PacketHandlerIp6FragRx,
     PacketHandlerIp6FragTx,
-    PacketHandlerTcpRx,
-    PacketHandlerTcpTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 2 (TAP) interface.
@@ -2249,8 +2395,6 @@ class PacketHandlerL3(
     PacketHandlerIp6Tx,
     PacketHandlerIp6FragRx,
     PacketHandlerIp6FragTx,
-    PacketHandlerTcpRx,
-    PacketHandlerTcpTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 3 (TUN) interface.
