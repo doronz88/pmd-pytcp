@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler TCP TX operations.
+This module contains integration tests for the TCP TX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__tcp__tx.py
+pytcp/tests/integration/protocols/tcp/test__tcp__tx.py
 
 ver 3.0.6
 """
@@ -2062,9 +2062,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerTcpTx(NetworkTestCase):
+class TestTcpTx(NetworkTestCase):
     """
-    Test the Packet Handler TCP TX operations (success path).
+    The TCP TX packet-handler path tests (success path).
     """
 
     _description: str
@@ -2075,7 +2075,7 @@ class TestPacketHandlerTcpTx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__tcp__tx(self) -> None:
+    def test__tcp__tx(self) -> None:
         """
         Ensure the Packet Handler TCP TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
@@ -2128,16 +2128,16 @@ class TestPacketHandlerTcpTx(NetworkTestCase):
         },
     ]
 )
-class TestPacketHandlerTcpTxErrors(NetworkTestCase):
+class TestTcpTxErrors(NetworkTestCase):
     """
-    Test the Packet Handler TCP TX operations (error path).
+    The TCP TX packet-handler path tests (error path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
     _expected__error: Exception
 
-    def test__packet_handler__tcp__tx__error(self) -> None:
+    def test__tcp__tx__error(self) -> None:
         """
         Ensure '_phtx_tcp' raises the expected exception for invalid
         IP address version combinations.
@@ -2155,13 +2155,13 @@ class TestPacketHandlerTcpTxErrors(NetworkTestCase):
         )
 
 
-class TestPacketHandlerTcpTxSendTcpPacket(NetworkTestCase):
+class TestTcpTxSendTcpPacket(NetworkTestCase):
     """
     Test the public 'send_tcp_packet' wrapper, which forwards into
     '_phtx_tcp' renaming the addressing and port kwargs.
     """
 
-    def test__packet_handler__tcp__tx__send_tcp_packet(self) -> None:
+    def test__tcp__tx__send_tcp_packet(self) -> None:
         """
         Ensure 'send_tcp_packet' renames its kwargs ('ip__local_address'
         / 'ip__remote_address' → 'ip__src' / 'ip__dst', 'tcp__local_port'

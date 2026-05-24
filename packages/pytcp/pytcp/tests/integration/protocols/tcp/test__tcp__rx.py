@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler TCP RX operations.
+This module contains integration tests for the TCP RX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__tcp__rx.py
+pytcp/tests/integration/protocols/tcp/test__tcp__rx.py
 
 ver 3.0.6
 """
@@ -277,9 +277,9 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerTcpRx(NetworkTestCase):
+class TestTcpRx(NetworkTestCase):
     """
-    Test the Packet Handler TCP RX operations.
+    The TCP RX packet-handler path tests.
     """
 
     _description: str
@@ -290,7 +290,7 @@ class TestPacketHandlerTcpRx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__tcp__rx(self) -> None:
+    def test__tcp__rx(self) -> None:
         """
         Ensure the Packet Handler processes the received TCP
         frames as expected for each parametrized case.
