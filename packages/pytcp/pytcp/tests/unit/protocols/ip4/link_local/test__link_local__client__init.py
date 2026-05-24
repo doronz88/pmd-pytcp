@@ -38,6 +38,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import MacAddress
+from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
@@ -51,6 +52,14 @@ def _make_address_api_mock() -> Ip4AddressApi:
     from unittest.mock import create_autospec
 
     return cast(Ip4AddressApi, create_autospec(Ip4AddressApi, spec_set=True))
+
+
+def _make_acd_mock() -> Ip4Acd:
+    """Build an autospec'd Ip4Acd for tests."""
+
+    from unittest.mock import create_autospec
+
+    return cast(Ip4Acd, create_autospec(Ip4Acd, spec_set=True))
 
 
 class TestIp4LinkLocalState(TestCase):
@@ -96,6 +105,7 @@ class TestIp4LinkLocalInit(TestCase):
         self._client = Ip4LinkLocal(
             mac_address=self._mac,
             address_api=_make_address_api_mock(),
+            acd=_make_acd_mock(),
         )
 
     def test__ip4_link_local__initial_state_is_init(self) -> None:
@@ -159,8 +169,8 @@ class TestIp4LinkLocalInit(TestCase):
         Reference: RFC 3927 §2.1 (deterministic per-host selection).
         """
 
-        client_a = Ip4LinkLocal(mac_address=self._mac, address_api=_make_address_api_mock())
-        client_b = Ip4LinkLocal(mac_address=self._mac, address_api=_make_address_api_mock())
+        client_a = Ip4LinkLocal(mac_address=self._mac, address_api=_make_address_api_mock(), acd=_make_acd_mock())
+        client_b = Ip4LinkLocal(mac_address=self._mac, address_api=_make_address_api_mock(), acd=_make_acd_mock())
 
         client_a._do_init()
         client_b._do_init()

@@ -39,13 +39,14 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
+from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
 from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
 from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
 from pytcp.stack import sysctl as sysctl_module
-from pytcp.stack.address import ClaimResult, Ip4AddressApi
+from pytcp.stack.address import Ip4AddressApi
 
 
 class TestIp4LinkLocalClaiming(TestCase):
@@ -72,9 +73,11 @@ class TestIp4LinkLocalClaiming(TestCase):
 
         self._mac = MacAddress("02:00:00:00:00:07")
         self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
         self._client = Ip4LinkLocal(
             mac_address=self._mac,
             address_api=self._address_api,
+            acd=self._acd,
         )
         # Hop past the INIT tick so the harness can drive
         # CLAIMING directly.
@@ -92,18 +95,17 @@ class TestIp4LinkLocalClaiming(TestCase):
 
     def _set_claim_outcome(self, *, success: bool, peer_mac: MacAddress | None = None) -> None:
         """
-        Configure the mocked address API to return the named
-        outcome for the next 'claim_with_acd' call.
+        Configure the mocked ACD engine to return the named outcome
+        for the next 'claim' call.
         """
 
         candidate = self._client._candidate
         assert candidate is not None
-        result = ClaimResult(
+        cast(MagicMock, self._acd).claim.return_value = AcdResult(
             success=success,
             address=candidate.address,
-            conflict_sender_mac=peer_mac,
+            conflict_mac=peer_mac,
         )
-        cast(MagicMock, self._address_api).claim_with_acd.return_value = result
 
     def test__ip4_link_local__claiming_clean_transitions_to_bound(self) -> None:
         """
@@ -127,7 +129,8 @@ class TestIp4LinkLocalClaiming(TestCase):
             candidate,
             msg="Clean claim must leave the candidate installed on the client.",
         )
-        cast(MagicMock, self._address_api).claim_with_acd.assert_called_once()
+        cast(MagicMock, self._acd).claim.assert_called_once()
+        cast(MagicMock, self._address_api).add_ifaddr.assert_called_once()
 
     def test__ip4_link_local__claiming_conflict_returns_to_init_and_bumps_counter(self) -> None:
         """

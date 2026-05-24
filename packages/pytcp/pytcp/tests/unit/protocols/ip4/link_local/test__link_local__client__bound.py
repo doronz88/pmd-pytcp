@@ -39,16 +39,14 @@ from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
 from pytcp.protocols.arp import arp__constants
+from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
 from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
-from pytcp.stack.address import (
-    ClaimResult,
-    ConflictEvent,
-    Ip4AddressApi,
-    SubscriptionHandle,
-)
+from pytcp.stack.address import Ip4AddressApi
+
+_PEER_MAC = MacAddress("02:00:00:00:00:99")
 
 
 class TestIp4LinkLocalBoundConflict(TestCase):
@@ -75,56 +73,37 @@ class TestIp4LinkLocalBoundConflict(TestCase):
 
         self._mac = MacAddress("02:00:00:00:00:07")
         self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
 
         self._client = Ip4LinkLocal(
             mac_address=self._mac,
             address_api=self._address_api,
+            acd=self._acd,
         )
-        # Drive to BOUND: pick a candidate, configure
-        # claim_with_acd to succeed and subscribe_conflicts to
-        # return a handle, run the claim.
+        # Drive to BOUND: pick a candidate, configure the ACD engine's
+        # claim to succeed, run the claim (which installs via the
+        # address API and leaves the engine's defense socket open).
         self._client._do_init()
         candidate = self._client._candidate
         assert candidate is not None
-        cast(MagicMock, self._address_api).claim_with_acd.return_value = ClaimResult(
-            success=True,
-            address=candidate.address,
-        )
-        cast(MagicMock, self._address_api).subscribe_conflicts.return_value = SubscriptionHandle(
-            address=candidate.address,
-            callback_id=42,
-        )
+        cast(MagicMock, self._acd).claim.return_value = AcdResult(success=True, address=candidate.address)
         self._client._do_claiming()
         assert self._client._state is Ip4LinkLocalState.BOUND
 
-    def _build_event(self, *, timestamp: float = 100.0) -> ConflictEvent:
-        """Build a ConflictEvent for the BOUND candidate."""
-
-        assert self._client._candidate is not None
-        return ConflictEvent(
-            address=self._client._candidate.address,
-            sender_mac=MacAddress("02:00:00:00:00:99"),
-            timestamp=timestamp,
-        )
-
-    def test__ip4_link_local__bound_subscribes_for_conflicts(self) -> None:
+    def test__ip4_link_local__bound_tick_polls_acd_for_conflict(self) -> None:
         """
-        Ensure entering BOUND registers a 'subscribe_conflicts'
-        callback for the bound address — ongoing conflict
-        detection requires a notification surface from the
-        ARP RX path.
+        Ensure a BOUND subsystem tick polls the ACD engine for a
+        post-claim conflict — ongoing detection reads ARP off the
+        engine's packet socket, not a callback from the ARP RX path.
 
         Reference: RFC 3927 §2.5 (ongoing conflict detection while bound).
         """
 
-        cast(MagicMock, self._address_api).subscribe_conflicts.assert_called_once()
-        call_kwargs = cast(MagicMock, self._address_api).subscribe_conflicts.call_args.kwargs
-        assert self._client._candidate is not None
-        self.assertEqual(
-            call_kwargs["address"],
-            self._client._candidate.address,
-            msg="subscribe_conflicts must be called with the bound address.",
-        )
+        cast(MagicMock, self._acd).poll_conflict.return_value = None
+
+        self._client._subsystem_loop()
+
+        cast(MagicMock, self._acd).poll_conflict.assert_called_once()
 
     def test__ip4_link_local__first_conflict_defends_and_stays_bound(self) -> None:
         """
@@ -135,13 +114,9 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         Reference: RFC 3927 §2.5(b) (defend with one gratuitous ARP).
         """
 
-        bound_candidate = self._client._candidate
-        assert bound_candidate is not None
-        self._client._on_bound_conflict(self._build_event())
+        self._client._handle_bound_conflict(_PEER_MAC)
 
-        cast(MagicMock, self._address_api).send_gratuitous_arp.assert_called_once_with(
-            address=bound_candidate.address,
-        )
+        cast(MagicMock, self._acd).defend.assert_called_once_with()
         self.assertEqual(
             self._client._state,
             Ip4LinkLocalState.BOUND,
@@ -150,10 +125,9 @@ class TestIp4LinkLocalBoundConflict(TestCase):
 
     def test__ip4_link_local__second_conflict_in_window_abandons(self) -> None:
         """
-        Ensure a second conflict within DEFEND_INTERVAL of
-        the first triggers the abandon path — abort bound TCP
-        sessions, remove the host, unsubscribe, transition
-        to INIT.
+        Ensure a second conflict within DEFEND_INTERVAL of the first
+        triggers the abandon path — remove the host (which aborts bound
+        TCP sessions), release the ACD claim, transition to INIT.
 
         Reference: RFC 3927 §2.5(a) (abandon after second conflict within DEFEND_INTERVAL).
         """
@@ -164,17 +138,15 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         bound_address = bound_candidate.address
 
         self._mock_time.return_value = 100.0
-        self._client._on_bound_conflict(self._build_event(timestamp=100.0))
+        self._client._handle_bound_conflict(_PEER_MAC)
 
         self._mock_time.return_value = 105.0
-        self._client._on_bound_conflict(self._build_event(timestamp=105.0))
+        self._client._handle_bound_conflict(_PEER_MAC)
 
-        # Verify abandon side effects.
-        cast(MagicMock, self._address_api).abort_bound_tcp_sessions.assert_called_once_with(
-            address=bound_address,
-        )
-        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once()
-        cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_called_once()
+        # Verify abandon side effects: remove_ifaddr (aborts sessions by
+        # default) + ACD release.
+        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once_with(ip4_address=bound_address)
+        cast(MagicMock, self._acd).release.assert_called_once()
         self.assertEqual(
             self._client._state,
             Ip4LinkLocalState.INIT,
@@ -202,21 +174,20 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         """
 
         self._mock_time.return_value = 100.0
-        self._client._on_bound_conflict(self._build_event(timestamp=100.0))
+        self._client._handle_bound_conflict(_PEER_MAC)
 
         # Second conflict at t=200s — well past DEFEND_INTERVAL (10s).
         self._mock_time.return_value = 200.0
-        self._client._on_bound_conflict(self._build_event(timestamp=200.0))
+        self._client._handle_bound_conflict(_PEER_MAC)
 
         # Two defends (one per conflict), no abandon.
         self.assertEqual(
-            cast(MagicMock, self._address_api).send_gratuitous_arp.call_count,
+            cast(MagicMock, self._acd).defend.call_count,
             2,
             msg="Two conflicts outside the window must both trigger defends.",
         )
-        cast(MagicMock, self._address_api).abort_bound_tcp_sessions.assert_not_called()
         cast(MagicMock, self._address_api).remove_ifaddr.assert_not_called()
-        cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_not_called()
+        cast(MagicMock, self._acd).release.assert_not_called()
         self.assertEqual(
             self._client._state,
             Ip4LinkLocalState.BOUND,
@@ -238,11 +209,11 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         # and the second one defends (no abandon).
         with patch.object(arp__constants, "ARP__DEFEND_INTERVAL", 1):
             self._mock_time.return_value = 100.0
-            self._client._on_bound_conflict(self._build_event(timestamp=100.0))
+            self._client._handle_bound_conflict(_PEER_MAC)
             self._mock_time.return_value = 102.0  # gap = 2s > 1s
-            self._client._on_bound_conflict(self._build_event(timestamp=102.0))
+            self._client._handle_bound_conflict(_PEER_MAC)
 
-        cast(MagicMock, self._address_api).abort_bound_tcp_sessions.assert_not_called()
+        cast(MagicMock, self._acd).release.assert_not_called()
         self.assertEqual(
             self._client._state,
             Ip4LinkLocalState.BOUND,

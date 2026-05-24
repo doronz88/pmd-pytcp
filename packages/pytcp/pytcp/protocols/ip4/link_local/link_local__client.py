@@ -25,18 +25,19 @@
 """
 This module contains the RFC 3927 IPv4 Link-Local autoconfig
 client — a 'Subsystem' that picks a 169.254/16 candidate from
-the MAC-seeded RNG, claims it via the sanctioned
-'Ip4AddressApi.claim_with_acd' surface, defends it on
-post-claim ARP conflicts, and coexists with the DHCPv4 client
-per RFC 3927 §2.11 (read-only state-poll; never modifies DHCP
-behaviour).
+the MAC-seeded RNG, claims it via the RFC 5227 ACD engine
+('Ip4Acd' over the AF_PACKET socket, the Linux 'sd-ipv4ll'
+model), installs it through the 'ip addr' surface, defends it
+on post-claim ARP conflicts, and coexists with the DHCPv4
+client per RFC 3927 §2.11 (read-only state-poll; never
+modifies DHCP behaviour).
 
-Phases 1-4 (shipped): subsystem skeleton + INIT-state
-candidate selection + _do_claiming via the ACD API with the
+Behaviour: subsystem skeleton + INIT-state candidate selection
++ _do_claiming via 'Ip4Acd.claim' (probe + announce) with the
 retry / rate-limit loop pinned by RFC 3927 §9
 (MAX_CONFLICTS = 10, RATE_LIMIT_INTERVAL = 60s) +
-_on_bound_conflict (§2.5 defend / abandon decision tree)
-wired via the address-API subscribe_conflicts callback +
+_handle_bound_conflict (§2.5 defend / abandon decision tree)
+driven by polling 'Ip4Acd.poll_conflict' on each BOUND tick +
 _reconcile_with_dhcp (§1.9 / §2.11 fallback-on-DHCP-fail
 and halt-on-DHCP-bind) driven by a polled is_dhcp_bound
 predicate.
@@ -53,10 +54,11 @@ from typing import Callable, override
 from net_addr import Ip4IfAddr, MacAddress
 from pytcp.lib.logger import log
 from pytcp.protocols.arp import arp__constants
+from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
 from pytcp.protocols.ip4.link_local.link_local__rng import candidate_from_mac
 from pytcp.runtime.subsystem import Subsystem
-from pytcp.stack.address import ConflictEvent, Ip4AddressApi, SubscriptionHandle
+from pytcp.stack.address import Ip4AddressApi
 
 
 class Ip4LinkLocalState(Enum):
@@ -65,12 +67,12 @@ class Ip4LinkLocalState(Enum):
 
     INIT     — no candidate selected; the next subsystem-loop
                tick picks one.
-    CLAIMING — 'claim_with_acd' in flight (probe + announce
-               + install). Phase 2 wires this state.
-    BOUND    — candidate installed via the address API; the
-               subsystem subscribes for post-claim conflicts
-               and defends per RFC 3927 §2.5. Phase 3 wires
-               the defend / abandon decision.
+    CLAIMING — 'Ip4Acd.claim' in flight (probe + announce);
+               on success the host is installed via the
+               'ip addr' surface.
+    BOUND    — candidate installed; each subsystem tick polls
+               'Ip4Acd.poll_conflict' and defends / abandons
+               per RFC 3927 §2.5.
     HALTED   — disabled (e.g. DHCPv4 succeeded; operator
                disabled). The subsystem-loop is a no-op
                until something else flips back to INIT.
@@ -94,6 +96,7 @@ class Ip4LinkLocal(Subsystem):
         *,
         mac_address: MacAddress,
         address_api: Ip4AddressApi,
+        acd: Ip4Acd,
         is_dhcp_bound: Callable[[], bool] | None = None,
     ) -> None:
         """
@@ -101,10 +104,12 @@ class Ip4LinkLocal(Subsystem):
         'mac_address' so the candidate-selection RNG seeds
         deterministically per host (RFC 3927 §2.1 SHOULD: same
         host picks the same address across reboots without
-        persistent storage). 'address_api' is the sanctioned
-        Phase-3-clean surface the subsystem uses to claim
-        candidates ('claim_with_acd') and to subscribe for
-        post-claim conflict events.
+        persistent storage). 'acd' is the RFC 5227 ACD engine
+        (over the AF_PACKET socket) used to claim candidates
+        (probe + announce) and to detect / defend post-claim
+        conflicts; 'address_api' is the sanctioned 'ip addr'
+        surface used only to install / remove the host once a
+        candidate is claimed.
 
         'is_dhcp_bound' is an optional zero-argument predicate
         the subsystem polls on every tick to coordinate with
@@ -120,6 +125,7 @@ class Ip4LinkLocal(Subsystem):
         super().__init__(info=str(mac_address))
         self._mac_address: MacAddress = mac_address
         self._address_api: Ip4AddressApi = address_api
+        self._acd: Ip4Acd = acd
         self._is_dhcp_bound: Callable[[], bool] | None = is_dhcp_bound
         self._candidate: Ip4IfAddr | None = None
         self._conflict_count: int = 0
@@ -128,9 +134,6 @@ class Ip4LinkLocal(Subsystem):
         # decision reads the most recent entry to decide
         # defend (first conflict in window) vs abandon (second).
         self._defend_history: list[float] = []
-        # Subscription handle returned by 'subscribe_conflicts'
-        # when the address is installed; passed back on abandon.
-        self._subscription: SubscriptionHandle | None = None
         # DHCP-fallback timer (RFC 3927 §1.9). 'None' = not
         # started; a float = the monotonic timestamp DHCP was
         # first observed unbound. The reconciler kicks off
@@ -163,9 +166,13 @@ class Ip4LinkLocal(Subsystem):
             case Ip4LinkLocalState.CLAIMING:
                 self._do_claiming()
             case Ip4LinkLocalState.BOUND:
-                # Idle; conflict handling is callback-driven via
-                # the address API's subscribe_conflicts.
-                pass
+                # RFC 3927 §2.5 ongoing defense — poll the ACD engine's
+                # packet socket for a post-claim conflict and run the
+                # defend / abandon decision (no longer callback-driven
+                # from the stack's ARP RX path; the ACD socket is the
+                # Linux conflict-detection surface).
+                if (peer_mac := self._acd.poll_conflict()) is not None:
+                    self._handle_bound_conflict(peer_mac)
             case Ip4LinkLocalState.HALTED:
                 pass
 
@@ -194,26 +201,24 @@ class Ip4LinkLocal(Subsystem):
 
     def _do_claiming(self) -> None:
         """
-        Delegate the RFC 3927 §2.2 probe + §2.4 announce to
-        'Ip4AddressApi.claim_with_acd'. On clean probe the
-        host is installed and the FSM transitions to BOUND.
-        On conflict the FSM bumps the conflict counter and
-        returns to INIT for a fresh candidate; after
-        MAX_CONFLICTS consecutive conflicts the subsystem
-        sleeps RATE_LIMIT_INTERVAL seconds before resetting
-        the counter and trying again (RFC 3927 §9).
+        Run the RFC 3927 §2.2 probe + §2.4 announce via the ACD
+        engine ('Ip4Acd.claim'). On clean claim the engine holds
+        the defense socket open, the host is installed through the
+        'ip addr' surface ('add_ifaddr'), and the FSM transitions to
+        BOUND. On conflict the FSM bumps the conflict counter and
+        returns to INIT for a fresh candidate; after MAX_CONFLICTS
+        consecutive conflicts the subsystem sleeps
+        RATE_LIMIT_INTERVAL seconds before resetting the counter and
+        trying again (RFC 3927 §9).
         """
 
         assert self._candidate is not None, "_do_claiming requires a candidate from _do_init"
 
-        result = self._address_api.claim_with_acd(ip4_ifaddr=self._candidate)
+        result = self._acd.claim(address=self._candidate.address)
         if result.success:
             self._conflict_count = 0
             self._defend_history = []
-            self._subscription = self._address_api.subscribe_conflicts(
-                address=self._candidate.address,
-                on_conflict=self._on_bound_conflict,
-            )
+            self._address_api.add_ifaddr(ip4_ifaddr=self._candidate)
             self._state = Ip4LinkLocalState.BOUND
             __debug__ and log(
                 "stack",
@@ -249,30 +254,30 @@ class Ip4LinkLocal(Subsystem):
             self._conflict_count = 0
         self._state = Ip4LinkLocalState.INIT
 
-    def _on_bound_conflict(self, event: ConflictEvent) -> None:
+    def _handle_bound_conflict(self, peer_mac: MacAddress) -> None:
         """
-        Subscription callback fired by 'Ip4AddressApi' on any
-        post-claim ARP conflict matching our BOUND address.
+        Handle a post-claim ARP conflict for our BOUND address,
+        detected by polling the ACD engine ('Ip4Acd.poll_conflict').
         Implements the RFC 3927 §2.5 decision tree.
 
           - §2.5(b) — if no defensive ARP fired within the
             last 'ARP__DEFEND_INTERVAL' seconds, defend with
-            a single gratuitous ARP and stay BOUND.
+            a single gratuitous ARP (via the ACD engine) and
+            stay BOUND.
 
           - §2.5(a) — if a defensive ARP DID fire within the
-            window, abandon the address: abort bound TCP
-            sessions (§2.5 paragraph 7 SHOULD), remove the
-            host via the API, unsubscribe, clear the
-            candidate, bump the conflict counter, and
-            transition to INIT for a fresh reconfigure.
+            window, abandon the address: remove the host via the
+            'ip addr' surface ('remove_ifaddr', which aborts bound
+            TCP sessions per the §2.5 paragraph-7 SHOULD), release
+            the ACD claim, clear the candidate, bump the conflict
+            counter, and transition to INIT for a fresh reconfigure.
 
-        Runs on the ARP RX thread (the API's fan-out
-        dispatcher); state mutations here race the main
-        subsystem-loop thread, but the BOUND state's loop is
-        a no-op so the race is benign.
+        Runs on the subsystem-loop thread (the BOUND tick polls),
+        so there is no cross-thread race with the FSM state.
         """
 
-        assert self._candidate is not None, "_on_bound_conflict requires a bound candidate"
+        assert self._candidate is not None, "_handle_bound_conflict requires a bound candidate"
+        address = self._candidate.address
         now = time.monotonic()
         defend_window = arp__constants.ARP__DEFEND_INTERVAL
         recent = [t for t in self._defend_history if now - t < defend_window]
@@ -280,26 +285,23 @@ class Ip4LinkLocal(Subsystem):
         if not recent:
             # §2.5(b): defend.
             self._defend_history.append(now)
-            self._address_api.send_gratuitous_arp(address=event.address)
+            self._acd.defend()
             __debug__ and log(
                 "stack",
-                f"<lg>Link-Local</>: defended {event.address} " f"against {event.sender_mac} (RFC 3927 §2.5(b))",
+                f"<lg>Link-Local</>: defended {address} " f"against {peer_mac} (RFC 3927 §2.5(b))",
             )
             return
 
-        # §2.5(a): abandon. The RFC SHOULDs are honoured:
-        # active TCP sessions on the abandoned address get
-        # ABORT; the address is removed via the public API.
+        # §2.5(a): abandon. 'remove_ifaddr' aborts bound TCP sessions
+        # on the abandoned address by default (the §2.5 paragraph-7
+        # SHOULD); the ACD claim is released so the defense socket is
+        # closed.
         __debug__ and log(
             "stack",
-            f"<lg>Link-Local</>: abandoning {event.address} "
-            f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
+            f"<lg>Link-Local</>: abandoning {address} " f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
         )
-        self._address_api.abort_bound_tcp_sessions(address=event.address)
-        self._address_api.remove_ifaddr(ip4_address=event.address)
-        if self._subscription is not None:
-            self._address_api.unsubscribe_conflicts(handle=self._subscription)
-            self._subscription = None
+        self._address_api.remove_ifaddr(ip4_address=address)
+        self._acd.release()
         self._candidate = None
         self._defend_history.clear()
         self._conflict_count += 1
@@ -360,15 +362,13 @@ class Ip4LinkLocal(Subsystem):
 
     def _release_bound_address(self) -> None:
         """
-        Release the bound link-local address back to the
-        address API — unsubscribe from conflict events,
-        remove the host, clear candidate / counter / history.
-        Used by the DHCP-bind reconcile path.
+        Release the bound link-local address — release the ACD claim
+        (closing the defense socket) and remove the host via the
+        'ip addr' surface; clear candidate / counter / history. Used
+        by the DHCP-bind reconcile path.
         """
 
-        if self._subscription is not None:
-            self._address_api.unsubscribe_conflicts(handle=self._subscription)
-            self._subscription = None
+        self._acd.release()
         if self._candidate is not None:
             __debug__ and log(
                 "stack",

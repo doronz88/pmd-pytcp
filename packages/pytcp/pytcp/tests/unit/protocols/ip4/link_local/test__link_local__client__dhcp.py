@@ -37,13 +37,14 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import MacAddress
+from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
 from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
 from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
 from pytcp.stack import sysctl as sysctl_module
-from pytcp.stack.address import ClaimResult, Ip4AddressApi, SubscriptionHandle
+from pytcp.stack.address import Ip4AddressApi
 
 
 class TestIp4LinkLocalDhcpCoordination(TestCase):
@@ -70,6 +71,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
 
         self._mac = MacAddress("02:00:00:00:00:07")
         self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
         self._dhcp_bound = False
 
     @override
@@ -93,6 +95,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         return Ip4LinkLocal(
             mac_address=self._mac,
             address_api=self._address_api,
+            acd=self._acd,
             is_dhcp_bound=self._is_dhcp_bound,
         )
 
@@ -158,14 +161,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         client._do_init()
         candidate = client._candidate
         assert candidate is not None
-        cast(MagicMock, self._address_api).claim_with_acd.return_value = ClaimResult(
-            success=True,
-            address=candidate.address,
-        )
-        cast(MagicMock, self._address_api).subscribe_conflicts.return_value = SubscriptionHandle(
-            address=candidate.address,
-            callback_id=99,
-        )
+        cast(MagicMock, self._acd).claim.return_value = AcdResult(success=True, address=candidate.address)
         client._do_claiming()
         assert client._state is Ip4LinkLocalState.BOUND
 
@@ -173,8 +169,8 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         self._dhcp_bound = True
         client._subsystem_loop()
 
-        # Verify the release path: unsubscribe, remove_ifaddr, halted.
-        cast(MagicMock, self._address_api).unsubscribe_conflicts.assert_called_once()
+        # Verify the release path: ACD release, remove_ifaddr, halted.
+        cast(MagicMock, self._acd).release.assert_called_once()
         cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once()
         self.assertEqual(
             client._state,
@@ -307,6 +303,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         client = Ip4LinkLocal(
             mac_address=self._mac,
             address_api=self._address_api,
+            acd=self._acd,
             is_dhcp_bound=None,
         )
 

@@ -353,6 +353,7 @@ def add_interface(
         _stack.link_local = _Ip4LinkLocal(
             mac_address=ll_mac,
             address_api=ll_address_view,
+            acd=Ip4Acd(mac_address=ll_mac, ifindex=ifindex),
             is_dhcp_bound=_is_dhcp_bound,
         )
 
