@@ -30,8 +30,6 @@ pytcp/runtime/packet_handler/packet_handler__icmp4__tx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -46,33 +44,23 @@ from net_proto import (
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerIcmp4Tx(ABC):
+
+class Icmp4TxHandler:
     """
-    Class implements packet handler for the outbound ICMPv4 packets.
+    The outbound ICMPv4 packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_proto import Ip4Payload, RawAssembler
-        from pytcp.lib.packet_stats import PacketStatsTx
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_tx: PacketStatsTx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ip4(
-            self,
-            *,
-            ip4__dst: Ip4Address,
-            ip4__src: Ip4Address,
-            ip4__ttl: int | None = None,
-            ip4__ecn: int = 0,
-            ip4__flag_df: bool = False,
-            ip4__options: Ip4Options = Ip4Options(),
-            ip4__payload: Ip4Payload = RawAssembler(),
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phtx_icmp4(
         self,
@@ -87,7 +75,7 @@ class PacketHandlerIcmp4Tx(ABC):
         Handle outbound ICMPv4 packets.
         """
 
-        self._packet_stats_tx.icmp4__pre_assemble += 1
+        self._if._packet_stats_tx.icmp4__pre_assemble += 1
 
         icmp4_packet_tx = Icmp4Assembler(
             icmp4__message=icmp4__message,
@@ -98,27 +86,27 @@ class PacketHandlerIcmp4Tx(ABC):
 
         match icmp4__message.type, icmp4__message.code:
             case Icmp4Type.ECHO_REPLY, _:
-                self._packet_stats_tx.icmp4__echo_reply__send += 1
+                self._if._packet_stats_tx.icmp4__echo_reply__send += 1
             case (
                 Icmp4Type.DESTINATION_UNREACHABLE,
                 Icmp4DestinationUnreachableCode.PORT,
             ):
-                self._packet_stats_tx.icmp4__destination_unreachable__port__send += 1
+                self._if._packet_stats_tx.icmp4__destination_unreachable__port__send += 1
             case (
                 Icmp4Type.DESTINATION_UNREACHABLE,
                 Icmp4DestinationUnreachableCode.PROTOCOL,
             ):
-                self._packet_stats_tx.icmp4__destination_unreachable__protocol__send += 1
+                self._if._packet_stats_tx.icmp4__destination_unreachable__protocol__send += 1
             case Icmp4Type.PARAMETER_PROBLEM, _:
-                self._packet_stats_tx.icmp4__parameter_problem__send += 1
+                self._if._packet_stats_tx.icmp4__parameter_problem__send += 1
             case Icmp4Type.ECHO_REQUEST, _:
-                self._packet_stats_tx.icmp4__echo_request__send += 1
+                self._if._packet_stats_tx.icmp4__echo_request__send += 1
             case _:
                 # Defensive drop: unsupported ICMPv4 type/code shouldn't
                 # reach the TX path (the call sites enumerate their
                 # message types), but if one does, count + drop is
                 # robust where 'raise' would crash the calling thread.
-                self._packet_stats_tx.icmp4__unknown__drop += 1
+                self._if._packet_stats_tx.icmp4__unknown__drop += 1
                 __debug__ and log(
                     "icmp4",
                     f"{icmp4_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv4 "
@@ -126,7 +114,7 @@ class PacketHandlerIcmp4Tx(ABC):
                 )
                 return TxStatus.DROPPED__ICMP4__UNKNOWN
 
-        return self._phtx_ip4(
+        return self._if._phtx_ip4(
             ip4__src=ip4__src,
             ip4__dst=ip4__dst,
             ip4__options=ip4__options,
@@ -145,7 +133,7 @@ class PacketHandlerIcmp4Tx(ABC):
         Marshaled onto the interface's TX worker via '_marshal_tx'.
         """
 
-        return self._marshal_tx(
+        return self._if._marshal_tx(
             lambda: self._phtx_icmp4(
                 ip4__src=ip4__local_address,
                 ip4__dst=ip4__remote_address,

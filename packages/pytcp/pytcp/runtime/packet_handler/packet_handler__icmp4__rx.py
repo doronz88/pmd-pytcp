@@ -30,8 +30,6 @@ pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_addr import Ip4Address, IpVersion
@@ -65,39 +63,30 @@ from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerIcmp4Rx(ABC):
+
+class Icmp4RxHandler:
     """
-    Class implements packet handler for the inbound ICMPv4 packets.
+    The inbound ICMPv4 packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_proto import Icmp4Message, Ip4Options, Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        def _phtx_icmp4(
-            self,
-            *,
-            ip4__src: Ip4Address,
-            ip4__dst: Ip4Address,
-            ip4__options: Ip4Options = ...,
-            icmp4__message: Icmp4Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phrx_icmp4(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound ICMPv4 packets.
         """
 
-        self._packet_stats_rx.icmp4__pre_parse += 1
+        self._if._packet_stats_rx.icmp4__pre_parse += 1
 
         try:
             Icmp4Parser(packet_rx)
@@ -107,7 +96,7 @@ class PacketHandlerIcmp4Rx(ABC):
                 "icmp4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
-            self._packet_stats_rx.icmp4__failed_parse__drop += 1
+            self._if._packet_stats_rx.icmp4__failed_parse__drop += 1
             return
 
         __debug__ and log("icmp4", f"{packet_rx.tracker} - {packet_rx.icmp4}")
@@ -137,7 +126,7 @@ class PacketHandlerIcmp4Rx(ABC):
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Echo Reply packet " f"from {packet_rx.ip4.src}",
         )
-        self._packet_stats_rx.icmp4__echo_reply += 1
+        self._if._packet_stats_rx.icmp4__echo_reply += 1
 
         # Create RawMetadata object and try to find matching RAW socket.
         # The serialized ICMP message bytes are what 'RawSocket' consumes
@@ -152,7 +141,7 @@ class PacketHandlerIcmp4Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.raw__socket_match += 1
+                self._if._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "raw",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
@@ -180,11 +169,11 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv4 Destination Unreachable packet "
             f"from {packet_rx.ip4.src}, code={message.code}",
         )
-        self._packet_stats_rx.icmp4__destination_unreachable += 1
+        self._if._packet_stats_rx.icmp4__destination_unreachable += 1
 
         is_frag_needed = message.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED
         if is_frag_needed:
-            self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed += 1
+            self._if._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
@@ -250,7 +239,7 @@ class PacketHandlerIcmp4Rx(ABC):
                         offender_ip=offender_ip,
                         embedded_datagram=embedded_datagram,
                     )
-                    self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
+                    self._if._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
                 else:
                     socket.notify_unreachable(
                         icmp_origin=SoEeOrigin.ICMP,
@@ -300,7 +289,7 @@ class PacketHandlerIcmp4Rx(ABC):
 
         # RFC 5927 §4 sequence-in-window guard.
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp4__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
         embedded_datagram = bytes(message.data)
@@ -329,7 +318,7 @@ class PacketHandlerIcmp4Rx(ABC):
                 offender_ip=offender_ip,
                 embedded_datagram=embedded_datagram,
             )
-            self._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
+            self._if._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
             return
 
         __debug__ and log(
@@ -352,7 +341,7 @@ class PacketHandlerIcmp4Rx(ABC):
             offender_ip=offender_ip,
             embedded_datagram=embedded_datagram,
         )
-        self._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
+        self._if._packet_stats_rx.icmp4__destination_unreachable__tcp__notify += 1
 
     def __phrx_icmp4__time_exceeded(self, packet_rx: PacketRx) -> None:
         """
@@ -372,7 +361,7 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv4 Time Exceeded packet "
             f"from {packet_rx.ip4.src}, code={message.code}",
         )
-        self._packet_stats_rx.icmp4__time_exceeded += 1
+        self._if._packet_stats_rx.icmp4__time_exceeded += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
@@ -430,7 +419,7 @@ class PacketHandlerIcmp4Rx(ABC):
                     offender_ip=packet_rx.ip4.src,
                     embedded_datagram=embedded_datagram,
                 )
-                self._packet_stats_rx.icmp4__time_exceeded__udp__notify += 1
+                self._if._packet_stats_rx.icmp4__time_exceeded__udp__notify += 1
                 return
 
         __debug__ and log(
@@ -466,7 +455,7 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp4__time_exceeded__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp4__time_exceeded__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -488,7 +477,7 @@ class PacketHandlerIcmp4Rx(ABC):
             offender_ip=packet_rx.ip4.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp4__time_exceeded__tcp__notify += 1
+        self._if._packet_stats_rx.icmp4__time_exceeded__tcp__notify += 1
 
     def __phrx_icmp4__parameter_problem(self, packet_rx: PacketRx) -> None:
         """
@@ -508,7 +497,7 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - Received ICMPv4 Parameter Problem packet "
             f"from {packet_rx.ip4.src}, code={message.code}, pointer={message.pointer}",
         )
-        self._packet_stats_rx.icmp4__parameter_problem += 1
+        self._if._packet_stats_rx.icmp4__parameter_problem += 1
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
@@ -566,7 +555,7 @@ class PacketHandlerIcmp4Rx(ABC):
                     offender_ip=packet_rx.ip4.src,
                     embedded_datagram=embedded_datagram,
                 )
-                self._packet_stats_rx.icmp4__parameter_problem__udp__notify += 1
+                self._if._packet_stats_rx.icmp4__parameter_problem__udp__notify += 1
                 return
 
         __debug__ and log(
@@ -602,7 +591,7 @@ class PacketHandlerIcmp4Rx(ABC):
             return
 
         if embedded.embedded_seq is not None and not session.is_seq_in_window(embedded.embedded_seq):
-            self._packet_stats_rx.icmp4__parameter_problem__tcp__seq_out_of_window__drop += 1
+            self._if._packet_stats_rx.icmp4__parameter_problem__tcp__seq_out_of_window__drop += 1
             return
 
         __debug__ and log(
@@ -625,7 +614,7 @@ class PacketHandlerIcmp4Rx(ABC):
             offender_ip=packet_rx.ip4.src,
             embedded_datagram=bytes(message.data),
         )
-        self._packet_stats_rx.icmp4__parameter_problem__tcp__notify += 1
+        self._if._packet_stats_rx.icmp4__parameter_problem__tcp__notify += 1
 
     def __phrx_icmp4__echo_request(self, packet_rx: PacketRx) -> None:
         """
@@ -641,7 +630,7 @@ class PacketHandlerIcmp4Rx(ABC):
             dst_is_broadcast=packet_rx.ip4.dst.is_limited_broadcast,
             dst_is_multicast=packet_rx.ip4.dst.is_multicast,
         ):
-            self._packet_stats_rx.icmp4__echo_request__bcast_or_mcast__drop += 1
+            self._if._packet_stats_rx.icmp4__echo_request__bcast_or_mcast__drop += 1
             __debug__ and log(
                 "icmp4",
                 f"{packet_rx.tracker} - <WARN>Dropping ICMPv4 Echo Request "
@@ -655,7 +644,7 @@ class PacketHandlerIcmp4Rx(ABC):
             f"{packet_rx.tracker} - <INFO>Received ICMPv4 Echo Request "
             f"packet from {packet_rx.ip4.src}, sending reply</>",
         )
-        self._packet_stats_rx.icmp4__echo_request__respond_echo_reply += 1
+        self._if._packet_stats_rx.icmp4__echo_request__respond_echo_reply += 1
 
         # Build the reply message in the enclosing scope (where the
         # isinstance-narrowing on 'packet_rx.icmp4.message' holds)
@@ -666,8 +655,8 @@ class PacketHandlerIcmp4Rx(ABC):
             data=packet_rx.icmp4.message.data,
         )
         echo_reply_options_ = echo_reply_options(packet_rx.ip4.options)
-        self._marshal_tx(
-            lambda: self._phtx_icmp4(
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp4(
                 ip4__src=packet_rx.ip4.dst,
                 ip4__dst=packet_rx.ip4.src,
                 ip4__options=echo_reply_options_,
@@ -685,4 +674,4 @@ class PacketHandlerIcmp4Rx(ABC):
             "icmp4",
             f"{packet_rx.tracker} - Received unknown ICMPv4 packet " f"from {packet_rx.ip4.src}",
         )
-        self._packet_stats_rx.icmp4__unknown += 1
+        self._if._packet_stats_rx.icmp4__unknown += 1

@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip4Address
@@ -46,9 +47,10 @@ from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable i
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__icmp4__tx import (
-    PacketHandlerIcmp4Tx,
-)
+from pytcp.runtime.packet_handler.packet_handler__icmp4__tx import Icmp4TxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -75,9 +77,18 @@ STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
 HOST_A__IP4 = Ip4Address("10.0.1.91")
 
 
-class _StubHandler(PacketHandlerIcmp4Tx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIcmp4Tx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters, the TX marshal seam, and the
+    '_phtx_ip4' entry the ICMPv4 TX sub-handler reaches through
+    'self._if', recording each call for assertions. A purpose-built
+    double is used rather than 'create_autospec(PacketHandlerL2)' —
+    the god-class still carries 'TYPE_CHECKING'-only annotations
+    'inspect.signature' (which autospec walks) cannot evaluate at
+    runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -96,11 +107,12 @@ class _StubHandler(PacketHandlerIcmp4Tx):
 
 class TestPacketHandlerIcmp4Tx(TestCase):
     """
-    The 'PacketHandlerIcmp4Tx._phtx_icmp4' behaviour tests.
+    The 'Icmp4TxHandler._phtx_icmp4' behaviour tests.
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
+        self._icmp4_tx = Icmp4TxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", self._if))
 
     def test__stack__packet_handler__icmp4__tx__echo_reply_counted_and_forwarded(self) -> None:
         """
@@ -110,17 +122,17 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         Reference: RFC 792 (Echo Reply).
         """
 
-        status = self._handler._phtx_icmp4(
+        status = self._icmp4_tx._phtx_icmp4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
             icmp4__message=Icmp4MessageEchoReply(id=1, seq=1, data=b"hello"),
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(self._handler._packet_stats_tx.icmp4__pre_assemble, 1)
-        self.assertEqual(self._handler._packet_stats_tx.icmp4__echo_reply__send, 1)
-        self.assertEqual(len(self._handler.ip4_tx_calls), 1)
-        call = self._handler.ip4_tx_calls[0]
+        self.assertEqual(self._if._packet_stats_tx.icmp4__pre_assemble, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp4__echo_reply__send, 1)
+        self.assertEqual(len(self._if.ip4_tx_calls), 1)
+        call = self._if.ip4_tx_calls[0]
         self.assertEqual(call["ip4__src"], STACK__IP4_ADDRESS)
         self.assertEqual(call["ip4__dst"], HOST_A__IP4)
         self.assertIsInstance(call["ip4__payload"], Icmp4Assembler)
@@ -132,13 +144,13 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         Reference: RFC 792 (Echo).
         """
 
-        self._handler._phtx_icmp4(
+        self._icmp4_tx._phtx_icmp4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
             icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=b"hello"),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.icmp4__echo_request__send, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp4__echo_request__send, 1)
 
     def test__stack__packet_handler__icmp4__tx__port_unreachable_counted(self) -> None:
         """
@@ -148,7 +160,7 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         Reference: RFC 792 (Destination Unreachable Code 3).
         """
 
-        self._handler._phtx_icmp4(
+        self._icmp4_tx._phtx_icmp4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
             icmp4__message=Icmp4MessageDestinationUnreachable(
@@ -157,7 +169,7 @@ class TestPacketHandlerIcmp4Tx(TestCase):
             ),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.icmp4__destination_unreachable__port__send, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp4__destination_unreachable__port__send, 1)
 
     def test__stack__packet_handler__icmp4__tx__unsupported_type_drops(self) -> None:
         """
@@ -170,7 +182,7 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        status = self._handler._phtx_icmp4(
+        status = self._icmp4_tx._phtx_icmp4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
             icmp4__message=Icmp4MessageDestinationUnreachable(
@@ -185,12 +197,12 @@ class TestPacketHandlerIcmp4Tx(TestCase):
             msg="Unsupported ICMPv4 type must return DROPPED__ICMP4__UNKNOWN.",
         )
         self.assertEqual(
-            self._handler._packet_stats_tx.icmp4__unknown__drop,
+            self._if._packet_stats_tx.icmp4__unknown__drop,
             1,
             msg="Unsupported ICMPv4 type must bump 'icmp4__unknown__drop'.",
         )
         self.assertEqual(
-            len(self._handler.ip4_tx_calls),
+            len(self._if.ip4_tx_calls),
             0,
             msg="Unsupported ICMPv4 type must NOT forward to '_phtx_ip4'.",
         )
@@ -203,11 +215,11 @@ class TestPacketHandlerIcmp4Tx(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        status = self._handler.send_icmp4_packet(
+        status = self._icmp4_tx.send_icmp4_packet(
             ip4__local_address=STACK__IP4_ADDRESS,
             ip4__remote_address=HOST_A__IP4,
             icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=b"hello"),
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(self._handler._packet_stats_tx.icmp4__echo_request__send, 1)
+        self.assertEqual(self._if._packet_stats_tx.icmp4__echo_request__send, 1)

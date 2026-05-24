@@ -54,6 +54,7 @@ from net_proto import (
     ArpOperation,
     Ethernet8023Payload,
     EtherType,
+    Icmp4Message,
     Icmp6NdRoutePreference,
     PacketRx,
     RawAssembler,
@@ -91,8 +92,8 @@ from .packet_handler__ethernet_802_3__rx import Ethernet8023RxHandler
 from .packet_handler__ethernet_802_3__tx import Ethernet8023TxHandler
 from .packet_handler__ethernet__rx import PacketHandlerEthernetRx
 from .packet_handler__ethernet__tx import PacketHandlerEthernetTx
-from .packet_handler__icmp4__rx import PacketHandlerIcmp4Rx
-from .packet_handler__icmp4__tx import PacketHandlerIcmp4Tx
+from .packet_handler__icmp4__rx import Icmp4RxHandler
+from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import PacketHandlerIcmp6Rx
 from .packet_handler__icmp6__tx import PacketHandlerIcmp6Tx
 from .packet_handler__ip4__rx import PacketHandlerIp4Rx
@@ -131,6 +132,8 @@ class PacketHandler(Subsystem, ABC):
     _udp_tx: UdpTxHandler
     _tcp_rx: TcpRxHandler
     _tcp_tx: TcpTxHandler
+    _icmp4_rx: Icmp4RxHandler
+    _icmp4_tx: Icmp4TxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -325,6 +328,8 @@ class PacketHandler(Subsystem, ABC):
         self._udp_tx = UdpTxHandler(interface=_if)
         self._tcp_rx = TcpRxHandler(interface=_if)
         self._tcp_tx = TcpTxHandler(interface=_if)
+        self._icmp4_rx = Icmp4RxHandler(interface=_if)
+        self._icmp4_tx = Icmp4TxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1554,6 +1559,56 @@ class PacketHandler(Subsystem, ABC):
             tcp__payload=tcp__payload,
         )
 
+    ###
+    # ICMPv4 delegators — logic lives in the composed 'Icmp4RxHandler'
+    # / 'Icmp4TxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_icmp4(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound ICMPv4 packet (delegates to the ICMPv4 RX sub-handler).
+        """
+
+        self._icmp4_rx._phrx_icmp4(packet_rx)
+
+    def _phtx_icmp4(
+        self,
+        *,
+        ip4__src: Ip4Address,
+        ip4__dst: Ip4Address,
+        ip4__options: Ip4Options = Ip4Options(),
+        icmp4__message: Icmp4Message,
+        echo_tracker: Tracker | None = None,
+    ) -> TxStatus:
+        """
+        Handle an outbound ICMPv4 packet (delegates to the ICMPv4 TX sub-handler).
+        """
+
+        return self._icmp4_tx._phtx_icmp4(
+            ip4__src=ip4__src,
+            ip4__dst=ip4__dst,
+            ip4__options=ip4__options,
+            icmp4__message=icmp4__message,
+            echo_tracker=echo_tracker,
+        )
+
+    def send_icmp4_packet(
+        self,
+        *,
+        ip4__local_address: Ip4Address,
+        ip4__remote_address: Ip4Address,
+        icmp4__message: Icmp4Message,
+    ) -> TxStatus:
+        """
+        Enqueue an outbound ICMPv4 packet (delegates to the ICMPv4 TX sub-handler).
+        """
+
+        return self._icmp4_tx.send_icmp4_packet(
+            ip4__local_address=ip4__local_address,
+            ip4__remote_address=ip4__remote_address,
+            icmp4__message=icmp4__message,
+        )
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -1561,8 +1616,6 @@ class PacketHandlerL2(
     PacketHandlerEthernetTx,
     PacketHandlerIcmp6Rx,
     PacketHandlerIcmp6Tx,
-    PacketHandlerIcmp4Rx,
-    PacketHandlerIcmp4Tx,
     PacketHandlerIp4Rx,
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
@@ -2387,8 +2440,6 @@ class PacketHandlerL3(
     PacketHandler,
     PacketHandlerIcmp6Rx,
     PacketHandlerIcmp6Tx,
-    PacketHandlerIcmp4Rx,
-    PacketHandlerIcmp4Tx,
     PacketHandlerIp4Rx,
     PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,

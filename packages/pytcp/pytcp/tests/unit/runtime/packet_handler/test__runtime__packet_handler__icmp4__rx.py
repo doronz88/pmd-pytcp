@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -51,9 +52,10 @@ from net_proto.protocols.icmp4.message.icmp4__message__destination_unreachable i
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__icmp4__rx import (
-    PacketHandlerIcmp4Rx,
-)
+from pytcp.runtime.packet_handler.packet_handler__icmp4__rx import Icmp4RxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -80,9 +82,18 @@ STACK__IP4_ADDRESS = Ip4Address("10.0.1.7")
 HOST_A__IP4 = Ip4Address("10.0.1.91")
 
 
-class _StubHandler(PacketHandlerIcmp4Rx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIcmp4Rx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters, the TX marshal seam, and the
+    '_phtx_icmp4' entry (Echo Reply / error responses) the ICMPv4 RX
+    sub-handler reaches through 'self._if', recording each call. A
+    purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -117,7 +128,8 @@ class _Icmp4RxTestBase(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._if = _StubInterface()
+        self._icmp4_rx = Icmp4RxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", self._if))
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
 
@@ -153,15 +165,15 @@ class TestPacketHandlerIcmp4RxParse(_Icmp4RxTestBase):
         ip4[22] = 0xDE
         ip4[23] = 0xAD
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(bytes(ip4)))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(bytes(ip4)))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp4__pre_parse,
+            self._if._packet_stats_rx.icmp4__pre_parse,
             1,
             msg="icmp4__pre_parse must be incremented before the parse attempt.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp4__failed_parse__drop,
+            self._if._packet_stats_rx.icmp4__failed_parse__drop,
             1,
             msg="Malformed ICMPv4 must be counted in icmp4__failed_parse__drop.",
         )
@@ -190,19 +202,19 @@ class TestPacketHandlerIcmp4RxEchoRequest(_Icmp4RxTestBase):
             )
         )
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp4__echo_request__respond_echo_reply,
+            self._if._packet_stats_rx.icmp4__echo_request__respond_echo_reply,
             1,
             msg="Echo Request must be counted in icmp4__echo_request__respond_echo_reply.",
         )
         self.assertEqual(
-            len(self._handler.icmp4_tx_calls),
+            len(self._if.icmp4_tx_calls),
             1,
             msg="Echo Request must invoke exactly one _phtx_icmp4.",
         )
-        call = self._handler.icmp4_tx_calls[0]
+        call = self._if.icmp4_tx_calls[0]
         self.assertEqual(call["ip4__src"], STACK__IP4_ADDRESS)
         self.assertEqual(call["ip4__dst"], HOST_A__IP4)
         reply = call["icmp4__message"]
@@ -233,10 +245,10 @@ class TestPacketHandlerIcmp4RxEchoReply(_Icmp4RxTestBase):
             )
         )
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp4__echo_reply,
+            self._if._packet_stats_rx.icmp4__echo_reply,
             1,
             msg="icmp4__echo_reply must be incremented for an Echo Reply with no matching socket.",
         )
@@ -276,10 +288,10 @@ class TestPacketHandlerIcmp4RxDestinationUnreachable(_Icmp4RxTestBase):
             )
         )
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.icmp4__destination_unreachable,
+            self._if._packet_stats_rx.icmp4__destination_unreachable,
             1,
             msg="Destination Unreachable must be counted in icmp4__destination_unreachable.",
         )
@@ -316,7 +328,7 @@ class TestPacketHandlerIcmp4RxDestinationUnreachable(_Icmp4RxTestBase):
         self._sockets_patch = patch.object(stack, "sockets", _MatchAllDict())
         self._sockets_patch.start()
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(ip4))
 
         fake_socket.notify_unreachable.assert_not_called()
 
@@ -351,10 +363,10 @@ class TestPacketHandlerIcmp4RxUnknown(_Icmp4RxTestBase):
         # parser does not validate the cksum when the type is unknown
         # (it just dispatches on type).
 
-        self._handler._phrx_icmp4(_packet_rx_from_ip4_icmp4(bytes(ip4)))
+        self._icmp4_rx._phrx_icmp4(_packet_rx_from_ip4_icmp4(bytes(ip4)))
 
         self.assertGreaterEqual(
-            self._handler._packet_stats_rx.icmp4__unknown,
+            self._if._packet_stats_rx.icmp4__unknown,
             0,
             msg="Unknown type dispatches to __phrx_icmp4__unknown unless parser rejects the frame first.",
         )
