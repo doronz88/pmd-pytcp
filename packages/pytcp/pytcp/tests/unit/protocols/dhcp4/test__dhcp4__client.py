@@ -1815,7 +1815,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
 class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
     """
     Daemon-mode BOUND wiring. On the INIT → BOUND transition the
-    client calls 'address_api.add_ifaddr', begins RFC 5227 §2.4
+    client calls 'address_api.add', begins RFC 5227 §2.4
     ongoing defense via 'acd.start_defense', and signals
     'start_and_wait_for_bind' watchers via '_event__bound'.
     """
@@ -1823,7 +1823,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
     def test__dhcp4_client__bound_transition_invokes_address_api_add_host(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition calls
-        'address_api.add_ifaddr' with the leased Ip4IfAddr — the
+        'address_api.add' with the leased Ip4IfAddr — the
         kernel/userspace boundary surface installs the address
         on the stack.
 
@@ -1832,14 +1832,14 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         self._server.enqueue_offer()
         self._server.enqueue_ack()
-        mock_address_api = MagicMock(name="Ip4AddressApi")
+        mock_address_api = MagicMock(name="AddressApi")
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
 
         client._subsystem_loop()
 
         assert client._lease is not None
-        mock_address_api.add_ifaddr.assert_called_once_with(
-            ip4_ifaddr=client._lease.ip4_host,
+        mock_address_api.add.assert_called_once_with(
+            ifaddr=client._lease.ip4_host,
         )
 
     def test__dhcp4_client__bound_transition_installs_default_route(self) -> None:
@@ -2245,7 +2245,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
         client = Dhcp4Client(
             mac_address=_DEFAULT_MAC,
-            address_api=MagicMock(name="Ip4AddressApi"),
+            address_api=MagicMock(name="AddressApi"),
         )
         client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
         client._state = Dhcp4State.RENEWING
@@ -2321,7 +2321,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         Reference: RFC 2131 §4.4.5 (lease expiry → halt IPv4).
         """
 
-        mock_address_api = MagicMock(name="Ip4AddressApi")
+        mock_address_api = MagicMock(name="AddressApi")
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
         client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
         client._state = Dhcp4State.REBINDING
@@ -2339,8 +2339,8 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             client._lease,
             msg="Lease must be cleared on expiry.",
         )
-        mock_address_api.remove_ifaddr.assert_called_once_with(
-            ip4_address=Ip4Address("10.0.0.100"),
+        mock_address_api.remove.assert_called_once_with(
+            address=Ip4Address("10.0.0.100"),
             abort_bound_sessions=True,
         )
 
@@ -2388,7 +2388,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
     """
     Phase 4 commit D — DHCPRELEASE, sync release/renew/rebind,
     Subsystem '_stop' shutdown hook, and the cross-IP RENEW/REBIND
-    'replace_ifaddr' path. Phase 4.5 FSM → address-API mutation
+    'replace' path. Phase 4.5 FSM → address-API mutation
     table.
     """
 
@@ -2574,14 +2574,14 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
     def test__dhcp4_client__stop_removes_host_via_address_api_when_bound(self) -> None:
         """
         Ensure 'stop()' on a BOUND client removes the leased
-        address via 'address_api.remove_ifaddr' with the
+        address via 'address_api.remove' with the
         'abort_bound_sessions' flag derived from
         'dhcp.abort_sessions_on_lease_change' (default 1).
 
         Reference: RFC 5227 §2.4 final paragraph (hosts SHOULD actively reset connections on relinquished addresses).
         """
 
-        mock_address_api = MagicMock(name="Ip4AddressApi")
+        mock_address_api = MagicMock(name="AddressApi")
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
@@ -2589,15 +2589,15 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
 
         client.stop()
 
-        mock_address_api.remove_ifaddr.assert_called_with(
-            ip4_address=Ip4Address("10.0.0.100"),
+        mock_address_api.remove.assert_called_with(
+            address=Ip4Address("10.0.0.100"),
             abort_bound_sessions=True,
         )
 
     def test__dhcp4_client__cross_ip_renew_calls_replace_host(self) -> None:
         """
         Ensure a RENEW ACK that returns a DIFFERENT yiaddr
-        triggers an 'address_api.replace_ifaddr' swap (the
+        triggers an 'address_api.replace' swap (the
         Phase 4.5 FSM → API mutation table — "Different-IP
         swap" row), not a silent in-place lease update.
 
@@ -2605,7 +2605,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         """
 
         self.enterContext(sysctl.override("dhcp.retrans_jitter_ms", 0))
-        mock_address_api = MagicMock(name="Ip4AddressApi")
+        mock_address_api = MagicMock(name="AddressApi")
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.101"))  # different from leased 10.0.0.100
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
@@ -2615,17 +2615,17 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         with patch("pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
             client._do_renewing()
 
-        mock_address_api.replace_ifaddr.assert_called_once()
-        kwargs = mock_address_api.replace_ifaddr.call_args.kwargs
+        mock_address_api.replace.assert_called_once()
+        kwargs = mock_address_api.replace.call_args.kwargs
         self.assertEqual(
             kwargs["old_address"],
             Ip4Address("10.0.0.100"),
-            msg="replace_ifaddr must be called with the prior leased address.",
+            msg="replace must be called with the prior leased address.",
         )
         self.assertEqual(
             kwargs["new_ifaddr"].address,
             Ip4Address("10.0.0.101"),
-            msg="replace_ifaddr must be called with the new lease's Ip4IfAddr.",
+            msg="replace must be called with the new lease's Ip4IfAddr.",
         )
         self.assertTrue(
             kwargs["abort_bound_sessions"],
@@ -2644,7 +2644,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         """
 
         self.enterContext(sysctl.override("dhcp.abort_sessions_on_lease_change", 0))
-        mock_address_api = MagicMock(name="Ip4AddressApi")
+        mock_address_api = MagicMock(name="AddressApi")
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
@@ -2652,8 +2652,8 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
 
         client.stop()
 
-        mock_address_api.remove_ifaddr.assert_called_with(
-            ip4_address=Ip4Address("10.0.0.100"),
+        mock_address_api.remove.assert_called_with(
+            address=Ip4Address("10.0.0.100"),
             abort_bound_sessions=False,
         )
 

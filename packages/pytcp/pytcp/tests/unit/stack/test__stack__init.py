@@ -45,7 +45,7 @@ from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.runtime.fib import RouteTable
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 from pytcp.stack.lifecycle import add_interface, remove_interface
 from pytcp.stack.link import LinkApi
 from pytcp.stack.route import RouteApi
@@ -1468,8 +1468,8 @@ class TestStackInitZeroInterface(TestCase):
 
         self.assertIsInstance(
             stack.address,
-            Ip4AddressApi,
-            msg="Zero-interface init() must build an Ip4AddressApi tool.",
+            AddressApi,
+            msg="Zero-interface init() must build an AddressApi tool.",
         )
         self.assertIsInstance(
             stack.link,

@@ -88,7 +88,7 @@ class NeighborApi:
     'cast' the resolved handler to 'PacketHandlerL2'; calling them on
     an L3 (TUN) binding — which owns neither cache — raises
     AttributeError at runtime, and the cast surfaces that precondition
-    to mypy (mirrors 'Ip4AddressApi.probe').
+    to mypy.
     """
 
     def __init__(

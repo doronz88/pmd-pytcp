@@ -23,8 +23,8 @@
 
 
 """
-This module contains tests for the IPv4 address-control API
-('Ip4AddressApi') in 'pytcp/lib/address_api.py'.
+This module contains tests for the address-control API
+('AddressApi') in 'pytcp/stack/address.py'.
 
 pytcp/tests/unit/stack/test__stack__address.py
 
@@ -39,7 +39,7 @@ from net_addr import Ip4Address, Ip4IfAddr
 from pytcp import stack
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.stack.address import (
-    Ip4AddressApi,
+    AddressApi,
 )
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 class _FakePacketHandler:
     """
-    Minimal packet-handler stand-in for 'Ip4AddressApi' tests —
+    Minimal packet-handler stand-in for 'AddressApi' tests —
     exposes only the '_ip4_ifaddr' attribute the API mutates.
     Using a hand-rolled class avoids the autospec ceremony for
     a 50-attribute production class.
@@ -58,9 +58,9 @@ class _FakePacketHandler:
         self._ip4_ifaddr: list[Ip4IfAddr] = []
 
 
-class TestIp4AddressApiAddHost(TestCase):
+class TestAddressApiAddHost(TestCase):
     """
-    'Ip4AddressApi.add_ifaddr' installs an Ip4IfAddr on the stack's
+    'AddressApi.add' installs an Ip4IfAddr on the stack's
     address list.
     """
 
@@ -73,11 +73,11 @@ class TestIp4AddressApiAddHost(TestCase):
 
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
-        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__add_host_appends_to_packet_handler_list(self) -> None:
         """
-        Ensure 'add_ifaddr' appends the supplied 'Ip4IfAddr' to the
+        Ensure 'add' appends the supplied 'Ip4IfAddr' to the
         packet handler's '_ip4_ifaddr' list.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -85,18 +85,18 @@ class TestIp4AddressApiAddHost(TestCase):
 
         host = Ip4IfAddr("10.0.0.5/24")
 
-        self._api.add_ifaddr(ip4_ifaddr=host)
+        self._api.add(ifaddr=host)
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [host],
-            msg="add_ifaddr must append the supplied Ip4IfAddr to the packet handler list.",
+            msg="add must append the supplied Ip4IfAddr to the packet handler list.",
         )
 
     def test__ip4_address_api__add_host_preserves_existing_hosts(self) -> None:
         """
-        Ensure 'add_ifaddr' is additive — pre-existing hosts on the
-        packet handler list survive an add_ifaddr call. Mirrors
+        Ensure 'add' is additive — pre-existing hosts on the
+        packet handler list survive an add call. Mirrors
         Linux RTM_NEWADDR semantics (additive, not replacing).
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -106,17 +106,17 @@ class TestIp4AddressApiAddHost(TestCase):
         self._packet_handler._ip4_ifaddr.append(existing)
 
         new = Ip4IfAddr("10.0.0.5/24")
-        self._api.add_ifaddr(ip4_ifaddr=new)
+        self._api.add(ifaddr=new)
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [existing, new],
-            msg="add_ifaddr must preserve pre-existing hosts.",
+            msg="add must preserve pre-existing hosts.",
         )
 
     def test__ip4_address_api__add_host_atomically_rebinds_list(self) -> None:
         """
-        Ensure 'add_ifaddr' rebinds '_ip4_ifaddr' to a fresh list
+        Ensure 'add' rebinds '_ip4_ifaddr' to a fresh list
         object rather than mutating the existing list in place, so the
         TX worker iterating the list during source-address selection
         always reads a consistent snapshot (Phase 4 single-writer-safe
@@ -128,18 +128,18 @@ class TestIp4AddressApiAddHost(TestCase):
 
         original_list = self._packet_handler._ip4_ifaddr
 
-        self._api.add_ifaddr(ip4_ifaddr=Ip4IfAddr("10.0.0.5/24"))
+        self._api.add(ifaddr=Ip4IfAddr("10.0.0.5/24"))
 
         self.assertIsNot(
             self._packet_handler._ip4_ifaddr,
             original_list,
-            msg="add_ifaddr must rebind _ip4_ifaddr to a new list, not mutate the existing one in place.",
+            msg="add must rebind _ip4_ifaddr to a new list, not mutate the existing one in place.",
         )
 
 
-class TestIp4AddressApiRemoveHost(TestCase):
+class TestAddressApiRemoveHost(TestCase):
     """
-    'Ip4AddressApi.remove_ifaddr' removes hosts keyed by address and
+    'AddressApi.remove' removes hosts keyed by address and
     optionally ABORTs bound TCP sessions per the RFC 5227 §2.4-final
     SHOULD (deliberate deviation from Linux's silent-rot).
     """
@@ -156,43 +156,43 @@ class TestIp4AddressApiRemoveHost(TestCase):
         self._target_host = Ip4IfAddr("10.0.0.5/24")
         self._other_host = Ip4IfAddr("10.0.0.6/24")
         self._packet_handler._ip4_ifaddr = [self._target_host, self._other_host]
-        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__remove_host_drops_matching_address(self) -> None:
         """
-        Ensure 'remove_ifaddr' filters out every Ip4IfAddr whose
+        Ensure 'remove' filters out every Ip4IfAddr whose
         '.address' equals the supplied 'ip4_address' and leaves
         other hosts intact.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions"):
+            self._api.remove(address=Ip4Address("10.0.0.5"))
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._other_host],
-            msg="remove_ifaddr must drop only the host matching the supplied address.",
+            msg="remove must drop only the host matching the supplied address.",
         )
 
     def test__ip4_address_api__remove_host_default_aborts_bound_sessions(self) -> None:
         """
-        Ensure 'remove_ifaddr' defaults to ABORTing TCP sessions
+        Ensure 'remove' defaults to ABORTing TCP sessions
         bound to the address — the deliberate deviation from
         Linux's silent-rot behaviour.
 
         Reference: RFC 5227 §2.4 final paragraph (hosts SHOULD actively reset existing connections).
         """
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
-            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
+            self._api.remove(address=Ip4Address("10.0.0.5"))
 
         mock_abort.assert_called_once_with(Ip4Address("10.0.0.5"))
 
     def test__ip4_address_api__remove_host_abort_false_skips_abort(self) -> None:
         """
-        Ensure 'remove_ifaddr(abort_bound_sessions=False)' performs
+        Ensure 'remove(abort_bound_sessions=False)' performs
         the address removal without aborting TCP sessions —
         Linux-parity "silent rot" semantic for diagnostics or
         for callers with their own teardown discipline.
@@ -200,9 +200,9 @@ class TestIp4AddressApiRemoveHost(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
-            self._api.remove_ifaddr(
-                ip4_address=Ip4Address("10.0.0.5"),
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions") as mock_abort:
+            self._api.remove(
+                address=Ip4Address("10.0.0.5"),
                 abort_bound_sessions=False,
             )
 
@@ -210,12 +210,12 @@ class TestIp4AddressApiRemoveHost(TestCase):
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._other_host],
-            msg="remove_ifaddr(abort=False) must still remove the address from the host list.",
+            msg="remove(abort=False) must still remove the address from the host list.",
         )
 
     def test__ip4_address_api__remove_host_unknown_address_is_noop(self) -> None:
         """
-        Ensure 'remove_ifaddr' for an address not present on the
+        Ensure 'remove' for an address not present on the
         packet handler list is a no-op (still aborts any matching
         TCP sessions, but the list filter naturally leaves
         everything intact).
@@ -223,19 +223,19 @@ class TestIp4AddressApiRemoveHost(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.remove_ifaddr(ip4_address=Ip4Address("10.0.0.99"))
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions"):
+            self._api.remove(address=Ip4Address("10.0.0.99"))
 
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [self._target_host, self._other_host],
-            msg="remove_ifaddr for an unknown address must leave the host list unchanged.",
+            msg="remove for an unknown address must leave the host list unchanged.",
         )
 
 
-class TestIp4AddressApiReplaceHost(TestCase):
+class TestAddressApiReplaceHost(TestCase):
     """
-    'Ip4AddressApi.replace_ifaddr' atomically swaps an old address
+    'AddressApi.replace' atomically swaps an old address
     for a new Ip4IfAddr — RTM_NEWADDR-before-RTM_DELADDR ordering.
     """
 
@@ -250,13 +250,13 @@ class TestIp4AddressApiReplaceHost(TestCase):
         self._packet_handler = _FakePacketHandler()
         self._old_host = Ip4IfAddr("10.0.0.5/24")
         self._packet_handler._ip4_ifaddr = [self._old_host]
-        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__replace_host_installs_new_and_removes_old(self) -> None:
         """
-        Ensure 'replace_ifaddr' ends with the new host installed
+        Ensure 'replace' ends with the new host installed
         and the old address removed — net effect equivalent to
-        'remove_ifaddr(old) + add_ifaddr(new)' but with the install-
+        'remove(old) + add(new)' but with the install-
         before-remove ordering Linux RTNETLINK guarantees.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -264,8 +264,8 @@ class TestIp4AddressApiReplaceHost(TestCase):
 
         new_host = Ip4IfAddr("10.0.0.7/24")
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions"):
-            self._api.replace_ifaddr(
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions"):
+            self._api.replace(
                 old_address=Ip4Address("10.0.0.5"),
                 new_ifaddr=new_host,
             )
@@ -273,12 +273,12 @@ class TestIp4AddressApiReplaceHost(TestCase):
         self.assertEqual(
             self._packet_handler._ip4_ifaddr,
             [new_host],
-            msg="replace_ifaddr must leave only the new host installed; the old address is removed.",
+            msg="replace must leave only the new host installed; the old address is removed.",
         )
 
     def test__ip4_address_api__replace_host_installs_new_before_removing_old(self) -> None:
         """
-        Ensure 'replace_ifaddr' installs the new host BEFORE
+        Ensure 'replace' installs the new host BEFORE
         removing the old (matching Linux RTM_NEWADDR →
         RTM_DELADDR ordering). The transient overlap is observable
         by stubbing '_abort_bound_tcp_sessions' to capture the
@@ -293,30 +293,30 @@ class TestIp4AddressApiReplaceHost(TestCase):
         def _snapshot(_: Ip4Address) -> None:
             snapshot_at_abort.extend(self._packet_handler._ip4_ifaddr)
 
-        with patch.object(Ip4AddressApi, "_abort_bound_tcp_sessions", side_effect=_snapshot):
-            self._api.replace_ifaddr(
+        with patch.object(AddressApi, "_abort_bound_tcp_sessions", side_effect=_snapshot):
+            self._api.replace(
                 old_address=Ip4Address("10.0.0.5"),
                 new_ifaddr=new_host,
             )
 
         # At the moment '_abort_bound_tcp_sessions' fired (during
-        # the remove_ifaddr half of the swap), BOTH old and new must
+        # the remove half of the swap), BOTH old and new must
         # have been present on the list.
         self.assertIn(
             new_host,
             snapshot_at_abort,
-            msg="replace_ifaddr must install the new host BEFORE the abort-and-remove of the old.",
+            msg="replace must install the new host BEFORE the abort-and-remove of the old.",
         )
         self.assertIn(
             self._old_host,
             snapshot_at_abort,
-            msg="replace_ifaddr must NOT have removed the old host before the abort fired.",
+            msg="replace must NOT have removed the old host before the abort fired.",
         )
 
 
-class TestIp4AddressApiListIp4Hosts(TestCase):
+class TestAddressApiListIp4Hosts(TestCase):
     """
-    'Ip4AddressApi.list_ip4_ifaddrs' returns a read-only snapshot of
+    'AddressApi.list_ifaddrs' returns a read-only snapshot of
     the stack's IPv4 address list.
     """
 
@@ -330,11 +330,11 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         self.enterContext(patch("pytcp.stack.address.log"))
         self._packet_handler = _FakePacketHandler()
         self._packet_handler._ip4_ifaddr = [Ip4IfAddr("10.0.0.5/24"), Ip4IfAddr("10.0.0.6/24")]
-        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._packet_handler))
 
     def test__ip4_address_api__list_returns_tuple_copy(self) -> None:
         """
-        Ensure 'list_ip4_ifaddrs' returns a tuple (immutable) snapshot
+        Ensure 'list_ifaddrs' returns a tuple (immutable) snapshot
         — the caller cannot mutate stack state through it. Matches
         the Phase-3 "introspection is read-only / copy-by-value"
         contract from CLAUDE.md.
@@ -342,12 +342,12 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        snapshot = self._api.list_ip4_ifaddrs()
+        snapshot = self._api.list_ifaddrs()
 
         self.assertIsInstance(
             snapshot,
             tuple,
-            msg="list_ip4_ifaddrs must return a tuple (immutable snapshot).",
+            msg="list_ifaddrs must return a tuple (immutable snapshot).",
         )
         self.assertEqual(
             len(snapshot),
@@ -358,13 +358,13 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
     def test__ip4_address_api__list_decouples_from_underlying_list(self) -> None:
         """
         Ensure mutating the underlying packet handler list AFTER
-        calling 'list_ip4_ifaddrs' does NOT mutate the returned
+        calling 'list_ifaddrs' does NOT mutate the returned
         snapshot — the tuple is a copy, not a view.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        snapshot = self._api.list_ip4_ifaddrs()
+        snapshot = self._api.list_ifaddrs()
         before_len = len(snapshot)
 
         self._packet_handler._ip4_ifaddr.clear()
@@ -376,7 +376,7 @@ class TestIp4AddressApiListIp4Hosts(TestCase):
         )
 
 
-class TestIp4AddressApiAbortBoundSessions(TestCase):
+class TestAddressApiAbortBoundSessions(TestCase):
     """
     '_abort_bound_tcp_sessions' issues SysCall.ABORT to every TCP
     session whose local_address matches the supplied IPv4 address.
@@ -410,7 +410,7 @@ class TestIp4AddressApiAbortBoundSessions(TestCase):
         fake_sockets = {match_socket_id: match_sock, other_socket_id: other_sock}
 
         with patch.object(stack, "sockets", fake_sockets):
-            Ip4AddressApi._abort_bound_tcp_sessions(target_addr)
+            AddressApi._abort_bound_tcp_sessions(target_addr)
 
         match_session.tcp_fsm.assert_called_once_with(syscall=SysCall.ABORT)
         other_session.tcp_fsm.assert_not_called()
@@ -432,7 +432,7 @@ class TestIp4AddressApiAbortBoundSessions(TestCase):
         fake_sockets = {udp_socket_id: udp_sock}
 
         with patch.object(stack, "sockets", fake_sockets):
-            Ip4AddressApi._abort_bound_tcp_sessions(target_addr)
+            AddressApi._abort_bound_tcp_sessions(target_addr)
 
         # No assertion needed beyond "doesn't raise" — the UDP
         # socket has no '_tcp_session.tcp_fsm' attribute, so a
@@ -440,9 +440,9 @@ class TestIp4AddressApiAbortBoundSessions(TestCase):
         # must gate on the None check.
 
 
-class TestIp4AddressApiInterfaceSelector(TestCase):
+class TestAddressApiInterfaceSelector(TestCase):
     """
-    The 'Ip4AddressApi.interface(ifindex)' device-selector tests.
+    The 'AddressApi.interface(ifindex)' device-selector tests.
     """
 
     def setUp(self) -> None:
@@ -451,17 +451,18 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
         table; bind the API singleton to interface 1.
         """
 
+        self.enterContext(patch("pytcp.stack.address.log"))
         self._iface_1 = _FakePacketHandler()
         self._iface_2 = _FakePacketHandler()
         table = InterfaceTable()
         table[1] = cast("PacketHandlerL2", self._iface_1)
         table[2] = cast("PacketHandlerL2", self._iface_2)
         self.enterContext(patch.object(stack, "interfaces", table))
-        self._api = Ip4AddressApi(packet_handler=cast("PacketHandlerL2", self._iface_1))
+        self._api = AddressApi(packet_handler=cast("PacketHandlerL2", self._iface_1))
 
-    def test__address_api__interface__add_ifaddr_lands_on_named_interface(self) -> None:
+    def test__address_api__interface__add_lands_on_named_interface(self) -> None:
         """
-        Ensure 'interface(ifindex).add_ifaddr' installs the address on
+        Ensure 'interface(ifindex).add' installs the address on
         that interface's own '_ip4_ifaddr' list, leaving other
         interfaces' address lists untouched.
 
@@ -469,12 +470,12 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
         """
 
         host = Ip4IfAddr("10.0.2.7/24")
-        self._api.interface(2).add_ifaddr(ip4_ifaddr=host)
+        self._api.interface(2).add(ifaddr=host)
 
         self.assertEqual(
             self._iface_2._ip4_ifaddr,
             [host],
-            msg="interface(2).add_ifaddr must install on interface 2's address list.",
+            msg="interface(2).add must install on interface 2's address list.",
         )
         self.assertEqual(
             self._iface_1._ip4_ifaddr,
@@ -484,7 +485,7 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
 
     def test__address_api__interface__list_reads_named_interface(self) -> None:
         """
-        Ensure 'interface(ifindex).list_ip4_ifaddrs' reads that
+        Ensure 'interface(ifindex).list_ifaddrs' reads that
         interface's own address list.
 
         Reference: PyTCP test infrastructure (Phase-3 Address API surface).
@@ -494,9 +495,9 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
         self._iface_2._ip4_ifaddr = [host]
 
         self.assertEqual(
-            self._api.interface(2).list_ip4_ifaddrs(),
+            self._api.interface(2).list_ifaddrs(),
             (host,),
-            msg="interface(2).list_ip4_ifaddrs must read interface 2's address list.",
+            msg="interface(2).list_ifaddrs must read interface 2's address list.",
         )
 
     def test__address_api__interface__unknown_ifindex_raises(self) -> None:
@@ -511,10 +512,10 @@ class TestIp4AddressApiInterfaceSelector(TestCase):
             self._api.interface(99)
 
 
-class TestIp4AddressApiUnboundTool(TestCase):
+class TestAddressApiUnboundTool(TestCase):
     """
-    The 'Ip4AddressApi' unbound userspace-tool tests — an
-    'Ip4AddressApi()' built with no handler is the device-independent
+    The 'AddressApi' unbound userspace-tool tests — an
+    'AddressApi()' built with no handler is the device-independent
     tool ('ip addr'); bare reads / mutations resolve the sole registered
     interface (transitional crutch) and explicit '.interface(ifindex)'
     selection always works.
@@ -553,10 +554,10 @@ class TestIp4AddressApiUnboundTool(TestCase):
         (iface,) = self._install(1)
         host = Ip4IfAddr("10.0.0.5/24")
         iface._ip4_ifaddr = [host]
-        tool = Ip4AddressApi()
+        tool = AddressApi()
 
         self.assertEqual(
-            tool.list_ip4_ifaddrs(),
+            tool.list_ifaddrs(),
             (host,),
             msg="The unbound tool must read the sole interface's address list.",
         )
@@ -571,14 +572,14 @@ class TestIp4AddressApiUnboundTool(TestCase):
 
         (iface,) = self._install(1)
         host = Ip4IfAddr("10.0.0.5/24")
-        tool = Ip4AddressApi()
+        tool = AddressApi()
 
-        tool.add_ifaddr(ip4_ifaddr=host)
+        tool.add(ifaddr=host)
 
         self.assertEqual(
             iface._ip4_ifaddr,
             [host],
-            msg="The unbound tool's add_ifaddr must land on the sole interface.",
+            msg="The unbound tool's add must land on the sole interface.",
         )
 
     def test__address_api__unbound_tool__bare_read_raises_when_no_interface(self) -> None:
@@ -590,10 +591,10 @@ class TestIp4AddressApiUnboundTool(TestCase):
         """
 
         self._install(0)
-        tool = Ip4AddressApi()
+        tool = AddressApi()
 
         with self.assertRaises(RuntimeError):
-            tool.list_ip4_ifaddrs()
+            tool.list_ifaddrs()
 
     def test__address_api__unbound_tool__bare_read_raises_when_ambiguous(self) -> None:
         """
@@ -605,10 +606,10 @@ class TestIp4AddressApiUnboundTool(TestCase):
         """
 
         self._install(2)
-        tool = Ip4AddressApi()
+        tool = AddressApi()
 
         with self.assertRaises(RuntimeError):
-            tool.list_ip4_ifaddrs()
+            tool.list_ifaddrs()
 
     def test__address_api__unbound_tool__interface_selector_works_when_ambiguous(self) -> None:
         """
@@ -622,10 +623,10 @@ class TestIp4AddressApiUnboundTool(TestCase):
         ifaces = self._install(3)
         host = Ip4IfAddr("10.0.2.7/24")
         ifaces[1]._ip4_ifaddr = [host]
-        tool = Ip4AddressApi()
+        tool = AddressApi()
 
         self.assertEqual(
-            tool.interface(2).list_ip4_ifaddrs(),
+            tool.interface(2).list_ifaddrs(),
             (host,),
             msg="interface(2) on the unbound tool must read interface 2's address list.",
         )

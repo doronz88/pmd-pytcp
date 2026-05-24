@@ -197,7 +197,7 @@ class RouteApi:
         replace default via ...' equivalent.
 
         Remove-then-add (not the add-before-remove ordering of
-        'Ip4AddressApi.replace_ifaddr'): two same-prefix default
+        'AddressApi.replace'): two same-prefix default
         routes would create a lookup tiebreak ambiguity, whereas
         two interface addresses do not. The call is synchronous
         from the control-plane caller's view, so the transient

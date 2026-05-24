@@ -44,7 +44,7 @@ from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocalState,
 )
 from pytcp.stack import sysctl as sysctl_module
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 
 
 class TestIp4LinkLocalDhcpCoordination(TestCase):
@@ -70,7 +70,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         self._mock_time.return_value = 1000.0
 
         self._mac = MacAddress("02:00:00:00:00:07")
-        self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._address_api: AddressApi = create_autospec(AddressApi, spec_set=True)
         self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
         self._dhcp_bound = False
 
@@ -169,9 +169,9 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         self._dhcp_bound = True
         client._subsystem_loop()
 
-        # Verify the release path: ACD release, remove_ifaddr, halted.
+        # Verify the release path: ACD release, remove, halted.
         cast(MagicMock, self._acd).release.assert_called_once()
-        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once()
+        cast(MagicMock, self._address_api).remove.assert_called_once()
         self.assertEqual(
             client._state,
             Ip4LinkLocalState.HALTED,

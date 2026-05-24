@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING, Callable, override
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 
 if TYPE_CHECKING:
-    from pytcp.stack.address import Ip4AddressApi
+    from pytcp.stack.address import AddressApi
     from pytcp.stack.route import RouteApi
 
 from net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
@@ -205,7 +205,7 @@ class Dhcp4Client(Subsystem):
         *,
         mac_address: MacAddress,
         acd: Ip4Acd | None = None,
-        address_api: "Ip4AddressApi | None" = None,
+        address_api: "AddressApi | None" = None,
         route_api: "RouteApi | None" = None,
     ) -> None:
         """
@@ -232,7 +232,7 @@ class Dhcp4Client(Subsystem):
         The optional 'address_api' is the kernel/userspace
         boundary surface (Phase-3 north-star); on BOUND transition
         (daemon mode only) the lifecycle calls
-        'address_api.add_ifaddr(...)' to install the leased
+        'address_api.add(...)' to install the leased
         Ip4IfAddr on the stack's address list. Sync 'fetch()' does
         not touch the API — the caller owns the returned lease.
         """
@@ -319,7 +319,7 @@ class Dhcp4Client(Subsystem):
         this in 'while not stop_event'.
 
         INIT runs '_do_init_to_bound', installs the lease on the
-        stack via 'address_api.add_ifaddr', begins RFC 5227 §2.4
+        stack via 'address_api.add', begins RFC 5227 §2.4
         ongoing conflict defense via 'acd.start_defense' (which emits
         the §2.3 Announcements and holds the defense socket), signals
         'self._event__bound', and transitions to BOUND. The BOUND
@@ -382,7 +382,7 @@ class Dhcp4Client(Subsystem):
 
         self._lease = lease
         if self._address_api is not None:
-            self._address_api.add_ifaddr(ip4_ifaddr=lease.ip4_host)
+            self._address_api.add(ifaddr=lease.ip4_host)
         # Install the leased gateway as the protocol=DHCP default
         # route — Phase 3 of
         # docs/refactor/routing_table_host_mode.md. The FIB is
@@ -707,7 +707,7 @@ class Dhcp4Client(Subsystem):
             # leave the cache stale across long uptime spans.
             write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, outcome)
         else:
-            # Cross-IP RENEW/REBIND: atomic 'replace_ifaddr' swap
+            # Cross-IP RENEW/REBIND: atomic 'replace' swap
             # via the address API. The 'abort_bound_sessions'
             # flag is sysctl-gated so operators can opt into
             # Linux-parity silent-rot behaviour
@@ -719,7 +719,7 @@ class Dhcp4Client(Subsystem):
                 f"(lease_time={outcome.lease_time__sec}s)",
             )
             if self._address_api is not None:
-                self._address_api.replace_ifaddr(
+                self._address_api.replace(
                     old_address=prior.ip4_host.address,
                     new_ifaddr=outcome.ip4_host,
                     abort_bound_sessions=bool(
@@ -746,8 +746,8 @@ class Dhcp4Client(Subsystem):
         """
 
         if remove_lease_host and self._lease is not None and self._address_api is not None:
-            self._address_api.remove_ifaddr(
-                ip4_address=self._lease.ip4_host.address,
+            self._address_api.remove(
+                address=self._lease.ip4_host.address,
                 abort_bound_sessions=bool(
                     dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                 ),
@@ -1269,8 +1269,8 @@ class Dhcp4Client(Subsystem):
                     f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
                 )
             if self._address_api is not None:
-                self._address_api.remove_ifaddr(
-                    ip4_address=self._lease.ip4_host.address,
+                self._address_api.remove(
+                    address=self._lease.ip4_host.address,
                     abort_bound_sessions=bool(
                         dhcp4__constants.DHCP4__ABORT_SESSIONS_ON_LEASE_CHANGE,
                     ),

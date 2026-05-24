@@ -107,7 +107,7 @@ DHCP4__T1_FACTOR: float = 0.5
 DHCP4__T2_FACTOR: float = 0.875
 
 # Phase 4 commit D — TCP-session abort policy on
-# Ip4AddressApi-mediated address change (cross-IP RENEW/REBIND,
+# AddressApi-mediated address change (cross-IP RENEW/REBIND,
 # lease expiry, DHCPRELEASE-on-shutdown). Default 1 = active
 # abort per RFC 5227 §2.4-final SHOULD (deliberate deviation
 # from Linux's silent-rot kernel behaviour). Set 0 for

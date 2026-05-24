@@ -23,12 +23,13 @@
 
 
 """
-This module contains the Phase-1 IPv4 address-control API
-('Ip4AddressApi') — the kernel/userspace boundary surface that
-the DHCPv4 client and (eventually) operator-config tools use to
-add / remove / replace addresses on the stack. The Linux
-equivalents are 'RTM_NEWADDR' / 'RTM_DELADDR' (rtnetlink) and
-'net/ipv4/devinet.c'.
+This module contains the address-control API ('AddressApi') — the
+kernel/userspace boundary surface that the DHCPv4 client, the RFC 3927
+link-local client and (eventually) operator-config tools use to add /
+remove / replace host addresses on the stack. The Linux equivalents are
+'RTM_NEWADDR' / 'RTM_DELADDR' (rtnetlink) and 'ip addr'. The verbs are
+family-agnostic by design; the IPv6 dispatch arm lands in step 2 of the
+unification (docs/refactor/address_api_unification.md).
 
 pytcp/stack/address.py
 
@@ -44,19 +45,24 @@ if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 
-class Ip4AddressApi:
+class AddressApi:
     """
-    Phase-1 IPv4 address-control surface — mirrors Linux RTNETLINK
-    'RTM_NEWADDR' / 'RTM_DELADDR' semantics.
+    The address-control surface — mirrors Linux RTNETLINK
+    'RTM_NEWADDR' / 'RTM_DELADDR' / 'ip addr' semantics. The verbs
+    ('add' / 'remove' / 'replace' / 'list_ifaddrs') are family-
+    agnostic by design (Linux carries the family as a field, not a
+    verb); the IPv6 dispatch arm lands in step 2 of the unification
+    (docs/refactor/address_api_unification.md), so today the
+    implementation handles IPv4 only.
 
-    Phase-1 implementation: thin wrapper around
-    'PacketHandler._ip4_ifaddr' mutations plus active TCP-session
-    abort via 'SysCall.ABORT' (RFC 5227 §2.4-final SHOULD —
-    deliberately stricter than Linux's "silent rot" behaviour).
+    Implementation: thin wrapper around 'PacketHandler._ip4_ifaddr'
+    mutations plus active TCP-session abort via 'SysCall.ABORT'
+    (RFC 5227 §2.4-final SHOULD — deliberately stricter than
+    Linux's "silent rot" behaviour).
 
-    Consumer code — DHCPv4 client, future operator-config CLI,
-    future DHCPv6 client — uses ONLY this surface. Never reaches
-    into 'packet_handler._ip4_ifaddr' directly. This is the
+    Consumer code — DHCPv4 client, RFC 3927 link-local client,
+    future operator-config CLI — uses ONLY this surface. Never
+    reaches into 'packet_handler._ip4_ifaddr' directly. This is the
     architectural seam the Phase-3 north-star turns into a real
     IPC channel; the wrapper internals swap from direct
     attribute mutation to RTNETLINK-equivalent message bus
@@ -112,33 +118,28 @@ class Ip4AddressApi:
             "Select a device via 'stack.address.interface(ifindex)'."
         )
 
-    def interface(self, ifindex: int, /) -> "Ip4AddressApi":
+    def interface(self, ifindex: int, /) -> "AddressApi":
         """
-        Return an 'Ip4AddressApi' bound to the interface registered
+        Return an 'AddressApi' bound to the interface registered
         under 'ifindex' — the device selector, Linux 'ip addr … dev
         <ifX>' equivalent. Every read / mutation on the returned
         binding operates on that interface's address list. Raises
         'KeyError' when no interface is registered under 'ifindex'.
-
-        The returned binding has its OWN conflict-subscription registry
-        (subscriptions live on the API instance, per '__init__'), so a
-        consumer that subscribes via 'interface(ifindex)' must hold the
-        returned binding to later unsubscribe through it. Per-interface
-        conflict-event fan-out is not yet wired from the RX ARP path;
-        when it lands, subscription ownership moves to a per-ifindex
-        registry so events route to the right interface's subscribers.
         """
 
         from pytcp import stack
 
-        return Ip4AddressApi(packet_handler=stack.interfaces[ifindex])
+        return AddressApi(packet_handler=stack.interfaces[ifindex])
 
-    def add_ifaddr(self, *, ip4_ifaddr: Ip4IfAddr) -> None:
+    def add(self, *, ifaddr: Ip4IfAddr) -> None:
         """
-        Install 'ip4_ifaddr' on the stack's IPv4 address list —
-        Linux 'RTM_NEWADDR' / 'ip addr add' equivalent.
-        Idempotent against duplicate-address installs (the
-        caller's responsibility; this method does not de-dup).
+        Install 'ifaddr' on the stack's address list — Linux
+        'RTM_NEWADDR' / 'ip addr add' equivalent. Idempotent against
+        duplicate-address installs (the caller's responsibility;
+        this method does not de-dup).
+
+        Step 1: IPv4 only. The 'Ip6IfAddr' dispatch arm (joining the
+        solicited-node multicast group) lands in step 2.
         """
 
         handler = self._resolve_handler()
@@ -146,20 +147,20 @@ class Ip4AddressApi:
         # iterates '_ip4_ifaddr' during source-address selection on a
         # different thread, so control-plane mutation must swap a fresh
         # list reference (the reader sees the old or new list whole,
-        # never a mid-append state). Mirrors 'remove_ifaddr' below.
-        handler._ip4_ifaddr = [*handler._ip4_ifaddr, ip4_ifaddr]
-        __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ip4_ifaddr}")
+        # never a mid-append state). Mirrors 'remove' below.
+        handler._ip4_ifaddr = [*handler._ip4_ifaddr, ifaddr]
+        __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ifaddr}")
 
-    def remove_ifaddr(
+    def remove(
         self,
         *,
-        ip4_address: Ip4Address,
+        address: Ip4Address,
         abort_bound_sessions: bool = True,
     ) -> None:
         """
-        Remove every 'Ip4IfAddr' whose '.address' equals
-        'ip4_address' from the stack's IPv4 address list —
-        Linux 'RTM_DELADDR' / 'ip addr del' equivalent.
+        Remove every host whose '.address' equals 'address' from the
+        stack's address list — Linux 'RTM_DELADDR' / 'ip addr del'
+        equivalent.
 
         'abort_bound_sessions=True' (the default) actively
         ABORTs every TCP session bound to the removed address
@@ -167,22 +168,25 @@ class Ip4AddressApi:
         from Linux's "silent rot" behaviour. Pass False for
         diagnostics or where the caller has its own
         teardown discipline.
+
+        Step 1: IPv4 only. The 'Ip6Address' dispatch arm (leaving the
+        solicited-node multicast group) lands in step 2.
         """
 
         if abort_bound_sessions:
-            self._abort_bound_tcp_sessions(ip4_address)
+            self._abort_bound_tcp_sessions(address)
 
         handler = self._resolve_handler()
         before = len(handler._ip4_ifaddr)
-        handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != ip4_address]
+        handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != address]
         removed = before - len(handler._ip4_ifaddr)
         __debug__ and log(
             "stack",
-            f"<lg>Address API</>: removed IPv4 address {ip4_address} "
+            f"<lg>Address API</>: removed IPv4 address {address} "
             f"({removed} host(s); abort_bound_sessions={abort_bound_sessions})",
         )
 
-    def replace_ifaddr(
+    def replace(
         self,
         *,
         old_address: Ip4Address,
@@ -191,7 +195,7 @@ class Ip4AddressApi:
     ) -> None:
         """
         Atomic-ish swap: install 'new_ifaddr' BEFORE removing the
-        Ip4IfAddr(es) keyed by 'old_address'. The transient overlap
+        host(es) keyed by 'old_address'. The transient overlap
         parallels Linux's 'RTM_NEWADDR' → 'RTM_DELADDR' ordering
         (RTNETLINK guarantees the kernel processes them in the
         order received; a brief window with both addresses present
@@ -199,24 +203,26 @@ class Ip4AddressApi:
 
         TCP sessions bound to 'old_address' are aborted per
         'abort_bound_sessions' once the new address is installed,
-        matching the RFC 5227 §2.4-final SHOULD policy
-        Ip4AddressApi.remove_ifaddr already applies.
+        matching the RFC 5227 §2.4-final SHOULD policy 'remove'
+        already applies.
         """
 
-        self.add_ifaddr(ip4_ifaddr=new_ifaddr)
-        self.remove_ifaddr(
-            ip4_address=old_address,
+        self.add(ifaddr=new_ifaddr)
+        self.remove(
+            address=old_address,
             abort_bound_sessions=abort_bound_sessions,
         )
 
-    def list_ip4_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
+    def list_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
         """
         Return a read-only copy-by-value snapshot of the stack's
-        IPv4 host list. Linux equivalent: reading
-        '/proc/net/route' + 'ip addr show'. The returned tuple is
-        immutable; the caller cannot mutate stack state through
-        it (matches the Phase-3 north-star "introspection is
-        read-only" constraint from CLAUDE.md).
+        host-address list. Linux equivalent: 'ip addr show'. The
+        returned tuple is immutable; the caller cannot mutate stack
+        state through it (matches the Phase-3 north-star
+        "introspection is read-only" constraint from CLAUDE.md).
+
+        Step 1: IPv4 only, no 'family' filter. The family-filterable
+        IPv6-inclusive form ('family=' kwarg) lands in step 2.
         """
 
         return tuple(self._resolve_handler()._ip4_ifaddr)

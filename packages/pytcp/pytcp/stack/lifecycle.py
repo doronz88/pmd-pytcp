@@ -66,7 +66,7 @@ from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 from pytcp.stack.link import LinkApi
 from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi, install_boot_default_routes
@@ -80,7 +80,7 @@ def mock__init(
     mock__arp_cache: ArpCache | None = None,
     mock__nd_cache: NdCache | None = None,
     mock__packet_handler: PacketHandlerL2 | None = None,
-    mock__address: Ip4AddressApi | None = None,
+    mock__address: AddressApi | None = None,
     mock__link: LinkApi | None = None,
     mock__route: RouteApi | None = None,
     mock__dhcp4_client: Dhcp4Client | None = None,
@@ -141,7 +141,7 @@ def mock__init(
     if mock__address is not None:
         _stack.address = mock__address
     elif mock__packet_handler is not None:
-        _stack.address = Ip4AddressApi(packet_handler=mock__packet_handler)
+        _stack.address = AddressApi(packet_handler=mock__packet_handler)
 
     # Link API Phase 0 — same pattern as 'address'. Tests get a
     # default 'LinkApi' bound to the mocked packet handler so
@@ -482,7 +482,7 @@ def init(
     # device once N>1. Built BEFORE 'add_interface' so the per-interface
     # DHCP / link-local subsystems it constructs can bind to their own
     # 'interface(ifindex)' view. See 'docs/refactor/link_api.md'.
-    _stack.address = Ip4AddressApi()
+    _stack.address = AddressApi()
     _stack.link = LinkApi()
     _stack.neighbor = NeighborApi()
 

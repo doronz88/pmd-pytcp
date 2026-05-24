@@ -51,7 +51,7 @@ from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.timer import Timer
 from pytcp.socket.packet__socket_table import PacketSocketTable
 from pytcp.socket.socket_table import SocketTable
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 from pytcp.stack.link import LinkApi
 from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi
@@ -267,7 +267,7 @@ interfaces: InterfaceTable = InterfaceTable(first_ifindex=STACK__DEFAULT_IFINDEX
 # operator-config CLI tools. Mirrors Linux RTNETLINK 'RTM_NEWADDR'
 # / 'RTM_DELADDR' semantics. Set in 'init()' / 'mock__init()' after
 # 'packet_handler' is constructed.
-address: Ip4AddressApi
+address: AddressApi
 # Link API Phase 0 — link-control surface (MAC, MTU, interface
 # layer; mutation lands in Phase 4). Mirrors Linux 'ip link' /
 # RTNETLINK 'RTM_GETLINK' / 'RTM_NEWLINK'. Constructed by 'init()'

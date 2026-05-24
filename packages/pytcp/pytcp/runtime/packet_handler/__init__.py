@@ -1890,7 +1890,7 @@ class PacketHandlerL2(
         commit B, the DHCPv4 path is owned by 'stack.dhcp4_client'
         (a 'Subsystem' that 'stack.start()' brings up after the
         packet handler) — the lifecycle calls
-        'stack.address.add_ifaddr(...)' on its BOUND transition; this
+        'stack.address.add(...)' on its BOUND transition; this
         method is not the integration point for that.
         """
 

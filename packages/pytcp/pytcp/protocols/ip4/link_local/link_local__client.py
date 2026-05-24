@@ -58,7 +58,7 @@ from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.protocols.ip4.link_local import link_local__constants as ip4ll_const
 from pytcp.protocols.ip4.link_local.link_local__rng import candidate_from_mac
 from pytcp.runtime.subsystem import Subsystem
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 
 
 class Ip4LinkLocalState(Enum):
@@ -95,7 +95,7 @@ class Ip4LinkLocal(Subsystem):
         self,
         *,
         mac_address: MacAddress,
-        address_api: Ip4AddressApi,
+        address_api: AddressApi,
         acd: Ip4Acd,
         is_dhcp_bound: Callable[[], bool] | None = None,
     ) -> None:
@@ -124,7 +124,7 @@ class Ip4LinkLocal(Subsystem):
 
         super().__init__(info=str(mac_address))
         self._mac_address: MacAddress = mac_address
-        self._address_api: Ip4AddressApi = address_api
+        self._address_api: AddressApi = address_api
         self._acd: Ip4Acd = acd
         self._is_dhcp_bound: Callable[[], bool] | None = is_dhcp_bound
         self._candidate: Ip4IfAddr | None = None
@@ -204,7 +204,7 @@ class Ip4LinkLocal(Subsystem):
         Run the RFC 3927 §2.2 probe + §2.4 announce via the ACD
         engine ('Ip4Acd.claim'). On clean claim the engine holds
         the defense socket open, the host is installed through the
-        'ip addr' surface ('add_ifaddr'), and the FSM transitions to
+        'ip addr' surface ('add'), and the FSM transitions to
         BOUND. On conflict the FSM bumps the conflict counter and
         returns to INIT for a fresh candidate; after MAX_CONFLICTS
         consecutive conflicts the subsystem sleeps
@@ -218,7 +218,7 @@ class Ip4LinkLocal(Subsystem):
         if result.success:
             self._conflict_count = 0
             self._defend_history = []
-            self._address_api.add_ifaddr(ip4_ifaddr=self._candidate)
+            self._address_api.add(ifaddr=self._candidate)
             self._state = Ip4LinkLocalState.BOUND
             __debug__ and log(
                 "stack",
@@ -267,7 +267,7 @@ class Ip4LinkLocal(Subsystem):
 
           - §2.5(a) — if a defensive ARP DID fire within the
             window, abandon the address: remove the host via the
-            'ip addr' surface ('remove_ifaddr', which aborts bound
+            'ip addr' surface ('remove', which aborts bound
             TCP sessions per the §2.5 paragraph-7 SHOULD), release
             the ACD claim, clear the candidate, bump the conflict
             counter, and transition to INIT for a fresh reconfigure.
@@ -292,7 +292,7 @@ class Ip4LinkLocal(Subsystem):
             )
             return
 
-        # §2.5(a): abandon. 'remove_ifaddr' aborts bound TCP sessions
+        # §2.5(a): abandon. 'remove' aborts bound TCP sessions
         # on the abandoned address by default (the §2.5 paragraph-7
         # SHOULD); the ACD claim is released so the defense socket is
         # closed.
@@ -300,7 +300,7 @@ class Ip4LinkLocal(Subsystem):
             "stack",
             f"<lg>Link-Local</>: abandoning {address} " f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
         )
-        self._address_api.remove_ifaddr(ip4_address=address)
+        self._address_api.remove(address=address)
         self._acd.release()
         self._candidate = None
         self._defend_history.clear()
@@ -374,7 +374,7 @@ class Ip4LinkLocal(Subsystem):
                 "stack",
                 f"<lg>Link-Local</>: releasing {self._candidate.address} " f"(DHCP took over)",
             )
-            self._address_api.remove_ifaddr(ip4_address=self._candidate.address)
+            self._address_api.remove(address=self._candidate.address)
         self._candidate = None
         self._defend_history.clear()
         self._conflict_count = 0

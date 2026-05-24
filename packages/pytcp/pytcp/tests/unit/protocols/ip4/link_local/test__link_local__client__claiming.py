@@ -25,7 +25,7 @@
 """
 Unit tests for the 'Ip4LinkLocal' CLAIMING-state behaviour —
 RFC 3927 §2.2 ARP Probe + §2.4 ARP Announce delegation via
-the sanctioned 'Ip4AddressApi.claim_with_acd' surface, plus
+the sanctioned 'AddressApi.claim_with_acd' surface, plus
 the retry / rate-limit loop pinned by §9 MAX_CONFLICTS /
 RATE_LIMIT_INTERVAL.
 
@@ -46,7 +46,7 @@ from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocalState,
 )
 from pytcp.stack import sysctl as sysctl_module
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 
 
 class TestIp4LinkLocalClaiming(TestCase):
@@ -72,7 +72,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         )
 
         self._mac = MacAddress("02:00:00:00:00:07")
-        self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._address_api: AddressApi = create_autospec(AddressApi, spec_set=True)
         self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
         self._client = Ip4LinkLocal(
             mac_address=self._mac,
@@ -130,7 +130,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             msg="Clean claim must leave the candidate installed on the client.",
         )
         cast(MagicMock, self._acd).claim.assert_called_once()
-        cast(MagicMock, self._address_api).add_ifaddr.assert_called_once()
+        cast(MagicMock, self._address_api).add.assert_called_once()
 
     def test__ip4_link_local__claiming_conflict_returns_to_init_and_bumps_counter(self) -> None:
         """

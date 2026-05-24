@@ -43,15 +43,15 @@ from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 
 
-def _make_address_api_mock() -> Ip4AddressApi:
-    """Build an autospec'd Ip4AddressApi for tests."""
+def _make_address_api_mock() -> AddressApi:
+    """Build an autospec'd AddressApi for tests."""
 
     from unittest.mock import create_autospec
 
-    return cast(Ip4AddressApi, create_autospec(Ip4AddressApi, spec_set=True))
+    return cast(AddressApi, create_autospec(AddressApi, spec_set=True))
 
 
 def _make_acd_mock() -> Ip4Acd:

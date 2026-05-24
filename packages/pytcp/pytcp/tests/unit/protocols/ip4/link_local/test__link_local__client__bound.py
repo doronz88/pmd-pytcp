@@ -44,7 +44,7 @@ from pytcp.protocols.ip4.link_local.link_local__client import (
     Ip4LinkLocal,
     Ip4LinkLocalState,
 )
-from pytcp.stack.address import Ip4AddressApi
+from pytcp.stack.address import AddressApi
 
 _PEER_MAC = MacAddress("02:00:00:00:00:99")
 
@@ -70,7 +70,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         self._mock_time.return_value = 100.0
 
         self._mac = MacAddress("02:00:00:00:00:07")
-        self._address_api: Ip4AddressApi = create_autospec(Ip4AddressApi, spec_set=True)
+        self._address_api: AddressApi = create_autospec(AddressApi, spec_set=True)
         self._acd: Ip4Acd = create_autospec(Ip4Acd, spec_set=True)
 
         self._client = Ip4LinkLocal(
@@ -141,9 +141,9 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         self._mock_time.return_value = 105.0
         self._client._handle_bound_conflict(_PEER_MAC)
 
-        # Verify abandon side effects: remove_ifaddr (aborts sessions by
+        # Verify abandon side effects: remove (aborts sessions by
         # default) + ACD release.
-        cast(MagicMock, self._address_api).remove_ifaddr.assert_called_once_with(ip4_address=bound_address)
+        cast(MagicMock, self._address_api).remove.assert_called_once_with(address=bound_address)
         cast(MagicMock, self._acd).release.assert_called_once()
         self.assertEqual(
             self._client._state,
@@ -184,7 +184,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
             2,
             msg="Two conflicts outside the window must both trigger defends.",
         )
-        cast(MagicMock, self._address_api).remove_ifaddr.assert_not_called()
+        cast(MagicMock, self._address_api).remove.assert_not_called()
         cast(MagicMock, self._acd).release.assert_not_called()
         self.assertEqual(
             self._client._state,
