@@ -39,7 +39,7 @@ from pytcp.protocols.ip.ip_frag import IpFragFlowId
 from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 
 class Ip6FragRxHandler:
@@ -47,9 +47,9 @@ class Ip6FragRxHandler:
     Packet handler for the inbound IPv6 fragment extension header.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv6 fragment RX sub-handler.
         """

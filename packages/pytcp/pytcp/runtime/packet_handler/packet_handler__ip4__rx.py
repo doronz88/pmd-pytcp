@@ -55,7 +55,7 @@ from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 
 class Ip4RxHandler:
@@ -63,9 +63,9 @@ class Ip4RxHandler:
     Packet handler for the inbound IPv4 packets.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv4 RX sub-handler.
         """

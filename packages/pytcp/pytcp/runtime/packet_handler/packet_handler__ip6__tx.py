@@ -56,7 +56,7 @@ from pytcp.protocols.ip6.ip6__source_selection import (
 )
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 
 class Ip6TxHandler:
@@ -64,9 +64,9 @@ class Ip6TxHandler:
     Packet handler for the outbound IPv6 packets.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv6 TX sub-handler.
         """

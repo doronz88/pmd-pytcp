@@ -56,7 +56,7 @@ from pytcp.protocols.ip4.ip4__source_selection import (
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 
 class Ip4TxHandler:
@@ -64,9 +64,9 @@ class Ip4TxHandler:
     Packet handler for the outbound IPv4 packets.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv4 TX sub-handler.
         """

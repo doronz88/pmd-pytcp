@@ -70,7 +70,7 @@ from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 # RFC 8200 §4.1 — IPv6 extension headers walked in chain order.
 _IP6_EXTENSION_HEADERS: frozenset[IpProto] = frozenset(
@@ -97,9 +97,9 @@ class Ip6RxHandler:
     Packet handler for the inbound IPv6 packets.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv6 RX sub-handler.
         """

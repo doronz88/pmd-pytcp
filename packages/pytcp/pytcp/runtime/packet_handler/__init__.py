@@ -38,7 +38,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, override
 
 from net_addr import (
     Ip4Address,
@@ -221,6 +221,10 @@ class PacketHandler(Subsystem, ABC):
     _ifindex: int = 1
     _interface_mtu: int
     _interface_name: str | None
+    # Concrete value set on each subclass ('PacketHandlerL2' /
+    # 'PacketHandlerL3'); declared here so the composed TX sub-handlers
+    # can branch on it through their 'PacketHandler' back-reference.
+    _interface_layer: InterfaceLayer
     _ip6_support: bool
     _ip4_support: bool
     _ip6_ifaddr_candidate: list[Ip6IfAddr]
@@ -373,29 +377,25 @@ class PacketHandler(Subsystem, ABC):
         if ip4_host is not None:
             self._ip4_ifaddr_candidate.append(ip4_host)
 
-        # Construct the shared per-protocol sub-handlers. 'self' is
-        # always a concrete 'PacketHandlerL2' / 'PacketHandlerL3' at
-        # runtime (this base is abstract), so the cast is sound; it
-        # lets each sub-handler's typed '_if' see the per-layer IP /
-        # ICMP cross-call methods that are still mixins this phase.
-        # Phase: when every protocol is a sub-handler the cross-call
-        # delegators all live on this base and '_if' can narrow to
-        # 'PacketHandler', dropping the cast.
-        _if = cast("PacketHandlerL2 | PacketHandlerL3", self)
-        self._udp_rx = UdpRxHandler(interface=_if)
-        self._udp_tx = UdpTxHandler(interface=_if)
-        self._tcp_rx = TcpRxHandler(interface=_if)
-        self._tcp_tx = TcpTxHandler(interface=_if)
-        self._icmp4_rx = Icmp4RxHandler(interface=_if)
-        self._icmp4_tx = Icmp4TxHandler(interface=_if)
-        self._icmp6_rx = Icmp6RxHandler(interface=_if)
-        self._icmp6_tx = Icmp6TxHandler(interface=_if)
-        self._ip6_frag_rx = Ip6FragRxHandler(interface=_if)
-        self._ip6_frag_tx = Ip6FragTxHandler(interface=_if)
-        self._ip4_rx = Ip4RxHandler(interface=_if)
-        self._ip4_tx = Ip4TxHandler(interface=_if)
-        self._ip6_rx = Ip6RxHandler(interface=_if)
-        self._ip6_tx = Ip6TxHandler(interface=_if)
+        # Construct the shared per-protocol sub-handlers. Each holds a
+        # typed '_if: PacketHandler' back-reference and reaches all its
+        # shared state + cross-call delegators through this base, so
+        # 'self' is passed directly — every protocol is a composed
+        # sub-handler now, so the old union cast is gone.
+        self._udp_rx = UdpRxHandler(interface=self)
+        self._udp_tx = UdpTxHandler(interface=self)
+        self._tcp_rx = TcpRxHandler(interface=self)
+        self._tcp_tx = TcpTxHandler(interface=self)
+        self._icmp4_rx = Icmp4RxHandler(interface=self)
+        self._icmp4_tx = Icmp4TxHandler(interface=self)
+        self._icmp6_rx = Icmp6RxHandler(interface=self)
+        self._icmp6_tx = Icmp6TxHandler(interface=self)
+        self._ip6_frag_rx = Ip6FragRxHandler(interface=self)
+        self._ip6_frag_tx = Ip6FragTxHandler(interface=self)
+        self._ip4_rx = Ip4RxHandler(interface=self)
+        self._ip4_tx = Ip4TxHandler(interface=self)
+        self._ip6_rx = Ip6RxHandler(interface=self)
+        self._ip6_tx = Ip6TxHandler(interface=self)
 
         # Build the per-interface RX dispatch registries. The
         # link-layer registry is built by '_build_ethertype_registry'

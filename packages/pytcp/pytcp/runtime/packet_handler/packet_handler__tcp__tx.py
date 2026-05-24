@@ -55,7 +55,7 @@ from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 
 class TcpTxHandler:
@@ -63,9 +63,9 @@ class TcpTxHandler:
     The outbound TCP packet handler for one interface.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Bind the handler to its owning interface.
         """

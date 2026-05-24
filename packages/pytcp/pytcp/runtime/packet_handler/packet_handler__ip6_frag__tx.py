@@ -48,7 +48,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
 
 if TYPE_CHECKING:
-    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
+    from pytcp.runtime.packet_handler import PacketHandler
 
 # RFC 6980 §5 — NDP (Neighbor Discovery Protocol) message
 # types that MUST NOT use IPv6 fragmentation. A host that
@@ -105,9 +105,9 @@ class Ip6FragTxHandler:
     Packet handler for the outbound IPv6 fragment extension header.
     """
 
-    _if: PacketHandlerL2 | PacketHandlerL3
+    _if: PacketHandler
 
-    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+    def __init__(self, *, interface: PacketHandler) -> None:
         """
         Initialize the IPv6 fragment TX sub-handler.
         """
