@@ -179,8 +179,12 @@ Address API slice rides on (4)).
 | 4.1 | `981ba5fa` | `Ip4Acd` ongoing-defense lifecycle: `claim` (probe+announce, holds the socket), `poll_conflict` (§2.4 drain → peer MAC), `defend` (gratuitous ARP), `release`. |
 | 4.2 | `a9cdd077` | DHCPv4 `arp_dad_verifier`/`announcer` repointed from `Ip4AddressApi.probe/announce` to `Ip4Acd.probe/announce` (lifecycle glue only). |
 | 4.3 | `5ae0839a` | RFC 3927 link-local fully off the Address-API ACD surface: `_do_claiming` → `Ip4Acd.claim` + `add_ifaddr`; BOUND tick polls `Ip4Acd.poll_conflict` → §2.5 `defend`/abandon. |
+| 4.4a | `315ab58a` | Static-host `_create_stack_ip4_addressing` → per-candidate `Ip4Acd.probe`+`announce`, NO ongoing defender (bare `ip addr add`). |
+| 4.4b | `2bd44154` | DHCPv4 client takes `acd: Ip4Acd` directly; INIT `probe`→DECLINE-on-conflict, BOUND `start_defense`+`poll_conflict`→DHCPDECLINE+re-acquire. New engine primitive `Ip4Acd.start_defense` (announce+hold, no re-probe). |
+| 4.4c | `8985e261` | **Deleted** the in-RX ARP conflict detector (`_handle_arp_conflict`/`_abandon_ipv4_address`/`_arp_defend__*`/RX conflict branches) + probe-time DAD (`_arp_dad_*`/`_ip4_arp_dad__registry`/`_send_arp_probe`/`_send_arp_announcement`/`_send_gratuitous_arp`) + the orphaned `Ip4AddressApi.probe`/`announce`/`claim_with_acd`/`send_gratuitous_arp` wrappers + 7 dead RX stat counters. Fixes the latent double-defense. `DadSlotRegistry` kept (IPv6 ND). |
+| 4.5 | `0d0aef0b` | Stripped `Ip4AddressApi` to the pure `ip addr` surface (`add_ifaddr`/`remove_ifaddr`/`replace_ifaddr`/`list_ip4_ifaddrs` + `interface`); removed the dead conflict-subscription machinery + public `abort_bound_tcp_sessions`. |
 
-So **probe + announce + link-local ongoing defense are Linux-faithful userspace ACD today.** What remains (4.4-4.5) is moving *static* and *DHCP* ongoing defense off the stack's ARP RX path so the RX conflict detector can be deleted entirely.
+**COMPLETE.** The full Linux `sd-ipv4acd` end state: all IPv4 ACD is a userspace function over per-address `Ip4Acd` AF_PACKET sockets; the stack ARP RX path does no conflict detection. Sections 10.2-10.5 below are the historical plan (kept for archaeology); every step landed. Suite green at 11302 tests.
 
 ### 10.2 The architecture the code actually has (discovered reading it)
 
