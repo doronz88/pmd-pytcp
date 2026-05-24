@@ -35,53 +35,13 @@ pytcp/stack/address.py
 ver 3.0.6
 """
 
-import threading
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
-from net_addr import Ip4Address, Ip4IfAddr, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class ConflictEvent:
-    """
-    Post-claim ARP-conflict event for an installed address.
-    Fired by the ARP RX path's RFC 5227 §2.4 conflict detector
-    and dispatched to every subscriber registered via
-    'Ip4AddressApi.subscribe_conflicts' for the matching
-    address.
-    """
-
-    address: Ip4Address
-    sender_mac: MacAddress
-    timestamp: float
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class SubscriptionHandle:
-    """
-    Opaque handle returned by 'subscribe_conflicts'; pass to
-    'unsubscribe_conflicts' to remove the callback.
-    """
-
-    address: Ip4Address
-    callback_id: int
-
-
-_OnConflict = Callable[[ConflictEvent], None]
-
-
-@dataclass(slots=True)
-class _Subscriptions:
-    """Per-address callback registry. Internal to Ip4AddressApi."""
-
-    by_address: dict[Ip4Address, dict[int, _OnConflict]] = field(default_factory=dict)
-    next_id: int = 0
-    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 class Ip4AddressApi:
@@ -116,13 +76,9 @@ class Ip4AddressApi:
         'interface(ifindex)') it is a VIEW bound to that one interface;
         its reads / mutations operate on that interface's '_ip4_ifaddr'
         list only.
-
-        The conflict-subscription registry lives on the API instance so
-        per-address callback fan-out is local to this binding.
         """
 
         self._packet_handler = packet_handler
-        self._subscriptions = _Subscriptions()
 
     def _resolve_handler(self) -> "PacketHandlerL2 | PacketHandlerL3":
         """
@@ -264,74 +220,6 @@ class Ip4AddressApi:
         """
 
         return tuple(self._resolve_handler()._ip4_ifaddr)
-
-    def abort_bound_tcp_sessions(self, *, address: Ip4Address) -> None:
-        """
-        Public-API form of '_abort_bound_tcp_sessions' — issue
-        'SysCall.ABORT' to every TCP session whose local
-        address equals 'address'. Used by RFC 3927 §2.5(a)
-        link-local abandon paths and any future DHCPDECLINE-on-
-        conflict consumer that needs to reset bound sessions
-        before yielding the address.
-        """
-
-        self._abort_bound_tcp_sessions(address)
-
-    def subscribe_conflicts(
-        self,
-        *,
-        address: Ip4Address,
-        on_conflict: _OnConflict,
-    ) -> SubscriptionHandle:
-        """
-        Register 'on_conflict' to fire whenever the ARP RX path
-        observes a post-claim conflict on 'address'. The
-        callback fires from the ARP RX thread; long work should
-        be deferred to the consumer's own thread. Returns a
-        handle for later 'unsubscribe_conflicts'.
-
-        Linux equivalent: 'n_acd' library callback registration
-        / 'sd_ipv4ll_set_callback'.
-        """
-
-        with self._subscriptions.lock:
-            callback_id = self._subscriptions.next_id
-            self._subscriptions.next_id += 1
-            self._subscriptions.by_address.setdefault(address, {})[callback_id] = on_conflict
-        return SubscriptionHandle(address=address, callback_id=callback_id)
-
-    def unsubscribe_conflicts(self, *, handle: SubscriptionHandle) -> None:
-        """
-        Remove the callback registered for 'handle'. No-op if
-        the handle has already been removed or never existed.
-        """
-
-        with self._subscriptions.lock:
-            callbacks = self._subscriptions.by_address.get(handle.address)
-            if callbacks is not None:
-                callbacks.pop(handle.callback_id, None)
-                if not callbacks:
-                    self._subscriptions.by_address.pop(handle.address, None)
-
-    def _fire_conflict_event(self, *, event: ConflictEvent) -> None:
-        """
-        Internal entry point for the ARP RX path. Dispatches
-        'event' to every subscriber registered for
-        'event.address'. Exceptions raised by callbacks are
-        caught and logged so one buggy subscriber cannot break
-        the fan-out chain.
-        """
-
-        with self._subscriptions.lock:
-            callbacks = list(self._subscriptions.by_address.get(event.address, {}).values())
-        for callback in callbacks:
-            try:
-                callback(event)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                __debug__ and log(
-                    "stack",
-                    f"<lg>Address API</>: conflict-event callback " f"for {event.address} raised: {exc!r}",
-                )
 
     @staticmethod
     def _abort_bound_tcp_sessions(ip4_address: Ip4Address) -> None:

@@ -25,8 +25,8 @@
 """
 Unit tests for the 'Ip4LinkLocal' BOUND-state conflict
 defence logic — RFC 3927 §2.5 defend / abandon decision
-tree wired via the address API's 'subscribe_conflicts'
-callback.
+tree driven by polling the 'Ip4Acd' engine's
+'poll_conflict' each BOUND tick.
 
 pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py
 
@@ -58,10 +58,8 @@ class TestIp4LinkLocalBoundConflict(TestCase):
     def setUp(self) -> None:
         """
         Stand up a client and drive it to BOUND so each test
-        can fire conflict callbacks directly. The mocked
-        address API returns the subscription handle for the
-        BOUND transition's subscribe_conflicts call so tests
-        can assert on unsubscribe behaviour during abandon.
+        can drive conflict outcomes directly through the mocked
+        'Ip4Acd' engine's 'poll_conflict' return value.
         """
 
         self.enterContext(patch("pytcp.protocols.ip4.link_local.link_local__client.log"))

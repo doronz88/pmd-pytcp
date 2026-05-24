@@ -57,12 +57,12 @@ Consumers:
 `Ip4AddressApi` (`packages/pytcp/pytcp/stack/address.py`) is now the pure
 `ip addr` surface (`add_ifaddr` / `remove_ifaddr` /
 `replace_ifaddr` / `list_ip4_ifaddrs`); `remove_ifaddr` ABORTs
-bound TCP sessions per the §2.4-final SHOULD, and
-`abort_bound_tcp_sessions(*, address)` exposes that primitive
-directly. (The former `probe` / `announce` / `claim_with_acd`
-/ `send_gratuitous_arp` API wrappers and the in-RX
+bound TCP sessions per the §2.4-final SHOULD (via the internal
+`_abort_bound_tcp_sessions` helper). (The former `probe` /
+`announce` / `claim_with_acd` / `send_gratuitous_arp` /
+`subscribe_conflicts` API surface and the in-RX
 `_handle_arp_conflict` / `_arp_dad_*` machinery were removed in
-Phase 4.4c.)
+Phase 4.4c-4.5.)
 
 Adherence levels use the canonical descriptive language:
 **met**, **not met**, **partial**, **not implemented**,
@@ -409,10 +409,9 @@ mechanism is in place.
 through `Ip4AddressApi.remove_ifaddr(...,
 abort_bound_sessions=True)`, which issues `SysCall.ABORT` to
 every `TcpSession` whose local address equals the abandoned IP
-— the RFC 9293 §3.10.7.4 ABORT primitive emits RST and tears
-the session down. `Ip4AddressApi.abort_bound_tcp_sessions(
-address=...)` exposes the same primitive directly for
-consumers running their own abandon logic.
+(via the internal `_abort_bound_tcp_sessions` helper) — the
+RFC 9293 §3.10.7.4 ABORT primitive emits RST and tears the
+session down.
 
 ---
 
