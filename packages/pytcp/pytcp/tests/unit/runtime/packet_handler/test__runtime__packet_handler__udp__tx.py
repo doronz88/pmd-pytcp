@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerUdpTx' mixin.
+This module contains unit tests for the 'UdpTxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__udp__tx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 
 from net_addr import Ip4Address, Ip6Address
@@ -38,9 +39,10 @@ from net_proto import UdpAssembler
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.runtime.packet_handler.packet_handler__udp__tx import (
-    PacketHandlerUdpTx,
-)
+from pytcp.runtime.packet_handler.packet_handler__udp__tx import UdpTxHandler
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -69,9 +71,18 @@ STACK__IP6_ADDRESS = Ip6Address("2001:db8::7")
 HOST_A__IP6 = Ip6Address("2001:db8::91")
 
 
-class _StubHandler(PacketHandlerUdpTx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerUdpTx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters, the async TX marshal seam, and the
+    IP TX entry points ('_phtx_ip4' / '_phtx_ip6') the UDP TX
+    sub-handler reaches through 'self._if', recording each call for
+    assertions. A purpose-built double is used rather than
+    'create_autospec(PacketHandlerL2)' — the god-class still carries
+    'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def __init__(self) -> None:
@@ -97,6 +108,16 @@ class _StubHandler(PacketHandlerUdpTx):
         return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
 
+def _make_udp_tx() -> tuple[UdpTxHandler, _StubInterface]:
+    """
+    Build a 'UdpTxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface()
+    return UdpTxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)), interface
+
+
 class TestPacketHandlerUdpTxRouting(TestCase):
     """
     The version-routing tests for 'PacketHandlerUdpTx._phtx_udp'.
@@ -109,7 +130,7 @@ class TestPacketHandlerUdpTxRouting(TestCase):
         Reference: RFC 768 (UDP TX).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_udp_tx()
         status = handler._phtx_udp(
             ip__src=STACK__IP4_ADDRESS,
             ip__dst=HOST_A__IP4,
@@ -118,11 +139,11 @@ class TestPacketHandlerUdpTxRouting(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(len(handler.ip4_tx_calls), 1)
-        self.assertEqual(handler.ip6_tx_calls, [])
-        self.assertEqual(handler._packet_stats_tx.udp__send, 1)
-        self.assertEqual(handler._packet_stats_tx.udp__pre_assemble, 1)
-        self.assertIsInstance(handler.ip4_tx_calls[0]["ip4__payload"], UdpAssembler)
+        self.assertEqual(len(iface.ip4_tx_calls), 1)
+        self.assertEqual(iface.ip6_tx_calls, [])
+        self.assertEqual(iface._packet_stats_tx.udp__send, 1)
+        self.assertEqual(iface._packet_stats_tx.udp__pre_assemble, 1)
+        self.assertIsInstance(iface.ip4_tx_calls[0]["ip4__payload"], UdpAssembler)
 
     def test__stack__packet_handler__udp__tx__ip6_routes_to_phtx_ip6(self) -> None:
         """
@@ -131,7 +152,7 @@ class TestPacketHandlerUdpTxRouting(TestCase):
         Reference: RFC 768 (UDP TX).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_udp_tx()
         status = handler._phtx_udp(
             ip__src=STACK__IP6_ADDRESS,
             ip__dst=HOST_A__IP6,
@@ -140,9 +161,9 @@ class TestPacketHandlerUdpTxRouting(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(len(handler.ip6_tx_calls), 1)
-        self.assertEqual(handler.ip4_tx_calls, [])
-        self.assertEqual(handler._packet_stats_tx.udp__send, 1)
+        self.assertEqual(len(iface.ip6_tx_calls), 1)
+        self.assertEqual(iface.ip4_tx_calls, [])
+        self.assertEqual(iface._packet_stats_tx.udp__send, 1)
 
     def test__stack__packet_handler__udp__tx__mixed_ip_versions_raises(self) -> None:
         """
@@ -151,7 +172,7 @@ class TestPacketHandlerUdpTxRouting(TestCase):
         Reference: RFC 768 (UDP TX).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_udp_tx()
         with self.assertRaises(ValueError):
             handler._phtx_udp(
                 ip__src=STACK__IP4_ADDRESS,
@@ -174,7 +195,7 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         Reference: RFC 768 (UDP TX).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_udp_tx()
         handler.send_udp_packet(
             ip__local_address=STACK__IP4_ADDRESS,
             ip__remote_address=HOST_A__IP4,
@@ -183,9 +204,9 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
             udp__payload=b"hello",
         )
 
-        self.assertEqual(handler._packet_stats_tx.udp__send, 1)
-        self.assertEqual(len(handler.ip4_tx_calls), 1)
-        payload = handler.ip4_tx_calls[0]["ip4__payload"]
+        self.assertEqual(iface._packet_stats_tx.udp__send, 1)
+        self.assertEqual(len(iface.ip4_tx_calls), 1)
+        payload = iface.ip4_tx_calls[0]["ip4__payload"]
         assert isinstance(payload, UdpAssembler)
         self.assertEqual(payload.sport, 12345)
         self.assertEqual(payload.dport, 54321)
@@ -200,7 +221,7 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_udp_tx()
         handler.send_udp_packet(
             ip__local_address=STACK__IP4_ADDRESS,
             ip__remote_address=HOST_A__IP4,
@@ -210,7 +231,7 @@ class TestPacketHandlerUdpTxSendHelper(TestCase):
         )
 
         self.assertEqual(
-            handler.marshal_tx_async_calls,
+            iface.marshal_tx_async_calls,
             1,
             msg="send_udp_packet must route the TX through _marshal_tx_async exactly once.",
         )

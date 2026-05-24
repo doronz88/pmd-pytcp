@@ -30,8 +30,6 @@ pytcp/runtime/packet_handler/packet_handler__udp__tx.py
 ver 3.0.6
 """
 
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from net_addr import Ip4Address, Ip6Address
@@ -41,51 +39,23 @@ from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerUdpTx(ABC):
+
+class UdpTxHandler:
     """
-    Class implements packet handler for the outbound UDP packets.
+    The outbound UDP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import IpAddress
-        from net_proto import (
-            IP6__DEFAULT_HOP_LIMIT,
-            Icmp4Assembler,
-            Icmp6Assembler,
-            Ip4Payload,
-            Ip6FragAssembler,
-            Ip6Payload,
-            RawAssembler,
-        )
-        from pytcp.lib.packet_stats import PacketStatsTx
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_tx: PacketStatsTx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-        def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None: ...
-
-        # pylint: disable=unused-argument
-
-        def _phtx_ip6(
-            self,
-            *,
-            ip6__dst: Ip6Address,
-            ip6__src: Ip6Address,
-            ip6__hop: int | None = None,
-            ip6__payload: Ip6Payload = RawAssembler(),
-        ) -> TxStatus: ...
-
-        def _phtx_ip4(
-            self,
-            *,
-            ip4__dst: Ip4Address,
-            ip4__src: Ip4Address,
-            ip4__ttl: int | None = None,
-            ip4__flag_df: bool = False,
-            ip4__options: Ip4Options = Ip4Options(),
-            ip4__payload: Ip4Payload = RawAssembler(),
-        ) -> TxStatus: ...
+        self._if = interface
 
     def _phtx_udp(
         self,
@@ -108,7 +78,7 @@ class PacketHandlerUdpTx(ABC):
         the originating socket has 'UDP_NO_CHECK6_TX' set.
         """
 
-        self._packet_stats_tx.udp__pre_assemble += 1
+        self._if._packet_stats_tx.udp__pre_assemble += 1
 
         udp_packet_tx = UdpAssembler(
             udp__sport=udp__sport,
@@ -122,7 +92,7 @@ class PacketHandlerUdpTx(ABC):
 
         match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
             case True, True, False, False:
-                self._packet_stats_tx.udp__send += 1
+                self._if._packet_stats_tx.udp__send += 1
                 ip6_kwargs: dict[str, Any] = {
                     "ip6__src": cast(Ip6Address, ip__src),
                     "ip6__dst": cast(Ip6Address, ip__dst),
@@ -131,9 +101,9 @@ class PacketHandlerUdpTx(ABC):
                 }
                 if ip__ttl is not None:
                     ip6_kwargs["ip6__hop"] = ip__ttl
-                return self._phtx_ip6(**ip6_kwargs)
+                return self._if._phtx_ip6(**ip6_kwargs)
             case False, False, True, True:
-                self._packet_stats_tx.udp__send += 1
+                self._if._packet_stats_tx.udp__send += 1
                 # RFC 791 §2.3 / RFC 1122 §3.3.3: an outbound UDP
                 # datagram larger than the link MTU is fragmented,
                 # not dropped, so DF=0 by default. This matches
@@ -155,7 +125,7 @@ class PacketHandlerUdpTx(ABC):
                 # the originating UDP socket.
                 if ip4__options is not None and len(ip4__options) > 0:
                     ip4_kwargs["ip4__options"] = ip4__options
-                return self._phtx_ip4(**ip4_kwargs)
+                return self._if._phtx_ip4(**ip4_kwargs)
             case _:
                 raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
 
@@ -186,7 +156,7 @@ class PacketHandlerUdpTx(ABC):
         failures surface asynchronously, not via the caller.
         """
 
-        self._marshal_tx_async(
+        self._if._marshal_tx_async(
             lambda: self._phtx_udp(
                 ip__src=ip__local_address,
                 ip__dst=ip__remote_address,

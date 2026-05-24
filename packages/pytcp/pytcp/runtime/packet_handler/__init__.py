@@ -38,7 +38,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, cast, override
 
 from net_addr import (
     Ip4Address,
@@ -59,6 +59,8 @@ from net_proto import (
     RawAssembler,
     Tracker,
 )
+from net_proto.lib.buffer import Buffer
+from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -101,8 +103,8 @@ from .packet_handler__ip6_frag__rx import PacketHandlerIp6FragRx
 from .packet_handler__ip6_frag__tx import PacketHandlerIp6FragTx
 from .packet_handler__tcp__rx import PacketHandlerTcpRx
 from .packet_handler__tcp__tx import PacketHandlerTcpTx
-from .packet_handler__udp__rx import PacketHandlerUdpRx
-from .packet_handler__udp__tx import PacketHandlerUdpTx
+from .packet_handler__udp__rx import UdpRxHandler
+from .packet_handler__udp__tx import UdpTxHandler
 
 if TYPE_CHECKING:
     from threading import Semaphore
@@ -118,6 +120,15 @@ class PacketHandler(Subsystem, ABC):
     """
 
     _subsystem_name = "Packet Handler"
+
+    # Composed per-protocol sub-handlers shared by both layers (see
+    # docs/refactor/packet_handler_composition.md). Constructed in
+    # this base '__init__' so both 'PacketHandlerL2' (via super())
+    # and 'PacketHandlerL3' (which has no own '__init__') get them;
+    # the handler keeps thin delegators below so the external +
+    # cross-call surface is unchanged.
+    _udp_rx: UdpRxHandler
+    _udp_tx: UdpTxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -298,6 +309,18 @@ class PacketHandler(Subsystem, ABC):
 
         if ip4_host is not None:
             self._ip4_ifaddr_candidate.append(ip4_host)
+
+        # Construct the shared per-protocol sub-handlers. 'self' is
+        # always a concrete 'PacketHandlerL2' / 'PacketHandlerL3' at
+        # runtime (this base is abstract), so the cast is sound; it
+        # lets each sub-handler's typed '_if' see the per-layer IP /
+        # ICMP cross-call methods that are still mixins this phase.
+        # Phase: when every protocol is a sub-handler the cross-call
+        # delegators all live on this base and '_if' can narrow to
+        # 'PacketHandler', dropping the cast.
+        _if = cast("PacketHandlerL2 | PacketHandlerL3", self)
+        self._udp_rx = UdpRxHandler(interface=_if)
+        self._udp_tx = UdpTxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1311,6 +1334,78 @@ class PacketHandler(Subsystem, ABC):
 
         return self._icmp6_ra_parameters.cur_hop_limit or IP6__DEFAULT_HOP_LIMIT
 
+    ###
+    # UDP delegators — logic lives in the composed 'UdpRxHandler' /
+    # 'UdpTxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_udp(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound UDP packet (delegates to the UDP RX sub-handler).
+        """
+
+        self._udp_rx._phrx_udp(packet_rx)
+
+    def _phtx_udp(
+        self,
+        *,
+        ip__src: Ip6Address | Ip4Address,
+        ip__dst: Ip6Address | Ip4Address,
+        udp__sport: int,
+        udp__dport: int,
+        udp__payload: Buffer = bytes(),
+        udp__no_cksum: bool = False,
+        ip__ttl: int | None = None,
+        ip__ecn: int = 0,
+        ip4__options: Ip4Options | None = None,
+        echo_tracker: Tracker | None = None,
+    ) -> TxStatus:
+        """
+        Handle an outbound UDP packet (delegates to the UDP TX sub-handler).
+        """
+
+        return self._udp_tx._phtx_udp(
+            ip__src=ip__src,
+            ip__dst=ip__dst,
+            udp__sport=udp__sport,
+            udp__dport=udp__dport,
+            udp__payload=udp__payload,
+            udp__no_cksum=udp__no_cksum,
+            ip__ttl=ip__ttl,
+            ip__ecn=ip__ecn,
+            ip4__options=ip4__options,
+            echo_tracker=echo_tracker,
+        )
+
+    def send_udp_packet(
+        self,
+        *,
+        ip__local_address: Ip6Address | Ip4Address,
+        ip__remote_address: Ip6Address | Ip4Address,
+        udp__local_port: int,
+        udp__remote_port: int,
+        udp__payload: Buffer = bytes(),
+        udp__no_cksum: bool = False,
+        ip__ttl: int | None = None,
+        ip__ecn: int = 0,
+        ip4__options: Ip4Options | None = None,
+    ) -> None:
+        """
+        Enqueue an outbound UDP datagram (delegates to the UDP TX sub-handler).
+        """
+
+        self._udp_tx.send_udp_packet(
+            ip__local_address=ip__local_address,
+            ip__remote_address=ip__remote_address,
+            udp__local_port=udp__local_port,
+            udp__remote_port=udp__remote_port,
+            udp__payload=udp__payload,
+            udp__no_cksum=udp__no_cksum,
+            ip__ttl=ip__ttl,
+            ip__ecn=ip__ecn,
+            ip4__options=ip4__options,
+        )
+
 
 class PacketHandlerL2(
     PacketHandler,
@@ -1328,8 +1423,6 @@ class PacketHandlerL2(
     PacketHandlerIp6FragTx,
     PacketHandlerTcpRx,
     PacketHandlerTcpTx,
-    PacketHandlerUdpRx,
-    PacketHandlerUdpTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 2 (TAP) interface.
@@ -2158,8 +2251,6 @@ class PacketHandlerL3(
     PacketHandlerIp6FragTx,
     PacketHandlerTcpRx,
     PacketHandlerTcpTx,
-    PacketHandlerUdpRx,
-    PacketHandlerUdpTx,
 ):
     """
     Pick up and respond to incoming packets on Layer 3 (TUN) interface.

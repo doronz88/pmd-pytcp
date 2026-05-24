@@ -31,14 +31,11 @@ ver 3.0.6
 """
 
 import time
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from net_addr import Ip4Address, IpVersion
+from net_addr import IpVersion
 from net_proto import (
     Icmp4DestinationUnreachableCode,
-    Icmp4Message,
     Icmp4MessageDestinationUnreachable,
     Icmp6DestinationUnreachableCode,
     Icmp6MessageDestinationUnreachable,
@@ -46,7 +43,6 @@ from net_proto import (
     PacketValidationError,
     UdpParser,
 )
-from net_proto.lib.buffer import Buffer
 from net_proto.protocols.udp.udp__errors import UdpZeroCksumIp6Error
 from pytcp import stack
 from pytcp.lib.logger import log
@@ -55,57 +51,23 @@ from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerUdpRx(ABC):
+
+class UdpRxHandler:
     """
-    Class implements packet handler for the inbound UDP packets.
+    The inbound UDP packet handler for one interface.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip6Address, IpAddress
-        from net_proto import Icmp6Message, Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Bind the handler to its owning interface.
+        """
 
-        # pylint: disable=unused-argument
-
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        def _phtx_udp(
-            self,
-            *,
-            ip__src: Ip6Address | Ip4Address,
-            ip__dst: Ip6Address | Ip4Address,
-            udp__sport: int,
-            udp__dport: int,
-            udp__payload: Buffer = bytes(),
-            udp__no_cksum: bool = False,
-            ip__ttl: int | None = None,
-            ip__ecn: int = 0,
-            ip4__options: object = None,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        def _phtx_icmp4(
-            self,
-            *,
-            ip4__src: Ip4Address,
-            ip4__dst: Ip4Address,
-            icmp4__message: Icmp4Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        def _phtx_icmp6(
-            self,
-            *,
-            ip6__src: Ip6Address,
-            ip6__dst: Ip6Address,
-            ip6__hop: int | None = None,
-            icmp6__message: Icmp6Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
+        self._if = interface
 
     def __phrx_udp__retry_zero_cksum_ip6(self, packet_rx: PacketRx) -> bool:
         """
@@ -143,7 +105,7 @@ class PacketHandlerUdpRx(ABC):
         Handle inbound UDP packets.
         """
 
-        self._packet_stats_rx.udp__pre_parse += 1
+        self._if._packet_stats_rx.udp__pre_parse += 1
 
         try:
             UdpParser(packet_rx)
@@ -159,7 +121,7 @@ class PacketHandlerUdpRx(ABC):
             # header (bytes 2-3) — the parser raised before
             # 'packet_rx.udp' was set.
             if not self.__phrx_udp__retry_zero_cksum_ip6(packet_rx):
-                self._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
+                self._if._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
                 __debug__ and log(
                     "udp",
                     f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -167,7 +129,7 @@ class PacketHandlerUdpRx(ABC):
                 return
 
         except PacketValidationError as error:
-            self._packet_stats_rx.udp__failed_parse__drop += 1
+            self._if._packet_stats_rx.udp__failed_parse__drop += 1
             __debug__ and log(
                 "udp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -203,7 +165,7 @@ class PacketHandlerUdpRx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.udp__socket_match += 1
+                self._if._packet_stats_rx.udp__socket_match += 1
                 __debug__ and log(
                     "udp",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
@@ -213,7 +175,7 @@ class PacketHandlerUdpRx(ABC):
 
         # Silently drop packet if it's source address is unspecified.
         if packet_rx.ip.src.is_unspecified:
-            self._packet_stats_rx.udp__ip_source_unspecified += 1
+            self._if._packet_stats_rx.udp__ip_source_unspecified += 1
             __debug__ and log(
                 "udp",
                 f"{packet_rx_md.tracker} - Received UDP packet from "
@@ -225,14 +187,14 @@ class PacketHandlerUdpRx(ABC):
         # Handle the UDP Echo operation in case its enabled
         # (used for packet flow unit testing only).
         if stack.UDP__ECHO_NATIVE and packet_rx.udp.dport == 7:
-            self._packet_stats_rx.udp__echo_native__respond_udp += 1
+            self._if._packet_stats_rx.udp__echo_native__respond_udp += 1
             __debug__ and log(
                 "udp",
                 f"{packet_rx_md.tracker} - <INFO>Performing native " "UDP Echo operation</>",
             )
 
-            self._marshal_tx(
-                lambda: self._phtx_udp(
+            self._if._marshal_tx(
+                lambda: self._if._phtx_udp(
                     ip__src=packet_rx.ip.dst,
                     ip__dst=packet_rx.ip.src,
                     udp__sport=packet_rx.udp.dport,
@@ -255,9 +217,9 @@ class PacketHandlerUdpRx(ABC):
         )
         if verdict is not None:
             if packet_rx.ip.ver is IpVersion.IP4:
-                self._packet_stats_rx.udp__no_socket_match__icmp4_unreachable_suppressed += 1
+                self._if._packet_stats_rx.udp__no_socket_match__icmp4_unreachable_suppressed += 1
             else:
-                self._packet_stats_rx.udp__no_socket_match__icmp6_unreachable_suppressed += 1
+                self._if._packet_stats_rx.udp__no_socket_match__icmp6_unreachable_suppressed += 1
             __debug__ and log(
                 "udp",
                 f"{packet_rx_md.tracker} - <WARN>Suppressing ICMP Port-Unreachable "
@@ -274,9 +236,9 @@ class PacketHandlerUdpRx(ABC):
 
         match packet_rx.ip.ver:
             case IpVersion.IP6:
-                self._packet_stats_rx.udp__no_socket_match__respond_icmp6_unreachable += 1
-                self._marshal_tx(
-                    lambda: self._phtx_icmp6(
+                self._if._packet_stats_rx.udp__no_socket_match__respond_icmp6_unreachable += 1
+                self._if._marshal_tx(
+                    lambda: self._if._phtx_icmp6(
                         ip6__src=packet_rx.ip6.dst,
                         ip6__dst=packet_rx.ip6.src,
                         icmp6__message=Icmp6MessageDestinationUnreachable(
@@ -287,9 +249,9 @@ class PacketHandlerUdpRx(ABC):
                     )
                 )
             case IpVersion.IP4:
-                self._packet_stats_rx.udp__no_socket_match__respond_icmp4_unreachable += 1
-                self._marshal_tx(
-                    lambda: self._phtx_icmp4(
+                self._if._packet_stats_rx.udp__no_socket_match__respond_icmp4_unreachable += 1
+                self._if._marshal_tx(
+                    lambda: self._if._phtx_icmp4(
                         ip4__src=packet_rx.ip4.dst,
                         ip4__dst=packet_rx.ip4.src,
                         icmp4__message=Icmp4MessageDestinationUnreachable(
