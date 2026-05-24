@@ -42,6 +42,7 @@ from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
+from pytcp.socket import AddressFamily
 from pytcp.stack import sysctl
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
@@ -1858,7 +1859,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         client._subsystem_loop()
 
-        mock_route_api.replace_default_ip4.assert_called_once_with(
+        mock_route_api.replace_default.assert_called_once_with(
             gateway=Ip4Address("10.0.0.1"),
             protocol=RouteProtocol.DHCP,
         )
@@ -1878,7 +1879,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         client._subsystem_loop()
 
-        mock_route_api.replace_default_ip4.assert_not_called()
+        mock_route_api.replace_default.assert_not_called()
 
     def test__dhcp4_client__reset_to_init_removes_default_route(self) -> None:
         """
@@ -1901,7 +1902,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         client._reset_to_init(remove_lease_host=True)
 
-        mock_route_api.remove_default_ip4.assert_called_once_with()
+        mock_route_api.remove_default.assert_called_once_with(family=AddressFamily.INET4)
 
     def test__dhcp4_client__bound_transition_begins_acd_defense(self) -> None:
         """

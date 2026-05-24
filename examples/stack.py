@@ -242,9 +242,9 @@ def cli(
     # Install the operator-supplied default gateway through the
     # Route API (the FIBs were built by 'init()').
     if stack__ip6_support and stack__ip6_gateway is not None:
-        stack.route.replace_default_ip6(gateway=stack__ip6_gateway, protocol=RouteProtocol.BOOT)
+        stack.route.replace_default(gateway=stack__ip6_gateway, protocol=RouteProtocol.BOOT)
     if stack__ip4_support and stack__ip4_gateway is not None:
-        stack.route.replace_default_ip4(gateway=stack__ip4_gateway, protocol=RouteProtocol.BOOT)
+        stack.route.replace_default(gateway=stack__ip4_gateway, protocol=RouteProtocol.BOOT)
 
     try:
         stack.start()

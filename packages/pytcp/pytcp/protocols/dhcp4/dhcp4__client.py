@@ -96,7 +96,7 @@ from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
-from pytcp.socket import AF_INET4, SOCK_DGRAM, socket
+from pytcp.socket import AF_INET4, SOCK_DGRAM, AddressFamily, socket
 
 # 'secs' is a 16-bit field in the DHCP header; cap the elapsed-
 # since-acquisition seconds at UINT16_MAX so a long-lived restart
@@ -389,7 +389,7 @@ class Dhcp4Client(Subsystem):
         # the single source of truth for the next hop;
         # 'lease.gateway' no longer rides on 'ip4_host'.
         if self._route_api is not None and lease.gateway is not None:
-            self._route_api.replace_default_ip4(
+            self._route_api.replace_default(
                 gateway=lease.gateway,
                 protocol=RouteProtocol.DHCP,
             )
@@ -757,7 +757,7 @@ class Dhcp4Client(Subsystem):
         # independently of 'address_api' — the route plane and
         # address plane are separate Phase-3 surfaces.
         if remove_lease_host and self._lease is not None and self._route_api is not None:
-            self._route_api.remove_default_ip4()
+            self._route_api.remove_default(family=AddressFamily.INET4)
         # Phase 5 — purge the on-disk lease cache so the next
         # boot does not try INIT-REBOOT on an invalidated
         # lease. Always invalidate on the NAK / expiry paths,
@@ -1279,7 +1279,7 @@ class Dhcp4Client(Subsystem):
             # too (same plane-separation rationale as
             # '_reset_to_init').
             if self._route_api is not None:
-                self._route_api.remove_default_ip4()
+                self._route_api.remove_default(family=AddressFamily.INET4)
             # Drop the RFC 5227 §2.4 defense claim (closes the held
             # ACD socket) so shutdown leaves no dangling AF_PACKET fd.
             if self._acd is not None:

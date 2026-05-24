@@ -72,6 +72,7 @@ from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
+from pytcp.socket import AddressFamily
 
 from .packet_handler__arp__rx import PacketHandlerArpRx
 from .packet_handler__arp__tx import PacketHandlerArpTx
@@ -651,14 +652,14 @@ class PacketHandler(Subsystem, ABC):
             )
             self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
             if route_api is not None:
-                route_api.replace_default_ip6(gateway=address, protocol=RouteProtocol.RA)
+                route_api.replace_default(gateway=address, protocol=RouteProtocol.RA)
             return
 
         if existing is not None:
             self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
             self._packet_stats_rx.icmp6__nd_router_advertisement__remove_router += 1
             if route_api is not None:
-                route_api.remove_default_ip6()
+                route_api.remove_default(family=AddressFamily.INET6)
 
     def get_icmp6_default_routers(self) -> list[Icmp6DefaultRouter]:
         """

@@ -23,22 +23,26 @@
 
 
 """
-This module contains the Phase-3 routing-control API
-('RouteApi') — the kernel/userspace boundary surface for the
-host-mode routing table. Phase 1 ships the read-only
-introspection surface only ('list_ip4_routes' /
-'list_ip6_routes'); mutation lands in Phase 3. The Linux
-equivalents are 'ip route show' / '/proc/net/route' and
-RTNETLINK 'RTM_GETROUTE'.
+This module contains the routing-control API ('RouteApi') — the
+kernel/userspace boundary surface for the host-mode routing table.
+The verbs ('add_route' / 'remove_route' / 'replace_default' /
+'remove_default' / 'list_routes') are family-agnostic, inferring the
+family from the route / destination / gateway value type (the Linux
+'ip route' model, where the family is the 'rtm_family' field of one
+'RTM_NEWROUTE' / 'RTM_DELROUTE' / 'RTM_GETROUTE' verb, not a separate
+message). The Linux equivalents are 'ip route' and RTNETLINK.
 
 pytcp/stack/route.py
 
 ver 3.0.6
 """
 
+from typing import cast
+
 from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
 from pytcp.lib.logger import log
 from pytcp.runtime.fib import Route, RouteProtocol, RouteTable
+from pytcp.socket import AddressFamily
 
 # The IPv4 / IPv6 default-route destinations (Linux 'default'
 # in 'ip route'). Protocol-invariant — these are the
@@ -91,13 +95,15 @@ def install_boot_default_routes(
 
 class RouteApi:
     """
-    Phase-3 routing-control surface — mirrors Linux RTNETLINK
-    'RTM_GETROUTE' / 'ip route show' semantics.
+    Routing-control surface — mirrors Linux RTNETLINK 'RTM_*ROUTE'
+    / 'ip route' semantics. The verbs are family-agnostic; the
+    family is inferred from the route / destination / gateway value
+    type (or, for 'remove_default' / 'list_routes', an explicit
+    'family' field), exactly as the netlink family is a message
+    field rather than a distinct verb.
 
-    Phase-1 implementation: read-only introspection over the two
-    per-address-family FIBs. Mutation ('add' / 'remove' /
-    'replace_default') lands in Phase 3 of
-    'docs/refactor/routing_table_host_mode.md'.
+    Implementation: a thin dispatch over the two per-address-family
+    FIBs ('stack.ip4_fib' / 'stack.ip6_fib').
 
     Consumer code reads the route table ONLY through this
     surface; it never reaches into 'stack.ip4_fib' /
@@ -122,89 +128,90 @@ class RouteApi:
         self._ip4_fib = ip4_fib
         self._ip6_fib = ip6_fib
 
-    def list_ip4_routes(self) -> tuple[Route[Ip4Address, Ip4Network], ...]:
+    def list_routes(
+        self,
+        *,
+        family: AddressFamily | None = None,
+    ) -> tuple[Route[Ip4Address, Ip4Network] | Route[Ip6Address, Ip6Network], ...]:
         """
-        Return a read-only copy-by-value snapshot of the IPv4
-        routing table — Linux 'ip -4 route show' /
-        '/proc/net/route' equivalent. The returned tuple is
-        immutable; the caller cannot mutate stack state through
-        it (Phase-3 north-star "introspection is read-only"
-        constraint).
-        """
-
-        return self._ip4_fib.snapshot()
-
-    def list_ip6_routes(self) -> tuple[Route[Ip6Address, Ip6Network], ...]:
-        """
-        Return a read-only copy-by-value snapshot of the IPv6
-        routing table — Linux 'ip -6 route show' /
-        '/proc/net/ipv6_route' equivalent. Same immutability
-        contract as 'list_ip4_routes'.
+        Return a read-only copy-by-value snapshot of the routing
+        table — Linux 'ip route show' equivalent. With no 'family'
+        the snapshot covers both families (IPv4 first, then IPv6);
+        pass 'AddressFamily.INET4' / 'INET6' to filter (the Linux
+        'ip -4' / 'ip -6' selectors). The returned tuple is
+        immutable (Phase-3 north-star "introspection is read-only").
         """
 
-        return self._ip6_fib.snapshot()
+        routes: list[Route[Ip4Address, Ip4Network] | Route[Ip6Address, Ip6Network]] = []
+        if family in (None, AddressFamily.INET4):
+            routes.extend(self._ip4_fib.snapshot())
+        if family in (None, AddressFamily.INET6):
+            routes.extend(self._ip6_fib.snapshot())
+        return tuple(routes)
 
-    def add_ip4_route(self, *, route: Route[Ip4Address, Ip4Network]) -> None:
+    def add_route(
+        self,
+        *,
+        route: Route[Ip4Address, Ip4Network] | Route[Ip6Address, Ip6Network],
+    ) -> None:
         """
-        Install an explicit IPv4 route — Linux 'RTM_NEWROUTE' /
-        'ip -4 route add' equivalent. Does not de-duplicate; the
-        caller owns replace semantics (see 'replace_default_ip4').
+        Install an explicit route — Linux 'RTM_NEWROUTE' / 'ip route
+        add' equivalent. The family is inferred from the route's
+        destination prefix. Does not de-duplicate; the caller owns
+        replace semantics (see 'replace_default').
         """
 
+        # The destination prefix type discriminates the family;
+        # mypy narrows the generic 'Route[A, N]' from the
+        # 'route.destination' isinstance, so no cast is needed.
+        if isinstance(route.destination, Ip6Network):
+            self._ip6_fib.add(route=route)
+            return
         self._ip4_fib.add(route=route)
 
-    def add_ip6_route(self, *, route: Route[Ip6Address, Ip6Network]) -> None:
-        """
-        Install an explicit IPv6 route — Linux 'RTM_NEWROUTE' /
-        'ip -6 route add' equivalent.
-        """
-
-        self._ip6_fib.add(route=route)
-
-    def remove_ip4_route(
+    def remove_route(
         self,
         *,
-        destination: Ip4Network,
-        gateway: Ip4Address | None = None,
+        destination: Ip4Network | Ip6Network,
+        gateway: Ip4Address | Ip6Address | None = None,
     ) -> int:
         """
-        Remove every IPv4 route to 'destination' (optionally
-        gateway-qualified) — Linux 'RTM_DELROUTE' / 'ip -4 route
-        del' equivalent. Returns the number of routes removed.
+        Remove every route to 'destination' (optionally
+        gateway-qualified) — Linux 'RTM_DELROUTE' / 'ip route del'
+        equivalent. The family is inferred from 'destination'.
+        Returns the number of routes removed.
         """
 
-        return self._ip4_fib.remove(destination=destination, gateway=gateway)
+        if isinstance(destination, Ip6Network):
+            return self._ip6_fib.remove(destination=destination, gateway=cast("Ip6Address | None", gateway))
+        return self._ip4_fib.remove(destination=destination, gateway=cast("Ip4Address | None", gateway))
 
-    def remove_ip6_route(
-        self,
-        *,
-        destination: Ip6Network,
-        gateway: Ip6Address | None = None,
-    ) -> int:
+    def replace_default(self, *, gateway: Ip4Address | Ip6Address, protocol: RouteProtocol) -> None:
         """
-        Remove every IPv6 route to 'destination' (optionally
-        gateway-qualified) — Linux 'RTM_DELROUTE' / 'ip -6 route
-        del' equivalent. Returns the number of routes removed.
-        """
-
-        return self._ip6_fib.remove(destination=destination, gateway=gateway)
-
-    def replace_default_ip4(self, *, gateway: Ip4Address, protocol: RouteProtocol) -> None:
-        """
-        Atomically replace the IPv4 default route: remove any
-        existing 0.0.0.0/0 route, then install a single new one
-        via 'gateway' with the given 'protocol'. Linux 'ip route
-        replace default via ...' equivalent.
+        Atomically replace the default route for the gateway's
+        family: remove any existing default, then install a single
+        new one via 'gateway' with the given 'protocol'. Linux 'ip
+        route replace default via ...' equivalent.
 
         Remove-then-add (not the add-before-remove ordering of
-        'AddressApi.replace'): two same-prefix default
-        routes would create a lookup tiebreak ambiguity, whereas
-        two interface addresses do not. The call is synchronous
-        from the control-plane caller's view, so the transient
-        no-default window is not observable to a concurrent
-        lookup in practice.
+        'AddressApi.replace'): two same-prefix default routes would
+        create a lookup tiebreak ambiguity, whereas two interface
+        addresses do not. The call is synchronous from the
+        control-plane caller's view, so the transient no-default
+        window is not observable to a concurrent lookup in practice.
         """
 
+        if isinstance(gateway, Ip6Address):
+            self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
+            self._ip6_fib.add(
+                route=Route(
+                    destination=DEFAULT_IP6_NETWORK,
+                    gateway=gateway,
+                    protocol=protocol,
+                )
+            )
+            __debug__ and log("stack", f"<lg>Route API</>: IPv6 default via {gateway} ({protocol!r})")
+            return
         self._ip4_fib.remove(destination=DEFAULT_IP4_NETWORK)
         self._ip4_fib.add(
             route=Route(
@@ -215,39 +222,14 @@ class RouteApi:
         )
         __debug__ and log("stack", f"<lg>Route API</>: IPv4 default via {gateway} ({protocol!r})")
 
-    def remove_default_ip4(self) -> int:
+    def remove_default(self, *, family: AddressFamily) -> int:
         """
-        Remove the IPv4 default route, if any — the DHCP / static
-        lease-loss path. Returns the number of routes removed
-        (0 or, normally, 1). Linux 'ip route del default'.
+        Remove the default route of 'family', if any — the DHCP /
+        static lease-loss (IPv4) and RA router-lifetime-expiry
+        (IPv6) paths. Returns the number of routes removed (0 or,
+        normally, 1). Linux 'ip route del default'.
         """
 
+        if family is AddressFamily.INET6:
+            return self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
         return self._ip4_fib.remove(destination=DEFAULT_IP4_NETWORK)
-
-    def remove_default_ip6(self) -> int:
-        """
-        Remove the IPv6 default route, if any — the RA
-        router-lifetime-expiry path. Returns the number of routes
-        removed. Linux 'ip -6 route del default'.
-        """
-
-        return self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
-
-    def replace_default_ip6(self, *, gateway: Ip6Address, protocol: RouteProtocol) -> None:
-        """
-        Atomically replace the IPv6 default route: remove any
-        existing ::/0 route, then install a single new one via
-        'gateway' (typically the RA source link-local address)
-        with the given 'protocol'. See 'replace_default_ip4' for
-        the remove-then-add rationale.
-        """
-
-        self._ip6_fib.remove(destination=DEFAULT_IP6_NETWORK)
-        self._ip6_fib.add(
-            route=Route(
-                destination=DEFAULT_IP6_NETWORK,
-                gateway=gateway,
-                protocol=protocol,
-            )
-        )
-        __debug__ and log("stack", f"<lg>Route API</>: IPv6 default via {gateway} ({protocol!r})")

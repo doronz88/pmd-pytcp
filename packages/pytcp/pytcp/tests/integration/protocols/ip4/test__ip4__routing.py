@@ -39,6 +39,7 @@ from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, Ip6Network, MacAddress
 from pytcp import stack
 from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.fib import Route, RouteProtocol
+from pytcp.socket import AddressFamily
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
@@ -92,12 +93,12 @@ class TestIp4RoutingHarnessWiring(NetworkTestCase):
         """
 
         self.assertEqual(
-            stack.route.list_ip4_routes(),
+            stack.route.list_routes(family=AddressFamily.INET4),
             (_FIXTURE_IP4_DEFAULT,),
             msg="Harness must pre-install exactly the IPv4 fixture default route.",
         )
         self.assertEqual(
-            stack.route.list_ip6_routes(),
+            stack.route.list_routes(family=AddressFamily.INET6),
             (_FIXTURE_IP6_DEFAULT,),
             msg="Harness must pre-install exactly the IPv6 fixture default route.",
         )
@@ -282,7 +283,7 @@ class TestIp4RoutingStaticRoute(NetworkTestCase):
         mock for the three relevant next hops.
         """
 
-        stack.route.add_ip4_route(
+        stack.route.add_route(
             route=Route(
                 destination=_STATIC_NET,
                 gateway=_STATIC_GW,

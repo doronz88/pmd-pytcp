@@ -35,6 +35,7 @@ ver 3.0.6
 from net_addr import Ip6Address, Ip6Network, MacAddress
 from pytcp import stack
 from pytcp.runtime.fib import Route, RouteProtocol
+from pytcp.socket import AddressFamily
 from pytcp.tests.lib.nd_testcase import NdTestCase
 from pytcp.tests.lib.network_testcase import STACK__IP6_HOST, STACK__MAC_ADDRESS
 
@@ -73,7 +74,7 @@ class TestIcmp6Nd__RaDefaultRoute(NdTestCase):
         )
 
         self.assertEqual(
-            stack.route.list_ip6_routes(),
+            stack.route.list_routes(family=AddressFamily.INET6),
             (
                 Route(
                     destination=Ip6Network("::/0"),
@@ -113,7 +114,7 @@ class TestIcmp6Nd__RaDefaultRoute(NdTestCase):
         )
 
         self.assertEqual(
-            stack.route.list_ip6_routes(),
+            stack.route.list_routes(family=AddressFamily.INET6),
             (),
             msg="A zero-lifetime RA must withdraw the FIB default route.",
         )
