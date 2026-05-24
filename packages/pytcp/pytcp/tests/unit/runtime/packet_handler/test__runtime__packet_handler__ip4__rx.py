@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp4Rx' mixin.
+This module contains unit tests for the 'Ip4RxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip4__rx.py
 
@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -43,8 +44,11 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip.ip_frag import IpFragFlowId
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.packet_handler.packet_handler__ip4__rx import (
-    PacketHandlerIp4Rx,
+    Ip4RxHandler,
 )
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -75,9 +79,19 @@ HOST_A__IP4 = Ip4Address("10.0.1.91")
 OFF_NET__IP4 = Ip4Address("192.168.99.99")
 
 
-class _StubHandler(PacketHandlerIp4Rx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp4Rx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the RX-stat counters, the address lists, the IPv4 fragment
+    flow table, the TX marshal seam, and the upper-layer / cross-protocol
+    dispatch spies ('_phrx_icmp4' / '_phrx_udp' / '_phrx_tcp',
+    '_phtx_icmp4') the IPv4 RX sub-handler reaches through 'self._if',
+    recording each call for assertions. A purpose-built double is used
+    rather than 'create_autospec(PacketHandlerL2)' — the god-class still
+    carries 'TYPE_CHECKING'-only annotations 'inspect.signature' (which
+    autospec walks) cannot evaluate at runtime.
     """
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
@@ -145,6 +159,28 @@ class _StubHandler(PacketHandlerIp4Rx):
         return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
 
+def _make_ip4_rx(
+    *,
+    ip4_unicast: list[Ip4Address] | None = None,
+    ip4_multicast: list[Ip4Address] | None = None,
+    ip4_broadcast: list[Ip4Address] | None = None,
+) -> tuple[Ip4RxHandler, _StubInterface]:
+    """
+    Build an 'Ip4RxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(
+        ip4_unicast=ip4_unicast,
+        ip4_multicast=ip4_multicast,
+        ip4_broadcast=ip4_broadcast,
+    )
+    return (
+        Ip4RxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)),
+        interface,
+    )
+
+
 def _ip4_frame(
     *,
     src: Ip4Address = HOST_A__IP4,
@@ -181,7 +217,7 @@ class _Ip4RxTestBase(TestCase):
         Build the stub handler and isolate the stack sockets dict.
         """
 
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ip4_rx()
         self._sockets_patch = patch.object(stack, "sockets", dict[object, object]())
         self._sockets_patch.start()
 
@@ -195,7 +231,7 @@ class _Ip4RxTestBase(TestCase):
 
 class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
     """
-    The parse-and-filter branches of 'PacketHandlerIp4Rx._phrx_ip4'.
+    The parse-and-filter branches of 'Ip4RxHandler._phrx_ip4'.
     """
 
     def test__stack__packet_handler__ip4__rx__parse_fail_drops(self) -> None:
@@ -209,11 +245,11 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(b"\x45\x00\x00"))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__failed_parse__drop,
+            self._if._packet_stats_rx.ip4__failed_parse__drop,
             1,
             msg="Malformed IPv4 frame must be counted in ip4__failed_parse__drop.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        self.assertEqual(self._if.dispatched, [])
 
     def test__stack__packet_handler__ip4__rx__unknown_dst_drops(self) -> None:
         """
@@ -227,11 +263,11 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__dst_unknown__drop,
+            self._if._packet_stats_rx.ip4__dst_unknown__drop,
             1,
             msg="Unknown destination must be counted in ip4__dst_unknown__drop.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        self.assertEqual(self._if.dispatched, [])
 
     def test__stack__packet_handler__ip4__rx__empty_unicast_accepts_any(self) -> None:
         """
@@ -242,17 +278,17 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         Reference: RFC 791 (IPv4 RX dispatch — filter, demux, reassembly).
         """
 
-        handler = _StubHandler(ip4_unicast=[])
+        handler, iface = _make_ip4_rx(ip4_unicast=[])
         frame = _ip4_frame(dst=OFF_NET__IP4, proto=IpProto.UDP, payload=b"\x00" * 8)
         handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            handler._packet_stats_rx.ip4__dst_unknown__drop,
+            iface._packet_stats_rx.ip4__dst_unknown__drop,
             0,
             msg="Stack with no unicast must accept any destination.",
         )
         self.assertEqual(
-            handler.dispatched,
+            iface.dispatched,
             ["udp"],
             msg="Valid UDP payload must dispatch to _phrx_udp when filter is bypassed.",
         )
@@ -269,7 +305,7 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__dst_unicast,
+            self._if._packet_stats_rx.ip4__dst_unicast,
             1,
             msg="Unicast dst must be counted in ip4__dst_unicast.",
         )
@@ -286,7 +322,7 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__dst_multicast,
+            self._if._packet_stats_rx.ip4__dst_multicast,
             1,
             msg="Multicast dst must be counted in ip4__dst_multicast.",
         )
@@ -303,7 +339,7 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__dst_broadcast,
+            self._if._packet_stats_rx.ip4__dst_broadcast,
             1,
             msg="Broadcast dst must be counted in ip4__dst_broadcast.",
         )
@@ -312,7 +348,7 @@ class TestPacketHandlerIp4RxParseAndFilter(_Ip4RxTestBase):
 class TestPacketHandlerIp4RxForwardOrDeliver(_Ip4RxTestBase):
     """
     The RFC 1812 §5.2.1 forward-or-deliver seam
-    ('PacketHandlerIp4Rx._forward_or_deliver_ip4') — the separable
+    ('Ip4RxHandler._forward_or_deliver_ip4') — the separable
     delivery decision the Phase-2 router fills the forward branch of.
     """
 
@@ -353,7 +389,7 @@ class TestPacketHandlerIp4RxForwardOrDeliver(_Ip4RxTestBase):
             msg="A non-local datagram must not be delivered locally (False).",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__dst_unknown__drop,
+            self._if._packet_stats_rx.ip4__dst_unknown__drop,
             1,
             msg="The host forward-stub must drop the non-local datagram (ip4__dst_unknown__drop).",
         )
@@ -366,7 +402,7 @@ class TestPacketHandlerIp4RxForwardOrDeliver(_Ip4RxTestBase):
         Reference: RFC 1812 §5.2.1 (forward-or-deliver: local delivery).
         """
 
-        handler = _StubHandler(ip4_unicast=[])
+        handler, iface = _make_ip4_rx(ip4_unicast=[])
         packet_rx = PacketRx(_ip4_frame(dst=OFF_NET__IP4, proto=IpProto.UDP, payload=b"\x00" * 8))
         Ip4Parser(packet_rx)
 
@@ -378,7 +414,7 @@ class TestPacketHandlerIp4RxForwardOrDeliver(_Ip4RxTestBase):
 
 class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
     """
-    The protocol-dispatch branches of 'PacketHandlerIp4Rx._phrx_ip4'.
+    The protocol-dispatch branches of 'Ip4RxHandler._phrx_ip4'.
     """
 
     def test__stack__packet_handler__ip4__rx__udp_dispatches(self) -> None:
@@ -391,7 +427,7 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
         frame = _ip4_frame(proto=IpProto.UDP, payload=b"\x00" * 8)
         self._handler._phrx_ip4(PacketRx(frame))
 
-        self.assertEqual(self._handler.dispatched, ["udp"])
+        self.assertEqual(self._if.dispatched, ["udp"])
 
     def test__stack__packet_handler__ip4__rx__tcp_dispatches(self) -> None:
         """
@@ -403,7 +439,7 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
         frame = _ip4_frame(proto=IpProto.TCP, payload=b"\x00" * 20)
         self._handler._phrx_ip4(PacketRx(frame))
 
-        self.assertEqual(self._handler.dispatched, ["tcp"])
+        self.assertEqual(self._if.dispatched, ["tcp"])
 
     def test__stack__packet_handler__ip4__rx__icmp4_dispatches(self) -> None:
         """
@@ -415,7 +451,7 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
         frame = _ip4_frame(proto=IpProto.ICMP4, payload=b"\x00" * 8)
         self._handler._phrx_ip4(PacketRx(frame))
 
-        self.assertEqual(self._handler.dispatched, ["icmp4"])
+        self.assertEqual(self._if.dispatched, ["icmp4"])
 
     def test__stack__packet_handler__ip4__rx__unsupported_proto_drops(self) -> None:
         """
@@ -429,16 +465,16 @@ class TestPacketHandlerIp4RxDispatch(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__no_proto_support__drop,
+            self._if._packet_stats_rx.ip4__no_proto_support__drop,
             1,
             msg="Unsupported IPv4 proto must be counted in ip4__no_proto_support__drop.",
         )
         # SHOULD-emit Protocol Unreachable per RFC 1122 §3.2.2.1 — the stub
         # records the outbound dispatch via 'phtx_icmp4' rather than the
         # upper-layer RX dispatch list.
-        self.assertEqual(self._handler.dispatched, ["phtx_icmp4"])
+        self.assertEqual(self._if.dispatched, ["phtx_icmp4"])
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable,
+            self._if._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable,
             1,
             msg="Unsupported proto must trigger the Protocol Unreachable emit counter.",
         )
@@ -490,18 +526,18 @@ class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag1))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__frag,
+            self._if._packet_stats_rx.ip4__frag,
             1,
             msg="First fragment must be counted in ip4__frag.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__defrag,
+            self._if._packet_stats_rx.ip4__defrag,
             0,
             msg="ip4__defrag must NOT be incremented on an incomplete set.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        self.assertEqual(self._if.dispatched, [])
         self.assertEqual(
-            len(self._handler._ip4_frag_table.flows),
+            len(self._if._ip4_frag_table.flows),
             1,
             msg="The fragment must be stored in _ip4_frag_table.",
         )
@@ -524,11 +560,11 @@ class TestPacketHandlerIp4RxFragmentation(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag2))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__defrag,
+            self._if._packet_stats_rx.ip4__defrag,
             0,
             msg="Out-of-order final fragment without offset-0 must remain pending.",
         )
-        self.assertEqual(self._handler.dispatched, [])
+        self.assertEqual(self._if.dispatched, [])
 
 
 class TestPacketHandlerIp4RxRawSocketMatch(_Ip4RxTestBase):
@@ -566,13 +602,13 @@ class TestPacketHandlerIp4RxRawSocketMatch(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frame))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.raw__socket_match,
+            self._if._packet_stats_rx.raw__socket_match,
             1,
             msg="A matched RAW socket must increment raw__socket_match.",
         )
         fake_socket.process_raw_packet.assert_called_once()
         self.assertEqual(
-            self._handler.dispatched,
+            self._if.dispatched,
             [],
             msg="Matched RAW socket must short-circuit before protocol dispatch.",
         )
@@ -625,17 +661,17 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag1))
 
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__defrag,
+            self._if._packet_stats_rx.ip4__defrag,
             1,
             msg="ip4__defrag must be incremented after the packet is fully reassembled.",
         )
         self.assertEqual(
-            self._handler.dispatched,
+            self._if.dispatched,
             ["udp"],
             msg="Reassembled UDP packet must dispatch to _phrx_udp.",
         )
         self.assertEqual(
-            self._handler._ip4_frag_table.flows,
+            self._if._ip4_frag_table.flows,
             {},
             msg="Flow table must be empty after successful reassembly.",
         )
@@ -694,13 +730,13 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag_a))
 
         self.assertEqual(
-            self._handler.dispatched,
+            self._if.dispatched,
             ["udp"],
             msg="Reassembled datagram must dispatch to _phrx_udp exactly once.",
         )
-        assert self._handler.last_udp_packet is not None
+        assert self._if.last_udp_packet is not None
         self.assertEqual(
-            bytes(self._handler.last_udp_packet.ip4.payload_bytes),
+            bytes(self._if.last_udp_packet.ip4.payload_bytes),
             expected_payload,
             msg="Reassembled payload bytes must be in offset order regardless of arrival order.",
         )
@@ -753,8 +789,8 @@ class TestPacketHandlerIp4RxDefragmentFullReassembly(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag_a))
         self._handler._phrx_ip4(PacketRx(frag_b))
 
-        assert self._handler.last_udp_packet is not None
-        ip4 = self._handler.last_udp_packet.ip4
+        assert self._if.last_udp_packet is not None
+        ip4 = self._if.last_udp_packet.ip4
 
         # Preserved from first fragment.
         self.assertEqual(
@@ -848,15 +884,15 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             flow,
-            self._handler._ip4_frag_table.flows,
+            self._if._ip4_frag_table.flows,
             msg="The discarded flow must remain in the table until the expiry sweep reaps it.",
         )
         self.assertTrue(
-            self._handler._ip4_frag_table.flows[flow].discarded,
+            self._if._ip4_frag_table.flows[flow].discarded,
             msg="Repeated fragment must mark the flow discarded.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__frag__overlap__drop,
+            self._if._packet_stats_rx.ip4__frag__overlap__drop,
             1,
             msg="Overlap detection must increment 'ip4__frag__overlap__drop'.",
         )
@@ -899,12 +935,12 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(frag_b))
 
         self.assertEqual(
-            self._handler.dispatched,
+            self._if.dispatched,
             [],
             msg="An overlapping flow must not dispatch to any upper-layer handler.",
         )
         self.assertEqual(
-            self._handler._packet_stats_rx.ip4__frag__overlap__drop,
+            self._if._packet_stats_rx.ip4__frag__overlap__drop,
             1,
             msg="Overlap detection must increment 'ip4__frag__overlap__drop'.",
         )
@@ -915,7 +951,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             proto=IpProto.UDP,
         )
         self.assertTrue(
-            self._handler._ip4_frag_table.flows[flow].discarded,
+            self._if._ip4_frag_table.flows[flow].discarded,
             msg="Overlap detection must mark the flow as discarded.",
         )
 
@@ -959,7 +995,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         self._handler._phrx_ip4(PacketRx(tcp_frag))
 
         self.assertEqual(
-            len(self._handler._ip4_frag_table.flows),
+            len(self._if._ip4_frag_table.flows),
             2,
             msg=(
                 "Two fragments sharing (src, dst, ID) but carrying different "
@@ -1000,13 +1036,13 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             stale_flow_id,
-            self._handler._ip4_frag_table.flows,
+            self._if._ip4_frag_table.flows,
             msg="Precondition: the stale flow must exist after the first fragment.",
         )
 
         # Backdate the stored fragment's timestamp past the timeout
         # so the next defragment pass should reap it.
-        stale_flow = self._handler._ip4_frag_table.flows[stale_flow_id]
+        stale_flow = self._if._ip4_frag_table.flows[stale_flow_id]
         object.__setattr__(
             stale_flow,
             "timestamp",
@@ -1030,7 +1066,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
 
         self.assertNotIn(
             stale_flow_id,
-            self._handler._ip4_frag_table.flows,
+            self._if._ip4_frag_table.flows,
             msg=(
                 "A flow whose timestamp predates 'time() - IP4__FRAG_FLOW_TIMEOUT' "
                 "must be removed by the cleanup pass at the start of "
@@ -1045,11 +1081,11 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         )
         self.assertIn(
             fresh_flow_id,
-            self._handler._ip4_frag_table.flows,
+            self._if._ip4_frag_table.flows,
             msg="The new fragment's flow must be admitted alongside the cleanup.",
         )
         self.assertEqual(
-            len(self._handler._ip4_frag_table.flows),
+            len(self._if._ip4_frag_table.flows),
             1,
             msg="After cleanup the stale flow is gone and only the fresh flow remains.",
         )

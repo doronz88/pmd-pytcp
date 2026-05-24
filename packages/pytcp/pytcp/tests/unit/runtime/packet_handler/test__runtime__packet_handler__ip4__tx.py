@@ -23,7 +23,7 @@
 
 
 """
-This module contains unit tests for the 'PacketHandlerIp4Tx' mixin.
+This module contains unit tests for the 'Ip4TxHandler' sub-handler.
 
 pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip4__tx.py
 
@@ -32,6 +32,7 @@ ver 3.0.6
 
 import threading
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import create_autospec
 
@@ -42,9 +43,12 @@ from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.runtime.packet_handler.packet_handler__ip4__tx import (
-    PacketHandlerIp4Tx,
+    Ip4TxHandler,
 )
 from pytcp.runtime.tx_ring import TxRing
+
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
 # Snapshot log channels so 'setUpModule' can silence output during this
 # module's tests and 'tearDownModule' can restore the global state.
@@ -76,9 +80,18 @@ HOST_A__IP4 = Ip4Address("10.0.1.91")
 OFF_NET__IP4 = Ip4Address("192.168.99.99")
 
 
-class _StubHandler(PacketHandlerIp4Tx):
+class _StubInterface:
     """
-    Minimal concrete subclass of 'PacketHandlerIp4Tx' for testing.
+    Minimal stand-in for the owning 'PacketHandlerL2' / 'PacketHandlerL3'
+    interface.
+
+    Carries the TX-stat counters, the address lists / fragment-id lock,
+    the interface MTU / layer, the TX ring, and the '_phtx_ethernet' +
+    '_marshal_tx_async' seams the IPv4 TX sub-handler reaches through
+    'self._if', recording each call for assertions. A purpose-built
+    double is used rather than 'create_autospec(PacketHandlerL2)' — the
+    god-class still carries 'TYPE_CHECKING'-only annotations
+    'inspect.signature' (which autospec walks) cannot evaluate at runtime.
     """
 
     def __init__(
@@ -131,6 +144,30 @@ class _StubHandler(PacketHandlerIp4Tx):
         return self.ethernet_tx_status
 
 
+def _make_ip4_tx(
+    *,
+    ip4_support: bool = True,
+    interface_layer: InterfaceLayer = InterfaceLayer.L2,
+    interface_mtu: int = 1500,
+    ip4_hosts: list[Ip4IfAddr] | None = None,
+) -> tuple[Ip4TxHandler, _StubInterface]:
+    """
+    Build an 'Ip4TxHandler' over a fresh stub interface and return
+    both — the handler to drive, the interface to assert spies on.
+    """
+
+    interface = _StubInterface(
+        ip4_support=ip4_support,
+        interface_layer=interface_layer,
+        interface_mtu=interface_mtu,
+        ip4_hosts=ip4_hosts,
+    )
+    return (
+        Ip4TxHandler(interface=cast("PacketHandlerL2 | PacketHandlerL3", interface)),
+        interface,
+    )
+
+
 class TestPacketHandlerIp4TxGating(TestCase):
     """
     The IPv4-support-flag gating tests.
@@ -143,7 +180,7 @@ class TestPacketHandlerIp4TxGating(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip4_support=False)
+        handler, iface = _make_ip4_tx(ip4_support=False)
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
@@ -155,7 +192,7 @@ class TestPacketHandlerIp4TxGating(TestCase):
             TxStatus.DROPPED__IP4__NO_PROTOCOL_SUPPORT,
             msg="IP4 TX with support disabled must return DROPPED__IP4__NO_PROTOCOL_SUPPORT.",
         )
-        self.assertEqual(handler._packet_stats_tx.ip4__no_proto_support__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__no_proto_support__drop, 1)
 
 
 class TestPacketHandlerIp4TxSrcValidation(TestCase):
@@ -164,7 +201,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
     """
 
     def setUp(self) -> None:
-        self._handler = _StubHandler()
+        self._handler, self._if = _make_ip4_tx()
 
     def test__stack__packet_handler__ip4__tx__src_not_owned_drops(self) -> None:
         """
@@ -180,7 +217,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_NOT_OWNED)
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_not_owned__drop, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_not_owned__drop, 1)
 
     def test__stack__packet_handler__ip4__tx__src_multicast_replaced(self) -> None:
         """
@@ -195,9 +232,9 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_multicast__replace, 1)
-        self.assertEqual(len(self._handler.ethernet_tx_calls), 1)
-        payload = self._handler.ethernet_tx_calls[0]["ethernet__payload"]
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_multicast__replace, 1)
+        self.assertEqual(len(self._if.ethernet_tx_calls), 1)
+        payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, Ip4Assembler)
         self.assertEqual(payload.src, STACK__IP4_ADDRESS)
 
@@ -208,7 +245,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip4_hosts=[])
+        handler, iface = _make_ip4_tx(ip4_hosts=[])
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_MULTICAST,
             ip4__dst=HOST_A__IP4,
@@ -216,7 +253,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_MULTICAST)
-        self.assertEqual(handler._packet_stats_tx.ip4__src_multicast__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__src_multicast__drop, 1)
 
     def test__stack__packet_handler__ip4__tx__src_limited_broadcast_replaced(self) -> None:
         """
@@ -232,7 +269,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_limited_broadcast__replace, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_limited_broadcast__replace, 1)
 
     def test__stack__packet_handler__ip4__tx__src_network_broadcast_replaced(self) -> None:
         """
@@ -248,7 +285,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_network_broadcast__replace, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_network_broadcast__replace, 1)
 
     def test__stack__packet_handler__ip4__tx__src_unspec_local_dst_replaced(self) -> None:
         """
@@ -264,7 +301,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_network_unspecified__replace_local, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_network_unspecified__replace_local, 1)
 
     def test__stack__packet_handler__ip4__tx__src_unspec_external_uses_gateway_src(self) -> None:
         """
@@ -280,7 +317,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
             ip4__payload=RawAssembler(),
         )
 
-        self.assertEqual(self._handler._packet_stats_tx.ip4__src_network_unspecified__replace_external, 1)
+        self.assertEqual(self._if._packet_stats_tx.ip4__src_network_unspecified__replace_external, 1)
 
     def test__stack__packet_handler__ip4__tx__src_unspec_dhcp_allowed(self) -> None:
         """
@@ -290,7 +327,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip4_hosts=[])
+        handler, iface = _make_ip4_tx(ip4_hosts=[])
         dhcp_payload = UdpAssembler(udp__sport=68, udp__dport=67)
         status = handler._phtx_ip4(
             ip4__src=Ip4Address(),
@@ -301,7 +338,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         # The 'ip4__src_unspecified__send' counter is incremented only
         # on this specific branch, guarding against regressions that
         # would widen the DHCP exception.
-        self.assertEqual(handler._packet_stats_tx.ip4__src_unspecified__send, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__src_unspecified__send, 1)
         self.assertNotEqual(
             status,
             TxStatus.DROPPED__IP4__SRC_UNSPECIFIED,
@@ -316,7 +353,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(ip4_hosts=[])
+        handler, iface = _make_ip4_tx(ip4_hosts=[])
         status = handler._phtx_ip4(
             ip4__src=Ip4Address(),
             ip4__dst=HOST_A__IP4,
@@ -324,7 +361,7 @@ class TestPacketHandlerIp4TxSrcValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP4__SRC_UNSPECIFIED)
-        self.assertEqual(handler._packet_stats_tx.ip4__src_unspecified__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__src_unspecified__drop, 1)
 
 
 class TestPacketHandlerIp4TxDstValidation(TestCase):
@@ -339,7 +376,7 @@ class TestPacketHandlerIp4TxDstValidation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_ip4_tx()
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=Ip4Address(),
@@ -347,7 +384,7 @@ class TestPacketHandlerIp4TxDstValidation(TestCase):
         )
 
         self.assertEqual(status, TxStatus.DROPPED__IP4__DST_UNSPECIFIED)
-        self.assertEqual(handler._packet_stats_tx.ip4__dst_unspecified__drop, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__dst_unspecified__drop, 1)
 
 
 class TestPacketHandlerIp4TxSend(TestCase):
@@ -363,7 +400,7 @@ class TestPacketHandlerIp4TxSend(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L2)
+        handler, iface = _make_ip4_tx(interface_layer=InterfaceLayer.L2)
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
@@ -371,8 +408,8 @@ class TestPacketHandlerIp4TxSend(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__ETHERNET__TO_TX_RING)
-        self.assertEqual(handler._packet_stats_tx.ip4__mtu_ok__send, 1)
-        self.assertEqual(len(handler.ethernet_tx_calls), 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__mtu_ok__send, 1)
+        self.assertEqual(len(iface.ethernet_tx_calls), 1)
 
     def test__stack__packet_handler__ip4__tx__l3_enqueues_on_tx_ring(self) -> None:
         """
@@ -382,9 +419,9 @@ class TestPacketHandlerIp4TxSend(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L3)
+        handler, iface = _make_ip4_tx(interface_layer=InterfaceLayer.L3)
         mock_tx_ring = create_autospec(TxRing, spec_set=True)
-        handler._tx_ring = mock_tx_ring
+        iface._tx_ring = mock_tx_ring
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
@@ -392,9 +429,9 @@ class TestPacketHandlerIp4TxSend(TestCase):
         )
 
         self.assertEqual(status, TxStatus.PASSED__IP4__TO_TX_RING)
-        self.assertEqual(handler._packet_stats_tx.ip4__mtu_ok__send, 1)
+        self.assertEqual(iface._packet_stats_tx.ip4__mtu_ok__send, 1)
         mock_tx_ring.enqueue.assert_called_once()
-        self.assertEqual(handler.ethernet_tx_calls, [])
+        self.assertEqual(iface.ethernet_tx_calls, [])
 
 
 class TestPacketHandlerIp4TxFragmentation(TestCase):
@@ -410,7 +447,7 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L2, interface_mtu=200)
+        handler, iface = _make_ip4_tx(interface_layer=InterfaceLayer.L2, interface_mtu=200)
         # Build a raw payload large enough to require fragmentation.
         payload = RawAssembler(raw__payload=b"\x00" * 400)
         status = handler._phtx_ip4(
@@ -425,17 +462,17 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
             msg="Fragmented send with every fragment passing must return PASSED__ETHERNET__TO_TX_RING.",
         )
         self.assertEqual(
-            handler._packet_stats_tx.ip4__mtu_exceed__frag,
+            iface._packet_stats_tx.ip4__mtu_exceed__frag,
             1,
             msg="ip4__mtu_exceed__frag must be incremented once per outbound packet.",
         )
         self.assertGreaterEqual(
-            handler._packet_stats_tx.ip4__mtu_exceed__frag__send,
+            iface._packet_stats_tx.ip4__mtu_exceed__frag__send,
             2,
             msg="At least two fragments must be sent when the packet exceeds the MTU.",
         )
         # Every ethernet payload must be an Ip4FragAssembler.
-        for call in handler.ethernet_tx_calls:
+        for call in iface.ethernet_tx_calls:
             self.assertIsInstance(call["ethernet__payload"], Ip4FragAssembler)
 
     def test__stack__packet_handler__ip4__tx__over_mtu_l3_enqueues_fragments(self) -> None:
@@ -447,10 +484,10 @@ class TestPacketHandlerIp4TxFragmentation(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler(interface_layer=InterfaceLayer.L3, interface_mtu=200)
+        handler, iface = _make_ip4_tx(interface_layer=InterfaceLayer.L3, interface_mtu=200)
         payload = RawAssembler(raw__payload=b"\x00" * 400)
         mock_tx_ring = create_autospec(TxRing, spec_set=True)
-        handler._tx_ring = mock_tx_ring
+        iface._tx_ring = mock_tx_ring
         status = handler._phtx_ip4(
             ip4__src=STACK__IP4_ADDRESS,
             ip4__dst=HOST_A__IP4,
@@ -482,7 +519,7 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_ip4_tx()
         handler.send_ip4_packet(
             ip4__local_address=STACK__IP4_ADDRESS,
             ip4__remote_address=HOST_A__IP4,
@@ -490,8 +527,8 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
             ip4__payload=b"\x00" * 8,
         )
 
-        self.assertEqual(len(handler.ethernet_tx_calls), 1)
-        payload = handler.ethernet_tx_calls[0]["ethernet__payload"]
+        self.assertEqual(len(iface.ethernet_tx_calls), 1)
+        payload = iface.ethernet_tx_calls[0]["ethernet__payload"]
         assert isinstance(payload, Ip4Assembler)
         self.assertEqual(payload.proto, IpProto.UDP)
 
@@ -505,7 +542,7 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handler = _StubHandler()
+        handler, iface = _make_ip4_tx()
         handler.send_ip4_packet(
             ip4__local_address=STACK__IP4_ADDRESS,
             ip4__remote_address=HOST_A__IP4,
@@ -514,7 +551,7 @@ class TestPacketHandlerIp4TxSendIp4PacketHelper(TestCase):
         )
 
         self.assertEqual(
-            handler.marshal_tx_async_calls,
+            iface.marshal_tx_async_calls,
             1,
             msg="send_ip4_packet must route the TX through _marshal_tx_async exactly once.",
         )

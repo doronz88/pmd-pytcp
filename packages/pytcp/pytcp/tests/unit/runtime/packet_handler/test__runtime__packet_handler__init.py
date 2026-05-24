@@ -535,7 +535,7 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
         h = _build_l2_handler()
 
         self.assertEqual(
-            h._next_ip4_id(),
+            h._ip4_tx._next_ip4_id(),
             1,
             msg="The first generated IPv4 Identification must be 1.",
         )
@@ -553,12 +553,12 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
         h._ip4_id = 0xFFFF
 
         self.assertEqual(
-            h._next_ip4_id(),
+            h._ip4_tx._next_ip4_id(),
             0,
             msg="The IPv4 Identification must wrap from 0xFFFF to 0, not overflow to 0x10000.",
         )
         self.assertEqual(
-            h._next_ip4_id(),
+            h._ip4_tx._next_ip4_id(),
             1,
             msg="The IPv4 Identification must continue from 0 to 1 after wrapping.",
         )
@@ -582,7 +582,7 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
 
         def _worker() -> None:
             barrier.wait()
-            value = h._next_ip4_id()
+            value = h._ip4_tx._next_ip4_id()
             with results_lock:
                 results.append(value)
 

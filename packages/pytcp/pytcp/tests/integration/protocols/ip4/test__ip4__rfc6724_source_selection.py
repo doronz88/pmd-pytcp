@@ -30,7 +30,7 @@
 Integration tests for the RFC 6724 §6 IPv4 source-address
 selection — rules 1, 2, and 8 applied to the IPv4 family.
 
-Exercises 'PacketHandler._select_ip4_source' against an
+Exercises 'Ip4TxHandler._select_ip4_source' against an
 in-memory '_ip4_ifaddr' list with mixed scopes and overlapping
 prefixes. The IPv4 family has no SLAAC PREFERRED/DEPRECATED
 state, no temporary addresses, and no §10.3 policy table, so
@@ -83,7 +83,7 @@ class TestRfc6724Ip4Rule1SameAddress(Ip4TestCase):
         Reference: RFC 6724 §6 (IPv4 source selection follows v6 rules).
         """
 
-        result = self._packet_handler._select_ip4_source(
+        result = self._packet_handler._ip4_tx._select_ip4_source(
             ip4__dst=_HOST_PREFIX_A.address,
         )
 
@@ -119,7 +119,7 @@ class TestRfc6724Ip4Rule2Scope(Ip4TestCase):
         Reference: RFC 3927 §2.6 (Link-local addresses MUST NOT route).
         """
 
-        result = self._packet_handler._select_ip4_source(
+        result = self._packet_handler._ip4_tx._select_ip4_source(
             ip4__dst=_DST_OUTSIDE_ALL,
         )
 
@@ -138,7 +138,7 @@ class TestRfc6724Ip4Rule2Scope(Ip4TestCase):
         Reference: RFC 3927 §1 (IPv4 link-local 169.254.0.0/16 scope).
         """
 
-        result = self._packet_handler._select_ip4_source(
+        result = self._packet_handler._ip4_tx._select_ip4_source(
             ip4__dst=_DST_LINK_LOCAL,
         )
 
@@ -175,7 +175,7 @@ class TestRfc6724Ip4Rule8LongestMatch(Ip4TestCase):
         Reference: RFC 6724 §2.2 (CommonPrefixLen definition).
         """
 
-        result = self._packet_handler._select_ip4_source(
+        result = self._packet_handler._ip4_tx._select_ip4_source(
             ip4__dst=_DST_IN_PREFIX_B,
         )
 
@@ -195,8 +195,8 @@ class TestRfc6724Ip4Rule8LongestMatch(Ip4TestCase):
         Reference: RFC 6724 §5 rule 8 (Use longest matching prefix).
         """
 
-        result_a = self._packet_handler._select_ip4_source(ip4__dst=_DST_OUTSIDE_ALL)
-        result_b = self._packet_handler._select_ip4_source(ip4__dst=_DST_OUTSIDE_ALL)
+        result_a = self._packet_handler._ip4_tx._select_ip4_source(ip4__dst=_DST_OUTSIDE_ALL)
+        result_b = self._packet_handler._ip4_tx._select_ip4_source(ip4__dst=_DST_OUTSIDE_ALL)
 
         self.assertIsNotNone(
             result_a,
@@ -211,7 +211,7 @@ class TestRfc6724Ip4Rule8LongestMatch(Ip4TestCase):
 
 class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
     """
-    The 'PacketHandler._select_ip4_source' boundary tests.
+    The 'Ip4TxHandler._select_ip4_source' boundary tests.
     """
 
     def test__ip4__rfc6724__no_candidates_returns_none(self) -> None:
@@ -225,7 +225,7 @@ class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
 
         self._packet_handler._ip4_ifaddr = []
 
-        result = self._packet_handler._select_ip4_source(
+        result = self._packet_handler._ip4_tx._select_ip4_source(
             ip4__dst=_DST_OUTSIDE_ALL,
         )
 
@@ -249,7 +249,7 @@ class TestRfc6724Ip4SelectorBoundaries(Ip4TestCase):
         sibling = Ip4IfAddr("10.0.1.91/24")  # same address as _DST_IN_PREFIX_A
         self._packet_handler._ip4_ifaddr = [_HOST_PREFIX_A, sibling]
 
-        result = self._packet_handler._select_ip4_source(ip4__dst=_DST_IN_PREFIX_A)
+        result = self._packet_handler._ip4_tx._select_ip4_source(ip4__dst=_DST_IN_PREFIX_A)
 
         self.assertEqual(
             result,

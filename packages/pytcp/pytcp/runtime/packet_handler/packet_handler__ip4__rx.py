@@ -32,13 +32,10 @@ ver 3.0.6
 
 import struct
 import time as time_module
-from abc import ABC
-from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from net_proto import (
     Icmp4DestinationUnreachableCode,
-    Icmp4Message,
     Icmp4MessageDestinationUnreachable,
     Icmp4MessageParameterProblem,
     Icmp4ParameterProblemCode,
@@ -54,50 +51,27 @@ from pytcp.lib.logger import log
 from pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pytcp.protocols.ip.ip_frag import IpFragFlowId
-from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
+from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
 
+if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 
-class PacketHandlerIp4Rx(ABC):
+
+class Ip4RxHandler:
     """
-    Class implements packet handler for the inbound IPv4 packets.
+    Packet handler for the inbound IPv4 packets.
     """
 
-    if TYPE_CHECKING:
-        from net_addr import Ip4Address
-        from net_proto import Tracker
-        from pytcp.lib.packet_stats import PacketStatsRx
-        from pytcp.lib.tx_status import TxStatus
+    _if: PacketHandlerL2 | PacketHandlerL3
 
-        _packet_stats_rx: PacketStatsRx
-        _ip4_multicast: list[Ip4Address]
-        _ip4_frag_table: IpFragTable
+    def __init__(self, *, interface: PacketHandlerL2 | PacketHandlerL3) -> None:
+        """
+        Initialize the IPv4 RX sub-handler.
+        """
 
-        def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus: ...
-
-        # pylint: disable=unused-argument
-
-        def _phrx_icmp4(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_udp(self, packet_rx: PacketRx, /) -> None: ...
-        def _phrx_tcp(self, packet_rx: PacketRx, /) -> None: ...
-
-        def _phtx_icmp4(
-            self,
-            *,
-            ip4__src: Ip4Address,
-            ip4__dst: Ip4Address,
-            icmp4__message: Icmp4Message,
-            echo_tracker: Tracker | None = None,
-        ) -> TxStatus: ...
-
-        # pylint: disable=missing-function-docstring
-
-        @property
-        def _ip4_unicast(self) -> list[Ip4Address]: ...
-
-        @property
-        def _ip4_broadcast(self) -> list[Ip4Address]: ...
+        self._if = interface
 
     def _forward_or_deliver_ip4(self, packet_rx: PacketRx, /) -> bool:
         """
@@ -119,15 +93,15 @@ class PacketHandlerIp4Rx(ABC):
         # with the forwarding plane).
         """
 
-        deliver_locally = (not self._ip4_unicast) or packet_rx.ip4.dst in {
-            *self._ip4_unicast,
-            *self._ip4_multicast,
-            *self._ip4_broadcast,
+        deliver_locally = (not self._if._ip4_unicast) or packet_rx.ip4.dst in {
+            *self._if._ip4_unicast,
+            *self._if._ip4_multicast,
+            *self._if._ip4_broadcast,
         }
         if deliver_locally:
             return True
 
-        self._packet_stats_rx.ip4__dst_unknown__drop += 1
+        self._if._packet_stats_rx.ip4__dst_unknown__drop += 1
         __debug__ and log(
             "ip4",
             f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
@@ -139,13 +113,13 @@ class PacketHandlerIp4Rx(ABC):
         Handle inbound IPv4 packets.
         """
 
-        self._packet_stats_rx.ip4__pre_parse += 1
+        self._if._packet_stats_rx.ip4__pre_parse += 1
 
         try:
             Ip4Parser(packet_rx)
 
         except Ip4SanityError as error:
-            self._packet_stats_rx.ip4__failed_parse__drop += 1
+            self._if._packet_stats_rx.ip4__failed_parse__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -155,7 +129,7 @@ class PacketHandlerIp4Rx(ABC):
             return
 
         except PacketValidationError as error:
-            self._packet_stats_rx.ip4__failed_parse__drop += 1
+            self._if._packet_stats_rx.ip4__failed_parse__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
@@ -172,7 +146,7 @@ class PacketHandlerIp4Rx(ABC):
         # otherwise widens — the Echo Reply path stays in place
         # for operators that explicitly opt in.
         if not stack.IP4__ACCEPT_SOURCE_ROUTE and (packet_rx.ip4.lsrr is not None or packet_rx.ip4.ssrr is not None):
-            self._packet_stats_rx.ip4__source_route__drop += 1
+            self._if._packet_stats_rx.ip4__source_route__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping source-routed IPv4 packet "
@@ -187,8 +161,8 @@ class PacketHandlerIp4Rx(ABC):
         # reserved cases are caught by the parser sanity check; this
         # gate covers the per-subnet directed-broadcast class that
         # requires '_ip4_ifaddr' state to recognise.
-        if packet_rx.ip4.src in self._ip4_broadcast:
-            self._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
+        if packet_rx.ip4.src in self._if._ip4_broadcast:
+            self._if._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping IPv4 packet with "
@@ -204,22 +178,22 @@ class PacketHandlerIp4Rx(ABC):
         if not self._forward_or_deliver_ip4(packet_rx):
             return
 
-        if packet_rx.ip4.dst in self._ip4_unicast:
-            self._packet_stats_rx.ip4__dst_unicast += 1
+        if packet_rx.ip4.dst in self._if._ip4_unicast:
+            self._if._packet_stats_rx.ip4__dst_unicast += 1
 
-        if packet_rx.ip4.dst in self._ip4_multicast:
-            self._packet_stats_rx.ip4__dst_multicast += 1
+        if packet_rx.ip4.dst in self._if._ip4_multicast:
+            self._if._packet_stats_rx.ip4__dst_multicast += 1
 
-        if packet_rx.ip4.dst in self._ip4_broadcast:
-            self._packet_stats_rx.ip4__dst_broadcast += 1
+        if packet_rx.ip4.dst in self._if._ip4_broadcast:
+            self._if._packet_stats_rx.ip4__dst_broadcast += 1
 
         # Check if packet is a fragment and if so process it accordingly.
         if packet_rx.ip4.offset != 0 or packet_rx.ip4.flag_mf:
-            self._packet_stats_rx.ip4__frag += 1
+            self._if._packet_stats_rx.ip4__frag += 1
             if not (defragmented_packet_rx := self.__defragment_ip4_packet(packet_rx)):
                 return
             packet_rx = defragmented_packet_rx
-            self._packet_stats_rx.ip4__defrag += 1
+            self._if._packet_stats_rx.ip4__defrag += 1
 
         # Create RawMetadata object and try to find matching RAW socket.
         packet_rx_md = RawMetadata(
@@ -233,7 +207,7 @@ class PacketHandlerIp4Rx(ABC):
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
-                self._packet_stats_rx.raw__socket_match += 1
+                self._if._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "ip4",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
@@ -243,13 +217,13 @@ class PacketHandlerIp4Rx(ABC):
 
         match packet_rx.ip4.proto:
             case IpProto.ICMP4:
-                self._phrx_icmp4(packet_rx)
+                self._if._phrx_icmp4(packet_rx)
             case IpProto.UDP:
-                self._phrx_udp(packet_rx)
+                self._if._phrx_udp(packet_rx)
             case IpProto.TCP:
-                self._phrx_tcp(packet_rx)
+                self._if._phrx_tcp(packet_rx)
             case _:
-                self._packet_stats_rx.ip4__no_proto_support__drop += 1
+                self._if._packet_stats_rx.ip4__no_proto_support__drop += 1
                 __debug__ and log(
                     "ip4",
                     f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip4.proto}, dropping.",
@@ -273,7 +247,7 @@ class PacketHandlerIp4Rx(ABC):
         # DHCP-client mode: no configured unicast IPv4 address. Cannot
         # emit ICMP errors because the source-IP reflection from
         # packet_rx.ip4.dst would not be a valid stack address.
-        if not self._ip4_unicast:
+        if not self._if._ip4_unicast:
             return
 
         verdict = try_emit_icmp_error(
@@ -282,7 +256,7 @@ class PacketHandlerIp4Rx(ABC):
             now=time_module.monotonic(),
         )
         if verdict is not None:
-            self._packet_stats_rx.ip4__no_proto_support__icmp4_unreachable_suppressed += 1
+            self._if._packet_stats_rx.ip4__no_proto_support__icmp4_unreachable_suppressed += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Protocol Unreachable "
@@ -290,9 +264,9 @@ class PacketHandlerIp4Rx(ABC):
             )
             return
 
-        self._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable += 1
-        self._marshal_tx(
-            lambda: self._phtx_icmp4(
+        self._if._packet_stats_rx.ip4__no_proto_support__respond_icmp4_unreachable += 1
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp4(
                 ip4__src=packet_rx.ip4.dst,
                 ip4__dst=packet_rx.ip4.src,
                 icmp4__message=Icmp4MessageDestinationUnreachable(
@@ -318,7 +292,7 @@ class PacketHandlerIp4Rx(ABC):
         # DHCP-client mode: no configured unicast IPv4 address. Cannot
         # emit ICMP errors because the source-IP reflection from
         # packet_rx.ip4.dst would not be a valid stack address.
-        if not self._ip4_unicast:
+        if not self._if._ip4_unicast:
             return
 
         verdict = try_emit_icmp_error(
@@ -327,7 +301,7 @@ class PacketHandlerIp4Rx(ABC):
             now=time_module.monotonic(),
         )
         if verdict is not None:
-            self._packet_stats_rx.ip4__sanity_error__icmp4_param_problem_suppressed += 1
+            self._if._packet_stats_rx.ip4__sanity_error__icmp4_param_problem_suppressed += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Parameter Problem "
@@ -335,9 +309,9 @@ class PacketHandlerIp4Rx(ABC):
             )
             return
 
-        self._packet_stats_rx.ip4__sanity_error__respond_icmp4_param_problem += 1
-        self._marshal_tx(
-            lambda: self._phtx_icmp4(
+        self._if._packet_stats_rx.ip4__sanity_error__respond_icmp4_param_problem += 1
+        self._if._marshal_tx(
+            lambda: self._if._phtx_icmp4(
                 ip4__src=packet_rx.ip4.dst,
                 ip4__dst=packet_rx.ip4.src,
                 icmp4__message=Icmp4MessageParameterProblem(
@@ -361,7 +335,7 @@ class PacketHandlerIp4Rx(ABC):
             f"{'' if packet_rx.ip4.flag_mf else ', last'}",
         )
 
-        result = self._ip4_frag_table.add_fragment(
+        result = self._if._ip4_frag_table.add_fragment(
             flow_id=IpFragFlowId(
                 src=packet_rx.ip4.src,
                 dst=packet_rx.ip4.dst,
@@ -379,10 +353,10 @@ class PacketHandlerIp4Rx(ABC):
             ecn=packet_rx.ip4.ecn,
         )
         if result.outcome in (IpFragAddOutcome.OVERLAP, IpFragAddOutcome.DISCARDED):
-            self._packet_stats_rx.ip4__frag__overlap__drop += 1
+            self._if._packet_stats_rx.ip4__frag__overlap__drop += 1
             return None
         if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
-            self._packet_stats_rx.ip4__frag__ecn_mixed__drop += 1
+            self._if._packet_stats_rx.ip4__frag__ecn_mixed__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv4 datagram: "

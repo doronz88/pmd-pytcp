@@ -57,7 +57,9 @@ from net_proto import (
     Icmp4Message,
     Icmp6Message,
     Icmp6NdRoutePreference,
+    Ip4Payload,
     Ip6Assembler,
+    IpProto,
     PacketRx,
     RawAssembler,
     Tracker,
@@ -98,8 +100,8 @@ from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import Icmp6RxHandler
 from .packet_handler__icmp6__tx import Icmp6TxHandler
-from .packet_handler__ip4__rx import PacketHandlerIp4Rx
-from .packet_handler__ip4__tx import PacketHandlerIp4Tx
+from .packet_handler__ip4__rx import Ip4RxHandler
+from .packet_handler__ip4__tx import Ip4TxHandler
 from .packet_handler__ip6__rx import PacketHandlerIp6Rx
 from .packet_handler__ip6__tx import PacketHandlerIp6Tx
 from .packet_handler__ip6_frag__rx import Ip6FragRxHandler
@@ -140,6 +142,8 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_tx: Icmp6TxHandler
     _ip6_frag_rx: Ip6FragRxHandler
     _ip6_frag_tx: Ip6FragTxHandler
+    _ip4_rx: Ip4RxHandler
+    _ip4_tx: Ip4TxHandler
 
     _event__stop_subsystem: threading.Event
 
@@ -352,6 +356,8 @@ class PacketHandler(Subsystem, ABC):
         self._icmp6_tx = Icmp6TxHandler(interface=_if)
         self._ip6_frag_rx = Ip6FragRxHandler(interface=_if)
         self._ip6_frag_tx = Ip6FragTxHandler(interface=_if)
+        self._ip4_rx = Ip4RxHandler(interface=_if)
+        self._ip4_tx = Ip4TxHandler(interface=_if)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -1761,6 +1767,66 @@ class PacketHandler(Subsystem, ABC):
         )
 
     ###
+    # IPv4 delegators — logic lives in the composed 'Ip4RxHandler' /
+    # 'Ip4TxHandler'. Shared by both layers, so they sit on the base.
+    ###
+
+    def _phrx_ip4(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound IPv4 packet (delegates to the IPv4 RX sub-handler).
+        """
+
+        self._ip4_rx._phrx_ip4(packet_rx)
+
+    def _phtx_ip4(
+        self,
+        *,
+        ip4__dst: Ip4Address,
+        ip4__src: Ip4Address,
+        ip4__ttl: int | None = None,
+        ip4__ecn: int = 0,
+        ip4__flag_df: bool = False,
+        ip4__options: Ip4Options = Ip4Options(),
+        ip4__payload: Ip4Payload = RawAssembler(),
+    ) -> TxStatus:
+        """
+        Handle an outbound IPv4 packet (delegates to the IPv4 TX sub-handler).
+        """
+
+        return self._ip4_tx._phtx_ip4(
+            ip4__dst=ip4__dst,
+            ip4__src=ip4__src,
+            ip4__ttl=ip4__ttl,
+            ip4__ecn=ip4__ecn,
+            ip4__flag_df=ip4__flag_df,
+            ip4__options=ip4__options,
+            ip4__payload=ip4__payload,
+        )
+
+    def send_ip4_packet(
+        self,
+        *,
+        ip4__local_address: Ip4Address,
+        ip4__remote_address: Ip4Address,
+        ip4__proto: IpProto,
+        ip4__payload: bytes = bytes(),
+        ip4__ttl: int | None = None,
+        ip4__ecn: int = 0,
+    ) -> None:
+        """
+        Enqueue an outbound IPv4 RAW datagram (delegates to the IPv4 TX sub-handler).
+        """
+
+        self._ip4_tx.send_ip4_packet(
+            ip4__local_address=ip4__local_address,
+            ip4__remote_address=ip4__remote_address,
+            ip4__proto=ip4__proto,
+            ip4__payload=ip4__payload,
+            ip4__ttl=ip4__ttl,
+            ip4__ecn=ip4__ecn,
+        )
+
+    ###
     # IPv6 fragment delegators — logic lives in the composed
     # 'Ip6FragRxHandler' / 'Ip6FragTxHandler'. Shared by both layers,
     # so they sit on the base.
@@ -1785,8 +1851,6 @@ class PacketHandlerL2(
     PacketHandler,
     PacketHandlerEthernetRx,
     PacketHandlerEthernetTx,
-    PacketHandlerIp4Rx,
-    PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
     PacketHandlerIp6Tx,
 ):
@@ -2600,8 +2664,6 @@ class PacketHandlerL2(
 
 class PacketHandlerL3(
     PacketHandler,
-    PacketHandlerIp4Rx,
-    PacketHandlerIp4Tx,
     PacketHandlerIp6Rx,
     PacketHandlerIp6Tx,
 ):
