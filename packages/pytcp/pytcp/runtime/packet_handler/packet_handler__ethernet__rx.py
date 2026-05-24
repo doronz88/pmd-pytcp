@@ -33,7 +33,7 @@ ver 3.0.6
 from typing import TYPE_CHECKING
 
 from net_addr import MacAddress
-from net_proto import EthernetParser, EtherType, PacketRx, PacketValidationError
+from net_proto import EthernetParser, PacketRx, PacketValidationError
 from net_proto.lib.buffer import Buffer
 from pytcp import stack
 from pytcp.lib.logger import log
@@ -115,19 +115,20 @@ class EthernetRxHandler:
         if packet_rx.ethernet.dst == self._if._mac_broadcast:
             self._if._packet_stats_rx.ethernet__dst_broadcast += 1
 
-        match packet_rx.ethernet.type:
-            case EtherType.ARP if self._if._ip4_support:
-                self._if._phrx_arp(packet_rx)
-            case EtherType.IP4 if self._if._ip4_support:
-                self._if._phrx_ip4(packet_rx)
-            case EtherType.IP6 if self._if._ip6_support:
-                self._if._phrx_ip6(packet_rx)
-            case _:
-                self._if._packet_stats_rx.ethernet__no_proto_support__drop += 1
-                __debug__ and log(
-                    "ether",
-                    f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
-                )
+        # EtherType -> handler demux via the per-interface dispatch
+        # registry. Membership encodes the support-flag gating that the
+        # prior 'match' guards carried (an IPv4-disabled interface
+        # registers neither ARP nor IPv4), so a registry miss is the
+        # "unsupported protocol" drop.
+        handler = self._if._ethertype_registry.get(packet_rx.ethernet.type)
+        if handler is None:
+            self._if._packet_stats_rx.ethernet__no_proto_support__drop += 1
+            __debug__ and log(
+                "ether",
+                f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
+            )
+            return
+        handler(packet_rx)
 
     def _deliver_to_packet_sockets(self, packet_rx: PacketRx, frame: Buffer, /) -> None:
         """

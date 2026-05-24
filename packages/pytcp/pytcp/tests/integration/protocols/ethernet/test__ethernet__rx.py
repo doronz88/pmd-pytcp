@@ -206,6 +206,10 @@ class TestPacketHandlerEthernetRxNoIp4Support(EthernetTestCase):
 
         super().setUp()
         self._packet_handler._ip4_support = False
+        # The link-layer dispatch registry caches the support policy at
+        # construction; rebuild it so the disabled-IPv4 membership (no
+        # ARP, no IPv4) takes effect.
+        self._packet_handler._build_ethertype_registry()
 
     def test__packet_handler__ethernet__rx__arp_dropped_when_ip4_disabled(self) -> None:
         """
@@ -262,6 +266,10 @@ class TestPacketHandlerEthernetRxNoIp6Support(EthernetTestCase):
 
         super().setUp()
         self._packet_handler._ip6_support = False
+        # The link-layer dispatch registry caches the support policy at
+        # construction; rebuild it so the disabled-IPv6 membership
+        # (no IPv6) takes effect.
+        self._packet_handler._build_ethertype_registry()
 
     def test__packet_handler__ethernet__rx__ip6_dropped_when_ip6_disabled(self) -> None:
         """

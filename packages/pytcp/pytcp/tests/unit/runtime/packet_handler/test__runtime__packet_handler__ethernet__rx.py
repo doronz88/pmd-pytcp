@@ -36,9 +36,11 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import MacAddress
+from net_proto import EtherType
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
+from pytcp.runtime.packet_handler.dispatch import DispatchRegistry
 from pytcp.runtime.packet_handler.packet_handler__ethernet__rx import (
     EthernetRxHandler,
 )
@@ -150,6 +152,16 @@ class _StubInterface:
         self._ip6_support = ip6_support
 
         self.dispatched: list[str] = []
+
+        # Build the link-layer dispatch registry the way the real
+        # 'PacketHandlerL2' does: support-gated, with the ARP / IPv4 /
+        # IPv6 spies as the registered handlers.
+        self._ethertype_registry: DispatchRegistry[EtherType] = DispatchRegistry()
+        if ip4_support:
+            self._ethertype_registry.register(EtherType.ARP, self._phrx_arp)
+            self._ethertype_registry.register(EtherType.IP4, self._phrx_ip4)
+        if ip6_support:
+            self._ethertype_registry.register(EtherType.IP6, self._phrx_ip6)
 
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         self.dispatched.append("arp")

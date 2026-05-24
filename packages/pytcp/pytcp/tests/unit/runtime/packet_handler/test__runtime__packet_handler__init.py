@@ -35,6 +35,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
+from net_proto import EtherType
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -428,17 +429,20 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
     def test__stack__packet_handler__init__l3_loop_routes_by_ethertype(self) -> None:
         """
         Ensure the L3 loop inspects bytes 2-3 of the TUN framing to
-        decide IPv4 vs IPv6 dispatch, advances the frame pointer past
-        the 4-byte TUN header, and honors the support flags.
+        select the EtherType-registry handler, advances the frame
+        pointer past the 4-byte TUN header before invoking it, and
+        drops an unregistered EtherType without dispatching.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        h = _build_l3_handler()
-        h._ip4_support = True
-        h._ip6_support = True
-        h._phrx_ip4 = MagicMock()  # type: ignore[method-assign]
-        h._phrx_ip6 = MagicMock()  # type: ignore[method-assign]
+        h = _build_l3_handler_supported()
+        # Overwrite the real IP handlers with spies so dispatch is
+        # observable; the loop's only dispatch path is the registry.
+        ip4_handler = MagicMock()
+        ip6_handler = MagicMock()
+        h._ethertype_registry.register(EtherType.IP4, ip4_handler)
+        h._ethertype_registry.register(EtherType.IP6, ip6_handler)
 
         # TUN framing: 4-byte header; bytes[2:4] = EtherType.
         ip4_packet = MagicMock()
@@ -455,24 +459,37 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         h._subsystem_loop()
         h._subsystem_loop()
 
-        h._phrx_ip4.assert_called_once_with(ip4_packet)
-        h._phrx_ip6.assert_called_once_with(ip6_packet)
+        ip4_handler.assert_called_once_with(ip4_packet)
+        ip6_handler.assert_called_once_with(ip6_packet)
+        self.assertEqual(
+            ip4_packet.frame,
+            b"IPV4_PAYLOAD",
+            msg="The 4-byte TUN PI header must be stripped before the handler is invoked.",
+        )
         # The unknown ethertype case logs a warning but doesn't dispatch.
 
     def test__stack__packet_handler__init__l3_loop_gates_on_support_flags(self) -> None:
         """
-        Ensure the L3 loop drops IPv4 when '_ip4_support' is False and
-        IPv6 when '_ip6_support' is False.
+        Ensure a support-disabled L3 interface registers no IPv4 / IPv6
+        EtherType handlers, so the loop's registry lookup misses and the
+        frame is dropped with no dispatch.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        h = _build_l3_handler()
-        h._ip4_support = False
-        h._ip6_support = False
-        h._phrx_ip4 = MagicMock()  # type: ignore[method-assign]
-        h._phrx_ip6 = MagicMock()  # type: ignore[method-assign]
+        h = _build_l3_handler()  # ip4_support=False, ip6_support=False
 
+        self.assertIsNone(
+            h._ethertype_registry.get(EtherType.IP4),
+            msg="An IPv4-disabled L3 interface must not register the IPv4 handler.",
+        )
+        self.assertIsNone(
+            h._ethertype_registry.get(EtherType.IP6),
+            msg="An IPv6-disabled L3 interface must not register the IPv6 handler.",
+        )
+
+        # Driving the loop with IP4 / IP6 frames must not raise and must
+        # not dispatch (the registry is empty).
         ip4_packet = MagicMock()
         ip4_packet.frame = b"\x00\x00\x08\x00" + b"IPV4_PAYLOAD"
         ip6_packet = MagicMock()
@@ -484,8 +501,11 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         h._subsystem_loop()
         h._subsystem_loop()
 
-        h._phrx_ip4.assert_not_called()
-        h._phrx_ip6.assert_not_called()
+        self.assertEqual(
+            ip4_packet.frame,
+            b"\x00\x00\x08\x00" + b"IPV4_PAYLOAD",
+            msg="A dropped frame must not be advanced past the TUN PI header.",
+        )
 
 
 class TestPacketHandlerTxRingInjection(TestCase):
@@ -596,4 +616,98 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
             len(set(results)),
             count,
             msg="Concurrent IPv4 Identification generation must hand every caller a distinct value.",
+        )
+
+
+def _build_l2_handler_supported() -> PacketHandlerL2:
+    """
+    Build a 'PacketHandlerL2' with IPv4/IPv6 protocol support enabled
+    but DHCP / SLAAC autoconfig disabled and no static host, so the
+    constructor populates the dispatch registries without spawning any
+    addressing-acquisition threads.
+    """
+
+    return PacketHandlerL2(
+        mac_address=STACK__MAC_UNICAST,
+        interface_mtu=1500,
+        ip4_support=True,
+        ip4_dhcp=False,
+        ip6_support=True,
+        ip6_lla_autoconfig=False,
+        ip6_gua_autoconfig=False,
+    )
+
+
+def _build_l3_handler_supported() -> PacketHandlerL3:
+    """
+    Build a 'PacketHandlerL3' with IPv4/IPv6 protocol support enabled
+    and no addressing autoconfig.
+    """
+
+    return PacketHandlerL3(
+        interface_mtu=1500,
+        ip4_support=True,
+        ip6_support=True,
+    )
+
+
+class TestPacketHandlerInitDispatchRegistry(TestCase):
+    """
+    The per-interface RX dispatch-registry membership tests.
+    """
+
+    def test__stack__packet_handler__init__l2_registers_arp_when_ip4_supported(self) -> None:
+        """
+        Ensure an IPv4-supporting L2 (TAP) interface registers the ARP
+        EtherType in its link-layer dispatch registry — ARP is the
+        link-layer half of IPv4 on a broadcast link.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _build_l2_handler_supported()
+
+        self.assertIsNotNone(
+            handler._ethertype_registry.get(EtherType.ARP),
+            msg="An IPv4-supporting L2 interface must register the ARP handler.",
+        )
+
+    def test__stack__packet_handler__init__l3_never_registers_arp(self) -> None:
+        """
+        Ensure an L3 (TUN) interface never registers ARP even with IPv4
+        support enabled — a point-to-point TUN link has no link-layer
+        address resolution.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _build_l3_handler_supported()
+
+        self.assertIsNone(
+            handler._ethertype_registry.get(EtherType.ARP),
+            msg="An L3 (TUN) interface must not register the ARP handler.",
+        )
+
+    def test__stack__packet_handler__init__ethertype_registry_gates_on_support(self) -> None:
+        """
+        Ensure link-layer dispatch-registry membership tracks the
+        protocol-support flags: a support-disabled interface registers
+        neither ARP nor the IPv4 / IPv6 EtherTypes.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handler = _build_l2_handler()  # ip4_support=False, ip6_support=False
+
+        self.assertIsNone(
+            handler._ethertype_registry.get(EtherType.ARP),
+            msg="A support-disabled interface must not register ARP.",
+        )
+        self.assertIsNone(
+            handler._ethertype_registry.get(EtherType.IP4),
+            msg="An IPv4-disabled interface must not register the IPv4 EtherType.",
+        )
+        self.assertIsNone(
+            handler._ethertype_registry.get(EtherType.IP6),
+            msg="An IPv6-disabled interface must not register the IPv6 EtherType.",
         )

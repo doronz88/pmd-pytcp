@@ -41,6 +41,7 @@ from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.runtime.packet_handler.dispatch import DispatchRegistry
 from pytcp.runtime.packet_handler.packet_handler__ip6__rx import (
     Ip6RxHandler,
 )
@@ -105,6 +106,15 @@ class _StubInterface:
         self._ip6_multicast = [STACK__IP6_MULTICAST]
 
         self.dispatched: list[str] = []
+
+        # Build the IPv6 transport dispatch registry the way the real
+        # handler does, with the ICMPv6 / UDP / TCP spies registered.
+        # (IP6-frag and the No-Next-Header terminator are not registry
+        # handlers — the EH-chain walker reaches them directly.)
+        self._ip6_proto_registry: DispatchRegistry[IpProto] = DispatchRegistry()
+        self._ip6_proto_registry.register(IpProto.ICMP6, self._phrx_icmp6)
+        self._ip6_proto_registry.register(IpProto.UDP, self._phrx_udp)
+        self._ip6_proto_registry.register(IpProto.TCP, self._phrx_tcp)
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:

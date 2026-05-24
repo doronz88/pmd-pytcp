@@ -41,7 +41,6 @@ from net_proto import (
     Icmp4ParameterProblemCode,
     Ip4Parser,
     Ip4SanityError,
-    IpProto,
     PacketRx,
     PacketValidationError,
     inet_cksum,
@@ -215,20 +214,20 @@ class Ip4RxHandler:
                 socket.process_raw_packet(packet_rx_md)
                 return
 
-        match packet_rx.ip4.proto:
-            case IpProto.ICMP4:
-                self._if._phrx_icmp4(packet_rx)
-            case IpProto.UDP:
-                self._if._phrx_udp(packet_rx)
-            case IpProto.TCP:
-                self._if._phrx_tcp(packet_rx)
-            case _:
-                self._if._packet_stats_rx.ip4__no_proto_support__drop += 1
-                __debug__ and log(
-                    "ip4",
-                    f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip4.proto}, dropping.",
-                )
-                self.__phrx_ip4__emit_protocol_unreachable(packet_rx)
+        # IpProto -> transport-handler demux via the per-interface
+        # dispatch registry (ICMPv4 / UDP / TCP). A registry miss is an
+        # unsupported transport protocol — RFC 1122 §3.2.2.1 Protocol
+        # Unreachable.
+        handler = self._if._ip4_proto_registry.get(packet_rx.ip4.proto)
+        if handler is None:
+            self._if._packet_stats_rx.ip4__no_proto_support__drop += 1
+            __debug__ and log(
+                "ip4",
+                f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip4.proto}, dropping.",
+            )
+            self.__phrx_ip4__emit_protocol_unreachable(packet_rx)
+            return
+        handler(packet_rx)
 
     def __phrx_ip4__emit_protocol_unreachable(self, packet_rx: PacketRx) -> None:
         """

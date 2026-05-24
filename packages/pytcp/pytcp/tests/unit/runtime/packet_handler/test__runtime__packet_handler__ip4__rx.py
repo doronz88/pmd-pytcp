@@ -43,6 +43,7 @@ from pytcp.lib.packet_stats import PacketStatsRx
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.ip.ip_frag import IpFragFlowId
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
+from pytcp.runtime.packet_handler.dispatch import DispatchRegistry
 from pytcp.runtime.packet_handler.packet_handler__ip4__rx import (
     Ip4RxHandler,
 )
@@ -121,6 +122,13 @@ class _StubInterface:
 
         self.dispatched: list[str] = []
         self.last_udp_packet: PacketRx | None = None
+
+        # Build the IPv4 transport dispatch registry the way the real
+        # handler does, with the ICMPv4 / UDP / TCP spies registered.
+        self._ip4_proto_registry: DispatchRegistry[IpProto] = DispatchRegistry()
+        self._ip4_proto_registry.register(IpProto.ICMP4, self._phrx_icmp4)
+        self._ip4_proto_registry.register(IpProto.UDP, self._phrx_udp)
+        self._ip4_proto_registry.register(IpProto.TCP, self._phrx_tcp)
 
     @property
     def _ip4_unicast(self) -> list[Ip4Address]:

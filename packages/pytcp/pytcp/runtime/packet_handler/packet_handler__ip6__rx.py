@@ -259,29 +259,29 @@ class Ip6RxHandler:
             # trips on a chain-walked frame.
             packet_rx.ip6._payload = packet_rx.frame
 
-        # Transport / chain-terminator dispatch.
-        match current_next:
-            case IpProto.ICMP6:
-                self._if._phrx_icmp6(packet_rx)
-            case IpProto.UDP:
-                self._if._phrx_udp(packet_rx)
-            case IpProto.TCP:
-                self._if._phrx_tcp(packet_rx)
-            case IpProto.IP6_NO_NEXT_HEADER:
-                # RFC 8200 §4.7: chain terminator. Drop silently;
-                # nothing to dispatch.
-                self._if._packet_stats_rx.ip6__no_next_header += 1
-                __debug__ and log(
-                    "ip6",
-                    f"{packet_rx.tracker} - IP6_NO_NEXT_HEADER terminator, dropping silently.",
-                )
-            case _:
-                self._if._packet_stats_rx.ip6__no_proto_support__drop += 1
-                __debug__ and log(
-                    "ip6",
-                    f"{packet_rx.tracker} - Unsupported protocol {current_next}, dropping.",
-                )
-                self.__phrx_ip6__emit_parameter_problem_unrecognized_next_header(packet_rx, pointer=chain_offset)
+        # Transport / chain-terminator dispatch. The IpProto ->
+        # transport-handler demux goes through the per-interface
+        # dispatch registry (ICMPv6 / UDP / TCP); the No-Next-Header
+        # terminator and the unrecognized-next-header error path are
+        # not registry handlers and stay inline below.
+        handler = self._if._ip6_proto_registry.get(current_next)
+        if handler is not None:
+            handler(packet_rx)
+        elif current_next is IpProto.IP6_NO_NEXT_HEADER:
+            # RFC 8200 §4.7: chain terminator. Drop silently;
+            # nothing to dispatch.
+            self._if._packet_stats_rx.ip6__no_next_header += 1
+            __debug__ and log(
+                "ip6",
+                f"{packet_rx.tracker} - IP6_NO_NEXT_HEADER terminator, dropping silently.",
+            )
+        else:
+            self._if._packet_stats_rx.ip6__no_proto_support__drop += 1
+            __debug__ and log(
+                "ip6",
+                f"{packet_rx.tracker} - Unsupported protocol {current_next}, dropping.",
+            )
+            self.__phrx_ip6__emit_parameter_problem_unrecognized_next_header(packet_rx, pointer=chain_offset)
 
     def _phrx_ip6_hbh(self, packet_rx: PacketRx, /, *, chain_offset: int) -> bool:
         """

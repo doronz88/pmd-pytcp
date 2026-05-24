@@ -92,6 +92,7 @@ from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
 
+from .dispatch import DispatchRegistry
 from .packet_handler__arp__rx import ArpRxHandler
 from .packet_handler__arp__tx import ArpTxHandler
 from .packet_handler__ethernet_802_3__rx import Ethernet8023RxHandler
@@ -148,6 +149,18 @@ class PacketHandler(Subsystem, ABC):
     _ip4_tx: Ip4TxHandler
     _ip6_rx: Ip6RxHandler
     _ip6_tx: Ip6TxHandler
+
+    # Per-interface RX dispatch registries (see dispatch.py). Built at
+    # construction so membership encodes this interface's layer +
+    # protocol-support policy; the demux sites consult them instead of
+    # a hard-coded 'match'. The link-layer registry is keyed by
+    # 'EtherType' (consulted by the Ethernet RX demux on L2 and the
+    # TUN-PI demux on L3); the two transport registries are keyed by
+    # 'IpProto' (the IPv4 transport demux and the IPv6
+    # transport-terminator demux).
+    _ethertype_registry: DispatchRegistry[EtherType]
+    _ip4_proto_registry: DispatchRegistry[IpProto]
+    _ip6_proto_registry: DispatchRegistry[IpProto]
 
     if TYPE_CHECKING:
         # '_phtx_ethernet' is provided by the L2-only
@@ -383,6 +396,41 @@ class PacketHandler(Subsystem, ABC):
         self._ip4_tx = Ip4TxHandler(interface=_if)
         self._ip6_rx = Ip6RxHandler(interface=_if)
         self._ip6_tx = Ip6TxHandler(interface=_if)
+
+        # Build the per-interface RX dispatch registries. The
+        # link-layer registry is built by '_build_ethertype_registry'
+        # (overridden on 'PacketHandlerL2' to add the L2-only ARP
+        # entry) so its membership tracks the protocol-support flags
+        # and can be rebuilt if those flags change. The transport
+        # registries are layer-independent — both reached only after a
+        # datagram of the matching IP version has parsed, so the
+        # entries are unconditional (matching the prior unguarded
+        # 'match').
+        self._build_ethertype_registry()
+
+        self._ip4_proto_registry = DispatchRegistry()
+        self._ip4_proto_registry.register(IpProto.ICMP4, self._phrx_icmp4)
+        self._ip4_proto_registry.register(IpProto.UDP, self._phrx_udp)
+        self._ip4_proto_registry.register(IpProto.TCP, self._phrx_tcp)
+
+        self._ip6_proto_registry = DispatchRegistry()
+        self._ip6_proto_registry.register(IpProto.ICMP6, self._phrx_icmp6)
+        self._ip6_proto_registry.register(IpProto.UDP, self._phrx_udp)
+        self._ip6_proto_registry.register(IpProto.TCP, self._phrx_tcp)
+
+    def _build_ethertype_registry(self) -> None:
+        """
+        (Re)build the link-layer EtherType dispatch registry from the
+        current IPv4 / IPv6 protocol-support flags. 'PacketHandlerL2'
+        overrides this to add the L2-only ARP entry. Re-callable so a
+        support-flag change can be reflected in the registry.
+        """
+
+        self._ethertype_registry = DispatchRegistry()
+        if self._ip4_support:
+            self._ethertype_registry.register(EtherType.IP4, self._phrx_ip4)
+        if self._ip6_support:
+            self._ethertype_registry.register(EtherType.IP6, self._phrx_ip6)
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
@@ -2098,6 +2146,20 @@ class PacketHandlerL2(
             retrans_timer_ms=None,
         )
 
+    @override
+    def _build_ethertype_registry(self) -> None:
+        """
+        Extend the base link-layer dispatch registry with the L2-only
+        ARP entry (ARP is the link-layer half of IPv4 on a broadcast
+        link; a TUN / L3 interface has none). Gated by IPv4 support,
+        matching the prior 'case EtherType.ARP if self._ip4_support'
+        guard.
+        """
+
+        super()._build_ethertype_registry()
+        if self._ip4_support:
+            self._ethertype_registry.register(EtherType.ARP, self._phrx_arp)
+
     ###
     # ARP delegators — the stable RX / TX surface; the logic lives
     # in the composed 'ArpRxHandler' / 'ArpTxHandler' sub-handlers.
@@ -2803,20 +2865,21 @@ class PacketHandlerL3(
         assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
 
         if (packet_rx := self._rx_ring.dequeue()) is not None:
-            match EtherType.from_bytes(packet_rx.frame[2:4]):
-                case EtherType.IP6:
-                    if self._ip6_support:
-                        packet_rx.frame = packet_rx.frame[4:]
-                        self._phrx_ip6(packet_rx)
-                case EtherType.IP4:
-                    if self._ip4_support:
-                        packet_rx.frame = packet_rx.frame[4:]
-                        self._phrx_ip4(packet_rx)
-                case _:
-                    __debug__ and log(
-                        "stack",
-                        f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
-                    )
+            # TUN PI-header EtherType -> handler demux via the
+            # per-interface dispatch registry. The L3 registry holds
+            # only the support-gated IPv4 / IPv6 entries (no ARP), so a
+            # miss is an unhandled EtherType. The 4-byte TUN PI header
+            # is stripped before the IP handler sees the frame.
+            ethertype = EtherType.from_bytes(packet_rx.frame[2:4])
+            handler = self._ethertype_registry.get(ethertype)
+            if handler is None:
+                __debug__ and log(
+                    "stack",
+                    f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
+                )
+            else:
+                packet_rx.frame = packet_rx.frame[4:]
+                handler(packet_rx)
 
     @override
     def _claim_ip6_address_async(
