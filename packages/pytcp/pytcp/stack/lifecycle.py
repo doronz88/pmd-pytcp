@@ -59,6 +59,7 @@ from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStats
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
+from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.runtime.fib import RouteTable
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -324,10 +325,16 @@ def add_interface(
         address_view = _stack.address.interface(ifindex)
         dhcp_mac = _stack.link.interface(ifindex).mac_address
         assert dhcp_mac is not None, "L2 interface must expose a unicast MAC via the link tool."
+        # RFC 5227 ACD runs in userspace over the AF_PACKET socket
+        # (Phase 4) — the pre-lease Probe and the BOUND Announcement
+        # delegate to the Ip4Acd engine, NOT the Address API. The
+        # Address API stays only for the BOUND-transition address
+        # install (RTM_NEWADDR).
+        dhcp_acd = Ip4Acd(mac_address=dhcp_mac, ifindex=ifindex)
         _stack.dhcp4_client = Dhcp4Client(
             mac_address=dhcp_mac,
-            arp_dad_verifier=lambda addr: address_view.probe(address=addr).success,
-            arp_dad_announcer=lambda addr: address_view.announce(address=addr),
+            arp_dad_verifier=lambda addr: dhcp_acd.probe(address=addr).success,
+            arp_dad_announcer=lambda addr: dhcp_acd.announce(address=addr),
             address_api=address_view,
             route_api=_stack.route,
         )
