@@ -72,17 +72,21 @@ inform a normative §2 requirement, and otherwise omitted.
 > the address is already in use, by broadcasting ARP Probe
 > packets."
 
-**Adherence:** **met**. PyTCP's claim path —
-`Ip4AddressApi.claim_with_acd`
-(`packages/pytcp/pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
-sequence via `_arp_dad_probe_address` before admitting a
-candidate address to `self._ip4_ifaddr`. Same primitive backs
-the DHCPv4 DAD path
+**Adherence:** **met**. As of Phase 4.4a every claim path runs
+the §2.1.1 probe sequence over the userspace `Ip4Acd` engine
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`), the Linux
+`sd-ipv4acd` model — each managed address probes (and, on a clean
+probe, announces) over its own AF_PACKET socket, with the stack's
+ARP RX path uninvolved. The static-host claim
+(`PacketHandlerL2._create_stack_ip4_addressing`) builds one
+`Ip4Acd` per candidate and calls `probe` then `announce` before
+admitting the address to `self._ip4_ifaddr`. The DHCPv4 DAD path
 (`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` via the
-`arp_dad_verifier` callback wired in
-`packages/pytcp/pytcp/stack/__init__.py:476`) and the RFC 3927 link-local
-candidate-probe loop
-(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`).
+`arp_dad_verifier` callback wired to `Ip4Acd.probe` in
+`packages/pytcp/pytcp/stack/lifecycle.py`) and the RFC 3927
+link-local candidate-probe loop
+(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`,
+via `Ip4Acd.claim`) use the same engine.
 
 > "A host MUST NOT perform this check periodically as a
 > matter of course."

@@ -74,6 +74,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6SlaacAddressState,
     Icmp6TempAddress,
 )
+from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.rx_ring import RxRing
@@ -1982,19 +1983,22 @@ class PacketHandlerL2(
         method is not the integration point for that.
         """
 
-        # Probe each candidate sequentially via the Address API's
-        # 'claim_with_acd' composite primitive (probe + announce
-        # + install in one synchronous call). Each candidate stays
-        # in '_ip4_ifaddr_candidate' until its probe loop completes
-        # so the ARP RX path can match the address against the
-        # candidate list when scoring inbound conflicts (see
-        # 'packet_handler__arp__rx'). The API hides the underlying
-        # RFC 5227 §2.1.1 probe / §2.3 announce helpers so this
-        # path doesn't reach into '_arp_dad_*' directly.
+        # Probe each candidate sequentially over its own 'Ip4Acd'
+        # engine (the Linux 'sd-ipv4acd' model — RFC 5227 §2.1.1
+        # Probe then §2.3 Announce on a clean probe). A statically
+        # configured host gets probe + announce only, with NO
+        # ongoing defender: this mirrors a bare Linux 'ip addr add',
+        # where §2.4 ongoing defense is a managing-daemon job (DHCP
+        # client / link-local autoconfig), not part of static
+        # assignment. The engine opens its own AF_PACKET socket and
+        # reads ARP off it for conflicts, so the stack's ARP RX path
+        # is uninvolved.
         for ip4_host in list(self._ip4_ifaddr_candidate):
-            result = stack.address.claim_with_acd(ip4_ifaddr=ip4_host)
             self._ip4_ifaddr_candidate.remove(ip4_host)
-            if result.success:
+            acd = Ip4Acd(mac_address=self._mac_unicast, ifindex=self._ifindex)
+            if acd.probe(address=ip4_host.address).success:
+                acd.announce(address=ip4_host.address)
+                self._assign_ip4_host(ip4_host=ip4_host)
                 __debug__ and log(
                     "stack",
                     f"Successfully claimed IPv4 address {ip4_host.address}",

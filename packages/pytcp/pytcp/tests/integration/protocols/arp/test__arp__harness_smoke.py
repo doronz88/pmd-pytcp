@@ -30,7 +30,7 @@
 Smoke tests for the 'ArpTestCase' integration-test harness. The
 goal is to pin that '_build_arp_frame', '_drive_arp', the
 '_set_monotonic' / '_advance_monotonic' clock controls, and
-'_drive_dad' (with and without 'on_sleep') compose correctly so
+'_drive_dad' (clean and conflict probe outcomes) compose correctly so
 the migrated 'test__arp__rx.py' / 'test__arp__tx.py' tests, the
 DAD-flow tests at 'test__arp__dad.py', and the DEFEND_INTERVAL
 tests at 'test__arp__defend_interval.py' can rely on the
@@ -47,7 +47,6 @@ from pytcp.tests.lib.arp_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
     MAC__BROADCAST,
-    MAC__UNSPECIFIED,
     STACK__IP4_HOST,
     STACK__IP4_HOST__CANDIDATE,
     STACK__MAC_ADDRESS,
@@ -203,96 +202,51 @@ class TestArpHarnessSmoke(ArpTestCase):
             ),
         )
 
-    def test__arp__harness__drive_dad_no_callback_emits_three_probes_and_two_announcements(self) -> None:
+    def test__arp__harness__drive_dad_clean_probe_installs_candidate(self) -> None:
         """
-        Ensure '_drive_dad' with no 'on_sleep' callback runs the
-        three-iteration probe loop synchronously and emits the
-        canonical 3 probes + 2 announcements = 5 wire frames
-        the DAD flow produces. Pins the harness's 'time.sleep'
-        patch against the production loop.
+        Ensure '_drive_dad' (default clean probe) drives the
+        static-host path over the mocked 'Ip4Acd' engine: it
+        calls 'probe' then 'announce' for the candidate and
+        installs it into '_ip4_ifaddr'. Pins the harness's
+        engine-mock wiring against the production glue.
 
         Reference: RFC 5227 §2.1 (MUST probe before use).
-        Reference: RFC 5227 §2.3 (MUST announce ANNOUNCE_NUM = 2).
-        """
-
-        self._drive_dad()
-
-        self.assertEqual(
-            len(self._frames_tx),
-            5,
-            msg=(
-                "Expected exactly 5 wire frames (3 probes + 2 announcements) for "
-                f"a clean DAD run; got {len(self._frames_tx)}."
-            ),
-        )
-
-    def test__arp__harness__drive_dad_on_sleep_callback_fires_three_times(self) -> None:
-        """
-        Ensure '_drive_dad' invokes the optional 'on_sleep'
-        callback exactly three times — one per iteration of the
-        probe loop — with iteration indices 0, 1, 2 in order.
-        Pins the harness's per-sleep-callback FIFO against the
-        production probe-loop shape.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        seen_indices: list[int] = []
-
-        def _record(idx: int) -> None:
-            seen_indices.append(idx)
-
-        self._drive_dad(on_sleep=_record)
-
-        self.assertEqual(
-            seen_indices,
-            [0, 1, 2],
-            msg=(
-                "'on_sleep' must fire once per probe iteration with indices 0, 1, 2 " f"in order. Got: {seen_indices!r}"
-            ),
-        )
-
-    def test__arp__harness__drive_dad_callback_can_inject_rx_frames(self) -> None:
-        """
-        Ensure the 'on_sleep' callback can reach back into the
-        harness via '_drive_arp' and inject RX frames during the
-        probe window. This is the multi-step capability the
-        DAD-flow conflict tests rely on.
-
-        Reference: RFC 5227 §2.1.1 (probe-conflict detection).
+        Reference: RFC 5227 §2.3 (MUST announce after probe).
         """
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
-        injected_count = 0
 
-        def _inject(idx: int) -> None:
-            nonlocal injected_count
-            if idx == 0:
-                self._drive_arp(
-                    ethernet_dst=MAC__BROADCAST,
-                    ethernet_src=HOST_A__MAC_ADDRESS,
-                    arp_oper=ArpOperation.REQUEST,
-                    arp_sha=HOST_A__MAC_ADDRESS,
-                    arp_spa=candidate_address,
-                    arp_tha=MAC__UNSPECIFIED,
-                    arp_tpa=candidate_address,
-                )
-                injected_count += 1
+        self._drive_dad()
 
-        self._drive_dad(on_sleep=_inject)
-
-        self.assertEqual(
-            injected_count,
-            1,
-            msg="'on_sleep' callback must have been able to call '_drive_arp' exactly once.",
+        self._acd.probe.assert_called_once_with(address=candidate_address)
+        self._acd.announce.assert_called_once_with(address=candidate_address)
+        addresses = {host.address for host in self._packet_handler._ip4_ifaddr}
+        self.assertIn(
+            candidate_address,
+            addresses,
+            msg="A clean probe must install the candidate into '_ip4_ifaddr'.",
         )
-        self.assertTrue(
-            self._packet_handler._ip4_arp_dad__registry.has_signal(candidate_address),
-            msg=(
-                "Injected RX conflict must have flagged the candidate in the "
-                "DAD slot registry — proving the callback's '_drive_arp' "
-                "actually drove the production RX path."
-            ),
+
+    def test__arp__harness__drive_dad_conflict_suppresses_install(self) -> None:
+        """
+        Ensure '_drive_dad(probe_success=False)' makes the mocked
+        engine report a conflict, so the static-host path neither
+        announces nor installs the candidate. Pins the harness's
+        conflict-outcome control against the production glue.
+
+        Reference: RFC 5227 §2.1.1 (probe-conflict aborts claim).
+        """
+
+        candidate_address = STACK__IP4_HOST__CANDIDATE.address
+
+        self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
+
+        self._acd.announce.assert_not_called()
+        addresses = {host.address for host in self._packet_handler._ip4_ifaddr}
+        self.assertNotIn(
+            candidate_address,
+            addresses,
+            msg="A conflicted probe must NOT install the candidate into '_ip4_ifaddr'.",
         )
 
     def test__arp__harness__network_test_case_state_intact(self) -> None:

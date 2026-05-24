@@ -43,10 +43,11 @@ Extends 'NetworkTestCase' with ARP-aware helpers:
     exercised deterministically.
 
   - '_drive_dad' — drive 'PacketHandlerL2._create_stack_ip4_addressing'
-    synchronously with 'time.sleep' patched out and an optional
-    per-iteration callback that can inject conflicting RX frames
-    into the probe window. Lets §2.1.1 probe-conflict-aborts-claim
-    behaviour be exercised end-to-end.
+    synchronously with the per-candidate 'Ip4Acd' engine mocked
+    out, so the static-host probe / announce glue is exercised
+    without real RFC 5227 timing. The probe outcome (clean vs
+    conflict) is set per call; the RFC 5227 §2.1.1 / §2.3 wire
+    mechanics themselves are pinned by the 'Ip4Acd' engine tests.
 
 pytcp/tests/lib/arp_testcase.py
 
@@ -55,13 +56,13 @@ ver 3.0.6
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Callable
-from unittest.mock import patch
+from typing import cast
+from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import ArpAssembler, ArpOperation, EthernetAssembler
 from net_proto.lib.packet_rx import PacketRx
+from pytcp.protocols.ip4.acd.ip4_acd import AcdResult
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
@@ -105,14 +106,13 @@ class ArpTestCase(NetworkTestCase):
     """
 
     _monotonic_t: float
-    _dad_sleep_callbacks: list[Callable[[], None]]
-    _dad_sleep_durations: list[float]
+    _acd: MagicMock
 
     def setUp(self) -> None:
         """
         Install the ARP-specific patches: clock control for the
-        DEFEND_INTERVAL rate-limit and 'time.sleep' interception
-        for the synchronous DAD driver.
+        DEFEND_INTERVAL rate-limit and an 'Ip4Acd' engine mock for
+        the synchronous DAD driver.
         """
 
         super().setUp()
@@ -150,31 +150,21 @@ class ArpTestCase(NetworkTestCase):
         self._arp_cache_monotonic_patch.start()
         self.addCleanup(self._arp_cache_monotonic_patch.stop)
 
-        # FIFO of callbacks invoked one per 'time.sleep' call from
-        # 'PacketHandlerL2._create_stack_ip4_addressing'. The DAD
-        # loop runs three iterations, so '_drive_dad' typically
-        # populates this with three callbacks (or leaves it empty
-        # for a no-injection run).
-        self._dad_sleep_callbacks = []
-
-        # Records every 'time.sleep(dur)' the patched sleep
-        # observes, in order. Lets tests assert on the timing
-        # pattern of the DAD flow (probe-loop intervals,
-        # ANNOUNCE_INTERVAL between Announcements, ANNOUNCE_WAIT
-        # post-probe quiet period, etc.).
-        self._dad_sleep_durations = []
-
-        def _patched_sleep(dur: float) -> None:
-            self._dad_sleep_durations.append(dur)
-            if self._dad_sleep_callbacks:
-                self._dad_sleep_callbacks.pop(0)()
-
-        self._sleep_patch = patch(
-            "pytcp.runtime.packet_handler.time.sleep",
-            side_effect=_patched_sleep,
+        # Mock the per-candidate 'Ip4Acd' engine the static-host
+        # path constructs. The static-host
+        # '_create_stack_ip4_addressing' builds one engine per
+        # candidate and calls 'probe' then (on a clean probe)
+        # 'announce'; the engine class mock returns the same
+        # instance for every construction, so 'self._acd.probe' /
+        # '.announce' capture the calls across all candidates. The
+        # real RFC 5227 timing / wire mechanics are covered by the
+        # 'Ip4Acd' engine tests — here the engine is a synchronous
+        # stub so the DAD glue runs without real sockets or sleeps.
+        acd_class = self.enterContext(
+            patch("pytcp.runtime.packet_handler.Ip4Acd", autospec=True),
         )
-        self._sleep_patch.start()
-        self.addCleanup(self._sleep_patch.stop)
+        self._acd = cast(MagicMock, acd_class.return_value)
+        self._acd.probe.side_effect = lambda *, address: AcdResult(success=True, address=address)
 
     # -- clock control ----------------------------------------------------
 
@@ -300,29 +290,23 @@ class ArpTestCase(NetworkTestCase):
     def _drive_dad(
         self,
         *,
-        on_sleep: Callable[[int], None] | None = None,
-        num_sleep_callbacks: int = 3,
+        probe_success: bool = True,
+        conflict_mac: MacAddress | None = None,
     ) -> None:
         """
         Drive 'PacketHandlerL2._create_stack_ip4_addressing'
-        synchronously. The DAD loop runs three probe iterations
-        with a 'time.sleep(random.uniform(1, 2))' between each;
-        this harness patches the sleep to a no-op (or to a
-        test-supplied callback).
-
-        If 'on_sleep' is provided, it is invoked once per sleep
-        with the iteration index (0, 1, 2, ...). Tests can use
-        this hook to inject conflicting RX frames into the probe
-        window via '_drive_arp' to exercise §2.1.1 conflict
-        detection. 'num_sleep_callbacks' controls how many
-        callback slots are registered — the default 3 covers
-        the probe-loop iterations; tests targeting later sleeps
-        (RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period
-        at index 3, §2.3 ANNOUNCE_INTERVAL between Announcements
-        at index 4) pass higher counts.
+        synchronously over the mocked 'Ip4Acd' engine. With
+        'probe_success=True' (the default) every candidate's probe
+        comes back clean, so the path announces and installs it;
+        with 'probe_success=False' the probe reports a conflict
+        (peer 'conflict_mac'), so the candidate is neither announced
+        nor installed. The engine's real RFC 5227 §2.1.1 / §2.3
+        wire mechanics are pinned by the 'Ip4Acd' engine tests.
         """
 
-        if on_sleep is not None:
-            self._dad_sleep_callbacks = [partial(on_sleep, i) for i in range(num_sleep_callbacks)]
-
+        self._acd.probe.side_effect = lambda *, address: AcdResult(
+            success=probe_success,
+            address=address,
+            conflict_mac=conflict_mac,
+        )
         self._packet_handler._create_stack_ip4_addressing()
