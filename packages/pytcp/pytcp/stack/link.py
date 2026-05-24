@@ -496,11 +496,11 @@ class LinkApi:
         L3 (TUN) where there is no Ethernet layer.
 
         Peer ARP / ND caches retain stale entries for the
-        old MAC until they age out naturally; consumers
-        that need immediate refresh should call
-        'stack.address.send_gratuitous_arp(address=...)'
-        for every owned IPv4 host after the next
-        'stack.start()'.
+        old MAC until they age out naturally; immediate
+        refresh is the address manager's job — the DHCPv4
+        client and RFC 3927 link-local autoconfig re-announce
+        their addresses (RFC 5227 §2.3) over their own
+        'Ip4Acd' engine after the next 'stack.start()'.
         """
 
         from pytcp import stack

@@ -111,38 +111,32 @@ class ArpTestCase(NetworkTestCase):
     def setUp(self) -> None:
         """
         Install the ARP-specific patches: clock control for the
-        DEFEND_INTERVAL rate-limit and an 'Ip4Acd' engine mock for
-        the synchronous DAD driver.
+        ARP-cache rate-limit and an 'Ip4Acd' engine mock for the
+        synchronous DAD driver.
         """
 
         super().setUp()
 
-        # Clock for time-sensitive ARP behaviours. The harness
-        # patches 'time.monotonic' in every ARP-related production
-        # module so the same test-controlled clock is observed by:
-        #
-        #   - 'packet_handler__arp__rx._maybe_send_arp_defense'
-        #     (RFC 5227 §2.4(c) DEFEND_INTERVAL)
-        #   - 'arp_cache.find_entry' (RFC 1122 §2.3.2.1
-        #     per-destination ARP-Request rate-limit)
+        # Clock for time-sensitive ARP behaviours. The ARP cache's
+        # 'find_entry' reads 'time.monotonic' for the RFC 1122
+        # §2.3.2.1 per-destination ARP-Request rate-limit; patch it
+        # so '_set_monotonic' / '_advance_monotonic' drive that clock
+        # deterministically. (The ARP RX path no longer reads the
+        # clock — RFC 5227 §2.4 ongoing defense moved to the
+        # userspace 'Ip4Acd' engine in Phase 4.)
         self._monotonic_t = 0.0
 
         def _read_monotonic() -> float:
             return self._monotonic_t
 
-        self._monotonic_patch = patch(
-            "pytcp.runtime.packet_handler.packet_handler__arp__rx.time.monotonic",
-            side_effect=_read_monotonic,
-        )
-        self._monotonic_patch.start()
-        # Register the stop via addCleanup (NOT tearDown): these patch
-        # 'time.monotonic' / 'time.sleep' on the SHARED 'time' module, so a
-        # leaked patch is global. addCleanup runs even when a SUBCLASS setUp
-        # raises after 'super().setUp()' — tearDown does not. Without this a
-        # broken subclass setUp leaks a mocked 'time.monotonic' into every
-        # later test in the suite (e.g. the DHCPv4 '_dnav4_probe' busy-loop
-        # spins unboundedly on a mock clock and OOMs the run).
-        self.addCleanup(self._monotonic_patch.stop)
+        # Register the stop via addCleanup (NOT tearDown): this patches
+        # 'time.monotonic' on the SHARED 'time' module, so a leaked
+        # patch is global. addCleanup runs even when a SUBCLASS setUp
+        # raises after 'super().setUp()' — tearDown does not. Without
+        # this a broken subclass setUp leaks a mocked 'time.monotonic'
+        # into every later test in the suite (e.g. the DHCPv4
+        # '_dnav4_probe' busy-loop spins unboundedly on a mock clock
+        # and OOMs the run).
         self._arp_cache_monotonic_patch = patch(
             "pytcp.lib.neighbor.time.monotonic",
             side_effect=_read_monotonic,

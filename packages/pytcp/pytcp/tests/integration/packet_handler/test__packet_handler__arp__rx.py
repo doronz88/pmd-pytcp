@@ -367,68 +367,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             ),
         },
         {
-            "_description": "Ethernet/ARP - request with SPA == our IP -> send gratuitous ARP as defense",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.7
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.91
-                #
-                # Summary: Broadcast ARP request — “Who has 10.0.1.91? Tell 10.0.1.7.”
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x07"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x5b",
-            ],
-            "_expected__frames_tx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:07
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:07
-                #   Sender IP       : 10.0.1.7
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.7
-                #
-                # Summary: Broadcast Gratuitous ARP (reply flavor) — “10.0.1.7 is at 02:00:00:00:00:07.”
-                #          (SPA == TPA, THA = 00:00:00:00:00:00)
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__op_request=1,
-                arp__op_request__conflict__defend=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_reply__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
             "_description": "Ethernet/ARP - request looped back: frame sourced from our own MAC, drop",
             "_frames_rx": [
                 # Ethernet II
@@ -530,45 +468,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__op_request=1,
                 arp__op_request__gratuitous=1,
                 arp__op_request__update_arp_cache=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": (
-                "Ethernet/ARP - gratuitous request announcing candidate IP 10.0.1.5 we are probing: "
-                "conflict detected, no reply"
-            ),
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.5   (candidate address we are probing)
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.5   (same as SPA)
-                #
-                # Summary: Gratuitous ARP Request — “Who has 10.0.1.5? Tell 10.0.1.5.”
-                #          (Announcement of an address we’re probing -> conflict)
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x05",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__op_request=1,
-                arp__op_request__gratuitous=1,
-                arp__op_request__probe_conflict__gratuitous=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
@@ -746,67 +645,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
             "_expected__packet_stats_tx": PacketStatsTx(),
         },
         {
-            "_description": "Ethernet/ARP - reply with SPA == our IP, send gratuitous ARP as defense",
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:07 (our MAC)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.7           (our IP — conflict)
-                #   Target MAC      : 02:00:00:00:00:07  (our MAC)
-                #   Target IP       : 10.0.1.7
-                #
-                # Summary: Unicast ARP reply claiming our IP (conflict). We must defend with a broadcast GARP.
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x07"
-                b"\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07",
-            ],
-            "_expected__frames_tx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:07 (our MAC)
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:07  (our MAC)
-                #   Sender IP       : 10.0.1.7           (our IP)
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.7
-                #
-                # Summary: Broadcast Gratuitous ARP (reply flavor) — “10.0.1.7 is at 02:00:00:00:00:07.”
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                arp__pre_parse=1,
-                arp__op_reply=1,
-                arp__op_reply__conflict__defend=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_reply__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
             "_description": "Ethernet/ARP - reply looped back: frame sourced from our own MAC, drop",
             "_frames_rx": [
                 # Ethernet II
@@ -838,82 +676,6 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
                 arp__pre_parse=1,
                 arp__op_reply=1,
                 arp__op_reply__looped__drop=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": (
-                "Ethernet/ARP - gratuitous reply announcing candidate IP 10.0.1.5 we are probing: "
-                "conflict detected, no learn/no reply"
-            ),
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:91
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.5   (candidate address we are probing)
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.5   (same as SPA)
-                #
-                # Summary: Gratuitous ARP Reply — “10.0.1.5 is at 02:00:00:00:00:91.”
-                #          (Announcement of an address we’re probing -> conflict)
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x05",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_broadcast=1,
-                arp__pre_parse=1,
-                arp__op_reply=1,
-                arp__op_reply__gratuitous=1,
-                arp__op_reply__probe_conflict__gratuitous=1,
-            ),
-            "_expected__packet_stats_tx": PacketStatsTx(),
-        },
-        {
-            "_description": (
-                "Ethernet/ARP - reply to our probe: SPA matches candidate IP we are probing, " "conflict detected"
-            ),
-            "_frames_rx": [
-                # Ethernet II
-                #   Destination MAC : 02:00:00:00:00:07 (our MAC, we sent probe)
-                #   Source MAC      : 02:00:00:00:00:91 (foreign host)
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 44 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:91
-                #   Sender IP       : 10.0.1.5   (candidate IP we’re probing)
-                #   Target MAC      : 02:00:00:00:00:07 (our MAC)
-                #   Target IP       : 0.0.0.0   (unspecified, per ARP probe reply)
-                #
-                # Summary: Foreign host responds to our ARP probe with a unicast ARP reply,
-                # claiming the candidate IP. This indicates conflict -> we must not claim it.
-                b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x91\x0a\x00\x01\x05"
-                b"\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00",
-            ],
-            "_expected__frames_tx": [],
-            "_expected__packet_stats_rx": PacketStatsRx(
-                ethernet__pre_parse=1,
-                ethernet__dst_unicast=1,
-                arp__pre_parse=1,
-                arp__op_reply=1,
-                arp__op_reply__probe_conflict=1,
             ),
             "_expected__packet_stats_tx": PacketStatsTx(),
         },

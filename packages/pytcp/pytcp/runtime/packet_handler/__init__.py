@@ -56,15 +56,6 @@ from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
-from pytcp.protocols.arp.arp__constants import (
-    ARP__ANNOUNCE_INTERVAL,
-    ARP__ANNOUNCE_NUM,
-    ARP__ANNOUNCE_WAIT,
-    ARP__PROBE_MAX,
-    ARP__PROBE_MIN,
-    ARP__PROBE_NUM,
-    ARP__PROBE_WAIT,
-)
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6DadState,
@@ -1346,8 +1337,6 @@ class PacketHandlerL2(
     _mac_unicast: MacAddress
     _mac_multicast: list[MacAddress]
     _mac_broadcast: MacAddress
-    _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
-    _arp_defend__last_emitted: dict[Ip4Address, float]
     _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
     _icmp6_ra__event: Semaphore
@@ -1406,31 +1395,6 @@ class PacketHandlerL2(
         self._mac_unicast = mac_address
         self._mac_multicast = []
         self._mac_broadcast = MacAddress(0xFFFFFFFFFFFF)
-
-        # Used for the ARP DAD process (RFC 5227 §2.1). Per-
-        # candidate state lives in 'DadSlotRegistry[Ip4Address]'
-        # so the RX ARP handler can signal a conflict via the
-        # atomic 'try_signal_conflict' API instead of mutating
-        # a shared set under no lock. The registry's lock makes
-        # boot-path 'has_signal' polling atomic against an RX
-        # 'try_signal_conflict' call.
-        self._ip4_arp_dad__registry: DadSlotRegistry[Ip4Address] = DadSlotRegistry()
-
-        # RFC 5227 §2.4(c) DEFEND_INTERVAL rate-limit state: per-IP
-        # 'time.monotonic()' timestamp of the last defensive
-        # gratuitous ARP. Read+updated by '_handle_arp_conflict'
-        # in the RX mixin.
-        self._arp_defend__last_emitted: dict[Ip4Address, float] = {}
-
-        # RFC 5227 §2.4(b) per-IP last-conflict timestamp state.
-        # Distinct from '_arp_defend__last_emitted': this tracks
-        # when we last OBSERVED a conflict, not when we last
-        # DEFENDED. The two timestamps differ because rate-
-        # limiting suppresses defenses but every conflict still
-        # registers here. Two conflicts within DEFEND_INTERVAL
-        # of each other trigger the abandon path
-        # ('_abandon_ipv4_address').
-        self._arp_defend__last_conflict_at: dict[Ip4Address, float] = {}
 
         # Used for the ICMPv6 ND DAD process. Per-address state
         # (events, peer TLLA capture, RFC 7527 Enhanced DAD
@@ -1915,59 +1879,6 @@ class PacketHandlerL2(
         # tracking table and relied on the loop above for
         # their claim ordering.
         self._ip6_addressing_complete = True
-
-    def _arp_dad_probe_address(self, ip4_unicast: Ip4Address, /) -> bool:
-        """
-        RFC 5227 §2.1.1 ARP Probe loop for a single candidate IPv4
-        address. Installs a registry slot, sleeps the initial
-        PROBE_WAIT random delay, emits PROBE_NUM Probes with
-        PROBE_MIN..PROBE_MAX spacing, then sleeps ANNOUNCE_WAIT
-        before checking the slot's conflict signal. Returns True
-        when the address is safe to claim, False on detected
-        conflict.
-
-        Used by 'Dhcp4Client' (Phase 2.2 — via the
-        'arp_dad_verifier' callback) and by the static-host path
-        in '_create_stack_ip4_addressing'.
-        """
-
-        self._ip4_arp_dad__registry.install(ip4_unicast)
-
-        # RFC 5227 §2.1.1 PROBE_WAIT — initial 0..PROBE_WAIT
-        # random delay before the first Probe so a fleet of hosts
-        # powered on simultaneously do not all probe at the same
-        # instant.
-        time.sleep(random.uniform(0, ARP__PROBE_WAIT))
-
-        # RFC 5227 §2.1.1 — broadcast PROBE_NUM Probes spaced
-        # uniformly between PROBE_MIN and PROBE_MAX seconds.
-        for _ in range(ARP__PROBE_NUM):
-            if not self._ip4_arp_dad__registry.has_signal(ip4_unicast):
-                self._send_arp_probe(ip4_unicast=ip4_unicast)
-                __debug__ and log("stack", f"Sent out ARP Probe for {ip4_unicast}")
-            time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))
-
-        # RFC 5227 §2.1.1 ANNOUNCE_WAIT post-probe quiet period —
-        # wait after the last Probe before any Announcement so a
-        # late conflicting ARP can still flag the candidate via
-        # the RX path.
-        time.sleep(ARP__ANNOUNCE_WAIT)
-
-        return not self._ip4_arp_dad__registry.has_signal(ip4_unicast)
-
-    def _arp_dad_announce_address(self, ip4_unicast: Ip4Address, /) -> None:
-        """
-        RFC 5227 §2.3 — broadcast ANNOUNCE_NUM gratuitous ARP
-        Announcements after a successful claim, spaced
-        ANNOUNCE_INTERVAL seconds apart. The host can begin using
-        the IP immediately after the first Announcement; the
-        second is insurance against peers that missed the first.
-        """
-
-        for announce_idx in range(ARP__ANNOUNCE_NUM):
-            if announce_idx > 0:
-                time.sleep(ARP__ANNOUNCE_INTERVAL)
-            self._send_arp_announcement(ip4_unicast=ip4_unicast)
 
     @override
     def _create_stack_ip4_addressing(self) -> None:

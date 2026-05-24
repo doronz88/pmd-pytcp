@@ -47,7 +47,6 @@ from pytcp.tests.lib.network_testcase import (
     MAC__BROADCAST,
     MAC__UNSPECIFIED,
     STACK__IP4_HOST,
-    STACK__IP4_HOST__CANDIDATE,
     STACK__MAC_ADDRESS,
     NetworkTestCase,
 )
@@ -289,113 +288,6 @@ class TestPacketHandlerArpTxNoIp4Support(NetworkTestCase):
 @parameterized_class(
     [
         {
-            "_description": "_send_arp_announcement - gratuitous request claiming our IP",
-            "_method_name": "_send_arp_announcement",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:07
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 02:00:00:00:00:07
-                #   Sender IP       : 10.0.1.7
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.7   (= SPA — gratuitous announcement)
-                #
-                # Summary: ARP Announcement (RFC 5227) — broadcast gratuitous request,
-                #          SPA == TPA, claiming 10.0.1.7.
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_request__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
-            "_description": "_send_gratuitous_arp - gratuitous reply announcing our IP",
-            "_method_name": "_send_gratuitous_arp",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:07
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 2 (Reply)
-                #   Sender MAC      : 02:00:00:00:00:07
-                #   Sender IP       : 10.0.1.7
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.7   (= SPA — gratuitous announcement)
-                #
-                # Summary: Gratuitous ARP (reply flavor) — broadcast unsolicited reply,
-                #          SPA == TPA, announcing 10.0.1.7 -> 02:00:00:00:00:07.
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x02\x02\x00\x00\x00\x00\x07\x0a\x00\x01\x07"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x07",
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_reply__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
-            "_description": "_send_arp_probe - probe for candidate IP (RFC 5227 §2.1.1)",
-            "_method_name": "_send_arp_probe",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST__CANDIDATE.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # Ethernet II
-                #   Destination MAC : ff:ff:ff:ff:ff:ff (broadcast)
-                #   Source MAC      : 02:00:00:00:00:07
-                #   Ethertype       : 0x0806 (ARP)
-                #   Frame length    : 42 bytes
-                #
-                # ARP (Ethernet/IPv4)
-                #   Hardware type   : 1 (Ethernet)
-                #   Protocol type   : 0x0800 (IPv4)
-                #   HLEN / PLEN     : 6 / 4
-                #   Operation       : 1 (Request)
-                #   Sender MAC      : 02:00:00:00:00:07
-                #   Sender IP       : 0.0.0.0    (RFC 5227 probe: SPA unspecified)
-                #   Target MAC      : 00:00:00:00:00:00
-                #   Target IP       : 10.0.1.5   (candidate IP)
-                #
-                # Summary: ARP Probe (RFC 5227) — “Is 10.0.1.5 in use? Replies tell me.”
-                b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06\x00\x01"
-                b"\x08\x00\x06\x04\x00\x01\x02\x00\x00\x00\x00\x07\x00\x00\x00\x00"
-                b"\x00\x00\x00\x00\x00\x00\x0a\x00\x01\x05",
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_request__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
             "_description": "_send_arp_reply - unicast reply to peer",
             "_method_name": "_send_arp_reply",
             "_kwargs": {
@@ -510,8 +402,7 @@ class TestPacketHandlerArpTxNoIp4Support(NetworkTestCase):
 class TestPacketHandlerArpTxHelpers(NetworkTestCase):
     """
     Test the Packet Handler ARP TX helper methods that compose
-    '_phtx_arp' calls (_send_arp_announcement, _send_gratuitous_arp,
-    _send_arp_probe, _send_arp_reply, send_arp_request).
+    '_phtx_arp' calls (_send_arp_reply, send_arp_request).
     """
 
     _description: str

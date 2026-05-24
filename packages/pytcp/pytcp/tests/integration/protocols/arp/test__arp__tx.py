@@ -51,7 +51,6 @@ from pytcp.tests.lib.arp_testcase import (
     MAC__BROADCAST,
     MAC__UNSPECIFIED,
     STACK__IP4_HOST,
-    STACK__IP4_HOST__CANDIDATE,
     STACK__MAC_ADDRESS,
     ArpTestCase,
 )
@@ -269,86 +268,6 @@ class TestArpTxNoIp4Support(ArpTestCase):
 @parameterized_class(
     [
         {
-            "_description": "_send_arp_announcement - gratuitous request claiming our IP",
-            "_method_name": "_send_arp_announcement",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # RFC 5227 §2.3 ARP Announcement: REQUEST opcode,
-                # SPA == TPA == our IP, broadcast L2 destination.
-                ArpTestCase._build_arp_frame(
-                    ethernet_dst=MAC__BROADCAST,
-                    ethernet_src=STACK__MAC_ADDRESS,
-                    arp_oper=ArpOperation.REQUEST,
-                    arp_sha=STACK__MAC_ADDRESS,
-                    arp_spa=STACK__IP4_HOST.address,
-                    arp_tha=MAC__UNSPECIFIED,
-                    arp_tpa=STACK__IP4_HOST.address,
-                ),
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_request__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
-            "_description": "_send_gratuitous_arp - gratuitous reply announcing our IP",
-            "_method_name": "_send_gratuitous_arp",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # Gratuitous ARP (reply flavor): REPLY opcode,
-                # SPA == TPA == our IP, broadcast L2 destination.
-                # Used by the §2.4 conflict-defense path.
-                ArpTestCase._build_arp_frame(
-                    ethernet_dst=MAC__BROADCAST,
-                    ethernet_src=STACK__MAC_ADDRESS,
-                    arp_oper=ArpOperation.REPLY,
-                    arp_sha=STACK__MAC_ADDRESS,
-                    arp_spa=STACK__IP4_HOST.address,
-                    arp_tha=MAC__UNSPECIFIED,
-                    arp_tpa=STACK__IP4_HOST.address,
-                ),
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_reply__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
-            "_description": "_send_arp_probe - probe for candidate IP",
-            "_method_name": "_send_arp_probe",
-            "_kwargs": {"ip4_unicast": STACK__IP4_HOST__CANDIDATE.address},
-            "_clear_ip4_host": False,
-            "_expected__frames_tx": [
-                # RFC 5227 §2.1.1 ARP Probe: REQUEST opcode,
-                # SPA == 0.0.0.0 (anti-cache-pollution), TPA ==
-                # candidate IP, broadcast L2 destination.
-                ArpTestCase._build_arp_frame(
-                    ethernet_dst=MAC__BROADCAST,
-                    ethernet_src=STACK__MAC_ADDRESS,
-                    arp_oper=ArpOperation.REQUEST,
-                    arp_sha=STACK__MAC_ADDRESS,
-                    arp_spa=Ip4Address(),
-                    arp_tha=MAC__UNSPECIFIED,
-                    arp_tpa=STACK__IP4_HOST__CANDIDATE.address,
-                ),
-            ],
-            "_expected__packet_stats_tx": PacketStatsTx(
-                arp__pre_assemble=1,
-                arp__op_request__send=1,
-                ethernet__pre_assemble=1,
-                ethernet__src_spec=1,
-                ethernet__dst_spec__send=1,
-            ),
-        },
-        {
             "_description": "_send_arp_reply - unicast reply to peer",
             "_method_name": "_send_arp_reply",
             "_kwargs": {
@@ -444,14 +363,11 @@ class TestArpTxHelpers(ArpTestCase):
     def test__arp__tx__helper(self) -> None:
         """
         Ensure each ARP TX convenience helper
-        ('_send_arp_announcement' / '_send_gratuitous_arp' /
-        '_send_arp_probe' / '_send_arp_reply' / 'send_arp_request')
+        ('_send_arp_reply' / 'send_arp_request')
         emits the expected wire frame and bumps the expected TX
         statistics.
 
-        Reference: RFC 5227 §2.1.1 (ARP Probe wire format).
-        Reference: RFC 5227 §2.3 (ARP Announcement wire format).
-        Reference: RFC 5227 §2.4 (gratuitous-ARP defense wire format).
+        Reference: RFC 826 (ARP Request / Reply wire format).
         """
 
         if self._clear_ip4_host:

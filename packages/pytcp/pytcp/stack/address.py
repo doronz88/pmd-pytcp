@@ -37,47 +37,13 @@ ver 3.0.6
 
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, Callable
 
 from net_addr import Ip4Address, Ip4IfAddr, MacAddress
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class ProbeResult:
-    """
-    Outcome of an 'Ip4AddressApi.probe' call. 'success=True'
-    means the RFC 5227 §2.1.1 ARP Probe sequence completed with
-    no observed conflict; the address is safe to claim.
-    'success=False' means a conflicting ARP frame was observed
-    during the probe window; the conflict-source MAC (when
-    captured by the underlying DAD registry) is reported for
-    diagnostic / retry logic.
-    """
-
-    success: bool
-    address: Ip4Address
-    conflict_sender_mac: MacAddress | None = None
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class ClaimResult:
-    """
-    Outcome of an 'Ip4AddressApi.claim_with_acd' call —
-    composite of an RFC 5227 §2.1.1 probe + §2.3 announce +
-    'add_ifaddr' install. 'success=True' means probe was clean,
-    announce burst fired, and the host was installed.
-    'success=False' means probe observed a conflict; the
-    address is NOT installed and the conflict source is
-    reported.
-    """
-
-    success: bool
-    address: Ip4Address
-    conflict_sender_mac: MacAddress | None = None
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -298,95 +264,6 @@ class Ip4AddressApi:
         """
 
         return tuple(self._resolve_handler()._ip4_ifaddr)
-
-    def probe(self, *, address: Ip4Address) -> ProbeResult:
-        """
-        Run the RFC 5227 §2.1.1 ARP Probe sequence against
-        'address'. Blocks for the canonical PROBE_WAIT +
-        PROBE_NUM probes + ANNOUNCE_WAIT window (~5-9 s with
-        the default arp.* sysctls). Returns a 'ProbeResult'
-        carrying success and (on conflict) the conflicting
-        peer MAC captured by the underlying DAD-slot registry.
-
-        Linux equivalent: 'n_acd_probe' from the n-acd library
-        / 'sd_ipv4ll_start' in systemd-networkd.
-
-        Requires a 'PacketHandlerL2' binding — ACD is an
-        Ethernet/ARP operation and is meaningless in L3 (TUN)
-        mode. Calling this on an L3-bound API raises
-        AttributeError at runtime; the cast surfaces the
-        precondition to mypy.
-        """
-
-        handler = cast("PacketHandlerL2", self._resolve_handler())
-        success = handler._arp_dad_probe_address(address)
-        peer_mac: MacAddress | None = None
-        if not success:
-            peer_mac = handler._ip4_arp_dad__registry.peer_info(address)
-        return ProbeResult(
-            success=success,
-            address=address,
-            conflict_sender_mac=peer_mac,
-        )
-
-    def announce(self, *, address: Ip4Address) -> None:
-        """
-        Emit the RFC 5227 §2.3 ANNOUNCE_NUM gratuitous-ARP
-        burst for 'address' — peers refresh any stale ARP
-        cache entries left over from a previous holder of the
-        address. Blocks for (ANNOUNCE_NUM - 1) *
-        ANNOUNCE_INTERVAL seconds.
-
-        Public-API form of the existing
-        '_arp_dad_announce_address' helper; consumers (DHCPv4
-        BOUND transition, RFC 3927 link-local autoconfig
-        announce, future address-control surfaces) consume
-        this instead of reaching into the packet handler.
-
-        L2-only — see 'probe' for the L3 caveat.
-        """
-
-        handler = cast("PacketHandlerL2", self._resolve_handler())
-        handler._arp_dad_announce_address(address)
-
-    def claim_with_acd(self, *, ip4_ifaddr: Ip4IfAddr) -> ClaimResult:
-        """
-        Composite claim — probe + announce + install in one
-        synchronous call. On clean probe: announce burst fires,
-        host is installed via 'add_ifaddr', and success=True is
-        returned. On conflict: announce does NOT fire, host is
-        NOT installed, and success=False is returned with the
-        conflicting peer MAC.
-
-        Linux equivalent: the combined 'sd_ipv4ll_start' flow
-        in systemd-networkd (probe-then-install handled in one
-        library entry point).
-        """
-
-        probe_result = self.probe(address=ip4_ifaddr.address)
-        if not probe_result.success:
-            return ClaimResult(
-                success=False,
-                address=ip4_ifaddr.address,
-                conflict_sender_mac=probe_result.conflict_sender_mac,
-            )
-        self.announce(address=ip4_ifaddr.address)
-        self.add_ifaddr(ip4_ifaddr=ip4_ifaddr)
-        return ClaimResult(success=True, address=ip4_ifaddr.address)
-
-    def send_gratuitous_arp(self, *, address: Ip4Address) -> None:
-        """
-        Emit a single gratuitous ARP for 'address' — the
-        defensive-ARP form used by RFC 5227 §2.4(b) /
-        RFC 3927 §2.5(b) and any future caller that needs a
-        single-shot announcement (not the ANNOUNCE_NUM burst).
-
-        Public-API form of the existing '_send_gratuitous_arp'
-        helper. L2-only — see 'probe' for the L3 caveat.
-        """
-
-        handler = cast("PacketHandlerL2", self._resolve_handler())
-        handler._send_gratuitous_arp(ip4_unicast=address)
 
     def abort_bound_tcp_sessions(self, *, address: Ip4Address) -> None:
         """

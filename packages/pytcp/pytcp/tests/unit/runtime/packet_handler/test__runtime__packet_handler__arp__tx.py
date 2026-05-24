@@ -256,8 +256,8 @@ class TestPacketHandlerArpTx(TestCase):
 
 class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
     """
-    The convenience helper (_send_arp_announcement / _send_gratuitous_arp /
-    _send_arp_probe / _send_arp_reply / send_arp_request) tests.
+    The convenience helper (_send_arp_reply / send_arp_request /
+    send_arp_unicast_request) tests.
     """
 
     def setUp(self) -> None:
@@ -279,59 +279,6 @@ class TestPacketHandlerArpTxConvenienceHelpers(TestCase):
             msg="Exactly one _phtx_ethernet call is expected from each ARP helper.",
         )
         return self._handler.ethernet_tx_calls[0]
-
-    def test__stack__packet_handler__arp__tx__announcement_uses_request_with_spa_tpa_self(self) -> None:
-        """
-        Ensure '_send_arp_announcement' sends a REQUEST with spa == tpa
-        == self IP, broadcast dst, stack src.
-
-        Reference: RFC 5227 §2.3 (Announcement wire format).
-        """
-
-        self._handler._send_arp_announcement(ip4_unicast=STACK__IP4_ADDRESS)
-
-        call = self._last_call()
-        self.assertEqual(call["ethernet__src"], STACK__MAC_UNICAST)
-        self.assertEqual(call["ethernet__dst"], MAC__BROADCAST)
-        payload = call["ethernet__payload"]
-        assert isinstance(payload, ArpAssembler)
-        self.assertEqual(payload.oper, ArpOperation.REQUEST)
-        self.assertEqual(payload.spa, STACK__IP4_ADDRESS)
-        self.assertEqual(payload.tpa, STACK__IP4_ADDRESS)
-        self.assertEqual(payload.sha, STACK__MAC_UNICAST)
-        self.assertEqual(payload.tha, MAC__UNSPEC)
-
-    def test__stack__packet_handler__arp__tx__gratuitous_arp_uses_reply_with_spa_tpa_self(self) -> None:
-        """
-        Ensure '_send_gratuitous_arp' sends a REPLY with spa == tpa ==
-        self IP, broadcast dst, stack src.
-
-        Reference: RFC 5227 §2.4(b) (defensive gratuitous ARP wire format).
-        """
-
-        self._handler._send_gratuitous_arp(ip4_unicast=STACK__IP4_ADDRESS)
-
-        payload = self._last_call()["ethernet__payload"]
-        assert isinstance(payload, ArpAssembler)
-        self.assertEqual(payload.oper, ArpOperation.REPLY)
-        self.assertEqual(payload.spa, STACK__IP4_ADDRESS)
-        self.assertEqual(payload.tpa, STACK__IP4_ADDRESS)
-
-    def test__stack__packet_handler__arp__tx__probe_uses_unspecified_spa(self) -> None:
-        """
-        Ensure '_send_arp_probe' sends a REQUEST with spa == 0.0.0.0
-        as the probe wire signal.
-
-        Reference: RFC 5227 §2.1.1 (Probe wire format: spa = 0.0.0.0).
-        """
-
-        self._handler._send_arp_probe(ip4_unicast=HOST_A__IP4)
-
-        payload = self._last_call()["ethernet__payload"]
-        assert isinstance(payload, ArpAssembler)
-        self.assertEqual(payload.oper, ArpOperation.REQUEST)
-        self.assertEqual(payload.spa, IP4__UNSPEC)
-        self.assertEqual(payload.tpa, HOST_A__IP4)
 
     def test__stack__packet_handler__arp__tx__reply_helper_targets_requester(self) -> None:
         """

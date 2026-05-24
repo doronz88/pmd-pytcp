@@ -30,16 +30,12 @@ pytcp/runtime/packet_handler/packet_handler__arp__rx.py
 ver 3.0.6
 """
 
-import time
 from abc import ABC
 from typing import TYPE_CHECKING
 
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
-from pytcp import stack
-from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.logger import log
 from pytcp.protocols.arp import arp__constants
-from pytcp.protocols.arp.arp__constants import ARP__DEFEND_INTERVAL
 
 
 class PacketHandlerArpRx(ABC):
@@ -58,10 +54,6 @@ class PacketHandlerArpRx(ABC):
         _ip4_ifaddr: list[Ip4IfAddr]
         _packet_stats_rx: PacketStatsRx
         _arp_cache: ArpCache | None
-        _ip4_ifaddr_candidate: list[Ip4IfAddr]
-        _ip4_arp_dad__registry: DadSlotRegistry[Ip4Address]
-        _arp_defend__last_emitted: dict[Ip4Address, float]
-        _arp_defend__last_conflict_at: dict[Ip4Address, float]
 
         # pylint: disable=unused-argument
 
@@ -87,84 +79,10 @@ class PacketHandlerArpRx(ABC):
             tracker: Tracker | None = None,
         ) -> None: ...
 
-        def _send_gratuitous_arp(self, *, ip4_unicast: Ip4Address) -> None: ...
-
         # pylint: disable=missing-function-docstring
 
         @property
         def _ip4_unicast(self) -> list[Ip4Address]: ...
-
-    def _handle_arp_conflict(self, *, ip4_unicast: "Ip4Address") -> None:
-        """
-        Handle an observed conflicting ARP packet for one of
-        our IPv4 addresses. Implements RFC 5227 §2.4(b) MUST
-        plus the §2.4(c) rate-limit:
-
-          - Second conflict within DEFEND_INTERVAL of the
-            previous conflict → abandon the address (the §2.4(b)
-            MUST). No defense is emitted; the address is removed
-            from '_ip4_ifaddr'; bound TcpSessions are aborted
-            (§2.4 final SHOULD).
-          - Otherwise → fire a defensive gratuitous ARP, gated by
-            the per-IP last-defended-at rate-limit (§2.4(c)
-            MUST NOT defend more than once per DEFEND_INTERVAL).
-
-        Replaces the old '_maybe_send_arp_defense' helper —
-        same call sites in the conflict-defense paths of
-        '__phrx_arp__request' and '__phrx_arp__reply'.
-        """
-
-        now = time.monotonic()
-        prior_conflict = self._arp_defend__last_conflict_at.get(ip4_unicast)
-        self._arp_defend__last_conflict_at[ip4_unicast] = now
-
-        if prior_conflict is not None and now - prior_conflict < ARP__DEFEND_INTERVAL:
-            # Second conflict within window — RFC 5227 §2.4(b) MUST abandon.
-            self._abandon_ipv4_address(ip4_unicast=ip4_unicast)
-            return
-
-        # First conflict (or after window) — defend, gated by
-        # the §2.4(c) per-IP rate-limit on emitted defenses.
-        last_defense = self._arp_defend__last_emitted.get(ip4_unicast)
-        if last_defense is not None and now - last_defense < ARP__DEFEND_INTERVAL:
-            return
-        self._arp_defend__last_emitted[ip4_unicast] = now
-        self._send_gratuitous_arp(ip4_unicast=ip4_unicast)
-
-    def _abandon_ipv4_address(self, *, ip4_unicast: "Ip4Address") -> None:
-        """
-        Tear down all TCP sessions bound to 'ip4_unicast' and
-        remove it from '_ip4_ifaddr' — RFC 5227 §2.4(b) MUST
-        ("immediately cease using this address") plus the
-        §2.4-final SHOULD ("hosts SHOULD actively attempt to
-        reset any existing connections using that address").
-        """
-
-        # RFC 5227 §2.4-final SHOULD: ABORT any TcpSession
-        # bound to this address. The session-side ABORT
-        # syscall sends RST and tears down the session per
-        # RFC 9293 §3.10.7.4.
-        from pytcp.protocols.tcp.tcp__enums import SysCall
-
-        for socket_id in list(stack.sockets):
-            if socket_id.local_address == ip4_unicast:
-                sock = stack.sockets[socket_id]
-                session = getattr(sock, "_tcp_session", None)
-                if session is not None:
-                    session.tcp_fsm(syscall=SysCall.ABORT)
-
-        # Remove the abandoned address from '_ip4_ifaddr' so
-        # the stack stops claiming it. Future RX-side conflict
-        # detection on this IP will see it is no longer in
-        # '_ip4_unicast' and skip the defense path entirely.
-        self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host.address != ip4_unicast]
-
-        self._packet_stats_rx.arp__conflict__abandon += 1
-        __debug__ and log(
-            "arp",
-            f"<CRIT>RFC 5227 §2.4(b) abandoning IPv4 address {ip4_unicast} "
-            f"after second conflict within DEFEND_INTERVAL</>",
-        )
 
     def _phrx_arp(self, packet_rx: PacketRx, /) -> None:
         """
@@ -257,41 +175,12 @@ class PacketHandlerArpRx(ABC):
             )
             return
 
-        # Defend against IP address conflict if we got ARP request from another host
-        # that is trying to claim one of our IP addresses.
-        if packet_rx.arp.spa in self._ip4_unicast and packet_rx.arp.sha != self._mac_unicast:
-            self._packet_stats_rx.arp__op_request__conflict__defend += 1
-            __debug__ and log(
-                "arp",
-                f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
-                f"conflict detected with host at {packet_rx.arp.sha}</>",
-            )
-            self._handle_arp_conflict(ip4_unicast=packet_rx.arp.spa)
-            return
-
-        # RFC 5227 §2.1.1 simultaneous-probe conflict: a peer is probing
-        # the same address (their SPA = 0, TPA = our candidate). The
-        # gratuitous / direct-reply branches below all key on
-        # arp.spa being unicast / matching our candidate, so the SPA = 0
-        # case would otherwise fall through to the 'tpa_unknown' drop
-        # (a candidate is not yet in '_ip4_unicast' during DAD). The
-        # earlier loop-drop check already filtered out our own SHA.
-        if packet_rx.arp.spa.is_unspecified and packet_rx.arp.tpa in {c.address for c in self._ip4_ifaddr_candidate}:
-            self._packet_stats_rx.arp__op_request__simultaneous_probe += 1
-            __debug__ and log(
-                "arp",
-                f"{packet_rx.tracker} - <WARN>Simultaneous-probe conflict "
-                f"detected for candidate {packet_rx.arp.tpa} from peer "
-                f"{packet_rx.arp.sha}</>",
-            )
-            self._ip4_arp_dad__registry.try_signal_conflict(
-                packet_rx.arp.tpa,
-                peer_info=None,
-                inbound_nonce=None,
-            )
-            return
-
-        # Note receiving gratuitous ARP request.
+        # Note receiving gratuitous ARP request. Ongoing RFC 5227
+        # §2.4 conflict detection is no longer done here — it runs in
+        # userspace over each managed address's own 'Ip4Acd' socket
+        # (the Linux 'sd-ipv4acd' model; the kernel ARP path does no
+        # ACD). The RX path just notes the gratuitous ARP and learns
+        # the cache below.
         if (
             packet_rx.ethernet.dst.is_broadcast
             and packet_rx.arp.spa.is_unicast
@@ -304,17 +193,6 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <INFO>Received gratuitous ARP request, "
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
-
-            # If we’re probing this address, mark conflict too.
-            if packet_rx.arp.spa in {c.address for c in self._ip4_ifaddr_candidate}:
-                self._packet_stats_rx.arp__op_request__probe_conflict__gratuitous += 1
-                self._ip4_arp_dad__registry.try_signal_conflict(
-                    packet_rx.arp.spa,
-                    peer_info=None,
-                    inbound_nonce=None,
-                )
-                # Recommended during DAD: Don't learn ARP here.
-                return
 
         # Note receiving ARP request not for our IP address.
         elif packet_rx.arp.tpa not in self._ip4_unicast:
@@ -410,40 +288,6 @@ class PacketHandlerArpRx(ABC):
             )
             return
 
-        # Defend against IP address conflict if we got ARP reply from another host
-        # that is trying to claim one of our IP addresses.
-        if packet_rx.arp.spa in self._ip4_unicast and packet_rx.arp.sha != self._mac_unicast:
-            self._packet_stats_rx.arp__op_reply__conflict__defend += 1
-            __debug__ and log(
-                "arp",
-                f"{packet_rx.tracker} - <WARN>IP {packet_rx.arp.spa} "
-                f"conflict detected with host at {packet_rx.arp.sha}</>",
-            )
-            self._handle_arp_conflict(ip4_unicast=packet_rx.arp.spa)
-            return
-
-        # Check for ARP reply that is response to our ARP probe, this indicates
-        # the IP address we trying to claim is in use.
-        if (
-            packet_rx.arp.spa in [_.address for _ in self._ip4_ifaddr_candidate]
-            and packet_rx.ethernet.dst == packet_rx.arp.tha == self._mac_unicast
-            and packet_rx.arp.tpa.is_unspecified
-        ):
-            self._packet_stats_rx.arp__op_reply__probe_conflict += 1
-            __debug__ and log(
-                "arp",
-                f"{packet_rx.tracker} - <WARN>ARP probe detected "
-                f"conflict for IP {packet_rx.arp.spa} with host at "
-                f"{packet_rx.arp.sha}</>",
-            )
-            self._ip4_arp_dad__registry.try_signal_conflict(
-                packet_rx.arp.spa,
-                peer_info=None,
-                inbound_nonce=None,
-            )
-            # Recommended during DAD: Don't learn ARP here.
-            return
-
         # Note receiving packet as direct ARP reply.
         if packet_rx.ethernet.dst == self._mac_unicast:
             self._packet_stats_rx.arp__op_reply__direct += 1
@@ -465,15 +309,5 @@ class PacketHandlerArpRx(ABC):
                 f"{packet_rx.tracker} - <INFO>Received gratuitous ARP reply, "
                 f"{packet_rx.arp.spa} -> {packet_rx.arp.sha}</>",
             )
-
-            if packet_rx.arp.spa in {c.address for c in self._ip4_ifaddr_candidate}:
-                self._packet_stats_rx.arp__op_reply__probe_conflict__gratuitous += 1
-                self._ip4_arp_dad__registry.try_signal_conflict(
-                    packet_rx.arp.spa,
-                    peer_info=None,
-                    inbound_nonce=None,
-                )
-                # Recommended during DAD: Don't learn ARP here.
-                return
 
         self.__update_arp_cache(packet_rx=packet_rx, operation=ArpOperation.REPLY)

@@ -157,9 +157,9 @@ class TestArpHarnessSmoke(ArpTestCase):
     def test__arp__harness__set_and_advance_monotonic_round_trip(self) -> None:
         """
         Ensure '_set_monotonic' overwrites the patched clock and
-        '_advance_monotonic' adds to it. The DEFEND_INTERVAL
-        rate-limit tests depend on both helpers behaving as a
-        plain settable / addable float.
+        '_advance_monotonic' adds to it. The ARP-cache rate-limit
+        tests depend on both helpers behaving as a plain settable /
+        addable float.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -178,26 +178,26 @@ class TestArpHarnessSmoke(ArpTestCase):
             msg="'_advance_monotonic' must add 'dt' to the patched clock value.",
         )
 
-    def test__arp__harness__monotonic_patch_visible_to_arp_rx_module(self) -> None:
+    def test__arp__harness__monotonic_patch_visible_to_arp_cache_module(self) -> None:
         """
         Ensure the patched 'time.monotonic' is observed by the
         production code path that consumes it — the
-        'pytcp.runtime.packet_handler.packet_handler__arp__rx' module's
-        '_maybe_send_arp_defense' helper. Without this, the
-        DEFEND_INTERVAL tests would silently exercise the real
-        clock and become flaky / non-deterministic.
+        'pytcp.lib.neighbor' module's ARP-cache 'find_entry'
+        rate-limit. Without this, the cache rate-limit tests would
+        silently exercise the real clock and become flaky /
+        non-deterministic.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        from pytcp.runtime.packet_handler import packet_handler__arp__rx as arp_rx_module
+        from pytcp.lib import neighbor as neighbor_module
 
         self._set_monotonic(42.0)
         self.assertEqual(
-            arp_rx_module.time.monotonic(),  # type: ignore[attr-defined]  # deliberate clock-patch introspection
+            neighbor_module.time.monotonic(),  # type: ignore[attr-defined]  # deliberate clock-patch introspection
             42.0,
             msg=(
-                "The clock visible to '_maybe_send_arp_defense' must equal the "
+                "The clock visible to the ARP-cache rate-limit must equal the "
                 "harness's patched value; otherwise the rate-limit tests are unreliable."
             ),
         )
