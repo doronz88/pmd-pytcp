@@ -53,6 +53,7 @@ from net_proto import (
 from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_B__IP4_ADDRESS,
@@ -61,7 +62,6 @@ from pytcp.tests.lib.network_testcase import (
     IP4__MULTICAST__ALL_NODES,
     IP4__UNSPECIFIED,
     STACK__IP4_HOST,
-    NetworkTestCase,
 )
 
 
@@ -945,7 +945,7 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestIp4Tx(NetworkTestCase):
+class TestIp4Tx(Ip4TestCase):
     """
     The IPv4 TX packet-handler path tests (success path).
     """
@@ -1011,7 +1011,7 @@ class TestIp4Tx(NetworkTestCase):
         },
     ]
 )
-class TestIp4TxErrors(NetworkTestCase):
+class TestIp4TxErrors(Ip4TestCase):
     """
     The IPv4 TX packet-handler path tests (error path).
     """
@@ -1040,7 +1040,7 @@ class TestIp4TxErrors(NetworkTestCase):
         )
 
 
-class TestIp4TxMtuExceedDf(NetworkTestCase):
+class TestIp4TxMtuExceedDf(Ip4TestCase):
     """
     The IPv4 TX packet-handler path tests for RFC 791 §3.1 DF
     enforcement: an IPv4 packet whose size exceeds the link MTU and
@@ -1123,7 +1123,7 @@ class TestIp4TxMtuExceedDf(NetworkTestCase):
         )
 
 
-class TestIp4TxNoIp4Support(NetworkTestCase):
+class TestIp4TxNoIp4Support(Ip4TestCase):
     """
     The IPv4 TX packet-handler path tests for when IPv4 protocol support is
     disabled — '_phtx_ip4' must short-circuit before assembly.
@@ -1174,7 +1174,7 @@ class TestIp4TxNoIp4Support(NetworkTestCase):
         )
 
 
-class TestIp4TxSendIp4Packet(NetworkTestCase):
+class TestIp4TxSendIp4Packet(Ip4TestCase):
     """
     Test the public 'send_ip4_packet' wrapper, which forwards into
     '_phtx_ip4' wrapping the user payload as a 'RawAssembler' and
@@ -1227,7 +1227,7 @@ _IP4__ID_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 4
 _IP4__TTL_OFFSET = _IP4__OFFSET_IN_ETH_FRAME + 8
 
 
-class TestIp4TxRfc1112MulticastTtl(NetworkTestCase):
+class TestIp4TxRfc1112MulticastTtl(Ip4TestCase):
     """
     The RFC 1112 §6.1 multicast outbound TTL default tests.
 
@@ -1313,7 +1313,7 @@ class TestIp4TxRfc1112MulticastTtl(NetworkTestCase):
         )
 
 
-class TestIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase):
+class TestIp4TxRfc791OptionCopyFlagOnFragmentation(Ip4TestCase):
     """
     The RFC 791 §3.1 option-copy-flag fragmentation tests.
 
@@ -1476,7 +1476,7 @@ class TestIp4TxRfc791OptionCopyFlagOnFragmentation(NetworkTestCase):
             )
 
 
-class TestIp4TxRfc6864AtomicId(NetworkTestCase):
+class TestIp4TxRfc6864AtomicId(Ip4TestCase):
     """
     The RFC 6864 §4.1 atomic-datagram Identification tests.
 
@@ -1515,7 +1515,7 @@ class TestIp4TxRfc6864AtomicId(NetworkTestCase):
         )
 
 
-class TestIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
+class TestIp4TxRfc1122DefaultTtlSysctl(Ip4TestCase):
     """
     The RFC 1122 §3.2.1.7 'ip4.default_ttl' sysctl override tests.
 
@@ -1607,7 +1607,7 @@ class TestIp4TxRfc1122DefaultTtlSysctl(NetworkTestCase):
         )
 
 
-class TestIp4TxRfc919AllowBroadcast(NetworkTestCase):
+class TestIp4TxRfc919AllowBroadcast(Ip4TestCase):
     """
     The 'ip4.allow_broadcast' policy gate tests.
 
@@ -1766,7 +1766,7 @@ class TestIp4TxRfc919AllowBroadcast(NetworkTestCase):
         )
 
 
-class TestIp4TxRfc3927ScopeGate(NetworkTestCase):
+class TestIp4TxRfc3927ScopeGate(Ip4TestCase):
     """
     The RFC 3927 §2.6 source/destination link-local scope-
     mismatch gate tests.

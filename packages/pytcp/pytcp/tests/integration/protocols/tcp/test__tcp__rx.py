@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
 
 @parameterized_class(
@@ -277,7 +277,7 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestTcpRx(NetworkTestCase):
+class TestTcpRx(TcpSessionTestCase):
     """
     The TCP RX packet-handler path tests.
     """

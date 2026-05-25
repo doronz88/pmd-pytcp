@@ -48,7 +48,7 @@ from net_proto import (
 )
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 
 
 def _build_echo_request_with_options(*, options: Ip4Options) -> bytes:
@@ -77,7 +77,7 @@ def _build_echo_request_with_options(*, options: Ip4Options) -> bytes:
     )
 
 
-class TestIp4SourceRouteGate(NetworkTestCase):
+class TestIp4SourceRouteGate(Ip4TestCase):
     """
     The 'IP4__ACCEPT_SOURCE_ROUTE' gate tests.
     """

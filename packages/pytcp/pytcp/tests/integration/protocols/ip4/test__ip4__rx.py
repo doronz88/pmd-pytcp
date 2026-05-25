@@ -49,10 +49,10 @@ from net_proto import (
 )
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
+from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
-    NetworkTestCase,
 )
 
 
@@ -1410,7 +1410,7 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestIp4Rx(NetworkTestCase):
+class TestIp4Rx(Ip4TestCase):
     """
     The IPv4 RX packet-handler path tests.
     """
@@ -1453,7 +1453,7 @@ class TestIp4Rx(NetworkTestCase):
         )
 
 
-class TestIp4RxDhcpClientNoUnicast(NetworkTestCase):
+class TestIp4RxDhcpClientNoUnicast(Ip4TestCase):
     """
     The IPv4 RX packet-handler path tests for when no unicast IPv4 address
     is configured on the stack — the DHCP-client-startup scenario.
@@ -1518,7 +1518,7 @@ class TestIp4RxDhcpClientNoUnicast(NetworkTestCase):
         )
 
 
-class TestIp4RxMulticast(NetworkTestCase):
+class TestIp4RxMulticast(Ip4TestCase):
     """
     The IPv4 RX packet-handler classifier tests for a packet addressed to
     an IPv4 multicast group the stack has joined. The default
@@ -1582,7 +1582,7 @@ class TestIp4RxMulticast(NetworkTestCase):
         )
 
 
-class TestIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
+class TestIp4RxRfc791OptionPreservedOnReassembly(Ip4TestCase):
     """
     The RFC 815 §6 / RFC 791 §3.1 option-preservation-on-
     reassembly tests.
@@ -1762,7 +1762,7 @@ class TestIp4RxRfc791OptionPreservedOnReassembly(NetworkTestCase):
         )
 
 
-class TestIp4RxRfc3168EcnAggregationOnReassembly(NetworkTestCase):
+class TestIp4RxRfc3168EcnAggregationOnReassembly(Ip4TestCase):
     """
     The RFC 3168 §5.3 ECN-aggregation-on-reassembly tests.
 

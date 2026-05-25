@@ -45,8 +45,8 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     STACK__IP4_HOST,
     STACK__IP6_HOST,
-    NetworkTestCase,
 )
+from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
 
 
 @parameterized_class(
@@ -2062,7 +2062,7 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestTcpTx(NetworkTestCase):
+class TestTcpTx(TcpSessionTestCase):
     """
     The TCP TX packet-handler path tests (success path).
     """
@@ -2128,7 +2128,7 @@ class TestTcpTx(NetworkTestCase):
         },
     ]
 )
-class TestTcpTxErrors(NetworkTestCase):
+class TestTcpTxErrors(TcpSessionTestCase):
     """
     The TCP TX packet-handler path tests (error path).
     """
@@ -2155,7 +2155,7 @@ class TestTcpTxErrors(NetworkTestCase):
         )
 
 
-class TestTcpTxSendTcpPacket(NetworkTestCase):
+class TestTcpTxSendTcpPacket(TcpSessionTestCase):
     """
     Test the public 'send_tcp_packet' wrapper, which forwards into
     '_phtx_tcp' renaming the addressing and port kwargs.
