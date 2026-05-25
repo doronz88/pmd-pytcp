@@ -1844,15 +1844,17 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
 
 class TestStackEgressPacketHandler(TestCase):
     """
-    The 'stack.egress_packet_handler()' resolver tests — the single
+    The 'stack.egress_packet_handler(dst)' resolver tests — the single
     seam that socket-originated TX (UDP / raw / TCP sends) routes
-    through to pick the egress interface, the centralized successor to
-    the bare 'stack.packet_handler' reach-through.
+    through to pick the egress interface. Egress is FIB-driven: a routed
+    destination the routing table cannot resolve raises (Linux returns
+    EHOSTUNREACH; there is no sole-interface guess), while a link-scoped
+    destination egresses the local link — the sole interface at N=1.
     """
 
     def setUp(self) -> None:
         """
-        Snapshot 'stack.interfaces' so each test installs its own table.
+        Snapshot 'stack.interfaces' / FIBs so each test installs its own.
         """
 
         self._interfaces_prior = dict(stack.interfaces)
@@ -1863,33 +1865,63 @@ class TestStackEgressPacketHandler(TestCase):
         stack.interfaces.update(self._interfaces_prior)
 
     def _install(self, count: int) -> list[object]:
+        from types import SimpleNamespace
+
+        from pytcp.runtime.fib import RouteTable
+
         table = InterfaceTable()
-        handlers = [object() for _ in range(count)]
+        handlers: list[object] = [SimpleNamespace(ip4_host=[], ip6_host=[]) for _ in range(count)]
         for i, handler in enumerate(handlers, start=1):
             table[i] = cast("PacketHandlerL2", handler)
         self.enterContext(patch.object(stack, "interfaces", table))
+        self.enterContext(patch.object(stack, "ip4_fib", RouteTable(), create=True))
+        self.enterContext(patch.object(stack, "ip6_fib", RouteTable(), create=True))
         return handlers
 
-    def test__egress_packet_handler__resolves_sole_interface(self) -> None:
+    def test__egress_packet_handler__link_scoped_resolves_sole_interface(self) -> None:
         """
-        Ensure 'egress_packet_handler()' returns the single registered
-        interface when exactly one exists (the Phase-6 single-egress
-        host resolution).
+        Ensure a link-scoped destination (IPv4 limited-broadcast /
+        multicast, IPv6 multicast / link-local) egresses the sole
+        registered interface — the local link is unambiguous at N=1,
+        matching Linux's implicit per-interface broadcast / multicast
+        routes.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         (handler,) = self._install(1)
 
-        self.assertIs(
-            stack.egress_packet_handler(),
-            handler,
-            msg="egress_packet_handler() must return the sole registered interface.",
-        )
+        for dst in (
+            Ip4Address("255.255.255.255"),
+            Ip4Address("224.0.0.1"),
+            Ip6Address("ff02::1"),
+            Ip6Address("fe80::1"),
+        ):
+            with self.subTest(dst=dst):
+                self.assertIs(
+                    stack.egress_packet_handler(dst),
+                    handler,
+                    msg=f"A link-scoped dst {dst} must egress the sole interface.",
+                )
+
+    def test__egress_packet_handler__routed_dst_no_route_raises(self) -> None:
+        """
+        Ensure a routed unicast destination the FIB cannot resolve raises
+        even when exactly one interface is registered — egress is the
+        routing table's decision, not a sole-interface guess (Linux
+        EHOSTUNREACH).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._install(1)
+
+        with self.assertRaises(RuntimeError):
+            stack.egress_packet_handler(Ip4Address("203.0.113.9"))
 
     def test__egress_packet_handler__raises_when_no_interface(self) -> None:
         """
-        Ensure 'egress_packet_handler()' raises when no interface is
+        Ensure 'egress_packet_handler(dst)' raises when no interface is
         registered — there is nothing to egress through.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -1898,21 +1930,7 @@ class TestStackEgressPacketHandler(TestCase):
         self._install(0)
 
         with self.assertRaises(RuntimeError):
-            stack.egress_packet_handler()
-
-    def test__egress_packet_handler__raises_when_ambiguous(self) -> None:
-        """
-        Ensure 'egress_packet_handler()' raises when more than one
-        interface is registered — single-egress selection is ambiguous
-        until the Phase 7 FIB 'oif' lookup lands.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._install(2)
-
-        with self.assertRaises(RuntimeError):
-            stack.egress_packet_handler()
+            stack.egress_packet_handler(Ip4Address("224.0.0.1"))
 
 
 class TestStackLocalAddressIntrospection(TestCase):
@@ -2112,6 +2130,23 @@ class TestStackEgressPacketHandlerFib(TestCase):
 
         with self.assertRaises(RuntimeError):
             stack.egress_packet_handler(Ip4Address("203.0.113.9"))
+
+    def test__egress__link_scoped_dst_raises_when_ambiguous(self) -> None:
+        """
+        Ensure a link-scoped destination raises on a multi-homed host —
+        the local link is ambiguous across interfaces, and PyTCP does
+        not yet model explicit egress selection (IP_MULTICAST_IF /
+        sin6_scope_id), so it cannot pick one.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address, Ip6Address
+
+        for dst in (Ip4Address("224.0.0.1"), Ip6Address("ff02::1")):
+            with self.subTest(dst=dst):
+                with self.assertRaises(RuntimeError):
+                    stack.egress_packet_handler(dst)
 
 
 class TestStackHasRouteTo(TestCase):
@@ -2336,11 +2371,32 @@ class TestStackEgressInterfaceMtu(TestCase):
             msg="egress_interface_mtu must return interface 2's MTU for an on-link dst on its subnet.",
         )
 
-    def test__egress_interface_mtu__sole_interface_fallback(self) -> None:
+    def test__egress_interface_mtu__unrouted_dst_returns_none(self) -> None:
         """
-        Ensure an unresolved destination falls back to the SOLE
-        registered interface's MTU when exactly one interface exists
-        (the single-egress host case).
+        Ensure an unresolved routed destination returns None (no
+        sole-interface guess) so the caller degrades to its own
+        conservative MTU fall-back — egress sizing follows the routing
+        table, not the bare interface count.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from net_addr import Ip4Address
+
+        solo = InterfaceTable()
+        solo[1] = cast("PacketHandlerL2", self._iface_1)
+        self.enterContext(patch.object(stack, "interfaces", solo))
+
+        self.assertIsNone(
+            stack.egress_interface_mtu(Ip4Address("203.0.113.9")),
+            msg="egress_interface_mtu must return None for an unrouted dst (no sole-interface fallback).",
+        )
+
+    def test__egress_interface_mtu__link_scoped_dst_returns_sole_interface_mtu(self) -> None:
+        """
+        Ensure a link-scoped destination yields the sole interface's MTU
+        at N=1 — link-scoped traffic egresses the only link, so its path
+        MTU is that interface's MTU.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -2352,9 +2408,9 @@ class TestStackEgressInterfaceMtu(TestCase):
         self.enterContext(patch.object(stack, "interfaces", solo))
 
         self.assertEqual(
-            stack.egress_interface_mtu(Ip4Address("203.0.113.9")),
+            stack.egress_interface_mtu(Ip4Address("224.0.0.1")),
             1500,
-            msg="egress_interface_mtu must fall back to the sole interface's MTU for an unrouted dst.",
+            msg="egress_interface_mtu must return the sole interface's MTU for a link-scoped dst.",
         )
 
     def test__egress_interface_mtu__none_when_no_interface(self) -> None:

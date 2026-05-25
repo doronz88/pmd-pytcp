@@ -366,39 +366,72 @@ def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
     return pmtu_cache.get(dst)
 
 
-def _egress_handler_via_fib(destination: Ip4Address | Ip6Address, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+def _is_link_scoped(destination: Ip4Address | Ip6Address, /) -> bool:
     """
-    Resolve the egress interface for 'destination' through the FIB:
-    longest-prefix match, then map the matched route's 'oif' to its
-    handler. For an on-link / connected destination the matched route
-    carries 'oif' directly; for an off-link (gatewayed) route whose own
-    'oif' is unset, the egress is the interface on which the gateway is
-    on-link (a second connected lookup). Returns None when the FIB
-    cannot resolve an egress interface (no route, or an oif not in the
-    registry) — the caller then falls back to the single-interface case.
+    Return whether 'destination' is a link-scoped address delivered
+    directly on the egress link with no routing-table entry — Linux
+    never returns EHOSTUNREACH for these and auto-installs a per-
+    interface broadcast / multicast route:
+      - IPv4 limited broadcast (255.255.255.255) — a DHCP DISCOVER
+        target sent before any address / route exists (RFC 2131 §4.1).
+      - IP multicast (RFC 1112 §6.1 / RFC 4291 §2.7).
+      - IPv6 link-local (RFC 4291 §2.5.6).
     """
 
     if isinstance(destination, Ip4Address):
-        ip4_route = ip4_fib.lookup(destination, connected=connected_ip4_networks())
-        if ip4_route is None:
-            return None
-        if ip4_route.oif is not None and ip4_route.oif in interfaces:
-            return interfaces[ip4_route.oif]
-        if ip4_route.gateway is not None:
-            ip4_gw_route = ip4_fib.lookup(ip4_route.gateway, connected=connected_ip4_networks())
-            if ip4_gw_route is not None and ip4_gw_route.oif is not None and ip4_gw_route.oif in interfaces:
-                return interfaces[ip4_gw_route.oif]
-        return None
+        return destination.is_limited_broadcast or destination.is_multicast
+    return destination.is_multicast or destination.is_link_local
 
-    ip6_route = ip6_fib.lookup(destination, connected=connected_ip6_networks())
-    if ip6_route is None:
-        return None
-    if ip6_route.oif is not None and ip6_route.oif in interfaces:
-        return interfaces[ip6_route.oif]
-    if ip6_route.gateway is not None:
-        ip6_gw_route = ip6_fib.lookup(ip6_route.gateway, connected=connected_ip6_networks())
-        if ip6_gw_route is not None and ip6_gw_route.oif is not None and ip6_gw_route.oif in interfaces:
-            return interfaces[ip6_gw_route.oif]
+
+def _egress_handler_via_fib(destination: Ip4Address | Ip6Address, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+    """
+    Resolve the egress interface for 'destination'.
+
+    A routed destination resolves through the FIB: longest-prefix match,
+    then map the matched route's 'oif' to its handler. For an on-link /
+    connected destination the matched route carries 'oif' directly; for
+    an off-link (gatewayed) route whose own 'oif' is unset, the egress is
+    the interface on which the gateway is on-link (a second connected
+    lookup).
+
+    A link-scoped destination carries no routing entry — Linux auto-
+    installs a per-interface broadcast / multicast route, so it egresses
+    the local link: the sole registered interface at N=1, ambiguous
+    (unresolved) on a multi-homed host until explicit egress selection
+    (IP_MULTICAST_IF / sin6_scope_id) is modelled.
+
+    Returns None when no egress interface can be resolved (no route, an
+    oif not in the registry, or a link-scoped destination on a multi-
+    homed host) — the caller raises 'EHOSTUNREACH' / falls back.
+    """
+
+    handler: PacketHandlerL2 | PacketHandlerL3 | None = None
+    if isinstance(destination, Ip4Address):
+        ip4_route = ip4_fib.lookup(destination, connected=connected_ip4_networks())
+        if ip4_route is not None:
+            if ip4_route.oif is not None and ip4_route.oif in interfaces:
+                handler = interfaces[ip4_route.oif]
+            elif ip4_route.gateway is not None:
+                ip4_gw_route = ip4_fib.lookup(ip4_route.gateway, connected=connected_ip4_networks())
+                if ip4_gw_route is not None and ip4_gw_route.oif is not None and ip4_gw_route.oif in interfaces:
+                    handler = interfaces[ip4_gw_route.oif]
+    else:
+        ip6_route = ip6_fib.lookup(destination, connected=connected_ip6_networks())
+        if ip6_route is not None:
+            if ip6_route.oif is not None and ip6_route.oif in interfaces:
+                handler = interfaces[ip6_route.oif]
+            elif ip6_route.gateway is not None:
+                ip6_gw_route = ip6_fib.lookup(ip6_route.gateway, connected=connected_ip6_networks())
+                if ip6_gw_route is not None and ip6_gw_route.oif is not None and ip6_gw_route.oif in interfaces:
+                    handler = interfaces[ip6_gw_route.oif]
+
+    if handler is not None:
+        return handler
+
+    if _is_link_scoped(destination):
+        handlers = interfaces.values()
+        if len(handlers) == 1:
+            return handlers[0]
     return None
 
 
@@ -422,20 +455,13 @@ def has_route_to(destination: Ip4Address | Ip6Address, /) -> bool:
         return True
     # Link-scoped destinations are delivered directly on the egress link
     # and need no routing-table entry, so they are reachable whenever the
-    # routing plane is up — Linux never returns EHOSTUNREACH for them:
-    #   - IPv4 limited broadcast (255.255.255.255): a DHCP DISCOVER target
-    #     sent before any address/route exists (RFC 2131 §4.1).
-    #   - IP multicast (RFC 1112 §6.1 / RFC 4291 §2.7).
-    #   - IPv6 link-local (RFC 4291 §2.5.6).
-    if isinstance(destination, Ip4Address):
-        if destination.is_limited_broadcast or destination.is_multicast:
-            return True
-    elif destination.is_multicast or destination.is_link_local:
+    # routing plane is up — Linux never returns EHOSTUNREACH for them.
+    if _is_link_scoped(destination):
         return True
     return _egress_handler_via_fib(destination) is not None
 
 
-def egress_packet_handler(destination: Ip4Address | Ip6Address | None = None, /) -> PacketHandlerL2 | PacketHandlerL3:
+def egress_packet_handler(destination: Ip4Address | Ip6Address, /) -> PacketHandlerL2 | PacketHandlerL3:
     """
     Return the packet handler for the interface that egresses
     stack-originated traffic toward 'destination' — socket sends (UDP /
@@ -444,36 +470,25 @@ def egress_packet_handler(destination: Ip4Address | Ip6Address | None = None, /)
     socket-originated TX path resolves its egress interface through this
     one seam.
 
-    With a 'destination' the egress interface is resolved from the FIB
-    ('Route.oif') so a multi-homed host picks the interface the routing
-    table selects (Phase 7). When no 'destination' is given, or the FIB
-    cannot resolve an egress, it falls back to the SOLE registered
-    interface — the single-egress host case — raising 'RuntimeError'
-    when zero or more than one interface is registered (the caller must
-    add an interface, or the FIB must resolve a route).
-
-    At N=1 the FIB result and the sole-interface fallback are the same
-    interface, so behaviour is identical to the retired
-    'stack.packet_handler' singleton.
+    Egress is the routing table's decision (1:1 Linux): the interface is
+    resolved purely from the FIB ('Route.oif'), with link-scoped
+    destinations egressing the local link (the sole interface at N=1).
+    There is NO sole-interface guess for a routed destination — when the
+    FIB cannot resolve an egress (no route covering 'destination', no
+    interface registered, or a link-scoped destination on a multi-homed
+    host) this raises 'RuntimeError', the way Linux returns EHOSTUNREACH
+    rather than picking an interface the routing table did not select.
     """
 
-    if destination is not None:
-        handler = _egress_handler_via_fib(destination)
-        if handler is not None:
-            return handler
+    handler = _egress_handler_via_fib(destination)
+    if handler is not None:
+        return handler
 
-    handlers = interfaces.values()
-    if len(handlers) == 1:
-        return handlers[0]
-    if not handlers:
-        raise RuntimeError(
-            "No interface registered; cannot egress stack-originated traffic. "
-            "Add one via 'stack.add_interface(...)'."
-        )
     raise RuntimeError(
-        "Multiple interfaces registered and the FIB did not resolve an egress "
-        f"interface for the destination ({destination!r}); cannot pick a "
-        "single egress. Install a route covering the destination."
+        f"No egress interface for destination {destination!r}: the routing "
+        "table does not resolve one. Install a route covering it, add an "
+        "interface, or (for a link-scoped destination on a multi-homed host) "
+        "select the egress device explicitly."
     )
 
 
@@ -489,25 +504,21 @@ def egress_interface_mtu(destination: Ip4Address | Ip6Address, /) -> int | None:
     Path-MTU fall-back read the EGRESS interface's MTU, so a multi-homed
     host sizes its segments to the interface the FIB selects for the peer.
 
-    Resolution mirrors 'egress_packet_handler' — FIB 'oif' first, then the
-    sole registered interface when the FIB does not resolve and exactly one
-    interface exists — but returns None instead of raising, so MSS / PMTU
-    callers degrade to their own conservative fall-back rather than failing
-    a send. The annotation-only 'ip4_fib' / 'ip6_fib' declarations create no
-    'globals()' entry until 'init()' / 'mock__init()' assign them, so the
-    membership test below is the "is the routing plane up?" guard.
+    Resolution mirrors 'egress_packet_handler' — FIB 'oif', with
+    link-scoped destinations egressing the sole interface at N=1 — but
+    returns None instead of raising, so MSS / PMTU callers degrade to
+    their own conservative fall-back rather than failing a send. There is
+    NO sole-interface guess for a routed destination the FIB cannot
+    resolve (it returns None). The annotation-only 'ip4_fib' / 'ip6_fib'
+    declarations create no 'globals()' entry until 'init()' /
+    'mock__init()' assign them, so the membership test below is the "is
+    the routing plane up?" guard.
     """
 
-    handlers = interfaces.values()
-    if not handlers:
+    if "ip4_fib" not in globals() or "ip6_fib" not in globals():
         return None
-    if "ip4_fib" in globals() and "ip6_fib" in globals():
-        handler = _egress_handler_via_fib(destination)
-        if handler is not None:
-            return handler._interface_mtu
-    if len(handlers) == 1:
-        return handlers[0]._interface_mtu
-    return None
+    handler = _egress_handler_via_fib(destination)
+    return handler._interface_mtu if handler is not None else None
 
 
 def local_ip4_hosts() -> tuple[Ip4IfAddr, ...]:

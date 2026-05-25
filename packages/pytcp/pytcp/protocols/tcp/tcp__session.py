@@ -3568,7 +3568,7 @@ class TcpSession:
         # bare 'stack.arp_cache' / 'stack.nd_cache' singletons.
         # Phase 3: a dedicated neighbor-control API will replace this
         # reach-through into the handler's '_arp_cache' / '_nd_cache'.
-        handler = stack.egress_packet_handler()
+        handler = stack.egress_packet_handler(self._remote_ip_address)
         if isinstance(self._remote_ip_address, Ip4Address):
             if handler._arp_cache is not None:
                 handler._arp_cache.confirm_reachability(ip4_address=self._remote_ip_address)
