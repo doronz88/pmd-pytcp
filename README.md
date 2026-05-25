@@ -34,7 +34,7 @@ Contributions are welcome.
 #### Stack & sockets (engineering, non-RFC)
 
  - Zero-copy packet parser and assembler (buffer-protocol / memoryview based).
- - `net_addr` value-type libraries for MAC / IPv4 / IPv6 addresses, networks, hosts and masks - no Python standard-library dependency.
+ - `net_addr` value-type library for MAC / IPv4 / IPv6 addresses, networks, masks, ACL wildcards and interface-addresses - immutable, hashable, `@final` leaves, one `NetAddrError` tree; no Python standard-library dependency.
  - Importable as a zero-runtime-dependency library (stdlib only), split into three independent packages: `net_addr`, `net_proto`, `pytcp`.
  - Event-driven millisecond-resolution timer (heap-based deadline scheduler, no polling tick).
  - Runtime-tunable sysctl registry mirroring the Linux `/proc/sys/net/` surface (boot-time and live overrides).
