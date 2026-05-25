@@ -55,7 +55,7 @@ from net_addr import (
     MacAddress,
 )
 from pytcp import stack
-from pytcp.runtime.fib import RouteProtocol
+from pytcp.stack import RouteProtocol
 
 
 def _capture_stats_snapshot() -> dict[str, int]:

@@ -46,6 +46,7 @@ from pytcp.lib.logger import log
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
+from pytcp.runtime.fib import Route, RouteProtocol, RouteScope
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.timer import Timer
@@ -701,6 +702,9 @@ __all__ = [
     "LOG__OUTPUT",
     "PacketHandlerL2",
     "PacketHandlerL3",
+    "Route",
+    "RouteProtocol",
+    "RouteScope",
     "TCP__ISS_SECRET",
     "add_interface",
     "init",

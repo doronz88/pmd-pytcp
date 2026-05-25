@@ -478,3 +478,39 @@ class TestRouteApiMutation(TestCase):
             2,
             msg="replace_default must leave the static route + exactly one default.",
         )
+
+
+class TestRouteControlTypesPublicSurface(TestCase):
+    """
+    The Route-control value types' Phase-3 public-surface tests.
+    """
+
+    def test__stack__route__control_types_reexported_from_stack(self) -> None:
+        """
+        Ensure the Route-control value types a consumer needs to use
+        the Route API (Route, RouteProtocol, RouteScope) are importable
+        from the sanctioned 'pytcp.stack' surface and are the same
+        objects as the runtime definitions, so a consumer never has to
+        reach into the implementation-detail 'pytcp.runtime.fib'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        import pytcp.stack as stack_pkg
+        from pytcp.runtime.fib import RouteScope as RuntimeRouteScope
+
+        self.assertIs(
+            stack_pkg.Route,
+            Route,
+            msg="pytcp.stack.Route must be the runtime Route type.",
+        )
+        self.assertIs(
+            stack_pkg.RouteProtocol,
+            RouteProtocol,
+            msg="pytcp.stack.RouteProtocol must be the runtime RouteProtocol enum.",
+        )
+        self.assertIs(
+            stack_pkg.RouteScope,
+            RuntimeRouteScope,
+            msg="pytcp.stack.RouteScope must be the runtime RouteScope enum.",
+        )
