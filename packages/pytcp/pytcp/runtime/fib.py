@@ -252,5 +252,3 @@ class RouteTable[
 
         with self._lock:
             return tuple(self._routes)
-
-        return tuple(self._routes)
