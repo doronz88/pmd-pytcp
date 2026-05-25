@@ -66,6 +66,7 @@ from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
+from pytcp.socket import AddressFamily
 from pytcp.stack.address import AddressApi
 from pytcp.stack.link import LinkApi
 from pytcp.stack.neighbor import NeighborApi
@@ -376,33 +377,79 @@ def add_interface(
     return ifindex
 
 
-def remove_interface(ifindex: int, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+def _purge_interface_state(iface: PacketHandlerL2 | PacketHandlerL3, /) -> None:
     """
-    Remove the interface registered under 'ifindex' — the RTNETLINK
-    'RTM_DELLINK' equivalent. Deregisters it from 'stack.interfaces'
-    and, when the stack is running, stops its subsystem threads (handler
-    + rings + neighbor caches). Returns the removed handler, or None
-    when no interface is registered under 'ifindex'.
+    Run the 'RTM_DELLINK' teardown cascade for one interface's
+    addresses, neighbour caches, routes and DHCP client — BEFORE it
+    leaves the registry, so session-abort RSTs still egress the live
+    interface and address-keyed lookups still resolve it:
 
-    Phase 6 part 5 deliberately stops at thread-teardown + deregister:
-    the 'RTM_DELLINK' cascade for addresses on the removed interface —
-    evicting the peer neighbor caches and aborting TCP sessions bound to
-    those addresses — is deferred to its own slice.
-
-    NOTE: removing the interface that the N=1 back-compat singletons
-    ('stack.packet_handler' / 'rx_ring' / 'tx_ring' / 'arp_cache' /
-    'nd_cache') point at does NOT yet clear those shims — they are
-    retired in Phase 6 part 6. Runtime removal targets non-shim
-    interfaces until then.
+      1. Remove every unicast address (one RTM_DELADDR per address) via
+         the Address API. Each removal ABORTs the TCP sessions bound to
+         that address (RFC 5227 §2.4) and drops it from the interface,
+         so the connected routes synthesized from the address list
+         vanish with the interface.
+      2. Flush the interface's neighbour caches via the Neighbor API —
+         ARP for an L2 interface, ND for every interface ('ip neighbor
+         flush dev <ifX>').
+      3. Purge explicitly-installed FIB routes that egress this
+         interface ('oif' == ifindex) from both address families.
+      4. Stop the per-interface DHCPv4 client — a Subsystem thread the
+         per-interface thread-teardown does not own, so a leaked client
+         would keep renewing a lease on a removed NIC.
     """
 
     import pytcp.stack as _stack
 
-    iface = _stack.interfaces.pop(ifindex)
+    address_api = AddressApi(packet_handler=iface)
+    ifaddrs: list[Ip4IfAddr | Ip6IfAddr] = [*iface._ip4_ifaddr, *iface._ip6_ifaddr]
+    for ifaddr in ifaddrs:
+        address_api.remove(address=ifaddr.address)
+
+    neighbor_api = NeighborApi(packet_handler=iface)
+    if iface._arp_cache is not None:
+        neighbor_api.flush(family=AddressFamily.INET4)
+    neighbor_api.flush(family=AddressFamily.INET6)
+
+    ip4_fib = getattr(_stack, "ip4_fib", None)
+    if ip4_fib is not None:
+        ip4_fib.remove_by_oif(oif=iface._ifindex)
+    ip6_fib = getattr(_stack, "ip6_fib", None)
+    if ip6_fib is not None:
+        ip6_fib.remove_by_oif(oif=iface._ifindex)
+
+    if isinstance(iface, PacketHandlerL2) and iface._dhcp4_client is not None:
+        iface._dhcp4_client.stop()
+
+
+def remove_interface(ifindex: int, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
+    """
+    Remove the interface registered under 'ifindex' — the RTNETLINK
+    'RTM_DELLINK' equivalent. On a running stack it first runs the
+    teardown cascade ('_purge_interface_state': abort bound TCP
+    sessions, drop addresses, flush neighbour caches, purge egress
+    routes, stop the DHCPv4 client), then stops its subsystem threads
+    (handler + rings + neighbor caches); finally it deregisters the
+    interface from 'stack.interfaces'. Returns the removed handler, or
+    None when no interface is registered under 'ifindex'.
+
+    The cascade runs only on a running stack — a stopped stack has no
+    live sessions or threads, and 'init()' rebuilds every interface
+    from scratch, so a stopped-stack removal is a pure deregister.
+    """
+
+    import pytcp.stack as _stack
+
+    iface = _stack.interfaces.get(ifindex)
     if iface is None:
         return None
+    # Cascade + thread teardown BEFORE deregistering, so the abort RSTs
+    # egress the still-registered interface and its address-derived
+    # connected routes are still resolvable while sessions are torn down.
     if _stack.stack_running:
+        _purge_interface_state(iface)
         _stop_interface(iface)
+    _stack.interfaces.pop(ifindex)
     return iface
 
 

@@ -36,18 +36,28 @@ import os
 import sys
 from typing import cast
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytcp.stack as stack
 import pytcp.stack.lifecycle as lifecycle
-from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network, MacAddress
+from net_addr import (
+    Ip4Address,
+    Ip4IfAddr,
+    Ip4Network,
+    Ip6Address,
+    Ip6IfAddr,
+    Ip6Network,
+    MacAddress,
+)
 from pytcp.lib.interface_layer import InterfaceLayer
-from pytcp.runtime.fib import RouteTable
+from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
+from pytcp.runtime.fib import Route, RouteTable
 from pytcp.runtime.interface_table import InterfaceTable
 from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
 from pytcp.stack.address import AddressApi
 from pytcp.stack.lifecycle import add_interface, remove_interface
 from pytcp.stack.link import LinkApi
+from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi
 
 
@@ -1259,11 +1269,20 @@ class TestStackInterfaceLifecycleDynamic(TestCase):
         """
 
         self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        # The RTM_DELLINK cascade logs through the Address / Neighbor
+        # control tools and the packet handler (IPv6 multicast leave);
+        # silence them so the cascade tests do not speckle the suite
+        # output (unit_testing §10a.4).
+        self.enterContext(patch("pytcp.stack.address.log"))
+        self.enterContext(patch("pytcp.stack.neighbor.log"))
+        self.enterContext(patch("pytcp.runtime.packet_handler.log"))
         self._start_iface = self.enterContext(patch.object(lifecycle, "_start_interface"))
         self._stop_iface = self.enterContext(patch.object(lifecycle, "_stop_interface"))
 
         self._sentinel = object()
-        self._snapshot = {name: getattr(stack, name, self._sentinel) for name in ("interfaces", "stack_running")}
+        self._snapshot = {
+            name: getattr(stack, name, self._sentinel) for name in ("interfaces", "stack_running", "ip4_fib", "ip6_fib")
+        }
         self._route_snapshot = getattr(stack, "route", self._sentinel)
         if hasattr(stack, "route"):
             delattr(stack, "route")
@@ -1380,6 +1399,134 @@ class TestStackInterfaceLifecycleDynamic(TestCase):
 
         self.assertIsNone(remove_interface(99), msg="remove_interface on an unknown ifindex must return None.")
         self._stop_iface.assert_not_called()
+
+    def test__remove_interface__drops_interface_addresses(self) -> None:
+        """
+        Ensure removing a running interface drops every unicast
+        address it carried (an RTM_DELADDR per address) so the
+        interface's connected routes — synthesized from those
+        addresses — vanish with it (RTM_DELLINK).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        ifindex = self._add_l2(0)
+        handler = stack.interfaces[ifindex]
+        assert isinstance(handler, PacketHandlerL2)
+        v6 = Ip6IfAddr("2001:db8:50::7/64")
+        handler._ip4_ifaddr = [Ip4IfAddr("10.0.50.7/24")]
+        handler._ip6_ifaddr = [v6]
+        handler._ip6_multicast = [v6.address.solicited_node_multicast]
+        handler._mac_multicast = [v6.address.solicited_node_multicast.multicast_mac]
+
+        remove_interface(ifindex)
+
+        self.assertEqual(handler._ip4_ifaddr, [], msg="remove_interface must drop every IPv4 address.")
+        self.assertEqual(handler._ip6_ifaddr, [], msg="remove_interface must drop every IPv6 address.")
+
+    def test__remove_interface__flushes_neighbor_caches(self) -> None:
+        """
+        Ensure removing a running interface flushes its ARP and ND
+        caches, so no neighbour entry survives the device — the
+        Linux 'ip neighbor flush dev <ifX>' half of RTM_DELLINK.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        ifindex = self._add_l2(0)
+        handler = stack.interfaces[ifindex]
+        neighbor = NeighborApi(packet_handler=handler)
+        neighbor.add(ip=Ip4Address("10.0.50.9"), mac=MacAddress("02:00:00:00:50:09"))
+        neighbor.add(ip=Ip6Address("2001:db8:50::9"), mac=MacAddress("02:00:00:00:50:0a"))
+
+        remove_interface(ifindex)
+
+        self.assertEqual(
+            NeighborApi(packet_handler=handler).list_neighbors(),
+            (),
+            msg="remove_interface must flush both neighbour caches.",
+        )
+
+    def test__remove_interface__purges_oif_routes(self) -> None:
+        """
+        Ensure removing a running interface purges explicitly-installed
+        FIB routes that egress it ('oif' == ifindex) from both address
+        families, while routes egressing other interfaces survive.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        stack.ip4_fib = RouteTable[Ip4Address, Ip4Network]()
+        stack.ip6_fib = RouteTable[Ip6Address, Ip6Network]()
+        ifindex = self._add_l2(0)
+        keep4 = Route(destination=Ip4Network("10.9.0.0/16"), gateway=Ip4Address("10.9.0.1"), oif=ifindex + 1)
+        stack.ip4_fib.add(route=Route(destination=Ip4Network("10.0.50.0/24"), oif=ifindex))
+        stack.ip4_fib.add(route=keep4)
+        stack.ip6_fib.add(route=Route(destination=Ip6Network("2001:db8:50::/64"), oif=ifindex))
+
+        remove_interface(ifindex)
+
+        self.assertEqual(
+            stack.ip4_fib.snapshot(),
+            (keep4,),
+            msg="remove_interface must purge only the IPv4 routes egressing the removed interface.",
+        )
+        self.assertEqual(
+            stack.ip6_fib.snapshot(),
+            (),
+            msg="remove_interface must purge the IPv6 routes egressing the removed interface.",
+        )
+
+    def test__remove_interface__stops_dhcp4_client(self) -> None:
+        """
+        Ensure removing a running interface stops its per-interface
+        DHCPv4 client — a Subsystem thread the bare thread-teardown
+        ('_stop_interface') does not own, so a leaked client would
+        keep renewing a lease on a removed NIC.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = True
+        ifindex = self._add_l2(0)
+        handler = stack.interfaces[ifindex]
+        dhcp4_client = create_autospec(Dhcp4Client, spec_set=True)
+        assert isinstance(handler, PacketHandlerL2)
+        handler._dhcp4_client = dhcp4_client
+
+        remove_interface(ifindex)
+
+        dhcp4_client.stop.assert_called_once_with()
+
+    def test__remove_interface__cascade_skipped_when_stopped(self) -> None:
+        """
+        Ensure removing an interface from a stopped stack deregisters
+        it without running the teardown cascade — a stopped stack has
+        no live sessions / threads, and 'init()' rebuilds from scratch.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stack.stack_running = False
+        ifindex = self._add_l2(0)
+        handler = stack.interfaces[ifindex]
+        dhcp4_client = create_autospec(Dhcp4Client, spec_set=True)
+        assert isinstance(handler, PacketHandlerL2)
+        handler._dhcp4_client = dhcp4_client
+        handler._ip4_ifaddr = [Ip4IfAddr("10.0.50.7/24")]
+
+        remove_interface(ifindex)
+
+        self.assertNotIn(ifindex, stack.interfaces, msg="remove_interface must still deregister when stopped.")
+        dhcp4_client.stop.assert_not_called()
+        self.assertEqual(
+            handler._ip4_ifaddr,
+            [Ip4IfAddr("10.0.50.7/24")],
+            msg="A stopped-stack remove must not run the address-drop cascade.",
+        )
 
 
 class TestStackInitZeroInterface(TestCase):
