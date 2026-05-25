@@ -51,6 +51,12 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 
 ## §1 — Tier 2 #8: simultaneous-probe detection (RFC 5227 §2.1.1)
 
+> **SHIPPED (commit `3f051584`; reconciled 2026-05-25).** This section
+> is delivered — the §0 status table records it. Simultaneous-probe
+> detection (a peer's ARP Probe with SPA = 0 and TPA = our candidate)
+> is detected during the ACD probe window and treated as a conflict.
+> The prose below is the original gap analysis, kept as archaeology.
+
 ### What's missing
 
 > "In addition, if during this period the host receives any ARP

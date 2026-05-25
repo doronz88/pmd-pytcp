@@ -2,13 +2,27 @@
 
 | Field           | Value                                                                |
 |-----------------|----------------------------------------------------------------------|
-| Status          | Plan — implementation not yet started                                |
+| Status          | SHIPPED (2026-05-12, Phases 0–5) — header was stale; see note below  |
 | Plan author     | Audit pass (2026-05-12)                                              |
 | Source audit    | `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`                  |
 | Target branch   | `PyTCP_3_0__pre_release`                                             |
 | Touch points    | new `packages/pytcp/pytcp/protocols/ip4/link_local/`, `packages/pytcp/pytcp/stack/address.py` (new ACD API surface), DHCP client (migrates to new API), `packet_handler__ip4__tx.py`, `packet_handler__ethernet__tx.py`, sysctl framework, RFC 3927 / 5227 / 2131 adherence records |
 | Coupled records | RFC 1122 §3.3.4 (multihoming — out of scope), RFC 2131 (DHCP client — coordination + migration to new API), RFC 5227 (ACD — extracted into sanctioned API), RFC 6724 (IPv4 source selection — already in place) |
 | Design option   | **Option B** — extract a Phase-3-clean ACD API on `Ip4AddressApi`; both DHCP and link-local consume it. Cleans up DHCP's existing `_arp_dad_probe_address` reach-through as a side effect. See §12.2 for the alignment rationale. |
+
+> **SHIPPED (reconciled 2026-05-25).** This is a *delivered* plan; the
+> "not yet started" header was stale. The RFC 3927 client shipped in
+> Phases 0–5: `packages/pytcp/pytcp/protocols/ip4/link_local/`
+> (`Ip4LinkLocal(Subsystem)` + RNG + constants), gated by
+> `stack.init(ip4_link_local=True)`, with the §2.6 TX scope-mismatch
+> gate and the DHCPv4 fallback coordination. Every §-section is **met**
+> per the adherence record at
+> `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`. One design
+> detail evolved past this plan: the ACD engine later moved from the
+> `Ip4AddressApi.claim_with_acd` shape to per-address `Ip4Acd`
+> AF_PACKET sockets (the sd-ipv4acd end state, see
+> `raw_link_socket.md`), so the "Option B" API names below are
+> historical. The phased body is kept as archaeology.
 
 This document is the implementation plan for closing the
 RFC 3927 IPv4 Link-Local Autoconfiguration gap surfaced by the

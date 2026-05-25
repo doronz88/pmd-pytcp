@@ -1,34 +1,37 @@
 # PyTCP 3.0.6 — Remaining Work Ledger
 
 **Authored:** 2026-05-24 on `PyTCP_3_0_6` (HEAD `081c5059`).
-**Suite:** ~11,300 passing, lint clean, source tree zero TODO/FIXME/XXX.
+**Reconciled:** 2026-05-25 during the per-package release-readiness pass
+(`v3_0_6_release_readiness.md`) — §2 is now empty (all formerly-open
+optional items shipped or were already present); see §1.2.
+**Suite:** ~11,370 passing, lint clean, source tree zero TODO/FIXME/XXX.
 **Purpose:** the single authoritative "what's left for 3.0.6" list,
-produced by a full staleness sweep of all 34 `docs/refactor/*.md`
-(each claim cross-checked against the actual code + referenced
-commits). Use the resume prompt in §5 to pick this up in a fresh
-session.
+produced by a full staleness sweep of all `docs/refactor/*.md` (each
+claim cross-checked against the actual code + referenced commits).
 
 ---
 
 ## 0. Headline
 
-**Nothing blocks 3.0.6.** Every major feature/conformance track shipped;
-the host stack is feature-complete. The branch is in sync with origin,
-the suite is green, and the source tree carries no TODO markers. The
-items below are all **optional** — they are catalogued so the choice of
-"what next" is greppable, not because anything is unfinished or broken.
+**Nothing blocks 3.0.6, and the optional host-stack tail is now also
+closed.** Every major feature/conformance track shipped; the host stack
+is feature-complete. As of the 2026-05-25 release-readiness pass the
+three items the 2026-05-24 ledger listed as "genuinely open optional"
+(§2) are all resolved. The branch is green, lint-clean, and the source
+tree carries no TODO markers.
 
 If the answer to "is 3.0.6 done?" is needed in one word: **yes** (host
-stack). The remaining buckets are polish, deferred-by-design, and
-future-phase.
+stack). What remains (§3 on-touch, §4 future-phase) is by-design out of
+3.0.6 host scope.
 
 ---
 
-## 1. Done this sweep (2026-05-24)
+## 1. Done
 
-A reconciliation pass corrected six stale status lines + one snapshot
-annotation (commit `081c5059`). Bodies kept as archaeology; only the
-headers changed. The docs whose status now reflects as-shipped reality:
+### 1.1 The 2026-05-24 reconciliation sweep
+
+Corrected six stale status lines + one snapshot annotation (commit
+`081c5059`). Bodies kept as archaeology; only the headers changed:
 
 | Doc | Corrected to | Verifying evidence |
 |-----|--------------|--------------------|
@@ -42,57 +45,55 @@ headers changed. The docs whose status now reflects as-shipped reality:
 
 **Note:** `v6_remaining_items.md` *looks* stale ("ALL ITEMS SHIPPED" over
 a body full of implementation sketches) but is actually **correct** — the
-body lists per-item commit hashes (`604eebbf` etc.); the sketches are
-archaeology. Left untouched. Don't "fix" it.
+body lists per-item commit hashes; the sketches are archaeology. Left
+untouched. Don't "fix" it.
+
+### 1.2 The 2026-05-25 release-readiness pass
+
+Closed the entire §2 optional tail and refreshed the package READMEs.
+Per-package (net_addr → net_proto → pytcp):
+
+- **net_addr** — value-type coverage gaps closed to 100% on the touched
+  files (`2bf975e6`); README refreshed (`4e0c8a70`).
+- **net_proto** — README expanded; `net_proto_remaining_audits.md` status
+  corrected to CLOSED (all twelve A–L audits done); §9.2 wire-vs-
+  programmer-input discipline re-confirmed AST-clean (`09bc4b1e`).
+- **DHCPv4 Phase 7 — Classless Static Routes (RFC 3442, option 121)** —
+  the largest formerly-open item. Shipped across the option-121 codec
+  (`bb99cb34`), RFC 3396 concatenation / Phase 8.3 (`a9eae78f`), the
+  client request/install with option-3 suppression (`1560422f`), and the
+  adherence + plan reconciliation (`938d5165`). (Phases 5 INIT-REBOOT +
+  lease cache and 6 DNAv4 had already shipped before this ledger was
+  first written — the 2026-05-24 §2.1 text under-counted them.)
+- **`fib.py`** — removed an unreachable `return` in `RouteTable.snapshot`
+  (`084f68b8`).
+- **stack** — re-exported `Route` / `RouteProtocol` / `RouteScope` from
+  the sanctioned `pytcp.stack` surface so consumers (e.g.
+  `examples/stack.py`) no longer reach into `pytcp.runtime.fib`
+  (`02b244ce`).
 
 ---
 
-## 2. Genuinely open — optional, in-scope-if-desired (none blocking)
+## 2. Genuinely open — optional host-stack items
 
-Ordered by size / value. Each is a real host-stack item that *could* land
-in 3.0.6; none is required for it.
+**None.** The three items the 2026-05-24 ledger listed here are resolved:
 
-### 2.1 DHCPv4 client — Phases 5–8  (largest open track)
+- **DHCPv4 Phases 5–8** — Phases 5 (INIT-REBOOT + `dhcp4__lease_cache.py`),
+  6 (DNAv4), 7 (Classless Static Routes), and 8.1/8.2/8.3 are shipped.
+  Only **8.4 (Option Overload parse)** and **Phase 9 (RFCs 4702 / 3203 /
+  8910)** remain, both explicitly deferred — see
+  `dhcp4_client_full_parity.md`.
+- **ARP simultaneous-probe detection (RFC 5227 §2.1.1)** — shipped
+  (commit `3f051584`); `arp_linux_parity.md` §0 status table records it.
+  (The 2026-05-24 §2.2 entry and the `arp_linux_parity.md` §1 prose were
+  both stale; the §1 prose is the remaining cleanup, tracked in that doc.)
+- **RFC 8504 adherence record** — already present at
+  `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md`; the 2026-05-24
+  §2.3 "deferred, doc-only" claim was stale.
 
-Source of truth: `docs/refactor/dhcp4_client_full_parity.md` §5–§8.
-Phases 0–4.x shipped (CID-in-REQUEST, xid validation, NAK handler,
-lease-time dataclass, retransmission backoff, DHCPDECLINE+ACD via
-`Ip4Acd`, DUID/IAID, lifecycle FSM + per-interface client + multi-homed
-egress via `SO_BINDTODEVICE`). Outstanding:
-
-- **Phase 5 — INIT-REBOOT + cached-lease persistence.** On restart,
-  reuse a stored lease (DHCPREQUEST in INIT-REBOOT state) instead of a
-  fresh DISCOVER. Needs a lease-cache store (no `dhcp4_lease_cache.py`
-  exists today). RFC 2131 §3.2.
-- **Phase 6 — DNAv4** (RFC 4436). Fast reconfirm of a cached lease via
-  ARP probe of the recorded gateway before committing to INIT-REBOOT.
-- **Phase 7 — Classless Static Routes** (RFC 3442, option 121). Now
-  **unblocked** — the host-mode FIB + Route API shipped
-  (`routing_table_host_mode.md`), so installing DHCP-supplied routes has
-  a home. Parse option 121, install via the Route API.
-- **Phase 8 — option polish.** Remaining standard options
-  (domain-search, NTP, etc.) the audit flagged as low-value.
-
-Phase 9 (RFCs 4702 / 3203 / 8910) is explicitly **deferred** — leave it.
-
-### 2.2 ARP simultaneous-probe detection  (small parity gap)
-
-Source: `docs/refactor/arp_linux_parity.md` §1 item #8. RFC 5227 §2.1.1
-— detect another host probing the *same* candidate address concurrently
-during ACD and treat it as a conflict. Implementation sketch is in the
-doc. Needs an `arp__op_request__simultaneous_probe` stat counter + RX
-branch in the `Ip4Acd` probe window. Small, self-contained, tests-first.
-
-(`arp_linux_parity` §3 item #10 — `MAX_CONFLICTS` / `RATE_LIMIT_INTERVAL`
-— is **dormant by design**: there is no candidate-rotation path to rate-
-limit yet. Leave until that exists.)
-
-### 2.3 RFC 8504 adherence record  (doc-only)
-
-Source: `docs/refactor/v6_remaining_items.md` #286. The IPv6 Node
-Requirements implementation work (#281–#285) shipped; only the per-RFC
-**adherence record** under `docs/rfc/ip6/` was deferred. Use the
-`rfc_adherence_audit` skill. Pure documentation; no code.
+`arp_linux_parity` §3 item #10 (`MAX_CONFLICTS` / `RATE_LIMIT_INTERVAL`)
+remains **dormant by design** — there is no candidate-rotation path to
+rate-limit yet. Leave until that exists.
 
 ---
 
@@ -110,6 +111,9 @@ as feature work touches the relevant package.
   `enums.md` §5; fix in the same commit when you touch a file.
 - **Legacy typing modernisation on touch** — `python_features.md` §22 /
   `typing.md` §23.
+- **Phase-3 boundary cleanups** — land on-touch; resist dedicated sweeps
+  (the `pytcp.stack` Route re-export in §1.2 is an example landed at the
+  boundary).
 
 ---
 
@@ -122,64 +126,32 @@ to expand scope.
 - **Phase-2 router/forwarding** behind the RFC 1812 `forward_or_deliver`
   seam (currently a deliver-locally-or-drop stub): FIB transit routes,
   IP forwarding, ICMP Redirect generation, PMTU on transit, IGMP/MLD
-  querier role. `packet_handler_rewrite_plan.md`.
+  querier role. DHCPv4 option-121 router-0.0.0.0 (on-link) routes also
+  wait on the Phase-2 per-interface oif on DHCP-learned routes.
 - **Socket Linux parity — HIGH/MEDIUM/LOW tail** + the **X1 stack-thread-
   safety audit** (overlaps packet-handler concurrency review). Phase 1
   fully shipped, Phase 2 mostly; the rest is deferred-with-rationale.
   `socket_linux_parity_audit.md`.
 - **TCP god-class decomposition** (`tcp_codebase_improvement_plan.md`
-  #1–#5): extract `CcState`, split `_process_ack_packet`, decompose
-  `_transmit_packet`, etc. `tcp__session.py` is ~4.4k lines. These are
-  **internal code-quality refactors, not conformance** — status partly
-  *unverified* (e.g. `TcpStack` does exist, contrary to a quick grep), so
-  re-audit before treating any as "open". Deferrable.
-- **Phase-3 boundary cleanups** — land on-touch; resist dedicated sweeps.
+  #1–#5). These are **internal code-quality refactors, not conformance**;
+  status partly *unverified* — re-audit before treating any as "open".
+  Deferrable.
+- **DHCPv4 Phase 8.4 / Phase 9** (Option Overload parse; RFCs 4702 / 3203
+  / 8910) — deferred per `dhcp4_client_full_parity.md`.
 
 ---
 
-## 5. Resume prompt (paste verbatim in a fresh session)
-
-```
-Read docs/refactor/v3_0_6_remaining_work.md end to end — it is the
-authoritative "what's left for PyTCP 3.0.6" ledger (authored 2026-05-24,
-HEAD 081c5059). Then read CLAUDE.md (Project North Star) and the relevant
-rule files in .claude/rules/.
-
-Context: 3.0.6 is feature-complete for a host stack — suite green
-(~11,300), lint clean, zero source TODOs, all major tracks shipped. The
-ledger's §2 lists the only genuinely-open OPTIONAL items (none blocking);
-§3 is on-touch-only; §4 is deferred future-phase.
-
-I want to work on: <PICK ONE of §2>
-  - 2.1 DHCPv4 Phases 5-8 (INIT-REBOOT + lease cache / DNAv4 / Classless
-        Static Routes / option polish) — largest track; source of truth
-        docs/refactor/dhcp4_client_full_parity.md §5-8.
-  - 2.2 ARP simultaneous-probe detection (RFC 5227 §2.1.1) — small;
-        docs/refactor/arp_linux_parity.md §1 #8.
-  - 2.3 RFC 8504 adherence record — doc-only; use the rfc_adherence_audit
-        skill.
-
-Follow the standing discipline: tests-first (a failing test that pins the
-RFC clause before any fix), one logical unit per commit, make lint + full
-make test + the §7.2 docstring audit clean before each commit, commit
-trailer "Co-Authored-By: Claude Opus 4.7 (1M context)
-<noreply@anthropic.com>", and push only when I explicitly say so. Touch
-docs/refactor/v3_0_6_remaining_work.md to tick the item off when it lands.
-
-Before writing code, confirm the chosen item is still open (re-grep /
-re-read the source-of-truth doc) — this ledger is a snapshot and may have
-drifted.
-```
-
----
-
-## 6. Cross-references
+## 5. Cross-references
 
 - `CLAUDE.md` — Project North Star (Phase 1 host / Phase 2 router /
   Phase 3 kernel-boundary).
-- `dhcp4_client_full_parity.md` — §2.1 source of truth.
-- `arp_linux_parity.md` — §2.2 source of truth.
-- `v6_remaining_items.md` — §2.3 context (note: accurate, not stale).
-- `socket_linux_parity_audit.md`, `tcp_codebase_improvement_plan.md`,
-  `packet_handler_rewrite_plan.md` — §4 deferred tracks.
+- `v3_0_6_release_readiness.md` — the 2026-05-25 per-package pass that
+  closed §2.
+- `dhcp4_client_full_parity.md` — DHCPv4 phase status (Phases 0–7 +
+  8.1/8.2/8.3 shipped).
+- `arp_linux_parity.md` — ARP parity status (#8 shipped).
+- `v6_remaining_items.md` — IPv6 Node Requirements context (accurate, not
+  stale).
+- `socket_linux_parity_audit.md`, `tcp_codebase_improvement_plan.md` —
+  §4 deferred tracks.
 - `sysctl_framework.md` — §3 on-touch migration policy.
