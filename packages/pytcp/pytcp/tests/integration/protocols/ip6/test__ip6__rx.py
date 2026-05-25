@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler IPv6 RX operations.
+This module contains integration tests for the IPv6 RX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip6__rx.py
+pytcp/tests/integration/protocols/ip6/test__ip6__rx.py
 
 ver 3.0.6
 """
@@ -38,7 +38,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_proto.lib.packet_rx import PacketRx
 from pytcp.lib.packet_stats import PacketStatsRx, PacketStatsTx
-from pytcp.tests.lib.network_testcase import NetworkTestCase
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 
 
 @parameterized_class(
@@ -174,9 +174,9 @@ from pytcp.tests.lib.network_testcase import NetworkTestCase
         },
     ]
 )
-class TestPacketHandlerIp6Rx(NetworkTestCase):
+class TestIp6Rx(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 RX operations.
+    The IPv6 RX packet-handler path tests.
     """
 
     _description: str
@@ -187,7 +187,7 @@ class TestPacketHandlerIp6Rx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip6__rx(self) -> None:
+    def test__ip6__rx(self) -> None:
         """
         Ensure the Packet Handler processes the received IPv6
         frames as expected for each parametrized case.

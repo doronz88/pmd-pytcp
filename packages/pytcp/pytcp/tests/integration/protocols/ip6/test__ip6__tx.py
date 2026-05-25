@@ -27,9 +27,9 @@
 
 
 """
-This module contains integration tests for the Packet Handler IPv6 TX operations.
+This module contains integration tests for the IPv6 TX packet-handler path.
 
-pytcp/tests/integration/packet_handler/test__packet_handler__ip6__tx.py
+pytcp/tests/integration/protocols/ip6/test__ip6__tx.py
 
 ver 3.0.6
 """
@@ -50,6 +50,7 @@ from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__report import 
 )
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
+from pytcp.tests.lib.ip6_testcase import Ip6TestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     HOST_B__IP6_ADDRESS,
@@ -57,7 +58,6 @@ from pytcp.tests.lib.network_testcase import (
     IP6__MULTICAST__ALL_NODES,
     IP6__UNSPECIFIED,
     STACK__IP6_HOST,
-    NetworkTestCase,
 )
 
 
@@ -362,9 +362,9 @@ from pytcp.tests.lib.network_testcase import (
         },
     ]
 )
-class TestPacketHandlerIp6Tx(NetworkTestCase):
+class TestIp6Tx(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 TX operations (success path).
+    The IPv6 TX packet-handler path tests (success path).
     """
 
     _description: str
@@ -376,7 +376,7 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
 
     _frames_tx: list[bytes]
 
-    def test__packet_handler__ip6__tx(self) -> None:
+    def test__ip6__tx(self) -> None:
         """
         Ensure the Packet Handler IPv6 TX path produces the expected
         frames, statuses, and statistics for each parametrized case.
@@ -428,16 +428,16 @@ class TestPacketHandlerIp6Tx(NetworkTestCase):
         },
     ]
 )
-class TestPacketHandlerIp6TxErrors(NetworkTestCase):
+class TestIp6TxErrors(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 TX operations (error path).
+    The IPv6 TX packet-handler path tests (error path).
     """
 
     _description: str
     _kwargs: dict[str, Any]
     _expected__error: Exception
 
-    def test__packet_handler__ip6__tx__error(self) -> None:
+    def test__ip6__tx__error(self) -> None:
         """
         Ensure '_phtx_ip6' raises the expected exception for invalid kwargs.
 
@@ -456,9 +456,9 @@ class TestPacketHandlerIp6TxErrors(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
+class TestIp6TxNoIp6Support(Ip6TestCase):
     """
-    Test the Packet Handler IPv6 TX path when IPv6 protocol support is
+    The IPv6 TX packet-handler path tests for when IPv6 protocol support is
     disabled — '_phtx_ip6' must short-circuit before assembly.
     """
 
@@ -471,7 +471,7 @@ class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
         super().setUp()
         self._packet_handler._ip6_support = False
 
-    def test__packet_handler__ip6__tx__no_ip6_support(self) -> None:
+    def test__ip6__tx__no_ip6_support(self) -> None:
         """
         Ensure '_phtx_ip6' returns 'DROPPED__IP6__NO_PROTOCOL_SUPPORT'
         and bumps 'ip6__no_proto_support__drop' without emitting any
@@ -507,14 +507,14 @@ class TestPacketHandlerIp6TxNoIp6Support(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
+class TestIp6TxSendIp6Packet(Ip6TestCase):
     """
     Test the public 'send_ip6_packet' wrapper, which forwards into
     '_phtx_ip6' wrapping the user payload as a 'RawAssembler' and
     renaming the addressing kwargs.
     """
 
-    def test__packet_handler__ip6__tx__send_ip6_packet(self) -> None:
+    def test__ip6__tx__send_ip6_packet(self) -> None:
         """
         Ensure 'send_ip6_packet' wraps the call to '_phtx_ip6' with
         a 'RawAssembler' payload using the supplied 'ip6__next' and
@@ -553,7 +553,7 @@ class TestPacketHandlerIp6TxSendIp6Packet(NetworkTestCase):
         )
 
 
-class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
+class TestIp6TxRfc4291LinkLocalScopeGate(Ip6TestCase):
     """
     The RFC 4007 §6 / RFC 4291 §2.5.6 link-local-scope-gate
     tests for explicit caller-supplied source addresses.
@@ -580,7 +580,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
         link_local_host = Ip6IfAddr("fe80::7/64")
         self._packet_handler._ip6_ifaddr.append(link_local_host)
 
-    def test__phtx_ip6__link_local_src_global_dst__drops_scope_mismatch(self) -> None:
+    def test__ip6__tx__link_local_src_global_dst__drops_scope_mismatch(self) -> None:
         """
         Ensure an explicit link-local source paired with a
         global-scope destination is rejected with
@@ -609,7 +609,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
             msg="No frame must be emitted on a scope-mismatch drop.",
         )
 
-    def test__phtx_ip6__link_local_src_link_local_dst__sends(self) -> None:
+    def test__ip6__tx__link_local_src_link_local_dst__sends(self) -> None:
         """
         Ensure an explicit link-local source paired with a
         link-local destination passes through unchanged — the
@@ -635,7 +635,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
             msg="Link-local src + link-local dst must NOT drop on scope mismatch.",
         )
 
-    def test__phtx_ip6__link_local_src_link_local_multicast_dst__sends(self) -> None:
+    def test__ip6__tx__link_local_src_link_local_multicast_dst__sends(self) -> None:
         """
         Ensure an explicit link-local source paired with a
         link-local-scope multicast destination (ff02::/16)
@@ -659,7 +659,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
             msg="Link-local src + link-local multicast dst must NOT drop on scope mismatch.",
         )
 
-    def test__phtx_ip6__link_local_src_global_multicast_dst__drops(self) -> None:
+    def test__ip6__tx__link_local_src_global_multicast_dst__drops(self) -> None:
         """
         Ensure an explicit link-local source paired with a
         global-scope multicast destination (ff0e::/16) is
@@ -681,7 +681,7 @@ class TestPacketHandlerIp6TxRfc4291LinkLocalScopeGate(NetworkTestCase):
             msg="Link-local src + global multicast dst must drop with SRC_SCOPE_MISMATCH.",
         )
 
-    def test__phtx_ip6__global_src_global_dst__sends(self) -> None:
+    def test__ip6__tx__global_src_global_dst__sends(self) -> None:
         """
         Ensure a global-scope source paired with a global-scope
         destination passes through unchanged — regression net
