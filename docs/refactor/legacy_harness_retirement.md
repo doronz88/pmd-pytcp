@@ -103,12 +103,23 @@ fluent pattern documented in `integration_testing.md`). The legacy files
 tend to use raw `NetworkTestCase` + hand-built golden-byte frames +
 `packet_stats` snapshots — the older idiom.
 
-**Not in scope of "per-handler smoke":** the 3
-`tests/integration/packet_handler/test__packet_socket__*.py` files
-(AF_PACKET SOCK_RAW bind / rx-tap / tx) are a *different* surface
-(packet sockets, not the per-protocol RX/TX smoke). They legitimately
-live here and should stay (or move to a `protocols/packet_socket/` dir as
-a separate, optional tidy — decide in §4).
+**Not in scope of "per-handler smoke" — and they STAY in `packet_handler/`:**
+the 3 `tests/integration/packet_handler/test__packet_socket__*.py` files
+(AF_PACKET SOCK_RAW bind / rx-tap / tx) are a *different* surface from the
+per-protocol RX/TX smoke. The initial framing called them misfiled socket-
+API tests; that was **wrong** (verified 2026-05-24 by reading the bodies +
+`git log`). What they actually pin is the **packet handler's** AF_PACKET
+tap path: `rx_tap` drives `self._packet_handler._phrx_ethernet(PacketRx(...))`
+and asserts the Ethernet RX handler fans a verbatim copy out to a bound
+packet socket (with a `sockaddr_ll`); `tx` asserts a frame sent via a packet
+socket egresses through the handler; `bind` covers the bind/pkttype
+classification the handler keys on. The `PacketSocket` is the *observation
+point*, not the subject — the subject is handler behaviour, so
+`packet_handler/` is the correct home. They were added *with* the feature
+(`a469f54f` Phase 1 RX-tap, `c9bc36be` Phase 3 bind), not parked here by
+accident. They straddle two valid views (handler-tap vs. a socket-family
+`integration/socket/` dir mirroring `unit/socket/`); the handler-tap view
+wins because that is what the assertions verify. **Leave them; do not move.**
 
 ## 3. Why this is a real (if small) track
 
@@ -132,7 +143,7 @@ obvious integration home per protocol.
 | 1 | What replaces the 13 files? | **(a)** New `PacketHandlerTestCase(NetworkTestCase)` base + migrate all 13 onto it (mirrors `TcpTestCase`); **(b)** Fold each file's cases into the matching `protocols/<proto>/` dir under that protocol's existing harness, delete the `packet_handler/` smoke file; **(c)** Audit-and-prune: keep files that pin unique behaviour, delete pure duplicates, leave the rest on `NetworkTestCase`. | **(b)** — one integration home per protocol, no new harness layer, kills the third overlapping idiom. (a) adds a harness for files that arguably should not exist as a separate set. |
 | 2 | "Construct via link/address APIs" (the §8 aspiration)? | Build interfaces through `stack.link` / `stack.address` public APIs vs. keep `NetworkTestCase`'s direct `PacketHandlerL2(...)` + `mock__init`. | **Keep direct construction.** White-box RX-drive tests must inject mocked rings/caches; routing that through the public APIs buys little and the harness already encapsulates it. Drop this aspiration unless a concrete consumer wants it. |
 | 3 | Coverage-preservation bar | Each legacy file's unique assertions must be proven to survive (counter snapshots, golden frames, source-route drop, frag reassembly, RFC-specific paths) before deletion — diff each against the protocol-dir + unit coverage. | Mandatory: no net coverage loss. A legacy case with no equivalent elsewhere migrates verbatim (modernised to the harness idiom); a true duplicate is deleted with a one-line note in the commit. |
-| 4 | `test__packet_socket__*` (3 files) | Leave in `packet_handler/`; or move to `protocols/packet_socket/`. | Out of scope for this track — leave them. Optional tidy later. |
+| 4 | `test__packet_socket__*` (3 files) | Leave in `packet_handler/`; or move to `protocols/packet_socket/` / a new `integration/socket/`. | **DECIDED: leave in `packet_handler/`.** They test the handler's AF_PACKET tap path (RX fan-out / TX egress), with `PacketSocket` as the probe — handler behaviour, not a socket-API test (see §2). Moving them would weaken that signal for a cosmetic dir-name win. |
 | 5 | Revert granularity | One commit per protocol (arp, ip4, ip6, ip6_frag, tcp, udp) like the collapse. | Yes — per-protocol commit pairs, full `make test` + §7.2 audit each. |
 
 ## 5. Proposed shape once §4 is decided (assuming 1→(b))
