@@ -34,7 +34,9 @@ examples/stack.py
 ver 3.0.6
 """
 
+import signal
 import time
+from types import FrameType
 from typing import Any
 
 import click
@@ -276,6 +278,11 @@ def cli(
     # 'add_interface()' registers each NIC, 'start()' brings them up.
     stack.init()
 
+    # Track the ifindex each 'add_interface' (RTM_NEWLINK) allocates so a
+    # runtime 'remove_interface' (RTM_DELLINK, on SIGUSR1 below) can tear
+    # the most-recently-added one down live.
+    added_ifindexes: list[int] = []
+
     for interface_name in interfaces:
         # Scalar addressing applies only in single-interface mode; with
         # multiple interfaces each NIC autoconfigures (host left None).
@@ -294,14 +301,16 @@ def cli(
         ip4_dhcp = stack__ip4_support and ip4_host is None
         # No static IPv6 address means SLAAC (GUA) autoconfiguration.
         ip6_gua_autoconfig = stack__ip6_support and ip6_host is None
-        stack.add_interface(
-            **interface_args,
-            ip6_support=stack__ip6_support,
-            ip6_host=ip6_host,
-            ip6_gua_autoconfig=ip6_gua_autoconfig,
-            ip4_support=stack__ip4_support,
-            ip4_host=ip4_host,
-            ip4_dhcp=ip4_dhcp,
+        added_ifindexes.append(
+            stack.add_interface(
+                **interface_args,
+                ip6_support=stack__ip6_support,
+                ip6_host=ip6_host,
+                ip6_gua_autoconfig=ip6_gua_autoconfig,
+                ip4_support=stack__ip4_support,
+                ip4_host=ip4_host,
+                ip4_dhcp=ip4_dhcp,
+            )
         )
 
     # The next hop is FIB state, not a per-IfAddr attribute. Install the
@@ -323,6 +332,21 @@ def cli(
                 subsystem.stack_ip4_address = stack__ip4_host.address if stack__ip4_host else Ip4Address()
             subsystem.start()
 
+        # Runtime interface removal (RTM_DELLINK) over the daemon's
+        # "control channel": SIGUSR1 tears down the most-recently-added
+        # interface on the live stack. The handler only sets a flag (the
+        # async-signal-safe minimum); the run loop below does the actual
+        # 'remove_interface', which runs the teardown cascade (abort bound
+        # sessions, drop addresses, flush neighbour caches, purge egress
+        # routes, stop the interface threads). Try it with:
+        #   kill -USR1 $(pgrep -f 'examples/stack.py')
+        _remove_requested = [False]
+
+        def _on_sigusr1(_signum: int, _frame: FrameType | None) -> None:
+            _remove_requested[0] = True
+
+        signal.signal(signal.SIGUSR1, _on_sigusr1)
+
         # Periodic stats snapshot — disabled by default; opt-in for
         # flood-testing / benchmarking by setting the
         # 'PYTCP_STATS_INTERVAL' env var to a positive integer
@@ -336,6 +360,14 @@ def cli(
 
         while any(subsystem.is_alive for subsystem in subsystems if subsystem) or not subsystems:
             time.sleep(1)
+            if _remove_requested[0]:
+                _remove_requested[0] = False
+                if added_ifindexes:
+                    ifindex = added_ifindexes.pop()
+                    stack.remove_interface(ifindex)
+                    click.echo(f"SIGUSR1: removed interface ifindex={ifindex} (RTM_DELLINK)")
+                else:
+                    click.echo("SIGUSR1: no runtime-added interface left to remove")
             if _stats_interval and time.monotonic() - _last_stats >= _stats_interval:
                 now_snapshot = _capture_stats_snapshot()
                 _print_stats_delta(_last_snapshot, now_snapshot, _stats_interval)
