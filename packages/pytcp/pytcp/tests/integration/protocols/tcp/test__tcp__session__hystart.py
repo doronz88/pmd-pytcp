@@ -51,7 +51,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -65,7 +65,7 @@ PEER__MSS: int = 1460
 PEER__TSVAL_INITIAL: int = 0x1234_5678
 
 
-class TestTcpSessionHyStartPP(TcpSessionTestCase):
+class TestTcpSessionHyStartPP(TcpTestCase):
     """
     Integration tests for the RFC 9406 HyStart++ slow-start-exit
     state machine. Each test drives a session into slow-start

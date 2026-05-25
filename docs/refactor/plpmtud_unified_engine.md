@@ -311,7 +311,7 @@ legacy `pmtu_cache`; `_apply_pmtu_update` (TCP) and
 registry; `_effective_pmtu()` reads via the precedence
 helper (engine state preferred, cache as fallback). The
 three socket-touching test harnesses
-(`IcmpTestCase` / `TcpSessionTestCase` / `UdpTestCase`)
+(`IcmpTestCase` / `TcpTestCase` / `UdpTestCase`)
 snapshot+clear+restore `stack.pmtu_state` alongside
 `pmtu_cache` so the new module state cannot leak
 across tests. Six new unit tests at
@@ -347,7 +347,7 @@ per-destination isolation, and IPv4 / IPv6 keying.
 
 **Test-harness snapshot/restore:** new module-level
 state `stack.pmtu_state` requires the same commit to
-update `TcpSessionTestCase` / `IcmpTestCase` /
+update `TcpTestCase` / `IcmpTestCase` /
 `NetworkTestCase` `setUp`/`tearDown` to
 snapshot+clear+restore — see `integration_testing.md`
 §5.4 and the project memory note. Failure mode if
@@ -711,7 +711,7 @@ behaviour.
 | Probe RTO triggered by coincident data loss | 3 | Separate probe-timer; data-RTO doesn't feed probe-loss (§5.2) |
 | ICMP signal overrides ack-confirmed MTU | 1 / 5.3 | Engine prefers ack feedback; ICMP only shrinks |
 | Black-hole detection fires on transient loss burst | 1 | PROBE_COUNT default = 3 (RFC 8899); only consecutive losses on same candidate count |
-| pmtu_state leaks across tests | 2 | TcpSessionTestCase / IcmpTestCase snapshot+restore |
+| pmtu_state leaks across tests | 2 | TcpTestCase / IcmpTestCase snapshot+restore |
 | IPv6 MIN_PMTU violated by engine arithmetic | 1 / 5.4 | Hard clamp inside engine; assertion in unit tests |
 | Probe sent before SYN ACK → wasted segment | 3 | Adapter gate: only probe in ESTABLISHED |
 | UDP manual API races on `probe_pmtu` while one in flight | 4 | API rejects re-probe while engine `is_probing` |

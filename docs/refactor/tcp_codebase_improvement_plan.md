@@ -194,7 +194,7 @@ it possible to run two PyTCP "instances" in one process
 Migration is mechanical: `stack.tcp__fastopen_cookies[k]` becomes
 `stack.tcp_stack.fastopen_cookies[k]` at every call site. Replace
 the per-RFC-7413-§4.1.3.1 / §4.2 setUp/tearDown snapshot+clear
-in `TcpSessionTestCase` with a single `stack.tcp_stack =
+in `TcpTestCase` with a single `stack.tcp_stack =
 TcpStack()` reset.
 
 ### Refactor #4 — Generalise ICMP error demux + per-destination MTU cache

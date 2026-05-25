@@ -69,7 +69,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -88,7 +88,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
+class TestTcpRobustness__BlindAttacks(TcpTestCase):
     """
     Integration tests for the SYN-in-synchronized-state challenge-
     ACK rule across the FSM states that currently lack the
@@ -611,7 +611,7 @@ class TestTcpRobustness__BlindAttacks(TcpSessionTestCase):
         )
 
 
-class TestTcpRobustness__BlindAckRfc5961S5(TcpSessionTestCase):
+class TestTcpRobustness__BlindAckRfc5961S5(TcpTestCase):
     """
     Integration tests for RFC 5961 §5 blind ACK acceptability
     hardening. The receiver tracks 'MAX.SND.WND' (largest peer

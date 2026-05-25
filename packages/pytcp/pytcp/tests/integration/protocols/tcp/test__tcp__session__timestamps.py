@@ -68,7 +68,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -90,7 +90,7 @@ PEER__MSS: int = 1460
 PEER__TSVAL_INITIAL: int = 0x1234_5678
 
 
-class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
+class TestTcpTimestampsPhase1Active(TcpTestCase):
     """
     Phase 1 active-open bilateral-negotiation invariants.
     """
@@ -275,7 +275,7 @@ class TestTcpTimestampsPhase1Active(TcpSessionTestCase):
 # per-segment emission tests drive both directions.
 
 
-class TestTcpTimestampsPhase2(TcpSessionTestCase):
+class TestTcpTimestampsPhase2(TcpTestCase):
     """
     Phase 2 invariants: post-handshake TSopt emission on every
     segment + '_ts_recent' tracking on accepted inbound segments.
@@ -448,7 +448,7 @@ class TestTcpTimestampsPhase2(TcpSessionTestCase):
         )
 
 
-class TestTcpTimestampsPhase3(TcpSessionTestCase):
+class TestTcpTimestampsPhase3(TcpTestCase):
     """
     Phase 3 invariants: TSecr-driven RTTM (RFC 7323 §4)
     measures RTT cleanly even on Karn-tainted retransmits,
@@ -630,7 +630,7 @@ class TestTcpTimestampsPhase3(TcpSessionTestCase):
         )
 
 
-class TestTcpTimestampsPhase4(TcpSessionTestCase):
+class TestTcpTimestampsPhase4(TcpTestCase):
     """
     Phase 4 invariants: PAWS (Protection Against Wrapped
     Sequence numbers) per RFC 7323 §5.
@@ -758,7 +758,7 @@ class TestTcpTimestampsPhase4(TcpSessionTestCase):
         )
 
 
-class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
+class TestTcpTimestampsPhase4FsmWide(TcpTestCase):
     """
     Phase 4b extension: PAWS + '_ts_recent' update must apply
     to ALL FSM dispatch paths, not only segments routed through
@@ -989,7 +989,7 @@ class TestTcpTimestampsPhase4FsmWide(TcpSessionTestCase):
             )
 
 
-class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
+class TestTcpTimestampsPhase1PassiveCrossRfc(TcpTestCase):
     """
     Cross-RFC interaction (Phase B1 of the test-coverage audit):
     bilateral TSopt negotiation across the passive-open path,
@@ -1117,7 +1117,7 @@ class TestTcpTimestampsPhase1PassiveCrossRfc(TcpSessionTestCase):
                 del stack.sockets[sid]
 
 
-class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
+class TestTcpTimestampsRetransmitFreshness(TcpTestCase):
     """
     Regression guards for RFC 7323 §3 freshness on retransmit:
     a retransmitted segment MUST carry the CURRENT 'now_ms' as
@@ -1445,7 +1445,7 @@ class TestTcpTimestampsRetransmitFreshness(TcpSessionTestCase):
         )
 
 
-class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
+class TestTcpTimestampsRfc7323ShouldClauses(TcpTestCase):
     """
     RFC 7323 SHOULD-level deviations audited in
     'docs/rfc/tcp/rfc7323__timestamps_wscale_paws/adherence.md':
@@ -1722,7 +1722,7 @@ class TestTcpTimestampsRfc7323ShouldClauses(TcpSessionTestCase):
         )
 
 
-class TestTcpTimestampsClockWrap32Bit(TcpSessionTestCase):
+class TestTcpTimestampsClockWrap32Bit(TcpTestCase):
     """
     RFC 7323 §5.4 32-bit TS clock wrap-around tests.
     """

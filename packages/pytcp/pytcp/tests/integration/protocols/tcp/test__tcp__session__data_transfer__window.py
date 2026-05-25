@@ -53,7 +53,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -77,7 +77,7 @@ PEER__MSS: int = 1460
 LOCAL__INITIAL_RCV_WND: int = 65535
 
 
-class TestTcpDataTransfer__Window(TcpSessionTestCase):
+class TestTcpDataTransfer__Window(TcpTestCase):
     """
     Integration tests for the TCP window-management machinery, both
     the receive-side advertised window we put on outbound segments
@@ -671,7 +671,7 @@ class TestTcpDataTransfer__Window(TcpSessionTestCase):
         )
 
 
-class TestTcpDataTransfer__ReceiverSWS(TcpSessionTestCase):
+class TestTcpDataTransfer__ReceiverSWS(TcpTestCase):
     """
     Integration tests for RFC 9293 §3.8.6.2 + RFC 1122
     §4.2.2.16 receiver-side Silly Window Syndrome avoidance:

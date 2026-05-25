@@ -102,7 +102,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -121,7 +121,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpRtoSampling(TcpSessionTestCase):
+class TestTcpRtoSampling(TcpTestCase):
     """
     Integration tests for the RFC 6298 RTO sample-collection
     machinery: pending-sample tracker, single-sample-per-RTT
@@ -430,7 +430,7 @@ class TestTcpRtoSampling(TcpSessionTestCase):
         )
 
 
-class TestTcpRtoInitialization(TcpSessionTestCase):
+class TestTcpRtoInitialization(TcpTestCase):
     """
     Construction-time invariants for the RFC 6298 RTO state on a
     fresh 'TcpSession'.
@@ -492,7 +492,7 @@ class TestTcpRtoInitialization(TcpSessionTestCase):
         )
 
 
-class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
+class TestTcpRtoRetransmitTimer(TcpTestCase):
     """
     Integration tests for the RFC 6298 §5 session-level retransmit
     timer machinery.
@@ -691,7 +691,7 @@ class TestTcpRtoRetransmitTimer(TcpSessionTestCase):
         )
 
 
-class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
+class TestTcpRtoRestartAfterIdle(TcpTestCase):
     """
     Integration tests for the RFC 6298 §5.7 restart-after-idle
     behaviour.
@@ -881,7 +881,7 @@ class TestTcpRtoRestartAfterIdle(TcpSessionTestCase):
         )
 
 
-class TestTcpRtoSynFloor(TcpSessionTestCase):
+class TestTcpRtoSynFloor(TcpTestCase):
     """
     Integration tests for the RFC 6298 §5.7 SECOND clause: the
     SYN-RTO 3-second floor.

@@ -30,7 +30,7 @@
 This module contains the 'IcmpTestCase' base class used by the
 ICMP integration tests, layering ICMPv4 / ICMPv6 decode helpers and
 fluent message-level assertions on top of 'NetworkTestCase'. Mirrors
-the shape of 'TcpSessionTestCase' so future ICMP-related work writes
+the shape of 'TcpTestCase' so future ICMP-related work writes
 fluent integration tests instead of byte-comparing TX frames against
 hand-built golden buffers.
 

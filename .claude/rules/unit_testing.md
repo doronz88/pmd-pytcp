@@ -999,7 +999,7 @@ The integration `NetworkTestCase` already snapshots
 `stack.__dict__`; new fixtures touching module state MUST
 follow the pattern. **Adding module-level state to
 `packages/pytcp/pytcp/stack/__init__.py` REQUIRES the same commit to update
-`TcpSessionTestCase` `setUp`/`tearDown` (or `NetworkTestCase`
+`TcpTestCase` `setUp`/`tearDown` (or `NetworkTestCase`
 where applicable)** — otherwise the "passes alone, fails in
 suite" bug leaks in.
 

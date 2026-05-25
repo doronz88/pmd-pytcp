@@ -32,13 +32,13 @@ A single instance is held on 'pytcp.stack.tcp_stack'. Test
 fixtures snapshot and replace the instance to isolate TFO state
 between tests; before this class existed, every new module-level
 field required a parallel snapshot+clear+restore in
-'TcpSessionTestCase' (the canary for that footgun was commit
+'TcpTestCase' (the canary for that footgun was commit
 9d4d1c9b adding 'tcp__fastopen_negative' without updating the
 test framework — three integration tests silently broke once any
 earlier test in the suite drove a SYN-RTO; fixed by 943698f2).
 With everything on 'TcpStack', adding a new mutable TCP-stack
 field is an internal change to the dataclass and the existing
-'stack.tcp_stack = TcpStack()' reset in 'TcpSessionTestCase'
+'stack.tcp_stack = TcpStack()' reset in 'TcpTestCase'
 covers it for free.
 
 pytcp/protocols/tcp/tcp__stack.py

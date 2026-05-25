@@ -55,7 +55,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -71,7 +71,7 @@ PEER__ISS: int = 0x0000_2000
 PEER__WIN: int = 64240
 
 
-class TestTcpSession__Options(TcpSessionTestCase):
+class TestTcpSession__Options(TcpTestCase):
     """
     Integration tests for TCP options handling: MSS clamping,
     unknown options, SACK-permitted, etc.
@@ -157,7 +157,7 @@ class TestTcpSession__Options(TcpSessionTestCase):
         )
 
         # 'stack.interface_mtu' is 1500 in the harness (set by
-        # 'TcpSessionTestCase.setUp'). The IPv4+TCP header overhead
+        # 'TcpTestCase.setUp'). The IPv4+TCP header overhead
         # is 40 bytes, so the effective MSS ceiling is 1460.
         expected_snd_mss = 1500 - 40
         self.assertEqual(

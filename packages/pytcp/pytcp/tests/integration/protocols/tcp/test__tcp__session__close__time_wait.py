@@ -53,7 +53,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -78,7 +78,7 @@ PEER__MSS: int = 1460
 TEST__TIME_WAIT_DELAY_MS: int = 100
 
 
-class TestTcpClose__TimeWait(TcpSessionTestCase):
+class TestTcpClose__TimeWait(TcpTestCase):
     """
     Integration tests for TIME_WAIT state behaviour - delay-driven
     transition to CLOSED and (per RFC 9293 §3.10.7.5) the response
@@ -312,7 +312,7 @@ class TestTcpClose__TimeWait(TcpSessionTestCase):
         )
 
 
-class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
+class TestTcpClose__TimeWaitRfc1337(TcpTestCase):
     """
     Integration tests for the RFC 1337 'TIME-WAIT Assassination
     Hazards' mitigations. RFC 1337 §4 identifies three hazards
@@ -481,7 +481,7 @@ class TestTcpClose__TimeWaitRfc1337(TcpSessionTestCase):
 PEER__TSVAL_INITIAL: int = 0x1000_0000
 
 
-class TestTcpClose__TimeWaitRfc6191(TcpSessionTestCase):
+class TestTcpClose__TimeWaitRfc6191(TcpTestCase):
     """
     Integration tests for RFC 6191 'Reducing the TIME-WAIT
     State Using TCP Timestamps'. RFC 6191 §3 specifies an

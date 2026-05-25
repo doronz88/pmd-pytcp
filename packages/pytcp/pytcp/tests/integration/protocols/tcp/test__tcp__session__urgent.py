@@ -48,7 +48,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -67,7 +67,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpSessionRfc6093Urgent(TcpSessionTestCase):
+class TestTcpSessionRfc6093Urgent(TcpTestCase):
     """
     RFC 6093 §5 implementation-side MUST: "TCP implementations
     MUST still include support for the urgent mechanism such

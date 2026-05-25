@@ -68,7 +68,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpProbe, TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpProbe, TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -85,7 +85,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpSession__Accecn(TcpSessionTestCase):
+class TestTcpSession__Accecn(TcpTestCase):
     """
     Integration tests for the RFC 9768 AccECN negotiation,
     counter encoding, byte-count emission, and proportional

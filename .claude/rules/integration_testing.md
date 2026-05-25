@@ -67,7 +67,7 @@ packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py   →  pa
 packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py   →  packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py
 packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py                   →  packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py
 packages/pytcp/pytcp/protocols/tcp/tcp__session.py                     →  packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py
-packages/pytcp/pytcp/socket/tcp__socket.py                             →  (driven via TcpSessionTestCase under protocols/tcp/...)
+packages/pytcp/pytcp/socket/tcp__socket.py                             →  (driven via TcpTestCase under protocols/tcp/...)
 RFC 6724 IPv6 source-address selection                  →  packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py
 ```
 
@@ -82,7 +82,7 @@ the codebase (see [`source_files.md`](source_files.md) §2.4).
 | `packages/pytcp/pytcp/runtime/packet_handler/<file>.py` (per-protocol RX/TX handler) | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` |
 | `packages/pytcp/pytcp/protocols/<proto>/<file>.py` (protocol runtime — FSM, caches) | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<scenario>.py` |
 | Cross-cutting RFC mechanism that spans handler + protocol | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rfc-mechanism>.py` |
-| Socket-API behaviour | integration cases via `TcpSessionTestCase` under `packages/pytcp/pytcp/tests/integration/protocols/tcp/...` |
+| Socket-API behaviour | integration cases via `TcpTestCase` under `packages/pytcp/pytcp/tests/integration/protocols/tcp/...` |
 
 The `packages/pytcp/pytcp/tests/integration/` tree mirrors the source tree
 where the line is clean. The per-handler tests
@@ -157,7 +157,7 @@ unittest.TestCase
     │       tests, ARP frame builders, ARP-Request /
     │       Gratuitous-ARP / DAD drivers.
     │
-    └── TcpSessionTestCase      (packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py)
+    └── TcpTestCase      (packages/pytcp/pytcp/tests/lib/tcp_testcase.py)
             Adds: TCP-specific _drive_rx / _advance / _assert_segment,
             TCP segment factory, FSM-aware state assertions.
 ```
@@ -253,7 +253,7 @@ for any test that overrode a sysctl.
 ## 6. Driving RX (inbound frames)
 
 The canonical RX entry point is `self._drive_rx(frame=...)`
-on `IcmpTestCase` / `TcpSessionTestCase`. It feeds the frame
+on `IcmpTestCase` / `TcpTestCase`. It feeds the frame
 into `PacketHandler._phrx_ethernet` and returns a list of TX
 frames the stack produced **as a direct result of that
 single RX**:
@@ -438,7 +438,7 @@ counter, and every TX-side decision likewise.
 
 The canonical helper is `_assert_packet_stats_rx(...)` /
 `_assert_packet_stats_tx(...)` on `IcmpTestCase` /
-`TcpSessionTestCase`:
+`TcpTestCase`:
 
 ```python
 # Good — exact (every unspecified counter MUST be zero)
@@ -751,7 +751,7 @@ When in doubt, mirror the structure of:
   `packages/pytcp/pytcp/tests/lib/nd_testcase.py` (ND-specific builders)
   `packages/pytcp/pytcp/tests/lib/arp_testcase.py` (monotonic-clock
   patching, ARP frame builders, DAD drivers)
-  `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` (TCP segment
+  `packages/pytcp/pytcp/tests/lib/tcp_testcase.py` (TCP segment
   factory, FSM-aware assertions)
   `packages/pytcp/pytcp/tests/lib/fake_timer.py` (the virtual clock itself)
 

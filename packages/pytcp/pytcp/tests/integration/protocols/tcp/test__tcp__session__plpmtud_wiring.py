@@ -68,7 +68,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
 )
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -110,7 +110,7 @@ def _build_icmp4_frag_needed_frame(*, mtu: int, embedded_seq: int) -> bytes:
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
 
 
-class TestTcpPlpmtudWiring(TcpSessionTestCase):
+class TestTcpPlpmtudWiring(TcpTestCase):
     """
     The TcpSession PLPMTUD-adapter wiring tests.
     """

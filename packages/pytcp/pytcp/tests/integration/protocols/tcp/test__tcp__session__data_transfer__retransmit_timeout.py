@@ -58,7 +58,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -77,7 +77,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
+class TestTcpDataTransfer__RetransmitTimeout(TcpTestCase):
     """
     Integration tests for the RTO retransmit machinery: cadence,
     payload preservation, and connection-abort timing.
@@ -724,7 +724,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpSessionTestCase):
             )
 
 
-class TestTcpRfc6582Recover(TcpSessionTestCase):
+class TestTcpRfc6582Recover(TcpTestCase):
     """
     RFC 6582 §3.2 step 4 'recover' marker: post-RTO, the highest
     SND.MAX transmitted is recorded into '_recover_seq' so the
@@ -842,7 +842,7 @@ class TestTcpRfc6582Recover(TcpSessionTestCase):
         )
 
 
-class TestTcpRfc6675SackRetainedOnRto(TcpSessionTestCase):
+class TestTcpRfc6675SackRetainedOnRto(TcpTestCase):
     """
     RFC 6675 §5.1: "A SACK TCP sender SHOULD utilize all SACK
     information made available during the loss recovery

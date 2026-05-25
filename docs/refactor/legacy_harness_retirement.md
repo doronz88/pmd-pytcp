@@ -25,7 +25,7 @@ Outcomes per protocol:
 | arp | both files deleted (proven subset of `protocols/arp/`) | — | 11323→11296 (−27 dup) |
 | ip6_frag | migrated → `test__ip6__reassembly.py` / `test__ip6__fragmentation.py` | `Ip6TestCase` | 11296 (relocate) |
 | udp | migrated → `test__udp__{rx,tx}.py`; dropped 1 proven dup (ip6 zero-cksum, covered by `no_check6`) | `UdpTestCase` | 11296→11295 (−1 dup) |
-| tcp | migrated → `test__tcp__{rx,tx}.py` | `TcpSessionTestCase` | 11295 (relocate) |
+| tcp | migrated → `test__tcp__{rx,tx}.py` | `TcpTestCase` | 11295 (relocate) |
 | ip4 | migrated → `test__ip4__{rx,tx}.py` + `test__ip4__source_route.py` | `Ip4TestCase` | 11295 (relocate) |
 | ip6 | migrated → `test__ip6__{rx,tx}.py` | `Ip6TestCase` | 11295 (relocate) |
 
@@ -66,7 +66,7 @@ the current codebase**:
       ├── Ip6TestCase
       ├── UdpTestCase
       ├── IcmpTestCase ── NdTestCase
-      └── TcpSessionTestCase
+      └── TcpTestCase
   ```
 
   It is referenced across ~40 test files (directly or via a subclass).
@@ -129,7 +129,7 @@ obvious integration home per protocol.
 
 | # | Question | Options | Lean |
 |---|---|---|---|
-| 1 | What replaces the 13 files? | **(a)** New `PacketHandlerTestCase(NetworkTestCase)` base + migrate all 13 onto it (mirrors `TcpSessionTestCase`); **(b)** Fold each file's cases into the matching `protocols/<proto>/` dir under that protocol's existing harness, delete the `packet_handler/` smoke file; **(c)** Audit-and-prune: keep files that pin unique behaviour, delete pure duplicates, leave the rest on `NetworkTestCase`. | **(b)** — one integration home per protocol, no new harness layer, kills the third overlapping idiom. (a) adds a harness for files that arguably should not exist as a separate set. |
+| 1 | What replaces the 13 files? | **(a)** New `PacketHandlerTestCase(NetworkTestCase)` base + migrate all 13 onto it (mirrors `TcpTestCase`); **(b)** Fold each file's cases into the matching `protocols/<proto>/` dir under that protocol's existing harness, delete the `packet_handler/` smoke file; **(c)** Audit-and-prune: keep files that pin unique behaviour, delete pure duplicates, leave the rest on `NetworkTestCase`. | **(b)** — one integration home per protocol, no new harness layer, kills the third overlapping idiom. (a) adds a harness for files that arguably should not exist as a separate set. |
 | 2 | "Construct via link/address APIs" (the §8 aspiration)? | Build interfaces through `stack.link` / `stack.address` public APIs vs. keep `NetworkTestCase`'s direct `PacketHandlerL2(...)` + `mock__init`. | **Keep direct construction.** White-box RX-drive tests must inject mocked rings/caches; routing that through the public APIs buys little and the harness already encapsulates it. Drop this aspiration unless a concrete consumer wants it. |
 | 3 | Coverage-preservation bar | Each legacy file's unique assertions must be proven to survive (counter snapshots, golden frames, source-route drop, frag reassembly, RFC-specific paths) before deletion — diff each against the protocol-dir + unit coverage. | Mandatory: no net coverage loss. A legacy case with no equivalent elsewhere migrates verbatim (modernised to the harness idiom); a true duplicate is deleted with a one-line note in the commit. |
 | 4 | `test__packet_socket__*` (3 files) | Leave in `packet_handler/`; or move to `protocols/packet_socket/`. | Out of scope for this track — leave them. Optional tidy later. |
@@ -181,5 +181,5 @@ udp, tcp, ip4 (incl. the source-route file), ip6.
   drive_rx/probe/fluent-assert pattern (§6–§7), golden-frame policy
   (§7.4), file naming (§3.3).
 - `tests/lib/network_testcase.py` — the base harness (not a target).
-- `tests/lib/tcp_session_testcase.py` — the model the §8 sketch pointed
+- `tests/lib/tcp_testcase.py` — the model the §8 sketch pointed
   at for a protocol-focused harness.

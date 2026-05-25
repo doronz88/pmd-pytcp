@@ -61,7 +61,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP6_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp6
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic IPv6 addressing.
 STACK__IP6: Ip6Address = STACK__IP6_HOST.address
@@ -81,7 +81,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 9000
 
 
-class TestTcpSession__Ip6(TcpSessionTestCase):
+class TestTcpSession__Ip6(TcpTestCase):
     """
     Integration tests for 'TcpSession' over IPv6: re-runs canonical
     scenarios on the IPv6 carrier and asserts the IPv6-specific

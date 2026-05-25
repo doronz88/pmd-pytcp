@@ -60,7 +60,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -77,7 +77,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpSession__Frto(TcpSessionTestCase):
+class TestTcpSession__Frto(TcpTestCase):
     """
     Integration tests for the RFC 5682 F-RTO spurious-RTO
     detection and recovery undo.
@@ -380,7 +380,7 @@ class TestTcpSession__Frto(TcpSessionTestCase):
         )
 
 
-class TestTcpSession__FrtoStep2Step3(TcpSessionTestCase):
+class TestTcpSession__FrtoStep2Step3(TcpTestCase):
     """
     RFC 5682 §2.1 step 2 / step 3 / already-in-RTO gate.
     Pins behaviours that go beyond PyTCP's prior one-step

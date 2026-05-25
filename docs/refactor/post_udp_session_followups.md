@@ -156,7 +156,7 @@ NetworkTestCase
 ├── IcmpTestCase           — FakeTimer + ICMP probes + rate-limiter snapshots
 │   └── NdTestCase         — ND IS an ICMPv6 family
 ├── ArpTestCase            — ARP DAD + monotonic-clock patching
-├── TcpSessionTestCase     — TCP segment factory + FSM-aware assertions
+├── TcpTestCase     — TCP segment factory + FSM-aware assertions
 ├── UdpTestCase            — UDP socket + recvmsg helpers (new)
 ├── Ip4TestCase            — IPv4 frame builders + Ip4Probe (new)
 └── Ip6TestCase            — IPv6 frame builders + Ip6Probe (new)
@@ -165,7 +165,7 @@ NetworkTestCase
 When adding a new socket-touching harness later (e.g. a
 `RawTestCase` if Raw sockets grow integration coverage),
 consider extracting `_SocketsAwareNetworkTestCase` —
-`IcmpTestCase`, `TcpSessionTestCase`, and `UdpTestCase`
+`IcmpTestCase`, `TcpTestCase`, and `UdpTestCase`
 all redundantly snapshot `stack.sockets`. Marked with
 greppable `Phase 3: extract _SocketsAware base when the
 fourth socket-touching harness lands.` comment in

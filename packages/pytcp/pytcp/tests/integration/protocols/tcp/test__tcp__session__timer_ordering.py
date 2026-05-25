@@ -42,7 +42,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -68,7 +68,7 @@ _ESTABLISHED_TICK_ORDER: tuple[str, ...] = (
 )
 
 
-class TestTcpTimerHandlerOrdering(TcpSessionTestCase):
+class TestTcpTimerHandlerOrdering(TcpTestCase):
     """
     The per-state timer-handler tick-ordering pin (Phase-4
     Rule-4 regression net).
@@ -114,7 +114,7 @@ class TestTcpTimerHandlerOrdering(TcpSessionTestCase):
         )
 
 
-class TestTcpTransmitDataGapAudit(TcpSessionTestCase):
+class TestTcpTransmitDataGapAudit(TcpTestCase):
     """
     The §5.4 '_transmit_data' no-armed-timer gap audit: whenever
     there is data the stack still needs to push, at least one

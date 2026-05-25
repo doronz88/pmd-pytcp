@@ -72,7 +72,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -91,7 +91,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpRackPhase1(TcpSessionTestCase):
+class TestTcpRackPhase1(TcpTestCase):
     """
     Integration tests for the RFC 8985 §5.2 / §6.1 per-segment
     xmit_ts substrate: dict storage on outbound segments and
@@ -222,7 +222,7 @@ class TestTcpRackPhase1(TcpSessionTestCase):
         )
 
 
-class TestTcpRackPhase2(TcpSessionTestCase):
+class TestTcpRackPhase2(TcpTestCase):
     """
     Integration tests for the RFC 8985 §6.2 step 1-2 update on
     'TcpSession._rack_xmit_ts' / '_rack_end_seq' / '_rack_rtt_ms'
@@ -429,7 +429,7 @@ class TestTcpRackPhase2(TcpSessionTestCase):
         )
 
 
-class TestTcpRackPhase3(TcpSessionTestCase):
+class TestTcpRackPhase3(TcpTestCase):
     """
     Integration tests for the RFC 8985 §6.2 step 5 time-based
     loss detection: a segment marked lost when a later-sent
@@ -521,7 +521,7 @@ class TestTcpRackPhase3(TcpSessionTestCase):
         )
 
 
-class TestTcpRackPhase4(TcpSessionTestCase):
+class TestTcpRackPhase4(TcpTestCase):
     """
     Integration tests for the RFC 8985 §6.2 step 3-4 reordering
     detection and reo_wnd adaptation.
@@ -722,7 +722,7 @@ class TestTcpRackPhase4(TcpSessionTestCase):
         )
 
 
-class TestTcpRackPhase5(TcpSessionTestCase):
+class TestTcpRackPhase5(TcpTestCase):
     """
     Integration tests for the RFC 8985 §6.2 step 5 + §8 RACK
     reordering timer: when 'rack_detect_loss' returns a
@@ -882,7 +882,7 @@ class TestTcpRackPhase5(TcpSessionTestCase):
         )
 
 
-class TestTcpTlpPhase6(TcpSessionTestCase):
+class TestTcpTlpPhase6(TcpTestCase):
     """
     Integration tests for the RFC 8985 §7.2 Tail Loss Probe
     PTO scheduling: timer arm on data send, cancel on cum-ACK
@@ -1013,7 +1013,7 @@ class TestTcpTlpPhase6(TcpSessionTestCase):
         )
 
 
-class TestTcpTlpPhase7(TcpSessionTestCase):
+class TestTcpTlpPhase7(TcpTestCase):
     """
     Integration tests for the RFC 8985 §7.3 Tail Loss Probe
     emission: probe sends new data when available, retransmits
@@ -1183,7 +1183,7 @@ class TestTcpTlpPhase7(TcpSessionTestCase):
         )
 
 
-class TestTcpTlpPhase8(TcpSessionTestCase):
+class TestTcpTlpPhase8(TcpTestCase):
     """
     Integration tests for the RFC 8985 §7.4 Tail Loss Probe
     loss-detection logic on inbound ACK.
@@ -1298,7 +1298,7 @@ class TestTcpTlpPhase8(TcpSessionTestCase):
         )
 
 
-class TestTcpRackPhase9(TcpSessionTestCase):
+class TestTcpRackPhase9(TcpTestCase):
     """
     Integration tests for the RFC 8985 §6.3 RTO interaction
     and §8 timer arbitration.

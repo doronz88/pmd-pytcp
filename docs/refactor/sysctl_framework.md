@@ -250,7 +250,7 @@ pytcp.stack.sysctl.reset_to_defaults() # restore registered defaults
 ```
 
 `reset_to_defaults()` is what `stack.stop()` calls (and what
-`TcpSessionTestCase.tearDown` calls for test isolation). It
+`TcpTestCase.tearDown` calls for test isolation). It
 walks the registry and restores each `_Knob.default` via
 `setattr`, leaving no per-test mutation leaked into the next
 test's defaults.

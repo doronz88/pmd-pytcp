@@ -67,7 +67,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -96,7 +96,7 @@ TEST__KEEPALIVE_PROBE_INTERVAL_MS: int = 50
 TEST__KEEPALIVE_PROBE_MAX_COUNT: int = 3
 
 
-class TestTcpKeepalive(TcpSessionTestCase):
+class TestTcpKeepalive(TcpTestCase):
     """
     Integration tests for the RFC 1122 §4.2.3.6 keep-alive
     mechanism: opt-in semantics, idle-timer arming, probe wire
@@ -437,7 +437,7 @@ class TestTcpKeepalive(TcpSessionTestCase):
         )
 
 
-class TestTcpKeepaliveOverrides(TcpSessionTestCase):
+class TestTcpKeepaliveOverrides(TcpTestCase):
     """
     Integration tests for the per-connection keep-alive
     overrides (TCP_KEEPIDLE / TCP_KEEPINTVL / TCP_KEEPCNT).
@@ -509,7 +509,7 @@ class TestTcpKeepaliveOverrides(TcpSessionTestCase):
         )
 
 
-class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
+class TestTcpKeepaliveListenerForkInheritance(TcpTestCase):
     """
     Integration test for the listener-fork keep-alive inheritance
     path: a listening socket that has set 'SO_KEEPALIVE' via
@@ -682,7 +682,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpSessionTestCase):
         )
 
 
-class TestTcpKeepaliveCrossRfcRecovery(TcpSessionTestCase):
+class TestTcpKeepaliveCrossRfcRecovery(TcpTestCase):
     """
     Cross-RFC interaction (Phase B1 of the test-coverage audit):
     a keep-alive probe fired while the session is in fast

@@ -90,7 +90,7 @@ commit; no separate sweep.
   (`packages/pytcp/pytcp/lib/neighbor.py`). Today there are two singletons:
   `arp_cache` (IPv4) and `nd_cache` (IPv6). They are not keyed by
   interface.
-- `TcpSessionTestCase` (`packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py`)
+- `TcpTestCase` (`packages/pytcp/pytcp/tests/lib/tcp_testcase.py`)
   builds on `NetworkTestCase`. It mocks `TxRing` to capture frames,
   mocks `ArpCache`/`NdCache` with a static lookup table, constructs
   a real `PacketHandlerL2` with the test stack addressing, calls
@@ -106,7 +106,7 @@ commit; no separate sweep.
 Current Phase-3 violations to inventory in Phase 0 (non-exhaustive):
 - `packages/pytcp/pytcp/lib/dhcp4_client.py` mutates `Ip4IfAddr.gateway` directly
 - Several examples import from `pytcp.runtime.packet_handler.*`
-- `TcpSessionTestCase` reaches into `_packet_handler._ip6_ifaddr` for
+- `TcpTestCase` reaches into `_packet_handler._ip6_ifaddr` for
   fixture setup
 - `NetworkTestCase` reads / writes module-level singletons directly
 
@@ -163,9 +163,9 @@ and is deleted in Phase 10.
 **Deliverables.**
 - `packages/pytcp/pytcp/tests/lib/packet_handler_testcase.py` — new file. Class
   `PacketHandlerTestCase(TestCase)`. Layout mirrors
-  `TcpSessionTestCase`:
+  `TcpTestCase`:
   - `setUp` snapshots and clears the same module-global state
-    `TcpSessionTestCase` does (`stack.sockets`, `stack.pmtu_cache`,
+    `TcpTestCase` does (`stack.sockets`, `stack.pmtu_cache`,
     `stack.icmp{4,6}_error_rate_limiter`, the
     `_STACK__PATCHED_ATTRS` set), plus the new `stack.interfaces`
     dict landed in Phase 8 (a no-op until then).
@@ -262,7 +262,7 @@ documented cross-cutting test path):
   `icmp4/test__icmp4__error_emission_rate_limit.py`
 - `udp/test__udp__deliver_or_port_unreachable.py`,
   `tcp/test__tcp__demux.py` (TCP FSM detail stays under
-  `TcpSessionTestCase`; this only pins demux)
+  `TcpTestCase`; this only pins demux)
 - For each test class, the docstring carries the
   `Reference: RFC X §Y (clause).` line per `unit_testing.md` §7.
 
@@ -961,7 +961,7 @@ named for the audit trail:
 - `/root/PyTCP/packages/pytcp/pytcp/stack/__init__.py` — module-level singletons
   that become per-Interface; the multi-interface activation
   surface.
-- `/root/PyTCP/packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` — reference
+- `/root/PyTCP/packages/pytcp/pytcp/tests/lib/tcp_testcase.py` — reference
   design for the new `PacketHandlerTestCase`; the proven
   snapshot-and-restore pattern to mirror.
 - `/root/PyTCP/packages/pytcp/pytcp/lib/neighbor.py` — `NeighborCache[A]` already

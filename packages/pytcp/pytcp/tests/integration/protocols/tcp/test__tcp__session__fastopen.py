@@ -77,7 +77,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP6_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4, build_tcp6
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -106,7 +106,7 @@ PEER__ISS: int = 0x0000_4000
 PEER__PORT_FOR_FASTOPEN: int = 33500
 
 
-class TestTcpSession__FastOpen(TcpSessionTestCase):
+class TestTcpSession__FastOpen(TcpTestCase):
     """
     Integration tests for RFC 7413 Fast Open (TFO) on
     'TcpSession'. The first scenario pins server-side cookie

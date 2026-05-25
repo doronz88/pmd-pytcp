@@ -118,7 +118,7 @@ coverage at **every layer that applies**, not just one:
 | Layer       | Path                                                     | Harness                                                                | What it covers                                                                                |
 |-------------|----------------------------------------------------------|------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | Unit        | `<pkg>/tests/unit/...`                                   | `unittest.TestCase`                                                    | Pure-function helpers, dataclass invariants, parser / assembler wire format, header asserts   |
-| Integration | `packages/pytcp/pytcp/tests/integration/...`                            | `NetworkTestCase` / `IcmpTestCase` / `NdTestCase` / `ArpTestCase` / `TcpSessionTestCase` (see [`integration_testing.md`](integration_testing.md) §4) | FSM transitions, wire-level RX→TX interactions, timer-driven behaviour, socket-API plumbing  |
+| Integration | `packages/pytcp/pytcp/tests/integration/...`                            | `NetworkTestCase` / `IcmpTestCase` / `NdTestCase` / `ArpTestCase` / `TcpTestCase` (see [`integration_testing.md`](integration_testing.md) §4) | FSM transitions, wire-level RX→TX interactions, timer-driven behaviour, socket-API plumbing  |
 
 Heuristic for which layer(s) apply:
 
@@ -165,7 +165,7 @@ integration test before claiming done.
 | `packages/net_proto/net_proto/lib/*.py`                           | `packages/net_proto/net_proto/tests/unit/lib/test__lib__<source>.py`                                                                      |
 | `packages/net_addr/net_addr/*.py`                                | `packages/net_addr/net_addr/tests/unit/test__<source>.py`                                                                                |
 | `packages/pytcp/pytcp/lib/*.py`                               | `packages/pytcp/pytcp/tests/unit/lib/test__lib__<source>.py`                                                                          |
-| `packages/pytcp/pytcp/socket/*.py`                            | `packages/pytcp/pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpSessionTestCase` under `protocols/tcp/...` |
+| `packages/pytcp/pytcp/socket/*.py`                            | `packages/pytcp/pytcp/tests/unit/socket/test__socket__<source>.py` (unit) and integration via `TcpTestCase` under `protocols/tcp/...` |
 | `packages/pytcp/pytcp/protocols/tcp/*.py`                     | `packages/pytcp/pytcp/tests/unit/protocols/tcp/...` (unit) **and** `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__<scenario>.py` (integration) |
 | `packages/pytcp/pytcp/protocols/icmp6/nd/*.py`                | `packages/pytcp/pytcp/tests/unit/protocols/icmp6/nd/...` (unit) **and** `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__<mechanism>.py` (integration) |
 | `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__<proto>__<rx\|tx>.py` | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__<rx\|tx>.py` (per-handler smoke)              |
@@ -337,7 +337,7 @@ pinned before.
 - Integration-test authoring:
   [`integration_testing.md`](integration_testing.md) —
   harness hierarchy (`NetworkTestCase`/`IcmpTestCase`/
-  `NdTestCase`/`ArpTestCase`/`TcpSessionTestCase`),
+  `NdTestCase`/`ArpTestCase`/`TcpTestCase`),
   drive_rx / advance / probe / fluent-assert pattern,
   stat-counter assertions, frame builders.
 - Python language-feature inventory:

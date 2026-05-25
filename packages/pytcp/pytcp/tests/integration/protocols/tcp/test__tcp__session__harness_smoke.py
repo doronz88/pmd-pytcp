@@ -24,7 +24,7 @@
 
 """
 This module contains smoke tests for the TCP session integration test
-harness ('FakeTimer', 'tcp_segment_factory', 'TcpSessionTestCase').
+harness ('FakeTimer', 'tcp_segment_factory', 'TcpTestCase').
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__harness_smoke.py
 
@@ -37,7 +37,7 @@ from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.tests.lib.fake_timer import FakeTimer
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4, build_tcp6
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 
 class TestFakeTimer(TestCase):
@@ -249,15 +249,15 @@ class TestTcpSegmentFactory(TestCase):
         )
 
 
-class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
+class TestTcpTestCaseHarness(TcpTestCase):
     """
-    End-to-end smoke tests exercising 'TcpSessionTestCase' helpers via
+    End-to-end smoke tests exercising 'TcpTestCase' helpers via
     the real packet handler reacting to a synthesized inbound frame.
     """
 
     def test__harness__stack_timer_is_fake_timer(self) -> None:
         """
-        Ensure 'TcpSessionTestCase.setUp' installs the 'FakeTimer' as
+        Ensure 'TcpTestCase.setUp' installs the 'FakeTimer' as
         'stack.timer' so production code calling 'stack.timer.*'
         reaches the deterministic clock.
 
@@ -267,7 +267,7 @@ class TestTcpSessionTestCaseHarness(TcpSessionTestCase):
         self.assertIs(
             stack.timer,
             self._timer,
-            msg="'stack.timer' must point at the FakeTimer installed by TcpSessionTestCase.setUp.",
+            msg="'stack.timer' must point at the FakeTimer installed by TcpTestCase.setUp.",
         )
         self.assertIsInstance(
             self._timer,

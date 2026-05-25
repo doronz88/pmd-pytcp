@@ -51,7 +51,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP6_ADDRESS,
     STACK__IP6_HOST,
 )
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip6Address = STACK__IP6_HOST.address
 STACK__PORT: int = 12345
@@ -101,7 +101,7 @@ def _build_icmp6_parameter_problem_frame(
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x86\xdd" + ip6
 
 
-class TestTcpOnParameterProblemIp6(TcpSessionTestCase):
+class TestTcpOnParameterProblemIp6(TcpTestCase):
     """
     Integration tests for the ICMPv6 Parameter Problem → TCP demux
     path.

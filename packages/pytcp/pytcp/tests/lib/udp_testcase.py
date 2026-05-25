@@ -61,7 +61,7 @@ from pytcp.tests.lib.network_testcase import (
 # Canonical UDP ports used by 95%+ of UDP integration tests. Tests
 # with non-default ports pass overrides as kwargs to
 # '_bind_udp_socket'. Distinct from
-# 'tcp_session_testcase._DEFAULT_LOCAL_PORT' so a future combined
+# 'tcp_testcase._DEFAULT_LOCAL_PORT' so a future combined
 # UDP+TCP socket test cannot accidentally bind both onto the same
 # port number.
 _DEFAULT_LOCAL_PORT = 4444
@@ -117,7 +117,7 @@ class UdpTestCase(NetworkTestCase):
 
         Phase 3: the 'stack.sockets' / 'stack.pmtu_cache' / ICMP
         rate-limiter snapshot pattern is duplicated with
-        'IcmpTestCase' and 'TcpSessionTestCase'. When a fourth
+        'IcmpTestCase' and 'TcpTestCase'. When a fourth
         socket-touching harness lands, extract a shared
         '_SocketsAwareNetworkTestCase' intermediate base.
         """
@@ -219,7 +219,7 @@ class UdpTestCase(NetworkTestCase):
         """
         Feed 'frame' into 'PacketHandler._phrx_ethernet' and return
         the list of TX frames the stack produced as a direct result.
-        Mirrors 'TcpSessionTestCase._drive_rx' /
+        Mirrors 'TcpTestCase._drive_rx' /
         'IcmpTestCase._drive_rx' for the UDP family.
         """
 

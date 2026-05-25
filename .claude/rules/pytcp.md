@@ -233,7 +233,7 @@ Phase-3 design implications:
   boundary, not piggy-backing on import-time module state.
 - **Adding module-level state to `packages/pytcp/pytcp/stack/__init__.py`
   REQUIRES the same commit to update
-  `NetworkTestCase`/`IcmpTestCase`/`TcpSessionTestCase`
+  `NetworkTestCase`/`IcmpTestCase`/`TcpTestCase`
   `setUp`/`tearDown`** to snapshot and restore the new
   attribute. Otherwise tests pass alone and fail in suite
   (or vice versa). See

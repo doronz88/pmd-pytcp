@@ -263,7 +263,7 @@ APIs it assumed already exist):
 - Introduce `packages/pytcp/pytcp/tests/lib/packet_handler_testcase.py`
   (`PacketHandlerTestCase`) — a packet-handler-focused base that constructs
   interfaces through the existing link/address APIs and drives RX via the
-  handler's `_phrx_*` entry points, mirroring `TcpSessionTestCase`.
+  handler's `_phrx_*` entry points, mirroring `TcpTestCase`.
 - Migrate the 10 `tests/integration/packet_handler/test__packet_handler__*`
   files (and the relevant `tests/unit/runtime/packet_handler/*` `_StubHandler`
   files) onto it; delete the `NetworkTestCase` compat alias.

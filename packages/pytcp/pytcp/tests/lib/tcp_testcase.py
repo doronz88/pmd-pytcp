@@ -27,11 +27,11 @@
 
 
 """
-This module contains the 'TcpSessionTestCase' base class used by the
+This module contains the 'TcpTestCase' base class used by the
 TCP session integration tests, layering a deterministic clock and TCP
 probe helpers on top of 'NetworkTestCase'.
 
-pytcp/tests/lib/tcp_session_testcase.py
+pytcp/tests/lib/tcp_testcase.py
 
 ver 3.0.6
 """
@@ -98,7 +98,7 @@ _UNSET: object = object()
 class TcpProbe:
     """
     Decoded snapshot of a single Ethernet/IP/TCP frame produced by
-    the stack under test, used by 'TcpSessionTestCase' assertions.
+    the stack under test, used by 'TcpTestCase' assertions.
     """
 
     ip_src: Ip6Address | Ip4Address
@@ -135,7 +135,7 @@ class TcpProbe:
     payload: bytes
 
 
-class TcpSessionTestCase(NetworkTestCase):
+class TcpTestCase(NetworkTestCase):
     """
     Base class for TCP session integration tests. Adds a deterministic
     'FakeTimer' replacement for 'stack.timer', helpers to drive RX

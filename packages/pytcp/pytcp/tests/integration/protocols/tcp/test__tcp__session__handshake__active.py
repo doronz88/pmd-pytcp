@@ -64,7 +64,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing chosen so log output and byte-frame comments
 # stay readable. STACK is the host running the SUT, PEER is the
@@ -89,7 +89,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpActiveOpen__Handshake(TcpSessionTestCase):
+class TestTcpActiveOpen__Handshake(TcpTestCase):
     """
     Integration tests for the client-side three-way handshake driven
     out of 'TcpSession' in the active-open path.

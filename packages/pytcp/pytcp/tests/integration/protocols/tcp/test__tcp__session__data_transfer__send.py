@@ -64,7 +64,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing for log readability and reproducibility.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -83,7 +83,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpDataTransfer__Send(TcpSessionTestCase):
+class TestTcpDataTransfer__Send(TcpTestCase):
     """
     Integration tests for the application-driven 'send()' path,
     covering segment shape, segmentation, window management, and
@@ -851,7 +851,7 @@ class TestTcpDataTransfer__Send(TcpSessionTestCase):
         )
 
 
-class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
+class TestTcpDataTransfer__PersistCadence(TcpTestCase):
     """
     Integration tests for the RFC 9293 §3.8.6.1 zero-window
     persist-timer cadence:
@@ -1107,7 +1107,7 @@ class TestTcpDataTransfer__PersistCadence(TcpSessionTestCase):
         )
 
 
-class TestTcpDataTransferRfc6691ReqB(TcpSessionTestCase):
+class TestTcpDataTransferRfc6691ReqB(TcpTestCase):
     """
     RFC 6691 §2 Req B: "the sender MUST reduce the TCP data
     length to account for any IP or TCP options that it is

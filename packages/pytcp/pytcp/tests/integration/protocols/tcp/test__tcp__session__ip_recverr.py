@@ -91,7 +91,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
     STACK__IP6_HOST,
 )
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP4: Ip4Address = STACK__IP4_HOST.address
 STACK__IP6: Ip6Address = STACK__IP6_HOST.address
@@ -279,7 +279,7 @@ def _icmp6_packet_too_big_frame(*, mtu: int, embedded_seq: int = LOCAL__ISS) -> 
 
 
 def _make_syn_sent_session(
-    test: TcpSessionTestCase,
+    test: TcpTestCase,
     *,
     family: AddressFamily = AddressFamily.INET4,
 ) -> tuple[TcpSocket, TcpSession]:
@@ -323,7 +323,7 @@ def _make_syn_sent_session(
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrRoundTrip(TcpSessionTestCase):
+class TestTcpIpRecverrRoundTrip(TcpTestCase):
     """
     The TcpSocket IP_RECVERR / IPV6_RECVERR setsockopt/getsockopt
     round-trip tests.
@@ -396,7 +396,7 @@ class TestTcpIpRecverrRoundTrip(TcpSessionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrIcmp4DestUnreachable(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Destination Unreachable end-to-end
     queue + recvmsg tests.
@@ -497,7 +497,7 @@ class TestTcpIpRecverrIcmp4DestUnreachable(TcpSessionTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4FragNeeded(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp4FragNeeded(TcpTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Fragmentation Needed (RFC 1191 PMTUD)
     queue tests.
@@ -546,7 +546,7 @@ class TestTcpIpRecverrIcmp4FragNeeded(TcpSessionTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4TimeExceeded(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp4TimeExceeded(TcpTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Time Exceeded queue tests.
     """
@@ -584,7 +584,7 @@ class TestTcpIpRecverrIcmp4TimeExceeded(TcpSessionTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4ParameterProblem(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp4ParameterProblem(TcpTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Parameter Problem queue tests.
     """
@@ -627,7 +627,7 @@ class TestTcpIpRecverrIcmp4ParameterProblem(TcpSessionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrIcmp6DestUnreachable(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp6DestUnreachable(TcpTestCase):
     """
     The TCP IPV6_RECVERR ICMPv6 Destination Unreachable end-to-end
     queue + recvmsg tests.
@@ -692,7 +692,7 @@ class TestTcpIpRecverrIcmp6DestUnreachable(TcpSessionTestCase):
         self.assertEqual(ee_code, 4)
 
 
-class TestTcpIpRecverrIcmp6PacketTooBig(TcpSessionTestCase):
+class TestTcpIpRecverrIcmp6PacketTooBig(TcpTestCase):
     """
     The TCP IPV6_RECVERR ICMPv6 Packet Too Big (RFC 8201 PMTUD)
     queue tests.
@@ -741,7 +741,7 @@ class TestTcpIpRecverrIcmp6PacketTooBig(TcpSessionTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrGating(TcpSessionTestCase):
+class TestTcpIpRecverrGating(TcpTestCase):
     """
     The TCP IP_RECVERR gating tests — opt-in only.
     """
@@ -769,7 +769,7 @@ class TestTcpIpRecverrGating(TcpSessionTestCase):
             sock.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
 
 
-class TestTcpIpRecverrFifoBound(TcpSessionTestCase):
+class TestTcpIpRecverrFifoBound(TcpTestCase):
     """
     The TCP IP_RECVERR bounded-queue (deque maxlen) tests.
     """
@@ -819,7 +819,7 @@ class TestTcpIpRecverrFifoBound(TcpSessionTestCase):
         )
 
 
-class TestTcpIpRecverrFsmIndependence(TcpSessionTestCase):
+class TestTcpIpRecverrFsmIndependence(TcpTestCase):
     """
     The TCP IP_RECVERR FSM-independence tests — entries queued
     during one FSM state remain readable after the session

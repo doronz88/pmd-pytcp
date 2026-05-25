@@ -65,7 +65,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -83,7 +83,7 @@ SEQ32__MAX: int = 0xFFFF_FFFF
 SEQ32__MOD: int = 0x1_0000_0000
 
 
-class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
+class TestTcpSeqWraparound__Seq(TcpTestCase):
     """
     Tests for outbound sequence-number wrap. Force ISS near the
     32-bit ceiling, drive data, and verify the on-the-wire seq
@@ -197,7 +197,7 @@ class TestTcpSeqWraparound__Seq(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
+class TestTcpSeqWraparound__Ack(TcpTestCase):
     """
     Tests for inbound ACK handling across the 32-bit wrap. The
     'TcpSession.tcp_fsm_established' branches use plain '<' / '<='
@@ -288,7 +288,7 @@ class TestTcpSeqWraparound__Ack(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
+class TestTcpSeqWraparound__SeqAndAck(TcpTestCase):
     """
     Tests for inbound RCV.NXT update across the 32-bit wrap. The
     canonical bidirectional-wrap case combines outbound seq wrap
@@ -354,7 +354,7 @@ class TestTcpSeqWraparound__SeqAndAck(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
+class TestTcpSeqWraparound__HalfCloseAck(TcpTestCase):
     """
     Tests for ACK acceptability across the 32-bit wrap in the
     half-close FSM states (CLOSE_WAIT, FIN_WAIT_1, FIN_WAIT_2,
@@ -426,7 +426,7 @@ class TestTcpSeqWraparound__HalfCloseAck(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
+class TestTcpSeqWraparound__ReceiveWindow(TcpTestCase):
     """
     Tests for the receive-window acceptability check
     ('RCV.NXT <= SEG.SEQ < RCV.NXT + RCV.WND') across the 32-bit
@@ -497,7 +497,7 @@ class TestTcpSeqWraparound__ReceiveWindow(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
+class TestTcpSeqWraparound__FinAck(TcpTestCase):
     """
     Tests for the FIN-ack '>=' check in the half-close states.
     'self._snd_seq.fin' is the seq number of the FIN segment we sent;
@@ -560,7 +560,7 @@ class TestTcpSeqWraparound__FinAck(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
+class TestTcpSeqWraparound__SynSentAck(TcpTestCase):
     """
     Tests for the SYN_SENT-state ACK acceptability check across
     the 32-bit wrap. RFC 9293 §3.10.7.3 step 1 mandates that any
@@ -648,7 +648,7 @@ class TestTcpSeqWraparound__SynSentAck(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
+class TestTcpSeqWraparound__FinSentinel(TcpTestCase):
     """
     Tests the '_snd_fin = 0' sentinel collision in
     '_retransmit_packet_timeout's TX-buffer offset rewind. The
@@ -790,7 +790,7 @@ class TestTcpSeqWraparound__FinSentinel(TcpSessionTestCase):
         )
 
 
-class TestTcpSeqWraparound__PeerIsnSentinel(TcpSessionTestCase):
+class TestTcpSeqWraparound__PeerIsnSentinel(TcpTestCase):
     """
     Tests the 'self._rcv_seq.nxt > 0' sentinel collision in
     '_retransmit_packet_timeout's R2-abort RST emission. The

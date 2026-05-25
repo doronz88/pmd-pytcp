@@ -52,7 +52,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
 )
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 PEER__IP: Ip4Address = HOST_A__IP4_ADDRESS
@@ -103,7 +103,7 @@ def _build_frag_needed_for_session(*, mtu: int, embedded_seq: int, sport: int, d
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
 
 
-class TestTcpPmtuWalkback(TcpSessionTestCase):
+class TestTcpPmtuWalkback(TcpTestCase):
     """
     The RFC 1191 §6.5 PMTU retransmit-walkback tests.
     """

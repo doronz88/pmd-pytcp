@@ -58,7 +58,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing for log readability and reproducibility.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -79,7 +79,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpSession__Sack(TcpSessionTestCase):
+class TestTcpSession__Sack(TcpTestCase):
     """
     Integration tests for the TCP SACK option in the session FSM.
     Phase 1 covers the wire-level passthrough; phase 3 covers

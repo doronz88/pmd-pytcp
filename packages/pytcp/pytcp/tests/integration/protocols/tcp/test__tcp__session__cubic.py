@@ -52,7 +52,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -71,7 +71,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpCubicPhase2(TcpSessionTestCase):
+class TestTcpCubicPhase2(TcpTestCase):
     """
     Integration tests for Phase 2 of RFC 9438 CUBIC: the
     substrate field declarations on TcpSession defaulting
@@ -117,7 +117,7 @@ class TestTcpCubicPhase2(TcpSessionTestCase):
         self.assertFalse(session._cc.cubic_in_ca, msg="in_ca default False.")
 
 
-class TestTcpCubicPhase3(TcpSessionTestCase):
+class TestTcpCubicPhase3(TcpTestCase):
     """
     Integration tests for Phase 3 of RFC 9438 CUBIC: CA-phase
     growth using the cubic curve when '_cc_mode == CUBIC'.
@@ -568,7 +568,7 @@ class TestTcpCubicPhase3(TcpSessionTestCase):
         )
 
 
-class TestTcpCubicPhase7(TcpSessionTestCase):
+class TestTcpCubicPhase7(TcpTestCase):
     """
     Integration tests for Phase 7 of RFC 9438 CUBIC: the
     setsockopt(IPPROTO_TCP, TCP_CONGESTION, ...) socket-API

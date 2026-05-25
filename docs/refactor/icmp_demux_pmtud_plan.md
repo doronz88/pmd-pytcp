@@ -36,7 +36,7 @@ and call `socket.notify_unreachable()`.
 
 ### 1.2 What this plan delivers
 
-0. **ICMP integration-test harness** mirroring `TcpSessionTestCase`
+0. **ICMP integration-test harness** mirroring `TcpTestCase`
    so this refactor and the future ICMP protocol refactor have a
    fluent, low-friction integration-test surface instead of the
    coarse parametrized golden-bytes matrix.
@@ -83,7 +83,7 @@ later refactor to a unified `IpStack` aggregator (analogous to
 `TcpStack`), it can live there. For now, flat module-level
 matches the convention of `arp_probe_unicast_conflict`.
 
-Test isolation: extend `TcpSessionTestCase.setUp/tearDown` to
+Test isolation: extend `TcpTestCase.setUp/tearDown` to
 snapshot+clear+restore `stack.pmtu_cache` (per the
 `feedback_stack_module_state_test_isolation.md` rule).
 
@@ -176,7 +176,7 @@ infrastructure exist before the protocol callbacks reach for them.
 
 ### Phase 0 — ICMP integration-test harness (1 commit)
 
-Mirrors `TcpSessionTestCase` so subsequent ICMP-related work
+Mirrors `TcpTestCase` so subsequent ICMP-related work
 (this refactor + the future ICMP protocol refactor) writes
 fluent integration tests instead of golden-byte parametrized
 matrices.
@@ -192,7 +192,7 @@ matrices.
     (`nd_target`, `nd_options`).
   - `IcmpTestCase(NetworkTestCase)` extending the shared
     snapshot+clear+restore harness with the same isolation
-    hooks as `TcpSessionTestCase` (`stack.sockets`,
+    hooks as `TcpTestCase` (`stack.sockets`,
     `stack.tcp_stack`, `stack.interface_mtu`, plus
     `stack.pmtu_cache` once Phase 3 lands — wire the snapshot
     in Phase 0 with a no-op fallback if the attribute doesn't
@@ -234,7 +234,7 @@ matrices.
 
 - Add `packages/pytcp/pytcp/stack/__init__.py` line near other module-level
   state: `pmtu_cache: "dict[Ip4Address | Ip6Address, int]" = {}`.
-- Extend `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` `setUp` /
+- Extend `packages/pytcp/pytcp/tests/lib/tcp_testcase.py` `setUp` /
   `tearDown` with snapshot+clear+restore of `stack.pmtu_cache`
   (mandatory per the project rule).
 - New unit test
@@ -473,7 +473,7 @@ walkback subtlety.
   - `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py`
   - `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
 - Test framework isolation: extend
-  `packages/pytcp/pytcp/tests/lib/tcp_session_testcase.py` per
+  `packages/pytcp/pytcp/tests/lib/tcp_testcase.py` per
   `feedback_stack_module_state_test_isolation.md`.
 - Test counts at this plan's authoring: 8482 passing, 0 skipped,
   lint clean, branch `PyTCP_3_0__pre_release`.

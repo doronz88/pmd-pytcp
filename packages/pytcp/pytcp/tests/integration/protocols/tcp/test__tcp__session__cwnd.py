@@ -64,7 +64,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -83,7 +83,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpCwndPhase1(TcpSessionTestCase):
+class TestTcpCwndPhase1(TcpTestCase):
     """
     Integration tests for RFC 5681 §3.1 Phase 1 invariants:
     'cwnd' / 'ssthresh' field separation and the slow-start
@@ -378,7 +378,7 @@ class TestTcpCwndPhase1(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndPhase2(TcpSessionTestCase):
+class TestTcpCwndPhase2(TcpTestCase):
     """
     Integration tests for RFC 5681 §3.1 Phase 2 invariants:
     RTO ssthresh halving and slow-start re-entry.
@@ -476,7 +476,7 @@ class TestTcpCwndPhase2(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndPhase3(TcpSessionTestCase):
+class TestTcpCwndPhase3(TcpTestCase):
     """
     Integration tests for RFC 5681 §3.2 Phase 3 invariants:
     fast-retransmit cwnd inflation on entry, per-dup-ACK
@@ -622,7 +622,7 @@ class TestTcpCwndPhase3(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndPhase4(TcpSessionTestCase):
+class TestTcpCwndPhase4(TcpTestCase):
     """
     Integration tests for RFC 6928 Phase 4 invariants:
     Initial Window 10*SMSS post-handshake.
@@ -694,7 +694,7 @@ class TestTcpCwndPhase4(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndNewReno(TcpSessionTestCase):
+class TestTcpCwndNewReno(TcpTestCase):
     """
     Integration tests for the RFC 6582 NewReno modification to
     RFC 5681 §3.2 fast recovery: partial-cum-ACK handling for
@@ -818,7 +818,7 @@ class TestTcpCwndNewReno(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
+class TestTcpCwndNewRenoExtended(TcpTestCase):
     """
     Extended integration coverage for RFC 6582 NewReno
     scenarios that 'TestTcpCwndNewReno' (the basic single-
@@ -1098,7 +1098,7 @@ class TestTcpCwndNewRenoExtended(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
+class TestTcpCwndCrossRfcNewRenoPlusRto(TcpTestCase):
     """
     Cross-RFC interaction (Phase B1 of the test-coverage audit):
     RFC 6582 NewReno fast recovery interacting with the RFC 6298
@@ -1182,7 +1182,7 @@ class TestTcpCwndCrossRfcNewRenoPlusRto(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndPrr(TcpSessionTestCase):
+class TestTcpCwndPrr(TcpTestCase):
     """
     Integration tests for RFC 6937 'Proportional Rate
     Reduction for TCP'. PRR replaces the coarse RFC 5681
@@ -1725,7 +1725,7 @@ class TestTcpCwndPrr(TcpSessionTestCase):
         )
 
 
-class TestTcpCwndRfc5681RestartWindow(TcpSessionTestCase):
+class TestTcpCwndRfc5681RestartWindow(TcpTestCase):
     """
     RFC 5681 §4.1 Restart Window after idle: when TCP has not
     sent data in an interval exceeding the retransmission

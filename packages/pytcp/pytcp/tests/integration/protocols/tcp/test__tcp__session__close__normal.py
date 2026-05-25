@@ -56,7 +56,7 @@ from pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
@@ -75,7 +75,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpClose__Normal(TcpSessionTestCase):
+class TestTcpClose__Normal(TcpTestCase):
     """
     Integration tests for the normal active-close and passive-close
     paths through the TCP FSM.
@@ -1493,7 +1493,7 @@ class TestTcpClose__Normal(TcpSessionTestCase):
         )
 
 
-class TestTcpClose__IdempotencyHalfClose(TcpSessionTestCase):
+class TestTcpClose__IdempotencyHalfClose(TcpTestCase):
     """
     Integration tests for the RFC 9293 §3.10.4 'CLOSE in
     half-close states' invariant: a second 'close()' call after

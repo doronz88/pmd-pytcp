@@ -56,7 +56,7 @@ from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
 )
-from pytcp.tests.lib.tcp_session_testcase import TcpSessionTestCase
+from pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -100,7 +100,7 @@ def _build_icmp4_unreachable_frame(*, code: Icmp4DestinationUnreachableCode, emb
     return b"\x02\x00\x00\x00\x00\x07\x02\x00\x00\x00\x00\x91\x08\x00" + ip4
 
 
-class TestTcpOnUnreachable(TcpSessionTestCase):
+class TestTcpOnUnreachable(TcpTestCase):
     """
     Integration tests for the ICMP Destination Unreachable → TCP
     demux path.
