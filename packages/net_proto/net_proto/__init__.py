@@ -90,6 +90,9 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
     Dhcp4OptionType,
 )
+from net_proto.protocols.dhcp4.options.dhcp4__option__classless_static_route import (
+    Dhcp4OptionClasslessStaticRoute,
+)
 from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
 )
@@ -571,6 +574,7 @@ __all__ = [
     "Dhcp4IntegrityError",
     "Dhcp4MessageType",
     "Dhcp4Operation",
+    "Dhcp4OptionClasslessStaticRoute",
     "Dhcp4OptionClientId",
     "Dhcp4OptionEnd",
     "Dhcp4OptionHostName",

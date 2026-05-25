@@ -33,7 +33,7 @@ ver 3.0.6
 from abc import ABC
 from typing import Self, override
 
-from net_addr import Ip4Address, Ip4Mask
+from net_addr import Ip4Address, Ip4Mask, Ip4Network
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_option import ProtoOptions
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
@@ -43,6 +43,9 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
     Dhcp4Option,
     Dhcp4OptionType,
+)
+from net_proto.protocols.dhcp4.options.dhcp4__option__classless_static_route import (
+    Dhcp4OptionClasslessStaticRoute,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__option__client_id import (
     Dhcp4OptionClientId,
@@ -101,6 +104,18 @@ class Dhcp4Options(ProtoOptions):
     """
     The DHCPv4 packet options.
     """
+
+    @property
+    def classless_static_route(self) -> list[tuple[Ip4Network, Ip4Address]] | None:
+        """
+        Get the DHCPv4 'classless_static_route' option value (RFC 3442).
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp4OptionClasslessStaticRoute):
+                return option.routes
+
+        return None
 
     @property
     def client_id(self) -> Buffer | None:
@@ -329,6 +344,8 @@ class Dhcp4Options(ProtoOptions):
                     break
                 case Dhcp4OptionType.PAD:
                     options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
+                case Dhcp4OptionType.CLASSLESS_STATIC_ROUTE:
+                    options.append(Dhcp4OptionClasslessStaticRoute.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.CLIENT_ID:
                     options.append(Dhcp4OptionClientId.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.HOST_NAME:
@@ -369,6 +386,14 @@ class Dhcp4OptionsProperties(ABC):
     """
 
     _options: Dhcp4Options
+
+    @property
+    def classless_static_route(self) -> list[tuple[Ip4Network, Ip4Address]] | None:
+        """
+        Get the DHCPv4 'classless_static_route' option value (RFC 3442).
+        """
+
+        return self._options.classless_static_route
 
     @property
     def client_id(self) -> Buffer | None:

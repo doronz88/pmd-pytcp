@@ -36,10 +36,11 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_addr import Ip4Address, Ip4Mask
+from net_addr import Ip4Address, Ip4Mask, Ip4Network
 from net_proto import (
     Dhcp4IntegrityError,
     Dhcp4MessageType,
+    Dhcp4OptionClasslessStaticRoute,
     Dhcp4OptionClientId,
     Dhcp4OptionEnd,
     Dhcp4OptionHostName,
@@ -600,6 +601,7 @@ class TestDhcp4OptionsProperties(TestCase):
 
         options = Dhcp4Options(Dhcp4OptionEnd())
 
+        self.assertIsNone(options.classless_static_route, msg="classless_static_route must be None.")
         self.assertIsNone(options.host_name, msg="host_name must be None.")
         self.assertIsNone(options.message_type, msg="message_type must be None.")
         self.assertIsNone(options.param_req_list, msg="param_req_list must be None.")
@@ -666,6 +668,33 @@ class TestDhcp4OptionsProperties(TestCase):
             options.subnet_mask,
             Ip4Mask("255.255.255.0"),
             msg="subnet_mask must reflect the Subnet Mask option.",
+        )
+
+    def test__dhcp4__options__classless_static_route_present(self) -> None:
+        """
+        Ensure the 'classless_static_route' accessor returns the route
+        list carried by the Classless Static Route option when present.
+
+        Reference: RFC 3442 (Classless Static Route option).
+        """
+
+        options = Dhcp4Options(
+            Dhcp4OptionClasslessStaticRoute(
+                [
+                    (Ip4Network("0.0.0.0/0"), Ip4Address("192.0.2.1")),
+                    (Ip4Network("10.0.0.0/8"), Ip4Address("10.0.0.1")),
+                ]
+            ),
+            Dhcp4OptionEnd(),
+        )
+
+        self.assertEqual(
+            options.classless_static_route,
+            [
+                (Ip4Network("0.0.0.0/0"), Ip4Address("192.0.2.1")),
+                (Ip4Network("10.0.0.0/8"), Ip4Address("10.0.0.1")),
+            ],
+            msg="classless_static_route must reflect the Classless Static Route option.",
         )
 
     def test__dhcp4__options__properties__first_occurrence_wins(self) -> None:

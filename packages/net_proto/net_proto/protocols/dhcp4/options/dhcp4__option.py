@@ -64,6 +64,7 @@ class Dhcp4OptionType(ProtoOptionType):
     RENEWAL_TIME = 58  # Renewal (T1) Time Value (RFC 2132 §9.11).
     REBINDING_TIME = 59  # Rebinding (T2) Time Value (RFC 2132 §9.12).
     CLIENT_ID = 61  # Client-identifier (RFC 2132 §9.14).
+    CLASSLESS_STATIC_ROUTE = 121  # Classless Static Route (RFC 3442).
     END = 255  # End (RFC 2132 §3.2).
 
 
