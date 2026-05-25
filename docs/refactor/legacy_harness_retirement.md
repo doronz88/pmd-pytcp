@@ -7,11 +7,32 @@ packet-handler mixin is now a composed sub-handler over a typed
 `PacketHandler` back-reference, and both `PacketHandlerL2` /
 `PacketHandlerL3` inherit zero mixins.
 
-**Status: SIGNED OFF 2026-05-24 — §4 decisions locked, execution under way.**
-Decisions: 1→(b) fold into `protocols/<proto>/` + delete smoke file;
-2→keep direct construction (drop the link/address-API aspiration);
+**Status: COMPLETE 2026-05-24.** All 13 legacy per-handler smoke files
+retired across 6 per-protocol commits + 1 harness-consistency commit
+(`be259380` sign-off … `0a94137e`). The
+`tests/integration/packet_handler/` tree now holds only the three
+out-of-scope `test__packet_socket__*` files.
+
+Decisions (locked): 1→(b) fold into `protocols/<proto>/` + delete smoke
+file; 2→keep direct construction (drop the link/address-API aspiration);
 3→hard no-coverage-loss diff bar; 4→leave the 3 `test__packet_socket__*`
 files; 5→per-protocol commit pairs.
+
+Outcomes per protocol:
+
+| Protocol | Disposition | Harness | Suite |
+|----------|-------------|---------|-------|
+| arp | both files deleted (proven subset of `protocols/arp/`) | — | 11323→11296 (−27 dup) |
+| ip6_frag | migrated → `test__ip6__reassembly.py` / `test__ip6__fragmentation.py` | `Ip6TestCase` | 11296 (relocate) |
+| udp | migrated → `test__udp__{rx,tx}.py`; dropped 1 proven dup (ip6 zero-cksum, covered by `no_check6`) | `UdpTestCase` | 11296→11295 (−1 dup) |
+| tcp | migrated → `test__tcp__{rx,tx}.py` | `TcpSessionTestCase` | 11295 (relocate) |
+| ip4 | migrated → `test__ip4__{rx,tx}.py` + `test__ip4__source_route.py` | `Ip4TestCase` | 11295 (relocate) |
+| ip6 | migrated → `test__ip6__{rx,tx}.py` | `Ip6TestCase` | 11295 (relocate) |
+
+The two deletions (arp, udp-zero-cksum) are proven-duplicate removals per
+the §4.3 diff bar; everything else is faithful relocation with the golden
+frames preserved byte-for-byte. Final state: every migrated file uses its
+protocol-specific harness; final suite 11295, all green, `make lint` clean.
 This document deliberately *corrects* the §8 sketch in
 `packet_handler_composition.md`, which was written before the current
 test layout was verified and is wrong on its central premise (see §1).
