@@ -469,6 +469,17 @@ class TestNetAddrIp6NetworkContains(TestCase):
             },
         },
         {
+            "_description": "Test the IPv6 network format: (Ip6Address('2001:db8::'),) (wrong-length tuple)",
+            "_args": [
+                (Ip6Address("2001:db8::"),),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip6NetworkFormatError,
+                "error_message": "The IPv6 network format is invalid: (Ip6Address('2001:db8::'),)",
+            },
+        },
+        {
             "_description": "Test the IPv6 network format: 'fe80::1%eth0/64' (zoned address in network literal)",
             "_args": [
                 "fe80::1%eth0/64",

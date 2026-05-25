@@ -1763,14 +1763,24 @@ class TestNetAddrIp6AddressOrdering(TestCase):
 
     def test__net_addr__ip6_address__ordering__cross_version_raises(self) -> None:
         """
-        Ensure ordering an IPv6 address against an IPv4 address
-        raises TypeError (mixed-version ordering is undefined).
+        Ensure every ordering operator (<, <=, >, >=) against an
+        IPv4 address raises TypeError (mixed-version ordering is
+        undefined); each comparison returns NotImplemented so
+        Python falls back to the TypeError.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
+        ip6 = Ip6Address("2001:db8::1")
+        ip4 = Ip4Address("10.0.0.1")
         with self.assertRaises(TypeError, msg="Ip6Address < Ip4Address must raise TypeError."):
-            _ = Ip6Address("2001:db8::1") < Ip4Address("10.0.0.1")
+            _ = ip6 < ip4
+        with self.assertRaises(TypeError, msg="Ip6Address <= Ip4Address must raise TypeError."):
+            _ = ip6 <= ip4
+        with self.assertRaises(TypeError, msg="Ip6Address > Ip4Address must raise TypeError."):
+            _ = ip6 > ip4
+        with self.assertRaises(TypeError, msg="Ip6Address >= Ip4Address must raise TypeError."):
+            _ = ip6 >= ip4
 
 
 class TestNetAddrIp6AddressArithmetic(TestCase):
@@ -1791,6 +1801,21 @@ class TestNetAddrIp6AddressArithmetic(TestCase):
         self.assertEqual(a - 1, Ip6Address("2001:db8::f"), msg="address - 1 must retreat by one.")
         self.assertEqual(a + 0, a, msg="address + 0 must be unchanged.")
         self.assertIsInstance(a + 1, Ip6Address, msg="Arithmetic must return an Ip6Address.")
+
+    def test__net_addr__ip6_address__arithmetic__non_int_operand_raises(self) -> None:
+        """
+        Ensure 'address + x' / 'address - x' with a non-integer
+        operand raises TypeError (both operators return
+        NotImplemented so Python falls back to the TypeError).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        a = Ip6Address("2001:db8::10")
+        with self.assertRaises(TypeError, msg="Ip6Address + non-int must raise TypeError."):
+            _ = a + "1"
+        with self.assertRaises(TypeError, msg="Ip6Address - non-int must raise TypeError."):
+            _ = a - "1"
 
     def test__net_addr__ip6_address__arithmetic__preserves_scope(self) -> None:
         """

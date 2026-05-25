@@ -583,6 +583,17 @@ class TestNetAddrIp4NetworkContains(TestCase):
                 "error_message": "The IPv4 network format is invalid: ('10.0.0.0', '/24')",
             },
         },
+        {
+            "_description": "Test the IPv4 network format: (Ip4Address('10.0.0.0'),) (wrong-length tuple)",
+            "_args": [
+                (Ip4Address("10.0.0.0"),),
+            ],
+            "_kwargs": {},
+            "_results": {
+                "error": Ip4NetworkFormatError,
+                "error_message": "The IPv4 network format is invalid: (Ip4Address('10.0.0.0'),)",
+            },
+        },
     ]
 )
 class TestNetAddrIp4NetworkErrors(TestCase):
