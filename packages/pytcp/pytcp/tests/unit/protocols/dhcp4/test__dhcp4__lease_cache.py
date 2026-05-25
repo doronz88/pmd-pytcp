@@ -40,7 +40,7 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import patch
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, Ip4Network, MacAddress
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Lease
 from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
     delete_cached_lease,
@@ -211,6 +211,55 @@ class TestDhcp4LeaseCacheRoundTrip(_CacheFixture):
         self.assertIsNone(
             read.gateway_mac,
             msg="Lease with no gateway_mac must read back with gateway_mac=None.",
+        )
+
+    def test__cache__round_trip_persists_classless_static_routes(self) -> None:
+        """
+        Ensure the lease's Classless Static Routes (option 121)
+        survive a write / read round-trip.
+
+        Reference: RFC 3442 (Classless Static Route option).
+        """
+
+        original = Dhcp4Lease(
+            ip4_host=Ip4IfAddr((Ip4Address("10.0.21.17"), Ip4Mask("255.255.255.0"))),
+            lease_time__sec=3600,
+            server_id=Ip4Address("10.0.21.1"),
+            acquired_at_monotonic=100.0,
+            classless_static_routes=[
+                (Ip4Network("0.0.0.0/0"), Ip4Address("10.0.21.1")),
+                (Ip4Network("192.168.0.0/24"), Ip4Address("10.0.21.2")),
+            ],
+        )
+        write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertEqual(
+            read.classless_static_routes,
+            [
+                (Ip4Network("0.0.0.0/0"), Ip4Address("10.0.21.1")),
+                (Ip4Network("192.168.0.0/24"), Ip4Address("10.0.21.2")),
+            ],
+            msg="Classless static routes must survive the cache round-trip.",
+        )
+
+    def test__cache__round_trip_with_no_classless_static_routes(self) -> None:
+        """
+        Ensure a lease without Classless Static Routes reads back with
+        classless_static_routes=None (pre-Phase-7 cache compatibility).
+
+        Reference: RFC 3442 (Classless Static Route option).
+        """
+
+        original = _make_lease()
+        write_cached_lease(self._path, original)
+        read = read_cached_lease(self._path)
+
+        assert read is not None
+        self.assertIsNone(
+            read.classless_static_routes,
+            msg="A lease with no option-121 routes must read back as None.",
         )
 
 

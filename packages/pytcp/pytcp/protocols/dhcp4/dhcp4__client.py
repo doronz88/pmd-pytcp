@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, override
 
-from net_addr import Ip4Address, Ip4IfAddr, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, MacAddress
 
 if TYPE_CHECKING:
     from pytcp.stack.address import AddressApi
@@ -94,7 +94,7 @@ from pytcp.protocols.dhcp4.dhcp4__lease_cache import (
 )
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
-from pytcp.runtime.fib import RouteProtocol
+from pytcp.runtime.fib import Route, RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import (
     AF_INET4,
@@ -168,6 +168,12 @@ class Dhcp4Lease:
     gateway_mac: MacAddress | None = None
     t1_override: int | None = None
     t2_override: int | None = None
+    # Leased classless static routes (DHCP option 121, RFC 3442) as
+    # (destination, router) pairs. When present the client installs
+    # these into the FIB and IGNORES option 3 (RFC 3442 MUST); the
+    # 0.0.0.0/0 entry, if any, is the default route. None when the
+    # server omitted option 121.
+    classless_static_routes: list[tuple[Ip4Network, Ip4Address]] | None = None
 
 
 class _NakRestart:
@@ -393,24 +399,81 @@ class Dhcp4Client(Subsystem):
         'self._event__bound' event.
         """
 
+        # Clear the prior lease's classless static routes before
+        # installing the refreshed set so a RENEW / REBIND does not
+        # accumulate duplicate FIB entries (add_route does not
+        # de-duplicate). The default route is replaced atomically by
+        # the install below.
+        previous_lease = self._lease
+        if previous_lease is not None:
+            self._remove_lease_routes(previous_lease)
+
         self._lease = lease
         if self._address_api is not None:
             self._address_api.add(ifaddr=lease.ip4_host)
-        # Install the leased gateway as the protocol=DHCP default
-        # route — Phase 3 of
+        # Install the lease's routes — Phase 3 of
         # docs/refactor/routing_table_host_mode.md. The FIB is
         # the single source of truth for the next hop;
         # 'lease.gateway' no longer rides on 'ip4_host'.
-        if self._route_api is not None and lease.gateway is not None:
-            self._route_api.replace_default(
-                gateway=lease.gateway,
-                protocol=RouteProtocol.DHCP,
-            )
+        self._install_lease_routes(lease)
         if self._acd is not None:
             self._acd.start_defense(address=lease.ip4_host.address)
         write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
         self._state = Dhcp4State.BOUND
         self._event__bound.set()
+
+    def _install_lease_routes(self, lease: Dhcp4Lease, /) -> None:
+        """
+        Install the lease's routes into the FIB via the Route API.
+
+        When the server returned Classless Static Routes (option 121)
+        the client installs those routes and IGNORES the Router option
+        (option 3) per the RFC 3442 MUST. Each option-121 route with a
+        non-zero router becomes a protocol=DHCP route — the 0.0.0.0/0
+        entry, if present, is the default; a router of 0.0.0.0 denotes
+        an on-link destination that PyTCP's host FIB does not install
+        (RFC 3442 explicitly permits a stack that does not provide that
+        capability to ignore such routes). Absent option 121 the client
+        falls back to the option-3 gateway as the default route.
+        """
+
+        if self._route_api is None:
+            return
+
+        if lease.classless_static_routes is not None:
+            for destination, router in lease.classless_static_routes:
+                if router == Ip4Address("0.0.0.0"):
+                    # Phase 2: install as an on-link route once
+                    # DHCP-learned routes carry an output-interface
+                    # index in the FIB.
+                    continue
+                if destination == Ip4Network("0.0.0.0/0"):
+                    self._route_api.replace_default(gateway=router, protocol=RouteProtocol.DHCP)
+                    continue
+                self._route_api.add_route(
+                    route=Route(destination=destination, gateway=router, protocol=RouteProtocol.DHCP),
+                )
+            return
+
+        if lease.gateway is not None:
+            self._route_api.replace_default(gateway=lease.gateway, protocol=RouteProtocol.DHCP)
+
+    def _remove_lease_routes(self, lease: Dhcp4Lease, /) -> None:
+        """
+        Remove the lease's non-default classless static routes from the
+        FIB. The 0.0.0.0/0 default and the on-link (router 0.0.0.0)
+        entries are not removed here — the default is dropped via
+        'remove_default' (lease loss) or replaced atomically (RENEW),
+        and on-link entries are never installed.
+        """
+
+        if self._route_api is None or lease.classless_static_routes is None:
+            return
+
+        for destination, router in lease.classless_static_routes:
+            if router == Ip4Address("0.0.0.0") or destination == Ip4Network("0.0.0.0/0"):
+                continue
+            self._route_api.remove_route(destination=destination, gateway=router)
 
     def start_and_wait_for_bind(self, *, timeout_s: float) -> bool:
         """
@@ -669,6 +732,7 @@ class Dhcp4Client(Subsystem):
         return Dhcp4Lease(
             ip4_host=ip4_host,
             gateway=result.router[0] if result.router else None,
+            classless_static_routes=result.classless_static_route,
             lease_time__sec=result.lease_time,
             server_id=result.server_id if result.server_id is not None else lease.server_id,
             acquired_at_monotonic=time.monotonic(),
@@ -771,6 +835,9 @@ class Dhcp4Client(Subsystem):
         # address plane are separate Phase-3 surfaces.
         if remove_lease_host and self._lease is not None and self._route_api is not None:
             self._route_api.remove_default(family=AddressFamily.INET4)
+            # Drop the lease's classless static routes (option 121)
+            # alongside the default — they were installed on BOUND.
+            self._remove_lease_routes(self._lease)
         # Phase 5 — purge the on-disk lease cache so the next
         # boot does not try INIT-REBOOT on an invalidated
         # lease. Always invalidate on the NAK / expiry paths,
@@ -972,6 +1039,7 @@ class Dhcp4Client(Subsystem):
         refreshed = Dhcp4Lease(
             ip4_host=ip4_host,
             gateway=result.router[0] if result.router else None,
+            classless_static_routes=result.classless_static_route,
             lease_time__sec=result.lease_time,
             server_id=(result.server_id if result.server_id is not None else cached.server_id),
             acquired_at_monotonic=time.monotonic(),
@@ -1012,6 +1080,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionClientId(self._expected_client_id),
                 Dhcp4OptionParamReqList(
                     [
+                        Dhcp4OptionType.CLASSLESS_STATIC_ROUTE,
                         Dhcp4OptionType.SUBNET_MASK,
                         Dhcp4OptionType.ROUTER,
                     ]
@@ -1164,6 +1233,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionClientId(self._expected_client_id),
                 Dhcp4OptionParamReqList(
                     [
+                        Dhcp4OptionType.CLASSLESS_STATIC_ROUTE,
                         Dhcp4OptionType.SUBNET_MASK,
                         Dhcp4OptionType.ROUTER,
                     ]
@@ -1459,6 +1529,7 @@ class Dhcp4Client(Subsystem):
         return Dhcp4Lease(
             ip4_host=ip4_host,
             gateway=ack.router[0] if ack.router else None,
+            classless_static_routes=ack.classless_static_route,
             lease_time__sec=ack.lease_time,
             server_id=srv_id,
             acquired_at_monotonic=time.monotonic(),
@@ -1676,6 +1747,7 @@ class Dhcp4Client(Subsystem):
             Dhcp4OptionClientId(self._expected_client_id),
             Dhcp4OptionParamReqList(
                 [
+                    Dhcp4OptionType.CLASSLESS_STATIC_ROUTE,
                     Dhcp4OptionType.SUBNET_MASK,
                     Dhcp4OptionType.ROUTER,
                 ]
@@ -1723,6 +1795,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionClientId(self._expected_client_id),
                 Dhcp4OptionParamReqList(
                     [
+                        Dhcp4OptionType.CLASSLESS_STATIC_ROUTE,
                         Dhcp4OptionType.SUBNET_MASK,
                         Dhcp4OptionType.ROUTER,
                     ]

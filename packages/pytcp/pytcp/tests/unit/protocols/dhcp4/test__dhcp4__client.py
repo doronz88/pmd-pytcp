@@ -35,15 +35,17 @@ from typing import Any, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress
+from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, Ip4Network, MacAddress
 from net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
+from net_proto.protocols.dhcp4.options.dhcp4__option import Dhcp4OptionType
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client, Dhcp4Lease, Dhcp4State
 from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
-from pytcp.runtime.fib import RouteProtocol
+from pytcp.runtime.fib import Route, RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import AddressFamily
 from pytcp.stack import sysctl
+from pytcp.stack.route import RouteApi
 from pytcp.tests.lib.dhcp4_mock_server import (
     Dhcp4MockServer,
     autospec_dhcp4_socket,
@@ -3645,3 +3647,198 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
             t2,
             msg="T1 ≥ T2 must drop T2 too (the ordering is the invariant).",
         )
+
+
+class TestDhcp4ClientClasslessStaticRoutes(TestCase):
+    """
+    The 'Dhcp4Client' RFC 3442 Classless Static Route install /
+    remove tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Build a client bound to a mocked Route API and silence the
+        Subsystem init log line.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp4.dhcp4__client.log"))
+        self._route_api = create_autospec(RouteApi, spec_set=True)
+        self._client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=self._route_api)
+
+    @staticmethod
+    def _lease(
+        *,
+        gateway: Ip4Address | None,
+        classless_static_routes: list[tuple[Ip4Network, Ip4Address]] | None,
+    ) -> Dhcp4Lease:
+        """
+        Build a minimal BOUND-able lease with the given gateway /
+        classless-route shape.
+        """
+
+        return Dhcp4Lease(
+            ip4_host=Ip4IfAddr((Ip4Address("10.0.21.17"), Ip4Mask("255.255.255.0"))),
+            lease_time__sec=3600,
+            server_id=Ip4Address("10.0.21.1"),
+            acquired_at_monotonic=0.0,
+            gateway=gateway,
+            classless_static_routes=classless_static_routes,
+        )
+
+    def test__dhcp4_client__installs_classless_static_routes_and_ignores_router(self) -> None:
+        """
+        Ensure a lease with Classless Static Routes installs the
+        0.0.0.0/0 entry as the default route and each non-default
+        entry as a route, and ignores the Router option entirely.
+
+        Reference: RFC 3442 (install option 121, ignore option 3).
+        """
+
+        self._client._install_lease_routes(
+            self._lease(
+                gateway=Ip4Address("10.0.21.254"),  # option 3 — MUST be ignored
+                classless_static_routes=[
+                    (Ip4Network("0.0.0.0/0"), Ip4Address("10.0.21.1")),
+                    (Ip4Network("192.168.0.0/24"), Ip4Address("10.0.21.2")),
+                ],
+            )
+        )
+
+        self._route_api.replace_default.assert_called_once_with(
+            gateway=Ip4Address("10.0.21.1"),
+            protocol=RouteProtocol.DHCP,
+        )
+        self._route_api.add_route.assert_called_once_with(
+            route=Route(
+                destination=Ip4Network("192.168.0.0/24"),
+                gateway=Ip4Address("10.0.21.2"),
+                protocol=RouteProtocol.DHCP,
+            ),
+        )
+
+    def test__dhcp4_client__skips_onlink_classless_route(self) -> None:
+        """
+        Ensure a Classless Static Route whose router is 0.0.0.0 (an
+        on-link destination PyTCP's host FIB does not install) is
+        skipped.
+
+        Reference: RFC 3442 (stack may ignore router 0.0.0.0 routes).
+        """
+
+        self._client._install_lease_routes(
+            self._lease(
+                gateway=None,
+                classless_static_routes=[
+                    (Ip4Network("192.168.0.0/24"), Ip4Address("0.0.0.0")),
+                ],
+            )
+        )
+
+        self._route_api.add_route.assert_not_called()
+        self._route_api.replace_default.assert_not_called()
+
+    def test__dhcp4_client__falls_back_to_router_option_without_classless(self) -> None:
+        """
+        Ensure a lease with no Classless Static Routes installs the
+        Router option (option 3) as the default route.
+
+        Reference: RFC 3442 (fall back to option 3 when 121 absent).
+        """
+
+        self._client._install_lease_routes(self._lease(gateway=Ip4Address("10.0.21.254"), classless_static_routes=None))
+
+        self._route_api.replace_default.assert_called_once_with(
+            gateway=Ip4Address("10.0.21.254"),
+            protocol=RouteProtocol.DHCP,
+        )
+        self._route_api.add_route.assert_not_called()
+
+    def test__dhcp4_client__removes_non_default_classless_routes(self) -> None:
+        """
+        Ensure removal drops each non-default, gatewayed Classless
+        Static Route and leaves the default / on-link entries to the
+        default-route teardown.
+
+        Reference: RFC 3442 (Classless Static Route option).
+        """
+
+        self._client._remove_lease_routes(
+            self._lease(
+                gateway=None,
+                classless_static_routes=[
+                    (Ip4Network("0.0.0.0/0"), Ip4Address("10.0.21.1")),
+                    (Ip4Network("192.168.0.0/24"), Ip4Address("10.0.21.2")),
+                    (Ip4Network("172.16.0.0/12"), Ip4Address("0.0.0.0")),
+                ],
+            )
+        )
+
+        self._route_api.remove_route.assert_called_once_with(
+            destination=Ip4Network("192.168.0.0/24"),
+            gateway=Ip4Address("10.0.21.2"),
+        )
+
+    def test__dhcp4_client__renew_removes_previous_classless_routes(self) -> None:
+        """
+        Ensure binding a refreshed lease first removes the previous
+        lease's classless routes so a RENEW does not accumulate
+        duplicate FIB entries.
+
+        Reference: RFC 3442 (Classless Static Route option).
+        """
+
+        self.enterContext(patch("pytcp.protocols.dhcp4.dhcp4__client.write_cached_lease"))
+        first = self._lease(
+            gateway=None,
+            classless_static_routes=[(Ip4Network("192.168.0.0/24"), Ip4Address("10.0.21.2"))],
+        )
+        second = self._lease(
+            gateway=None,
+            classless_static_routes=[(Ip4Network("172.16.0.0/12"), Ip4Address("10.0.21.3"))],
+        )
+
+        self._client._on_bound(first)
+        self._client._on_bound(second)
+
+        self._route_api.remove_route.assert_called_once_with(
+            destination=Ip4Network("192.168.0.0/24"),
+            gateway=Ip4Address("10.0.21.2"),
+        )
+
+
+class TestDhcp4ClientParamReqListOrdering(_Dhcp4ClientFixture):
+    """
+    The 'Dhcp4Client' RFC 3442 Parameter Request List ordering tests.
+    """
+
+    def test__dhcp4_client__prl_requests_classless_before_router(self) -> None:
+        """
+        Ensure the DISCOVER / REQUEST Parameter Request List requests
+        the Classless Static Route option and places it before the
+        Router option.
+
+        Reference: RFC 3442 (121 MUST precede Router in the PRL).
+        """
+
+        self._server.enqueue_offer()
+        self._server.enqueue_ack()
+
+        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+
+        # DISCOVER (tx_log[0]) and REQUEST (tx_log[1]) both carry a PRL.
+        for emitted in self._server.tx_log:
+            prl = emitted.param_req_list
+            if prl is None:
+                continue
+            self.assertIn(
+                Dhcp4OptionType.CLASSLESS_STATIC_ROUTE,
+                prl,
+                msg="The PRL must request the Classless Static Route option.",
+            )
+            self.assertLess(
+                prl.index(Dhcp4OptionType.CLASSLESS_STATIC_ROUTE),
+                prl.index(Dhcp4OptionType.ROUTER),
+                msg="The Classless Static Route option MUST precede Router in the PRL.",
+            )

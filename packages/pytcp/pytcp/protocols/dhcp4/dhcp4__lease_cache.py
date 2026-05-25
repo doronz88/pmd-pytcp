@@ -86,7 +86,16 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
-from net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, MacAddress, MacAddressFormatError
+from net_addr import (
+    Ip4Address,
+    Ip4AddressFormatError,
+    Ip4IfAddr,
+    Ip4Mask,
+    Ip4Network,
+    Ip4NetworkFormatError,
+    MacAddress,
+    MacAddressFormatError,
+)
 from pytcp.lib.logger import log
 
 if TYPE_CHECKING:
@@ -167,6 +176,11 @@ def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
         "acquired_at_wall": time.time(),
         "t1_override": lease.t1_override,
         "t2_override": lease.t2_override,
+        "classless_static_routes": (
+            [[str(destination), str(router)] for destination, router in lease.classless_static_routes]
+            if lease.classless_static_routes is not None
+            else None
+        ),
     }
 
     try:
@@ -249,7 +263,23 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         t2_raw = payload.get("t2_override")
         t1_override: int | None = int(t1_raw) if t1_raw is not None else None
         t2_override: int | None = int(t2_raw) if t2_raw is not None else None
-    except (KeyError, ValueError, TypeError, MacAddressFormatError) as error:
+        # Classless static routes (option 121, RFC 3442). Absent in
+        # pre-Phase-7 caches (reads None); present as a list of
+        # [destination, router] string pairs otherwise.
+        classless_raw = payload.get("classless_static_routes")
+        classless_static_routes: list[tuple[Ip4Network, Ip4Address]] | None = (
+            [(Ip4Network(destination), Ip4Address(router)) for destination, router in classless_raw]
+            if classless_raw is not None
+            else None
+        )
+    except (
+        KeyError,
+        ValueError,
+        TypeError,
+        Ip4AddressFormatError,
+        Ip4NetworkFormatError,
+        MacAddressFormatError,
+    ) as error:
         __debug__ and log(
             "dhcp4",
             f"<WARN>Malformed DHCPv4 lease cache at {path!r}: {error}</>",
@@ -288,6 +318,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         gateway_mac=gateway_mac,
         t1_override=t1_override,
         t2_override=t2_override,
+        classless_static_routes=classless_static_routes,
     )
 
 
