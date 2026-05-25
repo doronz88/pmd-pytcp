@@ -59,6 +59,7 @@ from pytcp.socket import (
     IPV6_RECVERR,
     IPV6_TCLASS,
     MSG_ERRQUEUE,
+    SO_BINDTODEVICE,
     SOL_SOCKET,
     SOL_UDP,
     UDP_NO_CHECK6_RX,
@@ -82,6 +83,7 @@ from pytcp.socket.socket__bind_helpers import (
 )
 
 if TYPE_CHECKING:
+    from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
     from pytcp.socket.udp__metadata import UdpMetadata
 
 
@@ -154,6 +156,7 @@ class UdpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
 
+    @override
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. UDP
@@ -163,6 +166,9 @@ class UdpSocket(socket):
         'bytes' for IP_OPTIONS (RFC 1122 §4.1.3.2 raw options block).
         """
 
+        if level == SOL_SOCKET and optname == SO_BINDTODEVICE:
+            self._so_bindtodevice(value)
+            return
         if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
@@ -176,6 +182,7 @@ class UdpSocket(socket):
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
+    @override
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.
@@ -184,6 +191,8 @@ class UdpSocket(socket):
         """
 
         value: int | bytes | None
+        if level == SOL_SOCKET and optname == SO_BINDTODEVICE:
+            return self._bound_interface_name.encode() if self._bound_interface_name else bytes()
         if level == SOL_SOCKET and (value := self._sol_socket_getsockopt(optname)) is not None:
             return value
         if level == IPPROTO_IP and (value := self._ipproto_ip_getsockopt(optname)) is not None:
@@ -389,6 +398,25 @@ class UdpSocket(socket):
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
+    def _egress_handler(self, remote_ip_address: "Ip4Address | Ip6Address", /) -> "PacketHandlerL2 | PacketHandlerL3":
+        """
+        Resolve the egress packet handler for an outbound datagram. When
+        the socket is pinned to an interface via SO_BINDTODEVICE, egress
+        that interface directly (bypassing FIB route selection — the
+        Linux SO_BINDTODEVICE semantics a pre-lease DHCP client relies
+        on); otherwise use the FIB-resolved egress.
+        """
+
+        if self._egress_ifindex is not None:
+            handler = stack.interfaces.get(self._egress_ifindex)
+            if handler is None:
+                raise OSError(
+                    errno.ENODEV,
+                    "SO_BINDTODEVICE: bound interface is no longer registered",
+                )
+            return handler
+        return stack.egress_packet_handler(remote_ip_address)
+
     @override
     def send(self, data: bytes) -> int:
         """
@@ -415,7 +443,7 @@ class UdpSocket(socket):
         if not stack.has_route_to(self._remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
-        stack.egress_packet_handler(self._remote_ip_address).send_udp_packet(
+        self._egress_handler(self._remote_ip_address).send_udp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
             udp__local_port=self._local_port,
@@ -472,7 +500,7 @@ class UdpSocket(socket):
         if not stack.has_route_to(remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
-        stack.egress_packet_handler(remote_ip_address).send_udp_packet(
+        self._egress_handler(remote_ip_address).send_udp_packet(
             ip__local_address=local_ip_address,
             ip__remote_address=remote_ip_address,
             udp__local_port=self._local_port,

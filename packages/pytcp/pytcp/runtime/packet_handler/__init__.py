@@ -118,6 +118,7 @@ if TYPE_CHECKING:
     from threading import Semaphore
 
     from pytcp.protocols.arp.arp__cache import ArpCache
+    from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
     from pytcp.protocols.icmp6.nd.nd__cache import NdCache
     from pytcp.stack.route import RouteApi
 
@@ -662,29 +663,29 @@ class PacketHandler(Subsystem, ABC):
             if self._ip6_support:
                 log(
                     "stack",
-                    "<INFO>Stack listening on unicast IPv6 addresses: "
+                    f"<INFO>Interface {self._interface_name} listening on unicast IPv6 addresses: "
                     f"{', '.join([str(ip6_unicast) for ip6_unicast in self.ip6_unicast])}</>",
                 )
                 log(
                     "stack",
-                    "<INFO>Stack listening on multicast IPv6 addresses: "
+                    f"<INFO>Interface {self._interface_name} listening on multicast IPv6 addresses: "
                     f"{', '.join([str(ip6_multicast) for ip6_multicast in set(self._ip6_multicast)])}</>",
                 )
 
             if self._ip4_support:
                 log(
                     "stack",
-                    "<INFO>Stack listening on unicast IPv4 addresses: "
+                    f"<INFO>Interface {self._interface_name} listening on unicast IPv4 addresses: "
                     f"{', '.join([str(ip4_unicast) for ip4_unicast in self._ip4_unicast])}</>",
                 )
                 log(
                     "stack",
-                    "<INFO>Stack listening on multicast IPv4 addresses: "
+                    f"<INFO>Interface {self._interface_name} listening on multicast IPv4 addresses: "
                     f"{', '.join([str(ip4_multicast) for ip4_multicast in self._ip4_multicast])}</>",
                 )
                 log(
                     "stack",
-                    "<INFO>Stack listening on broadcast IPv4 addresses: "
+                    f"<INFO>Interface {self._interface_name} listening on broadcast IPv4 addresses: "
                     f"{', '.join([str(ip4_broadcast) for ip4_broadcast in self._ip4_broadcast])}</>",
                 )
 
@@ -2003,6 +2004,11 @@ class PacketHandlerL2(
     _ip4_dhcp: bool
     _ip6_lla_autoconfig: bool
     _ip6_gua_autoconfig: bool
+    # Per-interface DHCPv4 client (RFC 2131), installed by
+    # 'stack.add_interface' when 'ip4_dhcp' is set. 'None' on interfaces
+    # without DHCPv4 (static / TUN / IPv6-only). Each interface owns its
+    # own client so a multi-homed host runs one DHCP lifecycle per NIC.
+    _dhcp4_client: "Dhcp4Client | None" = None
     _mac_unicast: MacAddress
     _mac_multicast: list[MacAddress]
     _mac_broadcast: MacAddress
@@ -2831,16 +2837,17 @@ class PacketHandlerL2(
         if __debug__:
             log(
                 "stack",
-                "<INFO>Stack listening on unicast MAC address: " f"{self._mac_unicast}</>",
+                f"<INFO>Interface {self._interface_name} listening on unicast MAC address: " f"{self._mac_unicast}</>",
             )
             log(
                 "stack",
-                "<INFO>Stack listening on multicast MAC addresses: "
+                f"<INFO>Interface {self._interface_name} listening on multicast MAC addresses: "
                 f"{', '.join([str(mac_multicast) for mac_multicast in set(self._mac_multicast)])}</>",
             )
             log(
                 "stack",
-                "<INFO>Stack listening on broadcast MAC address: " f"{self._mac_broadcast}</>",
+                f"<INFO>Interface {self._interface_name} listening on broadcast MAC address: "
+                f"{self._mac_broadcast}</>",
             )
 
         self._ip_configuration_in_progress.release(2)

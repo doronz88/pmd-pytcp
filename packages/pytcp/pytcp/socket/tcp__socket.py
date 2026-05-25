@@ -303,6 +303,7 @@ class TcpSocket(socket):
             rx_buffer_len=len(session._rx_buffer),
         )
 
+    @override
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API.
@@ -374,6 +375,7 @@ class TcpSocket(socket):
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
+    @override
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.

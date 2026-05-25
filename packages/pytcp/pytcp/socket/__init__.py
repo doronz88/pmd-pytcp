@@ -129,6 +129,7 @@ class SolSocketOption(IntEnum):
     SO_RCVBUF = 8  # int: recv-buffer cap (storage only)
     SO_RCVTIMEO = 20  # float seconds: persistent recv timeout
     SO_SNDTIMEO = 21  # float seconds: persistent send timeout
+    SO_BINDTODEVICE = 25  # bytes: pin socket egress / RX to an interface by name
 
 
 SO_REUSEADDR = SolSocketOption.SO_REUSEADDR
@@ -137,6 +138,7 @@ SO_SNDBUF = SolSocketOption.SO_SNDBUF
 SO_RCVBUF = SolSocketOption.SO_RCVBUF
 SO_RCVTIMEO = SolSocketOption.SO_RCVTIMEO
 SO_SNDTIMEO = SolSocketOption.SO_SNDTIMEO
+SO_BINDTODEVICE = SolSocketOption.SO_BINDTODEVICE
 
 
 class IpOption(IntEnum):
@@ -471,6 +473,36 @@ class socket(ABC):
         self._ipv6_tclass = 0
         self._ipv6_recvtclass = False
         self._ipv6_recverr = False
+        # SO_BINDTODEVICE: when set, pins this socket's egress to one
+        # interface by name (the resolved ifindex is the egress the
+        # send path uses, bypassing FIB route selection). Empty / unset
+        # means "any interface" (the default FIB-resolved egress).
+        self._bound_interface_name: str | None = None
+        self._egress_ifindex: int | None = None
+
+    def _so_bindtodevice(self, value: int | bytes, /) -> None:
+        """
+        Apply SO_BINDTODEVICE (SOL_SOCKET): pin the socket's egress to
+        the named interface, mirroring Linux's device-name binding. An
+        empty name clears the binding. Raises 'OSError(ENODEV)' when no
+        registered interface carries the given name.
+        """
+
+        import pytcp.stack as _stack
+
+        name = value.decode() if isinstance(value, (bytes, bytearray)) else str(value)
+        if not name:
+            self._bound_interface_name = None
+            self._egress_ifindex = None
+            return
+
+        for ifindex, handler in _stack.interfaces.items():
+            if handler._interface_name == name:
+                self._bound_interface_name = name
+                self._egress_ifindex = ifindex
+                return
+
+        raise OSError(errno.ENODEV, f"SO_BINDTODEVICE: no such interface {name!r}")
 
     def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
         """
@@ -1040,6 +1072,23 @@ class socket(ABC):
     ) -> memoryview:
         """
         The 'recv__mv()' socket API method placeholder.
+        """
+
+        raise NotImplementedError
+
+    def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
+        """
+        The 'setsockopt()' socket API method placeholder. Each concrete
+        IP socket implements the SOL_SOCKET / IPPROTO_* option surface;
+        AF_PACKET sockets do not support socket options.
+        """
+
+        raise NotImplementedError
+
+    def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
+        """
+        The 'getsockopt()' socket API method placeholder. Symmetric to
+        'setsockopt'.
         """
 
         raise NotImplementedError

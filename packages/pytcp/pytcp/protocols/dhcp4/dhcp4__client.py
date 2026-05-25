@@ -96,7 +96,14 @@ from pytcp.protocols.dhcp4.dhcp4__uid import build_client_id
 from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.runtime.fib import RouteProtocol
 from pytcp.runtime.subsystem import Subsystem
-from pytcp.socket import AF_INET4, SOCK_DGRAM, AddressFamily, socket
+from pytcp.socket import (
+    AF_INET4,
+    SO_BINDTODEVICE,
+    SOCK_DGRAM,
+    SOL_SOCKET,
+    AddressFamily,
+    socket,
+)
 
 # 'secs' is a 16-bit field in the DHCP header; cap the elapsed-
 # since-acquisition seconds at UINT16_MAX so a long-lived restart
@@ -207,6 +214,7 @@ class Dhcp4Client(Subsystem):
         acd: Ip4Acd | None = None,
         address_api: "AddressApi | None" = None,
         route_api: "RouteApi | None" = None,
+        interface_name: str | None = None,
     ) -> None:
         """
         Initialize the DHCPv4 client.
@@ -242,6 +250,11 @@ class Dhcp4Client(Subsystem):
         self._acd = acd
         self._address_api = address_api
         self._route_api = route_api
+        # Interface this client configures. Pins every client socket's
+        # egress to this interface via SO_BINDTODEVICE so the pre-lease
+        # limited-broadcast (255.255.255.255) DISCOVER / REQUEST egress
+        # is unambiguous on a multi-homed host (Linux dhclient model).
+        self._interface_name = interface_name
         # Set at the top of '_do_init_to_bound'; reused by every
         # outbound TX in this acquisition cycle to populate the
         # DHCP header 'secs' field per RFC 1542 §3.2.
@@ -613,7 +626,7 @@ class Dhcp4Client(Subsystem):
         """
 
         xid = random.randint(0, 0xFFFFFFFF)
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
             target = "255.255.255.255" if broadcast else str(lease.server_id)
@@ -821,7 +834,7 @@ class Dhcp4Client(Subsystem):
         block the abandon-and-reacquire path.
         """
 
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
             client_socket.connect((str(server_id), 67))
@@ -887,7 +900,7 @@ class Dhcp4Client(Subsystem):
             f"INIT-REBOOT: requesting cached {cached.ip4_host.address}",
         )
 
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
             client_socket.connect(("255.255.255.255", 67))
@@ -1207,7 +1220,7 @@ class Dhcp4Client(Subsystem):
         and tests (Linux 'dhclient -r' / 'dhcpcd -k' equivalent).
         """
 
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
             client_socket.connect((str(lease.server_id), 67))
@@ -1312,7 +1325,7 @@ class Dhcp4Client(Subsystem):
             f"Starting DHCPv4 acquisition (mac={self._mac_address})",
         )
 
-        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
             client_socket.connect(("255.255.255.255", 67))
@@ -1635,6 +1648,20 @@ class Dhcp4Client(Subsystem):
                 f"<lg>OFFER from {result.server_id}</> received "
                 f"during collection window; ignored (first OFFER retained)",
             )
+
+    def _open_client_socket(self) -> socket:
+        """
+        Open the UDP socket used for a DHCPv4 exchange, pinned to this
+        client's interface via SO_BINDTODEVICE when known. The pin makes
+        the pre-lease limited-broadcast (255.255.255.255) egress
+        unambiguous on a multi-homed host, where the FIB cannot pick a
+        single egress for the all-ones destination.
+        """
+
+        client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        if self._interface_name is not None:
+            client_socket.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, self._interface_name.encode())
+        return client_socket
 
     def _send_discover(self, client_socket: socket, *, xid: int) -> None:
         """

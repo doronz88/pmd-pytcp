@@ -40,7 +40,7 @@ from unittest.mock import MagicMock, patch
 
 import pytcp.stack as stack
 import pytcp.stack.lifecycle as lifecycle
-from net_addr import MacAddress
+from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.runtime.fib import RouteTable
 from pytcp.runtime.interface_table import InterfaceTable
@@ -2242,4 +2242,99 @@ class TestStackEgressInterfaceMtu(TestCase):
         self.assertIsNone(
             stack.egress_interface_mtu(Ip4Address("203.0.113.9")),
             msg="egress_interface_mtu must be None for an unresolved dst with multiple interfaces.",
+        )
+
+
+class TestStackAddInterfaceDhcp4PerInterface(TestCase):
+    """
+    The per-interface DHCPv4-client construction tests for a multi-homed
+    host.
+    """
+
+    def setUp(self) -> None:
+        """
+        Build an empty interface registry plus the control-plane APIs the
+        DHCPv4 construction path consults (address / link / route), with
+        the TX / RX rings mocked so 'add_interface' constructs the
+        handlers and their DHCP clients without touching the fds.
+        Snapshots / restores the affected module slots.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self.enterContext(patch.object(lifecycle, "TxRing"))
+        self.enterContext(patch.object(lifecycle, "RxRing"))
+
+        self._sentinel = object()
+        self._names = ("interfaces", "route", "address", "link", "dhcp4_client", "ip4_fib", "ip6_fib")
+        self._snapshot = {name: getattr(stack, name, self._sentinel) for name in self._names}
+
+        ip4_fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        ip6_fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
+        stack.ip4_fib = ip4_fib
+        stack.ip6_fib = ip6_fib
+        stack.interfaces = InterfaceTable(first_ifindex=stack.STACK__DEFAULT_IFINDEX)
+        stack.route = RouteApi(ip4_fib=ip4_fib, ip6_fib=ip6_fib)
+        stack.address = AddressApi()
+        stack.link = LinkApi()
+
+        self._fds = [os.pipe() for _ in range(2)]
+        self.addCleanup(self._cleanup)
+
+    def _cleanup(self) -> None:
+        """
+        Close the pipe fds and restore the snapshotted module slots.
+        """
+
+        for read_fd, write_fd in self._fds:
+            for fd in (read_fd, write_fd):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        for name, value in self._snapshot.items():
+            if value is self._sentinel:
+                if hasattr(stack, name):
+                    delattr(stack, name)
+            else:
+                setattr(stack, name, value)
+
+    def test__add_interface__each_dhcp4_interface_owns_its_own_client(self) -> None:
+        """
+        Ensure two DHCPv4-enabled interfaces each construct and retain
+        their OWN 'Dhcp4Client' — the per-interface DHCP client must not
+        be clobbered by a single shared module slot when a second
+        interface is added (the 'make run_multi' multi-homed-host case).
+
+        Reference: RFC 2131 §4.1 (each configured interface runs its own
+        DHCPv4 client).
+        """
+
+        first = add_interface(
+            fd=self._fds[0][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+            ip4_support=True,
+            ip4_dhcp=True,
+        )
+        second = add_interface(
+            fd=self._fds[1][1],
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:02"),
+            ip4_support=True,
+            ip4_dhcp=True,
+        )
+
+        handler_1 = stack.interfaces[first]
+        handler_2 = stack.interfaces[second]
+        assert isinstance(handler_1, PacketHandlerL2)
+        assert isinstance(handler_2, PacketHandlerL2)
+        client_1 = handler_1._dhcp4_client
+        client_2 = handler_2._dhcp4_client
+
+        self.assertIsNotNone(client_1, msg="The first interface must own a DHCPv4 client.")
+        self.assertIsNotNone(client_2, msg="The second interface must own a DHCPv4 client.")
+        self.assertIsNot(
+            client_1,
+            client_2,
+            msg="Each interface must own a DISTINCT DHCPv4 client (no shared module slot).",
         )

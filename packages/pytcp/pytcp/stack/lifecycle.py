@@ -330,21 +330,32 @@ def add_interface(
         # delegate to the Ip4Acd engine, NOT the Address API. The
         # Address API stays only for the BOUND-transition address
         # install (RTM_NEWADDR).
-        _stack.dhcp4_client = Dhcp4Client(
+        assert isinstance(packet_handler, PacketHandlerL2)
+        packet_handler._dhcp4_client = Dhcp4Client(
             mac_address=dhcp_mac,
             acd=Ip4Acd(mac_address=dhcp_mac, ifindex=ifindex),
             address_api=address_view,
             route_api=_stack.route,
+            interface_name=interface_name,
         )
+        # N=1 back-compat: 'stack.dhcp4_client' aliases the FIRST (boot)
+        # DHCPv4 interface's client for single-interface consumers; real
+        # ownership is per-interface on the handler so a multi-homed host
+        # runs one DHCP lifecycle per NIC.
+        if _stack.dhcp4_client is None:
+            _stack.dhcp4_client = packet_handler._dhcp4_client
 
     if layer is InterfaceLayer.L2 and ip4_link_local:
+        assert isinstance(packet_handler, PacketHandlerL2)
+        ll_handler = packet_handler
         ll_address_view = _stack.address.interface(ifindex)
         ll_mac = _stack.link.interface(ifindex).mac_address
         assert ll_mac is not None, "L2 interface must expose a unicast MAC via the link tool."
         from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4State
 
         def _is_dhcp_bound() -> bool:
-            return _stack.dhcp4_client is not None and _stack.dhcp4_client.state is Dhcp4State.BOUND
+            client = ll_handler._dhcp4_client
+            return client is not None and client.state is Dhcp4State.BOUND
 
         from pytcp.protocols.ip4.link_local.link_local__client import Ip4LinkLocal as _Ip4LinkLocal
 
@@ -612,20 +623,26 @@ def start() -> None:
     # 'dhcp.boot_wait_ms' for the FSM to reach BOUND. On timeout
     # the lifecycle keeps trying in the background; boot proceeds
     # without IPv4 for now.
-    if _stack.dhcp4_client is not None:
+    dhcp4_clients = [
+        handler._dhcp4_client
+        for handler in _stack.interfaces.values()
+        if isinstance(handler, PacketHandlerL2) and handler._dhcp4_client is not None
+    ]
+    if dhcp4_clients:
         from pytcp.protocols.dhcp4 import dhcp4__constants
 
         boot_wait_s = dhcp4__constants.DHCP4__BOOT_WAIT_MS / 1000.0
-        bound = _stack.dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
-        if bound:
-            __debug__ and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
-        else:
-            __debug__ and log(
-                "stack",
-                f"<WARN>DHCPv4 lifecycle did not reach BOUND within "
-                f"{boot_wait_s:.1f}s; proceeding without IPv4 (lifecycle "
-                f"continues in background)</>",
-            )
+        for dhcp4_client in dhcp4_clients:
+            bound = dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
+            if bound:
+                __debug__ and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
+            else:
+                __debug__ and log(
+                    "stack",
+                    f"<WARN>DHCPv4 lifecycle did not reach BOUND within "
+                    f"{boot_wait_s:.1f}s; proceeding without IPv4 (lifecycle "
+                    f"continues in background)</>",
+                )
 
 
 def stop() -> None:
@@ -650,8 +667,9 @@ def stop() -> None:
     #   3. rx_ring         — stop kernel reads.
     #   4. tx_ring         — drain anything still queued + stop.
     #   5. arp_cache / nd_cache — stop cache-refresh threads.
-    if _stack.dhcp4_client is not None:
-        _stack.dhcp4_client.stop()
+    for handler in _stack.interfaces.values():
+        if isinstance(handler, PacketHandlerL2) and handler._dhcp4_client is not None:
+            handler._dhcp4_client.stop()
     if _stack.link_local is not None:
         _stack.link_local.stop()
     # Per-interface handlers first (stop application-side TX

@@ -134,6 +134,7 @@ class RawSocket(socket):
 
         return local_ip_address, remote_ip_address  # type: ignore[return-value]
 
+    @override
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option per the BSD 'setsockopt' API. RAW
@@ -153,6 +154,7 @@ class RawSocket(socket):
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
         )
 
+    @override
     def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option per the BSD 'getsockopt' API.
