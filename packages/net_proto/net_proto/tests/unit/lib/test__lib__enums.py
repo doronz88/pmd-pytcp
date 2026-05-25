@@ -285,6 +285,11 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
             "_results": {"value": 1, "__str__": "ICMPv4"},
         },
         {
+            "_description": "IpProto.IGMP known value (RFC 1112 / 3376 multicast group management).",
+            "_member": IpProto.IGMP,
+            "_results": {"value": 2, "__str__": "IGMP"},
+        },
+        {
             "_description": "IpProto.IP6_ROUTING known value (RFC 8200 §4.4 Routing Header).",
             "_member": IpProto.IP6_ROUTING,
             "_results": {"value": 43, "__str__": "IPv6_Routing"},
@@ -483,6 +488,34 @@ class TestNetProtoLibEnumsIpProtoIpv6ExtensionFromInt(TestCase):
         )
 
 
+class TestNetProtoLibEnumsIpProtoIgmpFromInt(TestCase):
+    """
+    The NetProto IpProto from_int() coverage for the IGMP next-header value.
+    """
+
+    def test__net_proto__lib__enums__ip_proto__igmp_from_int(self) -> None:
+        """
+        Ensure the IpProto enum exposes a typed member at the IANA
+        IGMP protocol number (2) so the IPv4 RX proto-demux can match
+        against it rather than a synthesised 'UNKNOWN_2' sentinel.
+
+        Reference: RFC 1112 §7.2 (IGMP carried as IP protocol 2).
+        Reference: RFC 3376 §4 (IGMP messages, protocol number 2).
+        """
+
+        member = IpProto.from_int(2)
+
+        self.assertIs(
+            member,
+            IpProto.IGMP,
+            msg="from_int(2) must return the typed IpProto.IGMP member.",
+        )
+        self.assertFalse(
+            member.is_unknown,
+            msg="IpProto.IGMP must be a known member, not a synthesised UNKNOWN_2.",
+        )
+
+
 @parameterized_class(
     [
         {
@@ -632,6 +665,7 @@ class TestNetProtoLibEnumsRoundtrip(TestCase):
         for member in (
             IpProto.IP6_HBH,
             IpProto.ICMP4,
+            IpProto.IGMP,
             IpProto.IP4,
             IpProto.TCP,
             IpProto.UDP,

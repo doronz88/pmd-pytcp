@@ -97,6 +97,7 @@ class IpProto(ProtoEnumByte):
 
     IP6_HBH = 0  # RFC 8200 §4.3: Hop-by-Hop Options extension header.
     ICMP4 = 1  # RFC 792: Internet Control Message Protocol (ICMPv4).
+    IGMP = 2  # RFC 1112 / 2236 / 3376: Internet Group Management Protocol.
     IP4 = 4  # RFC 2003 §1: IPv4 encapsulated in IP (IP-in-IP).
     TCP = 6  # RFC 9293 §3.1: Transmission Control Protocol header.
     UDP = 17  # RFC 768: User Datagram Protocol header.
@@ -119,6 +120,8 @@ class IpProto(ProtoEnumByte):
                 name = "IPv6_HBH"
             case IpProto.ICMP4:
                 name = "ICMPv4"
+            case IpProto.IGMP:
+                name = "IGMP"
             case IpProto.IP4:
                 name = "IPv4"
             case IpProto.TCP:
