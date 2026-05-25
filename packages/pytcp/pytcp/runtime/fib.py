@@ -167,6 +167,22 @@ class RouteTable[
         ]
         return before - len(self._routes)
 
+    def remove_by_oif(self, *, oif: int) -> int:
+        """
+        Remove every explicit route whose output interface ('oif')
+        matches 'oif' — the route-flush half of interface teardown
+        (Linux 'RTM_DELLINK' / 'ip route flush dev <ifX>'). Returns the
+        number of routes removed. Connected routes are synthesized
+        per-lookup (not stored here), so they vanish on their own once
+        the interface leaves the registry; this purges only the
+        explicitly-installed default / static routes that egress the
+        removed interface. Routes with an unset 'oif' never match.
+        """
+
+        before = len(self._routes)
+        self._routes = [route for route in self._routes if route.oif != oif]
+        return before - len(self._routes)
+
     def lookup(self, destination: A, /, *, connected: Iterable[tuple[N, int]]) -> Route[A, N] | None:
         """
         Resolve 'destination' to its next-hop route via

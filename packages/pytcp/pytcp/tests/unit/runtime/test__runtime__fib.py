@@ -406,6 +406,57 @@ class TestRouteTableMutation(TestCase):
             msg="A no-match remove must leave the table untouched.",
         )
 
+    def test__runtime__fib__remove_by_oif_purges_matching(self) -> None:
+        """
+        Ensure 'remove_by_oif' deletes every explicit route whose
+        output interface matches and returns the removed count — the
+        route-flush half of interface teardown (RTM_DELLINK).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        keep = Route(destination=_STATIC4_NET, gateway=_GW_STATIC4, oif=2)
+        self._table.add(route=Route(destination=_DEFAULT4_NET, gateway=_GW_DEFAULT4, oif=1))
+        self._table.add(route=Route(destination=Ip4Network("10.8.0.0/16"), gateway=_GW_DEFAULT4, oif=1))
+        self._table.add(route=keep)
+
+        removed = self._table.remove_by_oif(oif=1)
+
+        self.assertEqual(
+            removed,
+            2,
+            msg="remove_by_oif must delete every route egressing the given interface.",
+        )
+        self.assertEqual(
+            self._table.snapshot(),
+            (keep,),
+            msg="A route egressing a different interface must survive remove_by_oif.",
+        )
+
+    def test__runtime__fib__remove_by_oif_no_match_returns_zero(self) -> None:
+        """
+        Ensure 'remove_by_oif' returns zero and leaves the table
+        untouched when no explicit route egresses the interface —
+        including routes whose 'oif' is unset (gatewayed default).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._table.add(route=_DEFAULT4_ROUTE)
+
+        removed = self._table.remove_by_oif(oif=7)
+
+        self.assertEqual(
+            removed,
+            0,
+            msg="remove_by_oif must return 0 when no route egresses the interface.",
+        )
+        self.assertEqual(
+            self._table.snapshot(),
+            (_DEFAULT4_ROUTE,),
+            msg="A no-match remove_by_oif must leave the table untouched.",
+        )
+
 
 class TestRouteInvariants(TestCase):
     """
