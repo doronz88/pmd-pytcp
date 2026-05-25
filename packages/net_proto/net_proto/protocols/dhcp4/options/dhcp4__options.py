@@ -327,6 +327,39 @@ class Dhcp4Options(ProtoOptions):
                     f"The DHCPv4 option length must not extend past the header length. Got: {offset=}, {hlen=}",
                 )
 
+    @staticmethod
+    def _concatenated_classless_static_route_data(buffer: Buffer, /) -> bytes:
+        """
+        Join the data of every option-121 instance in 'buffer', in
+        wire order.
+
+        The Classless Static Route option is a concatenation-requiring
+        option: a route set too large for a single 255-octet option is
+        split across several option-121 instances whose data must be
+        joined before decoding (RFC 3442 mandates RFC 3396 option
+        concatenation). A split may fall on any byte boundary, so the
+        instances cannot be decoded individually — only the joined
+        data is a well-formed descriptor list. The caller must have
+        run 'validate_integrity' first so each length byte is in
+        bounds.
+        """
+
+        data = bytearray()
+        offset = 0
+        while offset < len(buffer):
+            code = buffer[offset]
+            if code == int(Dhcp4OptionType.END):
+                break
+            if code == int(Dhcp4OptionType.PAD):
+                offset += DHCP4__OPTION__PAD__LEN
+                continue
+            option_data_len = buffer[offset + 1]
+            if code == int(Dhcp4OptionType.CLASSLESS_STATIC_ROUTE):
+                data += bytes(buffer[offset + DHCP4__OPTION__LEN : offset + DHCP4__OPTION__LEN + option_data_len])
+            offset += DHCP4__OPTION__LEN + option_data_len
+
+        return bytes(data)
+
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -334,8 +367,14 @@ class Dhcp4Options(ProtoOptions):
         Read the DHCPv4 options from buffer.
         """
 
+        # RFC 3396 / RFC 3442: gather the concatenation of every
+        # option-121 instance up front so the (possibly split) route
+        # list decodes as one option.
+        classless_static_route_data = cls._concatenated_classless_static_route_data(buffer)
+
         offset = 0
         options: list[Dhcp4Option] = []
+        classless_static_route_emitted = False
 
         while offset < len(buffer):
             match Dhcp4OptionType.from_bytes(buffer[offset : offset + 1]):
@@ -345,7 +384,22 @@ class Dhcp4Options(ProtoOptions):
                 case Dhcp4OptionType.PAD:
                     options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.CLASSLESS_STATIC_ROUTE:
-                    options.append(Dhcp4OptionClasslessStaticRoute.from_buffer(buffer[offset:]))
+                    # Emit a single option built from the concatenated
+                    # data the first time a 121 instance is seen; later
+                    # instances only advance the cursor (their data is
+                    # already folded in). Individual instances are NOT
+                    # decoded — a split can fall mid-descriptor.
+                    if not classless_static_route_emitted:
+                        routes = Dhcp4OptionClasslessStaticRoute.decode_routes(classless_static_route_data)
+                        if not routes:
+                            raise Dhcp4IntegrityError(
+                                "The DHCPv4 Classless Static Route option must carry at least "
+                                "one route (RFC 3442 minimum length 5 octets)."
+                            )
+                        options.append(Dhcp4OptionClasslessStaticRoute(routes))
+                        classless_static_route_emitted = True
+                    offset += DHCP4__OPTION__LEN + buffer[offset + 1]
+                    continue
                 case Dhcp4OptionType.CLIENT_ID:
                     options.append(Dhcp4OptionClientId.from_buffer(buffer[offset:]))
                 case Dhcp4OptionType.HOST_NAME:

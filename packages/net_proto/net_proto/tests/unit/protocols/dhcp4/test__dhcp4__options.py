@@ -725,6 +725,82 @@ class TestDhcp4OptionsProperties(TestCase):
         )
 
 
+class TestDhcp4OptionsClasslessStaticRouteConcatenation(TestCase):
+    """
+    The 'Dhcp4Options' RFC 3396 concatenation tests for the
+    Classless Static Route option.
+    """
+
+    def test__dhcp4__options__concatenates_split_classless_static_route(self) -> None:
+        """
+        Ensure two option-121 instances split mid-descriptor are
+        concatenated by their data and decoded as one route list
+        (per-instance decoding would fail on the split chunk).
+
+        Reference: RFC 3442 (Classless Static Route is concatenation-requiring).
+        Reference: RFC 3396 (DHCP option concatenation).
+        """
+
+        # Logical data = route(0.0.0.0/0 via 192.0.2.1) [5 bytes]
+        #              + route(10.0.0.0/8 via 10.0.0.1)  [6 bytes].
+        # Split after 4 bytes — mid the first route — across two
+        # option-121 instances; the first instance's 4-byte data is
+        # below the 5-octet single-option minimum on its own.
+        buffer = (
+            # 121, len 4, first 4 data bytes (00 c0 00 02)
+            b"\x79\x04\x00\xc0\x00\x02"
+            # 121, len 7, remaining data (01 08 0a 0a 00 00 01)
+            b"\x79\x07\x01\x08\x0a\x0a\x00\x00\x01"
+            # End
+            b"\xff"
+        )
+
+        self.assertEqual(
+            Dhcp4Options.from_buffer(buffer).classless_static_route,
+            [
+                (Ip4Network("0.0.0.0/0"), Ip4Address("192.0.2.1")),
+                (Ip4Network("10.0.0.0/8"), Ip4Address("10.0.0.1")),
+            ],
+            msg="Split option-121 instances must be joined by data and decoded as one route list.",
+        )
+
+    def test__dhcp4__options__single_classless_static_route_emitted(self) -> None:
+        """
+        Ensure several option-121 instances collapse to exactly one
+        Classless Static Route option in the parsed container.
+
+        Reference: RFC 3396 (DHCP option concatenation).
+        """
+
+        buffer = b"\x79\x04\x00\xc0\x00\x02" b"\x79\x07\x01\x08\x0a\x0a\x00\x00\x01" b"\xff"
+
+        options = Dhcp4Options.from_buffer(buffer)
+        count = sum(1 for option in options._options if isinstance(option, Dhcp4OptionClasslessStaticRoute))
+        self.assertEqual(
+            count,
+            1,
+            msg="Concatenated option-121 instances must yield exactly one option object.",
+        )
+
+    def test__dhcp4__options__rejects_empty_classless_static_route(self) -> None:
+        """
+        Ensure an option-121 instance carrying no route data is
+        rejected with a typed integrity error rather than leaking an
+        AssertionError from the empty-route constructor.
+
+        Reference: RFC 3442 (minimum length 5 bytes).
+        """
+
+        with self.assertRaises(Dhcp4IntegrityError) as error:
+            Dhcp4Options.from_buffer(b"\x79\x00\xff")
+
+        self.assertIn(
+            "must carry at least one route",
+            str(error.exception),
+            msg="An empty Classless Static Route option must raise a typed integrity error.",
+        )
+
+
 class TestDhcp4OptionsBehavior(TestCase):
     """
     The 'Dhcp4Options' collection and equality behavior tests.

@@ -125,16 +125,13 @@ class Dhcp4OptionClasslessStaticRoute(Dhcp4Option):
             for network, _ in self.routes
         )
 
-        # The wire-format length byte is a single octet. A route set
-        # whose compact encoding exceeds 255 octets is split across
-        # several option-121 instances on the wire (RFC 3396 option
-        # concatenation, which RFC 3442 mandates) and reassembled by
-        # the options parser; a single assembled option object must
-        # still fit one TLV.
-        assert data_len <= DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__MAX_DATA_LEN, (
-            f"The Classless Static Route option data must fit a single-octet length "
-            f"(RFC 3442 / RFC 3396 splits longer route sets across instances). Got: {data_len}"
-        )
+        # The object models the logical route set, which RFC 3396
+        # allows to exceed a single 255-octet option: on receive the
+        # options parser concatenates the data of all option-121
+        # instances (RFC 3442 mandates RFC 3396 option concatenation)
+        # before decoding, so a parsed object's data may be > 255. The
+        # single-octet length byte therefore constrains assembly only,
+        # and that bound is enforced in '__buffer__'.
 
         # Hack to bypass the 'frozen=True' dataclass decorator.
         object.__setattr__(self, "len", DHCP4__OPTION__LEN + data_len)
@@ -152,6 +149,16 @@ class Dhcp4OptionClasslessStaticRoute(Dhcp4Option):
         """
         Get the DHCPv4 Classless Static Route option as a memoryview.
         """
+
+        # Assembly emits a single TLV, so the data must fit the
+        # single-octet length byte. PyTCP is a DHCP client and never
+        # transmits option 121 (it only requests + receives it), so a
+        # route set large enough to require RFC 3396 TX-side splitting
+        # is a Phase-2 DHCP-server concern, not a host-stack path.
+        assert (data_len := self.len - DHCP4__OPTION__LEN) <= DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__MAX_DATA_LEN, (
+            f"Assembling the Classless Static Route option into a single TLV requires "
+            f"data <= {DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__MAX_DATA_LEN} octets. Got: {data_len}"
+        )
 
         buffer = bytearray(self.len - DHCP4__OPTION__LEN)
         offset = 0
