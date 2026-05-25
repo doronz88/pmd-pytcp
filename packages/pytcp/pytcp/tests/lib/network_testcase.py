@@ -60,6 +60,7 @@ from pytcp.runtime.packet_handler import (
     PacketHandlerL3,
     packet_handler__ip6_frag__tx,
 )
+from pytcp.runtime.rx_ring import RxRing
 from pytcp.runtime.tx_ring import TxRing
 
 # # #  IPv4
@@ -438,6 +439,12 @@ class NetworkTestCase(TestCase):
         mock_tx_ring.dispatch.side_effect = lambda run: run()
         mock_tx_ring.dispatch_async.side_effect = lambda run: run()
 
+        # RX is injected directly via 'drive_rx' (calling '_phrx_ethernet'),
+        # never read off this ring — but a real interface owns one, and
+        # 'remove_interface' / '_stop_interface' assert its presence, so a
+        # fully-shaped interface needs the (otherwise inert) mock here.
+        mock_rx_ring = create_autospec(RxRing, spec_set=True)
+
         arp_table = dict(arp_entries or {})
 
         def _arp_find(*, ip4_address: Ip4Address) -> MacAddress | None:
@@ -471,6 +478,7 @@ class NetworkTestCase(TestCase):
                 ip6_host.address.solicited_node_multicast,
             ]
         handler._tx_ring = cast(TxRing, mock_tx_ring)
+        handler._rx_ring = cast(RxRing, mock_rx_ring)
         handler._arp_cache = cast(ArpCache, mock_arp_cache)
         handler._nd_cache = cast(NdCache, mock_nd_cache)
         handler._route_api = stack.route
