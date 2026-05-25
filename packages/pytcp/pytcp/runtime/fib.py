@@ -34,6 +34,7 @@ pytcp/runtime/fib.py
 ver 3.0.6
 """
 
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
@@ -140,6 +141,14 @@ class RouteTable[
         """
 
         self._routes: list[Route[A, N]] = []
+        # The FIB is a global structure: the RX / TX / timer threads
+        # read it ('lookup') while the Route API mutates it ('add' /
+        # 'remove'). The lock makes each mutation atomic and hands every
+        # reader a consistent snapshot of the route list, so a concurrent
+        # in-place 'append' racing a comprehension rebind cannot drop an
+        # update or tear a read on a free-threaded build — the same
+        # tiny-locked-surface model as 'SocketTable' / 'InterfaceTable'.
+        self._lock = threading.Lock()
 
     def add(self, *, route: Route[A, N]) -> None:
         """
@@ -148,7 +157,8 @@ class RouteTable[
         caller (the Route API) owns replace semantics.
         """
 
-        self._routes.append(route)
+        with self._lock:
+            self._routes.append(route)
 
     def remove(self, *, destination: N, gateway: A | None = None) -> int:
         """
@@ -159,13 +169,14 @@ class RouteTable[
         removed.
         """
 
-        before = len(self._routes)
-        self._routes = [
-            route
-            for route in self._routes
-            if not (route.destination == destination and (gateway is None or route.gateway == gateway))
-        ]
-        return before - len(self._routes)
+        with self._lock:
+            before = len(self._routes)
+            self._routes = [
+                route
+                for route in self._routes
+                if not (route.destination == destination and (gateway is None or route.gateway == gateway))
+            ]
+            return before - len(self._routes)
 
     def remove_by_oif(self, *, oif: int) -> int:
         """
@@ -179,9 +190,10 @@ class RouteTable[
         removed interface. Routes with an unset 'oif' never match.
         """
 
-        before = len(self._routes)
-        self._routes = [route for route in self._routes if route.oif != oif]
-        return before - len(self._routes)
+        with self._lock:
+            before = len(self._routes)
+            self._routes = [route for route in self._routes if route.oif != oif]
+            return before - len(self._routes)
 
     def lookup(self, destination: A, /, *, connected: Iterable[tuple[N, int]]) -> Route[A, N] | None:
         """
@@ -198,7 +210,11 @@ class RouteTable[
         ("no route to host").
         """
 
-        candidates: list[Route[A, N]] = list(self._routes)
+        # Snapshot the explicit routes under the lock, then match on the
+        # local copy outside it — readers never block each other and the
+        # heavy longest-prefix work holds no lock.
+        with self._lock:
+            candidates: list[Route[A, N]] = list(self._routes)
         for network, oif in connected:
             candidates.append(
                 Route(
@@ -233,5 +249,8 @@ class RouteTable[
         the returned tuple — matching the Phase-3 north-star
         "introspection is read-only" constraint.
         """
+
+        with self._lock:
+            return tuple(self._routes)
 
         return tuple(self._routes)

@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 import dataclasses
+import threading
 from typing import override
 from unittest import TestCase
 
@@ -620,3 +621,92 @@ class TestRouteEnums(TestCase):
                     value,
                     msg=f"{member!r} must mirror the Linux RTPROT_* value.",
                 )
+
+
+class TestRouteTableConcurrency(TestCase):
+    """
+    The 'RouteTable' thread-safety tests — the FIB is a global structure
+    read by the RX / TX / timer threads ('lookup') while the Route API
+    mutates it ('add' / 'remove'), so its lock must make concurrent
+    mutation safe (no lost route, no torn read) on a free-threaded build
+    where a bare list's in-place 'append' racing a comprehension rebind
+    would otherwise drop updates.
+    """
+
+    def test__runtime__fib__concurrent_add_loses_no_route(self) -> None:
+        """
+        Ensure many threads each adding a distinct route end with every
+        route registered — the lock serializes 'append' so a concurrent
+        mutation cannot drop an add, the daemon-critical property a bare
+        list does not guarantee on a free-threaded build.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        routes = [Route(destination=Ip4Network(f"10.{i}.0.0/16"), oif=i + 1) for i in range(64)]
+        errors: list[BaseException] = []
+
+        def add_one(route: Route[Ip4Address, Ip4Network]) -> None:
+            try:
+                table.add(route=route)
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
+                errors.append(exc)
+
+        threads = [threading.Thread(target=add_one, args=(route,)) for route in routes]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [], msg=f"Concurrent add must not raise; got: {errors!r}")
+        self.assertEqual(
+            set(table.snapshot()),
+            set(routes),
+            msg="Every concurrently-added route must survive (none lost to a racing mutation).",
+        )
+
+    def test__runtime__fib__concurrent_lookup_during_mutation_does_not_raise(self) -> None:
+        """
+        Ensure a 'lookup' running while the table is concurrently
+        mutated never raises — the lock hands the reader a consistent
+        snapshot of the route list rather than letting it iterate a list
+        being resized.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table: RouteTable[Ip4Address, Ip4Network] = RouteTable()
+        errors: list[BaseException] = []
+        stop = threading.Event()
+
+        def churn() -> None:
+            i = 0
+            while not stop.is_set():
+                try:
+                    table.add(route=Route(destination=Ip4Network(f"10.{i % 256}.0.0/16"), oif=1))
+                    table.remove_by_oif(oif=1)
+                    i += 1
+                except BaseException as exc:  # pylint: disable=broad-exception-caught
+                    errors.append(exc)
+                    return
+
+        def reader() -> None:
+            for _ in range(2000):
+                try:
+                    table.lookup(Ip4Address("10.1.2.3"), connected=())
+                except BaseException as exc:  # pylint: disable=broad-exception-caught
+                    errors.append(exc)
+                    return
+
+        churner = threading.Thread(target=churn)
+        readers = [threading.Thread(target=reader) for _ in range(4)]
+        churner.start()
+        for thread in readers:
+            thread.start()
+        for thread in readers:
+            thread.join()
+        stop.set()
+        churner.join()
+
+        self.assertEqual(errors, [], msg=f"Concurrent lookup during mutation must not raise; got: {errors!r}")
