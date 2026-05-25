@@ -1,16 +1,26 @@
 # `net_proto` — Remaining Audit Passes
 
-**Status:** planning doc (2026-05-21). Tracks the audit work
-remaining after the parser RFC-adherence pass, the assembler
-audit pass, the `*_header` / option / message doc audit, the
-PEP 420 → regular packages migration, the diagram-label
-harmonization, and the wire-input vs programmer-input
-error-discipline codification all closed on 2026-05-20 /
-2026-05-21.
+**Status:** CLOSED (2026-05-25). All twelve follow-up audits
+(A–L) defined below are complete — see the "Completed audits"
+table for each one's closing commit / verification. This doc
+is now a methodology record, not open work: there is **no
+remaining net_proto audit pass**. It originally tracked the
+audit work remaining after the parser RFC-adherence pass, the
+assembler audit pass, the `*_header` / option / message doc
+audit, the PEP 420 → regular packages migration, the
+diagram-label harmonization, and the wire-input vs
+programmer-input error-discipline codification (all closed on
+2026-05-20 / 2026-05-21).
 
-This doc enumerates eleven follow-up audits, ordered by
-expected defect yield. Each audit is self-contained: an
-audit can be picked up independently of the others.
+The doc enumerated twelve follow-up audits (A–L), ordered by
+expected defect yield; the Tier 1/2/3 sections below are the
+self-contained methodology for each. All have since been run
+and closed (Tier 1 A–D, Tier 2 E–H, Tier 3 I–L). Confirmed
+again in the 3.0.6 release-readiness pass: §9.2 wire-vs-
+programmer-input discipline is AST-clean across the package,
+and the net_proto suite is green at ~99% source coverage (the
+tail is dunder / integrity-rejection-branch test-completeness,
+not defects).
 
 ---
 
