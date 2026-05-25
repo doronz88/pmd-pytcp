@@ -227,7 +227,11 @@ class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
                     f"must be all-nodes multicast address. Got: {ip6__dst!r}",
                 )
 
-        # TODO: Enforce proper option presence.
+        # RFC 4861 §7.1.2: the only receiver-side option-presence MUST is
+        # that every included option has length > 0, enforced in
+        # 'Icmp6NdOptions.validate_integrity'. Options not specified for
+        # Neighbor Advertisement "MUST be ignored and the packet processed
+        # as normal", so no further presence check is added here.
 
     @override
     @staticmethod

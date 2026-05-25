@@ -235,7 +235,11 @@ class Icmp6NdMessageRouterAdvertisement(Icmp6NdMessage):
                 f"must be unicast or all-nodes multicast. Got: {ip6__dst!r}",
             )
 
-        # TODO: Enforce proper option presence.
+        # RFC 4861 §6.1.2: the only receiver-side option-presence MUST is
+        # that every included option has length > 0, enforced in
+        # 'Icmp6NdOptions.validate_integrity'. Options not specified for
+        # Router Advertisement "MUST be ignored and the packet processed
+        # as normal", so no further presence check is added here.
 
     @override
     @staticmethod

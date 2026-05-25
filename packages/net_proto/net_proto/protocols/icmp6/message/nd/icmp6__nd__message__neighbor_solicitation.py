@@ -231,7 +231,12 @@ class Icmp6NdMessageNeighborSolicitation(Icmp6NdMessage):
                     f"must not be included. Got: {self.slla!r}",
                 )
 
-        # TODO: Enforce proper option presence.
+        # RFC 4861 §7.1.1: the receiver-side option-presence MUSTs are
+        # fully enforced — every option has length > 0
+        # ('Icmp6NdOptions.validate_integrity') and, above, the
+        # unspecified-source => no-SLLA rule. Options not specified for
+        # Neighbor Solicitation "MUST be ignored and the packet processed
+        # as normal", so no further presence check is added here.
 
     @override
     @staticmethod
