@@ -1,5 +1,14 @@
 # ND Parity — Session Resume Guide
 
+> **SUPERSEDED point-in-time snapshot (note added 2026-05-25).** The
+> "What's left" items below have since shipped: Optimistic DAD (§20,
+> RFC 4429) and RFC 8981 temporary addresses (§18b/c) have integration
+> tests under `tests/integration/protocols/icmp6/nd/`, and RFC 6724
+> source-address selection (§12c/§18d) shipped on its own track
+> (`rfc6724_source_selection.md`, all phases). ND parity (Tiers 1–6)
+> is complete; this guide is kept as archaeology. Authoritative status:
+> `nd_linux_parity.md` §0 and `v3_0_6_remaining_work.md`.
+
 State at the time of writing: branch `PyTCP_3_0__pre_release`,
 HEAD `aa9f4858`, all session commits pushed to origin.
 

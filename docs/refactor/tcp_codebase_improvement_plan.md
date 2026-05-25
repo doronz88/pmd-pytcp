@@ -71,7 +71,19 @@ grows.
 
 **Severity:** Medium. **Effort:** Small (one-time refactor).
 
-### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing)
+### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing) — RESOLVED
+
+> **RESOLVED (reconciled 2026-05-25).** This concern is stale: the
+> "Missing" cells and the `# TODO` line references below no longer
+> hold. The ICMP→TCP demux shipped (`icmp_into_tcp_fsm_plan.md` =
+> "✅ COMPLETED — all four phases") and PMTUD shipped
+> (`icmp_demux_pmtud_plan.md` + `plpmtud_unified_engine.md` SHIPPED;
+> the `pmtu_cache` is live; ICMPv4 Frag-Needed / ICMPv6 Packet-Too-Big
+> feed it). There are **zero `# TODO` markers** left in the cited
+> files. The only remaining sliver is the RFC 4821/8899 *active*
+> probe-segment emit (`v3_0_6_remaining_work.md` §2.1), a separate
+> enhancement on top of the shipped passive PMTUD. The original
+> snapshot table is kept below as archaeology.
 
 The ICMP RX handlers
 (`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:147` and

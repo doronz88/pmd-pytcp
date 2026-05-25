@@ -13,16 +13,22 @@ claim cross-checked against the actual code + referenced commits).
 
 ## 0. Headline
 
-**Nothing blocks 3.0.6, and the optional host-stack tail is now also
-closed.** Every major feature/conformance track shipped; the host stack
-is feature-complete. As of the 2026-05-25 release-readiness pass the
-three items the 2026-05-24 ledger listed as "genuinely open optional"
-(§2) are all resolved. The branch is green, lint-clean, and the source
-tree carries no TODO markers.
+**Nothing blocks 3.0.6.** Every major feature/conformance track
+shipped; the host data path is feature-complete and the branch is
+green, lint-clean, with no source TODO markers. The three items the
+2026-05-24 ledger listed as "genuinely open optional" (§2) are
+resolved.
 
-If the answer to "is 3.0.6 done?" is needed in one word: **yes** (host
-stack). What remains (§3 on-touch, §4 future-phase) is by-design out of
-3.0.6 host scope.
+**One genuine Phase-1 host gap remains, consciously deferred with a
+plan:** IGMP / IPv4 multicast group membership (the IPv4 analog of the
+shipped MLDv2 listener). It is multi-day, not a release-day item, and
+is captured in detail in `igmp_host_membership.md` — see §2. A
+2026-05-25 freshness sweep of the refactor docs also corrected several
+stale claims (§1.2).
+
+If the answer to "is 3.0.6 done?" is needed in one word: **yes** for
+the host data path; the one tracked exception is IGMP (host multicast
+membership signalling), deferred by decision.
 
 ---
 
@@ -71,12 +77,48 @@ Per-package (net_addr → net_proto → pytcp):
   the sanctioned `pytcp.stack` surface so consumers (e.g.
   `examples/stack.py`) no longer reach into `pytcp.runtime.fib`
   (`02b244ce`).
+- **Refactor-doc freshness sweep** — a full per-doc re-verification
+  against code (prompted by the 2026-05-24 sweep having missed the
+  stale `rfc3927` / `arp #8` headers) corrected: `tcp_codebase_
+  improvement_plan.md` Concern #5 (falsely claimed PMTUD / ICMP→TCP
+  demux "Missing" with `# TODO`s — all shipped, zero TODOs);
+  `rfc6724_source_selection.md` (stale "single remaining piece" intro
+  — all phases shipped); `nd_session_resume.md` / `nd_tier3_resume.md`
+  (listed shipped Optimistic-DAD / RFC 8981 / RFC 6724 / Tier 3 work
+  as "what's left"). And surfaced the IGMP gap (§2.0) the prior sweep
+  missed.
 
 ---
 
-## 2. Genuinely open — optional host-stack items
+## 2. Genuinely open Phase-1 items — deferred with a plan (not blocking)
 
-**None.** The three items the 2026-05-24 ledger listed here are resolved:
+### 2.0 IGMP — IPv4 multicast group membership  (the real open gap)
+
+Source of truth: `docs/refactor/igmp_host_membership.md` (detailed
+phased plan, authored 2026-05-25). IGMP (RFC 1112 / 2236 / 3376) is
+**absent** — no codec, no runtime JOIN/LEAVE, no report/query
+handling — while its IPv6 counterpart **MLDv2 is shipped**. A Linux
+host that joins an IPv4 multicast group emits IGMP reports and answers
+queries; PyTCP can only receive traffic for the statically-preconfigured
+all-hosts group (`224.0.0.1`). This is a genuine host-parity asymmetry,
+**Phase 1**, **consciously deferred** as its own multi-day track (a new
+net_proto protocol family + membership API + timer-driven host state
+machine + RFC 3376 §7 version fallback). Surfaced and decided during
+the 2026-05-25 release-readiness pass. The 2026-05-24 ledger missed it
+(it lived only in `ip4_audit_punchlist.md` item E).
+
+### 2.1 PLPMTUD active probe-segment emit  (lower-stakes)
+
+`plpmtud_unified_engine.md` "remaining 20%" — the two transport-specific
+rows (probe-segment emit + probe ACK/loss detection, the RFC 4821 /
+8899 *active* path). **Passive** ICMP-driven PMTUD (RFC 1191 / 8201) is
+shipped; the active packetization-layer probe is the enhancement on top
+and is often disabled-by-default even on Linux (`tcp_mtu_probing`).
+Deferred.
+
+### 2.2 Resolved since the 2026-05-24 ledger
+
+The three items that ledger listed as open are resolved:
 
 - **DHCPv4 Phases 5–8** — Phases 5 (INIT-REBOOT + `dhcp4__lease_cache.py`),
   6 (DNAv4), 7 (Classless Static Routes), and 8.1/8.2/8.3 are shipped.

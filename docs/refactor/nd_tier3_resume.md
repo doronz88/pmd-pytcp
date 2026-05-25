@@ -1,5 +1,10 @@
 # ND Tier 3 — Resume Guide
 
+> **SUPERSEDED point-in-time snapshot (note added 2026-05-25).** ND
+> Tier 3 (§11–§16) has shipped, along with Tiers 1–6; this guide is
+> kept as archaeology. Authoritative status: `nd_linux_parity.md` §0
+> and `v3_0_6_remaining_work.md`.
+
 Session-specific resume guidance for Tier 3 of
 `docs/refactor/nd_linux_parity.md`. Use this alongside the
 parity doc; this file is the "where we are / what to do

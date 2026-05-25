@@ -1,5 +1,13 @@
 # RFC 6724 — Default Source Address Selection — Implementation Plan
 
+> **SHIPPED (reconciled 2026-05-25).** All four phases in the status
+> table below are shipped (IPv4 + IPv6 source selection, code at
+> `pytcp/lib/*source_selection*` with integration tests under
+> `tests/integration/protocols/ip{4,6}/test__ip{4,6}__rfc6724_*`).
+> The "single remaining piece is source-address selection" prose
+> further down is the original plan framing and is now historical —
+> that piece landed.
+
 This document tracks the multi-commit implementation arc for
 RFC 6724 (Default Address Selection for IPv6) in PyTCP.
 Originally tracked as `nd_linux_parity §12c / §18d`; lifted
