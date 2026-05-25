@@ -51,6 +51,12 @@ venv: $(VENV)/bin/activate
 run: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py
 
+# Bind the stack to two TAP interfaces at once (multi-homed host). Needs
+# both taps up and bridged first: 'sudo make tap7 tap9 bridge'. Each NIC
+# autoconfigures (DHCPv4 / SLAAC).
+run_multi: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --stack-interface tap7 --stack-interface tap9
+
 run_tun: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --interface tun7 --ip4-address 10.0.0.2/24
 
@@ -210,7 +216,7 @@ remove_interfaces:
 	@ip tuntap del name tap7 mode tap
 	@ip tuntap del name tap9 mode tap
 
-.PHONY: venv run run_tun capture clean lint \
+.PHONY: venv run run_multi run_tun capture clean lint \
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \

@@ -35,6 +35,7 @@ ver 3.0.6
 """
 
 import time
+from typing import Any
 
 import click
 
@@ -107,12 +108,63 @@ def _print_stats_delta(prev: dict[str, int], now: dict[str, int], interval: int)
     print("=" * 70)
 
 
+def _resolve_interface_args(
+    ctx: click.Context,
+    *,
+    interface_name: str,
+    mac_address: MacAddress | None,
+    ip4_support: bool,
+    ip4_host: Ip4IfAddr | None,
+    ip6_support: bool,
+    ip6_host: Ip6IfAddr | None,
+) -> dict[str, Any]:
+    """
+    Resolve the low-level 'add_interface' kwargs for one interface name,
+    dispatching on the 'tap' / 'tun' prefix. Exits with a diagnostic on
+    an unsupported interface type, or on a TUN interface missing the
+    host address its point-to-point link requires.
+    """
+
+    match interface_name[:3]:
+        case "tap":
+            return stack.initialize_interface__tap(interface_name=interface_name, mac_address=mac_address)
+        case "tun":
+            addressing_issue = False
+            if ip4_support and not ip4_host:
+                click.secho(
+                    "IPv4 host address must be provided for TUN interface when IPv4 support is enabled.",
+                    fg="red",
+                )
+                addressing_issue = True
+            if ip6_support and not ip6_host:
+                click.secho(
+                    "IPv6 host address must be provided for TUN interface when IPv6 support is enabled.",
+                    fg="red",
+                )
+                addressing_issue = True
+            if addressing_issue:
+                ctx.exit(1)
+            return stack.initialize_interface__tun(interface_name=interface_name)
+        case _:
+            click.secho(
+                f"Invalid interface type '{interface_name[:3]}'. Only 'tap' and 'tun' interfaces are supported.",
+                fg="red",
+            )
+            ctx.exit(1)
+
+
 @click.command()
 @click.option(
     "--stack-interface",
     "stack__interface",
-    default="tap7",
-    help="Name of the interface to be used by the stack.",
+    multiple=True,
+    help=(
+        "Interface for the stack. Repeat to bind multiple interfaces "
+        "(e.g. '--stack-interface tap7 --stack-interface tap9'). "
+        "Defaults to 'tap7'. With more than one interface every NIC "
+        "autoconfigures (DHCPv4 / SLAAC); the per-interface address / "
+        "MAC / gateway options are single-interface only."
+    ),
 )
 @click.option(
     "--stack-mac-address",
@@ -167,7 +219,7 @@ def _print_stats_delta(prev: dict[str, int], now: dict[str, int], interval: int)
 def cli(
     ctx: click.Context,
     *,
-    stack__interface: str,
+    stack__interface: tuple[str, ...],
     stack__mac_address: MacAddress | None,
     stack__ip6_support: bool,
     stack__ip6_host: Ip6IfAddr | None,
@@ -182,33 +234,35 @@ def cli(
     run the provided subsystems if any.
     """
 
-    match stack__interface[:3]:
-        case "tap":
-            interface_args = stack.initialize_interface__tap(
-                interface_name=stack__interface, mac_address=stack__mac_address
+    # Default to the single 'tap7' interface when none is supplied, so
+    # the bare 'make run' / subsystem examples behave exactly as before.
+    interfaces = stack__interface or ("tap7",)
+    multi = len(interfaces) > 1
+
+    # The per-interface address / MAC / gateway options are scalar — they
+    # cannot describe more than one NIC. With multiple interfaces every
+    # NIC autoconfigures (DHCPv4 / SLAAC) instead.
+    if multi:
+        if any(
+            opt is not None
+            for opt in (
+                stack__mac_address,
+                stack__ip4_host,
+                stack__ip4_gateway,
+                stack__ip6_host,
+                stack__ip6_gateway,
             )
-        case "tun":
-            addressing_issue = False
-            if stack__ip4_support and not stack__ip4_host:
-                click.secho(
-                    "IPv4 host address must be provided for TUN interface when IPv4 support is enabled.",
-                    fg="red",
-                )
-                addressing_issue = True
-            if stack__ip6_support and not stack__ip6_host:
-                click.secho(
-                    "IPv6 host address must be provided for TUN interface when IPv6 support is enabled.",
-                    fg="red",
-                )
-                addressing_issue = True
-            if addressing_issue:
-                ctx.exit(1)
-            interface_args = stack.initialize_interface__tun(
-                interface_name=stack__interface,
-            )
-        case _:
+        ):
             click.secho(
-                f"Invalid interface type '{stack__interface[:3]}'. " "Only 'tap' and 'tun' interfaces are supported.",
+                "The --stack-mac-address / --stack-ip{4,6}-address / "
+                "--stack-ip{4,6}-gateway options are single-interface only; "
+                "multiple interfaces autoconfigure (DHCPv4 / SLAAC).",
+                fg="red",
+            )
+            ctx.exit(1)
+        if any(name[:3] != "tap" for name in interfaces):
+            click.secho(
+                "Multiple interfaces are supported for 'tap' only " "(TUN requires explicit per-interface addressing).",
                 fg="red",
             )
             ctx.exit(1)
@@ -217,34 +271,48 @@ def cli(
         subsystems = []
 
     # Daemon-shaped boot: bring the stack core up with no interface,
-    # then attach the operator's interface as a runtime device. This is
+    # then attach the operator's interface(s) as runtime devices. This is
     # the 'ip link add' / RTM_NEWLINK flow — 'init()' is the kernel boot,
-    # 'add_interface()' registers the NIC, 'start()' brings it up.
+    # 'add_interface()' registers each NIC, 'start()' brings them up.
     stack.init()
 
-    # No static IPv4 address means autoconfigure via DHCPv4 (the legacy
-    # 'init()' None-resolution, made explicit here).
-    ip4_dhcp = stack__ip4_support and stack__ip4_host is None
-    # No static IPv6 address means SLAAC (GUA) autoconfiguration.
-    ip6_gua_autoconfig = stack__ip6_support and stack__ip6_host is None
+    for interface_name in interfaces:
+        # Scalar addressing applies only in single-interface mode; with
+        # multiple interfaces each NIC autoconfigures (host left None).
+        ip4_host = stack__ip4_host if not multi else None
+        ip6_host = stack__ip6_host if not multi else None
+        interface_args = _resolve_interface_args(
+            ctx,
+            interface_name=interface_name,
+            mac_address=stack__mac_address if not multi else None,
+            ip4_support=stack__ip4_support,
+            ip4_host=ip4_host,
+            ip6_support=stack__ip6_support,
+            ip6_host=ip6_host,
+        )
+        # No static IPv4 address means autoconfigure via DHCPv4.
+        ip4_dhcp = stack__ip4_support and ip4_host is None
+        # No static IPv6 address means SLAAC (GUA) autoconfiguration.
+        ip6_gua_autoconfig = stack__ip6_support and ip6_host is None
+        stack.add_interface(
+            **interface_args,
+            ip6_support=stack__ip6_support,
+            ip6_host=ip6_host,
+            ip6_gua_autoconfig=ip6_gua_autoconfig,
+            ip4_support=stack__ip4_support,
+            ip4_host=ip4_host,
+            ip4_dhcp=ip4_dhcp,
+        )
 
-    stack.add_interface(
-        **interface_args,
-        ip6_support=stack__ip6_support,
-        ip6_host=stack__ip6_host,
-        ip6_gua_autoconfig=ip6_gua_autoconfig,
-        ip4_support=stack__ip4_support,
-        ip4_host=stack__ip4_host,
-        ip4_dhcp=ip4_dhcp,
-    )
-
-    # The next hop is FIB state, not a per-IfAddr attribute.
-    # Install the operator-supplied default gateway through the
-    # Route API (the FIBs were built by 'init()').
-    if stack__ip6_support and stack__ip6_gateway is not None:
-        stack.route.replace_default(gateway=stack__ip6_gateway, protocol=RouteProtocol.BOOT)
-    if stack__ip4_support and stack__ip4_gateway is not None:
-        stack.route.replace_default(gateway=stack__ip4_gateway, protocol=RouteProtocol.BOOT)
+    # The next hop is FIB state, not a per-IfAddr attribute. Install the
+    # operator-supplied default gateway through the Route API (the FIBs
+    # were built by 'init()'). Gateways are scalar, hence single-interface
+    # only; multi-interface mode learns the default route via RA / DHCP.
+    if not multi:
+        if stack__ip6_support and stack__ip6_gateway is not None:
+            stack.route.replace_default(gateway=stack__ip6_gateway, protocol=RouteProtocol.BOOT)
+        if stack__ip4_support and stack__ip4_gateway is not None:
+            stack.route.replace_default(gateway=stack__ip4_gateway, protocol=RouteProtocol.BOOT)
 
     try:
         stack.start()
