@@ -2,7 +2,7 @@
 
 | Field  | Value |
 |--------|-------|
-| Status | **In progress.** Phases 0-3 (socket) + 4.1-4.3 (ACD engine, DHCP probe/announce, link-local) shipped & pushed on `PyTCP_3_0_6`. Phase 4.4-4.5 (full "B" — delete the RX conflict detector) outstanding; design + blockers captured in §10. Created 2026-05-23. |
+| Status | **COMPLETE on `PyTCP_3_0_6`.** Phases 0-3 (`AF_PACKET` socket) and the full userspace ACD migration (4.1-4.5) shipped & pushed — including 4.5, deleting the in-RX conflict detector (`0d0aef0b`). End state matches Linux `sd-ipv4acd`: all IPv4 ACD runs over per-address `Ip4Acd` `AF_PACKET` sockets; the ARP RX path does no conflict detection. See §10.1 for the per-step commit ledger. Created 2026-05-23; closed 2026-05-24. |
 | Branch | `PyTCP_3_0_6` |
 | Motivation | Linux-faithful client-side ACD (DHCPv4 / RFC 3927 link-local), and a general L2 send/capture substrate. Unblocks the paused *IPv6 Address API / ACD-off-the-Address-API* refactor — see `packet_handler_rewrite_plan.md` Phase 8 and the ACD discussion below. |
 

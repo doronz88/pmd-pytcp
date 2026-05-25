@@ -1,7 +1,12 @@
 # ICMP — remaining issues / gaps
 
-**Status snapshot at:** `46769bb1` (RFC 1191 §6.5 retransmit walkback).
-**Suite:** 9013 passing / 4 skipped, lint clean.
+**Status:** historical snapshot at `46769bb1` (RFC 1191 §6.5 retransmit
+walkback); **no open ICMP issues remain on `PyTCP_3_0_6`** — every item
+below is recorded as already-closed, and the subsequent ICMP demux +
+PLPMTUD work (see `icmp_demux_pmtud_plan.md`,
+`plpmtud_unified_engine.md`) shipped on top of this snapshot. Retained
+as archaeology.
+**Suite at snapshot:** 9013 passing / 4 skipped, lint clean.
 
 ---
 

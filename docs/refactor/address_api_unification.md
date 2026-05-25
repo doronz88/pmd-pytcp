@@ -1,6 +1,11 @@
 # Address API unification — `Ip4AddressApi` → family-agnostic `AddressApi`
 
-Status: **planned** (no code yet). Branch: `PyTCP_3_0_6`.
+Status: **SHIPPED 2026-05-24** on `PyTCP_3_0_6`. Step 1 (rename
+`Ip4AddressApi` → family-agnostic `AddressApi`) landed in commit
+`5d3cb453`; step 2 (IPv6 dispatch arm) in `5dd20b22`. The unified
+`AddressApi` class lives at `packages/pytcp/pytcp/stack/address.py`
+and manages both IPv4 and IPv6 host addresses through one surface.
+The sections below are retained as design rationale / archaeology.
 
 ## 1. Goal
 

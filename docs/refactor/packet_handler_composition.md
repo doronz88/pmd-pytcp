@@ -1,5 +1,13 @@
 # Packet Handler — Mixin → Composition Collapse
 
+**Status: SHIPPED on `PyTCP_3_0_6` (2026-05-24).** The collapse landed
+across ten per-protocol steps (`6a7f13d8`..`3abdcf5c`) plus the RX
+dispatch-registry step. `packages/pytcp/pytcp/runtime/packet_handler/__init__.py`
+now holds only `PacketHandler` / `PacketHandlerL2` / `PacketHandlerL3`,
+each composing sub-handler instances (`self._udp_rx = UdpRxHandler(...)`
+etc.) — the 20-mixin diamond is gone. The sections below are retained as
+the design rationale / archaeology.
+
 A focused, tests-first plan to retire the 20-mixin diamond-inheritance
 model in `packages/pytcp/pytcp/runtime/packet_handler/` in favour of
 explicit composition. This document **supersedes Phases 6 and 7** of the

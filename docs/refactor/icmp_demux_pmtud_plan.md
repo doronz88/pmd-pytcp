@@ -1,10 +1,18 @@
 # Refactor #4 — Generalise ICMP error demux + per-destination MTU cache + PMTUD
 
+**Status: SHIPPED on `PyTCP_3_0_6`.** The ICMP error demux + embedded-
+header parser + per-destination `pmtu_cache` all landed, and the four
+PMTUD RFCs this plan gated (1191, 8201, 4821, 8899) are delivered — the
+PLPMTUD engine itself shipped via `docs/refactor/plpmtud_unified_engine.md`
+(`packages/pytcp/pytcp/lib/plpmtud.py`, with TCP + UDP adapters and the
+RFC 4821 / 8201 adherence records). The sections below are retained as
+the implementation guide / archaeology.
+
 Authored 2026-05-06 after the state/ + fsm/ subpackage reorg
-landed (commits `45aea7c0`..`c5ac6c78`). This plan is the
-canonical implementation guide for the only remaining structural
-refactor on the roadmap, and the gateway to the four pending
-PMTUD RFCs (1191, 8201, 4821, 8899).
+landed (commits `45aea7c0`..`c5ac6c78`). This plan was the
+canonical implementation guide for what was then the only remaining
+structural refactor on the roadmap, and the gateway to the four PMTUD
+RFCs (1191, 8201, 4821, 8899).
 
 The scope here was corrected from the original
 `docs/refactor/tcp_codebase_improvement_plan.md` Concern #5 in

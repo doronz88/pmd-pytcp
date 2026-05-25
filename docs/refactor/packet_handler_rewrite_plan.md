@@ -6,9 +6,20 @@ god-class in favor of a per-`Interface` composed handler model that
 admits multi-interface operation and ships the seven sanctioned
 Phase-3 API surfaces inline as their underlying state lands.
 
-This document is the architectural anchor for the rewrite. No code
-lands until Sebastian signs off on the design decisions in the
-final section.
+**Status: SUPERSEDED / DELIVERED on `PyTCP_3_0_6`.** The rewrite shipped
+by a different (more incremental) route than this monolithic plan
+assumed. Delivered: the per-`ifindex` `InterfaceTable` + per-interface
+rings/caches, the seven Phase-3 API surfaces (link / address / route /
+neighbor / introspection / sysctl / socket), the egress seam, the
+RFC 1812 `forward_or_deliver` seam (host-mode stub), singleton retirement
++ Neighbor API (`e5dc77f5`), and the mixin→composition collapse + RX
+dispatch registry (`6a7f13d8`..`3abdcf5c`, tracked in
+`packet_handler_composition.md`). Phase-2 router/forwarding logic behind
+the `forward_or_deliver` seam remains a deliberate future-phase stub.
+This document is retained as the architectural anchor / archaeology;
+the per-phase plan below predates the as-shipped sequencing.
+
+This document was the architectural anchor for the rewrite.
 
 ---
 

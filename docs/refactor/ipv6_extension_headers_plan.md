@@ -1,8 +1,14 @@
 # IPv6 Extension Headers — Deployment Plan
 
-**Status:** ready to execute (post-compaction).
-**Branch:** `PyTCP_3_0__pre_release`.
-**Resume prompt:** see §10 — paste the prompt verbatim after a `/compact` or new conversation start.
+**Status:** **SHIPPED** on `PyTCP_3_0_6`. All phases landed: the
+`Ip6_HBH` / `IP6_ROUTING` / `IP6_DEST_OPTS` / `IP6_NO_NEXT_HEADER`
+`IpProto` members, the typed HBH / Destination-Options / Routing-Header
+parsers + options (`packages/net_proto/net_proto/protocols/ip6_hbh/`,
+`ip6_dest_opts/`, `ip6_routing/`), the IPv6 RX chain-walker dispatch,
+and the RFC 8200 / RFC 5095 adherence records. The sections below are
+retained as the implementation guide / archaeology.
+**Branch:** delivered on `PyTCP_3_0_6` (this plan was authored on the
+earlier `PyTCP_3_0__pre_release` line).
 
 ---
 
