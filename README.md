@@ -22,7 +22,11 @@ The project's goal is a pure-Python stack that is feature-equivalent to the Linu
 
 Behaviour is covered by roughly 11,400 unit and integration tests and tracked against more than 110 per-RFC adherence audits kept in the repository under `docs/rfc/`.
 
-The stack has zero runtime dependencies (standard library only), is organised as three packages (`net_addr`, `net_proto`, `pytcp`), and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer.
+The stack has zero runtime dependencies (standard library only) and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer. It is organised as three independently-published, strictly-layered packages — each usable on its own:
+
+- **[`net_addr`](packages/net_addr/README.md)** ([PyPI](https://pypi.org/project/PyTCP-net_addr/)) — address value types: IPv4 / IPv6 / MAC, networks, masks, ACL wildcards, interface-addresses.
+- **[`net_proto`](packages/net_proto/README.md)** ([PyPI](https://pypi.org/project/PyTCP-net_proto/)) — protocol packet parse / assemble / validate.
+- **[`pytcp`](packages/pytcp/README.md)** ([PyPI](https://pypi.org/project/PyTCP/)) — the running stack: subsystems, sockets, routing FIB, ARP / ND caches, RX / TX rings.
 
 Contributions are welcome.
 
