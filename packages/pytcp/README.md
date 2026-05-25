@@ -11,25 +11,101 @@ from pytcp import socket, stack
 ## What it is
 
 A full, RFC-grounded TCP/IP stack implemented entirely in Python:
-Ethernet II / 802.3, ARP, IPv4 / IPv6 (with extension headers),
-ICMPv4 / ICMPv6 (incl. Neighbor Discovery, MLDv2), UDP, and a
-RFC 9293 TCP with a real FSM, congestion control, and a
-BSD-sockets facade. It runs on a TAP/TUN interface in user space —
-no kernel module, no privileged data path.
+Ethernet II / 802.3 (LLC/SNAP), ARP, IPv4 / IPv6 (with Hop-by-Hop /
+Destination-Options / Routing / Fragment extension headers),
+ICMPv4 / ICMPv6 (incl. Neighbor Discovery and MLDv2), UDP, and a
+RFC 9293 TCP with a real FSM, congestion control (Reno / NewReno /
+CUBIC), SACK / timestamps / window-scaling, and a BSD-sockets
+facade. It runs on a TAP/TUN interface in user space — no kernel
+module, no privileged data path.
 
-## Architecture
+The project's north star is **feature-equivalence with the Linux
+host network stack**: where an RFC is unambiguous PyTCP follows it,
+and where it is silent or offers a menu PyTCP picks the Linux
+choice. Per-RFC adherence is audited under
+[`docs/rfc/`](../../docs/rfc/).
 
-The stack is split into three independently-published,
-strictly-layered distributions:
+## The three distributions
+
+PyTCP is strictly layered into three independently-published dists
+(one invariant: project folder == import name):
 
 | Distribution | Import | Role |
 |---|---|---|
-| [`PyTCP-net_addr`](https://pypi.org/project/PyTCP-net_addr/) | `net_addr` | Address value types (IPv4/IPv6/MAC, networks, masks). |
+| [`PyTCP-net_addr`](https://pypi.org/project/PyTCP-net_addr/) | `net_addr` | Address value types (IPv4/IPv6/MAC, networks, masks, wildcards, interface-addresses). |
 | [`PyTCP-net_proto`](https://pypi.org/project/PyTCP-net_proto/) | `net_proto` | Protocol packet parse / assemble / validate. |
-| **`PyTCP`** | `pytcp` | The running stack: threads, sockets, ARP/ND caches, RX/TX rings. |
+| **`PyTCP`** | `pytcp` | The running stack: subsystems/threads, sockets, FIB, ARP/ND caches, RX/TX rings. |
 
 Installing `PyTCP` pulls the other two automatically (lockstep
 version pin).
+
+## Runtime architecture
+
+```
+TAP/TUN fd ─> RxRing ─> PacketHandler (per protocol, RX) ─> Socket queues / ARP+ND caches / fragment store
+           <─ TxRing <─ PacketHandler (per protocol, TX) <─ Socket send / ND / DHCP / ACD
+```
+
+- **`Subsystem` base** — every background service (RX/TX rings,
+  neighbor caches, timer, DHCPv4 client, link-local / ACD) extends
+  `Subsystem` and runs its own thread with an event-driven loop.
+- **Packet handlers** — RX and TX paths are composed from
+  per-protocol sub-handlers (`packet_handler__<proto>__<rx|tx>.py`).
+  Every branch bumps a per-protocol stat counter for observability.
+- **Event-driven timer** — a heap-based deadline scheduler (no
+  polling tick); subsystems register deadlines and are woken on the
+  nearest one.
+- **Per-interface model** — a `PacketHandler` *is* an interface. A
+  multi-homed host runs one handler per interface; global tables
+  (routing FIB, socket table, neighbor caches) are shared and
+  lock-guarded.
+
+### Free-threaded (no-GIL) safety
+
+Per-interface state is partitioned (single-writer TX ring hand-off);
+the shared global tables (`RouteTable`, `SocketTable`,
+`InterfaceTable`) guard their compound (check-then-act) operations
+with a small `threading.Lock` and hand readers consistent snapshots.
+Single built-in dict/list ops are left lock-free (individually
+atomic).
+
+## Control-plane APIs (the Phase-3 kernel/userspace boundary)
+
+Consumers talk to the stack only through sanctioned surfaces — never
+by reaching into runtime internals — mirroring how a Linux process
+talks to its kernel:
+
+| API | Linux equivalent |
+|---|---|
+| `pytcp.socket` — BSD `socket()` factory + methods (TCP / UDP / raw / `AF_PACKET`) | `socket(2)` |
+| `pytcp.stack.sysctl` — runtime-tunable policy registry | `/proc/sys/net/` |
+| `pytcp.stack.link` — per-interface MAC / MTU / state / counters | `ip link` / `RTM_*LINK` |
+| `pytcp.stack.address` — assign / remove IPv4 / IPv6 host addresses | `ip addr` / `RTM_*ADDR` |
+| `pytcp.stack.route` — add / remove / list routes (FIB); `Route` / `RouteProtocol` / `RouteScope` | `ip route` / `RTM_*ROUTE` |
+| `pytcp.stack.neighbor` — static ARP / ND entries, cache flush | `ip neighbor` / `RTM_*NEIGH` |
+| read-only snapshots (route table, neighbor cache, socket list, counters) | `/proc/net/*`, `ss` |
+
+### Lifecycle
+
+`stack.init(...)` builds the singletons, `stack.add_interface(...)` /
+`stack.remove_interface(...)` attach / detach interfaces at runtime
+(RTNETLINK `RTM_NEWLINK` / `RTM_DELLINK` semantics, including the
+address / route / neighbor / session teardown cascade), `stack.start()`
+spawns the subsystem threads, and `stack.stop()` winds them down.
+A stack can `init()` with zero interfaces and gain them later — the
+daemon / multi-homed shape.
+
+### Sockets
+
+`pytcp.socket` mirrors the stdlib `socket` module: a `socket(...)`
+factory returns `TcpSocket` / `UdpSocket` / `RawSocket` /
+`PacketSocket`, with `bind` / `listen` / `accept` / `connect` /
+`send` / `recv` / `close`, `fileno()` + eventfd for `selectors`
+integration, blocking & non-blocking modes, errno-mapped `OSError`,
+`getaddrinfo`, common `setsockopt` options, and an
+`IP_RECVERR` / `MSG_ERRQUEUE` error queue. Stdlib-parity constants
+(`AF_INET`, `SOCK_STREAM`, `IP_*`, `SO_*`, `MSG_*`) are exposed as
+bare module names backed by `IntEnum`s.
 
 ## Install
 
@@ -39,12 +115,41 @@ pip install PyTCP
 
 Brings in `PyTCP-net_proto` and `PyTCP-net_addr` — no other
 runtime dependencies (the whole stack is stdlib-only).
-Fully typed (ships `py.typed`, PEP 561).
+Fully typed (ships `py.typed`, PEP 561); strict-mypy clean.
+
+## Running the stack
+
+Running needs a TAP/TUN interface (root for interface / bridge
+setup):
+
+```bash
+make tap7        # create the tap7 interface (sudo)
+make bridge      # set up the bridge (sudo)
+make run         # run the stack on tap7
+make run_multi   # multi-interface demo
+```
+
+PyTCP is consumed as a library through the `stack` lifecycle API and
+the `pytcp.socket` BSD-sockets API. See
+[`examples/`](../../examples/) — `examples/stack.py` is the complete
+runnable reference (TAP/TUN open, `stack.init(...)`, multi-interface
+bind, runtime interface removal on SIGUSR1).
 
 ## Requirements
 
-Python **3.14+**, Linux (TAP/TUN), POSIX. Running the stack
-needs a TAP/TUN interface (root for interface/bridge setup).
+Python **3.14+**, Linux (TAP/TUN), POSIX.
+
+## Current state (3.0.6)
+
+- ~160 source modules; the pytcp suite runs ~3,500 unit + integration
+  tests (the full repo suite, across all three packages + examples, is
+  ~11,400). Lint clean (codespell + isort + black + flake8 + mypy
+  strict + pylint).
+- Host-stack feature-complete (North Star Phase 1). Phase-2
+  router/forwarding sits behind the `forward_or_deliver` seam as a
+  stub. Authoring contracts in
+  [`.claude/rules/pytcp.md`](../../.claude/rules/pytcp.md); per-RFC
+  adherence in [`docs/rfc/`](../../docs/rfc/).
 
 ## License
 

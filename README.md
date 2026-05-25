@@ -20,7 +20,7 @@ The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extensi
 
 The project's goal is a pure-Python stack that is feature-equivalent to the Linux kernel network stack. RFC text is the primary authority; where a spec is silent or offers a choice, PyTCP follows Linux. Host-stack parity is the current scope; router-grade forwarding is planned.
 
-Behaviour is covered by roughly 11,000 unit and integration tests and tracked against more than 100 per-RFC adherence audits kept in the repository under `docs/rfc/`.
+Behaviour is covered by roughly 11,400 unit and integration tests and tracked against more than 110 per-RFC adherence audits kept in the repository under `docs/rfc/`.
 
 The stack has zero runtime dependencies (standard library only), is organised as three packages (`net_addr`, `net_proto`, `pytcp`), and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer.
 
@@ -38,11 +38,12 @@ Contributions are welcome.
  - Importable as a zero-runtime-dependency library (stdlib only), split into three independent packages: `net_addr`, `net_proto`, `pytcp`.
  - Event-driven millisecond-resolution timer (heap-based deadline scheduler, no polling tick).
  - Runtime-tunable sysctl registry mirroring the Linux `/proc/sys/net/` surface (boot-time and live overrides).
- - Link control API (ip-link-style): per-interface MAC / MTU / state / counters.
+ - RTNETLINK-style control-plane APIs (the Phase-3 kernel/userspace boundary): link (`ip link` — MAC / MTU / state / counters), address (`ip addr`), route (`ip route` — host-mode FIB), neighbor (`ip neighbor`), and read-only `/proc/net`-style introspection snapshots.
+ - Runtime interface add / remove on a multi-homed host (RTNETLINK `RTM_NEWLINK` / `RTM_DELLINK`, with the address / route / neighbor / session teardown cascade); free-threaded (no-GIL) safe via per-interface single-writer state + lock-guarded global tables.
  - Per-protocol packet-flow stat counters; TX-path feedback so send failures reach sockets.
  - Homegrown high-performance logger (no third-party logging dependency).
- - Berkeley-sockets-style API for TCP / UDP / RAW: `fileno()`/eventfd + `selectors` integration, blocking & non-blocking modes, errno-mapped `OSError`, `getaddrinfo` family, common `setsockopt` options, `IP_RECVERR`/`MSG_ERRQUEUE` error queue.
- - Native `unittest` suite (~11,000 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
+ - Berkeley-sockets-style API for TCP / UDP / RAW / `AF_PACKET`: `fileno()`/eventfd + `selectors` integration, blocking & non-blocking modes, errno-mapped `OSError`, `getaddrinfo` family, common `setsockopt` options, `IP_RECVERR`/`MSG_ERRQUEUE` error queue.
+ - Native `unittest` suite (~11,400 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
 
 #### Ethernet
 
@@ -105,8 +106,9 @@ Contributions are welcome.
 
 #### DHCPv4 client
 
- - Full DHCPv4 client: lease acquisition, RENEW / REBIND / DECLINE (RFC 2131, RFC 1542)
+ - Full DHCPv4 client: lease acquisition, RENEW / REBIND / DECLINE, INIT-REBOOT with a persistent lease cache (RFC 2131, RFC 1542)
  - Detecting Network Attachment and client-ID handling (RFC 4436, RFC 6842, RFC 4361)
+ - Classless Static Routes installed into the FIB, with Router-option suppression and RFC 3396 option concatenation (RFC 3442, RFC 3396)
 
 ---
 
