@@ -2,7 +2,7 @@
 
 | Field           | Value                                                |
 |-----------------|------------------------------------------------------|
-| Status          | Plan — implementation not yet started                |
+| Status          | Phases 0–7 + 8.1/8.2/8.3 SHIPPED; 8.4 + Phase 9 deferred (see below) |
 | Plan author     | Audit pass (2026-05-11)                              |
 | Source audit    | `docs/rfc/dhcp4/rfcXXXX__*/adherence.md` (11 records)|
 | Target branch   | `PyTCP_3_0__pre_release`                             |
@@ -728,11 +728,25 @@ disable).
 - Cached lease + ARP timeout → INIT-REBOOT path
   (REQUEST broadcast).
 
-### Phase 7 — Classless Static Routes (RFC 3442) (1-2 commits; ~6 hours)
+### Phase 7 — Classless Static Routes (RFC 3442) — SHIPPED
 
-**Prerequisite:** A routing-table API. Currently
-PyTCP's `Ip4IfAddr` carries a single gateway field; a
-real routing table is needed for multiple routes.
+Shipped 2026-05-25 (option-121 codec + RFC 3396
+concatenation + client request/install). The host-mode
+FIB / Route API (prerequisite below) landed first
+(`docs/refactor/routing_table_host_mode.md`), removing
+the single-gateway `Ip4IfAddr` limitation. Full
+adherence record:
+`docs/rfc/dhcp4/rfc3442__classless_static_route/adherence.md`.
+The one deviation: router-0.0.0.0 (Local Subnet Routes)
+entries are ignored per the RFC-permitted "stack does
+not provide this capability" branch (Phase 2: install
+on-link once DHCP-learned routes carry an output-interface
+index in the FIB).
+
+**Prerequisite (now satisfied):** A routing-table API.
+Currently PyTCP's `Ip4IfAddr` carries a single gateway
+field; a real routing table is needed for multiple
+routes.
 
 **7.1 Wire codec** — `Dhcp4OptionClasslessStaticRoute`
 at `packages/net_proto/net_proto/protocols/dhcp4/options/`. Compact
@@ -786,7 +800,13 @@ Dhcp4OptionLeaseTime(lease_time__sec=86400)  # 1 day suggestion
 Sysctl `dhcp.requested_lease_time__sec` (default
 86400).
 
-**8.3 RFC 3396 long-option concatenation**
+**8.3 RFC 3396 long-option concatenation** — SHIPPED
+(2026-05-25, client/receive side, for the option-121
+concatenation-requiring option). `Dhcp4Options.from_buffer`
+joins the data of all same-code option-121 instances
+before decoding. Server-side splitting on assembly
+(option 121 TX, RFC 4702 FQDN TX) is a Phase-2
+DHCP-server concern.
 
 Update parser to concatenate split options before
 typed-codec invocation. Required by RFC 3442 and
