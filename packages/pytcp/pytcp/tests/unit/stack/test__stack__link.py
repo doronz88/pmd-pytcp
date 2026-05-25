@@ -1107,9 +1107,11 @@ class TestLinkApiInterfaceSelector(TestCase):
 class TestLinkApiUnboundTool(TestCase):
     """
     The 'LinkApi' unbound userspace-tool tests — a 'LinkApi()' built
-    with no handler is the device-independent tool ('ip link'); bare
-    reads resolve the sole registered interface (transitional crutch)
-    and explicit '.interface(ifindex)' selection always works.
+    with no handler is the device-independent tool ('ip link'); it has
+    no default device, so every per-interface read MUST select one via
+    '.interface(ifindex)' (Linux 'ip link ... dev <ifX>'), and a bare
+    per-interface read raises regardless of how many interfaces are
+    registered.
     """
 
     def _install(self, count: int) -> list[_FakePacketHandlerL2]:
@@ -1128,19 +1130,21 @@ class TestLinkApiUnboundTool(TestCase):
         self.enterContext(patch.object(stack, "interfaces", table))
         return ifaces
 
-    def test__link_api__unbound_tool__bare_read_resolves_sole_interface(self) -> None:
+    def test__link_api__unbound_tool__bare_read_raises_with_sole_interface(self) -> None:
         """
-        Ensure a bare read on the unbound tool resolves to the single
-        registered interface when exactly one exists (the transitional
-        N=1 crutch).
+        Ensure a bare per-interface read on the unbound tool raises even
+        when exactly one interface is registered — there is no
+        sole-interface default; the caller must select a device, like
+        Linux 'ip link ... dev <ifX>'.
 
         Reference: PyTCP test infrastructure (Phase-3 Link API surface).
         """
 
-        (iface,) = self._install(1)
+        self._install(1)
         tool = LinkApi()
 
-        self.assertEqual(tool.mtu, iface._interface_mtu, msg="The unbound tool must read the sole interface's MTU.")
+        with self.assertRaises(RuntimeError):
+            _ = tool.mtu
 
     def test__link_api__unbound_tool__bare_read_raises_when_no_interface(self) -> None:
         """

@@ -534,11 +534,11 @@ def init(
 
     # IPv4 address-control API + link-control surface — built as the
     # UNBOUND, device-independent "userspace tools" (the 'ip addr' /
-    # 'ip link' model), NOT pinned to a boot interface. A bare op on the
-    # unbound tool resolves the SOLE registered interface (transitional
-    # N=1 crutch in '_resolve_handler'); '.interface(ifindex)' selects a
-    # device once N>1. Built BEFORE 'add_interface' so the per-interface
-    # DHCP / link-local subsystems it constructs can bind to their own
+    # 'ip link' model), NOT pinned to a boot interface. The unbound tool
+    # has no default device: every per-interface op MUST select one via
+    # '.interface(ifindex)' (Linux 'ip ... dev <ifX>'); a bare per-device
+    # op raises. Built BEFORE 'add_interface' so the per-interface DHCP /
+    # link-local subsystems it constructs can bind to their own
     # 'interface(ifindex)' view. See 'docs/refactor/link_api.md'.
     _stack.address = AddressApi()
     _stack.link = LinkApi()

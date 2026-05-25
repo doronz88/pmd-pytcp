@@ -105,30 +105,21 @@ class NeighborApi:
 
     def _resolve_handler(self) -> "PacketHandlerL2 | PacketHandlerL3":
         """
-        Return the interface this API operates on: the bound handler
-        for an 'interface(ifindex)' view, or — for the unbound tool —
-        the SOLE registered interface (transitional N=1 crutch). Raises
-        'RuntimeError' when the unbound tool is used with zero or more
-        than one interface registered, where the caller must select a
-        device via 'interface(ifindex)'.
+        Return the interface this API operates on — the handler bound by
+        'interface(ifindex)'. The unbound tool has no default device:
+        every per-interface operation MUST select one first, mirroring
+        Linux 'ip neighbor ... dev <ifX>' / RTNETLINK requiring an
+        explicit interface index (there is no sole-interface shortcut,
+        even at N=1). Raises 'RuntimeError' when called on the unbound
+        tool.
         """
 
         if self._packet_handler is not None:
             return self._packet_handler
 
-        from pytcp import stack
-
-        interfaces = stack.interfaces.values()
-        if len(interfaces) == 1:
-            return interfaces[0]
-        if not interfaces:
-            raise RuntimeError(
-                "No interface registered. Add one via 'stack.add_interface(...)' "
-                "or select a device via 'stack.neighbor.interface(ifindex)'."
-            )
         raise RuntimeError(
-            "Multiple interfaces registered; the bare neighbor tool is ambiguous. "
-            "Select a device via 'stack.neighbor.interface(ifindex)'."
+            "The bare neighbor tool has no default device; select one via "
+            "'stack.neighbor.interface(ifindex)' (Linux 'ip neighbor ... dev <ifX>')."
         )
 
     def interface(self, ifindex: int, /) -> "NeighborApi":

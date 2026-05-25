@@ -710,9 +710,10 @@ class TestAddressApiUnboundTool(TestCase):
     """
     The 'AddressApi' unbound userspace-tool tests — an
     'AddressApi()' built with no handler is the device-independent
-    tool ('ip addr'); bare reads / mutations resolve the sole registered
-    interface (transitional crutch) and explicit '.interface(ifindex)'
-    selection always works.
+    tool ('ip addr'); it has no default device, so every per-interface
+    read / mutation MUST select one via '.interface(ifindex)' (Linux
+    'ip addr ... dev <ifX>'), and a bare per-interface operation raises
+    regardless of how many interfaces are registered.
     """
 
     @override
@@ -736,44 +737,43 @@ class TestAddressApiUnboundTool(TestCase):
         self.enterContext(patch.object(stack, "interfaces", table))
         return ifaces
 
-    def test__address_api__unbound_tool__bare_read_resolves_sole_interface(self) -> None:
+    def test__address_api__unbound_tool__bare_read_raises_with_sole_interface(self) -> None:
         """
-        Ensure a bare read on the unbound tool resolves to the single
-        registered interface when exactly one exists (the transitional
-        N=1 crutch).
+        Ensure a bare read on the unbound tool raises even when exactly
+        one interface is registered — there is no sole-interface
+        default; the caller must select a device, like Linux
+        'ip addr ... dev <ifX>'.
+
+        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
+        """
+
+        (iface,) = self._install(1)
+        iface._ip4_ifaddr = [Ip4IfAddr("10.0.0.5/24")]
+        tool = AddressApi()
+
+        with self.assertRaises(RuntimeError):
+            tool.list_ifaddrs()
+
+    def test__address_api__unbound_tool__bare_mutation_raises_with_sole_interface(self) -> None:
+        """
+        Ensure a bare mutation on the unbound tool raises even when
+        exactly one interface is registered, and leaves that interface
+        untouched — there is no sole-interface default.
 
         Reference: PyTCP test infrastructure (Phase-3 Address API surface).
         """
 
         (iface,) = self._install(1)
         host = Ip4IfAddr("10.0.0.5/24")
-        iface._ip4_ifaddr = [host]
         tool = AddressApi()
 
-        self.assertEqual(
-            tool.list_ifaddrs(),
-            (host,),
-            msg="The unbound tool must read the sole interface's address list.",
-        )
-
-    def test__address_api__unbound_tool__bare_mutation_resolves_sole_interface(self) -> None:
-        """
-        Ensure a bare mutation on the unbound tool lands on the single
-        registered interface when exactly one exists.
-
-        Reference: PyTCP test infrastructure (Phase-3 Address API surface).
-        """
-
-        (iface,) = self._install(1)
-        host = Ip4IfAddr("10.0.0.5/24")
-        tool = AddressApi()
-
-        tool.add(ifaddr=host)
+        with self.assertRaises(RuntimeError):
+            tool.add(ifaddr=host)
 
         self.assertEqual(
             iface._ip4_ifaddr,
-            [host],
-            msg="The unbound tool's add must land on the sole interface.",
+            [],
+            msg="A bare mutation on the unbound tool must not touch any interface.",
         )
 
     def test__address_api__unbound_tool__bare_read_raises_when_no_interface(self) -> None:

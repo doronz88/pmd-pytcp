@@ -233,10 +233,12 @@ class TestStackNeighborApi(TestCase):
             msg="interface(ifindex) must bind mutations to that interface's ARP cache.",
         )
 
-    def test__neighbor__unbound_tool_resolves_sole_interface(self) -> None:
+    def test__neighbor__unbound_tool_raises_with_sole_interface(self) -> None:
         """
-        Ensure the unbound Neighbor tool (no bound handler) resolves the
-        sole registered interface — the N=1 transitional fallback.
+        Ensure a bare mutation on the unbound Neighbor tool raises even
+        when exactly one interface is registered, leaving its cache
+        untouched — there is no sole-interface default; the caller must
+        select a device, like Linux 'ip neighbor ... dev <ifX>'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -245,10 +247,11 @@ class TestStackNeighborApi(TestCase):
         table[1] = self._handler
         self.enterContext(patch.object(stack, "interfaces", table))
 
-        NeighborApi().add(ip=_ARP_IP, mac=_ARP_MAC)
+        with self.assertRaises(RuntimeError):
+            NeighborApi().add(ip=_ARP_IP, mac=_ARP_MAC)
 
         self.assertEqual(
-            len(self._api.list_neighbors(family=AddressFamily.INET4)),
-            1,
-            msg="The unbound tool must resolve the sole interface and mutate its ARP cache.",
+            self._api.list_neighbors(family=AddressFamily.INET4),
+            (),
+            msg="A bare mutation on the unbound tool must not touch any interface's cache.",
         )
