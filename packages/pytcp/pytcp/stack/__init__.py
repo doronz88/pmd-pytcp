@@ -54,6 +54,7 @@ from pytcp.socket.packet__socket_table import PacketSocketTable
 from pytcp.socket.socket_table import SocketTable
 from pytcp.stack.address import AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.membership import MembershipApi
 from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi
 
@@ -284,6 +285,13 @@ link: LinkApi
 # 'init()' / 'mock__init()' alongside 'address' / 'link'; same
 # reconstruct-per-test lifecycle, so it needs no snapshot/restore.
 neighbor: NeighborApi
+# Membership API — multicast-group-control surface (IPv4 group
+# join / leave / list) over each interface's multicast listen
+# set. Mirrors the Linux 'IP_ADD_MEMBERSHIP' / 'IP_DROP_MEMBERSHIP'
+# socket options and 'ip maddr'. Constructed by 'init()' /
+# 'mock__init()' alongside 'address' / 'link' / 'neighbor'; same
+# reconstruct-per-test lifecycle, so it needs no snapshot/restore.
+membership: MembershipApi
 # Host-mode routing table (FIB) — Phase 1 of
 # 'docs/refactor/routing_table_host_mode.md'. One per address
 # family. Reconstructed fresh by 'init()' / 'mock__init()'

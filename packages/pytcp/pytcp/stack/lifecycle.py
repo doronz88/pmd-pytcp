@@ -69,6 +69,7 @@ from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
 from pytcp.stack.address import AddressApi
 from pytcp.stack.link import LinkApi
+from pytcp.stack.membership import MembershipApi
 from pytcp.stack.neighbor import NeighborApi
 from pytcp.stack.route import RouteApi, install_boot_default_routes
 
@@ -159,6 +160,13 @@ def mock__init(
     # harness wiring.
     if mock__packet_handler is not None:
         _stack.neighbor = NeighborApi(packet_handler=mock__packet_handler)
+
+    # Membership API — same pattern as 'address' / 'link' /
+    # 'neighbor'. A default 'MembershipApi' bound to the mocked
+    # handler lets consumer code reading 'stack.membership.*' work in
+    # isolation without bespoke harness wiring.
+    if mock__packet_handler is not None:
+        _stack.membership = MembershipApi(packet_handler=mock__packet_handler)
 
     # Host-mode routing table — Phase 1. Rebuild the two FIBs
     # fresh every 'mock__init' (i.e. every harness 'setUp') so
@@ -543,6 +551,7 @@ def init(
     _stack.address = AddressApi()
     _stack.link = LinkApi()
     _stack.neighbor = NeighborApi()
+    _stack.membership = MembershipApi()
 
     # Host-mode routing table — Phase 3 of
     # 'docs/refactor/routing_table_host_mode.md'. Build the two FIBs and
