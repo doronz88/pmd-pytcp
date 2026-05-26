@@ -32,6 +32,7 @@ ver 3.0.6
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from enum import IntEnum
 
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.proto_enum import ProtoEnumByte
@@ -56,6 +57,20 @@ IGMP__CKSUM__OFFSET = 2
 # The shortest legal IGMP message (RFC 2236 §2 simple form / RFC 3376
 # §4.2 v3 Report header). The parser rejects any frame shorter than this.
 IGMP__MESSAGE__MIN_LEN = 8
+
+
+class IgmpVersion(IntEnum):
+    """
+    The IGMP protocol version a host runs / a Query advertises.
+
+    Not a wire field — derived from a Query's message length and
+    Max Resp Code per RFC 3376 §7.1, and used by the host
+    querier-version state machine and the 'igmp.version' policy knob.
+    """
+
+    V1 = 1  # RFC 1112: IGMPv1.
+    V2 = 2  # RFC 2236: IGMPv2.
+    V3 = 3  # RFC 3376: IGMPv3.
 
 
 class IgmpType(ProtoEnumByte):
