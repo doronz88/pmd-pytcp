@@ -104,6 +104,7 @@ from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import Icmp6RxHandler
 from .packet_handler__icmp6__tx import Icmp6TxHandler
+from .packet_handler__igmp__rx import IgmpRxHandler
 from .packet_handler__igmp__tx import IgmpTxHandler
 from .packet_handler__ip4__rx import Ip4RxHandler
 from .packet_handler__ip4__tx import Ip4TxHandler
@@ -146,7 +147,10 @@ class PacketHandler(Subsystem, ABC):
     _icmp4_tx: Icmp4TxHandler
     _icmp6_rx: Icmp6RxHandler
     _icmp6_tx: Icmp6TxHandler
+    _igmp_rx: IgmpRxHandler
     _igmp_tx: IgmpTxHandler
+    _igmp_query__pending_response_at_ms: int | None
+    _igmp_query__handle: TimerHandle | None
     _ip6_frag_rx: Ip6FragRxHandler
     _ip6_frag_tx: Ip6FragTxHandler
     _ip4_rx: Ip4RxHandler
@@ -394,6 +398,7 @@ class PacketHandler(Subsystem, ABC):
         self._icmp4_tx = Icmp4TxHandler(interface=self)
         self._icmp6_rx = Icmp6RxHandler(interface=self)
         self._icmp6_tx = Icmp6TxHandler(interface=self)
+        self._igmp_rx = IgmpRxHandler(interface=self)
         self._igmp_tx = IgmpTxHandler(interface=self)
         self._ip6_frag_rx = Ip6FragRxHandler(interface=self)
         self._ip6_frag_tx = Ip6FragTxHandler(interface=self)
@@ -415,8 +420,17 @@ class PacketHandler(Subsystem, ABC):
 
         self._ip4_proto_registry = DispatchRegistry()
         self._ip4_proto_registry.register(IpProto.ICMP4, self._phrx_icmp4)
+        self._ip4_proto_registry.register(IpProto.IGMP, self._phrx_igmp)
         self._ip4_proto_registry.register(IpProto.UDP, self._phrx_udp)
         self._ip4_proto_registry.register(IpProto.TCP, self._phrx_tcp)
+
+        # RFC 3376 §5.2 deferred query-response state, shared with the
+        # IGMP RX handler. Tracks the absolute 'stack.timer.now_ms' at
+        # which the scheduled IGMPv3 Report fires on Query receipt
+        # (None = no Report pending), coalescing multiple inbound
+        # Queries the same way the MLDv2 sibling does.
+        self._igmp_query__pending_response_at_ms: int | None = None
+        self._igmp_query__handle: TimerHandle | None = None
 
         self._ip6_proto_registry = DispatchRegistry()
         self._ip6_proto_registry.register(IpProto.ICMP6, self._phrx_icmp6)
@@ -1692,6 +1706,13 @@ class PacketHandler(Subsystem, ABC):
         """
 
         self._icmp4_rx._phrx_icmp4(packet_rx)
+
+    def _phrx_igmp(self, packet_rx: PacketRx, /) -> None:
+        """
+        Handle an inbound IGMP packet (delegates to the IGMP RX sub-handler).
+        """
+
+        self._igmp_rx._phrx_igmp(packet_rx)
 
     def _phtx_icmp4(
         self,

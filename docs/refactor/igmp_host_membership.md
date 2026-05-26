@@ -167,7 +167,20 @@ boundary (never a direct handler attribute):
 - Joining a group calls `_assign_ip4_multicast` (Phase 1) and arms
   the unsolicited-report burst (Phase 4).
 
-### Phase 3 — IGMP RX handler (query processing)
+### Phase 3 — IGMP RX handler (query processing) — SHIPPED 2026-05-25
+
+Shipped across three commits: `fee33e75` (net_proto TX wiring —
+`IpProto.from_proto(Igmp)` + `Ip4Payload` admits `IgmpAssembler`),
+`d4c97546` (the `IgmpTxHandler._send_igmp_v3_report` report primitive +
+stat counters + the `igmp` log channel), and `<this>` (the
+`IgmpRxHandler` — IPv4 proto-demux on `IpProto.IGMP`, parse + counters,
+and the RFC 3376 §5.2 query-response state machine: random-delay
+scheduling via `stack.timer` with coalescing, mirroring the MLDv2
+sibling). A General Query schedules a current-state V3 Report;
+Reports/Leaves from other hosts are counted and ignored. Deferred to
+Phase 5 (noted inline): per-group response to a Group-Specific Query,
+the IGMPv1 default Max Resp Time, and the querier-version (v1/v2)
+report-form fallback. Original sketch:
 
 New `packet_handler__igmp__rx.py`, demuxed from the IPv4 RX handler
 on `IpProto.IGMP`:
