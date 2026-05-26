@@ -1818,6 +1818,18 @@ class PacketHandler(Subsystem, ABC):
 
         self._igmp_tx._send_igmp_v3_report(record_type=record_type)
 
+    def _send_igmp_v3_state_change(
+        self,
+        *,
+        group: Ip4Address,
+        record_type: IgmpV3RecordType,
+    ) -> None:
+        """
+        Send an IGMPv3 state-change Report (delegates to the IGMP TX sub-handler).
+        """
+
+        self._igmp_tx._send_igmp_v3_state_change(group=group, record_type=record_type)
+
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """
         Send an ICMPv6 ND Router Solicitation (delegates to the ICMPv6 TX sub-handler).
@@ -2879,9 +2891,13 @@ class PacketHandlerL2(
         # multicast MAC 01:00:5e + low 23 bits of the group address.
         self._assign_mac_multicast(ip4_multicast.multicast_mac)
 
-        # Phase 4: arm the unsolicited IGMP membership-report burst here
-        # (RFC 3376 §5.1), except for the all-systems group 224.0.0.1
-        # which is never reported (RFC 3376 §6).
+        # RFC 3376 §5.1 — announce the new membership with an unsolicited
+        # state-change Report (the all-systems group is exempt, handled
+        # inside the TX method per RFC 3376 §6).
+        self._send_igmp_v3_state_change(
+            group=ip4_multicast,
+            record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
+        )
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -2895,8 +2911,13 @@ class PacketHandlerL2(
 
         self._remove_mac_multicast(ip4_multicast.multicast_mac)
 
-        # Phase 4: send the IGMP Leave / state-change report here
-        # (RFC 3376 §5.1 / RFC 2236 §3 under a v2 querier).
+        # RFC 3376 §5.1 — announce the departure with a state-change
+        # Report transitioning the group to INCLUDE{} (an empty source
+        # list, i.e. "no longer a member").
+        self._send_igmp_v3_state_change(
+            group=ip4_multicast,
+            record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
+        )
 
     def _assign_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -3078,9 +3099,13 @@ class PacketHandlerL3(
 
         __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
-        # Phase 4: arm the unsolicited IGMP membership-report burst here
-        # (RFC 3376 §5.1), except for the all-systems group 224.0.0.1
-        # which is never reported (RFC 3376 §6).
+        # RFC 3376 §5.1 — announce the new membership with an unsolicited
+        # state-change Report (the all-systems group is exempt per
+        # RFC 3376 §6, handled inside the TX method).
+        self._send_igmp_v3_state_change(
+            group=ip4_multicast,
+            record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
+        )
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3092,5 +3117,9 @@ class PacketHandlerL3(
 
         __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
-        # Phase 4: send the IGMP Leave / state-change report here
-        # (RFC 3376 §5.1 / RFC 2236 §3 under a v2 querier).
+        # RFC 3376 §5.1 — announce the departure with a state-change
+        # Report transitioning the group to INCLUDE{} (empty source list).
+        self._send_igmp_v3_state_change(
+            group=ip4_multicast,
+            record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
+        )

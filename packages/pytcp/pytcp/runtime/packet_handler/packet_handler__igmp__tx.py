@@ -77,14 +77,11 @@ class IgmpTxHandler:
         Send an IGMPv3 Membership Report describing the interface's
         current multicast reception state — one group record per joined
         group, excluding the all-systems group 224.0.0.1 which is never
-        reported (RFC 3376 §6). The report is sent to the all-IGMPv3-
-        routers group 224.0.0.22 with the IPv4 Router Alert option and
-        TTL=1 (RFC 3376 §4 / §9).
+        reported (RFC 3376 §6).
 
         'record_type' is MODE_IS_EXCLUDE for a current-state report (the
-        query-response default); the state-change forms
-        (CHANGE_TO_EXCLUDE_MODE on join, CHANGE_TO_INCLUDE_MODE on
-        leave) are passed by the membership-change callers.
+        query-response default). The single-group state-change forms are
+        emitted by '_send_igmp_v3_state_change'.
         """
 
         # Dedup while preserving join order; the all-systems group is
@@ -94,6 +91,35 @@ class IgmpTxHandler:
             for group in dict.fromkeys(self._if._ip4_multicast)
             if group != IGMP__ALL_SYSTEMS
         ]
+
+        self._emit_v3_report(records)
+
+    def _send_igmp_v3_state_change(
+        self,
+        *,
+        group: Ip4Address,
+        record_type: IgmpV3RecordType,
+    ) -> None:
+        """
+        Send an IGMPv3 state-change Report carrying a single group
+        record for 'group' — CHANGE_TO_EXCLUDE_MODE when the host joins
+        the group, CHANGE_TO_INCLUDE_MODE (empty source list) when it
+        leaves (RFC 3376 §5.1). The all-systems group 224.0.0.1 is never
+        reported (RFC 3376 §6).
+        """
+
+        if group == IGMP__ALL_SYSTEMS:
+            return
+
+        self._emit_v3_report([IgmpV3GroupRecord(type=record_type, multicast_address=group)])
+
+    def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
+        """
+        Assemble and send an IGMPv3 Membership Report carrying 'records'
+        to the all-IGMPv3-routers group 224.0.0.22 with the IPv4 Router
+        Alert option and TTL=1 (RFC 3376 §4 / §9). A report with no
+        records is not emitted.
+        """
 
         if not records:
             return
