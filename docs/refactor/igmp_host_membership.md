@@ -2,7 +2,7 @@
 
 | Field           | Value                                                                |
 |-----------------|----------------------------------------------------------------------|
-| Status          | In progress — Phase 0 (net_proto wire codec) shipped 2026-05-25; Phases 1-6 remain |
+| Status          | Substantially shipped 2026-05-25/26 (Phases 0-6). One deferred host-side gap: RFC 3376 §7 v1/v2 querier-version fallback. |
 | Plan author     | Release-readiness pass (2026-05-25)                                  |
 | Target RFCs     | RFC 1112 (host multicast model), RFC 2236 (IGMPv2), RFC 3376 (IGMPv3) |
 | Template        | the shipped IPv6 counterpart — MLDv2 (`net_proto .../icmp6/message/mld2/`) + the `stack.address` join/report pattern |
@@ -278,7 +278,20 @@ querier-version (v1/v2) report-form fallback.
 - The §7 older-querier-present state machine (v1/v2 timers) so a host
   behind an old querier interoperates.
 
-### Phase 6 — adherence records + integration tests
+### Phase 6 — adherence records + integration tests — SHIPPED 2026-05-26
+
+The RFC 1112 record was refreshed (Level 1+ → **Level 2**) and new
+`docs/rfc/ip4/rfc2236__igmp_v2/adherence.md` and
+`rfc3376__igmp_v3/adherence.md` records authored — each with the
+per-clause met/deferred table and a test-coverage audit mapping every
+met requirement to its unit/integration test. The integration suite
+under `tests/integration/protocols/igmp/` (membership API, socket
+options, membership-change, query-response, report TX, robustness
+retransmit, sysctls) plus the net_proto unit suite under
+`tests/unit/protocols/igmp/` lock in the shipped clauses. The ledger
+`v3_0_6_remaining_work.md` §2.0 is updated to record IGMP as
+substantially shipped with the §7 fallback as the one deferred gap.
+Original sketch:
 
 - Author `docs/rfc/ip4/rfc1112__*/`, `rfc2236__*/`, `rfc3376__*/`
   adherence records via the `rfc_adherence_audit` skill, each with

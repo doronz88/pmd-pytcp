@@ -95,13 +95,25 @@ Per-package (net_addr → net_proto → pytcp):
 ### 2.0 IGMP — IPv4 multicast group membership  (the real open gap)
 
 Source of truth: `docs/refactor/igmp_host_membership.md` (detailed
-phased plan, authored 2026-05-25). **Phase 0 (the net_proto IGMP wire
-codec) shipped 2026-05-25** (`2477b18e`..`252fb199`); Phases 1-6 (the
-pytcp runtime — group state, membership API, RX/TX handlers, listener
-subsystem, sysctls/version-fallback, adherence records + integration
-tests) remain. IGMP (RFC 1112 / 2236 / 3376) still has **no runtime
-JOIN/LEAVE and no report/query handling** — while its IPv6 counterpart
-**MLDv2 is shipped**. A Linux
+phased plan, authored 2026-05-25). **Substantially shipped 2026-05-25/26**
+(`2477b18e`..`70763cd8`): the net_proto IGMP codec (Phase 0), the
+per-interface IPv4 group state + L2 mapping (Phase 1), the
+`stack.membership` API + `IP_ADD/DROP_MEMBERSHIP` socket options
+(Phase 2), the RX query-response state machine (Phase 3), the
+unsolicited state-change Reports on join/leave (Phase 4), and the
+sysctls + RFC 3376 §5.1 robustness retransmit (Phase 5), with the
+RFC 1112 / 2236 / 3376 adherence records (Phase 6). PyTCP now reaches
+RFC 1112 **Level 2** (multicast send + receive + IGMP group management,
+the IPv4 analog of the shipped MLDv2).
+
+**One consciously-deferred host-side gap remains:** the RFC 3376 §7
+older-version (IGMPv1/v2) querier-interoperation state machine — the
+v2-form Reports, the Leave Group to 224.0.0.2, report suppression, and
+an `igmp.version` knob. The v1/v2 message wire forms already exist; only
+the version-mode switching is unwired. Tracked in
+`igmp_host_membership.md` Phase 5 (remaining) + the RFC 3376 adherence
+record §7. The IGMPv3 router/querier role and source-specific filtering
+(§9, `IP_ADD_SOURCE_MEMBERSHIP`) are Phase-2 / future work. A Linux
 host that joins an IPv4 multicast group emits IGMP reports and answers
 queries; PyTCP can only receive traffic for the statically-preconfigured
 all-hosts group (`224.0.0.1`). This is a genuine host-parity asymmetry,
