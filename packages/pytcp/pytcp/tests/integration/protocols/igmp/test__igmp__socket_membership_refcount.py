@@ -188,6 +188,65 @@ class TestIgmpSocketMembershipRefcount(NetworkTestCase):
             msg="The group must be dropped once the last holder leaves.",
         )
 
+    def test__igmp__refcount__close_releases_membership(self) -> None:
+        """
+        Ensure closing a socket releases the multicast memberships it
+        holds — the sole holder closing drops the group and emits one
+        CHANGE_TO_INCLUDE_MODE Leave.
+
+        Reference: RFC 3376 §5.1 (Leave on the joined→not-joined edge).
+        """
+
+        self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(_GROUP))
+
+        before = len(self._frames_tx)
+        self._socket_a.close()
+
+        reports = _igmp_report_frames(self._frames_tx[before:])
+        self.assertEqual(len(reports), 1, msg="Closing the sole holder emits one Leave Report.")
+        self.assertEqual(reports[0].records[0].type, IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE)
+        self.assertNotIn(
+            _GROUP,
+            self._packet_handler._ip4_multicast,
+            msg="The group must be dropped when its last holder's socket closes.",
+        )
+
+    def test__igmp__refcount__close_one_of_two_retains_group(self) -> None:
+        """
+        Ensure closing one of two sockets holding a group retains the
+        group with no Leave, and closing the second drops it with one
+        CHANGE_TO_INCLUDE_MODE Leave.
+
+        Reference: RFC 3376 §5.1 (Leave fires only on the last release).
+        """
+
+        self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(_GROUP))
+        self._socket_b.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(_GROUP))
+
+        before = len(self._frames_tx)
+        self._socket_a.close()
+        self.assertEqual(
+            len(_igmp_report_frames(self._frames_tx[before:])),
+            0,
+            msg="No Leave while the second socket still holds the group.",
+        )
+        self.assertIn(
+            _GROUP,
+            self._packet_handler._ip4_multicast,
+            msg="The group must remain joined after only one holder closes.",
+        )
+
+        before_second = len(self._frames_tx)
+        self._socket_b.close()
+        reports = _igmp_report_frames(self._frames_tx[before_second:])
+        self.assertEqual(len(reports), 1, msg="Closing the last holder emits one Leave Report.")
+        self.assertEqual(reports[0].records[0].type, IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE)
+        self.assertNotIn(
+            _GROUP,
+            self._packet_handler._ip4_multicast,
+            msg="The group must be dropped once the last holder's socket closes.",
+        )
+
     def test__igmp__refcount__operator_leave_respects_socket_holder(self) -> None:
         """
         Ensure an operator-API leave does not drop a group a socket still

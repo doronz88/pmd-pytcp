@@ -193,7 +193,15 @@ releasing a SOCKET reference. All four
 **Then implement** the interface ref state + edge gating and the
 instance-method socket handler.
 
-### Phase B — close releases memberships
+### Phase B — close releases memberships — SHIPPED
+
+**Shipped.** The base socket's `_mark_closed` (the universal close hook
+every concrete `close()` calls) now invokes `_release_ip4_memberships`,
+which walks `self._ip4_memberships` and releases each SOCKET reference
+through the membership API — the interface leaves a group only when the
+closing socket was its last holder (Linux `ip_mc_drop_socket`).
+Best-effort: a torn-down interface (`KeyError`) or unleavable group
+(`ValueError`) is skipped. Both close tests pass.
 
 **Failing tests first:**
 

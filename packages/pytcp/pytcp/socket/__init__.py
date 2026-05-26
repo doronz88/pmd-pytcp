@@ -1094,6 +1094,37 @@ class socket(ABC):
             self._closed = True
             self._close_io_runtime()
 
+        self._release_ip4_memberships()
+
+    def _release_ip4_memberships(self) -> None:
+        """
+        Release every IPv4 multicast membership this socket still holds —
+        the Linux 'ip_mc_drop_socket' equivalent run on close(). The
+        interface leaves a group (and emits the state-change Leave) only
+        when this socket was its last holder (R3). Idempotent: a socket
+        that joined no group clears an empty set. Released outside
+        '_lock__io' so the membership/timer path does not run under the
+        socket IO lock.
+        """
+
+        if not self._ip4_memberships:
+            return
+
+        import pytcp.stack as _stack
+        from pytcp.stack.membership import MembershipRefKind
+
+        for ifindex, group in list(self._ip4_memberships):
+            try:
+                _stack.membership.interface(ifindex).leave(group=group, kind=MembershipRefKind.SOCKET)
+            except KeyError, ValueError:
+                # Best-effort cleanup: the interface may already be torn
+                # down (KeyError) during stack shutdown, and a group that
+                # cannot be left (e.g. the permanent all-systems group,
+                # ValueError) needs no release. Mirrors the best-effort
+                # nature of the Linux close-time drop.
+                pass
+        self._ip4_memberships.clear()
+
     def getsockname(self) -> tuple[str, int]:
         """
         Get the local address and port.
