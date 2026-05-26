@@ -115,6 +115,26 @@ class IgmpTxHandler:
 
         self._emit_v3_report(records)
 
+    def _send_igmp_leave_all(self) -> None:
+        """
+        Emit a single combined IGMPv3 state-change Report transitioning
+        every joined group (except the permanent all-systems group
+        224.0.0.1, never reported per RFC 3376 §6) to INCLUDE{} — the
+        graceful Leave a host sends on shutdown so routers prune its
+        memberships immediately rather than waiting for a query timeout
+        (RFC 3376 §5.1; Linux 'ip_mc_down'). No robustness retransmits
+        are scheduled: this runs during teardown with the timer about to
+        stop, and a report carrying no records is not emitted.
+        """
+
+        records = [
+            IgmpV3GroupRecord(type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE, multicast_address=group)
+            for group in dict.fromkeys(self._if._ip4_multicast)
+            if group != IGMP__ALL_SYSTEMS
+        ]
+
+        self._emit_v3_report(records)
+
     def _send_igmp_v3_state_change(
         self,
         *,

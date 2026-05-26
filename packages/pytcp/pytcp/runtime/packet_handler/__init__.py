@@ -1921,6 +1921,14 @@ class PacketHandler(Subsystem, ABC):
 
         self._igmp_tx._send_igmp_v3_state_change(group=group, record_type=record_type)
 
+    def _send_igmp_leave_all(self) -> None:
+        """
+        Emit a graceful IGMP Leave for every joined IPv4 multicast group
+        on shutdown (delegates to the IGMP TX sub-handler).
+        """
+
+        self._igmp_tx._send_igmp_leave_all()
+
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """
         Send an ICMPv6 ND Router Solicitation (delegates to the ICMPv6 TX sub-handler).

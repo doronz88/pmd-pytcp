@@ -317,6 +317,16 @@ deferred follow-on.
   successive intervals; RV=1 → none; and a leave before the join
   retransmit fires supersedes it (the retransmit carries
   CHANGE_TO_INCLUDE_MODE, never the stale CHANGE_TO_EXCLUDE_MODE).
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__shutdown_leave.py`
+  On shutdown the host emits a single combined Report transitioning
+  every joined group to CHANGE_TO_INCLUDE_MODE (a graceful Leave so
+  routers prune immediately — Linux `ip_mc_down`); the all-systems
+  group is excluded and an all-systems-only state emits nothing.
+- **Unit:**
+  `test__stack__init.py::TestStackStopOrdering` — `stack.stop()` sends
+  each interface's graceful Leave before stopping the packet handler,
+  while the TX path is still live.
 
 **Status:** locked in.
 

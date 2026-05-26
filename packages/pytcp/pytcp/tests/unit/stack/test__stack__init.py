@@ -703,6 +703,33 @@ class TestStackStopOrdering(TestCase):
             msg=f"tx_ring must stop after packet_handler. Got: {self._call_log}",
         )
 
+    def test__stack__stop_sends_igmp_leave_before_packet_handler(self) -> None:
+        """
+        Ensure 'stack.stop()' emits each interface's graceful IGMP Leave
+        before stopping the packet handler, so the Leave egresses while
+        the TX path is still live and routers prune the host's
+        memberships immediately instead of waiting for a query timeout.
+
+        Reference: RFC 3376 §5.1 (host announces leaving on shutdown).
+        """
+
+        cast(MagicMock, stack.interfaces[1])._send_igmp_leave_all.side_effect = lambda: self._call_log.append(
+            "igmp_leave"
+        )
+
+        stack.stop()
+
+        self.assertIn(
+            "igmp_leave",
+            self._call_log,
+            msg=f"stop() must emit the graceful IGMP Leave. Got: {self._call_log}",
+        )
+        self.assertLess(
+            self._call_log.index("igmp_leave"),
+            self._call_log.index("packet_handler"),
+            msg=f"The IGMP Leave must precede packet_handler.stop(). Got: {self._call_log}",
+        )
+
 
 class TestStackInitSharedPacketStats(TestCase):
     """

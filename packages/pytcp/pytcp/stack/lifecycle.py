@@ -710,6 +710,14 @@ def stop() -> None:
 
     assert _stack.stack_initialized, "Stack not initialized. Call 'stack.init()' first."
 
+    # Graceful multicast Leave: while the TX path is still fully live
+    # (before any subsystem teardown below), announce departure from
+    # every joined IPv4 multicast group so routers prune the host's
+    # memberships immediately instead of waiting for a query timeout
+    # (RFC 3376 §5.1; Linux 'ip_mc_down').
+    for iface in _stack.interfaces.values():
+        iface._send_igmp_leave_all()
+
     _stack.stack_running = False
 
     # Teardown order:

@@ -193,11 +193,26 @@ hardening.
 `ip_mreqn` (… + imr_ifindex). Parse the 12-byte form and prefer its
 explicit ifindex when present.
 
-### R7 — Graceful Leave on shutdown / link-down (HOST-CONFORMANCE SHOULD)
+### R7 — Graceful Leave on shutdown / link-down (HOST-CONFORMANCE SHOULD) — SHIPPED (IPv4)
 
-**Today:** `stack.stop()` silently abandons every joined group — no
-`CHANGE_TO_INCLUDE_MODE` / Leave is emitted, so a router holds each
-group until its membership query times out.
+**Shipped (IPv4 / IGMP).** `stack.stop()` now calls each interface's
+`_send_igmp_leave_all` before any subsystem teardown (while the TX path
+is live): a single combined IGMPv3 Report transitions every joined
+group (except permanent 224.0.0.1) to `CHANGE_TO_INCLUDE_MODE`, no
+retransmits (Linux `ip_mc_down`). Tests:
+`test__igmp__shutdown_leave.py` + a `stack.stop()` ordering test in
+`test__stack__init.py`.
+
+**MLD (IPv6) deferred — NOT symmetric.** MLD has no state-change-leave
+path at all: `_remove_ip6_multicast` emits nothing and the MLDv2 TX
+only sends current-state `CHANGE_TO_EXCLUDE` reports. A graceful MLD
+Done/leave-on-shutdown therefore requires first building MLD per-group
+leave reporting — a separate feature, not a wiring change. Tracked in
+§C.
+
+**Original (pre-fix):** `stack.stop()` silently abandoned every joined
+group — no `CHANGE_TO_INCLUDE_MODE` / Leave was emitted, so a router
+held each group until its membership query timed out.
 
 **Linux:** `ip_mc_down()` (on `NETDEV_DOWN`) and `ip_mc_leave_group()`
 (on `IP_DROP_MEMBERSHIP` / socket close) emit the leave for reported
@@ -228,6 +243,13 @@ These are feature-level gaps, not refinements — see
   timers) and the IGMPv1 default Max Resp Time.
 - Source-specific filtering (§9, `IP_ADD_SOURCE_MEMBERSHIP`).
 - The IGMPv3 router/querier role (Phase-2).
+- **MLDv2 leave reporting (IPv6).** The IPv6 MLDv2 listener has no
+  state-change-leave path — `_remove_ip6_multicast` emits nothing and
+  the TX only sends current-state `CHANGE_TO_EXCLUDE` reports. Adding a
+  per-group leave (RFC 3810 BLOCK / `CHANGE_TO_INCLUDE`) and the
+  graceful-leave-on-shutdown that R7 gives IGMP is a dedicated MLD
+  feature, not a wiring change. The R7 stop-hook in `stack.stop()` is
+  the natural place to add the MLD call once that path exists.
 
 ---
 
