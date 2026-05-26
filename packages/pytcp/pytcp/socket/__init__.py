@@ -156,6 +156,8 @@ class IpOption(IntEnum):
     IP_RECVERR = 11  # int 0/1: enable error queue (recvmsg MSG_ERRQUEUE — Linux ip(7))
     IP_RECVTOS = 13  # int 0/1: enable IP_TOS cmsg on recvmsg (RFC 1122 §4.1.4 MAY)
     IP_MTU = 14  # int (getsockopt only): effective PMTU for connected peer (RFC 1122 §3.4 GET_MAXSIZES)
+    IP_ADD_MEMBERSHIP = 35  # ip_mreq bytes: join an IPv4 multicast group (RFC 1112 / 3376)
+    IP_DROP_MEMBERSHIP = 36  # ip_mreq bytes: leave an IPv4 multicast group (RFC 1112 / 3376)
 
 
 IP_TOS = IpOption.IP_TOS
@@ -166,6 +168,8 @@ IP_RETOPTS = IpOption.IP_RETOPTS
 IP_RECVERR = IpOption.IP_RECVERR
 IP_RECVTOS = IpOption.IP_RECVTOS
 IP_MTU = IpOption.IP_MTU
+IP_ADD_MEMBERSHIP = IpOption.IP_ADD_MEMBERSHIP
+IP_DROP_MEMBERSHIP = IpOption.IP_DROP_MEMBERSHIP
 
 
 class IpV6Option(IntEnum):
@@ -269,6 +273,32 @@ def _validate_ip4_options_bytes(value: bytes, /) -> bytes:
         raise OSError(errno.EINVAL, f"IP_OPTIONS block is malformed: {error}") from error
 
     return value
+
+
+def _resolve_membership_ifindex(interface_address: Ip4Address, /) -> int | None:
+    """
+    Resolve the ifindex for an IP_ADD/DROP_MEMBERSHIP 'imr_interface'
+    address. INADDR_ANY (0.0.0.0) selects the first interface that owns
+    an IPv4 address (else the first registered interface); a specific
+    address selects the interface that owns it. Returns 'None' when no
+    interface matches.
+    """
+
+    import pytcp.stack as _stack
+
+    if interface_address.is_unspecified:
+        for ifindex, handler in _stack.interfaces.items():
+            if handler._ip4_unicast:
+                return ifindex
+        for ifindex, _handler in _stack.interfaces.items():
+            return ifindex
+        return None
+
+    for ifindex, handler in _stack.interfaces.items():
+        if interface_address in handler._ip4_unicast:
+            return ifindex
+
+    return None
 
 
 class ShutdownHow(IntEnum):
@@ -575,7 +605,48 @@ class socket(ABC):
                     raise OSError(errno.EINVAL, f"IP_RECVERR value must be int, got {type(value).__name__}")
                 self._ip_recverr = bool(value)
                 return True
+            case _ if optname in (IP_ADD_MEMBERSHIP, IP_DROP_MEMBERSHIP):
+                if not isinstance(value, (bytes, bytearray, memoryview)):
+                    raise OSError(
+                        errno.EINVAL,
+                        f"IP_ADD/DROP_MEMBERSHIP value must be an ip_mreq bytes object, got {type(value).__name__}",
+                    )
+                self._ipproto_ip_membership(optname, bytes(value))
+                return True
         return False
+
+    @staticmethod
+    def _ipproto_ip_membership(optname: int, mreq: bytes, /) -> None:
+        """
+        Apply IP_ADD_MEMBERSHIP / IP_DROP_MEMBERSHIP by parsing the
+        'ip_mreq' structure (4-byte imr_multiaddr + 4-byte
+        imr_interface) and dispatching to the stack membership API on
+        the interface 'imr_interface' selects. An imr_interface of
+        0.0.0.0 (INADDR_ANY) selects the first IPv4-capable interface,
+        mirroring the Linux "let the kernel pick" behaviour. The 12-byte
+        'ip_mreqn' form is a deferred extension.
+        """
+
+        import pytcp.stack as _stack
+
+        if len(mreq) < 8:
+            raise OSError(errno.EINVAL, f"ip_mreq must be at least 8 bytes, got {len(mreq)}")
+
+        group = Ip4Address(mreq[0:4])
+        interface_address = Ip4Address(mreq[4:8])
+
+        ifindex = _resolve_membership_ifindex(interface_address)
+        if ifindex is None:
+            raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
+
+        api = _stack.membership.interface(ifindex)
+        try:
+            if optname == IP_ADD_MEMBERSHIP:
+                api.join(group=group)
+            else:
+                api.leave(group=group)
+        except ValueError as error:
+            raise OSError(errno.EINVAL, str(error)) from error
 
     def _ipproto_ip_getsockopt(self, optname: int, /) -> int | bytes | None:
         """

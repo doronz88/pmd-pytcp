@@ -135,7 +135,19 @@ all-systems group is never reported (RFC 3376 §6). Original sketch:
   (all-hosts) is a permanent, never-reported group (RFC 3376 §6 —
   the all-systems group is exempt).
 
-### Phase 2 — membership API (the kernel/userspace boundary)
+### Phase 2 — membership API (the kernel/userspace boundary) — SHIPPED 2026-05-25
+
+Shipped in two commits: `bf0e0e6c` (the `stack.membership` MembershipApi
+— interface-bound `join`/`leave`/`list_memberships`, wired into
+`init`/`mock__init` like `address`/`neighbor`/`route`) and the
+`IP_ADD_MEMBERSHIP` / `IP_DROP_MEMBERSHIP` socket options (IpOption 35 /
+36 + bare aliases; the setsockopt handler parses the 8-byte `ip_mreq`,
+resolves `imr_interface` to an ifindex, and dispatches to
+`stack.membership`). Membership is presence-based per interface;
+per-socket join refcounting and the source-filter `setsockopt`s
+(`IP_ADD_SOURCE_MEMBERSHIP` / `MCAST_*`) and the 12-byte `ip_mreqn` form
+are documented deferred extensions. The JOIN does not yet arm the IGMP
+report burst — that hook lands in Phase 4. Original sketch:
 
 The user-facing JOIN/LEAVE surface, on the sanctioned Phase-3
 boundary (never a direct handler attribute):
