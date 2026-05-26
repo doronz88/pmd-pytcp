@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
 from pytcp.lib.logger import log
+from pytcp.protocols.igmp import igmp__constants
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -122,6 +123,17 @@ class MembershipApi:
         handler = self._resolve_handler()
         if group in handler._ip4_multicast:
             return
+
+        # Linux 'net.ipv4.igmp_max_memberships' — cap the number of
+        # joined groups. The implicit all-systems group 224.0.0.1 does
+        # not count. Qualified module access so an operator override of
+        # 'igmp.max_memberships' resolves on every join.
+        joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
+        if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
+            raise ValueError(
+                f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
+                f"(sysctl 'igmp.max_memberships'); cannot join {group}."
+            )
 
         handler._assign_ip4_multicast(group)
         __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group}")

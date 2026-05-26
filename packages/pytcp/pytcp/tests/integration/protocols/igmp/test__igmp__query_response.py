@@ -37,6 +37,7 @@ from net_addr import Ip4Address, MacAddress
 from net_proto import EthernetAssembler, Ip4Assembler, IpProto, RawAssembler
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
+from pytcp.stack import sysctl
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 # The all-systems group 224.0.0.1 and its Ethernet multicast MAC, the
@@ -101,6 +102,10 @@ class TestIgmpQueryResponse(IcmpTestCase):
         """
 
         super().setUp()
+        # Pin Robustness to 1 so the setUp join does not schedule a
+        # state-change retransmit that would land in the query-response
+        # timer windows these tests advance through.
+        self.enterContext(sysctl.override("igmp.robustness", 1))
         self._packet_handler._mac_multicast.append(_ALL_SYSTEMS_MAC)
         self._packet_handler._assign_ip4_multicast(Ip4Address("239.1.1.1"))
 

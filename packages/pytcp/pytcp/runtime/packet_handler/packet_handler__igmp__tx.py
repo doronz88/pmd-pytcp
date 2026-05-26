@@ -31,6 +31,7 @@ pytcp/runtime/packet_handler/packet_handler__igmp__tx.py
 ver 3.0.6
 """
 
+import random
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -42,7 +43,9 @@ from net_proto import (
     Ip4OptionRouterAlert,
     Ip4Options,
 )
+from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.igmp import igmp__constants
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -111,7 +114,32 @@ class IgmpTxHandler:
         if group == IGMP__ALL_SYSTEMS:
             return
 
-        self._emit_v3_report([IgmpV3GroupRecord(type=record_type, multicast_address=group)])
+        record = IgmpV3GroupRecord(type=record_type, multicast_address=group)
+        self._emit_v3_report([record])
+        self._schedule_state_change_retransmits(record)
+
+    def _schedule_state_change_retransmits(self, record: IgmpV3GroupRecord, /) -> None:
+        """
+        Schedule the RFC 3376 §5.1 robustness retransmissions of a
+        state-change Report: 'igmp.robustness' - 1 repeats of 'record',
+        each at a delay drawn uniformly at random from (0,
+        'igmp.unsolicited_report_interval' ms]. Reading both knobs via
+        qualified module access so an operator override resolves on each
+        membership change.
+
+        Scheduling needs the shared Timer subsystem. The stateless
+        network-test harness does not bring one up, so when no Timer is
+        present the retransmits are skipped — the immediate Report has
+        already gone out, and a started stack always has the Timer.
+        """
+
+        timer = getattr(stack, "timer", None)
+        if timer is None:
+            return
+
+        for _ in range(igmp__constants.IGMP__ROBUSTNESS_VARIABLE - 1):
+            delay_ms = random.randint(1, igmp__constants.IGMP__UNSOLICITED_REPORT_INTERVAL__MS)
+            timer.call_later(delay_ms, lambda: self._emit_v3_report([record]))
 
     def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
         """

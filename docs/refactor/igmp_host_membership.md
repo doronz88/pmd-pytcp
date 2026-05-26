@@ -238,7 +238,27 @@ template) driving the host state machine:
 - Wake on the nearest timer via the event-driven `Timer` (no polling
   tick).
 
-### Phase 5 — robustness / version fallback / sysctls
+### Phase 5 — robustness / version fallback / sysctls — PARTIALLY SHIPPED 2026-05-26
+
+Shipped in `<this>`: the `pytcp/protocols/igmp/igmp__constants.py`
+sysctl module registering `igmp.robustness` (RV, default 2),
+`igmp.unsolicited_report_interval` (1000 ms), and
+`igmp.max_memberships` (20, Linux `net.ipv4.igmp_max_memberships`); the
+RFC 3376 §5.1 robustness retransmission (the state-change Report sent
+RV times, each repeat at a random delay in (0, Unsolicited Report
+Interval] via `stack.timer`); and `igmp.max_memberships` enforced by
+`MembershipApi.join` (the implicit all-systems group is exempt). The
+retransmit scheduling is guarded on Timer availability so the stateless
+`NetworkTestCase` harness (no Timer subsystem) still sends the
+immediate Report.
+
+**Still deferred (remaining Phase-5 work):** the RFC 3376 §7
+querier-version (v1/v2) report-form fallback + the older-querier-present
+state machine, the v2-querier "Leave Group to 224.0.0.2" form, the
+per-group response to a Group-Specific Query, the IGMPv1 default Max
+Resp Time, and an `igmp.version` (`force_igmp_version`) knob — these
+form a cohesive legacy-interop block with no consumer until the
+version state machine lands, so they are tracked as a follow-on.
 
 **Moved here from Phase 4** (gated by the knobs this phase introduces):
 the RFC 3376 §5.1 Robustness-Variable retransmission of the
