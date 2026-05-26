@@ -222,8 +222,8 @@ machine — switching the response Report to the v1/v2 form for
 the Older Version Querier Present Timeout, and sending an IGMPv2
 Leave Group to 224.0.0.2 under a v2 querier — is not wired. The
 host answers every querier with an IGMPv3 Report. This is the
-one consciously-deferred host-side clause; it is tracked in
-`docs/refactor/igmp_host_membership.md` Phase 5.
+one consciously-deferred host-side clause; it is tracked in its
+own plan, `docs/refactor/igmp_version_fallback.md`.
 
 ## §8. List of Timers and Default Values
 

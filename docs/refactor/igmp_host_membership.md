@@ -258,7 +258,9 @@ state machine, the v2-querier "Leave Group to 224.0.0.2" form, the
 per-group response to a Group-Specific Query, the IGMPv1 default Max
 Resp Time, and an `igmp.version` (`force_igmp_version`) knob — these
 form a cohesive legacy-interop block with no consumer until the
-version state machine lands, so they are tracked as a follow-on.
+version state machine lands. **Lifted to its own plan:**
+`docs/refactor/igmp_version_fallback.md` (the way RFC 6724 was lifted
+out of the ND track).
 
 **Moved here from Phase 4** (gated by the knobs this phase introduces):
 the RFC 3376 §5.1 Robustness-Variable retransmission of the
