@@ -198,7 +198,29 @@ on `IpProto.IGMP`:
   older-version-querier-present timer and switches that group's
   report TX to the legacy form for its duration.
 
-### Phase 4 — IGMP TX + report/query listener subsystem
+### Phase 4 — IGMP TX + membership-change signalling — SHIPPED 2026-05-25 (rescoped)
+
+Shipped in `98c1e795`: join emits an unsolicited CHANGE_TO_EXCLUDE_MODE
+state-change Report and leave emits a CHANGE_TO_INCLUDE_MODE Report
+(RFC 3376 §5.1), wired through `_assign/_remove_ip4_multicast` on both
+L2 and L3, with the all-systems group exempt (§6).
+
+**Two rescoping decisions (vs the original sketch):**
+
+1. **No dedicated "listener `Subsystem`".** Both the query-response
+   (Phase 3) and the state-change reports drive off the shared
+   event-driven `Timer` + the RX/TX handlers, exactly as the shipped
+   MLDv2 listener does — there is no MLD/IGMP "listener subsystem" in
+   the codebase and none is needed.
+2. **The RFC 3376 §5.1 Robustness-Variable retransmission** (the
+   state-change Report sent RV times, spaced by random intervals in
+   (0, Unsolicited Report Interval]) **and the v2-querier "Leave Group
+   to 224.0.0.2"** moved to Phase 5, where the Robustness Variable /
+   Unsolicited Report Interval become sysctls and the querier-version
+   fallback machinery lands — the retransmit is gated by exactly those
+   knobs, so it belongs there.
+
+Original sketch:
 
 A `Subsystem` (the MLDv2 listener + the ND/timer subsystems are the
 template) driving the host state machine:
@@ -217,6 +239,14 @@ template) driving the host state machine:
   tick).
 
 ### Phase 5 — robustness / version fallback / sysctls
+
+**Moved here from Phase 4** (gated by the knobs this phase introduces):
+the RFC 3376 §5.1 Robustness-Variable retransmission of the
+state-change Report (sent RV times, spaced by random intervals in
+(0, Unsolicited Report Interval]), and the v2-querier "Leave Group to
+224.0.0.2" form. **Moved here from Phase 3**: per-group response to a
+Group-Specific Query, the IGMPv1 default Max Resp Time, and the
+querier-version (v1/v2) report-form fallback.
 
 - RFC 3376 §8 timing constants as **sysctls** (use the `sysctl_knob`
   skill): `igmp.robustness` (RV, default 2), `igmp.query_interval`,
