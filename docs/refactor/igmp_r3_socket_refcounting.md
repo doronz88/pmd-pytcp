@@ -2,7 +2,7 @@
 
 | Field   | Value                                                                 |
 |---------|-----------------------------------------------------------------------|
-| Status  | Plan — tests-first, no code yet                                       |
+| Status  | SHIPPED — Phases A / B / C complete                                   |
 | Author  | IGMP design review (2026-05-26)                                       |
 | Parent  | `docs/refactor/igmp_refinements.md` §B R3                             |
 | Couples | R7 (graceful leave on shutdown — shares the leave path)              |
@@ -214,7 +214,14 @@ Best-effort: a torn-down interface (`KeyError`) or unleavable group
 
 **Then implement** `close()` cleanup walking `self._ip4_memberships`.
 
-### Phase C — Linux errno parity
+### Phase C — Linux errno parity — SHIPPED
+
+**Shipped.** `_ipproto_ip_membership` now raises `OSError(EADDRINUSE)`
+when this socket joins a group it already holds, and
+`OSError(EADDRNOTAVAIL)` when it drops a group it does not hold —
+replacing the Phase A/B idempotent no-ops (Linux `ip_mc_join_group` /
+`ip_mc_leave_group`). Both errno tests pass; the rejected repeat join
+does not increment the interface reference count.
 
 **Failing tests first:**
 

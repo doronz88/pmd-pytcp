@@ -33,6 +33,7 @@ net_proto/../pytcp/tests/integration/protocols/igmp/test__igmp__socket_membershi
 ver 3.0.6
 """
 
+import errno
 from types import SimpleNamespace
 from typing import override
 
@@ -245,6 +246,44 @@ class TestIgmpSocketMembershipRefcount(NetworkTestCase):
             _GROUP,
             self._packet_handler._ip4_multicast,
             msg="The group must be dropped once the last holder's socket closes.",
+        )
+
+    def test__igmp__refcount__double_join_raises_eaddrinuse(self) -> None:
+        """
+        Ensure a socket joining a group it already holds raises
+        OSError(EADDRINUSE) and does not increment the interface
+        reference count a second time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(_GROUP))
+
+        with self.assertRaises(OSError) as ctx:
+            self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(_GROUP))
+
+        self.assertEqual(ctx.exception.errno, errno.EADDRINUSE, msg="A repeat join must raise EADDRINUSE.")
+        self.assertEqual(
+            self._packet_handler._ip4_multicast_refs[_GROUP].socket_count,
+            1,
+            msg="A rejected repeat join must not increment the reference count.",
+        )
+
+    def test__igmp__refcount__drop_non_member_raises_eaddrnotavail(self) -> None:
+        """
+        Ensure dropping a group this socket never joined raises
+        OSError(EADDRNOTAVAIL).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(OSError) as ctx:
+            self._socket_a.setsockopt(IPPROTO_IP, IP_DROP_MEMBERSHIP, _ip_mreq(_GROUP))
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EADDRNOTAVAIL,
+            msg="Dropping a group the socket does not hold must raise EADDRNOTAVAIL.",
         )
 
     def test__igmp__refcount__operator_leave_respects_socket_holder(self) -> None:

@@ -631,10 +631,10 @@ class socket(ABC):
         form is a deferred extension.
 
         This socket records each (ifindex, group) it joins so the
-        interface only leaves a group when its last holder drops it. For
-        now a repeat join, or a drop of a group this socket does not
-        hold, is an idempotent no-op (the Linux EADDRINUSE /
-        EADDRNOTAVAIL parity is a deferred refinement).
+        interface only leaves a group when its last holder drops it.
+        Joining a group this socket already holds raises EADDRINUSE, and
+        dropping a group it does not hold raises EADDRNOTAVAIL (Linux
+        'ip_mc_join_group' / 'ip_mc_leave_group' parity).
         """
 
         import pytcp.stack as _stack
@@ -655,12 +655,12 @@ class socket(ABC):
         try:
             if optname == IP_ADD_MEMBERSHIP:
                 if membership in self._ip4_memberships:
-                    return
+                    raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
                 api.join(group=group, kind=MembershipRefKind.SOCKET)
                 self._ip4_memberships.add(membership)
             else:
                 if membership not in self._ip4_memberships:
-                    return
+                    raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
                 api.leave(group=group, kind=MembershipRefKind.SOCKET)
                 self._ip4_memberships.discard(membership)
         except ValueError as error:

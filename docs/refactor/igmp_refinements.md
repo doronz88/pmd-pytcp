@@ -144,7 +144,15 @@ change touches the shared base, but an inert Timer is invisible to
 existing tests. Pairs naturally with R1 (which needs a Timer in the
 NetworkTestCase join tests anyway).
 
-### R3 — Per-socket membership refcounting (SEMANTICS)
+### R3 — Per-socket membership refcounting (SEMANTICS) — SHIPPED
+
+**Shipped (Phases A/B/C).** Membership is reference-counted per socket
+(unified interface refcount: operator flag + socket count, edge-gated
+join/leave Reports); `close()` releases a socket's memberships
+(`ip_mc_drop_socket`); double-join → `EADDRINUSE`, drop-non-member →
+`EADDRNOTAVAIL`. Full record in
+`docs/refactor/igmp_r3_socket_refcounting.md`.
+
 
 **Today:** membership is presence-based per interface; the first
 `IP_DROP_MEMBERSHIP` removes the group even if another socket still
