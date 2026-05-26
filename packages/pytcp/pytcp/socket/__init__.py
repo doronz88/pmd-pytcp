@@ -455,6 +455,7 @@ class socket(ABC):
     _ipv6_tclass: int
     _ipv6_recvtclass: bool
     _ipv6_recverr: bool
+    _ip4_memberships: set[tuple[int, Ip4Address]]
 
     def __init__(
         self,
@@ -503,6 +504,9 @@ class socket(ABC):
         self._ipv6_tclass = 0
         self._ipv6_recvtclass = False
         self._ipv6_recverr = False
+        # Per-socket IPv4 multicast holds (ifindex, group) for the
+        # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
+        self._ip4_memberships = set()
         # SO_BINDTODEVICE: when set, pins this socket's egress to one
         # interface by name (the resolved ifindex is the egress the
         # send path uses, bypassing FIB route selection). Empty / unset
@@ -615,19 +619,26 @@ class socket(ABC):
                 return True
         return False
 
-    @staticmethod
-    def _ipproto_ip_membership(optname: int, mreq: bytes, /) -> None:
+    def _ipproto_ip_membership(self, optname: int, mreq: bytes, /) -> None:
         """
         Apply IP_ADD_MEMBERSHIP / IP_DROP_MEMBERSHIP by parsing the
         'ip_mreq' structure (4-byte imr_multiaddr + 4-byte
         imr_interface) and dispatching to the stack membership API on
-        the interface 'imr_interface' selects. An imr_interface of
-        0.0.0.0 (INADDR_ANY) selects the first IPv4-capable interface,
-        mirroring the Linux "let the kernel pick" behaviour. The 12-byte
-        'ip_mreqn' form is a deferred extension.
+        the interface 'imr_interface' selects, as a per-socket
+        (reference-counted) hold. An imr_interface of 0.0.0.0
+        (INADDR_ANY) selects the first IPv4-capable interface, mirroring
+        the Linux "let the kernel pick" behaviour. The 12-byte 'ip_mreqn'
+        form is a deferred extension.
+
+        This socket records each (ifindex, group) it joins so the
+        interface only leaves a group when its last holder drops it. For
+        now a repeat join, or a drop of a group this socket does not
+        hold, is an idempotent no-op (the Linux EADDRINUSE /
+        EADDRNOTAVAIL parity is a deferred refinement).
         """
 
         import pytcp.stack as _stack
+        from pytcp.stack.membership import MembershipRefKind
 
         if len(mreq) < 8:
             raise OSError(errno.EINVAL, f"ip_mreq must be at least 8 bytes, got {len(mreq)}")
@@ -640,11 +651,18 @@ class socket(ABC):
             raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
 
         api = _stack.membership.interface(ifindex)
+        membership = (ifindex, group)
         try:
             if optname == IP_ADD_MEMBERSHIP:
-                api.join(group=group)
+                if membership in self._ip4_memberships:
+                    return
+                api.join(group=group, kind=MembershipRefKind.SOCKET)
+                self._ip4_memberships.add(membership)
             else:
-                api.leave(group=group)
+                if membership not in self._ip4_memberships:
+                    return
+                api.leave(group=group, kind=MembershipRefKind.SOCKET)
+                self._ip4_memberships.discard(membership)
         except ValueError as error:
             raise OSError(errno.EINVAL, str(error)) from error
 

@@ -38,6 +38,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, override
 
 from net_addr import (
@@ -92,6 +93,10 @@ from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
+from pytcp.stack.membership import (
+    IP4__MULTICAST__ALL_SYSTEMS,
+    MembershipRefKind,
+)
 
 from .dispatch import DispatchRegistry
 from .packet_handler__arp__rx import ArpRxHandler
@@ -124,6 +129,19 @@ if TYPE_CHECKING:
     from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
     from pytcp.protocols.icmp6.nd.nd__cache import NdCache
     from pytcp.stack.route import RouteApi
+
+
+@dataclass(slots=True)
+class _Ip4MulticastRefs:
+    """
+    The set of references holding one IPv4 multicast group joined on an
+    interface — the operator hold ('ip maddr'-style, set-once) and the
+    per-socket reference count ('IP_ADD_MEMBERSHIP'). The group stays
+    joined while 'operator' is set or 'socket_count' is positive.
+    """
+
+    operator: bool = False
+    socket_count: int = 0
 
 
 class PacketHandler(Subsystem, ABC):
@@ -241,6 +259,7 @@ class PacketHandler(Subsystem, ABC):
     _ip4_ifaddr: list[Ip4IfAddr]
     _ip6_multicast: list[Ip6Address]
     _ip4_multicast: list[Ip4Address]
+    _ip4_multicast_refs: dict[Ip4Address, _Ip4MulticastRefs]
     # IPv4 Identification counter + the lock guarding its masked
     # read-modify-write. Per-interface (the counter is interface
     # state); the tiny lock makes '_next_ip4_id' atomic under the
@@ -348,6 +367,12 @@ class PacketHandler(Subsystem, ABC):
         # Used to keep track of IPv6 and IPv4 multicast addresses.
         self._ip6_multicast = []
         self._ip4_multicast = []
+
+        # Per-group reference holders deciding when an IPv4 multicast
+        # group crosses the join / leave edge (R3 — operator + socket
+        # refcount). The permanent all-systems group 224.0.0.1 is
+        # assigned directly at boot and is never ref-managed.
+        self._ip4_multicast_refs = {}
 
         # IPv4 Identification counter (last value) + its lock. The
         # IPv6 Fragment Identification is generated fresh per
@@ -666,6 +691,72 @@ class PacketHandler(Subsystem, ABC):
         """
 
         raise NotImplementedError
+
+    def _mc_is_joined(self, group: Ip4Address, /) -> bool:
+        """
+        Return whether the interface currently listens on IPv4 multicast
+        'group'. The joined-group list is the source of truth and also
+        covers the permanent all-systems group 224.0.0.1.
+        """
+
+        return group in self._ip4_multicast
+
+    def _mc_ref_acquire(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
+        """
+        Acquire a reference of 'kind' on IPv4 multicast 'group'; if the
+        group crosses the not-joined→joined edge, actually join it
+        (install the MAC filter + emit the state-change Report via
+        '_assign_ip4_multicast'). The operator hold is set-once, socket
+        holds are counted. The permanent all-systems group 224.0.0.1 is
+        never ref-managed (RFC 3376 §5.1 join edge).
+        """
+
+        if group == IP4__MULTICAST__ALL_SYSTEMS:
+            return
+
+        was_joined = self._mc_is_joined(group)
+
+        refs = self._ip4_multicast_refs.setdefault(group, _Ip4MulticastRefs())
+        match kind:
+            case MembershipRefKind.OPERATOR:
+                refs.operator = True
+            case MembershipRefKind.SOCKET:
+                refs.socket_count += 1
+
+        if not was_joined:
+            self._assign_ip4_multicast(group)
+
+    def _mc_ref_release(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
+        """
+        Release a reference of 'kind' on IPv4 multicast 'group'; when the
+        last reference of any kind is dropped, actually leave it (drop
+        the MAC filter + emit the state-change Leave via
+        '_remove_ip4_multicast'). Idempotent — releasing a group with no
+        outstanding reference is a no-op. The permanent all-systems group
+        224.0.0.1 is never dropped here (RFC 1112 §4; RFC 3376 §5.1 leave
+        edge).
+        """
+
+        if group == IP4__MULTICAST__ALL_SYSTEMS:
+            return
+
+        refs = self._ip4_multicast_refs.get(group)
+        if refs is None:
+            return
+
+        match kind:
+            case MembershipRefKind.OPERATOR:
+                refs.operator = False
+            case MembershipRefKind.SOCKET:
+                if refs.socket_count > 0:
+                    refs.socket_count -= 1
+
+        if refs.operator or refs.socket_count > 0:
+            return
+
+        del self._ip4_multicast_refs[group]
+        if self._mc_is_joined(group):
+            self._remove_ip4_multicast(group)
 
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """

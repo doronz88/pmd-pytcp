@@ -389,9 +389,11 @@ Leave Group to 224.0.0.2 on leave.
 
 PyTCP implements the IGMPv3 **host** role for the common
 any-source (EXCLUDE{}) membership case: it joins/leaves groups
-through the membership API, announces changes with robustness-
-retransmitted state-change Reports, and answers Membership
-Queries after the §5.2 random delay. The principal deferred
+through the membership API (reference-counted per socket, so a
+group is held until its last holder leaves — see
+`docs/refactor/igmp_r3_socket_refcounting.md`), announces changes
+with robustness-retransmitted state-change Reports, and answers
+Membership Queries after the §5.2 random delay. The principal deferred
 host-side gap is the §7 older-version querier interoperation
 state machine (parse support and the legacy Report/Leave wire
 forms already exist; only the version-switching logic is

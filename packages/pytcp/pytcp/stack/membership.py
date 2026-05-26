@@ -36,6 +36,7 @@ pytcp/stack/membership.py
 ver 3.0.6
 """
 
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -48,6 +49,19 @@ if TYPE_CHECKING:
 # The IPv4 all-systems group every host joins permanently and never
 # leaves (RFC 1112 §4); the membership API refuses to drop it.
 IP4__MULTICAST__ALL_SYSTEMS = Ip4Address("224.0.0.1")
+
+
+class MembershipRefKind(Enum):
+    """
+    The kind of reference held on an IPv4 multicast group membership:
+    an operator-API hold ('ip maddr'-style, set-once and idempotent) or
+    a per-socket hold ('IP_ADD_MEMBERSHIP', reference-counted). The
+    interface keeps a group joined while any reference of either kind
+    remains.
+    """
+
+    OPERATOR = 1
+    SOCKET = 2
 
 
 class MembershipApi:
@@ -109,42 +123,48 @@ class MembershipApi:
 
         return MembershipApi(packet_handler=stack.interfaces[ifindex])
 
-    def join(self, *, group: Ip4Address) -> None:
+    def join(self, *, group: Ip4Address, kind: MembershipRefKind = MembershipRefKind.OPERATOR) -> None:
         """
         Join the IPv4 multicast 'group' on the bound interface — Linux
-        'IP_ADD_MEMBERSHIP' equivalent. Idempotent: re-joining a group
-        the interface already listens on is a no-op. Raises 'ValueError'
-        for a non-multicast address.
+        'IP_ADD_MEMBERSHIP' equivalent. Acquires a reference of 'kind'
+        (operator hold by default; the BSD socket facade passes
+        'MembershipRefKind.SOCKET'); the actual join + state-change
+        Report fires only when the group crosses the not-joined→joined
+        edge. The operator hold is idempotent. Raises 'ValueError' for a
+        non-multicast address.
         """
 
         if not group.is_multicast:
             raise ValueError(f"The 'group' must be a multicast address. Got: {group!r}")
 
         handler = self._resolve_handler()
-        if group in handler._ip4_multicast:
-            return
 
         # Linux 'net.ipv4.igmp_max_memberships' — cap the number of
-        # joined groups. The implicit all-systems group 224.0.0.1 does
-        # not count. Qualified module access so an operator override of
-        # 'igmp.max_memberships' resolves on every join.
-        joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
-        if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
-            raise ValueError(
-                f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
-                f"(sysctl 'igmp.max_memberships'); cannot join {group}."
-            )
+        # joined groups. The cap applies only when this acquisition
+        # would newly join the group; the implicit all-systems group
+        # 224.0.0.1 does not count. Qualified module access so an
+        # operator override of 'igmp.max_memberships' resolves on every
+        # join.
+        if not handler._mc_is_joined(group):
+            joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
+            if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
+                raise ValueError(
+                    f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
+                    f"(sysctl 'igmp.max_memberships'); cannot join {group}."
+                )
 
-        handler._assign_ip4_multicast(group)
-        __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group}")
+        handler._mc_ref_acquire(group, kind=kind)
+        __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group} ({kind.name})")
 
-    def leave(self, *, group: Ip4Address) -> None:
+    def leave(self, *, group: Ip4Address, kind: MembershipRefKind = MembershipRefKind.OPERATOR) -> None:
         """
         Leave the IPv4 multicast 'group' on the bound interface — Linux
-        'IP_DROP_MEMBERSHIP' equivalent. Idempotent: leaving a group the
-        interface is not in is a no-op. Refuses to drop the all-systems
-        group 224.0.0.1, which a host belongs to permanently (RFC 1112
-        §4). Raises 'ValueError' for a non-multicast address.
+        'IP_DROP_MEMBERSHIP' equivalent. Releases the reference of 'kind'
+        (operator hold by default); the actual leave + state-change Leave
+        Report fires only when the last reference of any kind is dropped
+        (the joined→not-joined edge). Idempotent. Refuses to drop the
+        all-systems group 224.0.0.1, which a host belongs to permanently
+        (RFC 1112 §4). Raises 'ValueError' for a non-multicast address.
         """
 
         if not group.is_multicast:
@@ -154,11 +174,8 @@ class MembershipApi:
             raise ValueError("The all-systems group 224.0.0.1 is joined permanently and cannot be left (RFC 1112 §4).")
 
         handler = self._resolve_handler()
-        if group not in handler._ip4_multicast:
-            return
-
-        handler._remove_ip4_multicast(group)
-        __debug__ and log("stack", f"<lg>Membership API</>: left IPv4 group {group}")
+        handler._mc_ref_release(group, kind=kind)
+        __debug__ and log("stack", f"<lg>Membership API</>: left IPv4 group {group} ({kind.name})")
 
     def list_memberships(self) -> tuple[Ip4Address, ...]:
         """

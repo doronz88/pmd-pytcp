@@ -161,7 +161,18 @@ them green. Immediate-Report assertions can use `NetworkTestCase` (the
 Leave is an immediate Report — no timer advance needed); retransmit-
 train assertions use `IcmpTestCase`.
 
-### Phase A — interface refcount via two sockets
+### Phase A — interface refcount via two sockets — SHIPPED
+
+**Shipped.** `MembershipRefKind` (OPERATOR / SOCKET) added to the
+membership API; `MembershipApi.join` / `leave` take a `kind` and route
+through new edge-gated interface helpers `_mc_is_joined` /
+`_mc_ref_acquire` / `_mc_ref_release` (per-group `_Ip4MulticastRefs` =
+`operator` flag + `socket_count`), so `_assign` / `_remove_ip4_multicast`
+(and their Reports) fire only on the not-joined↔joined edge. The socket
+facade's `_ipproto_ip_membership` is now an instance method recording
+each `(ifindex, group)` in `self._ip4_memberships` and acquiring /
+releasing a SOCKET reference. All four
+`test__igmp__socket_membership_refcount.py` tests pass.
 
 **Failing tests first** (new
 `test__igmp__socket_membership_refcount.py`):
