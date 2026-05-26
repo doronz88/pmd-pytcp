@@ -32,6 +32,7 @@ ver 3.0.6
 """
 
 import random
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -46,6 +47,7 @@ from net_proto import (
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.igmp import igmp__constants
+from pytcp.runtime.timer import TimerHandle
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -57,12 +59,26 @@ IGMP__ALL_SYSTEMS = Ip4Address("224.0.0.1")
 IGMP__ALL_IGMPV3_ROUTERS = Ip4Address("224.0.0.22")
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
+class _IgmpPendingChange:
+    """
+    A pending IGMPv3 state-change record awaiting robustness
+    retransmission — the record type to re-send and the number of
+    retransmissions still owed for it.
+    """
+
+    record_type: IgmpV3RecordType
+    remaining: int
+
+
 class IgmpTxHandler:
     """
     The outbound IGMP packet handler for one interface.
     """
 
     _if: "PacketHandler"
+    _igmp_state_change__pending: dict[Ip4Address, _IgmpPendingChange]
+    _igmp_state_change__handle: TimerHandle | None
 
     def __init__(self, *, interface: "PacketHandler") -> None:
         """
@@ -70,6 +86,8 @@ class IgmpTxHandler:
         """
 
         self._if = interface
+        self._igmp_state_change__pending = {}
+        self._igmp_state_change__handle = None
 
     def _send_igmp_v3_report(
         self,
@@ -109,6 +127,12 @@ class IgmpTxHandler:
         the group, CHANGE_TO_INCLUDE_MODE (empty source list) when it
         leaves (RFC 3376 §5.1). The all-systems group 224.0.0.1 is never
         reported (RFC 3376 §6).
+
+        A new change supersedes any retransmit train still pending for
+        the same group: its pending record is overwritten and its
+        repeat count re-seeded (RFC 3376 §5.1). The retransmits recompute
+        their records from the live pending-change map at fire time, so a
+        join cancelled by a quick leave never retransmits the stale join.
         """
 
         if group == IGMP__ALL_SYSTEMS:
@@ -116,30 +140,65 @@ class IgmpTxHandler:
 
         record = IgmpV3GroupRecord(type=record_type, multicast_address=group)
         self._emit_v3_report([record])
-        self._schedule_state_change_retransmits(record)
 
-    def _schedule_state_change_retransmits(self, record: IgmpV3GroupRecord, /) -> None:
-        """
-        Schedule the RFC 3376 §5.1 robustness retransmissions of a
-        state-change Report: 'igmp.robustness' - 1 repeats of 'record',
-        each at a delay drawn uniformly at random from (0,
-        'igmp.unsolicited_report_interval' ms]. Reading both knobs via
-        qualified module access so an operator override resolves on each
-        membership change.
-
-        Scheduling needs the shared Timer subsystem. The stateless
-        network-test harness does not bring one up, so when no Timer is
-        present the retransmits are skipped — the immediate Report has
-        already gone out, and a started stack always has the Timer.
-        """
-
-        timer = getattr(stack, "timer", None)
-        if timer is None:
+        repeats = igmp__constants.IGMP__ROBUSTNESS_VARIABLE - 1
+        if repeats <= 0:
+            self._igmp_state_change__pending.pop(group, None)
             return
 
-        for _ in range(igmp__constants.IGMP__ROBUSTNESS_VARIABLE - 1):
-            delay_ms = random.randint(1, igmp__constants.IGMP__UNSOLICITED_REPORT_INTERVAL__MS)
-            timer.call_later(delay_ms, lambda: self._emit_v3_report([record]))
+        self._igmp_state_change__pending[group] = _IgmpPendingChange(
+            record_type=record_type,
+            remaining=repeats,
+        )
+        self._arm_state_change_retransmit()
+
+    def _arm_state_change_retransmit(self) -> None:
+        """
+        Ensure a single retransmit ticket is scheduled for the pending
+        state-change records. RFC 3376 §5.1 spaces the robustness
+        retransmissions at intervals drawn uniformly at random from (0,
+        'igmp.unsolicited_report_interval' ms]; the ticket re-arms itself
+        from each fire (the Linux 'igmp_ifc_timer' model) rather than
+        scheduling the whole train up front, so a change arriving
+        mid-train is picked up by the next fire. Reading the interval
+        knob via qualified module access so an operator override resolves
+        on each re-arm.
+        """
+
+        if self._igmp_state_change__handle is not None:
+            return
+
+        delay_ms = random.randint(1, igmp__constants.IGMP__UNSOLICITED_REPORT_INTERVAL__MS)
+        self._igmp_state_change__handle = stack.timer.call_later(delay_ms, self._fire_state_change_retransmit)
+
+    def _fire_state_change_retransmit(self) -> None:
+        """
+        Emit one robustness retransmission of the currently-pending
+        state-change records — recomputed from the live pending-change
+        map, so a superseded change carries its latest record — then
+        decrement each entry's remaining-repeat count, drop the exhausted
+        ones, and re-arm the ticket while any repeats remain (RFC 3376
+        §5.1).
+        """
+
+        self._igmp_state_change__handle = None
+
+        records: list[IgmpV3GroupRecord] = []
+        for group in list(self._igmp_state_change__pending):
+            pending = self._igmp_state_change__pending[group]
+            records.append(IgmpV3GroupRecord(type=pending.record_type, multicast_address=group))
+            if pending.remaining <= 1:
+                del self._igmp_state_change__pending[group]
+            else:
+                self._igmp_state_change__pending[group] = _IgmpPendingChange(
+                    record_type=pending.record_type,
+                    remaining=pending.remaining - 1,
+                )
+
+        self._emit_v3_report(records)
+
+        if self._igmp_state_change__pending:
+            self._arm_state_change_retransmit()
 
     def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
         """

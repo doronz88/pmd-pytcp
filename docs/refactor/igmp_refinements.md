@@ -62,9 +62,17 @@ re-litigated.
 
 Ordered by priority.
 
-### R1 — State-change retransmit: recompute at fire, supersede on a new change (CORRECTNESS)
+### R1 — State-change retransmit: recompute at fire, supersede on a new change (CORRECTNESS) — SHIPPED
 
-**Today:** `_schedule_state_change_retransmits` captures the join/leave
+**Shipped** (with R2). `_send_igmp_v3_state_change` now records a
+per-group pending-change entry and arms a single recompute-at-fire
+retransmit ticket (`_arm_state_change_retransmit` /
+`_fire_state_change_retransmit`); a new change overwrites the group's
+pending record and re-seeds its count, so a join cancelled by a quick
+leave retransmits the leave, never the stale join. Test:
+`test__igmp__robustness_retransmit.py::test__igmp__retransmit__leave_supersedes_pending_join`.
+
+**Today (before fix):** `_schedule_state_change_retransmits` captures the join/leave
 record in a closure and re-emits it RV-1 times; it does **not** cancel
 outstanding retransmits when a new state-change for the same group
 occurs, nor recompute their contents.
@@ -109,9 +117,15 @@ Reference: RFC 3376 §5.1 (a new change supersedes the in-flight
 retransmit train); Linux `net/ipv4/igmp.c` (`igmp_ifc_event`,
 `mr_ifc_count` / `crcount`).
 
-### R2 — Drop the `stack.timer` retransmit guard; give `NetworkTestCase` a Timer (TEST-INFRA)
+### R2 — Drop the `stack.timer` retransmit guard; give `NetworkTestCase` a Timer (TEST-INFRA) — SHIPPED
 
-**Today:** `_schedule_state_change_retransmits` guards on
+**Shipped** (with R1). `NetworkTestCase` now installs an inert
+`FakeTimer` as `stack.timer` via `mock__init` (snapshot/restored in
+setUp/tearDown), so the IGMP TX path calls `stack.timer.call_later`
+unconditionally — matching the always-unguarded RX query-response
+path — and the `getattr(stack, "timer", None)` guard is gone.
+
+**Today (before fix):** `_schedule_state_change_retransmits` guards on
 `getattr(stack, "timer", None)` because `NetworkTestCase` brings up no
 Timer subsystem, so a join/leave there would otherwise crash.
 

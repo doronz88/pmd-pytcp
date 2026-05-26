@@ -153,10 +153,26 @@ filtering — see §9.
 > times, at intervals chosen at random from the range (0,
 > [Unsolicited Report Interval])."
 
-**Adherence:** met. `_schedule_state_change_retransmits` repeats
-the Report `igmp.robustness` − 1 more times, each at a delay
-drawn uniformly from (0, `igmp.unsolicited_report_interval` ms]
-via `stack.timer`.
+> "If more changes to the same interface state entry occur
+> before all the retransmissions of the State-Change Report for
+> the first change have been completed, each such additional
+> change triggers the immediate transmission of a new
+> State-Change Report."
+
+**Adherence:** met. A state change records a per-group
+pending-change entry (record type + remaining-repeat count
+seeded to `igmp.robustness` − 1) and arms a single retransmit
+ticket; each fire recomputes the records from the live
+pending-change map, decrements the counts, drops the exhausted
+entries, and re-arms while any remain — so the repeats are
+chained at successive random intervals drawn from (0,
+`igmp.unsolicited_report_interval` ms] via `stack.timer` (the
+Linux `igmp_ifc_timer` / `mr_ifc_count` model). A new change to
+the same group overwrites that group's pending record and
+re-seeds its count, so a join cancelled by a quick leave
+retransmits the leave, never the stale join
+(`IgmpTxHandler._send_igmp_v3_state_change` /
+`_arm_state_change_retransmit` / `_fire_state_change_retransmit`).
 
 ## §5.2. Action on Reception of a Query
 
@@ -297,8 +313,10 @@ deferred follow-on.
   CHANGE_TO_INCLUDE_MODE record; all-systems group silent.
 - **Integration:**
   `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__robustness_retransmit.py`
-  RV=2 → one retransmit at the URI delay; RV=3 → two; RV=1 →
-  none.
+  RV=2 → one retransmit at the URI delay; RV=3 → two chained at
+  successive intervals; RV=1 → none; and a leave before the join
+  retransmit fires supersedes it (the retransmit carries
+  CHANGE_TO_INCLUDE_MODE, never the stale CHANGE_TO_EXCLUDE_MODE).
 
 **Status:** locked in.
 

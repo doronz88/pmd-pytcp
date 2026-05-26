@@ -61,7 +61,9 @@ from pytcp.runtime.packet_handler import (
     packet_handler__ip6_frag__tx,
 )
 from pytcp.runtime.rx_ring import RxRing
+from pytcp.runtime.timer import Timer
 from pytcp.runtime.tx_ring import TxRing
+from pytcp.tests.lib.fake_timer import FakeTimer
 
 # # #  IPv4
 #
@@ -208,6 +210,8 @@ class NetworkTestCase(TestCase):
     _ip6_flow_label_generation_prior: int
     _interfaces_snapshot: dict[int, PacketHandlerL2 | PacketHandlerL3]
     _packet_sockets_prior: list[Any]
+    _timer: FakeTimer
+    _timer_prior: Timer | None
 
     def setUp(self) -> None:
         """
@@ -339,11 +343,23 @@ class NetworkTestCase(TestCase):
         # Initialize the list holding the frames "sent" by mock TxRing.
         self._frames_tx = []
 
+        # Install an inert 'FakeTimer' as the shared 'stack.timer' so the
+        # event-driven scheduling paths (IGMP/MLD state-change retransmit,
+        # the IGMP query-response timer, TCP timers) resolve a Timer here
+        # exactly as in a started stack, instead of branching on its
+        # absence. The FakeTimer spawns no thread and fires nothing until
+        # a test advances it, so it is invisible to tests that never do.
+        # 'IcmpTestCase' overrides this with its own advanceable FakeTimer
+        # via a second 'mock__init'.
+        self._timer_prior = stack.__dict__.get("timer")
+        self._timer = FakeTimer()
+
         stack.mock__init(
             mock__tx_ring=cast(TxRing, mock_TxRing),
             mock__arp_cache=cast(ArpCache, mock_ArpCache),
             mock__nd_cache=cast(NdCache, mock_NdCache),
             mock__packet_handler=self._packet_handler,
+            mock__timer=cast(Timer, self._timer),
         )
 
         # Pre-install the fixture default routes (STACK gateways)
@@ -509,6 +525,13 @@ class NetworkTestCase(TestCase):
             stack.packet_sockets.register(packet_sock)
 
         stack.__dict__.update(self._stack__attr_snapshot)
+
+        # Restore (or remove) the shared 'stack.timer' installed in
+        # setUp so the FakeTimer does not leak into unrelated tests.
+        if self._timer_prior is None:
+            stack.__dict__.pop("timer", None)
+        else:
+            stack.timer = self._timer_prior
 
         ip6__constants_module.IP6__FLOW_LABEL_GENERATION = self._ip6_flow_label_generation_prior
 
