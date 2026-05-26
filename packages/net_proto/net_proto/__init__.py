@@ -347,6 +347,34 @@ from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__unknown impo
 from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
     Icmp6NdOptions,
 )
+from net_proto.protocols.igmp.igmp__assembler import IgmpAssembler
+from net_proto.protocols.igmp.igmp__base import Igmp
+from net_proto.protocols.igmp.igmp__errors import (
+    IgmpIntegrityError,
+    IgmpSanityError,
+)
+from net_proto.protocols.igmp.igmp__parser import IgmpParser
+from net_proto.protocols.igmp.message.igmp__message import (
+    IgmpMessage,
+    IgmpType,
+    IgmpVersion,
+)
+from net_proto.protocols.igmp.message.igmp__message__group import (
+    IgmpMessageGroup,
+)
+from net_proto.protocols.igmp.message.igmp__message__query import (
+    IgmpMessageQuery,
+)
+from net_proto.protocols.igmp.message.igmp__message__unknown import (
+    IgmpMessageUnknown,
+)
+from net_proto.protocols.igmp.message.igmp__message__v3_report import (
+    IgmpMessageV3Report,
+)
+from net_proto.protocols.igmp.message.igmp__v3_group_record import (
+    IgmpV3GroupRecord,
+    IgmpV3RecordType,
+)
 from net_proto.protocols.ip4.ip4__assembler import (
     Ip4Assembler,
     Ip4FragAssembler,
@@ -753,6 +781,20 @@ __all__ = [
     "Icmp6SanityError",
     "Icmp6Type",
     "Icmp6MessageUnknown",
+    "Igmp",
+    "IgmpAssembler",
+    "IgmpParser",
+    "IgmpIntegrityError",
+    "IgmpSanityError",
+    "IgmpMessage",
+    "IgmpType",
+    "IgmpVersion",
+    "IgmpMessageQuery",
+    "IgmpMessageV3Report",
+    "IgmpMessageGroup",
+    "IgmpMessageUnknown",
+    "IgmpV3GroupRecord",
+    "IgmpV3RecordType",
     "Ip4Assembler",
     "Ip4FragAssembler",
     "Ip4Header",
