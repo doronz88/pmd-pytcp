@@ -95,9 +95,13 @@ Per-package (net_addr → net_proto → pytcp):
 ### 2.0 IGMP — IPv4 multicast group membership  (the real open gap)
 
 Source of truth: `docs/refactor/igmp_host_membership.md` (detailed
-phased plan, authored 2026-05-25). IGMP (RFC 1112 / 2236 / 3376) is
-**absent** — no codec, no runtime JOIN/LEAVE, no report/query
-handling — while its IPv6 counterpart **MLDv2 is shipped**. A Linux
+phased plan, authored 2026-05-25). **Phase 0 (the net_proto IGMP wire
+codec) shipped 2026-05-25** (`2477b18e`..`252fb199`); Phases 1-6 (the
+pytcp runtime — group state, membership API, RX/TX handlers, listener
+subsystem, sysctls/version-fallback, adherence records + integration
+tests) remain. IGMP (RFC 1112 / 2236 / 3376) still has **no runtime
+JOIN/LEAVE and no report/query handling** — while its IPv6 counterpart
+**MLDv2 is shipped**. A Linux
 host that joins an IPv4 multicast group emits IGMP reports and answers
 queries; PyTCP can only receive traffic for the statically-preconfigured
 all-hosts group (`224.0.0.1`). This is a genuine host-parity asymmetry,

@@ -2,7 +2,7 @@
 
 | Field           | Value                                                                |
 |-----------------|----------------------------------------------------------------------|
-| Status          | Plan — implementation not yet started (deferred Phase-1 track)       |
+| Status          | In progress — Phase 0 (net_proto wire codec) shipped 2026-05-25; Phases 1-6 remain |
 | Plan author     | Release-readiness pass (2026-05-25)                                  |
 | Target RFCs     | RFC 1112 (host multicast model), RFC 2236 (IGMPv2), RFC 3376 (IGMPv3) |
 | Template        | the shipped IPv6 counterpart — MLDv2 (`net_proto .../icmp6/message/mld2/`) + the `stack.address` join/report pattern |
@@ -66,7 +66,18 @@ Each phase is one tests-first commit (or a tests+impl pair), lint +
 full suite + §7.2 audit clean before each, per the standing
 discipline.
 
-### Phase 0 — net_proto IGMP wire codec (RFC 3376 §4)
+### Phase 0 — net_proto IGMP wire codec (RFC 3376 §4) — SHIPPED 2026-05-25
+
+Shipped across seven commits (`2477b18e` IpProto.IGMP=2 → `252fb199`
+base/parser/assembler + wiring). The new `net_proto/protocols/igmp/`
+family follows the six-file pattern with `IgmpType` / `IgmpVersion` /
+`IgmpV3RecordType` enums, `IgmpV3GroupRecord`, the `IgmpMessageQuery`
+(v1/v2/v3 length discrimination + §4.1.1/§4.1.7 float decode),
+`IgmpMessageV3Report`, the legacy `IgmpMessageGroup` (V2 Report / V2
+Leave / V1 Report) and `IgmpMessageUnknown`, plus `Igmp` /
+`IgmpParser` / `IgmpAssembler` and the full `net_proto.__all__` export
+surface. 198 IGMP unit tests. RFC 2236 / 3376 text fetched into
+`docs/rfc/ip4/`. Original sketch:
 
 New `net_proto/protocols/igmp/` following the six-file pattern
 (`net_proto.md`); the MLDv2 files are the field-by-field template.
