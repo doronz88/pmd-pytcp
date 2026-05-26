@@ -73,8 +73,9 @@ base/parser/assembler + wiring). The new `net_proto/protocols/igmp/`
 family follows the six-file pattern with `IgmpType` / `IgmpVersion` /
 `IgmpV3RecordType` enums, `IgmpV3GroupRecord`, the `IgmpMessageQuery`
 (v1/v2/v3 length discrimination + §4.1.1/§4.1.7 float decode),
-`IgmpMessageV3Report`, the legacy `IgmpMessageGroup` (V2 Report / V2
-Leave / V1 Report) and `IgmpMessageUnknown`, plus `Igmp` /
+`IgmpMessageV3Report`, the legacy `IgmpMessageV2Report` /
+`IgmpMessageV2Leave` / `IgmpMessageV1Report` (one class per type,
+matching the ICMPv4 echo convention) and `IgmpMessageUnknown`, plus `Igmp` /
 `IgmpParser` / `IgmpAssembler` and the full `net_proto.__all__` export
 surface. 198 IGMP unit tests. RFC 2236 / 3376 text fetched into
 `docs/rfc/ip4/`. Original sketch:

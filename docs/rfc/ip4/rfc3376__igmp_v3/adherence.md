@@ -217,7 +217,8 @@ out-of-scope Phase-2 router work.
 **Adherence:** not implemented (deferred). PyTCP parses v1/v2
 Queries (it discriminates the version by message length) and
 the legacy v1/v2 Report / Leave wire forms exist
-(`IgmpMessageGroup`), but the older-querier-present state
+(`IgmpMessageV2Report` / `IgmpMessageV2Leave` /
+`IgmpMessageV1Report`), but the older-querier-present state
 machine — switching the response Report to the v1/v2 form for
 the Older Version Querier Present Timeout, and sending an IGMPv2
 Leave Group to 224.0.0.2 under a v2 querier — is not wired. The

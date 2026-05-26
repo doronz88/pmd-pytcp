@@ -40,11 +40,14 @@ from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.igmp.igmp__assembler import IgmpAssembler
 from net_proto.protocols.igmp.igmp__parser import IgmpParser
 from net_proto.protocols.igmp.message.igmp__message import IgmpType, IgmpVersion
-from net_proto.protocols.igmp.message.igmp__message__group import (
-    IgmpMessageGroup,
-)
 from net_proto.protocols.igmp.message.igmp__message__query import (
     IgmpMessageQuery,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_leave import (
+    IgmpMessageV2Leave,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_report import (
+    IgmpMessageV2Report,
 )
 from net_proto.protocols.igmp.message.igmp__message__v3_report import (
     IgmpMessageV3Report,
@@ -121,18 +124,15 @@ class TestIgmpParserOperation(TestCase):
         Reference: RFC 2236 §2 (V2 Membership Report).
         """
 
-        group = IgmpMessageGroup(
-            type=IgmpType.V2_MEMBERSHIP_REPORT,
-            group_address=Ip4Address("239.1.1.1"),
-        )
+        report = IgmpMessageV2Report(group_address=Ip4Address("239.1.1.1"))
 
-        packet_rx = _parse(_assembled(group))
+        packet_rx = _parse(_assembled(report))
 
-        self.assertIsInstance(packet_rx.igmp.message, IgmpMessageGroup)
+        self.assertIsInstance(packet_rx.igmp.message, IgmpMessageV2Report)
         self.assertEqual(
             packet_rx.igmp.message.type,
             IgmpType.V2_MEMBERSHIP_REPORT,
-            msg="The parsed group message must carry the V2 Report type.",
+            msg="The parsed message must carry the V2 Report type.",
         )
 
     def test__igmp__parser__v3_general_query(self) -> None:
@@ -163,12 +163,9 @@ class TestIgmpParserOperation(TestCase):
         Reference: RFC 3376 §4 (IGMP occupies the whole IPv4 payload).
         """
 
-        group = IgmpMessageGroup(
-            type=IgmpType.V2_LEAVE_GROUP,
-            group_address=Ip4Address("239.1.1.1"),
-        )
+        leave = IgmpMessageV2Leave(group_address=Ip4Address("239.1.1.1"))
 
-        packet_rx = _parse(_assembled(group))
+        packet_rx = _parse(_assembled(leave))
 
         self.assertEqual(
             len(packet_rx.frame),

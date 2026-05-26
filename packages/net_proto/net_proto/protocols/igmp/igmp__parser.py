@@ -42,14 +42,20 @@ from net_proto.protocols.igmp.message.igmp__message import (
     IgmpMessage,
     IgmpType,
 )
-from net_proto.protocols.igmp.message.igmp__message__group import (
-    IgmpMessageGroup,
-)
 from net_proto.protocols.igmp.message.igmp__message__query import (
     IgmpMessageQuery,
 )
 from net_proto.protocols.igmp.message.igmp__message__unknown import (
     IgmpMessageUnknown,
+)
+from net_proto.protocols.igmp.message.igmp__message__v1_report import (
+    IgmpMessageV1Report,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_leave import (
+    IgmpMessageV2Leave,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_report import (
+    IgmpMessageV2Report,
 )
 from net_proto.protocols.igmp.message.igmp__message__v3_report import (
     IgmpMessageV3Report,
@@ -88,8 +94,12 @@ class IgmpParser(Igmp, ProtoParser):
                 return IgmpMessageQuery
             case IgmpType.V3_MEMBERSHIP_REPORT:
                 return IgmpMessageV3Report
-            case IgmpType.V1_MEMBERSHIP_REPORT | IgmpType.V2_MEMBERSHIP_REPORT | IgmpType.V2_LEAVE_GROUP:
-                return IgmpMessageGroup
+            case IgmpType.V2_MEMBERSHIP_REPORT:
+                return IgmpMessageV2Report
+            case IgmpType.V2_LEAVE_GROUP:
+                return IgmpMessageV2Leave
+            case IgmpType.V1_MEMBERSHIP_REPORT:
+                return IgmpMessageV1Report
             case _:
                 return IgmpMessageUnknown
 

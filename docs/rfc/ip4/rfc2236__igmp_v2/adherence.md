@@ -49,13 +49,15 @@ only the v2-specific clauses.
 > "All IGMP messages of concern to hosts have the following format:
 > [Type | Max Resp Time | Checksum | Group Address] (8 octets)."
 
-**Adherence:** met (codec). The 8-octet form is parsed two ways:
-a Membership Query (Type 0x11, 8 octets) by `IgmpMessageQuery`
-(its v1/v2 branch), and the Version 2 Membership Report (0x16),
-Leave Group (0x17) and Version 1 Membership Report (0x12) by the
-shared `IgmpMessageGroup` (`igmp__message__group.py`), which
-discriminates on the Type field and validates the group is a
-multicast address.
+**Adherence:** met (codec). The 8-octet form is parsed by one
+class per type (matching the ICMPv4 echo-request / echo-reply
+convention): the Membership Query (Type 0x11, 8 octets) by
+`IgmpMessageQuery` (its v1/v2 branch), and the Version 2
+Membership Report (0x16), Leave Group (0x17) and Version 1
+Membership Report (0x12) by `IgmpMessageV2Report` /
+`IgmpMessageV2Leave` / `IgmpMessageV1Report`
+(`igmp__message__v2_report.py` etc.), each fixing its own Type and
+validating the group is a multicast address.
 
 ### §2.2 Max Response Time
 
@@ -63,9 +65,10 @@ multicast address.
 > Query messages ... In all other messages, it is set to zero by
 > the sender and ignored by receivers."
 
-**Adherence:** met. `IgmpMessageGroup.__buffer__` writes the
-second octet as zero for the v2 Report / Leave / v1 Report forms;
-the Query path decodes Max Resp Time only on the Query message.
+**Adherence:** met. The legacy report / leave `__buffer__` methods
+write the second octet as zero for the v2 Report / Leave / v1
+Report forms; the Query path decodes Max Resp Time only on the
+Query message.
 
 ### §2.3 Checksum
 
@@ -90,7 +93,7 @@ Report (CHANGE_TO_EXCLUDE_MODE) and retransmits it per the
 Robustness Variable (RFC 3376 §5.1; see that record). Emitting
 the report in the **Version 2** form instead, when an IGMPv2
 querier is present, is part of the deferred §7 compatibility mode
-— the v2 Report wire form (`IgmpMessageGroup`) is ready; only the
+— the v2 Report wire form (`IgmpMessageV2Report`) is ready; only the
 version-selection logic is unwired.
 
 > "If a host hears another host's Report (version 1 or 2) while it
@@ -114,7 +117,7 @@ IGMPv3 CHANGE_TO_INCLUDE_MODE state-change Report to 224.0.0.22
 (RFC 3376 §5.1) — the IGMPv3 equivalent of the v2 Leave. Emitting
 an IGMPv2 **Leave Group** to 224.0.0.2 instead, under a v2
 querier, is part of the deferred §7 compatibility mode (the
-Leave Group wire form already exists in `IgmpMessageGroup`).
+Leave Group wire form already exists as `IgmpMessageV2Leave`).
 
 > "[Query / Querier behaviour: sending Queries, querier election,
 > Group-Specific Queries on Leave, the Group Membership
@@ -130,10 +133,11 @@ router work. PyTCP is a host (group member) only.
 ### §2 v2 message wire forms
 
 - **Unit:**
-  `packages/net_proto/net_proto/tests/unit/protocols/igmp/test__igmp__message__group.py`
-  Per-type matrix for the V2 Report (0x16), Leave Group (0x17)
-  and V1 Report (0x12): 8-octet length, Max-Resp-Time-zero
-  framing, multicast-group sanity, from_buffer roundtrip.
+  `packages/net_proto/net_proto/tests/unit/protocols/igmp/test__igmp__legacy_reports.py`
+  Per-type matrix over `IgmpMessageV2Report` / `IgmpMessageV2Leave`
+  / `IgmpMessageV1Report`: fixed Type, 8-octet length,
+  Max-Resp-Time-zero framing, multicast-group sanity, from_buffer
+  roundtrip.
 - **Unit:**
   `packages/net_proto/net_proto/tests/unit/protocols/igmp/test__igmp__message__query__operation.py`
   The 8-octet v1/v2 Query branch (version classified by length).

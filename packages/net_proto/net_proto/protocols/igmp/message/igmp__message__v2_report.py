@@ -23,18 +23,15 @@
 
 
 """
-This module contains the legacy 8-octet group-bearing IGMP message
-support class — the IGMPv2 Membership Report, IGMPv2 Leave Group, and
-IGMPv1 Membership Report, which share an identical wire shape and
-differ only by the 'type' field.
+This module contains the IGMPv2 Membership Report message support class.
 
-net_proto/protocols/igmp/message/igmp__message__group.py
+net_proto/protocols/igmp/message/igmp__message__v2_report.py
 
 ver 3.0.6
 """
 
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_addr import Ip4Address
@@ -49,81 +46,70 @@ from net_proto.protocols.igmp.message.igmp__message import (
     IgmpType,
 )
 
-# The legacy 8-octet group-bearing IGMP message [RFC 2236 §2 / RFC 1112].
-#
+# The IGMPv2 Membership Report message (0x16) [RFC 2236 §2].
+
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |      Type     | Max Resp Time |           Checksum            |
+# | Type = 0x16   | Max Resp Time |           Checksum            |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |                         Group Address                         |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 #
-# Type is one of: 0x16 (V2 Membership Report), 0x17 (V2 Leave Group),
-# 0x12 (V1 Membership Report). The Max Resp Time octet is set to zero
-# by the sender and ignored on receipt (RFC 2236 §2.2).
+# The Max Resp Time octet is meaningful only in Queries; in a Report
+# it is set to zero by the sender and ignored on receipt (RFC 2236
+# §2.2).
 
-IGMP__GROUP__LEN = 8
-IGMP__GROUP__STRUCT = "! BBH 4s"
-
-# The 'type' values this message carries (RFC 1112 / RFC 2236).
-IGMP__GROUP__TYPES = frozenset(
-    {
-        IgmpType.V1_MEMBERSHIP_REPORT,
-        IgmpType.V2_MEMBERSHIP_REPORT,
-        IgmpType.V2_LEAVE_GROUP,
-    }
-)
+IGMP__V2_REPORT__LEN = 8
+IGMP__V2_REPORT__STRUCT = "! BBH 4s"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class IgmpMessageGroup(IgmpMessage):
+class IgmpMessageV2Report(IgmpMessage):
     """
-    The legacy 8-octet group-bearing IGMP message (IGMPv2 Membership
-    Report / IGMPv2 Leave Group / IGMPv1 Membership Report). The 'type'
-    field selects which of the three the instance represents.
+    The IGMPv2 Membership Report message.
     """
 
-    type: IgmpType
+    type: IgmpType = field(
+        repr=False,
+        init=False,
+        default=IgmpType.V2_MEMBERSHIP_REPORT,
+    )
     cksum: int = 0
     group_address: Ip4Address = Ip4Address()
 
     @override
     def __post_init__(self) -> None:
         """
-        Ensure integrity of the legacy IGMP group message fields.
+        Ensure integrity of the IGMPv2 Membership Report message fields.
         """
-
-        assert (
-            self.type in IGMP__GROUP__TYPES
-        ), f"The 'type' field must be one of {sorted(IGMP__GROUP__TYPES, key=int)}. Got: {self.type!r}"
 
         assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum}"
 
     @override
     def __len__(self) -> int:
         """
-        Get the legacy IGMP group message length.
+        Get the IGMPv2 Membership Report message length.
         """
 
-        return IGMP__GROUP__LEN
+        return IGMP__V2_REPORT__LEN
 
     @override
     def __str__(self) -> str:
         """
-        Get the legacy IGMP group message log string.
+        Get the IGMPv2 Membership Report message log string.
         """
 
-        return f"IGMP {self.type} group {self.group_address}"
+        return f"IGMPv2 Membership Report group {self.group_address}"
 
     @override
     def __buffer__(self, _: int) -> memoryview:
         """
-        Get the legacy IGMP group message as a memoryview, with the
-        checksum slot left zero for the IGMP base to inject.
+        Get the IGMPv2 Membership Report message as a memoryview, with
+        the checksum slot left zero for the IGMP base to inject.
         """
 
         struct.pack_into(
-            IGMP__GROUP__STRUCT,
-            buffer := bytearray(IGMP__GROUP__LEN),
+            IGMP__V2_REPORT__STRUCT,
+            buffer := bytearray(IGMP__V2_REPORT__LEN),
             0,
             int(self.type),
             0,
@@ -136,12 +122,12 @@ class IgmpMessageGroup(IgmpMessage):
     @override
     def validate_sanity(self) -> None:
         """
-        Ensure sanity of the legacy IGMP group message after parsing it.
+        Ensure sanity of the IGMPv2 Membership Report message after
+        parsing it.
         """
 
-        # RFC 2236 §2.4 — in a Membership Report or Leave Group message
-        # the Group Address field holds the IP multicast group being
-        # reported or left, so a non-multicast group is invalid.
+        # RFC 2236 §2.4 — the Group Address field holds the IP multicast
+        # group being reported, so a non-multicast group is invalid.
         if not self.group_address.is_multicast:
             raise IgmpSanityError(f"The 'group_address' field must be a multicast address. Got: {self.group_address!r}")
 
@@ -149,44 +135,37 @@ class IgmpMessageGroup(IgmpMessage):
     @staticmethod
     def validate_integrity(*, frame: Buffer, ip4__payload_len: int) -> None:
         """
-        Ensure integrity of the legacy IGMP group message before parsing
-        it.
+        Ensure integrity of the IGMPv2 Membership Report message before
+        parsing it.
         """
 
         # RFC 2236 §2.5 — a message may be longer than 8 octets; only
-        # the first 8 are processed (the rest are still checksum-covered
-        # but otherwise ignored).
-        if not (IGMP__GROUP__LEN <= ip4__payload_len <= len(frame)):
+        # the first 8 are processed (the rest stay checksum-covered).
+        if not (IGMP__V2_REPORT__LEN <= ip4__payload_len <= len(frame)):
             raise IgmpIntegrityError(
-                "The condition 'IGMP__GROUP__LEN <= ip4__payload_len <= len(frame)' is not met. "
-                f"Got: {IGMP__GROUP__LEN=}, {ip4__payload_len=}, {len(frame)=}"
+                "The condition 'IGMP__V2_REPORT__LEN <= ip4__payload_len <= len(frame)' is not met. "
+                f"Got: {IGMP__V2_REPORT__LEN=}, {ip4__payload_len=}, {len(frame)=}"
             )
 
     @override
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
         """
-        Initialize the legacy IGMP group message from buffer.
+        Initialize the IGMPv2 Membership Report message from buffer.
         """
 
-        type_, _, cksum, group_bytes = struct.unpack(IGMP__GROUP__STRUCT, buffer[:IGMP__GROUP__LEN])
+        type_, _, cksum, group_bytes = struct.unpack(IGMP__V2_REPORT__STRUCT, buffer[:IGMP__V2_REPORT__LEN])
 
-        assert (
-            received_type := IgmpType.from_int(type_)
-        ) in IGMP__GROUP__TYPES, (
-            f"The 'type' field must be one of {sorted(IGMP__GROUP__TYPES, key=int)}. Got: {received_type!r}"
-        )
+        assert (received_type := IgmpType.from_int(type_)) == (
+            valid_type := IgmpType.V2_MEMBERSHIP_REPORT
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
 
-        return cls(
-            type=received_type,
-            cksum=cksum,
-            group_address=Ip4Address(bytes(group_bytes)),
-        )
+        return cls(cksum=cksum, group_address=Ip4Address(bytes(group_bytes)))
 
     @override
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
-        Assemble the legacy IGMP group message into the buffer list.
+        Assemble the IGMPv2 Membership Report message into the buffer list.
         """
 
         buffers.append(bytearray(memoryview(self)))

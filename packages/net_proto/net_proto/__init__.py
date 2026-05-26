@@ -359,14 +359,20 @@ from net_proto.protocols.igmp.message.igmp__message import (
     IgmpType,
     IgmpVersion,
 )
-from net_proto.protocols.igmp.message.igmp__message__group import (
-    IgmpMessageGroup,
-)
 from net_proto.protocols.igmp.message.igmp__message__query import (
     IgmpMessageQuery,
 )
 from net_proto.protocols.igmp.message.igmp__message__unknown import (
     IgmpMessageUnknown,
+)
+from net_proto.protocols.igmp.message.igmp__message__v1_report import (
+    IgmpMessageV1Report,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_leave import (
+    IgmpMessageV2Leave,
+)
+from net_proto.protocols.igmp.message.igmp__message__v2_report import (
+    IgmpMessageV2Report,
 )
 from net_proto.protocols.igmp.message.igmp__message__v3_report import (
     IgmpMessageV3Report,
@@ -791,7 +797,9 @@ __all__ = [
     "IgmpVersion",
     "IgmpMessageQuery",
     "IgmpMessageV3Report",
-    "IgmpMessageGroup",
+    "IgmpMessageV2Report",
+    "IgmpMessageV2Leave",
+    "IgmpMessageV1Report",
     "IgmpMessageUnknown",
     "IgmpV3GroupRecord",
     "IgmpV3RecordType",

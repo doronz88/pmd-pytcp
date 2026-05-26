@@ -28,9 +28,10 @@ is purely the state machine + report-form selection on top:
   the version by message length (RFC 3376 §7.1) and exposes
   `IgmpMessageQuery.version` (`IgmpVersion.V1 | V2 | V3`) and
   `max_response_time`.
-- The legacy report wire forms — `IgmpMessageGroup` assembles/parses
-  the IGMPv2 Membership Report (`0x16`), IGMPv2 Leave Group (`0x17`),
-  and IGMPv1 Membership Report (`0x12`).
+- The legacy report wire forms — `IgmpMessageV2Report` (`0x16`),
+  `IgmpMessageV2Leave` (`0x17`), and `IgmpMessageV1Report` (`0x12`)
+  assemble/parse the IGMPv2 Membership Report, IGMPv2 Leave Group, and
+  IGMPv1 Membership Report (one class per type).
 - The IGMP RX/TX handlers, the query-response scheduler, and the
   state-change report path (all v3 today).
 
@@ -99,9 +100,9 @@ full suite + §7.2 audit clean before each, per standing discipline.
 
 - Query response: in `_igmp_query__send_now`, branch on the
   compatibility mode — v3 → the current `_send_igmp_v3_report`; v2 →
-  emit one **IGMPv2 Membership Report** (`IgmpMessageGroup`, type
-  `0x16`) **per joined group to the group address**; v1 → one **IGMPv1
-  Report** (`0x12`) per group. Add the TX method(s) on
+  emit one **IGMPv2 Membership Report** (`IgmpMessageV2Report`)
+  **per joined group to the group address**; v1 → one **IGMPv1
+  Report** (`IgmpMessageV1Report`) per group. Add the TX method(s) on
   `IgmpTxHandler` (e.g. `_send_igmp_group_report(group, type)`), built
   on a shared emit helper (Router Alert + TTL=1; dst = the group).
 - State change on join: v3 → CHANGE_TO_EXCLUDE_MODE (today); v2 → v2
