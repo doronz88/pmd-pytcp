@@ -148,14 +148,18 @@ NetworkTestCase join tests anyway).
 
 **Today:** membership is presence-based per interface; the first
 `IP_DROP_MEMBERSHIP` removes the group even if another socket still
-holds it.
+holds it, and a socket `close()` leaks its memberships (no auto-leave).
 
 **Fix sketch:** a per-(interface, group) join refcount keyed by the
-joining socket; `_remove_ip4_multicast` (the actual leave + Leave
-Report) fires only when the count hits zero. Mirrors Linux
-`ip_mc_socklist`. Decide whether the refcount lives on the socket or
-the membership API. Tests: two joiners, one leaves → group retained;
-second leaves → group dropped + Leave Report.
+joining socket; the actual leave + Leave Report fires only when the
+count hits zero, and `close()` releases the socket's memberships.
+Mirrors Linux `ip_mc_socklist` / `ip_mc_drop_socket`. Couples with R7
+(shared leave path).
+
+**Full sub-plan (tests-first):**
+`docs/refactor/igmp_r3_socket_refcounting.md` — the design decision
+(unified interface refcount, operator API contract preserved), touch
+list, and the phased A/B/C test inventory.
 
 ### R4 — `max_memberships` overflow should raise ENOBUFS, not EINVAL (PARITY NIT)
 
