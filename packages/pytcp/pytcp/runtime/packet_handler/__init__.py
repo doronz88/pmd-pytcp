@@ -633,6 +633,22 @@ class PacketHandler(Subsystem, ABC):
 
         raise NotImplementedError
 
+    @abstractmethod
+    def _assign_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Assign IPv4 multicast group to the list stack listens on.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Remove IPv4 multicast group from the list stack listens on.
+        """
+
+        raise NotImplementedError
+
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
         Assign IPv6 host unicast  address to the list stack listens on.
@@ -2742,6 +2758,12 @@ class PacketHandlerL2(
         method is not the integration point for that.
         """
 
+        # RFC 1112 §4 — every IPv4 host joins the all-systems group
+        # 224.0.0.1 permanently on every interface (programs the
+        # 01:00:5e:00:00:01 multicast MAC on L2). It is never
+        # IGMP-reported (RFC 3376 §6).
+        self._assign_ip4_multicast(Ip4Address("224.0.0.1"))
+
         # Probe each candidate sequentially over its own 'Ip4Acd'
         # engine (the Linux 'sd-ipv4acd' model — RFC 5227 §2.1.1
         # Probe then §2.3 Announce on a clean probe). A statically
@@ -2806,6 +2828,39 @@ class PacketHandlerL2(
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
         self._remove_mac_multicast(ip6_multicast.multicast_mac)
+
+    @override
+    def _assign_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Assign IPv4 multicast group to the list stack listens on.
+        """
+
+        self._ip4_multicast.append(ip4_multicast)
+
+        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+
+        # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
+        # multicast MAC 01:00:5e + low 23 bits of the group address.
+        self._assign_mac_multicast(ip4_multicast.multicast_mac)
+
+        # Phase 4: arm the unsolicited IGMP membership-report burst here
+        # (RFC 3376 §5.1), except for the all-systems group 224.0.0.1
+        # which is never reported (RFC 3376 §6).
+
+    @override
+    def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Remove IPv4 multicast group from the list stack listens on.
+        """
+
+        self._ip4_multicast.remove(ip4_multicast)
+
+        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+
+        self._remove_mac_multicast(ip4_multicast.multicast_mac)
+
+        # Phase 4: send the IGMP Leave / state-change report here
+        # (RFC 3376 §5.1 / RFC 2236 §3 under a v2 querier).
 
     def _assign_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -2937,6 +2992,11 @@ class PacketHandlerL3(
         should listen on.
         """
 
+        # RFC 1112 §4 — every IPv4 host joins the all-systems group
+        # 224.0.0.1 permanently on every interface. It is never
+        # IGMP-reported (RFC 3376 §6).
+        self._assign_ip4_multicast(Ip4Address("224.0.0.1"))
+
         for ip4_host in list(self._ip4_ifaddr_candidate):
             self._ip4_ifaddr_candidate.remove(ip4_host)
             self._assign_ip4_host(ip4_host=ip4_host)
@@ -2969,3 +3029,32 @@ class PacketHandlerL3(
         self._ip6_multicast.remove(ip6_multicast)
 
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
+
+    @override
+    def _assign_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Assign IPv4 multicast group to the list stack listens on. An L3
+        (TUN) interface has no Ethernet layer, so no multicast MAC is
+        programmed.
+        """
+
+        self._ip4_multicast.append(ip4_multicast)
+
+        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+
+        # Phase 4: arm the unsolicited IGMP membership-report burst here
+        # (RFC 3376 §5.1), except for the all-systems group 224.0.0.1
+        # which is never reported (RFC 3376 §6).
+
+    @override
+    def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
+        """
+        Remove IPv4 multicast group from the list stack listens on.
+        """
+
+        self._ip4_multicast.remove(ip4_multicast)
+
+        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+
+        # Phase 4: send the IGMP Leave / state-change report here
+        # (RFC 3376 §5.1 / RFC 2236 §3 under a v2 querier).

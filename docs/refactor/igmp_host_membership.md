@@ -111,7 +111,18 @@ New `net_proto/protocols/igmp/` following the six-file pattern
   assembler operation, the §4.1.1 code↔value table, v2/v1 vs v3
   length discrimination.
 
-### Phase 1 — per-interface IPv4 group state + L2 mapping
+### Phase 1 — per-interface IPv4 group state + L2 mapping — SHIPPED 2026-05-25
+
+Added `_assign_ip4_multicast` / `_remove_ip4_multicast` (abstract on
+`PacketHandler`, concrete on `PacketHandlerL2` with the RFC 1112 §6.4
+Ethernet multicast-MAC mapping and on `PacketHandlerL3` without it),
+and the boot-time join of the all-systems group `224.0.0.1` in both
+`_create_stack_ip4_addressing` paths (RFC 1112 §4) — aligning the real
+boot with the test-harness fixture that already preseeded it. The
+per-group filter-mode/source/timer membership record is deferred to
+Phases 3-4 (the host state machine that consumes it). The IGMP
+report-on-join hook is marked `# Phase 4:` at both assign sites; the
+all-systems group is never reported (RFC 3376 §6). Original sketch:
 
 - Add `_assign_ip4_multicast(group)` / `_remove_ip4_multicast(group)`
   on the packet handler — the IPv4 analog of the existing
