@@ -264,6 +264,15 @@ class PacketStatsRx(PacketStats):
     icmp6__mld2_query__respond: int = 0
     icmp6__unknown: int = 0
 
+    igmp__pre_parse: int = 0
+    igmp__failed_parse__drop: int = 0
+    igmp__membership_query: int = 0
+    igmp__membership_query__scheduled: int = 0
+    igmp__membership_query__superseded: int = 0
+    igmp__membership_query__respond: int = 0
+    igmp__membership_report: int = 0
+    igmp__unknown: int = 0
+
     udp__pre_parse: int = 0
     udp__failed_parse__drop: int = 0
     udp__ip6_zero_cksum__drop: int = 0
@@ -389,6 +398,9 @@ class PacketStatsTx(PacketStats):
     icmp6__nd__neighbor_advertisement__send: int = 0
     icmp6__mld2__report__send: int = 0
     icmp6__unknown__drop: int = 0
+
+    igmp__pre_assemble: int = 0
+    igmp__v3_report__send: int = 0
 
     tcp__pre_assemble: int = 0
     tcp__flag_ns: int = 0

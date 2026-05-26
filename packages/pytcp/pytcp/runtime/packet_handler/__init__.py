@@ -58,6 +58,7 @@ from net_proto import (
     Icmp4Message,
     Icmp6Message,
     Icmp6NdRoutePreference,
+    IgmpV3RecordType,
     Ip4Payload,
     Ip6Assembler,
     Ip6Payload,
@@ -103,6 +104,7 @@ from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import Icmp6RxHandler
 from .packet_handler__icmp6__tx import Icmp6TxHandler
+from .packet_handler__igmp__tx import IgmpTxHandler
 from .packet_handler__ip4__rx import Ip4RxHandler
 from .packet_handler__ip4__tx import Ip4TxHandler
 from .packet_handler__ip6__rx import Ip6RxHandler
@@ -144,6 +146,7 @@ class PacketHandler(Subsystem, ABC):
     _icmp4_tx: Icmp4TxHandler
     _icmp6_rx: Icmp6RxHandler
     _icmp6_tx: Icmp6TxHandler
+    _igmp_tx: IgmpTxHandler
     _ip6_frag_rx: Ip6FragRxHandler
     _ip6_frag_tx: Ip6FragTxHandler
     _ip4_rx: Ip4RxHandler
@@ -391,6 +394,7 @@ class PacketHandler(Subsystem, ABC):
         self._icmp4_tx = Icmp4TxHandler(interface=self)
         self._icmp6_rx = Icmp6RxHandler(interface=self)
         self._icmp6_tx = Icmp6TxHandler(interface=self)
+        self._igmp_tx = IgmpTxHandler(interface=self)
         self._ip6_frag_rx = Ip6FragRxHandler(interface=self)
         self._ip6_frag_tx = Ip6FragTxHandler(interface=self)
         self._ip4_rx = Ip4RxHandler(interface=self)
@@ -1781,6 +1785,17 @@ class PacketHandler(Subsystem, ABC):
         """
 
         self._icmp6_tx._send_icmp6_multicast_listener_report()
+
+    def _send_igmp_v3_report(
+        self,
+        *,
+        record_type: IgmpV3RecordType = IgmpV3RecordType.MODE_IS_EXCLUDE,
+    ) -> None:
+        """
+        Send an IGMPv3 Membership Report (delegates to the IGMP TX sub-handler).
+        """
+
+        self._igmp_tx._send_igmp_v3_report(record_type=record_type)
 
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """

@@ -237,6 +237,7 @@ LOG__CHANNEL = {
     "ip6",
     "icmp4",
     "icmp6",
+    "igmp",
     "udp",
     "tcp",
     "socket",
