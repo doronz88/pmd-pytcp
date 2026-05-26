@@ -37,6 +37,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.lib.proto import Proto
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
+from net_proto.protocols.igmp.igmp__assembler import IgmpAssembler
 from net_proto.protocols.ip4.ip4__header import Ip4Header, Ip4HeaderProperties
 from net_proto.protocols.ip4.options.ip4__options import (
     Ip4Options,
@@ -46,7 +47,7 @@ from net_proto.protocols.raw.raw__assembler import RawAssembler
 from net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from net_proto.protocols.udp.udp__assembler import UdpAssembler
 
-type Ip4Payload = (Icmp4Assembler | TcpAssembler | UdpAssembler | RawAssembler)
+type Ip4Payload = (Icmp4Assembler | IgmpAssembler | TcpAssembler | UdpAssembler | RawAssembler)
 
 
 class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsProperties):

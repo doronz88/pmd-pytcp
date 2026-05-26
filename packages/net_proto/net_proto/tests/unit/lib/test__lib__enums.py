@@ -41,6 +41,7 @@ from net_proto.lib.proto import Proto
 from net_proto.protocols.arp.arp__base import Arp
 from net_proto.protocols.icmp4.icmp4__base import Icmp4
 from net_proto.protocols.icmp6.icmp6__base import Icmp6
+from net_proto.protocols.igmp.igmp__base import Igmp
 from net_proto.protocols.ip4.ip4__base import Ip4
 from net_proto.protocols.ip6.ip6__base import Ip6
 from net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
@@ -527,6 +528,11 @@ class TestNetProtoLibEnumsIpProtoIgmpFromInt(TestCase):
             "_description": "Icmp4 instance must map to IpProto.ICMP4.",
             "_spec": Icmp4,
             "_expected": IpProto.ICMP4,
+        },
+        {
+            "_description": "Igmp instance must map to IpProto.IGMP.",
+            "_spec": Igmp,
+            "_expected": IpProto.IGMP,
         },
         {
             "_description": "Tcp instance must map to IpProto.TCP.",

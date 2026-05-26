@@ -153,6 +153,7 @@ class IpProto(ProtoEnumByte):
 
         from net_proto.protocols.icmp4.icmp4__base import Icmp4
         from net_proto.protocols.icmp6.icmp6__base import Icmp6
+        from net_proto.protocols.igmp.igmp__base import Igmp
         from net_proto.protocols.ip4.ip4__base import Ip4
         from net_proto.protocols.ip6.ip6__base import Ip6
         from net_proto.protocols.ip6_dest_opts.ip6_dest_opts__base import Ip6DestOpts
@@ -168,6 +169,9 @@ class IpProto(ProtoEnumByte):
 
         if isinstance(proto, Icmp4):
             return IpProto.ICMP4
+
+        if isinstance(proto, Igmp):
+            return IpProto.IGMP
 
         if isinstance(proto, Tcp):
             return IpProto.TCP
