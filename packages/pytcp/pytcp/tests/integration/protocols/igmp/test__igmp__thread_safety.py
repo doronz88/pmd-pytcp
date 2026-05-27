@@ -47,6 +47,13 @@ from pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilter,
     Ip4MulticastFilterMode,
 )
+from pytcp.socket import (
+    AF_INET,
+    IP_ADD_SOURCE_MEMBERSHIP,
+    IPPROTO_IP,
+    SOCK_DGRAM,
+    socket,
+)
 from pytcp.stack import sysctl
 from pytcp.stack.membership import MembershipApi
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
@@ -95,6 +102,7 @@ class _TrackingRLock:
 
         self._lock = threading.RLock()
         self.depth = 0
+        self.max_depth = 0
 
     def __enter__(self) -> "_TrackingRLock":
         """
@@ -103,6 +111,7 @@ class _TrackingRLock:
 
         self._lock.acquire()
         self.depth += 1
+        self.max_depth = max(self.max_depth, self.depth)
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -326,4 +335,73 @@ class TestIgmpStateChangeRetransmitLocking(IcmpTestCase):
         self.assertTrue(
             all(observed),
             msg="The pending state-change map must be mutated while the interface multicast lock is held.",
+        )
+
+
+class TestSocketSourceFilterLocking(IcmpTestCase):
+    """
+    The per-socket IPv4 multicast source-filter lock-discipline tests.
+    """
+
+    def test__socket__source_filter_write_holds_the_lock(self) -> None:
+        """
+        Ensure an application-thread source-membership setsockopt mutates
+        the per-socket source-filter map while holding the per-socket
+        source-filter lock, so two threads racing setsockopt on one
+        socket cannot lose an update or tear the map on a free-threaded
+        build.
+
+        Reference: RFC 3376 §3.1 (per-socket source filter).
+        """
+
+        sock = socket(AF_INET, SOCK_DGRAM)
+        self.addCleanup(sock.close)
+        tracking = _TrackingRLock()
+        observed: list[bool] = []
+        setattr(sock, "_lock__ip4_source_filters", tracking)
+        setattr(
+            sock,
+            "_ip4_source_filters",
+            _LockAssertingDict(tracking, observed, sock._ip4_source_filters),
+        )
+
+        sock.setsockopt(
+            IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP, bytes(_GROUP) + bytes(_SOURCE) + bytes(Ip4Address("0.0.0.0"))
+        )
+
+        self.assertTrue(
+            observed,
+            msg="The source-membership setsockopt must mutate the source-filter map.",
+        )
+        self.assertTrue(
+            all(observed),
+            msg="The source-filter map must be mutated while the per-socket source-filter lock is held.",
+        )
+
+    def test__socket__source_admit_read_holds_the_lock(self) -> None:
+        """
+        Ensure the RX data-plane source-admit gate reads the per-socket
+        source-filter map while holding the per-socket source-filter
+        lock, so a concurrent application-thread setsockopt cannot tear
+        the read on a free-threaded build.
+
+        Reference: RFC 3376 §3.1 (data-plane source-delivery gate).
+        """
+
+        sock = socket(AF_INET, SOCK_DGRAM)
+        self.addCleanup(sock.close)
+        tracking = _TrackingRLock()
+        setattr(sock, "_lock__ip4_source_filters", tracking)
+
+        sock._ip4_multicast_source_admits(ifindex=1, group=_GROUP, source=_SOURCE)
+
+        self.assertGreaterEqual(
+            tracking.max_depth,
+            1,
+            msg="The RX source-admit gate must acquire the per-socket source-filter lock.",
+        )
+        self.assertEqual(
+            tracking.depth,
+            0,
+            msg="The RX source-admit gate must release the per-socket source-filter lock.",
         )

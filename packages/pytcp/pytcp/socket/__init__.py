@@ -474,6 +474,7 @@ class socket(ABC):
     # source lists. Presence of a key is the socket's membership; the
     # value is pushed to the interface merge via the membership API.
     _ip4_source_filters: dict[tuple[int, Ip4Address], Ip4MulticastFilter]
+    _lock__ip4_source_filters: threading.Lock
 
     def __init__(
         self,
@@ -525,6 +526,13 @@ class socket(ABC):
         # Per-socket IPv4 multicast holds (ifindex, group) for the
         # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
         self._ip4_source_filters = {}
+        # Guards '_ip4_source_filters'. The app thread mutates it via the
+        # source-membership setsockopt RMW and close-time release; the RX
+        # threads read it in the data-plane source-admit gate. Under
+        # free-threaded CPython those would race (lost update / torn dict)
+        # without this lock. Ordering: only ever acquired before the
+        # interface multicast lock the membership API takes, never after.
+        self._lock__ip4_source_filters = threading.Lock()
         # SO_BINDTODEVICE: when set, pins this socket's egress to one
         # interface by name (the resolved ifindex is the egress the
         # send path uses, bypassing FIB route selection). Empty / unset
@@ -708,17 +716,18 @@ class socket(ABC):
         api = _stack.membership.interface(ifindex)
         key = (ifindex, group)
         try:
-            if optname == IP_ADD_MEMBERSHIP:
-                if key in self._ip4_source_filters:
-                    raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
-                source_filter = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
-                api.set_socket_filter(group=group, token=id(self), source_filter=source_filter)
-                self._ip4_source_filters[key] = source_filter
-            else:
-                if key not in self._ip4_source_filters:
-                    raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
-                api.clear_socket_filter(group=group, token=id(self))
-                del self._ip4_source_filters[key]
+            with self._lock__ip4_source_filters:
+                if optname == IP_ADD_MEMBERSHIP:
+                    if key in self._ip4_source_filters:
+                        raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
+                    source_filter = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+                    api.set_socket_filter(group=group, token=id(self), source_filter=source_filter)
+                    self._ip4_source_filters[key] = source_filter
+                else:
+                    if key not in self._ip4_source_filters:
+                        raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
+                    api.clear_socket_filter(group=group, token=id(self))
+                    del self._ip4_source_filters[key]
         except MembershipLimitError as error:
             raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
@@ -757,18 +766,19 @@ class socket(ABC):
         ifindex = self._resolve_membership_interface(interface_address, 0)
 
         key = (ifindex, group)
-        # Compute the new socket filter (or None to leave the group)
-        # before any API call so a mode-conflict OSError aborts cleanly.
-        new_filter = self._apply_source_op(optname, self._ip4_source_filters.get(key), source)
-
         api = _stack.membership.interface(ifindex)
         try:
-            if new_filter is None:
-                api.clear_socket_filter(group=group, token=id(self))
-                self._ip4_source_filters.pop(key, None)
-            else:
-                api.set_socket_filter(group=group, token=id(self), source_filter=new_filter)
-                self._ip4_source_filters[key] = new_filter
+            with self._lock__ip4_source_filters:
+                # Compute the new socket filter (or None to leave the
+                # group) inside the lock so the get/compute/store is one
+                # atomic RMW and a mode-conflict OSError aborts cleanly.
+                new_filter = self._apply_source_op(optname, self._ip4_source_filters.get(key), source)
+                if new_filter is None:
+                    api.clear_socket_filter(group=group, token=id(self))
+                    self._ip4_source_filters.pop(key, None)
+                else:
+                    api.set_socket_filter(group=group, token=id(self), source_filter=new_filter)
+                    self._ip4_source_filters[key] = new_filter
         except MembershipLimitError as error:
             raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
@@ -1293,20 +1303,21 @@ class socket(ABC):
         not run under the socket IO lock.
         """
 
-        if not self._ip4_source_filters:
-            return
-
         import pytcp.stack as _stack
 
-        for ifindex, group in list(self._ip4_source_filters):
-            try:
-                _stack.membership.interface(ifindex).clear_socket_filter(group=group, token=id(self))
-            except KeyError:
-                # Best-effort cleanup: the interface may already be torn
-                # down (KeyError) during stack shutdown. Mirrors the
-                # best-effort nature of the Linux close-time drop.
-                pass
-        self._ip4_source_filters.clear()
+        with self._lock__ip4_source_filters:
+            if not self._ip4_source_filters:
+                return
+
+            for ifindex, group in list(self._ip4_source_filters):
+                try:
+                    _stack.membership.interface(ifindex).clear_socket_filter(group=group, token=id(self))
+                except KeyError:
+                    # Best-effort cleanup: the interface may already be
+                    # torn down (KeyError) during stack shutdown. Mirrors
+                    # the best-effort nature of the Linux close-time drop.
+                    pass
+            self._ip4_source_filters.clear()
 
     def _ip4_multicast_source_admits(self, *, ifindex: int, group: Ip4Address, source: Ip4Address) -> bool:
         """
@@ -1317,7 +1328,10 @@ class socket(ABC):
         delivery. Shared by the UDP and RAW delivery paths.
         """
 
-        source_filter = self._ip4_source_filters.get((ifindex, group))
+        with self._lock__ip4_source_filters:
+            source_filter = self._ip4_source_filters.get((ifindex, group))
+        # 'Ip4MulticastFilter' is immutable, so 'allows' is evaluated
+        # outside the lock against the snapshotted reference.
         return source_filter is None or source_filter.allows(source)
 
     def getsockname(self) -> tuple[str, int]:

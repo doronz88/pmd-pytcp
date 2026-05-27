@@ -114,11 +114,14 @@ class UdpRxHandler:
         if packet_rx.ip.ver is not IpVersion.IP4 or not packet_rx.ip4.dst.is_multicast:
             return True
 
-        source_filter = socket._ip4_source_filters.get((self._if._ifindex, packet_rx.ip4.dst))
-        if source_filter is None:
-            return True
-
-        return source_filter.allows(packet_rx.ip4.src)
+        # Delegate to the lock-guarded per-socket source-admit gate so
+        # the RX read of the socket's source-filter map is serialized
+        # against an application-thread setsockopt under no-GIL.
+        return socket._ip4_multicast_source_admits(
+            ifindex=self._if._ifindex,
+            group=packet_rx.ip4.dst,
+            source=packet_rx.ip4.src,
+        )
 
     def _phrx_udp(self, packet_rx: PacketRx, /) -> None:
         """

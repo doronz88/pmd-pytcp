@@ -72,6 +72,7 @@ pattern is visible.
 | IPv4 IGMP state-change retransmit (timer thread) | `_lock__multicast` (M2) | `runtime/packet_handler/packet_handler__igmp__tx.py` |
 | IPv6 MLDv2 query-response timer state | `_lock__multicast` (M1) | `runtime/packet_handler/packet_handler__icmp6__rx.py` |
 | ICMP error rate-limiter token bucket | `_lock` in `try_consume` (I1) | `protocols/icmp/icmp__error_emitter.py` |
+| per-socket IPv4 source-filter map | `_lock__ip4_source_filters` (U1) | `socket/__init__.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
 | `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
@@ -137,17 +138,37 @@ split, not retrofitted twice.
 
 ### 2.2 Transport — UDP / RAW
 
-**U1 · per-socket source filters — MEDIUM**
+**U1 · per-socket source filters — MEDIUM — SHIPPED 2026-05-27**
 `socket/__init__.py` `_ip4_source_filters` (dict keyed by
 `(ifindex, group)`). Written by the **app** thread
-(`IP_*_SOURCE_MEMBERSHIP` setsockopt → `_apply_source_op`
-compound RMW) and read by the **RX** thread
+(`IP_*_(SOURCE_)MEMBERSHIP` setsockopt → check-then-act +
+`_apply_source_op` compound RMW, and the close-time
+`_release_ip4_memberships`) and read by the **RX** thread
 (`_ip4_multicast_source_admits`, the UDP + RAW data-plane
 gate). Single `.get` on RX is atomic on the GIL build; under
 no-GIL a dict resize during the read tears (H3), and two app
 threads racing setsockopt on one socket lose an update (H2).
 Not the handler-side `_ip4_multicast_filters` (that is F2,
 locked) — this is the socket-side copy.
+
+*Fix:* added per-socket `_lock__ip4_source_filters`
+(`threading.Lock`) and wrapped all three app-side mutators
+(`_ipproto_ip_membership`, `_ipproto_ip_source_membership`,
+`_release_ip4_memberships` — each as one check-then-act RMW)
+and the RX read gate `_ip4_multicast_source_admits` in it
+(the immutable `Ip4MulticastFilter.allows` runs outside the
+lock on the snapshotted reference). The UDP RX gate
+`__phrx_udp__multicast_source_allowed` now delegates to that
+locked accessor instead of doing its own bare `.get`, so both
+the UDP and RAW data-plane gates share one guarded read path.
+Lock ordering: `_lock__ip4_source_filters` is only ever taken
+*before* the interface `_lock__multicast` the membership API
+acquires, never after — no cycle. Pinned by
+`test__igmp__thread_safety.py::TestSocketSourceFilterLocking`
+(write-RMW + RX-read, red→green).
+
+Per-socket scalar options (`_blocking`, `_ttl`, `_tos`,
+`_ip_recverr`, buffer sizes, …) remain LOW (see below).
 
 Per-socket scalar options (`_blocking`, `_ttl`, `_tos`,
 `_ip_recverr`, buffer sizes, …): app-write / RX-TX-read of a
@@ -279,9 +300,12 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
 3. **I1 — ICMP rate-limiter lock. ✅ DONE 2026-05-27.** Added
    `IcmpErrorRateLimiter._lock` and wrapped the `try_consume`
    token-bucket RMW. Test red→green. See §2.6 for detail.
-4. **U1 — per-socket source-filter lock.** Guard
-   `_ip4_source_filters` with a per-socket lock (or reuse
-   `_lock__io`), both the app-write RMW and the RX-read gate.
+4. **U1 — per-socket source-filter lock. ✅ DONE 2026-05-27.**
+   Added a dedicated `_lock__ip4_source_filters` (not
+   `_lock__io` — the RX gate is called outside `_lock__io`,
+   and `_lock__io` is non-reentrant) guarding both the
+   app-write RMW (all three mutators) and the unified RX-read
+   gate. Test red→green. See §2.2 for detail.
 5. **N1 — address-config lock.** Per-interface
    `_lock__addr_config` guarding the IPv4/IPv6 ifaddr +
    candidate + SLAAC/temp/router/DAD-state lists; wire it
