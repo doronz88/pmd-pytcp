@@ -44,6 +44,7 @@ from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.icmp4.icmp4__assembler import Icmp4Assembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
+from pytcp.stack import sysctl
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -171,4 +172,51 @@ class TestIcmp4EchoSmurf__BroadcastSuppressed(IcmpTestCase, TestCase):
             self._packet_handler.packet_stats_rx.icmp4__echo_request__respond_echo_reply,
             0,
             msg="Reply counter must remain zero on Smurf-drop path.",
+        )
+
+
+class TestIcmp4EchoSmurf__KnobOverride(IcmpTestCase, TestCase):
+    """
+    The ICMPv4 multicast Echo Reply 'icmp4.echo_ignore_broadcasts' knob
+    tests.
+    """
+
+    def test__icmp4__echo_request__mcast_dst_replies_from_unicast_when_knob_zero(self) -> None:
+        """
+        Ensure that with 'icmp4.echo_ignore_broadcasts' set to 0 an Echo
+        Request to a joined multicast group is answered, and the Echo
+        Reply is sourced from the stack's unicast address (not the
+        multicast group, which cannot source a datagram).
+
+        Reference: Linux 'net.ipv4.icmp_echo_ignore_broadcasts' (0 answers multicast echo).
+        Reference: RFC 1122 §3.2.2.6 (a multicast-echo reply is sourced from a host unicast address).
+        """
+
+        group = Ip4Address("239.1.1.1")
+        self._packet_handler._assign_ip4_multicast(group)
+
+        with sysctl.override("icmp4.echo_ignore_broadcasts", 0):
+            frames_tx = self._drive_rx(
+                frame=_build_icmp4_echo_frame(
+                    ip_dst=str(group),
+                    eth_dst=MacAddress("01:00:5e:01:01:01"),
+                ),
+            )
+
+        self.assertEqual(len(frames_tx), 1, msg="Knob 0 must let a multicast Echo Request be answered.")
+
+        reply = frames_tx[0]
+        # Ethernet (14) + IPv4 src at offset 12, dst at 16.
+        reply_src = Ip4Address(reply[26:30])
+        reply_dst = Ip4Address(reply[30:34])
+
+        self.assertEqual(
+            reply_src,
+            STACK__IP4_HOST.address,
+            msg="A multicast Echo Reply must be sourced from the stack's unicast address.",
+        )
+        self.assertEqual(
+            reply_dst,
+            HOST_A__IP4_ADDRESS,
+            msg="The Echo Reply must be addressed to the requester.",
         )

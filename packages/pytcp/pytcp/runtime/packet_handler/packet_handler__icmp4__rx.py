@@ -655,9 +655,17 @@ class Icmp4RxHandler:
             data=packet_rx.icmp4.message.data,
         )
         echo_reply_options_ = echo_reply_options(packet_rx.ip4.options)
+        # A reply to a multicast / broadcast Echo Request (reachable only
+        # when 'icmp4.echo_ignore_broadcasts' is 0) cannot be sourced from
+        # the group / broadcast destination — source it from the
+        # interface's unicast address instead (RFC 1122 §3.2.2.6).
+        if (packet_rx.ip4.dst.is_multicast or packet_rx.ip4.dst.is_limited_broadcast) and self._if._ip4_unicast:
+            reply_src = self._if._ip4_unicast[0]
+        else:
+            reply_src = packet_rx.ip4.dst
         self._if._marshal_tx(
             lambda: self._if._phtx_icmp4(
-                ip4__src=packet_rx.ip4.dst,
+                ip4__src=reply_src,
                 ip4__dst=packet_rx.ip4.src,
                 ip4__options=echo_reply_options_,
                 icmp4__message=echo_reply_message,

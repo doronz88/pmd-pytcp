@@ -338,24 +338,30 @@ emits an `Icmp4MessageEchoReply` for every accepted Echo Request.
 > "An ICMP Echo Request destined to an IP broadcast or IP multicast
 > address MAY be silently discarded."
 
-**Adherence:** **met** (we exercise the MAY as a drop). The Smurf-
-mitigation gate at
-`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:558-569`
-calls
+**Adherence:** **met** (we exercise the MAY as a drop *by default*).
+The Smurf-mitigation gate in `__phrx_icmp4__echo_request` calls
 `packages/pytcp/pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`
-with the destination's broadcast/multicast flags. The MUST form of
-this rule appears as RFC 1812 §4.3.3.6 (router requirements);
-PyTCP applies the stricter router-grade rule even though it is a
-host, because the same Smurf-amplification attack vector applies.
+with the destination's broadcast/multicast flags. The drop is the
+default and matches the MUST form of this rule (RFC 1812 §4.3.3.6),
+applied even though PyTCP is a host because the same Smurf-amplification
+vector applies. It is operator-tunable via the Linux-style
+`icmp4.echo_ignore_broadcasts` sysctl (default `1` = drop, matching
+`net.ipv4.icmp_echo_ignore_broadcasts`); setting it to `0` answers
+broadcast/multicast Echo Requests.
 
 > "The IP source address in an ICMP Echo Reply MUST be the same as
 > the specific-destination address of the corresponding ICMP Echo
 > Request message."
 
-**Adherence:** **met**. The TX call uses
-`ip4__src=packet_rx.ip4.dst`
-(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:579-580`),
-reflecting the Echo Request destination back as the Reply source.
+**Adherence:** **met**. For a unicast Echo Request the reply source is
+the request destination — the specific-destination address. For a
+broadcast/multicast Echo Request answered with
+`icmp4.echo_ignore_broadcasts=0`, `__phrx_icmp4__echo_request` sources
+the reply from the interface's unicast address instead (a group /
+broadcast address cannot source a datagram); per RFC 1122 the
+specific-destination address of a datagram sent to a multicast /
+broadcast address is the receiving interface's own (unicast) address,
+so this remains conformant.
 
 > "Data received in an ICMP Echo Request MUST be entirely included
 > in the resulting Echo Reply."

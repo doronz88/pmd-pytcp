@@ -23,36 +23,37 @@
 
 
 """
-This module contains the ICMPv4 Echo Reply emission gate. The gate
-is the host-side Smurf-attack mitigation: an Echo Request whose
-destination is a broadcast or multicast IPv4 address must not be
-answered, unless the 'icmp4.echo_ignore_broadcasts' sysctl is cleared.
+This module contains the ICMPv4 runtime configuration constants exposed
+as policy sysctls.
 
-pytcp/protocols/icmp4/icmp4__echo_gate.py
+pytcp/protocols/icmp4/icmp4__constants.py
 
 ver 3.0.6
 """
 
-from pytcp.protocols.icmp4 import icmp4__constants
+# Linux 'net.ipv4.icmp_echo_ignore_broadcasts' — when set (1, the
+# default), the host does NOT answer an ICMPv4 Echo Request whose IPv4
+# destination is a broadcast or multicast address (the Smurf-attack
+# mitigation, RFC 1122 §3.2.2.6). Set to 0 to make the host answer such
+# requests (sourcing the reply from a unicast address).
+ICMP4__ECHO_IGNORE_BROADCASTS = 1
 
+# Sysctl registration. The constant above is a policy knob,
+# operator-tunable at boot via 'stack.init(sysctls={...})' or at runtime
+# via 'pytcp.stack.sysctl["icmp4.echo_ignore_broadcasts"] = N'.
+from pytcp.stack.sysctl import (  # noqa: E402
+    is_int_in_range,
+    register,
+)
 
-def should_emit_echo_reply(
-    *,
-    dst_is_broadcast: bool,
-    dst_is_multicast: bool,
-) -> bool:
-    """
-    Return True if an ICMPv4 Echo Reply may be sent in response to an
-    Echo Request whose IPv4 destination has the given properties.
-
-    A broadcast / multicast destination is answered only when the
-    'icmp4.echo_ignore_broadcasts' policy knob is 0 (Linux
-    'net.ipv4.icmp_echo_ignore_broadcasts'); the default 1 keeps the
-    Smurf-mitigation drop. Qualified module access so an operator
-    override resolves on every call.
-    """
-
-    if icmp4__constants.ICMP4__ECHO_IGNORE_BROADCASTS == 0:
-        return True
-
-    return not (dst_is_broadcast or dst_is_multicast)
+register(
+    key="icmp4.echo_ignore_broadcasts",
+    module_name=__name__,
+    attr="ICMP4__ECHO_IGNORE_BROADCASTS",
+    default=ICMP4__ECHO_IGNORE_BROADCASTS,
+    validator=is_int_in_range("icmp4.echo_ignore_broadcasts", low=0, high=1),
+    description=(
+        "Linux 'net.ipv4.icmp_echo_ignore_broadcasts' — 1 (default) ignores broadcast/multicast "
+        "Echo Requests (Smurf mitigation), 0 answers them from a unicast source."
+    ),
+)

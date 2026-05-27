@@ -36,6 +36,7 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pytcp.protocols.icmp4.icmp4__echo_gate import should_emit_echo_reply
+from pytcp.stack import sysctl
 
 
 class TestShouldEmitEchoReply__Permit(TestCase):
@@ -104,4 +105,35 @@ class TestShouldEmitEchoReply__Block(TestCase):
         self.assertFalse(
             permitted,
             msg=f"Echo Reply must be blocked for case: {self._description}",
+        )
+
+
+class TestShouldEmitEchoReply__SysctlOverride(TestCase):
+    """
+    The ICMPv4 'should_emit_echo_reply()' 'icmp4.echo_ignore_broadcasts'
+    knob tests.
+    """
+
+    def test__icmp4__echo_gate__knob_zero_permits_broadcast_and_multicast(self) -> None:
+        """
+        Ensure that with 'icmp4.echo_ignore_broadcasts' set to 0 a
+        broadcast or multicast Echo Request is permitted to reply, while
+        the default value of 1 keeps it blocked.
+
+        Reference: Linux 'net.ipv4.icmp_echo_ignore_broadcasts' (0 answers broadcast/multicast echo).
+        """
+
+        with sysctl.override("icmp4.echo_ignore_broadcasts", 0):
+            self.assertTrue(
+                should_emit_echo_reply(dst_is_broadcast=True, dst_is_multicast=False),
+                msg="With the knob 0, a broadcast Echo Request must be permitted.",
+            )
+            self.assertTrue(
+                should_emit_echo_reply(dst_is_broadcast=False, dst_is_multicast=True),
+                msg="With the knob 0, a multicast Echo Request must be permitted.",
+            )
+
+        self.assertFalse(
+            should_emit_echo_reply(dst_is_broadcast=False, dst_is_multicast=True),
+            msg="With the default knob (1), a multicast Echo Request must stay blocked.",
         )
