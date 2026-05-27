@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Plan — implementation not yet started (the one deferred IGMP host gap) |
+| Status       | SHIPPED — Phases A-D complete (RFC 3376 §7 host fallback closed) |
 | Plan author  | IGMP track close-out (2026-05-26)                                     |
 | Target RFC   | RFC 3376 §7 (Interoperation With Older Versions of IGMP), with RFC 2236 §3 / RFC 1112 §6 host behaviours |
 | Parent track | `docs/refactor/igmp_host_membership.md` (Phases 0-6 shipped); this is the deferred §7 block lifted to its own doc, the way RFC 6724 was lifted out of the ND track |

@@ -19,14 +19,13 @@ directly.
 protocol; RFC 3376 §4 requires an IGMPv3 host to also support the
 IGMPv2 message types for interoperation with older routers. PyTCP
 therefore implements the IGMPv2 **wire forms** (the 8-octet Query
-and the Version 2 Membership Report / Leave Group), but the
+and the Version 2 Membership Report / Leave Group) and the
 IGMPv2-specific host **behaviours** (report suppression, sending
-Reports in the v2 form, the Leave Group to 224.0.0.2) form the
-RFC 3376 §7 older-version-querier compatibility mode, which is
-**deferred** (see the RFC 3376 record §7 and
-`docs/refactor/igmp_host_membership.md` Phase 5). This record is
-therefore largely a pointer to the RFC 3376 audit, calling out
-only the v2-specific clauses.
+Reports in the v2 form to the group, the Leave Group to
+224.0.0.2), which run under the RFC 3376 §7 older-version-querier
+Host Compatibility Mode (see the RFC 3376 record §7). This record
+calls out the v2-specific clauses; the mode machine and report-form
+selection live in the RFC 3376 audit.
 
 ---
 
@@ -37,9 +36,9 @@ only the v2-specific clauses.
 | §2      | 8-octet message format (Type / Max Resp Time / Checksum / Group) | met (codec) |
 | §2.1    | Types 0x11 / 0x16 / 0x17 / 0x12                         | met (codec) |
 | §2.3    | Checksum over the whole IGMP message                   | met |
-| §3      | Unsolicited Report on join                             | met via IGMPv3 (v2-form report deferred) |
-| §3      | Report suppression on hearing another host's Report    | not implemented (v3 does not suppress) |
-| §3      | Leave Group to 224.0.0.2 on leave                      | not implemented (deferred, §7) |
+| §3      | Unsolicited Report on join (v2 form in v2 mode)        | met |
+| §3      | Report suppression on hearing another host's Report    | met (v1/v2 compatibility mode) |
+| §3      | Leave Group to 224.0.0.2 on leave                      | met (v2 compatibility mode) |
 | §3      | Query / querier behaviour                              | out of scope (Phase 2 router role) |
 
 ---
@@ -87,37 +86,38 @@ shared with the RFC 3376 path); the assembler injects it.
 > group ... it is recommended that it be repeated once or twice
 > after short delays [Unsolicited Report Interval]."
 
-**Adherence:** met in substance via IGMPv3, with the v2 wire form
-deferred. On join PyTCP emits an unsolicited IGMPv3 state-change
-Report (CHANGE_TO_EXCLUDE_MODE) and retransmits it per the
-Robustness Variable (RFC 3376 §5.1; see that record). Emitting
-the report in the **Version 2** form instead, when an IGMPv2
-querier is present, is part of the deferred §7 compatibility mode
-— the v2 Report wire form (`IgmpMessageV2Report`) is ready; only the
-version-selection logic is unwired.
+**Adherence:** met. On join PyTCP emits an unsolicited
+state-change report and retransmits it per the Robustness
+Variable (RFC 3376 §5.1). When the interface is in IGMPv2
+compatibility mode (RFC 3376 §7), the report is the **Version 2**
+Membership Report (`IgmpMessageV2Report`) sent to the group
+address; in IGMPv3 mode it is the v3 CHANGE_TO_EXCLUDE_MODE
+Report. The form is selected by `_igmp_host_compatibility_mode()`.
 
 > "If a host hears another host's Report (version 1 or 2) while it
 > has a timer running, it stops its timer for the specified group
 > and does not send a Report, in order to suppress duplicate
 > Reports."
 
-**Adherence:** not implemented (by design under IGMPv3). IGMPv3
-hosts do not suppress on hearing another member's Report (RFC
-3376 removes v1/v2 report suppression); PyTCP counts a received
-Report (`igmp__membership_report`) and ignores it. Report
-suppression applies only in v1/v2 compatibility mode, part of the
-deferred §7 work.
+**Adherence:** met in v1/v2 compatibility mode. While a Query
+response is pending in IGMPv1/v2 mode, hearing another host's
+v1/v2 Membership Report for a joined group cancels this host's
+pending Report for that group (bumping
+`igmp__membership_query__suppressed`); the suppressed group is
+skipped when the response timer fires. In IGMPv3 mode PyTCP does
+not suppress (RFC 3376 §7.2.2 makes it a MAY) — it counts the
+received Report (`igmp__membership_report`) and ignores it.
 
 > "When a host leaves a multicast group, if it was the last host
 > to reply to a Query ... it SHOULD send a Leave Group message to
 > the all-routers multicast group (224.0.0.2)."
 
-**Adherence:** not implemented (deferred). On leave PyTCP sends an
-IGMPv3 CHANGE_TO_INCLUDE_MODE state-change Report to 224.0.0.22
-(RFC 3376 §5.1) — the IGMPv3 equivalent of the v2 Leave. Emitting
-an IGMPv2 **Leave Group** to 224.0.0.2 instead, under a v2
-querier, is part of the deferred §7 compatibility mode (the
-Leave Group wire form already exists as `IgmpMessageV2Leave`).
+**Adherence:** met. In IGMPv2 compatibility mode a leave emits an
+IGMPv2 **Leave Group** (`IgmpMessageV2Leave`) to the all-routers
+group 224.0.0.2; in IGMPv3 mode it emits the CHANGE_TO_INCLUDE_MODE
+state-change Report to 224.0.0.22 (RFC 3376 §5.1). An IGMPv1-mode
+leave emits nothing (IGMPv1 has no Leave message). The form is
+selected by `_igmp_host_compatibility_mode()`.
 
 > "[Query / Querier behaviour: sending Queries, querier election,
 > Group-Specific Queries on Leave, the Group Membership

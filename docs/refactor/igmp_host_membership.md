@@ -2,7 +2,7 @@
 
 | Field           | Value                                                                |
 |-----------------|----------------------------------------------------------------------|
-| Status          | Substantially shipped 2026-05-25/26 (Phases 0-6). One deferred host-side gap: RFC 3376 §7 v1/v2 querier-version fallback. |
+| Status          | Shipped 2026-05-25/26 (Phases 0-6) + the RFC 3376 §7 v1/v2 querier-version fallback (now shipped — see `igmp_version_fallback.md`). |
 | Plan author     | Release-readiness pass (2026-05-25)                                  |
 | Target RFCs     | RFC 1112 (host multicast model), RFC 2236 (IGMPv2), RFC 3376 (IGMPv3) |
 | Template        | the shipped IPv6 counterpart — MLDv2 (`net_proto .../icmp6/message/mld2/`) + the `stack.address` join/report pattern |

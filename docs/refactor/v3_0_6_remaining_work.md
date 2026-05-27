@@ -106,14 +106,15 @@ RFC 1112 / 2236 / 3376 adherence records (Phase 6). PyTCP now reaches
 RFC 1112 **Level 2** (multicast send + receive + IGMP group management,
 the IPv4 analog of the shipped MLDv2).
 
-**One consciously-deferred host-side gap remains:** the RFC 3376 §7
-older-version (IGMPv1/v2) querier-interoperation state machine — the
-v2-form Reports, the Leave Group to 224.0.0.2, report suppression, and
-an `igmp.version` knob. The v1/v2 message wire forms already exist; only
-the version-mode switching is unwired. Tracked in
-`igmp_host_membership.md` Phase 5 (remaining) + the RFC 3376 adherence
-record §7. The IGMPv3 router/querier role and source-specific filtering
-(§9, `IP_ADD_SOURCE_MEMBERSHIP`) are Phase-2 / future work. A Linux
+**The RFC 3376 §7 older-version (IGMPv1/v2) querier-interoperation
+gap is now closed** (shipped 2026-05-26, plan
+`igmp_version_fallback.md`): the per-interface Host Compatibility Mode
+machine, v2-form per-group Reports, the IGMPv2 Leave Group to
+224.0.0.2, v1/v2 report suppression, and the `igmp.version` /
+`igmp.query_interval` knobs. The remaining host-side partials are the
+§5.2 per-group / source-specific response timer and source-specific
+filtering (§9, `IP_ADD_SOURCE_MEMBERSHIP`); the IGMPv3 router/querier
+role is Phase-2 / future work. A Linux
 host that joins an IPv4 multicast group emits IGMP reports and answers
 queries; PyTCP can only receive traffic for the statically-preconfigured
 all-hosts group (`224.0.0.1`). This is a genuine host-parity asymmetry,

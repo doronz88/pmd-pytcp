@@ -42,7 +42,7 @@ but not yet driven by a source-filter socket API.
 | §5.1     | State-change Report on join/leave + robustness retransmit | met |
 | §5.2     | Random-delay response to a Query                         | met (general / group; combined per-group nuance partial) |
 | §6       | Host state — all-systems group never reported            | met (host); router state out of scope |
-| §7       | Older-version (v1/v2) querier interoperation             | not implemented (deferred) |
+| §7       | Older-version (v1/v2) querier interoperation             | met |
 | §8       | Timing / robustness constants                            | met (sysctls) |
 | §9       | Source-Specific Multicast (INCLUDE / source filters)     | partial (EXCLUDE{} only) |
 
@@ -231,17 +231,32 @@ out-of-scope Phase-2 router work.
 > modes.  ... If a host receives ... an older version Query ...
 > it MUST use ... the host compatibility mode ..."
 
-**Adherence:** not implemented (deferred). PyTCP parses v1/v2
-Queries (it discriminates the version by message length) and
-the legacy v1/v2 Report / Leave wire forms exist
-(`IgmpMessageV2Report` / `IgmpMessageV2Leave` /
-`IgmpMessageV1Report`), but the older-querier-present state
-machine — switching the response Report to the v1/v2 form for
-the Older Version Querier Present Timeout, and sending an IGMPv2
-Leave Group to 224.0.0.2 under a v2 querier — is not wired. The
-host answers every querier with an IGMPv3 Report. This is the
-one consciously-deferred host-side clause; it is tracked in its
-own plan, `docs/refactor/igmp_version_fallback.md`.
+> "Whenever a host changes its compatibility mode, it cancels
+> all its pending response and retransmission timers."
+
+**Adherence:** met. A per-interface Host Compatibility Mode
+machine (§7.2.1) arms an IGMPv1 / IGMPv2 Older Version Querier
+Present deadline on an 8-octet Query (zero Max Resp Code = v1,
+non-zero = v2) for the §8.12 timeout (RV × `igmp.query_interval`
++ one Query Response Interval; a v1 Max Resp Code of 0 is read
+as 100). `PacketHandler._igmp_host_compatibility_mode()` returns
+IGMPv1 while the v1 timer runs, else IGMPv2 while the v2 timer
+runs, else IGMPv3; a forced `igmp.version` (1/2/3) overrides. A
+mode change cancels the pending query-response timer and the
+state-change retransmit train.
+
+The report form follows the mode (§7.2.1 "acts using only the
+[mode] protocol"): the query response and join/leave state
+changes emit a v3 Report to 224.0.0.22, a per-group IGMPv2
+Membership Report to the group (join) + IGMPv2 Leave Group to
+224.0.0.2 (leave) per RFC 2236 §3, or a per-group IGMPv1 Report
+on join with nothing on leave per RFC 1112 §6. The robustness
+retransmit recomputes the mode form at fire time. §7.2.2
+report suppression (a MAY) is implemented for v1/v2 mode —
+another host's v1/v2 Report for a pending group cancels this
+host's pending Report; IGMPv3 keeps count-and-ignore.
+(`packet_handler__igmp__rx.py` / `__tx.py`,
+`igmp.version` / `igmp.query_interval` sysctls.)
 
 ## §8. List of Timers and Default Values
 
@@ -361,11 +376,21 @@ source-specific timer refinement is the documented §5.2 partial.
 
 ### §7 Older-version querier interoperation
 
-**Status:** n/a (not implemented; deferred). When it lands, the
-natural test surface is an `IcmpTestCase`-based test driving a
-v2 Query and asserting the response switches to the IGMPv2
-Report form for the older-querier-present window, plus a v2
-Leave Group to 224.0.0.2 on leave.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__version_fallback.py`
+  Host Compatibility Mode: default v3; a v2/v1 Query flips the
+  mode; revert to v3 after the §8.12 timeout; a v3 Query does
+  not lower the mode; a forced `igmp.version` pins the mode; a
+  mode change cancels the pending state-change retransmit. Plus
+  report-form selection: v2/v1 join emits a per-group Report to
+  the group, a v2 leave emits a Leave Group to 224.0.0.2, a v1
+  leave emits nothing, and the v2 query response is per-group.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__v2_report_suppression.py`
+  In v2 mode, another host's v2 Report for a pending group
+  suppresses this host's Report; absent it, the Report is sent.
+
+**Status:** locked in.
 
 ### Test coverage summary
 
@@ -379,7 +404,7 @@ Leave Group to 224.0.0.2 on leave.
 | §5.2 per-group / source-specific timer         | n/a (partial; deferred) |
 | §6 all-systems never reported                  | locked in |
 | §8 timing / robustness sysctls                 | locked in |
-| §7 older-version querier interop               | n/a (deferred) |
+| §7 older-version querier interop               | locked in |
 | §9 source-specific filtering                   | n/a (EXCLUDE{} only) |
 
 ---
@@ -393,7 +418,7 @@ Leave Group to 224.0.0.2 on leave.
 | §5.1 state-change Report + robustness retransmit | met   |
 | §5.2 random-delay Query response                | met (interface timer); per-group partial |
 | §6 all-systems group exemption (host)           | met   |
-| §7 older-version (v1/v2) querier interop        | not implemented (deferred) |
+| §7 older-version (v1/v2) querier interop        | met   |
 | §8 timing / robustness constants (sysctls)      | met   |
 | §9 source-specific multicast                    | partial (EXCLUDE{} only) |
 | Router / querier role                           | out of scope (Phase 2) |
@@ -403,10 +428,11 @@ any-source (EXCLUDE{}) membership case: it joins/leaves groups
 through the membership API (reference-counted per socket, so a
 group is held until its last holder leaves — see
 `docs/refactor/igmp_r3_socket_refcounting.md`), announces changes
-with robustness-retransmitted state-change Reports, and answers
-Membership Queries after the §5.2 random delay. The principal deferred
-host-side gap is the §7 older-version querier interoperation
-state machine (parse support and the legacy Report/Leave wire
-forms already exist; only the version-switching logic is
-unwired). Source-specific filtering (§9) and the IGMPv3
-router/querier role are tracked as separate future work.
+with robustness-retransmitted state-change Reports, answers
+Membership Queries after the §5.2 random delay, and falls back to
+IGMPv1/v2 report forms under an older-version querier (§7 Host
+Compatibility Mode). The remaining host-side partials are the
+§5.2 per-group / source-specific response timer (the single
+interface-wide response timer is the simplification) and
+source-specific filtering (§9, EXCLUDE{} only); the IGMPv3
+router/querier role is out of scope (Phase 2).
