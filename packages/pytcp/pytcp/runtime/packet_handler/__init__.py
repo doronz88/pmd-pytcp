@@ -134,6 +134,12 @@ if TYPE_CHECKING:
     from pytcp.stack.route import RouteApi
 
 
+# The RFC 3376 §5.1 "non-existent" reception state — a filter mode of
+# INCLUDE with an empty source list — used as the before/after state when
+# a group's per-interface record is created (join) or deleted (leave).
+_IP4_MULTICAST__NONMEMBER = Ip4MulticastFilter(Ip4MulticastFilterMode.INCLUDE)
+
+
 @dataclass(slots=True)
 class _Ip4GroupMembership:
     """
@@ -782,12 +788,16 @@ class PacketHandler(Subsystem, ABC):
 
         if merged.has_reception:
             if not joined:
+                # Reception edge: '_assign_ip4_multicast' materializes the
+                # merged filter, programs the MAC, and emits the §5.1
+                # join difference record(s).
                 self._assign_ip4_multicast(group)
-            # Materialize the true merged §3.2 filter (the assign path
-            # above seeds EXCLUDE{}; an INCLUDE / sourced merge overwrites
-            # it here). Phase 3 emits the ALLOW / BLOCK / CHANGE_TO_*
-            # delta when this changes a still-joined group's filter.
-            self._ip4_multicast_filters[group] = merged
+            elif merged != self._ip4_multicast_filters[group]:
+                # Still joined, filter changed: emit the §5.1 source delta
+                # (ALLOW / BLOCK / CHANGE_TO_*) and re-materialize.
+                old = self._ip4_multicast_filters[group]
+                self._ip4_multicast_filters[group] = merged
+                self._send_igmp_state_change(group, old=old, new=merged)
         elif joined:
             self._remove_ip4_multicast(group)
 
@@ -2015,16 +2025,33 @@ class PacketHandler(Subsystem, ABC):
 
     def _send_igmp_state_change(
         self,
-        *,
         group: Ip4Address,
-        record_type: IgmpV3RecordType,
+        /,
+        *,
+        old: Ip4MulticastFilter,
+        new: Ip4MulticastFilter,
     ) -> None:
         """
-        Emit an IGMP state-change report in the interface's Host
-        Compatibility Mode form (delegates to the IGMP TX sub-handler).
+        Emit an IGMP state-change report for the 'old'→'new' filter
+        transition in the interface's Host Compatibility Mode form
+        (delegates to the IGMP TX sub-handler).
         """
 
-        self._igmp_tx._send_igmp_state_change(group=group, record_type=record_type)
+        self._igmp_tx._send_igmp_state_change(group, old=old, new=new)
+
+    def _ip4_multicast_filter_for(self, group: Ip4Address, /) -> Ip4MulticastFilter:
+        """
+        Return the merged RFC 3376 §3.2 interface filter for 'group' from
+        its current contributors, or the any-source EXCLUDE{} default
+        when the group has no contributor registry entry (a directly
+        assigned group such as the permanent all-systems group, or a
+        test-driven direct assign).
+        """
+
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
+            return Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+        return Ip4MulticastFilter.merge(membership.contributors())
 
     def _send_igmp_leave_all(self) -> None:
         """
@@ -3108,9 +3135,11 @@ class PacketHandlerL2(
         Assign IPv4 multicast group to the list stack listens on.
         """
 
-        # Materialize the per-interface reception state. Phase 1 joins
-        # are any-source, so the merged §3.2 filter is EXCLUDE{}.
-        self._ip4_multicast_filters[ip4_multicast] = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+        # Materialize the merged §3.2 reception filter (EXCLUDE{} for a
+        # directly-assigned / any-source group, the merged contributors'
+        # filter for a source-specific join).
+        new = self._ip4_multicast_filter_for(ip4_multicast)
+        self._ip4_multicast_filters[ip4_multicast] = new
 
         __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
@@ -3119,12 +3148,10 @@ class PacketHandlerL2(
         self._assign_mac_multicast(ip4_multicast.multicast_mac)
 
         # RFC 3376 §5.1 — announce the new membership with an unsolicited
-        # state-change Report (the all-systems group is exempt, handled
-        # inside the TX method per RFC 3376 §6).
-        self._send_igmp_state_change(
-            group=ip4_multicast,
-            record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
-        )
+        # state-change Report describing the INCLUDE{}→'new' transition
+        # (the all-systems group is exempt, handled inside the TX method
+        # per RFC 3376 §6).
+        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3132,6 +3159,7 @@ class PacketHandlerL2(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
+        old = self._ip4_multicast_filters[ip4_multicast]
         del self._ip4_multicast_filters[ip4_multicast]
 
         __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
@@ -3139,12 +3167,9 @@ class PacketHandlerL2(
         self._remove_mac_multicast(ip4_multicast.multicast_mac)
 
         # RFC 3376 §5.1 — announce the departure with a state-change
-        # Report transitioning the group to INCLUDE{} (an empty source
-        # list, i.e. "no longer a member").
-        self._send_igmp_state_change(
-            group=ip4_multicast,
-            record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
-        )
+        # Report describing the 'old'→INCLUDE{} transition (no longer a
+        # member).
+        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
 
     def _assign_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -3322,19 +3347,18 @@ class PacketHandlerL3(
         programmed.
         """
 
-        # Materialize the per-interface reception state. Phase 1 joins
-        # are any-source, so the merged §3.2 filter is EXCLUDE{}.
-        self._ip4_multicast_filters[ip4_multicast] = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+        # Materialize the merged §3.2 reception filter (EXCLUDE{} for an
+        # any-source group, the merged contributors' filter otherwise).
+        new = self._ip4_multicast_filter_for(ip4_multicast)
+        self._ip4_multicast_filters[ip4_multicast] = new
 
         __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
         # RFC 3376 §5.1 — announce the new membership with an unsolicited
-        # state-change Report (the all-systems group is exempt per
-        # RFC 3376 §6, handled inside the TX method).
-        self._send_igmp_state_change(
-            group=ip4_multicast,
-            record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
-        )
+        # state-change Report describing the INCLUDE{}→'new' transition
+        # (the all-systems group is exempt per RFC 3376 §6, handled inside
+        # the TX method).
+        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3342,13 +3366,11 @@ class PacketHandlerL3(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
+        old = self._ip4_multicast_filters[ip4_multicast]
         del self._ip4_multicast_filters[ip4_multicast]
 
         __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
         # RFC 3376 §5.1 — announce the departure with a state-change
-        # Report transitioning the group to INCLUDE{} (empty source list).
-        self._send_igmp_state_change(
-            group=ip4_multicast,
-            record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
-        )
+        # Report describing the 'old'→INCLUDE{} transition.
+        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)

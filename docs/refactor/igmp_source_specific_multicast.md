@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Phased — Phases 1-2 (data model + §3.2 merge + source socket options) SHIPPED; Phases 3-5 open |
+| Status       | Phased — Phases 1-3 (data model + §3.2 merge + source socket options + §5.1 source state-change reports) SHIPPED; Phases 4-5 open |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -172,12 +172,35 @@ merged §3.2 value but the source-bearing state-change records
 `test__igmp__source_socket_opts.py` (each option's socket + interface
 effect, the §3.2 merge across two sockets, the errno table, close-release).
 
-### Phase 3 — source state-change reports
+### Phase 3 — source state-change reports  (SHIPPED)
 
-Emit ALLOW_NEW_SOURCES / BLOCK_OLD_SOURCES / CHANGE_TO_* with source
-lists on filter deltas; extend the R1 retransmit map to carry sources.
-Tests: add a source → ALLOW; block a source → BLOCK; INCLUDE→EXCLUDE →
-CHANGE_TO_EXCLUDE with sources.
+The state-change emission is now filter-delta-aware per the RFC 3376
+§5.1 table (the "non-existent" state is INCLUDE{}):
+`IgmpTxHandler._state_change_records(group, old, new)` computes the
+difference records — a filter-mode change → one CHANGE_TO_INCLUDE_MODE /
+CHANGE_TO_EXCLUDE_MODE carrying the new source list; a within-mode source
+change → ALLOW_NEW_SOURCES and/or BLOCK_OLD_SOURCES (empty records
+omitted). `_send_igmp_state_change(group, old=, new=)` emits them (IGMPv3
+mode) or degrades to the coarse join-Report / leave (IGMPv1/v2 mode,
+keyed off the reception edge). The R1 recompute-at-fire retransmit map
+(`_IgmpPendingChange`) now carries the source-bearing `records` tuple +
+the coarse fallback `coarse_type`; the fire path re-emits them in the
+current mode.
+
+`_assign_ip4_multicast` / `_remove_ip4_multicast` stayed the join/leave
+emission points (computing the merged filter via
+`_ip4_multicast_filter_for` and reporting the INCLUDE{}↔filter
+transition), so the any-source path — and every existing test — is
+behaviour-preserving; `_mc_recompute` additionally emits the §5.1 delta
+when a still-joined group's merged filter changes (a source add/drop or
+an interface mode flip). The supersede-on-change model (a new change
+overwrites the pending train) is the PyTCP simplification of the §5.1
+difference-report merge.
+
+Tests: `test__igmp__source_state_change.py` — ALLOW on source add /
+unblock, BLOCK on source drop / block, CHANGE_TO_EXCLUDE on an
+INCLUDE→EXCLUDE interface mode flip, and a retransmit carrying the
+source list. The §9 / §3.2 adherence flip waits for Phase 5.
 
 ### Phase 4 — query-response source math
 

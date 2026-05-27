@@ -50,6 +50,10 @@ from net_proto import (
     Ip4Options,
 )
 from pytcp import stack
+from pytcp.lib.ip4_multicast_filter import (
+    Ip4MulticastFilter,
+    Ip4MulticastFilterMode,
+)
 from pytcp.lib.logger import log
 from pytcp.protocols.igmp import igmp__constants
 from pytcp.runtime.timer import TimerHandle
@@ -69,12 +73,16 @@ IGMP__ALL_IGMPV3_ROUTERS = Ip4Address("224.0.0.22")
 @dataclass(frozen=True, kw_only=True, slots=True)
 class _IgmpPendingChange:
     """
-    A pending IGMPv3 state-change record awaiting robustness
-    retransmission — the record type to re-send and the number of
-    retransmissions still owed for it.
+    A pending IGMPv3 state-change for one group awaiting robustness
+    retransmission — the source-bearing §5.1 difference records to
+    re-send in IGMPv3 mode, the coarse join/leave record type to re-send
+    in an IGMPv1/v2 compatibility mode (None for a source-only change
+    that an older-version host cannot express), and the number of
+    retransmissions still owed.
     """
 
-    record_type: IgmpV3RecordType
+    records: tuple[IgmpV3GroupRecord, ...]
+    coarse_type: IgmpV3RecordType | None
     remaining: int
 
 
@@ -142,40 +150,110 @@ class IgmpTxHandler:
 
         self._emit_v3_report(records)
 
+    @staticmethod
+    def _state_change_records(
+        group: Ip4Address,
+        old: Ip4MulticastFilter,
+        new: Ip4MulticastFilter,
+        /,
+    ) -> list[IgmpV3GroupRecord]:
+        """
+        Compute the IGMPv3 difference records for a group's filter change
+        per the RFC 3376 §5.1 table (the "non-existent" state is
+        INCLUDE{}): a filter-mode change yields one
+        CHANGE_TO_INCLUDE_MODE / CHANGE_TO_EXCLUDE_MODE record carrying
+        the new source list; a within-mode source change yields
+        ALLOW_NEW_SOURCES and/or BLOCK_OLD_SOURCES records (empty ones are
+        omitted).
+        """
+
+        if old.mode is new.mode:
+            if old.mode is Ip4MulticastFilterMode.INCLUDE:
+                allow, block = new.sources - old.sources, old.sources - new.sources
+            else:
+                allow, block = old.sources - new.sources, new.sources - old.sources
+            records: list[IgmpV3GroupRecord] = []
+            if allow:
+                records.append(
+                    IgmpV3GroupRecord(
+                        type=IgmpV3RecordType.ALLOW_NEW_SOURCES,
+                        multicast_address=group,
+                        source_addresses=sorted(allow, key=int),
+                    )
+                )
+            if block:
+                records.append(
+                    IgmpV3GroupRecord(
+                        type=IgmpV3RecordType.BLOCK_OLD_SOURCES,
+                        multicast_address=group,
+                        source_addresses=sorted(block, key=int),
+                    )
+                )
+            return records
+
+        record_type = (
+            IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE
+            if new.mode is Ip4MulticastFilterMode.EXCLUDE
+            else IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE
+        )
+        return [
+            IgmpV3GroupRecord(
+                type=record_type,
+                multicast_address=group,
+                source_addresses=sorted(new.sources, key=int),
+            )
+        ]
+
     def _send_igmp_state_change(
         self,
-        *,
         group: Ip4Address,
-        record_type: IgmpV3RecordType,
+        /,
+        *,
+        old: Ip4MulticastFilter,
+        new: Ip4MulticastFilter,
     ) -> None:
         """
-        Emit an unsolicited state-change report for 'group' in the form
-        dictated by the interface's Host Compatibility Mode (RFC 3376
-        §5.1 / §7) and schedule its robustness retransmissions.
-        'record_type' is CHANGE_TO_EXCLUDE_MODE on join,
-        CHANGE_TO_INCLUDE_MODE on leave; the all-systems group 224.0.0.1
-        is never reported (RFC 3376 §6).
+        Emit an unsolicited state-change report for 'group' describing
+        the transition from filter 'old' to filter 'new' (RFC 3376 §5.1)
+        in the form dictated by the interface's Host Compatibility Mode
+        (§7), and schedule its robustness retransmissions. In IGMPv3 mode
+        the report carries the source-bearing §5.1 difference records; in
+        an IGMPv1/v2 mode it degrades to the coarse join Membership Report
+        / leave (those versions have no source concept). The all-systems
+        group 224.0.0.1 is never reported (RFC 3376 §6).
 
-        A new change supersedes any retransmit train still pending for
-        the same group (overwrite + re-seed); the retransmits recompute
-        their form from the live mode + pending-change map at fire time,
-        so a join cancelled by a quick leave never retransmits the stale
-        join. A form that emits nothing (an IGMPv1 leave) schedules no
-        retransmit.
+        A new change supersedes any retransmit train still pending for the
+        same group (overwrite + re-seed) — the PyTCP simplification of the
+        §5.1 difference-report merge. A change that produces no record
+        (an idempotent re-add) schedules no retransmit.
         """
 
         if group == IGMP__ALL_SYSTEMS:
             return
 
-        emitted = self._emit_state_change(group, record_type)
+        records = self._state_change_records(group, old, new)
+        # The coarse IGMPv1/v2 form keys only off the reception edge — a
+        # source-only change within a still-joined membership (coarse_type
+        # None) is invisible to an older-version querier.
+        coarse_type = (
+            IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE
+            if new.has_reception and not old.has_reception
+            else IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE if old.has_reception and not new.has_reception else None
+        )
+
+        if self._if._igmp_host_compatibility_mode() is IgmpVersion.V3:
+            self._emit_v3_report(records)
+        elif coarse_type is not None:
+            self._emit_state_change(group, coarse_type)
 
         repeats = igmp__constants.IGMP__ROBUSTNESS_VARIABLE - 1
-        if not emitted or repeats <= 0:
+        if not records or repeats <= 0:
             self._igmp_state_change__pending.pop(group, None)
             return
 
         self._igmp_state_change__pending[group] = _IgmpPendingChange(
-            record_type=record_type,
+            records=tuple(records),
+            coarse_type=coarse_type,
             remaining=repeats,
         )
         self._arm_state_change_retransmit()
@@ -216,15 +294,15 @@ class IgmpTxHandler:
         groups = list(self._igmp_state_change__pending)
 
         if self._if._igmp_host_compatibility_mode() is IgmpVersion.V3:
-            self._emit_v3_report(
-                [
-                    IgmpV3GroupRecord(type=self._igmp_state_change__pending[group].record_type, multicast_address=group)
-                    for group in groups
-                ]
-            )
+            records: list[IgmpV3GroupRecord] = []
+            for group in groups:
+                records.extend(self._igmp_state_change__pending[group].records)
+            self._emit_v3_report(records)
         else:
             for group in groups:
-                self._emit_state_change(group, self._igmp_state_change__pending[group].record_type)
+                coarse_type = self._igmp_state_change__pending[group].coarse_type
+                if coarse_type is not None:
+                    self._emit_state_change(group, coarse_type)
 
         for group in groups:
             pending = self._igmp_state_change__pending[group]
@@ -232,7 +310,8 @@ class IgmpTxHandler:
                 del self._igmp_state_change__pending[group]
             else:
                 self._igmp_state_change__pending[group] = _IgmpPendingChange(
-                    record_type=pending.record_type,
+                    records=pending.records,
+                    coarse_type=pending.coarse_type,
                     remaining=pending.remaining - 1,
                 )
 
