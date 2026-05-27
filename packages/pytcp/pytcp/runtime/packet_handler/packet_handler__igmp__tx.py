@@ -38,9 +38,14 @@ from typing import TYPE_CHECKING
 from net_addr import Ip4Address
 from net_proto import (
     IgmpAssembler,
+    IgmpMessage,
+    IgmpMessageV1Report,
+    IgmpMessageV2Leave,
+    IgmpMessageV2Report,
     IgmpMessageV3Report,
     IgmpV3GroupRecord,
     IgmpV3RecordType,
+    IgmpVersion,
     Ip4OptionRouterAlert,
     Ip4Options,
 )
@@ -52,10 +57,12 @@ from pytcp.runtime.timer import TimerHandle
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
 
-# The IPv4 destinations defined by RFC 3376 §4: every host belongs to
-# the all-systems group and all IGMPv3 Reports are sent to the
-# IGMPv3-routers group.
+# The IPv4 destinations defined by RFC 3376 §4 / RFC 2236 §3: every
+# host belongs to the all-systems group; IGMPv3 Reports go to the
+# IGMPv3-routers group; an IGMPv2 Leave Group goes to the all-routers
+# group.
 IGMP__ALL_SYSTEMS = Ip4Address("224.0.0.1")
+IGMP__ALL_ROUTERS = Ip4Address("224.0.0.2")
 IGMP__ALL_IGMPV3_ROUTERS = Ip4Address("224.0.0.22")
 
 
@@ -102,7 +109,7 @@ class IgmpTxHandler:
 
         'record_type' is MODE_IS_EXCLUDE for a current-state report (the
         query-response default). The single-group state-change forms are
-        emitted by '_send_igmp_v3_state_change'.
+        emitted by '_send_igmp_state_change'.
         """
 
         # Dedup while preserving join order; the all-systems group is
@@ -135,34 +142,35 @@ class IgmpTxHandler:
 
         self._emit_v3_report(records)
 
-    def _send_igmp_v3_state_change(
+    def _send_igmp_state_change(
         self,
         *,
         group: Ip4Address,
         record_type: IgmpV3RecordType,
     ) -> None:
         """
-        Send an IGMPv3 state-change Report carrying a single group
-        record for 'group' — CHANGE_TO_EXCLUDE_MODE when the host joins
-        the group, CHANGE_TO_INCLUDE_MODE (empty source list) when it
-        leaves (RFC 3376 §5.1). The all-systems group 224.0.0.1 is never
-        reported (RFC 3376 §6).
+        Emit an unsolicited state-change report for 'group' in the form
+        dictated by the interface's Host Compatibility Mode (RFC 3376
+        §5.1 / §7) and schedule its robustness retransmissions.
+        'record_type' is CHANGE_TO_EXCLUDE_MODE on join,
+        CHANGE_TO_INCLUDE_MODE on leave; the all-systems group 224.0.0.1
+        is never reported (RFC 3376 §6).
 
         A new change supersedes any retransmit train still pending for
-        the same group: its pending record is overwritten and its
-        repeat count re-seeded (RFC 3376 §5.1). The retransmits recompute
-        their records from the live pending-change map at fire time, so a
-        join cancelled by a quick leave never retransmits the stale join.
+        the same group (overwrite + re-seed); the retransmits recompute
+        their form from the live mode + pending-change map at fire time,
+        so a join cancelled by a quick leave never retransmits the stale
+        join. A form that emits nothing (an IGMPv1 leave) schedules no
+        retransmit.
         """
 
         if group == IGMP__ALL_SYSTEMS:
             return
 
-        record = IgmpV3GroupRecord(type=record_type, multicast_address=group)
-        self._emit_v3_report([record])
+        emitted = self._emit_state_change(group, record_type)
 
         repeats = igmp__constants.IGMP__ROBUSTNESS_VARIABLE - 1
-        if repeats <= 0:
+        if not emitted or repeats <= 0:
             self._igmp_state_change__pending.pop(group, None)
             return
 
@@ -194,19 +202,32 @@ class IgmpTxHandler:
     def _fire_state_change_retransmit(self) -> None:
         """
         Emit one robustness retransmission of the currently-pending
-        state-change records — recomputed from the live pending-change
-        map, so a superseded change carries its latest record — then
+        state-change records in the current Host Compatibility Mode's
+        form — IGMPv3 coalesces them into a single Report, IGMPv1/v2 emit
+        one per group (recomputed from the live mode + pending-change
+        map, so a superseded change carries its latest form) — then
         decrement each entry's remaining-repeat count, drop the exhausted
         ones, and re-arm the ticket while any repeats remain (RFC 3376
-        §5.1).
+        §5.1 / §7).
         """
 
         self._igmp_state_change__handle = None
 
-        records: list[IgmpV3GroupRecord] = []
-        for group in list(self._igmp_state_change__pending):
+        groups = list(self._igmp_state_change__pending)
+
+        if self._if._igmp_host_compatibility_mode() is IgmpVersion.V3:
+            self._emit_v3_report(
+                [
+                    IgmpV3GroupRecord(type=self._igmp_state_change__pending[group].record_type, multicast_address=group)
+                    for group in groups
+                ]
+            )
+        else:
+            for group in groups:
+                self._emit_state_change(group, self._igmp_state_change__pending[group].record_type)
+
+        for group in groups:
             pending = self._igmp_state_change__pending[group]
-            records.append(IgmpV3GroupRecord(type=pending.record_type, multicast_address=group))
             if pending.remaining <= 1:
                 del self._igmp_state_change__pending[group]
             else:
@@ -214,8 +235,6 @@ class IgmpTxHandler:
                     record_type=pending.record_type,
                     remaining=pending.remaining - 1,
                 )
-
-        self._emit_v3_report(records)
 
         if self._igmp_state_change__pending:
             self._arm_state_change_retransmit()
@@ -232,32 +251,99 @@ class IgmpTxHandler:
             self._igmp_state_change__handle = None
         self._igmp_state_change__pending.clear()
 
-    def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
+    def _emit_igmp(self, message: IgmpMessage, ip4__dst: Ip4Address, /) -> None:
         """
-        Assemble and send an IGMPv3 Membership Report carrying 'records'
-        to the all-IGMPv3-routers group 224.0.0.22 with the IPv4 Router
-        Alert option and TTL=1 (RFC 3376 §4 / §9). A report with no
-        records is not emitted.
+        Assemble 'message' and send it to 'ip4__dst' with the IPv4
+        Router Alert option and TTL=1 (RFC 3376 §4 / RFC 2236 §2). Bumps
+        the shared 'igmp__pre_assemble' counter; callers bump the
+        per-form send counter.
         """
 
-        if not records:
-            return
-
-        igmp_packet_tx = IgmpAssembler(igmp__message=IgmpMessageV3Report(records=records))
+        igmp_packet_tx = IgmpAssembler(igmp__message=message)
 
         __debug__ and log("igmp", f"{igmp_packet_tx.tracker} - {igmp_packet_tx}")
 
         self._if._packet_stats_tx.igmp__pre_assemble += 1
-        self._if._packet_stats_tx.igmp__v3_report__send += 1
 
         ip4__src = self._if._ip4_unicast[0] if self._if._ip4_unicast else Ip4Address()
 
         self._if._marshal_tx(
             lambda: self._if._phtx_ip4(
                 ip4__src=ip4__src,
-                ip4__dst=IGMP__ALL_IGMPV3_ROUTERS,
+                ip4__dst=ip4__dst,
                 ip4__ttl=1,
                 ip4__options=Ip4Options(Ip4OptionRouterAlert()),
                 ip4__payload=igmp_packet_tx,
             )
         )
+
+    def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
+        """
+        Assemble and send an IGMPv3 Membership Report carrying 'records'
+        to the all-IGMPv3-routers group 224.0.0.22 (RFC 3376 §4 / §9). A
+        report with no records is not emitted.
+        """
+
+        if not records:
+            return
+
+        self._if._packet_stats_tx.igmp__v3_report__send += 1
+        self._emit_igmp(IgmpMessageV3Report(records=records), IGMP__ALL_IGMPV3_ROUTERS)
+
+    def _emit_group_membership_report(self, group: Ip4Address, version: IgmpVersion, /) -> None:
+        """
+        Emit a per-group IGMPv1 / IGMPv2 Membership Report to the group
+        address — the older-version compatibility-mode form (RFC 2236
+        §3 / RFC 1112 §6). The all-systems group 224.0.0.1 is never
+        reported (RFC 3376 §6).
+        """
+
+        if group == IGMP__ALL_SYSTEMS:
+            return
+
+        if version is IgmpVersion.V2:
+            self._if._packet_stats_tx.igmp__v2_report__send += 1
+            self._emit_igmp(IgmpMessageV2Report(group_address=group), group)
+        else:
+            self._if._packet_stats_tx.igmp__v1_report__send += 1
+            self._emit_igmp(IgmpMessageV1Report(group_address=group), group)
+
+    def _emit_v2_leave(self, group: Ip4Address, /) -> None:
+        """
+        Emit an IGMPv2 Leave Group for 'group' to the all-routers group
+        224.0.0.2 (RFC 2236 §3).
+        """
+
+        self._if._packet_stats_tx.igmp__v2_leave__send += 1
+        self._emit_igmp(IgmpMessageV2Leave(group_address=group), IGMP__ALL_ROUTERS)
+
+    def _emit_state_change(self, group: Ip4Address, record_type: IgmpV3RecordType, /) -> bool:
+        """
+        Emit one state-change report for 'group' in the form dictated by
+        the interface's RFC 3376 §7.2.1 Host Compatibility Mode, and
+        return whether a packet was actually emitted:
+
+        - IGMPv3: a single-record Membership Report (CHANGE_TO_EXCLUDE on
+          join, CHANGE_TO_INCLUDE on leave) to 224.0.0.22.
+        - IGMPv2: a per-group Membership Report to the group on join, an
+          IGMPv2 Leave Group to 224.0.0.2 on leave (RFC 2236 §3).
+        - IGMPv1: a per-group Membership Report on join; nothing on leave
+          (IGMPv1 has no Leave message → returns False).
+        """
+
+        mode = self._if._igmp_host_compatibility_mode()
+        is_leave = record_type is IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE
+
+        if mode is IgmpVersion.V3:
+            self._emit_v3_report([IgmpV3GroupRecord(type=record_type, multicast_address=group)])
+            return True
+        if mode is IgmpVersion.V2:
+            if is_leave:
+                self._emit_v2_leave(group)
+            else:
+                self._emit_group_membership_report(group, IgmpVersion.V2)
+            return True
+        if not is_leave:  # IGMPv1 join only; v1 has no Leave message
+            self._emit_group_membership_report(group, IgmpVersion.V1)
+            return True
+        return False

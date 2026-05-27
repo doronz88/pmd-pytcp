@@ -217,3 +217,118 @@ class TestIgmpVersionFallback(IcmpTestCase):
             0,
             msg="The cancelled state-change retransmit must not fire after a mode change.",
         )
+
+
+def _igmp_tx_summary(frame: bytes) -> tuple[int, Ip4Address]:
+    """Return the (IGMP type byte, IPv4 destination) of an emitted IGMP frame."""
+
+    ihl = (frame[14] & 0x0F) * 4
+    return frame[14 + ihl], Ip4Address(frame[30:34])
+
+
+class TestIgmpVersionFallbackReportForm(IcmpTestCase):
+    """
+    The RFC 3376 §7 report-form selection (query-response + state-change) tests.
+    """
+
+    _GROUP = Ip4Address("239.1.1.1")
+
+    def test__igmp__v2_mode__join_emits_v2_report_to_group(self) -> None:
+        """
+        Ensure joining a group in IGMPv2 compatibility mode emits an
+        IGMPv2 Membership Report (type 0x16) to the group address rather
+        than a v3 Report to 224.0.0.22.
+
+        Reference: RFC 2236 §3 (IGMPv2 host sends a Membership Report to the group).
+        """
+
+        with sysctl.override("igmp.version", 2):
+            before = len(self._frames_tx)
+            self._packet_handler._assign_ip4_multicast(self._GROUP)
+
+        frames = self._frames_tx[before:]
+        self.assertEqual(len(frames), 1, msg="The v2-mode join emits one Report.")
+        igmp_type, ip4_dst = _igmp_tx_summary(frames[0])
+        self.assertEqual(igmp_type, 0x16, msg="The v2-mode join must be an IGMPv2 Membership Report (0x16).")
+        self.assertEqual(ip4_dst, self._GROUP, msg="The v2 Report must be sent to the group address.")
+
+    def test__igmp__v2_mode__leave_emits_v2_leave_to_all_routers(self) -> None:
+        """
+        Ensure leaving a group in IGMPv2 compatibility mode emits an
+        IGMPv2 Leave Group (type 0x17) to the all-routers group
+        224.0.0.2.
+
+        Reference: RFC 2236 §3 (IGMPv2 Leave Group sent to 224.0.0.2).
+        """
+
+        with sysctl.override("igmp.version", 2):
+            self._packet_handler._assign_ip4_multicast(self._GROUP)
+            before = len(self._frames_tx)
+            self._packet_handler._remove_ip4_multicast(self._GROUP)
+
+        frames = self._frames_tx[before:]
+        self.assertEqual(len(frames), 1, msg="The v2-mode leave emits one Leave Group.")
+        igmp_type, ip4_dst = _igmp_tx_summary(frames[0])
+        self.assertEqual(igmp_type, 0x17, msg="The v2-mode leave must be an IGMPv2 Leave Group (0x17).")
+        self.assertEqual(ip4_dst, Ip4Address("224.0.0.2"), msg="The v2 Leave must go to the all-routers group.")
+
+    def test__igmp__v1_mode__join_emits_v1_report_to_group(self) -> None:
+        """
+        Ensure joining a group in IGMPv1 compatibility mode emits an
+        IGMPv1 Membership Report (type 0x12) to the group address.
+
+        Reference: RFC 1112 §6 (IGMPv1 host Membership Report).
+        """
+
+        with sysctl.override("igmp.version", 1):
+            before = len(self._frames_tx)
+            self._packet_handler._assign_ip4_multicast(self._GROUP)
+
+        frames = self._frames_tx[before:]
+        self.assertEqual(len(frames), 1, msg="The v1-mode join emits one Report.")
+        igmp_type, ip4_dst = _igmp_tx_summary(frames[0])
+        self.assertEqual(igmp_type, 0x12, msg="The v1-mode join must be an IGMPv1 Membership Report (0x12).")
+        self.assertEqual(ip4_dst, self._GROUP, msg="The v1 Report must be sent to the group address.")
+
+    def test__igmp__v1_mode__leave_emits_nothing(self) -> None:
+        """
+        Ensure leaving a group in IGMPv1 compatibility mode emits no
+        packet — IGMPv1 has no Leave message.
+
+        Reference: RFC 1112 §6 (IGMPv1 has no Leave Group message).
+        """
+
+        with sysctl.override("igmp.version", 1):
+            self._packet_handler._assign_ip4_multicast(self._GROUP)
+            before = len(self._frames_tx)
+            self._packet_handler._remove_ip4_multicast(self._GROUP)
+
+        self.assertEqual(
+            len(self._frames_tx[before:]),
+            0,
+            msg="An IGMPv1-mode leave must emit nothing (no v1 Leave message exists).",
+        )
+
+    def test__igmp__v2_mode__query_response_is_per_group_v2_report(self) -> None:
+        """
+        Ensure a Query in IGMPv2 compatibility mode is answered with an
+        IGMPv2 Membership Report per joined group, sent to each group
+        address.
+
+        Reference: RFC 2236 §3 (IGMPv2 Query response is a per-group Report).
+        """
+
+        with sysctl.override("igmp.version", 2):
+            self._packet_handler._mac_multicast.append(_ALL_SYSTEMS_MAC)
+            self._packet_handler._assign_ip4_multicast(self._GROUP)
+            self._packet_handler._igmp_rx._igmp_query__pick_response_delay_ms = (  # type: ignore[method-assign]
+                lambda max_resp_ms: 0
+            )
+            before = len(self._frames_tx)
+            self._drive_rx(frame=_general_query_frame(max_resp_code=100))
+
+        frames = self._frames_tx[before:]
+        self.assertEqual(len(frames), 1, msg="The v2 query response is one per-group Report.")
+        igmp_type, ip4_dst = _igmp_tx_summary(frames[0])
+        self.assertEqual(igmp_type, 0x16, msg="The v2 query response must be an IGMPv2 Membership Report (0x16).")
+        self.assertEqual(ip4_dst, self._GROUP, msg="The v2 query-response Report must go to the group address.")

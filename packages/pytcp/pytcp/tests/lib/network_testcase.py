@@ -353,6 +353,13 @@ class NetworkTestCase(TestCase):
         # via a second 'mock__init'.
         self._timer_prior = stack.__dict__.get("timer")
         self._timer = FakeTimer()
+        # Restore the shared 'stack.timer' via addCleanup (registered
+        # here, before any test-body 'addCleanup(socket.close)') so it
+        # runs LAST in LIFO cleanup order — a socket close fired in
+        # cleanup still reaches a live Timer through the IGMP/MLD leave +
+        # compatibility-mode paths. (tearDown runs before doCleanups, so
+        # restoring there would strand those close callbacks.)
+        self.addCleanup(self._restore_stack_timer)
 
         stack.mock__init(
             mock__tx_ring=cast(TxRing, mock_TxRing),
@@ -526,13 +533,19 @@ class NetworkTestCase(TestCase):
 
         stack.__dict__.update(self._stack__attr_snapshot)
 
-        # Restore (or remove) the shared 'stack.timer' installed in
-        # setUp so the FakeTimer does not leak into unrelated tests.
+        ip6__constants_module.IP6__FLOW_LABEL_GENERATION = self._ip6_flow_label_generation_prior
+
+        super().tearDown()
+
+    def _restore_stack_timer(self) -> None:
+        """
+        Restore (or remove) the shared 'stack.timer' installed in setUp
+        so the FakeTimer does not leak into unrelated tests. Runs via
+        'addCleanup' (after tearDown and after any test-body socket-close
+        cleanups) so a close fired in cleanup still reaches a live Timer.
+        """
+
         if self._timer_prior is None:
             stack.__dict__.pop("timer", None)
         else:
             stack.timer = self._timer_prior
-
-        ip6__constants_module.IP6__FLOW_LABEL_GENERATION = self._ip6_flow_label_generation_prior
-
-        super().tearDown()

@@ -1917,17 +1917,18 @@ class PacketHandler(Subsystem, ABC):
 
         self._igmp_tx._send_igmp_v3_report(record_type=record_type)
 
-    def _send_igmp_v3_state_change(
+    def _send_igmp_state_change(
         self,
         *,
         group: Ip4Address,
         record_type: IgmpV3RecordType,
     ) -> None:
         """
-        Send an IGMPv3 state-change Report (delegates to the IGMP TX sub-handler).
+        Emit an IGMP state-change report in the interface's Host
+        Compatibility Mode form (delegates to the IGMP TX sub-handler).
         """
 
-        self._igmp_tx._send_igmp_v3_state_change(group=group, record_type=record_type)
+        self._igmp_tx._send_igmp_state_change(group=group, record_type=record_type)
 
     def _send_igmp_leave_all(self) -> None:
         """
@@ -3022,7 +3023,7 @@ class PacketHandlerL2(
         # RFC 3376 §5.1 — announce the new membership with an unsolicited
         # state-change Report (the all-systems group is exempt, handled
         # inside the TX method per RFC 3376 §6).
-        self._send_igmp_v3_state_change(
+        self._send_igmp_state_change(
             group=ip4_multicast,
             record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
         )
@@ -3042,7 +3043,7 @@ class PacketHandlerL2(
         # RFC 3376 §5.1 — announce the departure with a state-change
         # Report transitioning the group to INCLUDE{} (an empty source
         # list, i.e. "no longer a member").
-        self._send_igmp_v3_state_change(
+        self._send_igmp_state_change(
             group=ip4_multicast,
             record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
         )
@@ -3230,7 +3231,7 @@ class PacketHandlerL3(
         # RFC 3376 §5.1 — announce the new membership with an unsolicited
         # state-change Report (the all-systems group is exempt per
         # RFC 3376 §6, handled inside the TX method).
-        self._send_igmp_v3_state_change(
+        self._send_igmp_state_change(
             group=ip4_multicast,
             record_type=IgmpV3RecordType.CHANGE_TO_EXCLUDE_MODE,
         )
@@ -3247,7 +3248,7 @@ class PacketHandlerL3(
 
         # RFC 3376 §5.1 — announce the departure with a state-change
         # Report transitioning the group to INCLUDE{} (empty source list).
-        self._send_igmp_v3_state_change(
+        self._send_igmp_state_change(
             group=ip4_multicast,
             record_type=IgmpV3RecordType.CHANGE_TO_INCLUDE_MODE,
         )

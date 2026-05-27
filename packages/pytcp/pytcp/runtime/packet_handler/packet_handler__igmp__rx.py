@@ -235,10 +235,21 @@ class IgmpRxHandler:
 
     def _igmp_query__send_now(self) -> None:
         """
-        Emit the current-state IGMPv3 Report and bump the canonical
+        Emit the Query response in the form dictated by the interface's
+        Host Compatibility Mode (RFC 3376 §7) and bump the canonical
         'igmp__membership_query__respond' counter. Shared between the
         immediate-send (delay 0) and deferred-send (timer-fired) paths.
+
+        IGMPv3 emits one current-state Report covering all joined
+        groups; IGMPv1/v2 emit a per-group Membership Report to each
+        joined group's address (RFC 2236 §3 / RFC 1112 §6).
         """
 
-        self._if._send_igmp_v3_report()
+        mode = self._if._igmp_host_compatibility_mode()
+        if mode is IgmpVersion.V3:
+            self._if._send_igmp_v3_report()
+        else:
+            for group in dict.fromkeys(self._if._ip4_multicast):
+                self._if._igmp_tx._emit_group_membership_report(group, mode)
+
         self._if._packet_stats_rx.igmp__membership_query__respond += 1
