@@ -615,11 +615,13 @@ is sound and is the template for the rest.
   query-response timer state (M1), the IGMP state-change
   retransmit-timer compat-mode read/RMW (M2), the ICMP error
   rate-limiter token bucket (I1), the per-socket IPv4
-  source-filter map (U1), and the per-interface address-config +
-  IPv6-multicast lists (N1, copy-on-write + write lock) — all
-  SHIPPED 2026-05-27. Still unguarded: `TcpSession` timer/CC
-  state and the `PacketStats` counters. The authoritative no-GIL
-  ledger + correction plan is now
+  source-filter map (U1), the per-interface address-config +
+  IPv6-multicast lists (N1, copy-on-write + write lock), and the
+  `PacketStats` counters (P1, per-thread shards summed on read) —
+  all SHIPPED 2026-05-27. The ONLY remaining item is
+  `TcpSession` timer/CC state (T2), deferred into the TCP
+  god-class decomposition. The authoritative no-GIL ledger +
+  correction plan is now
   **`no_gil_thread_safety_audit.md`**. The lock-per-structure
   pattern (SocketTable, RouteTable, Timer heap, NeighborCache,
   per-interface IPv4-ID, the multicast/IGMP state, the PMTU maps,
@@ -790,7 +792,7 @@ that's intentional.
 
 | Item | Status | Note |
 |------|--------|------|
-| **X1 stack-thread safety audit** | performed + closed (2026-05-27) | See §X1. All findings fixed. **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (snapshot fix). **F2**: app-vs-app multicast-membership RMW (per-interface `_lock__multicast`). **F3**: `pmtu_cache`/`pmtu_state` (shared module `_pmtu_lock` + guarded accessors). **F4**: IGMP query-response state — scalars + suppressed set + per-group pending map (folded under `_lock__multicast`). **Scope: F1–F4 cover only the IPv4 multicast/IGMP/PMTU path; the full stack-wide no-GIL backlog is tracked in `no_gil_thread_safety_audit.md` (T1 TCP-TFO + M1 MLDv2-query + M2 IGMP-retransmit + I1 ICMP-rate-limiter + U1 per-socket-source-filter + N1 address-config-COW locks SHIPPED 2026-05-27; remaining: TCP session timers, PacketStats).** Lock-per-structure is the standing invariant. |
+| **X1 stack-thread safety audit** | performed + closed (2026-05-27) | See §X1. All findings fixed. **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (snapshot fix). **F2**: app-vs-app multicast-membership RMW (per-interface `_lock__multicast`). **F3**: `pmtu_cache`/`pmtu_state` (shared module `_pmtu_lock` + guarded accessors). **F4**: IGMP query-response state — scalars + suppressed set + per-group pending map (folded under `_lock__multicast`). **Scope: F1–F4 cover only the IPv4 multicast/IGMP/PMTU path; the full stack-wide no-GIL backlog is tracked in `no_gil_thread_safety_audit.md` (T1 TCP-TFO + M1 MLDv2-query + M2 IGMP-retransmit + I1 ICMP-rate-limiter + U1 per-socket-source-filter + N1 address-config-COW + P1 PacketStats-per-thread-shards SHIPPED 2026-05-27; only T2 TcpSession timer/CC remains, deferred into the TCP decomposition).** Lock-per-structure (or copy-on-write / per-thread shards) is the standing invariant. |
 | **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
 | **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
 

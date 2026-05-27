@@ -6,6 +6,10 @@ IGMP-scoped conclusion in
 cross-thread backlog was empty — it was empty only for the
 IGMP/PMTU path that triggered it).
 
+**Backlog progress (2026-05-27):** T1, M1, M2, I1, U1, N1, P1
+all SHIPPED. Only **T2** (`TcpSession` timer/CC state) remains,
+deferred into the TCP god-class decomposition. See §3.1.
+
 ## 0. Why this exists
 
 PyTCP's north star includes **running on free-threaded
@@ -74,6 +78,7 @@ pattern is visible.
 | ICMP error rate-limiter token bucket | `_lock` in `try_consume` (I1) | `protocols/icmp/icmp__error_emitter.py` |
 | per-socket IPv4 source-filter map | `_lock__ip4_source_filters` (U1) | `socket/__init__.py` |
 | per-interface address-config + IPv6-multicast lists (ifaddr / SLAAC / temp / routers / DAD-state / `_ip6_multicast`) | `_lock__addr_config` + copy-on-write; lock-free readers (N1) | `runtime/packet_handler/__init__.py`, `stack/address.py` |
+| `PacketStatsRx` / `PacketStatsTx` counters | per-thread shards (`PacketStatsShards`), summed on read; lock-free increments (P1) | `lib/packet_stats.py`, `runtime/packet_handler/__init__.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
 | `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
@@ -293,17 +298,43 @@ Pinned by
 
 ### 2.7 Observability — PacketStats
 
-**P1 · stat counters — LARGE surface, LOW correctness**
-`lib/packet_stats.py`. `PacketStatsRx`/`PacketStatsTx` (250+
-`int` fields) incremented via `+=` at ~300+ sites across RX,
-TX, and Timer threads; `LinkStatsCounters.rx_bytes/tx_bytes`
-from the ring threads. Every `+=` is a non-atomic RMW (H4) →
-lost increments under no-GIL. **Observability only — no
+**P1 · stat counters — LARGE surface — SHIPPED 2026-05-27**
+`lib/packet_stats.py`. `PacketStatsRx`/`PacketStatsTx` (308
+`int` fields total) incremented via `+=` at ~316 sites across
+RX, TX, and Timer threads. Every `+=` is a non-atomic RMW (H4)
+→ lost increments under no-GIL. **Observability only — no
 protocol corruption.** A lock-per-increment would be absurd
-churn on the hot path; the right fix is a *strategy* decision
-(per-thread counters summed on read, or accept approximate
-counts, or a single stats lock taken only on snapshot). Decide
-before touching.
+churn on the hot path.
+
+*Strategy decided + shipped:* **per-thread sharded counters,
+summed on read** (the Linux `percpu_counter` model — chosen
+over lock-per-increment and over accept-approximate because it
+is both exact and contention-free on the hot path). New
+`PacketStatsShards[T]` holds one `PacketStats` shard per writing
+thread via `threading.local` (the constructing thread's shard is
+seeded with the injected/default instance); `current()` returns
+the calling thread's shard (lock-free after first access — only
+a new thread's first touch takes a brief registration lock),
+`snapshot()` sums the shards field-by-field into a fresh
+instance. `PacketHandler._packet_stats_rx`/`_tx` became
+**properties returning `current()`**, so the ~316
+`self._packet_stats_rx.field += 1` sites are unchanged and write
+their thread's shard with no lock and no cross-core contention;
+the public `packet_stats_rx`/`packet_stats_tx` properties return
+`snapshot()` (now copy-by-value, matching the Phase-3 read-only
+introspection contract). Pinned by
+`test__packet_handler__stats_thread_safety.py` (distinct shard
+per thread + summed snapshot + copy-by-value, red→green). The
+synchronous single-thread test harness reads exact counts back
+because all its increments land on the constructing thread's
+seeded shard.
+
+`LinkStatsCounters.rx_bytes`/`tx_bytes` are **left unsharded
+(LOW)**: `rx_bytes` is written only by the rx-ring thread and
+`tx_bytes` only by the tx-ring thread — single-writer per
+counter (different slots), so no lost-update hazard; the reader
+sees an atomic per-field load. Documented here rather than
+guarded.
 
 ---
 
@@ -351,9 +382,14 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
    into the TCP god-class decomposition so it is designed
    once. Until then, document the `_lock__fsm`-coverage gap
    inline with `# Phase: no-GIL` markers.
-7. **P1 — PacketStats strategy.** Decide the counter approach
-   (per-thread + sum-on-read preferred) before any code.
-   Explicitly *not* a lock-per-increment.
+7. **P1 — PacketStats strategy. ✅ DONE 2026-05-27.** Decided
+   on per-thread sharded counters summed on read
+   (`PacketStatsShards`, the `percpu_counter` model) over
+   lock-per-increment / accept-approximate. `_packet_stats_rx`/
+   `_tx` are now `current()`-shard properties (lock-free
+   increments), public `packet_stats_*` return `snapshot()`.
+   `LinkStatsCounters` left unsharded (single-writer per
+   counter). Test red→green. See §2.7 for detail.
 
 `F-frag` and the per-socket scalar options are LOW — document
 the single-writer / benign-tear assumption inline; revisit
@@ -363,9 +399,16 @@ only if a new thread touches them.
 
 Every Part-2 item either carries a lock (or documented
 lock-free design) or an inline `# Phase: no-GIL — <why
-safe>` justification. At that point
-`socket_linux_parity_audit.md` §X1 can legitimately claim the
-no-GIL backlog is closed (it cannot today).
+safe>` justification.
+
+**Status 2026-05-27:** T1, M1, M2, I1, U1, N1, P1 all SHIPPED.
+The ONLY remaining item is **T2 — `TcpSession` timer/CC/
+retransmit state**, deliberately deferred into the planned TCP
+god-class decomposition (so the lock discipline is designed
+with the session split, not retrofitted twice). `F-frag` and
+the per-socket scalar options remain documented-LOW. Once T2
+lands, `socket_linux_parity_audit.md` §X1 can claim the no-GIL
+backlog fully closed.
 
 ---
 

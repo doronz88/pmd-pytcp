@@ -30,7 +30,9 @@ pytcp/lib/packet_stats.py
 ver 3.0.6
 """
 
-from dataclasses import dataclass
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, fields
 
 
 @dataclass(slots=True)
@@ -431,3 +433,60 @@ class PacketStatsTx(PacketStats):
     udp__pre_assemble: int = 0
     udp__send: int = 0
     udp__unknown__drop: int = 0
+
+
+class PacketStatsShards[T: PacketStats]:
+    """
+    Per-thread shards of a 'PacketStats' dataclass for free-threaded
+    (no-GIL) counter accumulation. Each writing thread increments its
+    own shard via 'current()' with no lock and no cross-core
+    contention; 'snapshot()' sums the shards field-by-field into a
+    fresh instance for introspection. The Linux 'percpu_counter'
+    analogue — lock-per-increment would serialize the per-packet hot
+    path, so the counters are sharded instead and reconciled only on
+    the (rare) read.
+
+    The constructing thread's shard is seeded with the supplied
+    instance so test fixtures that inject a 'PacketStats' object and
+    drive the stack synchronously on one thread read their exact
+    counts back unchanged.
+    """
+
+    def __init__(self, *, factory: Callable[[], T], seed: T) -> None:
+        """
+        Bind the per-shard factory and register the seed shard to the
+        constructing thread.
+        """
+
+        self._factory = factory
+        self._shards: list[T] = [seed]
+        self._local = threading.local()
+        self._local.shard = seed
+        self._lock = threading.Lock()
+
+    def current(self) -> T:
+        """
+        Get the calling thread's shard, creating and registering one
+        on first access from a new thread.
+        """
+
+        shard: T | None = getattr(self._local, "shard", None)
+        if shard is None:
+            shard = self._factory()
+            with self._lock:
+                self._shards.append(shard)
+            self._local.shard = shard
+        return shard
+
+    def snapshot(self) -> T:
+        """
+        Get a fresh copy-by-value instance summing every thread's
+        shard field-by-field.
+        """
+
+        with self._lock:
+            shards = tuple(self._shards)
+        result = self._factory()
+        for field in fields(result):
+            setattr(result, field.name, sum(getattr(shard, field.name) for shard in shards))
+        return result

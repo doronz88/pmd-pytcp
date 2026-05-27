@@ -78,7 +78,12 @@ from pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilterMode,
 )
 from pytcp.lib.logger import log
-from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
+from pytcp.lib.packet_stats import (
+    LinkStatsCounters,
+    PacketStatsRx,
+    PacketStatsShards,
+    PacketStatsTx,
+)
 from pytcp.lib.tx_status import TxStatus
 from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import (
@@ -246,8 +251,8 @@ class PacketHandler(Subsystem, ABC):
 
     _event__stop_subsystem: threading.Event
 
-    _packet_stats_rx: PacketStatsRx
-    _packet_stats_tx: PacketStatsTx
+    _stats_rx: PacketStatsShards[PacketStatsRx]
+    _stats_tx: PacketStatsShards[PacketStatsTx]
     _link_stats: LinkStatsCounters
     # Per-interface RX ring. Injected at construction by
     # 'stack.init()' (the ring is fd-bound, hence per-interface).
@@ -378,8 +383,19 @@ class PacketHandler(Subsystem, ABC):
         # 'stack.init()' path does this so the rings can share
         # them), reuse — otherwise default to fresh instances for
         # standalone unit-test callers.
-        self._packet_stats_rx = packet_stats_rx if packet_stats_rx is not None else PacketStatsRx()
-        self._packet_stats_tx = packet_stats_tx if packet_stats_tx is not None else PacketStatsTx()
+        # Per-thread sharded counters (no-GIL N1/P1): the constructing
+        # thread's shard is seeded with the injected (or fresh)
+        # instance, so the synchronous single-thread test harness reads
+        # its exact counts back; RX / TX / Timer threads each accumulate
+        # into their own shard with no lock, summed only on read.
+        self._stats_rx = PacketStatsShards(
+            factory=PacketStatsRx,
+            seed=packet_stats_rx if packet_stats_rx is not None else PacketStatsRx(),
+        )
+        self._stats_tx = PacketStatsShards(
+            factory=PacketStatsTx,
+            seed=packet_stats_tx if packet_stats_tx is not None else PacketStatsTx(),
+        )
         # Link-level aggregate counters (bytes / multicast) bumped
         # by the rings at frame receive / send time. Sharing the
         # same instance across PacketHandler + RxRing + TxRing
@@ -971,12 +987,30 @@ class PacketHandler(Subsystem, ABC):
     ###
 
     @property
+    def _packet_stats_rx(self) -> PacketStatsRx:
+        """
+        Get the calling thread's RX statistics shard (the lock-free
+        per-thread increment target).
+        """
+
+        return self._stats_rx.current()
+
+    @property
+    def _packet_stats_tx(self) -> PacketStatsTx:
+        """
+        Get the calling thread's TX statistics shard (the lock-free
+        per-thread increment target).
+        """
+
+        return self._stats_tx.current()
+
+    @property
     def packet_stats_rx(self) -> PacketStatsRx:
         """
         Get the packet statistics for received packets.
         """
 
-        return self._packet_stats_rx
+        return self._stats_rx.snapshot()
 
     @property
     def packet_stats_tx(self) -> PacketStatsTx:
@@ -984,7 +1018,7 @@ class PacketHandler(Subsystem, ABC):
         Get the packet statistics for transmitted packets.
         """
 
-        return self._packet_stats_tx
+        return self._stats_tx.snapshot()
 
     @property
     def ip6_host(self) -> list[Ip6IfAddr]:
