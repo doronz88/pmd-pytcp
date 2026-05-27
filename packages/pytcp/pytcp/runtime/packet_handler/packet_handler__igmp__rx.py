@@ -33,7 +33,13 @@ ver 3.0.6
 import random
 from typing import TYPE_CHECKING
 
-from net_proto import IgmpType, IgmpVersion, PacketValidationError
+from net_proto import (
+    IgmpMessageV1Report,
+    IgmpMessageV2Report,
+    IgmpType,
+    IgmpVersion,
+    PacketValidationError,
+)
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.igmp.igmp__parser import IgmpParser
 from net_proto.protocols.igmp.message.igmp__message__query import (
@@ -102,13 +108,41 @@ class IgmpRxHandler:
             case IgmpType.MEMBERSHIP_QUERY:
                 self.__phrx_igmp__membership_query(packet_rx)
             case _:
-                # A Report (v1/v2/v3) or Leave received from another
-                # host — silently ignored by a host listener.
-                self._if._packet_stats_rx.igmp__membership_report += 1
-                __debug__ and log(
-                    "igmp",
-                    f"{packet_rx.tracker} - Received IGMP Report/Leave from {packet_rx.ip4.src} (ignored)",
-                )
+                self.__phrx_igmp__report(packet_rx)
+
+    def __phrx_igmp__report(self, packet_rx: PacketRx) -> None:
+        """
+        Handle an inbound IGMP Report/Leave from another host.
+
+        An IGMPv3 host does not suppress its reports (RFC 3376 §7.2.2 is
+        a MAY) — it counts and ignores. In IGMPv1/v2 compatibility mode
+        (RFC 2236 §3), hearing another host's v1/v2 Membership Report for
+        a group this host has joined, while a Query response is pending,
+        suppresses this host's own pending Report for that group.
+        """
+
+        self._if._packet_stats_rx.igmp__membership_report += 1
+
+        message = packet_rx.igmp.message
+        if (
+            self._if._igmp_host_compatibility_mode() is not IgmpVersion.V3
+            and self._if._igmp_query__pending_response_at_ms is not None
+            and isinstance(message, (IgmpMessageV1Report, IgmpMessageV2Report))
+            and message.group_address in self._if._ip4_multicast
+            and message.group_address not in self._if._igmp_query__suppressed_groups
+        ):
+            self._if._igmp_query__suppressed_groups.add(message.group_address)
+            self._if._packet_stats_rx.igmp__membership_query__suppressed += 1
+            __debug__ and log(
+                "igmp",
+                f"{packet_rx.tracker} - Suppressing pending Report for {message.group_address}",
+            )
+            return
+
+        __debug__ and log(
+            "igmp",
+            f"{packet_rx.tracker} - Received IGMP Report/Leave from {packet_rx.ip4.src} (ignored)",
+        )
 
     def __phrx_igmp__membership_query(self, packet_rx: PacketRx) -> None:
         """
@@ -122,9 +156,9 @@ class IgmpRxHandler:
         whose computed response time is later than an already-pending
         Report is absorbed; an earlier one supersedes the pending timer.
 
-        Phase-5 refinements (deferred): per-group response to a Group-
-        Specific Query, the IGMPv1 default Max Resp Time, and the
-        querier-version (v1/v2) report-form fallback.
+        The response form follows the Host Compatibility Mode (RFC 3376
+        §7); deferred refinements are the per-group response to a
+        Group-Specific Query and the IGMPv1 default Max Resp Time.
         """
 
         self._if._packet_stats_rx.igmp__membership_query += 1
@@ -158,9 +192,11 @@ class IgmpRxHandler:
             return
 
         if pending is not None:
-            # This Query supersedes the pending one; cancel its timer.
+            # This Query supersedes the pending one; cancel its timer and
+            # reset the suppression set for the new response window.
             if self._if._igmp_query__handle is not None:
                 stack.timer.cancel(self._if._igmp_query__handle)
+            self._if._igmp_query__suppressed_groups.clear()
             self._if._packet_stats_rx.igmp__membership_query__superseded += 1
 
         self._if._igmp_query__pending_response_at_ms = response_at
@@ -250,6 +286,8 @@ class IgmpRxHandler:
             self._if._send_igmp_v3_report()
         else:
             for group in dict.fromkeys(self._if._ip4_multicast):
-                self._if._igmp_tx._emit_group_membership_report(group, mode)
+                if group not in self._if._igmp_query__suppressed_groups:
+                    self._if._igmp_tx._emit_group_membership_report(group, mode)
 
+        self._if._igmp_query__suppressed_groups.clear()
         self._if._packet_stats_rx.igmp__membership_query__respond += 1

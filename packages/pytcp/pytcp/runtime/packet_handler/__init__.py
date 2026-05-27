@@ -171,6 +171,7 @@ class PacketHandler(Subsystem, ABC):
     _igmp_tx: IgmpTxHandler
     _igmp_query__pending_response_at_ms: int | None
     _igmp_query__handle: TimerHandle | None
+    _igmp_query__suppressed_groups: set[Ip4Address]
     _igmp__v1_querier_present_until_ms: int | None
     _igmp__v2_querier_present_until_ms: int | None
     _ip6_frag_rx: Ip6FragRxHandler
@@ -460,6 +461,10 @@ class PacketHandler(Subsystem, ABC):
         # Queries the same way the MLDv2 sibling does.
         self._igmp_query__pending_response_at_ms: int | None = None
         self._igmp_query__handle: TimerHandle | None = None
+        # RFC 2236 §3 v1/v2 report suppression: groups whose pending
+        # Query response has been suppressed by another host's Report
+        # within the current response window.
+        self._igmp_query__suppressed_groups: set[Ip4Address] = set()
         # RFC 3376 §7.2.1 Older Version Querier Present deadlines (ms);
         # None = no v1/v2 querier seen within the timeout (IGMPv3 mode).
         self._igmp__v1_querier_present_until_ms: int | None = None
