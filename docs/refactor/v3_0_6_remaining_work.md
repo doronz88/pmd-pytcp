@@ -4,9 +4,10 @@
 **Reconciled:** 2026-05-25 (per-package release-readiness pass,
 `v3_0_6_release_readiness.md`) and **2026-05-27** (IGMP track closed —
 §9 source-specific multicast + the §3.1 data-plane RX source filter
-shipped; §2.0 now records the IGMP host stack as feature-complete).
-**Suite:** ~11,687 passing, lint clean, source tree zero TODO/FIXME/XXX.
-**HEAD at last reconcile:** `678a6550`.
+shipped; §2.0 now records the IGMP host stack as feature-complete; plus
+the post-IGMP hardening sweep in §1.3).
+**Suite:** ~11,695 passing, lint clean, source tree zero TODO/FIXME/XXX.
+**HEAD at last reconcile:** `f13b8527`.
 **Purpose:** the single authoritative "what's left for 3.0.6" list,
 produced by a full staleness sweep of all `docs/refactor/*.md` (each
 claim cross-checked against the actual code + referenced commits).
@@ -91,6 +92,43 @@ Per-package (net_addr → net_proto → pytcp):
   (listed shipped Optimistic-DAD / RFC 8981 / RFC 6724 / Tier 3 work
   as "what's left"). And surfaced the IGMP gap (§2.0) the prior sweep
   missed.
+
+### 1.3 The 2026-05-27 post-IGMP hardening sweep
+
+After the §9 source-specific multicast track closed (§2.0), a review
+pass added (commits up to `f13b8527`, all pushed):
+
+- **GSSQ scheduling coverage** (`c18b916e`) — three integration tests
+  pinning the RFC 3376 §5.2 rule-4/5 recorded-source augment / clear /
+  sooner-supersede branches (lifted `packet_handler__igmp__rx.py`
+  coverage 87% → 95%; the residual is pre-existing v1/v2 paths).
+- **Socket finalizer** (`752d2bfd`) — `socket.__del__` releases a
+  leaked (un-closed) socket's eventfd + IPv4 multicast memberships on
+  GC (Linux `ip_mc_drop_socket`), silently (no `ResourceWarning`, to
+  avoid suite noise). Closes the audited `id(socket)`-token leak; the
+  leak was pre-existing (the old refcount leaked identically).
+- **`icmp4.echo_ignore_broadcasts` sysctl** (`194d4d7f`) — Linux
+  `net.ipv4.icmp_echo_ignore_broadcasts` parity (default 1 = ignore
+  broadcast/multicast Echo Requests, the Smurf-mitigation drop; 0
+  answers them). The gate `should_emit_echo_reply` reads it; a
+  multicast/broadcast Echo Reply is now sourced from the interface
+  unicast address (RFC 1122 §3.2.2.6 specific-destination). Used the
+  `sysctl_knob` skill; RFC 1122 ICMP adherence updated.
+- **Multicast listener example** (`096d854a`, `4d667037`, `f13b8527`)
+  — `examples/service__mcast_listener.py`: joins an IPv4 group (drives
+  the IGMP Report → out-of-box answer to the recurring "why no IGMP
+  log?"), logs received datagrams, leaves on stop. A `--pingable` flag
+  (default off, Smurf-safe) opts into clearing the echo knob so
+  `ping <group>` is answered. README recipe added.
+
+**Open thread-safety caveat (NOT closed):** the X1 stack-thread-safety
+audit (§4) — the source-filter work added cross-thread dict state
+(`_ip4_multicast_filters` / `socket._ip4_source_filters` read on the RX
+thread, written on the app/setsockopt thread) under no lock. Pre-existing
+hazard class (the old `_ip4_multicast` list shared the same exposure);
+not made categorically worse, but unaudited. This is the one honest
+residual on the IGMP work and is the project-wide X1 track, not
+IGMP-specific.
 
 ---
 
@@ -219,15 +257,21 @@ to expand scope.
 ```
 Read docs/refactor/v3_0_6_remaining_work.md end to end — it is the
 authoritative "what's left for PyTCP 3.0.6" ledger (reconciled 2026-05-27,
-HEAD 678a6550 on PyTCP_3_0_6). Then read CLAUDE.md (Project North Star)
+HEAD f13b8527 on PyTCP_3_0_6). Then read CLAUDE.md (Project North Star)
 and the relevant rule files in .claude/rules/.
 
 Context: 3.0.6 is feature-complete for a host stack — suite green
-(~11,687), lint clean, zero source TODOs, every major host track shipped.
+(~11,695), lint clean, zero source TODOs, every major host track shipped.
 The IGMP host stack closed out 2026-05-27 (§2.0): membership + §7 v1/v2
 fallback + §5.2 timers + §9 source-specific multicast (control plane) +
-the §3.1 UDP data-plane RX source-delivery filter. There is NO blocking
-or in-scope-required host work left.
+the §3.1 UDP data-plane RX source-delivery filter. A post-IGMP hardening
+sweep followed (§1.3): GSSQ scheduling coverage, the socket __del__
+finalizer (leaked-membership release on GC), the
+icmp4.echo_ignore_broadcasts sysctl (+ unicast-sourced mcast echo reply,
+RFC 1122 §3.2.2.6 / Linux parity), and the examples/service__mcast_listener.py
+demo (--pingable flag). There is NO blocking or in-scope-required host
+work left. The one honest residual is the X1 stack-thread-safety audit
+(§4 / §1.3) — unaudited cross-thread dict state, pre-existing hazard class.
 
 The only genuinely-open OPTIONAL host item is §2.1 — PLPMTUD active
 probe-segment emit (RFC 4821 / 8899; passive ICMP-driven PMTUD already
