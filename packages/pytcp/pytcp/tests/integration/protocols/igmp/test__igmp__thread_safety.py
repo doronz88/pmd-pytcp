@@ -271,3 +271,59 @@ class TestIgmpQueryResponseStateLocking(IcmpTestCase):
             all(observed),
             msg="The pending per-group response must be armed while the interface multicast lock is held.",
         )
+
+
+class TestIgmpStateChangeRetransmitLocking(IcmpTestCase):
+    """
+    The IPv4 IGMP state-change retransmit-timer lock-discipline tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Build the harness and pin robustness to 2 so a join leaves exactly
+        one pending state-change retransmission for the timer-thread fire
+        to act on.
+        """
+
+        super().setUp()
+        self.enterContext(sysctl.override("igmp.robustness", 2))
+
+    def test__igmp__state_change_retransmit_holds_the_multicast_lock(self) -> None:
+        """
+        Ensure the timer-thread state-change retransmit fire mutates the
+        pending per-group change map while holding the interface multicast
+        lock, so it cannot corrupt the map or read a torn Host
+        Compatibility Mode against a concurrent application-thread
+        membership change on a free-threaded build.
+
+        Reference: RFC 3376 §5.1 (unsolicited state-change retransmission).
+        Reference: RFC 3376 §7.2.1 (Host Compatibility Mode).
+        """
+
+        handler = self._packet_handler
+        tracking = _TrackingRLock()
+        observed: list[bool] = []
+
+        # A join (under the real lock) seeds the pending state-change map
+        # so the timer-thread fire has an entry to retransmit and delete.
+        handler._mac_multicast.append(_GROUP.multicast_mac)
+        handler._assign_ip4_multicast(_GROUP)
+
+        setattr(handler, "_lock__multicast", tracking)
+        setattr(
+            handler._igmp_tx,
+            "_igmp_state_change__pending",
+            _LockAssertingDict(tracking, observed, handler._igmp_tx._igmp_state_change__pending),
+        )
+
+        handler._igmp_tx._fire_state_change_retransmit()
+
+        self.assertTrue(
+            observed,
+            msg="The retransmit fire must mutate the pending state-change map.",
+        )
+        self.assertTrue(
+            all(observed),
+            msg="The pending state-change map must be mutated while the interface multicast lock is held.",
+        )

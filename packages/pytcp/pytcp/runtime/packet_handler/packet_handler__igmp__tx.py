@@ -307,34 +307,43 @@ class IgmpTxHandler:
         §5.1 / §7).
         """
 
-        self._igmp_state_change__handle = None
+        # Runs on the Timer thread. The pending per-group change map and
+        # the Host Compatibility Mode deadlines are mutated / written by
+        # the RX and application threads under the interface multicast
+        # lock, so this fire takes the same lock — without it a
+        # free-threaded build could tear the map mid-iteration or read a
+        # half-updated compat mode (the RLock is reentrant, so the nested
+        # '_igmp_host_compatibility_mode' / '_emit_state_change' reads are
+        # fine).
+        with self._if._lock__multicast:
+            self._igmp_state_change__handle = None
 
-        groups = list(self._igmp_state_change__pending)
+            groups = list(self._igmp_state_change__pending)
 
-        if self._if._igmp_host_compatibility_mode() is IgmpVersion.V3:
-            records: list[IgmpV3GroupRecord] = []
-            for group in groups:
-                records.extend(self._igmp_state_change__pending[group].records)
-            self._emit_v3_report(records)
-        else:
-            for group in groups:
-                coarse_type = self._igmp_state_change__pending[group].coarse_type
-                if coarse_type is not None:
-                    self._emit_state_change(group, coarse_type)
-
-        for group in groups:
-            pending = self._igmp_state_change__pending[group]
-            if pending.remaining <= 1:
-                del self._igmp_state_change__pending[group]
+            if self._if._igmp_host_compatibility_mode() is IgmpVersion.V3:
+                records: list[IgmpV3GroupRecord] = []
+                for group in groups:
+                    records.extend(self._igmp_state_change__pending[group].records)
+                self._emit_v3_report(records)
             else:
-                self._igmp_state_change__pending[group] = _IgmpPendingChange(
-                    records=pending.records,
-                    coarse_type=pending.coarse_type,
-                    remaining=pending.remaining - 1,
-                )
+                for group in groups:
+                    coarse_type = self._igmp_state_change__pending[group].coarse_type
+                    if coarse_type is not None:
+                        self._emit_state_change(group, coarse_type)
 
-        if self._igmp_state_change__pending:
-            self._arm_state_change_retransmit()
+            for group in groups:
+                pending = self._igmp_state_change__pending[group]
+                if pending.remaining <= 1:
+                    del self._igmp_state_change__pending[group]
+                else:
+                    self._igmp_state_change__pending[group] = _IgmpPendingChange(
+                        records=pending.records,
+                        coarse_type=pending.coarse_type,
+                        remaining=pending.remaining - 1,
+                    )
+
+            if self._igmp_state_change__pending:
+                self._arm_state_change_retransmit()
 
     def _cancel_state_change_retransmits(self) -> None:
         """

@@ -1193,23 +1193,30 @@ class Icmp6RxHandler:
             self._mld2_query__send_now()
             return
 
-        response_at = stack.timer.now_ms + delay_ms
-        pending = self._if._mld2_query__pending_response_at_ms
-        if pending is not None and pending <= response_at:
-            # Existing pending Report fires sooner than this new
-            # Query would; absorb the Query per §5.1.10
-            # coalescing rule.
-            return
+        # The pending-response timer state is also cleared by the
+        # timer-thread deferred-send, so the read-modify-write below
+        # takes the interface multicast lock — without it a
+        # free-threaded build could interleave this RX scheduling with
+        # the timer-thread clear and orphan a timer handle or lose the
+        # coalescing decision. Mirrors the IGMP query-response locking.
+        with self._if._lock__multicast:
+            response_at = stack.timer.now_ms + delay_ms
+            pending = self._if._mld2_query__pending_response_at_ms
+            if pending is not None and pending <= response_at:
+                # Existing pending Report fires sooner than this new
+                # Query would; absorb the Query per §5.1.10
+                # coalescing rule.
+                return
 
-        if pending is not None:
-            # Newer Query supersedes: cancel the old timer.
-            if self._if._mld2_query__handle is not None:
-                stack.timer.cancel(self._if._mld2_query__handle)
-            self._if._packet_stats_rx.icmp6__mld2_query__superseded += 1
+            if pending is not None:
+                # Newer Query supersedes: cancel the old timer.
+                if self._if._mld2_query__handle is not None:
+                    stack.timer.cancel(self._if._mld2_query__handle)
+                self._if._packet_stats_rx.icmp6__mld2_query__superseded += 1
 
-        self._if._mld2_query__pending_response_at_ms = response_at
-        self._if._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
-        self._if._packet_stats_rx.icmp6__mld2_query__scheduled += 1
+            self._if._mld2_query__pending_response_at_ms = response_at
+            self._if._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
+            self._if._packet_stats_rx.icmp6__mld2_query__scheduled += 1
 
     def _mld2_query__pick_response_delay_ms(self, mrd_ms: int) -> int:
         """
@@ -1227,9 +1234,14 @@ class Icmp6RxHandler:
         Report and clears the per-handler pending state.
         """
 
-        self._if._mld2_query__pending_response_at_ms = None
-        self._if._mld2_query__handle = None
-        self._mld2_query__send_now()
+        # Runs on the Timer thread; the pending state it clears is
+        # armed by the RX Query handler under the interface multicast
+        # lock, so take the same lock here (reentrant — the report
+        # emit nested below does not re-enter it).
+        with self._if._lock__multicast:
+            self._if._mld2_query__pending_response_at_ms = None
+            self._if._mld2_query__handle = None
+            self._mld2_query__send_now()
 
     def _mld2_query__send_now(self) -> None:
         """

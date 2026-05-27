@@ -69,6 +69,8 @@ pattern is visible.
 | per-interface IPv4 Identification | `_lock__ip4_id` | `runtime/packet_handler/__init__.py` |
 | IPv4 multicast reception state | `_lock__multicast` (F2) | `runtime/packet_handler/__init__.py` |
 | IPv4 IGMP query-response state | `_lock__multicast` (F4) | `runtime/packet_handler/packet_handler__igmp__rx.py` |
+| IPv4 IGMP state-change retransmit (timer thread) | `_lock__multicast` (M2) | `runtime/packet_handler/packet_handler__igmp__tx.py` |
+| IPv6 MLDv2 query-response timer state | `_lock__multicast` (M1) | `runtime/packet_handler/packet_handler__icmp6__rx.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
 | `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
@@ -156,35 +158,57 @@ single bool/int — torn-but-benign (H4-like), LOW.
 `runtime/packet_handler/__init__.py`. `_ip4_ifaddr` /
 `_ip6_ifaddr` (+ `_ip4/6_ifaddr_candidate`),
 `_icmp6_slaac_addresses`, `_icmp6_temp_addresses`,
-`_icmp6_default_routers`, `_icmp6_dad__states`. Written from
-the **RX** thread (RA processing — prefix/route/address list
-rebuilds), the **Timer**/async **DAD-claim** threads (SLAAC +
-ACD confirm), the **app** thread (Address API), and boot. No
-lock → list/dict tear (H3) and RA-vs-claim races (H2). The
-`DadSlotRegistry` itself is locked, but the address *lists*
-it feeds are not. This is the Address-API Phase-3 boundary;
-design the lock with that API.
+`_icmp6_default_routers`, `_icmp6_dad__states`, **and the
+multicast membership lists `_ip4_multicast` / `_ip6_multicast`
+themselves** (the M1 fix guards the MLD query *timer* state but
+the membership list the Report emitter reads is still bare).
+Written from the **RX** thread (RA processing — prefix/route/
+address list rebuilds), the **Timer**/async **DAD-claim**
+threads (SLAAC + ACD confirm), the **app** thread (Address /
+Membership API), and boot. No lock → list/dict tear (H3) and
+RA-vs-claim races (H2). The `DadSlotRegistry` itself is locked,
+but the address *lists* it feeds are not. This is the
+Address-API Phase-3 boundary; design the lock with that API.
 
 ### 2.4 Network — multicast (residuals after F2/F4)
 
-**M1 · MLDv2 query-response state — MEDIUM**
+**M1 · MLDv2 query-response state — MEDIUM — SHIPPED 2026-05-27**
 `packet_handler/__init__.py:336` + `packet_handler__icmp6__rx.py`.
 `_mld2_query__pending_response_at_ms` / `_mld2_query__handle`
 — the IPv6 mirror of the IGMP query-response state F4 fixed
 for IPv4. RX-write vs Timer-clear, no lock. F4 only covered
-IPv4 IGMP; MLD was missed. Needs its own
-`_lock__multicast`-equivalent (or fold IPv6 multicast state
-under the same per-interface lock).
+IPv4 IGMP; MLD was missed.
 
-**M2 · IGMP querier-present timers — LOW/MEDIUM**
+*Fix:* wrapped both entry points — `__phrx_icmp6__mld2_query`
+(RX schedule/coalesce/supersede) and `_mld2_query__deferred_send`
+(timer-thread clear) — in `with self._if._lock__multicast:`,
+folding the IPv6 MLD query-timer state under the same
+per-interface multicast RLock as the IPv4 path rather than
+adding a second lock. Lock discipline pinned by
+`test__mld__thread_safety.py` (red→green via the tracking-RLock
+max-depth probe). NOTE residual: the MLD Report emitter
+(`_send_icmp6_multicast_listener_report`) reads the IPv6
+membership list `_ip6_multicast`, which is still not guarded —
+that is the IPv6 half of N1 (address/membership config), tracked
+there, not in M1.
+
+**M2 · IGMP querier-present timers — LOW/MEDIUM — SHIPPED 2026-05-27**
 `_igmp__v1/v2_querier_present_until_ms` are written under
-`_lock__multicast` (RX, F4) but **read** via
+`_lock__multicast` (RX, F4) but were **read** via
 `_igmp_host_compatibility_mode()` (`__init__.py:2096-2098`)
 from the **TX state-change retransmit timer callback**
-(`packet_handler__igmp__tx.py:474`, timer thread) *without*
-the lock — a torn deadline read → momentarily-wrong compat
-mode. Small residual the F4 entry-point wrapping did not
-reach (the TX retransmit path is a separate thread entry).
+(`packet_handler__igmp__tx.py::_fire_state_change_retransmit`,
+timer thread) *without* the lock — a torn deadline read →
+momentarily-wrong compat mode, plus an unguarded
+read-modify-write of the `_igmp_state_change__pending` map the
+RX/app path mutates under the lock.
+
+*Fix:* wrapped the whole `_fire_state_change_retransmit` body in
+`with self._if._lock__multicast:` (reentrant RLock; the nested
+`_igmp_host_compatibility_mode` / `_emit_state_change` reads are
+fine). Pinned by
+`test__igmp__thread_safety.py::TestIgmpStateChangeRetransmitLocking`
+(red→green).
 
 ### 2.5 Network — fragmentation
 
@@ -235,12 +259,16 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
    `record_*` pattern). Lock-discipline test
    (`test__tcp__stack.py::TestTcpStack__Accessors`) red→green;
    8 call sites migrated. See §2.1 for detail.
-2. **M1 + M2 — finish multicast.** Lock MLDv2 query state
-   (mirror the IGMP F4 entry-point wrapping for the
-   `packet_handler__icmp6__rx` MLD handlers) and close the
-   IGMP querier-timer TX-retransmit read (wrap the retransmit
-   callback's compat-mode read under `_lock__multicast`).
-   Completes the multicast story for real.
+2. **M1 + M2 — finish multicast. ✅ DONE 2026-05-27.** Locked
+   the MLDv2 query state (wrapped `__phrx_icmp6__mld2_query` +
+   `_mld2_query__deferred_send` under `_lock__multicast`,
+   mirroring the IGMP F4 pattern) and closed the IGMP
+   querier-timer TX-retransmit read/RMW (wrapped
+   `_fire_state_change_retransmit` under `_lock__multicast`).
+   Tests `test__mld__thread_safety.py` +
+   `TestIgmpStateChangeRetransmitLocking` red→green. The IPv6
+   membership-list read in the MLD Report emitter is the IPv6
+   half of N1, not M1. See §2.4 for detail.
 3. **I1 — ICMP rate-limiter lock.** Add a `threading.Lock`
    inside `IcmpErrorRateLimiter.try_consume`. Tiny.
 4. **U1 — per-socket source-filter lock.** Guard
