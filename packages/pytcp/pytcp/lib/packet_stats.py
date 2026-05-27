@@ -295,6 +295,7 @@ class PacketStatsRx(PacketStats):
     tcp__no_socket_match__respond_rst: int = 0
 
     raw__socket_match: int = 0
+    raw__multicast_source_filtered__drop: int = 0
 
 
 @dataclass(slots=True)

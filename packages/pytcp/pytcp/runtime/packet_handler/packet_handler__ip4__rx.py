@@ -206,6 +206,18 @@ class Ip4RxHandler:
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
+                # RFC 3376 §3.1 data-plane source-delivery filter (Linux
+                # 'ip_mc_sf_allow' in raw_v4_input): a matched RAW socket
+                # whose source filter rejects the datagram's source does
+                # not receive it. The packet is dropped, not passed to the
+                # transport demux — a matched-but-filtered socket
+                # suppresses the Protocol-Unreachable the way Linux's
+                # 'delivered = 1' does.
+                if packet_rx.ip4.dst.is_multicast and not socket._ip4_multicast_source_admits(
+                    ifindex=self._if._ifindex, group=packet_rx.ip4.dst, source=packet_rx.ip4.src
+                ):
+                    self._if._packet_stats_rx.raw__multicast_source_filtered__drop += 1
+                    return
                 self._if._packet_stats_rx.raw__socket_match += 1
                 __debug__ and log(
                     "ip4",

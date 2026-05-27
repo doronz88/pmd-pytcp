@@ -1308,6 +1308,18 @@ class socket(ABC):
                 pass
         self._ip4_source_filters.clear()
 
+    def _ip4_multicast_source_admits(self, *, ifindex: int, group: Ip4Address, source: Ip4Address) -> bool:
+        """
+        RFC 3376 §3.1 data-plane source-delivery gate (Linux
+        'ip_mc_sf_allow'): admit an inbound IPv4 multicast datagram only
+        if this socket's source filter for '(ifindex, group)' admits
+        'source'. A socket with no filter for the pair keeps any-source
+        delivery. Shared by the UDP and RAW delivery paths.
+        """
+
+        source_filter = self._ip4_source_filters.get((ifindex, group))
+        return source_filter is None or source_filter.allows(source)
+
     def getsockname(self) -> tuple[str, int]:
         """
         Get the local address and port.

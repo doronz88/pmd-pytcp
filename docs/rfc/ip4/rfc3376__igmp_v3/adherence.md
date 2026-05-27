@@ -26,7 +26,9 @@ filters, and the source-filter socket options
 `IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`) drive it. The
 **data-plane** RX source filter (dropping a received multicast
 datagram from a non-admitted source before socket delivery,
-Linux `ip_mc_sf_allow`) is implemented for UDP. The IGMPv3
+Linux `ip_mc_sf_allow`) is implemented for both UDP and RAW
+sockets, mirroring Linux which gates both delivery paths
+(`__udp4_lib_mcast_deliver` and `raw_v4_input`). The IGMPv3
 **router / querier** role (sending Queries, maintaining group
 membership state for forwarding, the querier election) is
 Phase-2 router work and is marked out-of-scope per clause.
@@ -381,7 +383,17 @@ EXCLUDE delivers all but listed); a filtered-out source bumps
 next candidate socket. A socket with no per-(interface, group)
 filter keeps the existing any-source delivery, so the gate only
 tightens delivery for source-specific sockets. The same filter
-on a RAW socket is a natural extension (no current consumer).
+gates RAW-socket delivery in the IPv4 RX path
+(`packet_handler__ip4__rx`) via the shared
+`socket._ip4_multicast_source_admits` helper — a matched-but-
+filtered RAW socket drops the datagram (bumping
+`raw__multicast_source_filtered__drop`) and, mirroring Linux
+`raw_v4_input` where a matched socket sets `delivered = 1`,
+suppresses the Protocol-Unreachable rather than falling through
+to the transport demux. RAW reception of `(group, INADDR_ANY)`
+multicast is itself enabled by the wildcard `RawMetadata.socket_ids`
+enumeration (the connected / local-bound / fully-wildcard
+candidates the UDP demux already produced).
 
 ---
 
@@ -581,7 +593,7 @@ on a RAW socket is a natural extension (no current consumer).
 | §7 older-version (v1/v2) querier interop        | met   |
 | §8 timing / robustness constants (sysctls)      | met   |
 | §9 source-specific multicast (control plane)    | met   |
-| §3.1 / §9 data-plane RX source-delivery filter (UDP) | met (`ip_mc_sf_allow`) |
+| §3.1 / §9 data-plane RX source-delivery filter (UDP + RAW) | met (`ip_mc_sf_allow`) |
 | Router / querier role                           | out of scope (Phase 2) |
 
 PyTCP implements the IGMPv3 **host** role including source
@@ -598,8 +610,9 @@ real-mode Current-State Records (and the rule-3 IS_IN(A∩B) /
 IS_IN(B−A) math for Group-and-Source-Specific Queries), and the
 host falls back to IGMPv1/v2 report forms under an older-version
 querier (§7 Host Compatibility Mode). The **data-plane** RX
-source-delivery filter (`ip_mc_sf_allow`) is enforced for UDP —
-a received multicast datagram reaches a socket only from a source
-the socket's filter admits. The same gate on RAW sockets is a
-natural extension with no current consumer; the IGMPv3
-router/querier role is out of scope (Phase 2).
+source-delivery filter (`ip_mc_sf_allow`) is enforced for both
+UDP and RAW sockets — a received multicast datagram reaches a
+socket only from a source the socket's filter admits — mirroring
+Linux, which gates both `__udp4_lib_mcast_deliver` and
+`raw_v4_input`. The IGMPv3 router/querier role is out of scope
+(Phase 2).
