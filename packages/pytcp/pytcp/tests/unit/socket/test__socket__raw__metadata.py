@@ -100,10 +100,12 @@ class TestRawMetadataIp4(TestCase):
 
     def test__raw_metadata__socket_ids_ip4(self) -> None:
         """
-        Ensure 'socket_ids' for an IPv4 raw envelope returns a single
-        candidate keyed by (INET4, RAW, local, int(proto), remote, 0).
-        The '0' remote port mirrors the raw-socket convention that
-        there is no L4 port.
+        Ensure 'socket_ids' for an IPv4 raw envelope enumerates the
+        connected, local-bound, and fully-wildcard candidates (most
+        specific first) so a RAW socket bound with an unspecified local
+        and/or remote address is matched, mirroring the UDP demux. The
+        '0' remote port mirrors the raw-socket convention that there is
+        no L4 port.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -117,11 +119,27 @@ class TestRawMetadataIp4(TestCase):
                 remote_address=Ip4Address("10.0.0.2"),
                 remote_port=0,
             ),
+            SocketId(
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.RAW,
+                local_address=Ip4Address("10.0.0.1"),
+                local_port=int(IpProto.ICMP4),
+                remote_address=Ip4Address(),
+                remote_port=0,
+            ),
+            SocketId(
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.RAW,
+                local_address=Ip4Address(),
+                local_port=int(IpProto.ICMP4),
+                remote_address=Ip4Address(),
+                remote_port=0,
+            ),
         ]
         self.assertEqual(
             self._md.socket_ids,
             expected,
-            msg="RawMetadata.socket_ids must build one IPv4 RAW SocketId keyed by int(proto).",
+            msg="RawMetadata.socket_ids must enumerate connected, local-bound, and wildcard IPv4 RAW SocketIds.",
         )
 
 
@@ -132,9 +150,11 @@ class TestRawMetadataIp6(TestCase):
 
     def test__raw_metadata__socket_ids_ip6(self) -> None:
         """
-        Ensure 'socket_ids' for an IPv6 raw envelope returns a single
-        candidate with 'AddressFamily.INET6' and the IPv6 local/remote
-        addresses preserved.
+        Ensure 'socket_ids' for an IPv6 raw envelope enumerates the
+        connected, local-bound, and fully-wildcard candidates (most
+        specific first) with 'AddressFamily.INET6', so a RAW socket
+        bound with an unspecified local and/or remote address is
+        matched.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -155,11 +175,27 @@ class TestRawMetadataIp6(TestCase):
                 remote_address=Ip6Address("2001:db8::2"),
                 remote_port=0,
             ),
+            SocketId(
+                address_family=AddressFamily.INET6,
+                socket_type=SocketType.RAW,
+                local_address=Ip6Address("2001:db8::1"),
+                local_port=int(IpProto.ICMP6),
+                remote_address=Ip6Address(),
+                remote_port=0,
+            ),
+            SocketId(
+                address_family=AddressFamily.INET6,
+                socket_type=SocketType.RAW,
+                local_address=Ip6Address(),
+                local_port=int(IpProto.ICMP6),
+                remote_address=Ip6Address(),
+                remote_port=0,
+            ),
         ]
         self.assertEqual(
             md.socket_ids,
             expected,
-            msg="RawMetadata.socket_ids must build one IPv6 RAW SocketId keyed by int(proto).",
+            msg="RawMetadata.socket_ids must enumerate connected, local-bound, and wildcard IPv6 RAW SocketIds.",
         )
 
 

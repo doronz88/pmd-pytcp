@@ -61,16 +61,43 @@ class RawMetadata:
     @property
     def socket_ids(self) -> list[SocketId]:
         """
-        Get list of the listening socket IDs that match the metadata.
+        Get list of the listening socket IDs that match the metadata,
+        most specific first: the fully-connected (local, remote) pair,
+        the local-bound any-remote form, and the fully-wildcard form.
+        Enumerating the wildcard combinations (as the UDP demux does)
+        lets a RAW socket bound with an unspecified local and/or remote
+        address receive the datagram — without it only an exactly
+        (local, remote)-bound RAW socket would ever match, so a
+        '(group, INADDR_ANY)' multicast listener could never receive.
+        The '0' remote port is the raw-socket convention (no L4 port).
         """
+
+        address_family = AddressFamily.from_ver(self.ip__ver)
+        local_port = int(self.ip__proto)
 
         return [
             SocketId(
-                address_family=AddressFamily.from_ver(self.ip__ver),
+                address_family=address_family,
                 socket_type=SocketType.RAW,
                 local_address=self.ip__local_address,
-                local_port=int(self.ip__proto),
+                local_port=local_port,
                 remote_address=self.ip__remote_address,
+                remote_port=0,
+            ),
+            SocketId(
+                address_family=address_family,
+                socket_type=SocketType.RAW,
+                local_address=self.ip__local_address,
+                local_port=local_port,
+                remote_address=self.ip__remote_address.unspecified,
+                remote_port=0,
+            ),
+            SocketId(
+                address_family=address_family,
+                socket_type=SocketType.RAW,
+                local_address=self.ip__local_address.unspecified,
+                local_port=local_port,
+                remote_address=self.ip__remote_address.unspecified,
                 remote_port=0,
             ),
         ]
