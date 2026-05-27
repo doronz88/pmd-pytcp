@@ -454,14 +454,137 @@ expose the constant in `pytcp.socket`.
 
 ## Cross-cutting issues
 
-### X1. Stack thread separation
+### X1. Stack thread separation — AUDIT (2026-05-27)
 
-PyTCP's stack runs in its own thread; sockets are accessed
-from application threads. Thread-safety of the socket-layer
-data structures (rx buffers, accept queues) needs an
-explicit audit. Symptoms of a missing audit would be rare
-race conditions under concurrent recv + ICMP error
-delivery, or accept + concurrent close.
+PyTCP's stack runs across several threads — the rx-ring
+thread (PacketHandler RX methods), the tx-ring thread, the
+Timer subsystem thread, the ARP/ND cache aging threads — and
+application code calls into sockets / control APIs from its
+own thread(s). This section records the explicit cross-thread
+shared-state audit owed since the original write-up.
+
+**Threat model.** PyTCP ships and tests on standard CPython,
+so the GIL holds: every individual bytecode op (a `d[k]=v`
+key set, a `d.get(k)`, a `d.pop(k)`, a `deque.append`/
+`popleft`, a scalar field assignment) is atomic w.r.t. other
+Python threads, and a single C-level call such as
+`list(some_dict)` cannot be interleaved by another Python
+thread. Three hazard classes survive the GIL: **(H1)** a
+*Python-level* `for`/comprehension iterating a shared
+dict/set/list on one thread while another thread changes its
+size → hard `RuntimeError: ... changed size during iteration`;
+**(H2)** a compound check-then-act / read-modify-write spanning
+multiple bytecodes interleaved by another writer → lost update
+or stale read (no crash); **(H3)** a multi-statement invariant
+(container + derived counter) observed torn by a reader. A
+fourth class — raw container corruption / tearing on any
+unguarded write — appears on free-threaded CPython
+(3.13t/3.14t). **Running on no-GIL CPython is a PyTCP north-star
+goal**, so this fourth class is in scope: GIL atomicity is NOT
+an acceptable correctness crutch, and every cross-thread
+dict / list / set / scalar ultimately needs its own lock (the
+lock-per-structure pattern the SocketTable / RouteTable / Timer
+heap / NeighborCache already follow). The findings below are
+therefore tiered two ways: severity **on today's GIL build**
+(what can crash or misbehave now) and **on a no-GIL build**
+(what must be locked to reach the north star). "Benign under
+the GIL" means "not a 3.0.6-on-CPython bug" — it does **not**
+mean "done"; each such item is on the no-GIL backlog.
+
+**Already correctly guarded** (these predate and survive the
+audit — each has genuine multi-writer, iterate-while-mutate,
+or torn-invariant exposure and carries its own lock):
+
+| Structure | Lock | File |
+|---|---|---|
+| `stack.sockets` (SocketTable) | `_lock` — accessors return snapshots | `socket/socket_table.py` |
+| `stack.ip4_fib` / `ip6_fib` (RouteTable) | `_lock` (lookup snapshots under lock) | `runtime/fib.py` |
+| `Timer._heap` + `_seq` | `_lock` (RLock; released before callback) | `runtime/timer.py` |
+| `NeighborCache._entries` (ARP/ND) | `_lock` (callbacks fire outside lock) | `lib/neighbor.py` |
+| Per-interface IPv4 Identification | `_lock__ip4_id` | `runtime/packet_handler/__init__.py` |
+| Per-socket rx/tx buffers, accept signal | `_lock__io` / `_lock__rx_buffer` / `_lock__tx_buffer` / `_lock__fsm` + semaphores + eventfd | `socket/*.py`, `protocols/tcp/tcp__session.py` |
+
+**Findings — unguarded cross-thread state:**
+
+- **F1 (H1, real, low-probability crash — the one defect worth
+  fixing).** `_igmp_group_query__pending` (per-group GSSQ
+  response records) is iterated on the **rx-ring thread** in
+  `_igmp_cancel_pending_timers` (`for pending in …pending.
+  values(): …; .clear()`, `packet_handler__igmp__rx.py:374/376`)
+  while the **timer thread** can `pop(group)` the same dict from
+  `_igmp_group_query__deferred_send` (`:305`). If a
+  Group-(and-Source-)Specific Query response timer fires in the
+  exact instant a querier compatibility-mode change cancels the
+  pending set, the RX iteration raises `RuntimeError:
+  dictionary changed size during iteration` and kills the RX
+  subsystem loop. Window is narrow and both sides are internal
+  threads (no app involvement), but it is a genuine GIL-present
+  crash. **Fix:** snapshot before iterating —
+  `for pending in list(self._if._igmp_group_query__pending.
+  values()):` (the codebase already uses exactly this
+  snapshot-then-iterate idiom at `igmp__tx.py:310`
+  `groups = list(self._igmp_state_change__pending)` and at
+  `igmp__tx.py:143/163` `dict.fromkeys(self._if._ip4_multicast)`).
+
+- **F2 (H2, moderate, no crash).** The IPv4 multicast reception
+  state — `_ip4_multicast_filters` and `_ip4_multicast_refs` —
+  is written only by the **app thread** (membership join/leave,
+  `IP_*_SOURCE_MEMBERSHIP` setsockopt) and read by the **rx-ring
+  thread** *only through atomic snapshots*: the `_ip4_multicast`
+  property is `list(self._ip4_multicast_filters)` (one C-level
+  call, GIL-atomic) and every RX/TX/IGMP consumer iterates that
+  snapshot or `dict.fromkeys(...)` of it, never the live dict.
+  RX delivery is therefore safe under the GIL. The residual is
+  **app-vs-app**: two application threads doing concurrent
+  join/leave/setsockopt on the same interface race on the
+  compound `_mc_recompute` read-merge-assign (`__init__.py:797–
+  801`) and the `_mc_ref_acquire`/`_mc_ref_release` refcount RMW,
+  which can lose an update or strand a refcount. Linux serialises
+  these under the socket/`mc_list` lock; PyTCP has no such lock.
+  Conventionally membership is driven from one thread, so this is
+  latent, not observed.
+
+- **F3 (H2/benign under GIL).** `stack.pmtu_cache` /
+  `stack.pmtu_state` are bare dicts written from the rx-ring
+  thread (ICMPv4 Frag-Needed `icmp4__rx.py:233`, ICMPv6
+  Packet-Too-Big `icmp6__rx.py:638`) and from app/tx paths (UDP
+  `udp__socket.py:1054/1064`, TCP `tcp__session.py:1042/1051`),
+  read via `.get(dst)` (`stack/__init__.py:373/376`). Every
+  access is an independent single-key set or get — no iteration,
+  no multi-key invariant — so all are GIL-atomic; worst case a
+  reader sees a slightly stale per-destination MTU. Benign on
+  standard CPython.
+
+- **F4 (H2/benign under GIL).** The interface-wide General-Query
+  response scalars `_igmp_query__pending_response_at_ms` /
+  `_igmp_query__handle` are written by the rx-ring thread (query
+  arrival) and cleared by the timer thread (deferred send).
+  Scalar assignment is atomic; the only risk is a logical race
+  (a response double-scheduled or a just-fired schedule cleared),
+  not corruption or a crash.
+
+**Conclusion.** The structures with real multi-writer /
+iterate-while-mutate / torn-invariant exposure are all already
+lock-guarded; the locking design (snapshot-under-lock for
+tables, snapshot-before-iterate for the multicast/IGMP derived
+views, callbacks-outside-lock for the timer and neighbor cache)
+is sound and is the template for the rest.
+
+- **On today's GIL build:** exactly **one** genuine defect —
+  **F1**, a one-line snapshot fix. F2 is a latent app-vs-app
+  serialisation gap (matches a Linux lock PyTCP lacks); F3/F4
+  do not crash or corrupt.
+- **For the no-GIL north star:** F2, F3, **and** F4 all become
+  real correctness bugs — the IGMP multicast reception state
+  (`_ip4_multicast_filters` / `_ip4_multicast_refs` + the
+  `_Ip4GroupMembership.socket_filters` it nests), the
+  `pmtu_cache` / `pmtu_state` dicts, and the IGMP General-Query
+  response scalars each need a guarding lock (or a documented
+  lock-free design). This is the no-GIL backlog: extend the
+  existing lock-per-structure pattern to every remaining bare
+  dict / cross-thread scalar. It is not a 3.0.6-on-CPython
+  blocker, but it **is** in scope for the stated north star and
+  should not be dismissed as "GIL makes it fine."
 
 ### X2. `accept()` returns blocking sockets
 
@@ -627,7 +750,7 @@ that's intentional.
 
 | Item | Status | Note |
 |------|--------|------|
-| **X1 stack-thread safety audit** | not yet performed | The producer (stack thread) and consumer (app thread) coordination paths are GIL-correct under the C1+C2 invariants, but a full race analysis is owed. |
+| **X1 stack-thread safety audit** | performed (2026-05-27) | See §X1. Locked structures (sockets/FIB/timer/neighbor/ip4-id/per-socket buffers) are sound. One GIL-present defect — **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (one-line snapshot fix). F2 (app-vs-app multicast-membership RMW), F3 (`pmtu_cache`/`pmtu_state`), F4 (IGMP General-Query scalars) don't bite on today's GIL build but **are real bugs for the no-GIL north star** — each needs its own lock (extend the lock-per-structure pattern). |
 | **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
 | **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
 
