@@ -1124,7 +1124,7 @@ class TcpSession:
             # guard ensures we only decrement for sessions that
             # were actually counted at TFO acceptance time.
             if self._fastopen.pending_counted:
-                stack.tcp_stack.fastopen_pending_count = max(0, stack.tcp_stack.fastopen_pending_count - 1)
+                stack.tcp_stack.decr_fastopen_pending()
                 self._fastopen.pending_counted = False
 
         # Unregister session.
@@ -1660,9 +1660,9 @@ class TcpSession:
             # so the second attempt is plain 3WHS. Otherwise
             # emit TFO with the cached cookie if known, else
             # the empty cookie-request form.
-            if self._remote_ip_address in stack.tcp_stack.fastopen_negative or self._fastopen.syn_retransmitted:
+            if stack.tcp_stack.is_fastopen_negative(self._remote_ip_address) or self._fastopen.syn_retransmitted:
                 return None
-            return stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address, b"")
+            return stack.tcp_stack.fastopen_cookie(self._remote_ip_address) or b""
         return None
 
     def _phase4_advance_send_state(
@@ -2612,7 +2612,7 @@ class TcpSession:
             # cookie request form is invalid for data
             # acceptance per §4.1.2.
             tfo_data: bytes = b""
-            cached = stack.tcp_stack.fastopen_cookies.get(self._remote_ip_address)
+            cached = stack.tcp_stack.fastopen_cookie(self._remote_ip_address)
             if cached and self._advertise.fastopen and self._tx.buffer:
                 with self._lock__tx_buffer:
                     slice_len = min(self._win.snd_mss, len(self._tx.buffer))
@@ -3009,7 +3009,7 @@ class TcpSession:
                 # drops TFO-bearing SYNs. Add the peer to the
                 # negative-response cache so future active-
                 # opens to the same peer skip TFO entirely.
-                stack.tcp_stack.fastopen_negative.add(self._remote_ip_address)
+                stack.tcp_stack.mark_fastopen_negative(self._remote_ip_address)
         self._arm_timer("retransmit", self._rto_state.rto_ms)
         __debug__ and log(
             "tcp-ss",

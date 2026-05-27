@@ -98,12 +98,8 @@ def cache_cookie(*, peer_address: Ip4Address | Ip6Address, cookie: bytes) -> Non
     documented contract.
     """
 
-    cache = stack.tcp_stack.fastopen_cookies
-    # Refresh insertion order: pop existing entry (if any)
-    # so the re-insert lands at the tail.
-    cache.pop(peer_address, None)
-    cache[peer_address] = cookie
-    # FIFO evict from the head until the cap is satisfied.
-    while len(cache) > stack.TCP__FASTOPEN_CACHE_MAX_SIZE:
-        oldest_peer = next(iter(cache))
-        del cache[oldest_peer]
+    stack.tcp_stack.cache_fastopen_cookie(
+        peer=peer_address,
+        cookie=cookie,
+        max_size=stack.TCP__FASTOPEN_CACHE_MAX_SIZE,
+    )

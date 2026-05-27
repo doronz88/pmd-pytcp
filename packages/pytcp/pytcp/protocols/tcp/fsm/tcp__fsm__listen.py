@@ -306,7 +306,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # out of SYN_RCVD.
             tfo_enabled = (
                 listen_socket._tcp_fastopen_qlen > 0
-                and stack.tcp_stack.fastopen_pending_count < listen_socket._tcp_fastopen_qlen
+                and stack.tcp_stack.fastopen_pending() < listen_socket._tcp_fastopen_qlen
             )
             tfo_cookie_valid = False
             if tfo_enabled and packet_rx_md.tcp__fastopen_cookie is not None:
@@ -364,7 +364,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             # path (cookie validated). The count is decremented
             # in '_change_state' on transition out of SYN_RCVD.
             if tfo_cookie_valid:
-                stack.tcp_stack.fastopen_pending_count += 1
+                stack.tcp_stack.incr_fastopen_pending()
                 session._fastopen.pending_counted = True
             # Change state to SYN_RCVD; the actual SYN+ACK packet
             # is emitted from that state on the next timer tick by

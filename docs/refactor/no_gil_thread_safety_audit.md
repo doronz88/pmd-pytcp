@@ -70,6 +70,7 @@ pattern is visible.
 | IPv4 multicast reception state | `_lock__multicast` (F2) | `runtime/packet_handler/__init__.py` |
 | IPv4 IGMP query-response state | `_lock__multicast` (F4) | `runtime/packet_handler/packet_handler__igmp__rx.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
+| `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
 | `Subsystem` stop signalling | `threading.Event` (thread-safe) | `runtime/subsystem.py` |
 | per-socket rx queue / accept queue / error queue | `_lock__io` + `threading.Semaphore` + atomic `deque` | `socket/*.py` |
@@ -84,14 +85,32 @@ GIL-build behaviour, where all of these are currently benign).
 
 ### 2.1 Transport — TCP
 
-**T1 · `TcpStack` Fast-Open state — HIGH**
-`protocols/tcp/tcp__stack.py:70/79/89`. `fastopen_cookies`
+**T1 · `TcpStack` Fast-Open state — HIGH — SHIPPED 2026-05-27**
+`protocols/tcp/tcp__stack.py`. `fastopen_cookies`
 (dict), `fastopen_negative` (set), `fastopen_pending_count`
 (int). Written from the **RX** thread (SYN/SYN-ACK handling,
 pending-count inc/dec at `fsm/tcp__fsm__listen.py` + session)
 and read/written from the **TX** thread (active-open SYN
 generation). No lock → cookie-cache tear (H3), lost
 pending-count (H2). Stack-wide singleton.
+
+*Fix:* added `TcpStack._lock` (`threading.Lock`, `compare=False`)
+and routed every read/write through guarded accessors
+(`fastopen_cookie` / `cache_fastopen_cookie` /
+`is_fastopen_negative` / `mark_fastopen_negative` /
+`fastopen_pending` / `incr_fastopen_pending` /
+`decr_fastopen_pending`) — mirrors the PMTU `record_*`
+pattern. The compound pop+insert+FIFO-evict cookie-cache
+mutation is now a single critical section. All 8 production
+call sites migrated; the fields remain public only for the
+single-threaded test-fixture seed path. Lock discipline pinned
+by `test__tcp__stack.py::TestTcpStack__Accessors` (red→green).
+The check-then-increment of `fastopen_pending` across the
+listen handler (read at the gate, increment after session
+setup) remains a benign TOCTOU that can transiently overshoot
+`fastopen_qlen` by one — out of T1 scope (field-tear/lost-update
+only); a fused check-and-admit accessor is a possible later
+refinement.
 
 **T2 · `TcpSession` timer + congestion/retransmit state — HIGH (intricate)**
 `protocols/tcp/tcp__session.py`. `_lock__fsm` covers FSM
@@ -210,12 +229,12 @@ behavioural test per fix, per the F1–F4 pattern). One concern
 per commit; refresh this doc + `socket_linux_parity_audit.md`
 §X1 in lockstep. Sequenced by value / independence:
 
-1. **T1 — `TcpStack` Fast-Open lock.** Small, self-contained,
-   real correctness. Add a `threading.Lock` to `TcpStack`,
-   guard the three fastopen fields behind accessor methods
-   (mirror the PMTU `record_*` pattern). Red: lock-discipline
-   test that the cookie/negative/pending mutators hold the
-   lock.
+1. **T1 — `TcpStack` Fast-Open lock. ✅ DONE 2026-05-27.**
+   Added `threading.Lock` to `TcpStack`, guarded the three
+   fastopen fields behind accessor methods (mirrors the PMTU
+   `record_*` pattern). Lock-discipline test
+   (`test__tcp__stack.py::TestTcpStack__Accessors`) red→green;
+   8 call sites migrated. See §2.1 for detail.
 2. **M1 + M2 — finish multicast.** Lock MLDv2 query state
    (mirror the IGMP F4 entry-point wrapping for the
    `packet_handler__icmp6__rx` MLD handlers) and close the

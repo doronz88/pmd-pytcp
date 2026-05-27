@@ -610,11 +610,12 @@ is sound and is the template for the rest.
   findings above. **Scope caveat (corrected 2026-05-27):** F1–F4
   closed only the **IPv4 multicast / IGMP-query / PMTU**
   cross-thread state this IGMP-triggered audit reached. A later
-  full stack-wide sweep found the no-GIL backlog is **NOT** empty
-  — `TcpStack` Fast-Open state, `TcpSession` timer/CC state,
-  per-interface address-config lists, the ICMP error
-  rate-limiters, MLDv2 query state, the per-socket source filter,
-  and the `PacketStats` counters remain unguarded. The
+  full stack-wide sweep found the no-GIL backlog is **NOT** empty.
+  `TcpStack` Fast-Open state has since been guarded (T1, SHIPPED
+  2026-05-27 — `_lock` + accessors). Still unguarded:
+  `TcpSession` timer/CC state, per-interface address-config
+  lists, the ICMP error rate-limiters, MLDv2 query state, the
+  per-socket source filter, and the `PacketStats` counters. The
   authoritative no-GIL ledger + correction plan is now
   **`no_gil_thread_safety_audit.md`**. The lock-per-structure
   pattern (SocketTable, RouteTable, Timer heap, NeighborCache,
@@ -786,7 +787,7 @@ that's intentional.
 
 | Item | Status | Note |
 |------|--------|------|
-| **X1 stack-thread safety audit** | performed + closed (2026-05-27) | See §X1. All findings fixed. **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (snapshot fix). **F2**: app-vs-app multicast-membership RMW (per-interface `_lock__multicast`). **F3**: `pmtu_cache`/`pmtu_state` (shared module `_pmtu_lock` + guarded accessors). **F4**: IGMP query-response state — scalars + suppressed set + per-group pending map (folded under `_lock__multicast`). **Scope: F1–F4 cover only the IPv4 multicast/IGMP/PMTU path; the full stack-wide no-GIL backlog (TCP TFO + session timers, address config, ICMP rate-limiters, MLDv2, PacketStats, …) is tracked in `no_gil_thread_safety_audit.md`.** Lock-per-structure is the standing invariant. |
+| **X1 stack-thread safety audit** | performed + closed (2026-05-27) | See §X1. All findings fixed. **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (snapshot fix). **F2**: app-vs-app multicast-membership RMW (per-interface `_lock__multicast`). **F3**: `pmtu_cache`/`pmtu_state` (shared module `_pmtu_lock` + guarded accessors). **F4**: IGMP query-response state — scalars + suppressed set + per-group pending map (folded under `_lock__multicast`). **Scope: F1–F4 cover only the IPv4 multicast/IGMP/PMTU path; the full stack-wide no-GIL backlog is tracked in `no_gil_thread_safety_audit.md` (T1 TCP-TFO lock SHIPPED 2026-05-27; remaining: TCP session timers, address config, ICMP rate-limiters, MLDv2, per-socket source filter, PacketStats).** Lock-per-structure is the standing invariant. |
 | **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
 | **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
 
