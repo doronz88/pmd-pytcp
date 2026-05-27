@@ -638,7 +638,7 @@ class socket(ABC):
         """
 
         import pytcp.stack as _stack
-        from pytcp.stack.membership import MembershipRefKind
+        from pytcp.stack.membership import MembershipLimitError, MembershipRefKind
 
         if len(mreq) < 8:
             raise OSError(errno.EINVAL, f"ip_mreq must be at least 8 bytes, got {len(mreq)}")
@@ -663,6 +663,8 @@ class socket(ABC):
                     raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
                 api.leave(group=group, kind=MembershipRefKind.SOCKET)
                 self._ip4_memberships.discard(membership)
+        except MembershipLimitError as error:
+            raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
             raise OSError(errno.EINVAL, str(error)) from error
 

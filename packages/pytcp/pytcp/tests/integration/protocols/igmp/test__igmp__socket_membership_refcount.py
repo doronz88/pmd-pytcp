@@ -55,6 +55,7 @@ from pytcp.socket import (
     SOCK_DGRAM,
     socket,
 )
+from pytcp.stack import sysctl
 from pytcp.tests.lib.network_testcase import NetworkTestCase
 
 _GROUP = Ip4Address("239.1.1.1")
@@ -284,6 +285,27 @@ class TestIgmpSocketMembershipRefcount(NetworkTestCase):
             ctx.exception.errno,
             errno.EADDRNOTAVAIL,
             msg="Dropping a group the socket does not hold must raise EADDRNOTAVAIL.",
+        )
+
+    def test__igmp__refcount__join_over_limit_raises_enobufs(self) -> None:
+        """
+        Ensure a socket join exceeding 'igmp.max_memberships' raises
+        OSError(ENOBUFS), matching Linux IP_ADD_MEMBERSHIP over the cap
+        (rather than the generic EINVAL).
+
+        Reference: PyTCP test infrastructure (BSD socket errno parity, no RFC clause).
+        """
+
+        with sysctl.override("igmp.max_memberships", 1):
+            self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(Ip4Address("239.1.1.1")))
+
+            with self.assertRaises(OSError) as ctx:
+                self._socket_a.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq(Ip4Address("239.2.2.2")))
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.ENOBUFS,
+            msg="A join over igmp.max_memberships must raise ENOBUFS.",
         )
 
     def test__igmp__refcount__operator_leave_respects_socket_holder(self) -> None:

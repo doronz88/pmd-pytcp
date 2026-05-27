@@ -51,6 +51,17 @@ if TYPE_CHECKING:
 IP4__MULTICAST__ALL_SYSTEMS = Ip4Address("224.0.0.1")
 
 
+class MembershipLimitError(ValueError):
+    """
+    Raised by 'MembershipApi.join' when joining a new group would exceed
+    'igmp.max_memberships'. Subclasses 'ValueError' so existing
+    'except ValueError' callers still catch it; the BSD socket facade
+    catches this specific type to map it to 'ENOBUFS' (Linux
+    'IP_ADD_MEMBERSHIP' over 'igmp_max_memberships'), distinct from the
+    'EINVAL' it returns for other membership errors.
+    """
+
+
 class MembershipRefKind(Enum):
     """
     The kind of reference held on an IPv4 multicast group membership:
@@ -148,7 +159,7 @@ class MembershipApi:
         if not handler._mc_is_joined(group):
             joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
             if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
-                raise ValueError(
+                raise MembershipLimitError(
                     f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
                     f"(sysctl 'igmp.max_memberships'); cannot join {group}."
                 )

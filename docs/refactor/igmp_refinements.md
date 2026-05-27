@@ -169,12 +169,15 @@ Mirrors Linux `ip_mc_socklist` / `ip_mc_drop_socket`. Couples with R7
 (unified interface refcount, operator API contract preserved), touch
 list, and the phased A/B/C test inventory.
 
-### R4 — `max_memberships` overflow should raise ENOBUFS, not EINVAL (PARITY NIT)
+### R4 — `max_memberships` overflow should raise ENOBUFS, not EINVAL (PARITY NIT) — SHIPPED
 
-`MembershipApi.join` over the limit raises `ValueError`, mapped to
-`OSError(EINVAL)` at the socket layer. Linux returns **ENOBUFS** for
-`IP_ADD_MEMBERSHIP` over `igmp_max_memberships`. Tighten the socket
-membership handler to map the limit error to `errno.ENOBUFS`.
+**Shipped.** `MembershipApi.join` now raises a dedicated
+`MembershipLimitError(ValueError)` over the cap; the socket facade
+catches it before the generic `ValueError` arm and maps it to
+`OSError(ENOBUFS)` (Linux `IP_ADD_MEMBERSHIP` over
+`igmp_max_memberships`), leaving other membership errors on `EINVAL`.
+The `ValueError` subclassing keeps the operator-API cap tests green.
+Test: `test__igmp__socket_membership_refcount.py::...join_over_limit_raises_enobufs`.
 
 ### R5 — RX hardening: enforce TTL=1 / Router Alert on inbound IGMP (HARDENING)
 
