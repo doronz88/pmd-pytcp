@@ -1253,6 +1253,35 @@ class socket(ABC):
 
         self._release_ip4_memberships()
 
+    def __del__(self) -> None:
+        """
+        Finalizer safety net: a socket dropped without an explicit
+        close() still releases its OS-level runtime (the backing eventfd)
+        and its IPv4 multicast memberships when garbage-collected, so a
+        leaked joined socket cannot keep its group joined on the
+        interface forever. This mirrors Linux 'ip_mc_drop_socket', which
+        runs silently from the fd release — no ResourceWarning is emitted
+        (the stdlib socket's warning would be noise across the stack's
+        many internal socket consumers, and the cleanup, not the
+        diagnostic, is the point).
+
+        It runs the resource-only '_mark_closed', NOT the per-flavour
+        close(), so it never attempts protocol-graceful teardown from a
+        finalizer (a TCP socket still needs an explicit close() for its
+        FIN handshake). Guarded so a partially-constructed socket or
+        interpreter-shutdown teardown cannot raise out of '__del__'.
+        """
+
+        if getattr(self, "_closed", True):
+            return
+
+        try:
+            self._mark_closed()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # A finalizer must never raise; resource teardown during GC
+            # or interpreter shutdown is best-effort.
+            pass
+
     def _release_ip4_memberships(self) -> None:
         """
         Release every IPv4 multicast source filter this socket still

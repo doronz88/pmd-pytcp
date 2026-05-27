@@ -78,7 +78,9 @@ include list empties — the INCLUDE{} delete), `IP_BLOCK_SOURCE`
 Linux `ip_mc_source` errno parity (EINVAL on a filter-mode
 conflict, EADDRNOTAVAIL on a missing source). `close()`
 releases every filter (`_release_ip4_memberships`, Linux
-`ip_mc_drop_socket`).
+`ip_mc_drop_socket`); a socket dropped without `close()` releases
+them on GC via the socket `__del__` finalizer, so a leaked joined
+socket cannot keep its group joined forever.
 
 ## §3.2. Interface State
 
@@ -492,6 +494,11 @@ on a RAW socket is a natural extension (no current consumer).
   the §3.2 merge across two sockets (INCLUDE union; EXCLUDE{} +
   INCLUDE → EXCLUDE{}), the `ip_mc_source` errno table (EINVAL
   mode conflict, EADDRNOTAVAIL missing source), and close-release.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__socket_gc_release.py`
+  A socket dropped without `close()` releases all its joined groups
+  on GC via the `__del__` finalizer; an explicitly-closed socket's
+  finalizer is a no-op (no double-release).
 
 - **Unit:**
   `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip4_multicast_filter.py`
