@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Phased — Phases 1-3 (data model + §3.2 merge + source socket options + §5.1 source state-change reports) SHIPPED; Phases 4-5 open |
+| Status       | Phased — Phases 1-4 SHIPPED (data model + §3.2 merge + source socket options + §5.1 source state-change reports + §5.2 query-response source math); Phase 5 (adherence sweep) open |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -202,12 +202,26 @@ unblock, BLOCK on source drop / block, CHANGE_TO_EXCLUDE on an
 INCLUDE→EXCLUDE interface mode flip, and a retransmit carrying the
 source list. The §9 / §3.2 adherence flip waits for Phase 5.
 
-### Phase 4 — query-response source math
+### Phase 4 — query-response source math  (SHIPPED)
 
-Current-state MODE_IS_INCLUDE/EXCLUDE with sources; Group-and-Source-
-Specific Query records the source list and applies the §5.2 expiry
-table (IS_IN(A*B) / IS_IN(B-A)); empty ⇒ no response. Closes the §5.2
-rule-5 deferral. Tests: GSSQ for included vs non-included sources.
+Current-State Records now carry the real filter mode + source list:
+`IgmpTxHandler._current_state_record(group)` builds MODE_IS_INCLUDE /
+MODE_IS_EXCLUDE from the merged interface filter, used by the General-
+Query response (`_send_igmp_v3_report`, §5.2 expiry rule 1) and the
+Group-Specific response (`_send_igmp_v3_group_current_state`, rule 2).
+The Group-and-Source-Specific path records the queried source list on
+the per-group pending state (`IgmpGroupQueryPending.sources`, RX §5.2
+rules 3-5 record/clear/augment) and applies the rule-3 table on expiry:
+an INCLUDE(A) interface answers IS_IN(A∩B), an EXCLUDE(A) interface
+answers IS_IN(B−A), an empty result sends no response. This closes the
+§5.2 rule-5 / GSSQ deferral.
+
+The per-group pending tuple became the `IgmpGroupQueryPending` dataclass
+(deadline + handle + recorded sources). Tests:
+`test__igmp__source_query_response.py` — General/Group-Specific
+current-state with INCLUDE/EXCLUDE sources, GSSQ A∩B and B−A, and the
+empty-result no-response case. The §9 / §3.2 adherence flip waits for
+Phase 5.
 
 ### Phase 5 — adherence + ledger sweep
 

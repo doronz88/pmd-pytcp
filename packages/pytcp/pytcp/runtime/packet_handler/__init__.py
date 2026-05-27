@@ -59,7 +59,6 @@ from net_proto import (
     Icmp4Message,
     Icmp6Message,
     Icmp6NdRoutePreference,
-    IgmpV3RecordType,
     IgmpVersion,
     Ip4Payload,
     Ip6Assembler,
@@ -112,7 +111,7 @@ from .packet_handler__icmp4__rx import Icmp4RxHandler
 from .packet_handler__icmp4__tx import Icmp4TxHandler
 from .packet_handler__icmp6__rx import Icmp6RxHandler
 from .packet_handler__icmp6__tx import Icmp6TxHandler
-from .packet_handler__igmp__rx import IgmpRxHandler
+from .packet_handler__igmp__rx import IgmpGroupQueryPending, IgmpRxHandler
 from .packet_handler__igmp__tx import IgmpTxHandler
 from .packet_handler__ip4__rx import Ip4RxHandler
 from .packet_handler__ip4__tx import Ip4TxHandler
@@ -201,8 +200,10 @@ class PacketHandler(Subsystem, ABC):
     _igmp_query__pending_response_at_ms: int | None
     _igmp_query__handle: TimerHandle | None
     _igmp_query__suppressed_groups: set[Ip4Address]
-    # RFC 3376 §5.2 per-group Query response: group -> (respond_at_ms, handle).
-    _igmp_group_query__pending: dict[Ip4Address, tuple[int, TimerHandle]]
+    # RFC 3376 §5.2 per-group Query response state (Group-Specific +
+    # Group-and-Source-Specific): group -> deadline + handle + recorded
+    # queried sources.
+    _igmp_group_query__pending: dict[Ip4Address, IgmpGroupQueryPending]
     _igmp__v1_querier_present_until_ms: int | None
     _igmp__v2_querier_present_until_ms: int | None
     _ip6_frag_rx: Ip6FragRxHandler
@@ -507,8 +508,9 @@ class PacketHandler(Subsystem, ABC):
         # Query response has been suppressed by another host's Report
         # within the current response window.
         self._igmp_query__suppressed_groups: set[Ip4Address] = set()
-        # RFC 3376 §5.2 per-group response timers (Group-Specific Query).
-        self._igmp_group_query__pending: dict[Ip4Address, tuple[int, TimerHandle]] = {}
+        # RFC 3376 §5.2 per-group response state (Group-Specific +
+        # Group-and-Source-Specific Query).
+        self._igmp_group_query__pending: dict[Ip4Address, IgmpGroupQueryPending] = {}
         # RFC 3376 §7.2.1 Older Version Querier Present deadlines (ms);
         # None = no v1/v2 querier seen within the timeout (IGMPv3 mode).
         self._igmp__v1_querier_present_until_ms: int | None = None
@@ -2012,16 +2014,13 @@ class PacketHandler(Subsystem, ABC):
 
         self._icmp6_tx._send_icmp6_multicast_listener_report()
 
-    def _send_igmp_v3_report(
-        self,
-        *,
-        record_type: IgmpV3RecordType = IgmpV3RecordType.MODE_IS_EXCLUDE,
-    ) -> None:
+    def _send_igmp_v3_report(self) -> None:
         """
-        Send an IGMPv3 Membership Report (delegates to the IGMP TX sub-handler).
+        Send an IGMPv3 current-state Membership Report (delegates to the
+        IGMP TX sub-handler).
         """
 
-        self._igmp_tx._send_igmp_v3_report(record_type=record_type)
+        self._igmp_tx._send_igmp_v3_report()
 
     def _send_igmp_state_change(
         self,

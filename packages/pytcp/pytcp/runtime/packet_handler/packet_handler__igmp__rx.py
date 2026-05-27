@@ -31,6 +31,7 @@ ver 3.0.6
 """
 
 import random
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
@@ -49,6 +50,7 @@ from net_proto.protocols.igmp.message.igmp__message__query import (
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.igmp import igmp__constants
+from pytcp.runtime.timer import TimerHandle
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -56,6 +58,20 @@ if TYPE_CHECKING:
 # IGMP Max Resp Time is expressed in units of 1/10 second (RFC 3376
 # §4.1.1); the host state machine works in milliseconds.
 IGMP__MAX_RESP_TIME__UNIT_MS = 100
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class IgmpGroupQueryPending:
+    """
+    A pending per-group response to a Group-Specific or Group-and-Source-
+    Specific Query (RFC 3376 §5.2): the absolute 'stack.timer.now_ms'
+    deadline, the scheduled timer handle, and the recorded queried-source
+    list (empty for a Group-Specific Query) used to build the response.
+    """
+
+    respond_at_ms: int
+    handle: TimerHandle
+    sources: frozenset[Ip4Address]
 
 
 class IgmpRxHandler:
@@ -154,11 +170,11 @@ class IgmpRxHandler:
         The host schedules a current-state Report at a uniformly-random
         delay in [0, Max Resp Time] so a link with many members spreads
         its Report burst across the response window. A General Query
-        uses the interface-wide timer (rules 1-2); a Group-Specific
-        Query uses a per-group timer answering for only that group
-        (rules 1, 3-4). The response form follows the Host Compatibility
-        Mode (RFC 3376 §7). Deferred refinements: Group-and-Source-
-        Specific source lists (§9) and the IGMPv1 default Max Resp Time.
+        uses the interface-wide timer (rules 1-2); a Group-Specific or
+        Group-and-Source-Specific Query uses a per-group timer answering
+        for only that group (rules 1, 3-5), recording the queried source
+        list for the §5.2 rule-3 intersection math. The response form
+        follows the Host Compatibility Mode (RFC 3376 §7).
         """
 
         self._if._packet_stats_rx.igmp__membership_query += 1
@@ -181,7 +197,7 @@ class IgmpRxHandler:
         if message.is_general_query:
             self._igmp_query__schedule_general(delay_ms)
         else:
-            self._igmp_query__schedule_group(message.group_address, delay_ms)
+            self._igmp_query__schedule_group(message.group_address, frozenset(message.source_addresses), delay_ms)
 
     def _igmp_query__schedule_general(self, delay_ms: int, /) -> None:
         """
@@ -212,15 +228,23 @@ class IgmpRxHandler:
         self._if._igmp_query__handle = stack.timer.call_later(delay_ms, self._igmp_query__deferred_send)
         self._if._packet_stats_rx.igmp__membership_query__scheduled += 1
 
-    def _igmp_query__schedule_group(self, group: Ip4Address, delay_ms: int, /) -> None:
+    def _igmp_query__schedule_group(
+        self,
+        group: Ip4Address,
+        sources: frozenset[Ip4Address],
+        delay_ms: int,
+        /,
+    ) -> None:
         """
-        Schedule (or absorb) the response to a Group-Specific Query on a
-        per-group timer (RFC 3376 §5.2 rules 1, 3-4). A General response
-        scheduled sooner absorbs the Query (rule 1); otherwise a
-        per-group timer is armed (rule 3) or merged to the earliest of
-        the pending and selected delays (rule 4). Group-and-Source-
-        Specific source lists are out of scope for the EXCLUDE{}-only
-        host (§9).
+        Schedule (or absorb) the response to a Group-Specific or Group-
+        and-Source-Specific Query on a per-group timer (RFC 3376 §5.2
+        rules 1, 3-5). A General response scheduled sooner absorbs the
+        Query (rule 1). Otherwise the per-group timer is armed (rule 3,
+        recording the queried 'sources'), or merged with a pending
+        per-group response: a Group-Specific Query or an empty recorded
+        list clears the recorded sources (rule 4), a Group-and-Source-
+        Specific Query augments them (rule 5), with the response set to
+        the earliest of the pending and selected delays.
         """
 
         response_at = stack.timer.now_ms + delay_ms
@@ -231,40 +255,65 @@ class IgmpRxHandler:
             return
 
         existing = self._if._igmp_group_query__pending.get(group)
-        if existing is not None and existing[0] <= response_at:
-            # Rule 4: the pending per-group response already fires sooner.
+
+        # Rules 3-5: determine the recorded source list for the response.
+        if existing is None:
+            recorded = sources
+        elif not sources or not existing.sources:
+            recorded = frozenset()
+        else:
+            recorded = existing.sources | sources
+
+        if existing is not None and existing.respond_at_ms <= response_at:
+            # The pending per-group response fires sooner (rules 4-5 keep
+            # it); only the recorded source list may need merging.
+            if recorded != existing.sources:
+                self._if._igmp_group_query__pending[group] = IgmpGroupQueryPending(
+                    respond_at_ms=existing.respond_at_ms,
+                    handle=existing.handle,
+                    sources=recorded,
+                )
             return
 
         if delay_ms == 0:
             if existing is not None:
-                stack.timer.cancel(existing[1])
+                stack.timer.cancel(existing.handle)
             self._if._igmp_group_query__pending.pop(group, None)
-            self._igmp_group_query__send_now(group)
+            self._igmp_group_query__send_now(group, recorded)
             return
 
         if existing is not None:
-            # Rule 4: supersede the later pending per-group response.
-            stack.timer.cancel(existing[1])
+            # The selected delay is sooner — supersede the pending timer.
+            stack.timer.cancel(existing.handle)
             self._if._packet_stats_rx.igmp__membership_query__superseded += 1
 
         handle = stack.timer.call_later(delay_ms, lambda: self._igmp_group_query__deferred_send(group))
-        self._if._igmp_group_query__pending[group] = (response_at, handle)
+        self._if._igmp_group_query__pending[group] = IgmpGroupQueryPending(
+            respond_at_ms=response_at,
+            handle=handle,
+            sources=recorded,
+        )
         self._if._packet_stats_rx.igmp__membership_query__scheduled += 1
 
     def _igmp_group_query__deferred_send(self, group: Ip4Address, /) -> None:
         """
-        Timer-fired callback for a Group-Specific Query: drop the pending
-        record and emit the per-group response.
+        Timer-fired callback for a Group-Specific / Group-and-Source-
+        Specific Query: drop the pending record and emit the per-group
+        response using its recorded source list.
         """
 
-        self._if._igmp_group_query__pending.pop(group, None)
-        self._igmp_group_query__send_now(group)
+        pending = self._if._igmp_group_query__pending.pop(group, None)
+        self._igmp_group_query__send_now(group, pending.sources if pending is not None else frozenset())
 
-    def _igmp_group_query__send_now(self, group: Ip4Address, /) -> None:
+    def _igmp_group_query__send_now(self, group: Ip4Address, sources: frozenset[Ip4Address], /) -> None:
         """
         Emit a Current-State response for 'group' in the interface's Host
         Compatibility Mode form, but only if the interface still has
-        reception state for it (RFC 3376 §5.2 group-timer expiry rule 2).
+        reception state for it (RFC 3376 §5.2 group-timer expiry rules
+        2-3). 'sources' are the recorded Group-and-Source-Specific queried
+        sources (empty for a Group-Specific Query); the IGMPv3 path
+        applies the §5.2 rule-3 intersection math, while an IGMPv1/v2 mode
+        degrades to the any-source group Membership Report.
         """
 
         if group not in self._if._ip4_multicast:
@@ -272,7 +321,7 @@ class IgmpRxHandler:
 
         mode = self._if._igmp_host_compatibility_mode()
         if mode is IgmpVersion.V3:
-            self._if._igmp_tx._send_igmp_v3_group_current_state(group)
+            self._if._igmp_tx._send_igmp_v3_group_current_state(group, sources)
         else:
             self._if._igmp_tx._emit_group_membership_report(group, mode)
         self._if._packet_stats_rx.igmp__membership_query__respond += 1
@@ -322,8 +371,8 @@ class IgmpRxHandler:
             stack.timer.cancel(self._if._igmp_query__handle)
             self._if._igmp_query__handle = None
         self._if._igmp_query__pending_response_at_ms = None
-        for _, handle in self._if._igmp_group_query__pending.values():
-            stack.timer.cancel(handle)
+        for pending in self._if._igmp_group_query__pending.values():
+            stack.timer.cancel(pending.handle)
         self._if._igmp_group_query__pending.clear()
         self._if._igmp_tx._cancel_state_change_retransmits()
 

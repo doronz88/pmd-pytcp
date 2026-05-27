@@ -104,28 +104,44 @@ class IgmpTxHandler:
         self._igmp_state_change__pending = {}
         self._igmp_state_change__handle = None
 
-    def _send_igmp_v3_report(
-        self,
-        *,
-        record_type: IgmpV3RecordType = IgmpV3RecordType.MODE_IS_EXCLUDE,
-    ) -> None:
+    def _current_state_record(self, group: Ip4Address, /) -> IgmpV3GroupRecord | None:
+        """
+        Build the IGMPv3 Current-State Record for 'group' from its merged
+        interface filter (RFC 3376 §4.2.12 / §5.2): MODE_IS_EXCLUDE or
+        MODE_IS_INCLUDE carrying the group's source list. Returns None
+        when the interface has no reception state for the group.
+        """
+
+        filter_ = self._if._ip4_multicast_filters.get(group)
+        if filter_ is None:
+            return None
+
+        record_type = (
+            IgmpV3RecordType.MODE_IS_EXCLUDE
+            if filter_.mode is Ip4MulticastFilterMode.EXCLUDE
+            else IgmpV3RecordType.MODE_IS_INCLUDE
+        )
+        return IgmpV3GroupRecord(
+            type=record_type,
+            multicast_address=group,
+            source_addresses=sorted(filter_.sources, key=int),
+        )
+
+    def _send_igmp_v3_report(self) -> None:
         """
         Send an IGMPv3 Membership Report describing the interface's
-        current multicast reception state — one group record per joined
-        group, excluding the all-systems group 224.0.0.1 which is never
-        reported (RFC 3376 §6).
-
-        'record_type' is MODE_IS_EXCLUDE for a current-state report (the
-        query-response default). The single-group state-change forms are
-        emitted by '_send_igmp_state_change'.
+        current multicast reception state — one Current-State Record per
+        joined group carrying its real filter mode + source list (RFC
+        3376 §5.2 expiry rule 1), excluding the all-systems group
+        224.0.0.1 which is never reported (RFC 3376 §6).
         """
 
         # Dedup while preserving join order; the all-systems group is
         # exempt from reporting.
         records = [
-            IgmpV3GroupRecord(type=record_type, multicast_address=group)
+            record
             for group in dict.fromkeys(self._if._ip4_multicast)
-            if group != IGMP__ALL_SYSTEMS
+            if group != IGMP__ALL_SYSTEMS and (record := self._current_state_record(group)) is not None
         ]
 
         self._emit_v3_report(records)
@@ -369,14 +385,46 @@ class IgmpTxHandler:
         self._if._packet_stats_tx.igmp__v3_report__send += 1
         self._emit_igmp(IgmpMessageV3Report(records=records), IGMP__ALL_IGMPV3_ROUTERS)
 
-    def _send_igmp_v3_group_current_state(self, group: Ip4Address, /) -> None:
+    def _send_igmp_v3_group_current_state(self, group: Ip4Address, queried_sources: frozenset[Ip4Address], /) -> None:
         """
-        Emit an IGMPv3 current-state Report carrying a single
-        MODE_IS_EXCLUDE record for 'group' — the response to a
-        Group-Specific Query (RFC 3376 §5.2).
+        Emit the IGMPv3 Current-State response for a Group-Specific or
+        Group-and-Source-Specific Query on 'group' (RFC 3376 §5.2 expiry
+        rules 2-3).
+
+        With no 'queried_sources' (a Group-Specific Query) the response is
+        the group's real current state (MODE_IS_INCLUDE / MODE_IS_EXCLUDE
+        + source list). With 'queried_sources' B (a Group-and-Source-
+        Specific Query) the §5.2 rule-3 table applies: an INCLUDE(A)
+        interface answers IS_IN(A∩B), an EXCLUDE(A) interface answers
+        IS_IN(B−A); an empty result sends no response.
         """
 
-        self._emit_v3_report([IgmpV3GroupRecord(type=IgmpV3RecordType.MODE_IS_EXCLUDE, multicast_address=group)])
+        filter_ = self._if._ip4_multicast_filters.get(group)
+        if filter_ is None:
+            return
+
+        if not queried_sources:
+            record = self._current_state_record(group)
+            if record is not None:
+                self._emit_v3_report([record])
+            return
+
+        if filter_.mode is Ip4MulticastFilterMode.INCLUDE:
+            answer = filter_.sources & queried_sources
+        else:
+            answer = queried_sources - filter_.sources
+        if not answer:
+            return
+
+        self._emit_v3_report(
+            [
+                IgmpV3GroupRecord(
+                    type=IgmpV3RecordType.MODE_IS_INCLUDE,
+                    multicast_address=group,
+                    source_addresses=sorted(answer, key=int),
+                )
+            ]
+        )
 
     def _emit_group_membership_report(self, group: Ip4Address, version: IgmpVersion, /) -> None:
         """
