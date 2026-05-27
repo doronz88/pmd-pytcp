@@ -58,16 +58,32 @@ _ALL_SYSTEMS = Ip4Address("224.0.0.1")
 _ALL_SYSTEMS_MAC = MacAddress("01:00:5e:00:00:01")
 _ROUTER_IP = Ip4Address("10.0.1.1")
 _ROUTER_MAC = MacAddress("02:00:00:00:00:91")
+_S1 = Ip4Address("10.0.0.1")
+_S2 = Ip4Address("10.0.0.2")
 
 
-def _query_frame(*, group: Ip4Address, max_resp_code: int = 100) -> bytes:
+def _query_frame(
+    *,
+    group: Ip4Address,
+    sources: tuple[Ip4Address, ...] = (),
+    max_resp_code: int = 100,
+) -> bytes:
     """
-    Build a 12-octet IGMPv3 Query. A non-zero 'group' is a
-    Group-Specific Query (sent to the group); 0.0.0.0 is a General
-    Query (sent to 224.0.0.1).
+    Build an IGMPv3 Query. A non-zero 'group' with no 'sources' is a
+    Group-Specific Query (sent to the group); with 'sources' it is a
+    Group-and-Source-Specific Query; 0.0.0.0 is a General Query (sent to
+    224.0.0.1).
     """
 
-    body = b"\x11" + bytes([max_resp_code]) + b"\x00\x00" + bytes(group) + b"\x02\x7d\x00\x00"
+    body = (
+        b"\x11"
+        + bytes([max_resp_code])
+        + b"\x00\x00"
+        + bytes(group)
+        + b"\x02\x7d"
+        + len(sources).to_bytes(2, "big")
+        + b"".join(bytes(source) for source in sources)
+    )
     cksum = inet_cksum(body)
     body = body[:2] + cksum.to_bytes(2, "big") + body[4:]
 
@@ -100,6 +116,12 @@ def _parse_v3_report(frame: bytes) -> IgmpMessageV3Report:
     assert isinstance(message, IgmpMessageV3Report)
 
     return message
+
+
+def _records(frame: bytes) -> list[tuple[IgmpV3RecordType, frozenset[Ip4Address]]]:
+    """Decode the (type, source-set) of every record in an IGMPv3 Report frame."""
+
+    return [(record.type, frozenset(record.source_addresses)) for record in _parse_v3_report(frame).records]
 
 
 class TestIgmpGroupSpecificQuery(IcmpTestCase):
@@ -220,4 +242,92 @@ class TestIgmpGroupSpecificQuery(IcmpTestCase):
             self._packet_handler._igmp_group_query__pending,
             {},
             msg="A Group-Specific Query must be absorbed by a sooner pending General response.",
+        )
+
+    def test__gssq__later_query_augments_recorded_sources(self) -> None:
+        """
+        Ensure a second Group-and-Source-Specific Query whose delay is
+        later than the pending per-group response keeps the sooner timer
+        but augments the recorded source list, so the response covers the
+        union of both queries' sources.
+
+        Reference: RFC 3376 §5.2 rule 5 (augment the recorded source list, keep the earlier timer).
+        """
+
+        self._patch_delay(returns_ms=500)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A, sources=(_S1,)))
+
+        # Later delay → the pending 500 ms timer is kept; the new source
+        # is merged into the recorded list (rule 5).
+        self._patch_delay(returns_ms=800)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A, sources=(_S2,)))
+
+        tx = self._advance(ms=500)
+        self.assertEqual(len(tx), 1, msg="The per-group response fires once at the earlier delay.")
+        self.assertEqual(
+            _records(tx[0]),
+            [(IgmpV3RecordType.MODE_IS_INCLUDE, frozenset({_S1, _S2}))],
+            msg="The response must answer IS_IN over the union of both queries' sources.",
+        )
+
+    def test__gssq__group_specific_query_clears_recorded_sources(self) -> None:
+        """
+        Ensure a Group-Specific Query arriving while a Group-and-Source-
+        Specific response is pending clears the recorded source list, so
+        the response reports the group's full current state rather than
+        the source-filtered set.
+
+        Reference: RFC 3376 §5.2 rule 4 (a Group-Specific Query clears the recorded source list).
+        """
+
+        self._patch_delay(returns_ms=500)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A, sources=(_S1,)))
+
+        # A plain Group-Specific Query (no sources) clears the recorded
+        # list (rule 4); the kept 500 ms timer now answers full state.
+        self._patch_delay(returns_ms=800)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A))
+
+        tx = self._advance(ms=500)
+        self.assertEqual(len(tx), 1, msg="The per-group response fires once at the earlier delay.")
+        self.assertEqual(
+            _records(tx[0]),
+            [(IgmpV3RecordType.MODE_IS_EXCLUDE, frozenset())],
+            msg="A cleared source list must report the group's full EXCLUDE{} current state.",
+        )
+
+    def test__gssq__sooner_query_supersedes_and_merges(self) -> None:
+        """
+        Ensure a Group-and-Source-Specific Query whose delay is sooner
+        than the pending per-group response supersedes the pending timer
+        and answers IS_IN over the union of both queries' sources at the
+        earlier delay.
+
+        Reference: RFC 3376 §5.2 rule 5 (response at the earliest of the pending and selected delays).
+        """
+
+        self._patch_delay(returns_ms=800)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A, sources=(_S1,)))
+
+        before = self._packet_handler.packet_stats_rx.igmp__membership_query__superseded
+        self._patch_delay(returns_ms=300)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A, sources=(_S2,)))
+
+        self.assertEqual(
+            self._packet_handler.packet_stats_rx.igmp__membership_query__superseded,
+            before + 1,
+            msg="A sooner GSSQ must supersede the later pending per-group response.",
+        )
+
+        tx = self._advance(ms=300)
+        self.assertEqual(len(tx), 1, msg="The superseding response fires at the sooner delay.")
+        self.assertEqual(
+            _records(tx[0]),
+            [(IgmpV3RecordType.MODE_IS_INCLUDE, frozenset({_S1, _S2}))],
+            msg="The response must answer IS_IN over the union of both queries' sources.",
+        )
+        self.assertEqual(
+            len(self._advance(ms=600)),
+            0,
+            msg="The superseded later timer must not fire a second response.",
         )
