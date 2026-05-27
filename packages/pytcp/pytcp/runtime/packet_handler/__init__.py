@@ -38,7 +38,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, override
 
 from net_addr import (
@@ -74,6 +74,10 @@ from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
 from pytcp.lib.interface_layer import InterfaceLayer
+from pytcp.lib.ip4_multicast_filter import (
+    Ip4MulticastFilter,
+    Ip4MulticastFilterMode,
+)
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -134,16 +138,34 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class _Ip4MulticastRefs:
+class _Ip4GroupMembership:
     """
-    The set of references holding one IPv4 multicast group joined on an
-    interface — the operator hold ('ip maddr'-style, set-once) and the
-    per-socket reference count ('IP_ADD_MEMBERSHIP'). The group stays
-    joined while 'operator' is set or 'socket_count' is positive.
+    The per-socket source filters contributing to one IPv4 multicast
+    group's reception on an interface — the operator hold ('ip maddr'-
+    style, set-once, an EXCLUDE{} any-source contributor) and each
+    'IP_ADD_MEMBERSHIP' socket's filter. The merged interface filter
+    (RFC 3376 §3.2) is derived from 'contributors()'; the group stays
+    joined while that merge has reception state.
     """
 
     operator: bool = False
-    socket_count: int = 0
+    # One filter per socket join. Phase 1 only ever appends EXCLUDE{}
+    # (the any-source join 'IP_ADD_MEMBERSHIP' produces); Phase 2 keys
+    # these by socket identity and carries source-option-driven INCLUDE
+    # / EXCLUDE filters.
+    socket_filters: list[Ip4MulticastFilter] = field(default_factory=list)
+
+    def contributors(self) -> list[Ip4MulticastFilter]:
+        """
+        Return every per-socket filter feeding the §3.2 merge — the
+        socket filters plus the operator hold's EXCLUDE{} contributor
+        when the operator hold is set.
+        """
+
+        contributors = list(self.socket_filters)
+        if self.operator:
+            contributors.append(Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE))
+        return contributors
 
 
 class PacketHandler(Subsystem, ABC):
@@ -265,8 +287,13 @@ class PacketHandler(Subsystem, ABC):
     _ip6_ifaddr: list[Ip6IfAddr]
     _ip4_ifaddr: list[Ip4IfAddr]
     _ip6_multicast: list[Ip6Address]
-    _ip4_multicast: list[Ip4Address]
-    _ip4_multicast_refs: dict[Ip4Address, _Ip4MulticastRefs]
+    # The materialized per-interface IPv4 multicast reception state —
+    # one merged source filter (RFC 3376 §3.2) per group the interface
+    # listens on, including the permanent all-systems group 224.0.0.1.
+    # The flat '_ip4_multicast' joined-group list is a derived view over
+    # this map's keys. In Phase 1 every entry is EXCLUDE{} (any-source).
+    _ip4_multicast_filters: dict[Ip4Address, Ip4MulticastFilter]
+    _ip4_multicast_refs: dict[Ip4Address, _Ip4GroupMembership]
     # IPv4 Identification counter + the lock guarding its masked
     # read-modify-write. Per-interface (the counter is interface
     # state); the tiny lock makes '_next_ip4_id' atomic under the
@@ -371,14 +398,20 @@ class PacketHandler(Subsystem, ABC):
         self._ip6_ifaddr = []
         self._ip4_ifaddr = []
 
-        # Used to keep track of IPv6 and IPv4 multicast addresses.
+        # Used to keep track of IPv6 multicast addresses.
         self._ip6_multicast = []
-        self._ip4_multicast = []
 
-        # Per-group reference holders deciding when an IPv4 multicast
-        # group crosses the join / leave edge (R3 — operator + socket
-        # refcount). The permanent all-systems group 224.0.0.1 is
-        # assigned directly at boot and is never ref-managed.
+        # The materialized per-interface IPv4 multicast reception state
+        # (RFC 3376 §3.2 merged filter per group). The '_ip4_multicast'
+        # joined-group list is a derived read-only view over its keys.
+        self._ip4_multicast_filters = {}
+
+        # Per-group source-filter contributors deciding when an IPv4
+        # multicast group crosses the join / leave edge (R3 — operator
+        # hold + per-socket filters; the §3.2 merge over these derives
+        # the materialized filter above). The permanent all-systems
+        # group 224.0.0.1 is assigned directly at boot and is never
+        # ref-managed.
         self._ip4_multicast_refs = {}
 
         # IPv4 Identification counter (last value) + its lock. The
@@ -543,6 +576,18 @@ class PacketHandler(Subsystem, ABC):
         """
 
         return [ip4_host.address for ip4_host in self._ip4_ifaddr]
+
+    @property
+    def _ip4_multicast(self) -> list[Ip4Address]:
+        """
+        Get the list of IPv4 multicast groups the interface listens on —
+        a derived read-only view over the materialized per-group filter
+        map (the groups with reception state). RFC 3376 §3.2 reception
+        state is the source of truth; this flat list is the join-set
+        view the RX accept / TX source / IGMP report paths consume.
+        """
+
+        return list(self._ip4_multicast_filters)
 
     @property
     def _ip4_broadcast(self) -> list[Ip4Address]:
@@ -712,42 +757,46 @@ class PacketHandler(Subsystem, ABC):
     def _mc_is_joined(self, group: Ip4Address, /) -> bool:
         """
         Return whether the interface currently listens on IPv4 multicast
-        'group'. The joined-group list is the source of truth and also
-        covers the permanent all-systems group 224.0.0.1.
+        'group'. The materialized filter map is the source of truth and
+        also covers the permanent all-systems group 224.0.0.1.
         """
 
-        return group in self._ip4_multicast
+        return group in self._ip4_multicast_filters
 
     def _mc_ref_acquire(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
         """
-        Acquire a reference of 'kind' on IPv4 multicast 'group'; if the
-        group crosses the not-joined→joined edge, actually join it
-        (install the MAC filter + emit the state-change Report via
-        '_assign_ip4_multicast'). The operator hold is set-once, socket
-        holds are counted. The permanent all-systems group 224.0.0.1 is
-        never ref-managed (RFC 3376 §5.1 join edge).
+        Acquire a reference of 'kind' on IPv4 multicast 'group' and
+        re-derive the merged interface filter (RFC 3376 §3.2). When the
+        merge crosses into reception state and the group was not already
+        joined, actually join it (install the MAC filter + emit the
+        state-change Report via '_assign_ip4_multicast'). The operator
+        hold is set-once; socket holds append an EXCLUDE{} filter
+        (Phase 1). The permanent all-systems group 224.0.0.1 is never
+        ref-managed (RFC 3376 §5.1 join edge).
         """
 
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        was_joined = self._mc_is_joined(group)
-
-        refs = self._ip4_multicast_refs.setdefault(group, _Ip4MulticastRefs())
+        membership = self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership())
         match kind:
             case MembershipRefKind.OPERATOR:
-                refs.operator = True
+                membership.operator = True
             case MembershipRefKind.SOCKET:
-                refs.socket_count += 1
+                membership.socket_filters.append(Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE))
 
-        if not was_joined:
+        merged = Ip4MulticastFilter.merge(membership.contributors())
+        if merged.has_reception and not self._mc_is_joined(group):
             self._assign_ip4_multicast(group)
+        # Phase 3: a merged filter that changed while still in reception
+        # state emits an ALLOW / BLOCK / CHANGE_TO_* delta here.
 
     def _mc_ref_release(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
         """
-        Release a reference of 'kind' on IPv4 multicast 'group'; when the
-        last reference of any kind is dropped, actually leave it (drop
-        the MAC filter + emit the state-change Leave via
+        Release a reference of 'kind' on IPv4 multicast 'group' and
+        re-derive the merged interface filter (RFC 3376 §3.2). When the
+        merge no longer has reception state, actually leave the group
+        (drop the MAC filter + emit the state-change Leave via
         '_remove_ip4_multicast'). Idempotent — releasing a group with no
         outstanding reference is a no-op. The permanent all-systems group
         224.0.0.1 is never dropped here (RFC 1112 §4; RFC 3376 §5.1 leave
@@ -757,23 +806,24 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        refs = self._ip4_multicast_refs.get(group)
-        if refs is None:
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
             return
 
         match kind:
             case MembershipRefKind.OPERATOR:
-                refs.operator = False
+                membership.operator = False
             case MembershipRefKind.SOCKET:
-                if refs.socket_count > 0:
-                    refs.socket_count -= 1
+                if membership.socket_filters:
+                    membership.socket_filters.pop()
 
-        if refs.operator or refs.socket_count > 0:
-            return
-
-        del self._ip4_multicast_refs[group]
-        if self._mc_is_joined(group):
-            self._remove_ip4_multicast(group)
+        merged = Ip4MulticastFilter.merge(membership.contributors())
+        if not merged.has_reception:
+            del self._ip4_multicast_refs[group]
+            if self._mc_is_joined(group):
+                self._remove_ip4_multicast(group)
+        # Phase 3: a merged filter that changed but kept reception state
+        # emits an ALLOW / BLOCK / CHANGE_TO_* delta here.
 
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
@@ -3021,7 +3071,9 @@ class PacketHandlerL2(
         Assign IPv4 multicast group to the list stack listens on.
         """
 
-        self._ip4_multicast.append(ip4_multicast)
+        # Materialize the per-interface reception state. Phase 1 joins
+        # are any-source, so the merged §3.2 filter is EXCLUDE{}.
+        self._ip4_multicast_filters[ip4_multicast] = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
 
         __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
@@ -3043,7 +3095,7 @@ class PacketHandlerL2(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        self._ip4_multicast.remove(ip4_multicast)
+        del self._ip4_multicast_filters[ip4_multicast]
 
         __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
@@ -3233,7 +3285,9 @@ class PacketHandlerL3(
         programmed.
         """
 
-        self._ip4_multicast.append(ip4_multicast)
+        # Materialize the per-interface reception state. Phase 1 joins
+        # are any-source, so the merged §3.2 filter is EXCLUDE{}.
+        self._ip4_multicast_filters[ip4_multicast] = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
 
         __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
@@ -3251,7 +3305,7 @@ class PacketHandlerL3(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        self._ip4_multicast.remove(ip4_multicast)
+        del self._ip4_multicast_filters[ip4_multicast]
 
         __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 

@@ -51,6 +51,10 @@ from net_proto.lib.buffer import Buffer
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pytcp import stack
+from pytcp.lib.ip4_multicast_filter import (
+    Ip4MulticastFilter,
+    Ip4MulticastFilterMode,
+)
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.ip6 import ip6__constants as ip6__constants_module
@@ -331,7 +335,9 @@ class NetworkTestCase(TestCase):
 
         self._packet_handler._mac_multicast = [STACK__IP6_HOST.address.solicited_node_multicast.multicast_mac]
         self._packet_handler._ip4_ifaddr = [STACK__IP4_HOST]
-        self._packet_handler._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
+        self._packet_handler._ip4_multicast_filters = {
+            IP4__MULTICAST__ALL_NODES: Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+        }
         self._packet_handler._ip6_ifaddr = [STACK__IP6_HOST]
         self._packet_handler._ip6_multicast = [
             IP6__MULTICAST__ALL_NODES,
@@ -492,7 +498,7 @@ class NetworkTestCase(TestCase):
 
         handler = PacketHandlerL2(mac_address=mac_address, interface_mtu=interface_mtu)
         handler._ip4_ifaddr = [ip4_host] if ip4_host is not None else []
-        handler._ip4_multicast = [IP4__MULTICAST__ALL_NODES]
+        handler._ip4_multicast_filters = {IP4__MULTICAST__ALL_NODES: Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)}
         handler._ip6_ifaddr = [ip6_host] if ip6_host is not None else []
         if ip6_host is not None:
             handler._mac_multicast = [ip6_host.address.solicited_node_multicast.multicast_mac]

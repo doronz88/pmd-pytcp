@@ -174,9 +174,8 @@ class TestIgmpReportTx(NetworkTestCase):
         Reference: RFC 3376 §6 (all-systems group is never reported).
         """
 
-        # The harness preseeds only 224.0.0.1; leave it as the sole group.
-        self._packet_handler._ip4_multicast = [Ip4Address("224.0.0.1")]
-
+        # The harness preseeds only the all-systems group 224.0.0.1 as
+        # the sole reception filter; no other group is joined here.
         before = len(self._frames_tx)
         self._packet_handler._send_igmp_v3_report()
 

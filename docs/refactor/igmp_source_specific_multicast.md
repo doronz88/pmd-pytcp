@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Plan — implementation phased; the last IGMP host-side partial          |
+| Status       | Phased — Phase 1 (data model + §3.2 merge) SHIPPED; Phases 2-5 open    |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -111,15 +111,27 @@ extend it to carry the source list).
 Each phase one tests-first commit (or tests+impl pair); lint + full
 suite + §7.2 audit clean before each.
 
-### Phase 1 — interface source-filter data model
+### Phase 1 — interface source-filter data model  (SHIPPED)
 
-Per-group `_Ip4MulticastFilter` (mode + frozenset of sources) on the
-interface; `_ip4_multicast` becomes a derived view. The R3 refcount
-becomes a per-(socket) filter registry that merges (§3.2) into the
-interface filter. `_assign/_remove_ip4_multicast` reframed as
-"recompute interface filter from the merged socket filters, emit the
-state-change delta". Tests: the merge table (§3.2) — INCLUDE∪INCLUDE,
-EXCLUDE∩EXCLUDE−INCLUDE, mixed.
+Per-group `Ip4MulticastFilter` (mode + frozenset of sources) at
+`pytcp/lib/ip4_multicast_filter.py`, with the pure RFC 3376 §3.2
+`Ip4MulticastFilter.merge(...)` classmethod (any-EXCLUDE → EXCLUDE
+intersection minus INCLUDE union; all-INCLUDE → INCLUDE union;
+empty → INCLUDE{} = no reception). The handler keeps a materialized
+`_ip4_multicast_filters: dict[Ip4Address, Ip4MulticastFilter]` as the
+reception source of truth; `_ip4_multicast` is now a derived read-only
+property over its keys (only 6 files read it, far fewer than the feared
+~228). The R3 refcount dataclass became `_Ip4GroupMembership`
+(operator hold + per-socket `socket_filters` list); `_mc_ref_acquire` /
+`_mc_ref_release` re-derive the merged filter via `.merge(contributors())`
+and drive the join / leave edge off `has_reception`. Phase 1 is
+behaviour-preserving — every join is still EXCLUDE{} (any-source), so the
+same `CHANGE_TO_EXCLUDE` / `CHANGE_TO_INCLUDE` Reports fire; the merge
+plumbing and the data model are what is new. Tests: the §3.2 merge table
+(unit, `test__lib__ip4_multicast_filter.py`) + the live join/leave/derived-
+view wiring (integration, `test__igmp__source_filter_model.py`). The §9 /
+§3.2 adherence flip waits for Phase 5 (no user-facing source filters until
+Phase 2).
 
 ### Phase 2 — source socket options
 

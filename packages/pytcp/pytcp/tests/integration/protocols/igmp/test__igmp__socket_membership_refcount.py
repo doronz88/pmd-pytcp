@@ -265,7 +265,7 @@ class TestIgmpSocketMembershipRefcount(NetworkTestCase):
 
         self.assertEqual(ctx.exception.errno, errno.EADDRINUSE, msg="A repeat join must raise EADDRINUSE.")
         self.assertEqual(
-            self._packet_handler._ip4_multicast_refs[_GROUP].socket_count,
+            len(self._packet_handler._ip4_multicast_refs[_GROUP].socket_filters),
             1,
             msg="A rejected repeat join must not increment the reference count.",
         )
