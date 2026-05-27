@@ -19,16 +19,19 @@ green, lint-clean, with no source TODO markers. The three items the
 2026-05-24 ledger listed as "genuinely open optional" (§2) are
 resolved.
 
-**One genuine Phase-1 host gap remains, consciously deferred with a
-plan:** IGMP / IPv4 multicast group membership (the IPv4 analog of the
-shipped MLDv2 listener). It is multi-day, not a release-day item, and
-is captured in detail in `igmp_host_membership.md` — see §2. A
+**IGMP / IPv4 multicast group membership is now feature-complete**
+(the IPv4 analog of the shipped MLDv2 listener): the host membership
+machine, RFC 3376 §7 v1/v2 querier fallback, the §5.2 timers, and §9
+source-specific multicast (control plane) all shipped (see §2.0). The
+single remaining host-side IGMP piece is the **data-plane** RX
+source-delivery filter (`ip_mc_sf_allow`), a forwarding/delivery-path
+change distinct from the control-plane signalling now shipped. A
 2026-05-25 freshness sweep of the refactor docs also corrected several
 stale claims (§1.2).
 
 If the answer to "is 3.0.6 done?" is needed in one word: **yes** for
-the host data path; the one tracked exception is IGMP (host multicast
-membership signalling), deferred by decision.
+the host data path; the IGMP host stack is complete bar the one
+data-plane RX source-delivery filter follow-on.
 
 ---
 
@@ -92,7 +95,7 @@ Per-package (net_addr → net_proto → pytcp):
 
 ## 2. Genuinely open Phase-1 items — deferred with a plan (not blocking)
 
-### 2.0 IGMP — IPv4 multicast group membership  (the real open gap)
+### 2.0 IGMP — IPv4 multicast group membership  (host stack complete; one data-plane follow-on)
 
 Source of truth: `docs/refactor/igmp_host_membership.md` (detailed
 phased plan, authored 2026-05-25). **Substantially shipped 2026-05-25/26**
@@ -112,18 +115,27 @@ gap is now closed** (shipped 2026-05-26, plan
 machine, v2-form per-group Reports, the IGMPv2 Leave Group to
 224.0.0.2, v1/v2 report suppression, and the `igmp.version` /
 `igmp.query_interval` knobs. The §5.2 Group-Specific Query per-group
-response timer is also shipped (2026-05-26). The remaining host-side
-partial is source-specific multicast (§9, `IP_ADD_SOURCE_MEMBERSHIP` /
-the Group-and-Source-Specific recorded-source list); the IGMPv3
-router/querier role is Phase-2 / future work. A Linux
-host that joins an IPv4 multicast group emits IGMP reports and answers
-queries; PyTCP can only receive traffic for the statically-preconfigured
-all-hosts group (`224.0.0.1`). This is a genuine host-parity asymmetry,
-**Phase 1**, **consciously deferred** as its own multi-day track (a new
-net_proto protocol family + membership API + timer-driven host state
-machine + RFC 3376 §7 version fallback). Surfaced and decided during
-the 2026-05-25 release-readiness pass. The 2026-05-24 ledger missed it
-(it lived only in `ip4_audit_punchlist.md` item E).
+response timer is also shipped (2026-05-26).
+
+**The §9 source-specific multicast gap is now closed (control plane)**
+— shipped 2026-05-26/27 across five phases, plan
+`igmp_source_specific_multicast.md`: the per-socket / per-interface
+source-filter model + RFC 3376 §3.2 merge, the source-filter socket
+options (`IP_ADD_SOURCE_MEMBERSHIP` / `IP_DROP_SOURCE_MEMBERSHIP` /
+`IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`), the §5.1 source-bearing
+state-change records (ALLOW / BLOCK / CHANGE_TO_*), and the §5.2
+Group-and-Source-Specific Query IS_IN(A∩B) / IS_IN(B−A) math. RFC 3376
+adherence flipped to met for §3.1 / §3.2 / §4.2.12 / §5.1 / §5.2 / §9
+(control plane). The IGMPv3 router/querier role is Phase-2 / future
+work. The **one remaining host-side IGMP piece** is the data-plane RX
+source-delivery filter (`ip_mc_sf_allow` — dropping a received datagram
+from a non-included source before socket delivery), a
+forwarding/delivery-path change distinct from the control-plane
+signalling now shipped; noted as a follow-on in the §9 adherence
+record. With that, the IGMP host stack is feature-complete bar that one
+delivery-path filter; it was surfaced and decided during the 2026-05-25
+release-readiness pass (the 2026-05-24 ledger missed it — it lived only
+in `ip4_audit_punchlist.md` item E).
 
 ### 2.1 PLPMTUD active probe-segment emit  (lower-stakes)
 

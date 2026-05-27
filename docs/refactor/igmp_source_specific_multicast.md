@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Phased — Phases 1-4 SHIPPED (data model + §3.2 merge + source socket options + §5.1 source state-change reports + §5.2 query-response source math); Phase 5 (adherence sweep) open |
+| Status       | COMPLETE — Phases 1-5 SHIPPED (data model + §3.2 merge + source socket options + §5.1 source state-change reports + §5.2 query-response source math + adherence sweep). Control-plane source filtering done; data-plane RX source-delivery filter (`ip_mc_sf_allow`) is a noted follow-on. |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -223,11 +223,19 @@ current-state with INCLUDE/EXCLUDE sources, GSSQ A∩B and B−A, and the
 empty-result no-response case. The §9 / §3.2 adherence flip waits for
 Phase 5.
 
-### Phase 5 — adherence + ledger sweep
+### Phase 5 — adherence + ledger sweep  (SHIPPED)
 
-Flip RFC 3376 §9 + §4.2.12 + §5.2 rule 5 + §3.1/§3.2 to met; update the
-host-membership ledger + `v3_0_6_remaining_work.md` §2.0; note the
-data-plane RX source-filter follow-on.
+`docs/rfc/ip4/rfc3376__igmp_v3/adherence.md` refreshed: §3.1, §3.2,
+§4.2.12, §5.1 (source deltas), §5.2 (rule-3 GSSQ table), and §9
+(control plane) flipped to met, with new §3.1/§3.2 sections, the §5.1 /
+§5.2 difference-record clauses, and a test-coverage audit citing the
+five Phase 1-4 test files. `v3_0_6_remaining_work.md` §2.0 updated to
+record §9 control-plane shipped. The one remaining host-side piece —
+the **data-plane** RX source-delivery filter (`ip_mc_sf_allow`,
+dropping a received datagram from a non-included source before socket
+delivery) — is noted as a follow-on in the adherence record's §9 and
+overall assessment; it is a forwarding/delivery-path change distinct
+from the IGMP control-plane signalling this track delivered.
 
 ## 4. Key decisions / risks
 

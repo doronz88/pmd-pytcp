@@ -18,13 +18,19 @@ fresh and inspecting `packages/net_proto/net_proto/protocols/igmp/`,
 `packages/pytcp/pytcp/protocols/igmp/igmp__constants.py` directly.
 
 **Scope.** PyTCP implements the IGMPv3 **host** (group member)
-role. The IGMPv3 **router / querier** role (sending Queries,
-maintaining group membership state for forwarding, the querier
-election) is Phase-2 router work and is marked out-of-scope per
-clause. The host today joins groups in EXCLUDE{} ("any-source")
-mode — the common `IP_ADD_MEMBERSHIP` case; source-specific
-filters (INCLUDE / source lists) are modelled in the wire codec
-but not yet driven by a source-filter socket API.
+role, including source filtering: a group is held per-socket as
+an INCLUDE / EXCLUDE source filter (RFC 3376 §3.1), the
+per-interface reception state is the §3.2 merge of all socket
+filters, and the source-filter socket options
+(`IP_ADD_SOURCE_MEMBERSHIP` / `IP_DROP_SOURCE_MEMBERSHIP` /
+`IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`) drive it. The IGMPv3
+**router / querier** role (sending Queries, maintaining group
+membership state for forwarding, the querier election) is
+Phase-2 router work and is marked out-of-scope per clause. The
+one remaining host-side gap is the **data-plane** RX source
+filter (dropping a received datagram from a non-included source
+before socket delivery, Linux `ip_mc_sf_allow`); this record
+covers the IGMP **control-plane** signalling of source filters.
 
 ---
 
@@ -32,21 +38,72 @@ but not yet driven by a source-filter socket API.
 
 | Section  | Topic                                                    | Status |
 |----------|----------------------------------------------------------|--------|
+| §3.1     | Per-socket filter mode + source list                     | met |
+| §3.2     | Per-interface state = merge of socket filters            | met |
 | §4       | Messages carried in IPv4, protocol 2, TTL 1, Router Alert | met |
 | §4.1     | Membership Query parsing (v1/v2/v3 by length)            | met (RX) |
 | §4.1.1 / §4.1.7 | Max Resp Code / QQIC floating-point decode        | met |
 | §4       | Inbound IGMP TTL = 1 enforced (drop martian TTL != 1)    | met |
 | §4.1.12  | Accept Query to 224.0.0.1 / any interface address        | met |
 | §4.2     | Version 3 Membership Report format                       | met |
+| §4.2.12  | Current-State / Filter-Mode-Change / Source-List-Change records | met |
 | §4.2.14  | Reports sent to 224.0.0.22                               | met |
-| §5.1     | State-change Report on join/leave + robustness retransmit | met |
-| §5.2     | Random-delay response to a Query (general + group-specific) | met (source-specific source-list partial) |
+| §5.1     | State-change Report on join/leave/source-delta + robustness retransmit | met |
+| §5.2     | Random-delay response to a Query (general / group / group-and-source) | met |
 | §6       | Host state — all-systems group never reported            | met (host); router state out of scope |
 | §7       | Older-version (v1/v2) querier interoperation             | met |
 | §8       | Timing / robustness constants                            | met (sysctls) |
-| §9       | Source-Specific Multicast (INCLUDE / source filters)     | partial (EXCLUDE{} only) |
+| §9       | Source-Specific Multicast (INCLUDE / source filters)     | met (control plane); data-plane RX filter is a follow-on |
 
 ---
+
+## §3.1. Socket State
+
+> "For each socket on which IPMulticastListen has been invoked,
+> the system records the desired multicast reception state ...
+> (interface, multicast-address, filter-mode, source-list). ...
+> If the requested filter mode is INCLUDE and the requested
+> source list is empty, then the entry ... is deleted ..."
+
+**Adherence:** met. Each socket holds its filter per
+(ifindex, group) in `socket._ip4_source_filters`
+(`packages/pytcp/pytcp/socket/__init__.py`) as an
+`Ip4MulticastFilter` (mode + `frozenset` of sources, in
+`packages/pytcp/pytcp/lib/ip4_multicast_filter.py`).
+`IP_ADD_MEMBERSHIP` records EXCLUDE{} (any-source);
+`_apply_source_op` runs the per-option state machine for
+`IP_ADD_SOURCE_MEMBERSHIP` (INCLUDE-add), `IP_DROP_SOURCE_
+MEMBERSHIP` (INCLUDE-remove, leaving the group when the
+include list empties — the INCLUDE{} delete), `IP_BLOCK_SOURCE`
+(EXCLUDE-add), and `IP_UNBLOCK_SOURCE` (EXCLUDE-remove), with
+Linux `ip_mc_source` errno parity (EINVAL on a filter-mode
+conflict, EADDRNOTAVAIL on a missing source). `close()`
+releases every filter (`_release_ip4_memberships`, Linux
+`ip_mc_drop_socket`).
+
+## §3.2. Interface State
+
+> "if *any* such record has a filter mode of EXCLUDE, then the
+> filter mode of the interface record is EXCLUDE, and the source
+> list ... is the intersection of the ... EXCLUDE mode, minus
+> those source addresses that appear in any ... INCLUDE mode ...
+> if *all* such records have a filter mode of INCLUDE, then ...
+> the union of the source lists."
+
+**Adherence:** met. `Ip4MulticastFilter.merge`
+(`packages/pytcp/pytcp/lib/ip4_multicast_filter.py`) implements
+the merge exactly — any EXCLUDE → EXCLUDE with (intersection of
+the EXCLUDE lists) − (union of the INCLUDE lists); else INCLUDE
+with the union; no contributors → INCLUDE{} (no reception). The
+packet handler keys per-socket filters by an opaque socket token
+(`_Ip4GroupMembership.socket_filters`, plus the operator hold)
+and re-derives the materialized interface filter
+(`_ip4_multicast_filters[group]`) in `_mc_recompute` on every
+filter change; the flat `_ip4_multicast` joined-group list is a
+derived read-only view over that map. The §3.2 re-evaluation
+"does not necessarily result in a change of interface state"
+holds — `_mc_recompute` emits a state-change Report only when
+the merged filter actually changes.
 
 ## §4. Message Formats
 
@@ -133,21 +190,31 @@ Aux Data Len in 32-bit words and the N×4-byte source list.
 > "A change of interface state causes the system to immediately
 > transmit a State-Change Report from that interface."
 
-**Adherence:** met. `_assign_ip4_multicast` emits a
-CHANGE_TO_EXCLUDE_MODE state-change Report on join and
-`_remove_ip4_multicast` a CHANGE_TO_INCLUDE_MODE Report on leave
-(`packet_handler/__init__.py`), via
-`IgmpTxHandler._send_igmp_v3_state_change`.
+**Adherence:** met. A reception-state change computes the §5.1
+difference records from the old and new merged interface filters
+and emits them: `_assign_ip4_multicast` / `_remove_ip4_multicast`
+report the join (non-existent→filter) and leave
+(filter→non-existent) transitions, and `_mc_recompute` reports a
+source-list change on a still-joined group
+(`packet_handler/__init__.py`), all via
+`IgmpTxHandler._send_igmp_state_change(group, old=, new=)`.
 
-> "INCLUDE (A) → EXCLUDE (B): TO_EX (B); EXCLUDE (A) → INCLUDE
-> (B): TO_IN (B)."
+> "INCLUDE (A) → INCLUDE (B): ALLOW (B-A), BLOCK (A-B); EXCLUDE
+> (A) → EXCLUDE (B): ALLOW (A-B), BLOCK (B-A); INCLUDE (A) →
+> EXCLUDE (B): TO_EX (B); EXCLUDE (A) → INCLUDE (B): TO_IN (B).
+> ... the 'non-existent' state ... INCLUDE ... empty source
+> list."
 
-**Adherence:** met for the any-source model. A join is the
-non-existent→EXCLUDE{} transition (TO_EX{}), a leave the
-EXCLUDE{}→non-existent (≡ INCLUDE{}, TO_IN{}) transition; both
-emit a single record with an empty source list. The
-source-list-delta rows (ALLOW/BLOCK) belong to source-specific
-filtering — see §9.
+**Adherence:** met. `IgmpTxHandler._state_change_records`
+implements the table exactly (the non-existent state is
+INCLUDE{}): a filter-mode change → one CHANGE_TO_INCLUDE_MODE /
+CHANGE_TO_EXCLUDE_MODE record carrying the new source list; a
+within-mode change → ALLOW_NEW_SOURCES and/or BLOCK_OLD_SOURCES
+records, with the empty record omitted. An any-source join is
+the INCLUDE{}→EXCLUDE{} mode change (TO_EX{}), a leave the
+EXCLUDE{}→INCLUDE{} mode change (TO_IN{}); a source add/drop on
+an INCLUDE membership is an ALLOW/BLOCK, a block/unblock on an
+EXCLUDE membership likewise.
 
 > "To cover the possibility of the State-Change Report being
 > missed ... it is retransmitted [Robustness Variable] - 1 more
@@ -197,21 +264,28 @@ retransmits the leave, never the stale join
 pending-response deadline (`_igmp_query__pending_response_at_ms`
 / `_handle`): a Query whose computed response is later than the
 pending one is absorbed (rule 1), an earlier one supersedes it
-(rule 2). A **Group-Specific Query** uses a per-group timer
-(`_igmp_group_query__pending`, group → (deadline, handle)): a
-General response scheduled sooner absorbs it (rule 1), else a
-per-group timer is armed (rule 3) or merged to the earliest of
-the pending and selected delays (rule 4). On group-timer expiry
-a single Current-State Record is sent for the group iff the
-interface still has reception state for it; otherwise nothing
-(`_igmp_query__schedule_group` / `_igmp_group_query__send_now`).
+(rule 2). A **Group-Specific or Group-and-Source-Specific Query**
+uses a per-group timer (`_igmp_group_query__pending`, group →
+`IgmpGroupQueryPending` = deadline + handle + recorded sources):
+a General response scheduled sooner absorbs it (rule 1), else a
+per-group timer is armed and the queried source list recorded
+(rule 3), a Group-Specific query or an empty recorded list
+clears the recorded sources (rule 4), and a further GSSQ augments
+them (rule 5), each at the earliest of the pending and selected
+delays (`_igmp_query__schedule_group`).
 
-**Partial:** Group-and-Source-Specific Queries do not maintain
-the per-source recorded-source list (rule 5 / the IS_IN(A*B)
-expiry table); the EXCLUDE{}-only any-source host answers a
-source-specific Query as a group-specific one (a correct
-superset). The source-list bookkeeping is part of the §9
-source-specific-multicast deferral.
+> "INCLUDE (A) ... IS_IN (A*B); EXCLUDE (A) ... IS_IN (B-A). If
+> the resulting Current-State Record has an empty set of source
+> addresses, then no response is sent."
+
+**Adherence:** met. On group-timer expiry a Current-State Record
+is sent iff the interface still has reception state
+(`_igmp_group_query__send_now`); with no recorded sources it
+carries the group's real filter mode + source list (expiry rules
+1-2), and with recorded sources B it applies the rule-3 table —
+`_send_igmp_v3_group_current_state` answers IS_IN(A∩B) for an
+INCLUDE(A) interface filter and IS_IN(B−A) for an EXCLUDE(A) one,
+sending nothing when the result is empty.
 
 ## §6. Description of the Router / Host Behaviour
 
@@ -277,15 +351,27 @@ querier-side intervals (Query Interval, Query Response Interval,
 Startup / Last-Member values) are router parameters the host
 reads from the wire (QQIC / Max Resp Code), not host config.
 
-## §9. Source-Specific Forwarding Rules
+## §9. Source-Specific Multicast (host control plane)
 
-**Adherence:** partial. The wire codec carries source lists and
-the full record-type set (MODE_IS_INCLUDE / EXCLUDE, ALLOW /
-BLOCK), but the host data path joins in EXCLUDE{} mode only
-(the `IP_ADD_MEMBERSHIP` "any source" case). The source-filter
-socket API (`IP_ADD_SOURCE_MEMBERSHIP` / `MCAST_JOIN_SOURCE_
-GROUP`) that would drive INCLUDE-mode / per-source records is a
-deferred follow-on.
+**Adherence:** met (control plane). The source-filter socket
+options (`IP_ADD_SOURCE_MEMBERSHIP` / `IP_DROP_SOURCE_MEMBERSHIP`
+/ `IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`) drive a per-socket
+INCLUDE / EXCLUDE source filter (§3.1); the per-interface
+reception state is the §3.2 merge; filter changes emit the §5.1
+source-bearing state-change records (ALLOW / BLOCK / CHANGE_TO_*);
+and Group-and-Source-Specific Queries are answered with the §5.2
+rule-3 intersection math. The protocol-independent `MCAST_*`
+socket API and the MSFv1 `IP_MSFILTER` get/set surface are not
+implemented (PyTCP has no consumer).
+
+The one remaining host-side piece is the **data-plane** RX
+source filter — dropping a received multicast datagram whose
+source is not in the (interface, group) include set / is in the
+exclude set before socket delivery (Linux `ip_mc_sf_allow`). The
+control-plane signalling here tells routers what to forward;
+enforcing the filter on locally-received datagrams is a separate
+follow-on tracked in
+`docs/refactor/igmp_source_specific_multicast.md`.
 
 ---
 
@@ -348,6 +434,12 @@ deferred follow-on.
   `test__stack__init.py::TestStackStopOrdering` — `stack.stop()` sends
   each interface's graceful Leave before stopping the packet handler,
   while the TX path is still live.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__source_state_change.py`
+  The §5.1 difference table: ALLOW_NEW_SOURCES on a source add /
+  unblock, BLOCK_OLD_SOURCES on a source drop / block,
+  CHANGE_TO_EXCLUDE_MODE on an INCLUDE→EXCLUDE interface mode flip,
+  and a robustness retransmit carrying the source list.
 
 **Status:** locked in.
 
@@ -364,10 +456,38 @@ deferred follow-on.
   the queried group; an unjoined group elicits nothing; a
   deferred per-group response fires for the group; a sooner
   pending General response absorbs the Query (rule 1).
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__source_query_response.py`
+  General / Group-Specific responses carry the real INCLUDE /
+  EXCLUDE mode + source list; a Group-and-Source-Specific Query
+  answers IS_IN(A∩B) on an INCLUDE interface and IS_IN(B−A) on an
+  EXCLUDE interface (rule-3 table); an empty IS_IN result sends no
+  response.
 
-**Status:** locked in (general + group-specific timers). The
-Group-and-Source-Specific source-list bookkeeping is the
-documented §9 partial.
+**Status:** locked in.
+
+### §3.1 / §3.2 / §9 Source filters (socket + interface merge)
+
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip4_multicast_filter.py`
+  The §3.2 merge table — INCLUDE union, EXCLUDE intersection
+  minus the INCLUDE union, the mixed and EXCLUDE{}-collapse rows,
+  and the INCLUDE{}-is-no-reception predicate.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__source_filter_model.py`
+  A plain join materializes EXCLUDE{}; `_ip4_multicast` is a
+  derived view over the filter map; the merge over operator +
+  per-socket contributors drives the join/leave edge.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__source_socket_opts.py`
+  Each source option's effect on the socket + interface filter,
+  the §3.2 merge across two sockets (INCLUDE union; EXCLUDE{} +
+  INCLUDE → EXCLUDE{}), the `ip_mc_source` errno table (EINVAL
+  mode conflict, EADDRNOTAVAIL missing source), and close-release.
+
+**Status:** locked in (control plane). The data-plane RX
+source-delivery filter (`ip_mc_sf_allow`) is the documented §9
+follow-on; its test lands with that fix.
 
 ### §6 All-systems group never reported
 
@@ -408,16 +528,17 @@ documented §9 partial.
 
 | Aspect                                         | Coverage |
 |------------------------------------------------|----------|
+| §3.1 / §3.2 per-socket + interface source filter merge | locked in |
 | §4 IGMP-in-IPv4 / unknown-type drop            | locked in |
 | §4.1 Query parse + float decode                | locked in |
 | §4.2 V3 Report format + 224.0.0.22 destination | locked in |
-| §5.1 State-change Report + robustness retransmit | locked in |
-| §5.2 Query response (general + group-specific timers) | locked in |
-| §5.2 source-specific recorded-source list      | n/a (§9 partial; deferred) |
+| §5.1 State-change Report (incl. source deltas) + robustness retransmit | locked in |
+| §5.2 Query response (general / group / group-and-source) | locked in |
 | §6 all-systems never reported                  | locked in |
 | §8 timing / robustness sysctls                 | locked in |
 | §7 older-version querier interop               | locked in |
-| §9 source-specific filtering                   | n/a (EXCLUDE{} only) |
+| §9 source-specific filtering (control plane)   | locked in |
+| §9 data-plane RX source-delivery filter        | n/a (follow-on; test lands with fix) |
 
 ---
 
@@ -425,26 +546,34 @@ documented §9 partial.
 
 | Aspect                                         | Status |
 |------------------------------------------------|--------|
+| §3.1 per-socket filter mode + source list       | met   |
+| §3.2 per-interface filter merge                 | met   |
 | §4 message formats (Query / V3 Report / record) | met   |
 | §4 IPv4 carriage (proto 2, TTL 1, Router Alert) | met   |
-| §5.1 state-change Report + robustness retransmit | met   |
-| §5.2 random-delay Query response                | met (general + group-specific); source-list partial |
+| §5.1 state-change Report (incl. source deltas) + robustness retransmit | met |
+| §5.2 random-delay Query response (general / group / group-and-source) | met |
 | §6 all-systems group exemption (host)           | met   |
 | §7 older-version (v1/v2) querier interop        | met   |
 | §8 timing / robustness constants (sysctls)      | met   |
-| §9 source-specific multicast                    | partial (EXCLUDE{} only) |
+| §9 source-specific multicast (control plane)    | met   |
+| §9 data-plane RX source-delivery filter         | follow-on (`ip_mc_sf_allow`) |
 | Router / querier role                           | out of scope (Phase 2) |
 
-PyTCP implements the IGMPv3 **host** role for the common
-any-source (EXCLUDE{}) membership case: it joins/leaves groups
-through the membership API (reference-counted per socket, so a
-group is held until its last holder leaves — see
-`docs/refactor/igmp_r3_socket_refcounting.md`), announces changes
-with robustness-retransmitted state-change Reports, answers
-Membership Queries after the §5.2 random delay, and falls back to
-IGMPv1/v2 report forms under an older-version querier (§7 Host
-Compatibility Mode), and answers Group-Specific Queries on a
-per-group timer (§5.2). The remaining host-side partial is
-source-specific multicast (§9, EXCLUDE{} only — the
-Group-and-Source-Specific recorded-source list); the IGMPv3
+PyTCP implements the IGMPv3 **host** role including source
+filtering: a group is held per-socket as an INCLUDE / EXCLUDE
+source filter (§3.1) driven by the `IP_*_SOURCE_MEMBERSHIP` /
+`IP_*_SOURCE` socket options, the per-interface reception state
+is the §3.2 merge of all socket filters (reference-counted, so a
+group is held until its last contributor leaves — see
+`docs/refactor/igmp_r3_socket_refcounting.md`), filter changes
+announce the §5.1 source-bearing difference records
+(ALLOW / BLOCK / CHANGE_TO_*) with robustness retransmission,
+Membership Queries are answered after the §5.2 random delay with
+real-mode Current-State Records (and the rule-3 IS_IN(A∩B) /
+IS_IN(B−A) math for Group-and-Source-Specific Queries), and the
+host falls back to IGMPv1/v2 report forms under an older-version
+querier (§7 Host Compatibility Mode). The one remaining host-side
+piece is the **data-plane** RX source-delivery filter
+(`ip_mc_sf_allow`) — dropping a received datagram from a
+non-included source before socket delivery; the IGMPv3
 router/querier role is out of scope (Phase 2).
