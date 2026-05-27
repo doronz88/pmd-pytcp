@@ -371,7 +371,12 @@ class IgmpRxHandler:
             stack.timer.cancel(self._if._igmp_query__handle)
             self._if._igmp_query__handle = None
         self._if._igmp_query__pending_response_at_ms = None
-        for pending in self._if._igmp_group_query__pending.values():
+        # Snapshot the pending map before iterating: a Group-Specific
+        # Query deferred-send fires on the timer thread and pops its own
+        # entry, so iterating the live dict here would race that pop and
+        # raise 'dictionary changed size during iteration' on the RX
+        # thread (matches the snapshot idiom used on the TX side).
+        for pending in list(self._if._igmp_group_query__pending.values()):
             stack.timer.cancel(pending.handle)
         self._if._igmp_group_query__pending.clear()
         self._if._igmp_tx._cancel_state_change_retransmits()

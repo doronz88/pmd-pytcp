@@ -34,6 +34,7 @@ ver 3.0.6
 
 from types import SimpleNamespace
 from typing import override
+from unittest.mock import patch
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import IgmpV3RecordType, IpProto
@@ -47,6 +48,7 @@ from net_proto.protocols.igmp.message.igmp__message__v3_report import (
 )
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.raw.raw__assembler import RawAssembler
+from pytcp.runtime.timer import TimerHandle
 from pytcp.stack import sysctl
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
@@ -330,4 +332,49 @@ class TestIgmpGroupSpecificQuery(IcmpTestCase):
             len(self._advance(ms=600)),
             0,
             msg="The superseded later timer must not fire a second response.",
+        )
+
+    def test__igmp__cancel_pending_timers__survives_concurrent_group_query_pop(self) -> None:
+        """
+        Ensure cancelling the pending group-query timers iterates a
+        snapshot of the pending-response map so a concurrent timer-thread
+        deferred-send (which pops its own group's entry) landing mid-loop
+        cannot raise 'dictionary changed size during iteration' and abort
+        the RX subsystem loop.
+
+        Reference: RFC 3376 §7.2.1 (compatibility-mode change cancels pending response timers).
+        """
+
+        # Arm two per-group response timers so the cancel loop iterates
+        # more than once (the second step is where a mid-loop size change
+        # would raise).
+        self._patch_delay(returns_ms=500)
+        self._drive_rx(frame=_query_frame(group=_GROUP_A))
+        self._drive_rx(frame=_query_frame(group=_GROUP_B))
+
+        pending = self._packet_handler._igmp_group_query__pending
+        self.assertEqual(
+            len(pending),
+            2,
+            msg="Two Group-Specific Queries must arm two pending per-group response timers.",
+        )
+
+        original_cancel = self._timer.cancel
+
+        def _cancel_then_simulate_concurrent_deferred_send(handle: TimerHandle, /) -> None:
+            # On the first per-entry cancel, simulate the timer thread
+            # firing a Group-Specific Query deferred-send concurrently —
+            # it pops that group's entry from the same pending map the
+            # RX-thread cancel loop is iterating.
+            if len(pending) > 1:
+                pending.pop(next(iter(pending)), None)
+            original_cancel(handle)
+
+        with patch.object(self._timer, "cancel", new=_cancel_then_simulate_concurrent_deferred_send):
+            self._packet_handler._igmp_rx._igmp_cancel_pending_timers()
+
+        self.assertEqual(
+            len(pending),
+            0,
+            msg="The cancel must clear every pending per-group response even under a concurrent pop.",
         )
