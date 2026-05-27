@@ -75,6 +75,18 @@ class IgmpRxHandler:
 
         self._if._packet_stats_rx.igmp__pre_parse += 1
 
+        # RFC 3376 §4 — IGMP messages are sent with an IP TTL of 1; Linux
+        # drops inbound IGMP with TTL != 1 as martian. The Router Alert
+        # option is NOT required on receipt (IGMPv2 senders predate it),
+        # matching Linux leniency.
+        if packet_rx.ip4.ttl != 1:
+            __debug__ and log(
+                "igmp",
+                f"{packet_rx.tracker} - <CRIT>Dropping IGMP with TTL {packet_rx.ip4.ttl} (expected 1)</>",
+            )
+            self._if._packet_stats_rx.igmp__ttl_invalid__drop += 1
+            return
+
         try:
             IgmpParser(packet_rx)
 

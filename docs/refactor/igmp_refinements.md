@@ -179,15 +179,18 @@ catches it before the generic `ValueError` arm and maps it to
 The `ValueError` subclassing keeps the operator-API cap tests green.
 Test: `test__igmp__socket_membership_refcount.py::...join_over_limit_raises_enobufs`.
 
-### R5 — RX hardening: enforce TTL=1 / Router Alert on inbound IGMP (HARDENING)
+### R5 — RX hardening: enforce TTL=1 on inbound IGMP (HARDENING) — SHIPPED
 
-The IGMP RX handler accepts any TTL and does not require the Router
-Alert option. RFC 3376 §4 says IGMP arrives with TTL=1 + Router Alert;
-Linux drops IGMP with TTL != 1. Add a sanity gate (optionally sysctl-
-gated, e.g. a Linux-style "drop martian IGMP") in `_phrx_igmp` /
-message `validate_sanity` with a dedicated drop counter. Low urgency
-(it only rejects malformed/forged IGMP), but it is a `SHOULD`-grade
-hardening.
+**Shipped.** `_phrx_igmp` now drops inbound IGMP with IP TTL != 1
+(bumping a dedicated `igmp__ttl_invalid__drop` counter) before
+parsing, matching the Linux martian-IGMP guard (RFC 3376 §4: IGMP is
+sent with TTL = 1). Unconditional (no sysctl) — Linux does not gate
+this. Test: `test__igmp__query_response.py::...ttl_not_one_dropped`.
+
+**Router Alert intentionally NOT required on receipt.** RFC 3376 §4
+has senders set Router Alert, but IGMPv2 senders predate it and Linux
+does not drop received IGMP for a missing RA — requiring it would
+break interop. Send-side already sets RA (per the TX handler).
 
 ### R6 — `ip_mreqn` (12-byte) socket-option form (PARITY)
 

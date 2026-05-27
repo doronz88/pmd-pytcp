@@ -266,6 +266,7 @@ class PacketStatsRx(PacketStats):
 
     igmp__pre_parse: int = 0
     igmp__failed_parse__drop: int = 0
+    igmp__ttl_invalid__drop: int = 0
     igmp__membership_query: int = 0
     igmp__membership_query__scheduled: int = 0
     igmp__membership_query__superseded: int = 0

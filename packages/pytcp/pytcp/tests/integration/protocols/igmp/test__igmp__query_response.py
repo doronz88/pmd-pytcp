@@ -65,7 +65,7 @@ def _igmp_general_query_bytes(*, max_resp_code: int, bad_cksum: bool = False) ->
     return body[:2] + cksum.to_bytes(2, "big") + body[4:]
 
 
-def _query_frame(*, max_resp_code: int, bad_cksum: bool = False) -> bytes:
+def _query_frame(*, max_resp_code: int, bad_cksum: bool = False, ttl: int = 1) -> bytes:
     """Wrap an IGMP General Query in Ethernet/IPv4 destined to 224.0.0.1."""
 
     ethernet = EthernetAssembler(
@@ -74,7 +74,7 @@ def _query_frame(*, max_resp_code: int, bad_cksum: bool = False) -> bytes:
         ethernet__payload=Ip4Assembler(
             ip4__src=_ROUTER_IP,
             ip4__dst=_ALL_SYSTEMS,
-            ip4__ttl=1,
+            ip4__ttl=ttl,
             ip4__payload=RawAssembler(
                 raw__payload=_igmp_general_query_bytes(max_resp_code=max_resp_code, bad_cksum=bad_cksum),
                 ip_proto=IpProto.IGMP,
@@ -166,3 +166,26 @@ class TestIgmpQueryResponse(IcmpTestCase):
 
         self.assertEqual(len(tx), 0, msg="A bad-checksum Query must elicit no Report.")
         self.assertEqual(self._packet_handler._packet_stats_rx.igmp__failed_parse__drop, 1)
+
+    def test__igmp__rx__ttl_not_one_dropped(self) -> None:
+        """
+        Ensure an inbound IGMP message with an IP TTL other than 1 is
+        dropped before processing and elicits no response, matching the
+        Linux martian-IGMP guard.
+
+        Reference: RFC 3376 §4 (IGMP messages are sent with an IP TTL of 1).
+        """
+
+        tx = self._drive_rx(frame=_query_frame(max_resp_code=100, ttl=64))
+
+        self.assertEqual(len(tx), 0, msg="A TTL != 1 Query must elicit no Report.")
+        self.assertEqual(
+            self._packet_handler._packet_stats_rx.igmp__ttl_invalid__drop,
+            1,
+            msg="A TTL != 1 IGMP message must bump the TTL-invalid drop counter.",
+        )
+        self.assertEqual(
+            self._packet_handler._packet_stats_rx.igmp__membership_query,
+            0,
+            msg="A dropped TTL != 1 Query must not reach Query processing.",
+        )

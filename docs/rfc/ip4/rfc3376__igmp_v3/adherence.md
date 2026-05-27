@@ -35,6 +35,7 @@ but not yet driven by a source-filter socket API.
 | §4       | Messages carried in IPv4, protocol 2, TTL 1, Router Alert | met |
 | §4.1     | Membership Query parsing (v1/v2/v3 by length)            | met (RX) |
 | §4.1.1 / §4.1.7 | Max Resp Code / QQIC floating-point decode        | met |
+| §4       | Inbound IGMP TTL = 1 enforced (drop martian TTL != 1)    | met |
 | §4.1.12  | Accept Query to 224.0.0.1 / any interface address        | met |
 | §4.2     | Version 3 Membership Report format                       | met |
 | §4.2.14  | Reports sent to 224.0.0.22                               | met |
