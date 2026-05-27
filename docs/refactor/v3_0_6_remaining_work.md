@@ -1,10 +1,12 @@
 # PyTCP 3.0.6 — Remaining Work Ledger
 
 **Authored:** 2026-05-24 on `PyTCP_3_0_6` (HEAD `081c5059`).
-**Reconciled:** 2026-05-25 during the per-package release-readiness pass
-(`v3_0_6_release_readiness.md`) — §2 is now empty (all formerly-open
-optional items shipped or were already present); see §1.2.
-**Suite:** ~11,370 passing, lint clean, source tree zero TODO/FIXME/XXX.
+**Reconciled:** 2026-05-25 (per-package release-readiness pass,
+`v3_0_6_release_readiness.md`) and **2026-05-27** (IGMP track closed —
+§9 source-specific multicast + the §3.1 data-plane RX source filter
+shipped; §2.0 now records the IGMP host stack as feature-complete).
+**Suite:** ~11,687 passing, lint clean, source tree zero TODO/FIXME/XXX.
+**HEAD at last reconcile:** `678a6550`.
 **Purpose:** the single authoritative "what's left for 3.0.6" list,
 produced by a full staleness sweep of all `docs/refactor/*.md` (each
 claim cross-checked against the actual code + referenced commits).
@@ -212,7 +214,55 @@ to expand scope.
 
 ---
 
-## 5. Cross-references
+## 5. Resume prompt (paste verbatim in a fresh session)
+
+```
+Read docs/refactor/v3_0_6_remaining_work.md end to end — it is the
+authoritative "what's left for PyTCP 3.0.6" ledger (reconciled 2026-05-27,
+HEAD 678a6550 on PyTCP_3_0_6). Then read CLAUDE.md (Project North Star)
+and the relevant rule files in .claude/rules/.
+
+Context: 3.0.6 is feature-complete for a host stack — suite green
+(~11,687), lint clean, zero source TODOs, every major host track shipped.
+The IGMP host stack closed out 2026-05-27 (§2.0): membership + §7 v1/v2
+fallback + §5.2 timers + §9 source-specific multicast (control plane) +
+the §3.1 UDP data-plane RX source-delivery filter. There is NO blocking
+or in-scope-required host work left.
+
+The only genuinely-open OPTIONAL host item is §2.1 — PLPMTUD active
+probe-segment emit (RFC 4821 / 8899; passive ICMP-driven PMTUD already
+ships, the active packetization-layer probe is the enhancement on top,
+disabled-by-default even on Linux). Everything else is either §3
+on-touch-only (do NOT open as a standalone task) or §4 deferred
+future-phase (Phase-2 router/forwarding, the socket Linux-parity tail +
+X1 stack-thread-safety audit, TCP god-class decomposition, DHCPv4
+8.4/Phase 9) — do not start a §4 track without an explicit decision to
+expand scope beyond the 3.0.6 host stack.
+
+I want to work on: <PICK ONE, or state a new task>
+  - 2.1 PLPMTUD active probe — source of truth
+        docs/refactor/plpmtud_unified_engine.md ("remaining 20%").
+  - a §4 deferred track (name it + confirm the scope-expansion decision).
+  - something else entirely (state it).
+
+Follow the standing discipline: tests-first (a failing test that pins the
+RFC clause before any fix), one logical unit per commit, make lint + full
+make test + the §7.2 docstring audit clean before each commit, modernise
+legacy typing/Python forms on touch, RFC-ground every behavioural claim,
+commit trailer "Co-Authored-By: Claude Opus 4.7 (1M context)
+<noreply@anthropic.com>", and push only when I explicitly say so. Refresh
+the relevant adherence record in the same commit as the code when an
+RFC-governed behaviour changes. Touch this ledger to tick an item off
+when it lands.
+
+Before writing code, confirm the chosen item is still open (re-grep /
+re-read the source-of-truth doc) — this ledger is a snapshot and may have
+drifted.
+```
+
+---
+
+## 6. Cross-references
 
 - `CLAUDE.md` — Project North Star (Phase 1 host / Phase 2 router /
   Phase 3 kernel-boundary).
