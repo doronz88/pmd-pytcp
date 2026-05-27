@@ -40,7 +40,7 @@ but not yet driven by a source-filter socket API.
 | §4.2     | Version 3 Membership Report format                       | met |
 | §4.2.14  | Reports sent to 224.0.0.22                               | met |
 | §5.1     | State-change Report on join/leave + robustness retransmit | met |
-| §5.2     | Random-delay response to a Query                         | met (general / group; combined per-group nuance partial) |
+| §5.2     | Random-delay response to a Query (general + group-specific) | met (source-specific source-list partial) |
 | §6       | Host state — all-systems group never reported            | met (host); router state out of scope |
 | §7       | Older-version (v1/v2) querier interoperation             | met |
 | §8       | Timing / robustness constants                            | met (sysctls) |
@@ -193,20 +193,25 @@ retransmits the leave, never the stale join
 > response ... Any previously pending response to a General
 > Query is canceled."
 
-**Adherence:** met for the interface (General-Query) timer. The
-handler keeps a single per-interface pending-response deadline
-(`_igmp_query__pending_response_at_ms` / `_handle`): a Query
-whose computed response is later than the pending one is
-absorbed (rule 1); an earlier one supersedes it (rule 2,
-counter `igmp__membership_query__superseded`).
+**Adherence:** met. A General Query uses the single per-interface
+pending-response deadline (`_igmp_query__pending_response_at_ms`
+/ `_handle`): a Query whose computed response is later than the
+pending one is absorbed (rule 1), an earlier one supersedes it
+(rule 2). A **Group-Specific Query** uses a per-group timer
+(`_igmp_group_query__pending`, group → (deadline, handle)): a
+General response scheduled sooner absorbs it (rule 1), else a
+per-group timer is armed (rule 3) or merged to the earliest of
+the pending and selected delays (rule 4). On group-timer expiry
+a single Current-State Record is sent for the group iff the
+interface still has reception state for it; otherwise nothing
+(`_igmp_query__schedule_group` / `_igmp_group_query__send_now`).
 
-**Partial:** the separate per-group / per-source timers for
-Group-Specific and Group-and-Source-Specific Queries (and the
-combined-response source-list bookkeeping) are not maintained —
-PyTCP answers every Query with the full current-state Report on
-the single interface timer. This is conservative (it reports a
-superset) and correct for the any-source model; the per-group
-response refinement is deferred.
+**Partial:** Group-and-Source-Specific Queries do not maintain
+the per-source recorded-source list (rule 5 / the IS_IN(A*B)
+expiry table); the EXCLUDE{}-only any-source host answers a
+source-specific Query as a group-specific one (a correct
+superset). The source-list bookkeeping is part of the §9
+source-specific-multicast deferral.
 
 ## §6. Description of the Router / Host Behaviour
 
@@ -350,12 +355,19 @@ deferred follow-on.
 
 - **Integration:**
   `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__query_response.py`
-  Zero-delay Query → immediate Report; non-zero delay → Report
-  deferred until the FakeTimer crosses the deadline;
+  General Query: zero-delay → immediate Report; non-zero delay →
+  Report deferred until the FakeTimer crosses the deadline;
   bad-checksum Query dropped.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__group_specific_query.py`
+  Group-Specific Query: the response carries a record for only
+  the queried group; an unjoined group elicits nothing; a
+  deferred per-group response fires for the group; a sooner
+  pending General response absorbs the Query (rule 1).
 
-**Status:** locked in (interface-timer path). The per-group /
-source-specific timer refinement is the documented §5.2 partial.
+**Status:** locked in (general + group-specific timers). The
+Group-and-Source-Specific source-list bookkeeping is the
+documented §9 partial.
 
 ### §6 All-systems group never reported
 
@@ -400,8 +412,8 @@ source-specific timer refinement is the documented §5.2 partial.
 | §4.1 Query parse + float decode                | locked in |
 | §4.2 V3 Report format + 224.0.0.22 destination | locked in |
 | §5.1 State-change Report + robustness retransmit | locked in |
-| §5.2 Query response (interface timer)          | locked in |
-| §5.2 per-group / source-specific timer         | n/a (partial; deferred) |
+| §5.2 Query response (general + group-specific timers) | locked in |
+| §5.2 source-specific recorded-source list      | n/a (§9 partial; deferred) |
 | §6 all-systems never reported                  | locked in |
 | §8 timing / robustness sysctls                 | locked in |
 | §7 older-version querier interop               | locked in |
@@ -416,7 +428,7 @@ source-specific timer refinement is the documented §5.2 partial.
 | §4 message formats (Query / V3 Report / record) | met   |
 | §4 IPv4 carriage (proto 2, TTL 1, Router Alert) | met   |
 | §5.1 state-change Report + robustness retransmit | met   |
-| §5.2 random-delay Query response                | met (interface timer); per-group partial |
+| §5.2 random-delay Query response                | met (general + group-specific); source-list partial |
 | §6 all-systems group exemption (host)           | met   |
 | §7 older-version (v1/v2) querier interop        | met   |
 | §8 timing / robustness constants (sysctls)      | met   |
@@ -431,8 +443,8 @@ group is held until its last holder leaves — see
 with robustness-retransmitted state-change Reports, answers
 Membership Queries after the §5.2 random delay, and falls back to
 IGMPv1/v2 report forms under an older-version querier (§7 Host
-Compatibility Mode). The remaining host-side partials are the
-§5.2 per-group / source-specific response timer (the single
-interface-wide response timer is the simplification) and
-source-specific filtering (§9, EXCLUDE{} only); the IGMPv3
+Compatibility Mode), and answers Group-Specific Queries on a
+per-group timer (§5.2). The remaining host-side partial is
+source-specific multicast (§9, EXCLUDE{} only — the
+Group-and-Source-Specific recorded-source list); the IGMPv3
 router/querier role is out of scope (Phase 2).

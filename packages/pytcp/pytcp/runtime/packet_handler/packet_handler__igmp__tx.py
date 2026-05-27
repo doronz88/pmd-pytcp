@@ -290,6 +290,15 @@ class IgmpTxHandler:
         self._if._packet_stats_tx.igmp__v3_report__send += 1
         self._emit_igmp(IgmpMessageV3Report(records=records), IGMP__ALL_IGMPV3_ROUTERS)
 
+    def _send_igmp_v3_group_current_state(self, group: Ip4Address, /) -> None:
+        """
+        Emit an IGMPv3 current-state Report carrying a single
+        MODE_IS_EXCLUDE record for 'group' — the response to a
+        Group-Specific Query (RFC 3376 §5.2).
+        """
+
+        self._emit_v3_report([IgmpV3GroupRecord(type=IgmpV3RecordType.MODE_IS_EXCLUDE, multicast_address=group)])
+
     def _emit_group_membership_report(self, group: Ip4Address, version: IgmpVersion, /) -> None:
         """
         Emit a per-group IGMPv1 / IGMPv2 Membership Report to the group

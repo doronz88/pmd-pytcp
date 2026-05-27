@@ -33,6 +33,7 @@ ver 3.0.6
 import random
 from typing import TYPE_CHECKING
 
+from net_addr import Ip4Address
 from net_proto import (
     IgmpMessageV1Report,
     IgmpMessageV2Report,
@@ -150,15 +151,14 @@ class IgmpRxHandler:
 
         Reference: RFC 3376 §5.2 (host Query-response state machine).
 
-        The host schedules a current-state IGMPv3 Report at a uniformly-
-        random delay in [0, Max Resp Time] so a link with many members
-        spreads its Report burst across the response window. A Query
-        whose computed response time is later than an already-pending
-        Report is absorbed; an earlier one supersedes the pending timer.
-
-        The response form follows the Host Compatibility Mode (RFC 3376
-        §7); deferred refinements are the per-group response to a
-        Group-Specific Query and the IGMPv1 default Max Resp Time.
+        The host schedules a current-state Report at a uniformly-random
+        delay in [0, Max Resp Time] so a link with many members spreads
+        its Report burst across the response window. A General Query
+        uses the interface-wide timer (rules 1-2); a Group-Specific
+        Query uses a per-group timer answering for only that group
+        (rules 1, 3-4). The response form follows the Host Compatibility
+        Mode (RFC 3376 §7). Deferred refinements: Group-and-Source-
+        Specific source lists (§9) and the IGMPv1 default Max Resp Time.
         """
 
         self._if._packet_stats_rx.igmp__membership_query += 1
@@ -178,9 +178,21 @@ class IgmpRxHandler:
         max_resp_ms = message.max_response_time * IGMP__MAX_RESP_TIME__UNIT_MS
         delay_ms = self._igmp_query__pick_response_delay_ms(max_resp_ms)
 
-        # Delay 0 is the "respond now" case — bypass the timer (the
-        # Timer subsystem only fires when its countdown reaches 0, so a
-        # 0-delay registration would dangle).
+        if message.is_general_query:
+            self._igmp_query__schedule_general(delay_ms)
+        else:
+            self._igmp_query__schedule_group(message.group_address, delay_ms)
+
+    def _igmp_query__schedule_general(self, delay_ms: int, /) -> None:
+        """
+        Schedule (or absorb) the response to a General Query on the
+        single interface-wide timer (RFC 3376 §5.2 rules 1-2). A delay of
+        0 responds immediately (bypassing the timer, which only fires on
+        a non-zero countdown); an already-pending General response sooner
+        than the selected delay absorbs this Query, an earlier one
+        supersedes it.
+        """
+
         if delay_ms == 0:
             self._igmp_query__send_now()
             return
@@ -188,12 +200,9 @@ class IgmpRxHandler:
         response_at = stack.timer.now_ms + delay_ms
         pending = self._if._igmp_query__pending_response_at_ms
         if pending is not None and pending <= response_at:
-            # Existing pending Report fires sooner; absorb this Query.
             return
 
         if pending is not None:
-            # This Query supersedes the pending one; cancel its timer and
-            # reset the suppression set for the new response window.
             if self._if._igmp_query__handle is not None:
                 stack.timer.cancel(self._if._igmp_query__handle)
             self._if._igmp_query__suppressed_groups.clear()
@@ -202,6 +211,71 @@ class IgmpRxHandler:
         self._if._igmp_query__pending_response_at_ms = response_at
         self._if._igmp_query__handle = stack.timer.call_later(delay_ms, self._igmp_query__deferred_send)
         self._if._packet_stats_rx.igmp__membership_query__scheduled += 1
+
+    def _igmp_query__schedule_group(self, group: Ip4Address, delay_ms: int, /) -> None:
+        """
+        Schedule (or absorb) the response to a Group-Specific Query on a
+        per-group timer (RFC 3376 §5.2 rules 1, 3-4). A General response
+        scheduled sooner absorbs the Query (rule 1); otherwise a
+        per-group timer is armed (rule 3) or merged to the earliest of
+        the pending and selected delays (rule 4). Group-and-Source-
+        Specific source lists are out of scope for the EXCLUDE{}-only
+        host (§9).
+        """
+
+        response_at = stack.timer.now_ms + delay_ms
+
+        # Rule 1: a General response scheduled sooner covers this group.
+        general_pending = self._if._igmp_query__pending_response_at_ms
+        if general_pending is not None and general_pending <= response_at:
+            return
+
+        existing = self._if._igmp_group_query__pending.get(group)
+        if existing is not None and existing[0] <= response_at:
+            # Rule 4: the pending per-group response already fires sooner.
+            return
+
+        if delay_ms == 0:
+            if existing is not None:
+                stack.timer.cancel(existing[1])
+            self._if._igmp_group_query__pending.pop(group, None)
+            self._igmp_group_query__send_now(group)
+            return
+
+        if existing is not None:
+            # Rule 4: supersede the later pending per-group response.
+            stack.timer.cancel(existing[1])
+            self._if._packet_stats_rx.igmp__membership_query__superseded += 1
+
+        handle = stack.timer.call_later(delay_ms, lambda: self._igmp_group_query__deferred_send(group))
+        self._if._igmp_group_query__pending[group] = (response_at, handle)
+        self._if._packet_stats_rx.igmp__membership_query__scheduled += 1
+
+    def _igmp_group_query__deferred_send(self, group: Ip4Address, /) -> None:
+        """
+        Timer-fired callback for a Group-Specific Query: drop the pending
+        record and emit the per-group response.
+        """
+
+        self._if._igmp_group_query__pending.pop(group, None)
+        self._igmp_group_query__send_now(group)
+
+    def _igmp_group_query__send_now(self, group: Ip4Address, /) -> None:
+        """
+        Emit a Current-State response for 'group' in the interface's Host
+        Compatibility Mode form, but only if the interface still has
+        reception state for it (RFC 3376 §5.2 group-timer expiry rule 2).
+        """
+
+        if group not in self._if._ip4_multicast:
+            return
+
+        mode = self._if._igmp_host_compatibility_mode()
+        if mode is IgmpVersion.V3:
+            self._if._igmp_tx._send_igmp_v3_group_current_state(group)
+        else:
+            self._if._igmp_tx._emit_group_membership_report(group, mode)
+        self._if._packet_stats_rx.igmp__membership_query__respond += 1
 
     def _igmp_update_compatibility_mode(self, message: IgmpMessageQuery, /) -> None:
         """
@@ -248,6 +322,9 @@ class IgmpRxHandler:
             stack.timer.cancel(self._if._igmp_query__handle)
             self._if._igmp_query__handle = None
         self._if._igmp_query__pending_response_at_ms = None
+        for _, handle in self._if._igmp_group_query__pending.values():
+            stack.timer.cancel(handle)
+        self._if._igmp_group_query__pending.clear()
         self._if._igmp_tx._cancel_state_change_retransmits()
 
     def _igmp_query__pick_response_delay_ms(self, max_resp_ms: int, /) -> int:
