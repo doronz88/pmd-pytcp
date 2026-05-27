@@ -73,6 +73,19 @@ class Ip4MulticastFilter:
 
         return self.mode is Ip4MulticastFilterMode.EXCLUDE or bool(self.sources)
 
+    def allows(self, source: Ip4Address, /) -> bool:
+        """
+        Get whether a datagram from 'source' passes this filter for
+        delivery (RFC 3376 §3.1): an INCLUDE filter delivers only its
+        listed sources, an EXCLUDE filter delivers every source except
+        its listed ones. This is the data-plane source-delivery gate
+        (Linux 'ip_mc_sf_allow').
+        """
+
+        if self.mode is Ip4MulticastFilterMode.INCLUDE:
+            return source in self.sources
+        return source not in self.sources
+
     @classmethod
     def merge(cls, filters: Iterable[Ip4MulticastFilter], /) -> Ip4MulticastFilter:
         """

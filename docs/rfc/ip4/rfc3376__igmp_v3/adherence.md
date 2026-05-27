@@ -23,14 +23,13 @@ an INCLUDE / EXCLUDE source filter (RFC 3376 §3.1), the
 per-interface reception state is the §3.2 merge of all socket
 filters, and the source-filter socket options
 (`IP_ADD_SOURCE_MEMBERSHIP` / `IP_DROP_SOURCE_MEMBERSHIP` /
-`IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`) drive it. The IGMPv3
+`IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`) drive it. The
+**data-plane** RX source filter (dropping a received multicast
+datagram from a non-admitted source before socket delivery,
+Linux `ip_mc_sf_allow`) is implemented for UDP. The IGMPv3
 **router / querier** role (sending Queries, maintaining group
 membership state for forwarding, the querier election) is
-Phase-2 router work and is marked out-of-scope per clause. The
-one remaining host-side gap is the **data-plane** RX source
-filter (dropping a received datagram from a non-included source
-before socket delivery, Linux `ip_mc_sf_allow`); this record
-covers the IGMP **control-plane** signalling of source filters.
+Phase-2 router work and is marked out-of-scope per clause.
 
 ---
 
@@ -53,7 +52,7 @@ covers the IGMP **control-plane** signalling of source filters.
 | §6       | Host state — all-systems group never reported            | met (host); router state out of scope |
 | §7       | Older-version (v1/v2) querier interoperation             | met |
 | §8       | Timing / robustness constants                            | met (sysctls) |
-| §9       | Source-Specific Multicast (INCLUDE / source filters)     | met (control plane); data-plane RX filter is a follow-on |
+| §9       | Source-Specific Multicast (INCLUDE / source filters)     | met (control plane + UDP data-plane RX filter) |
 
 ---
 
@@ -364,14 +363,23 @@ rule-3 intersection math. The protocol-independent `MCAST_*`
 socket API and the MSFv1 `IP_MSFILTER` get/set surface are not
 implemented (PyTCP has no consumer).
 
-The one remaining host-side piece is the **data-plane** RX
-source filter — dropping a received multicast datagram whose
-source is not in the (interface, group) include set / is in the
-exclude set before socket delivery (Linux `ip_mc_sf_allow`). The
-control-plane signalling here tells routers what to forward;
-enforcing the filter on locally-received datagrams is a separate
-follow-on tracked in
-`docs/refactor/igmp_source_specific_multicast.md`.
+> "After a multicast packet has been accepted from an interface
+> by the IP layer, its subsequent delivery to the application or
+> process listening on a particular socket depends on the
+> multicast reception state of that socket ..." (§3.2)
+
+**Adherence:** met (UDP). The **data-plane** RX source filter is
+enforced at socket delivery: `UdpRxHandler.__phrx_udp__multicast_
+source_allowed` (`packet_handler__udp__rx.py`) gates each
+candidate socket for an IPv4 multicast datagram by that socket's
+`_ip4_source_filters[(ifindex, group)].allows(source)`
+(`Ip4MulticastFilter.allows` — INCLUDE delivers listed sources,
+EXCLUDE delivers all but listed); a filtered-out source bumps
+`udp__multicast_source_filtered__drop` and falls through to the
+next candidate socket. A socket with no per-(interface, group)
+filter keeps the existing any-source delivery, so the gate only
+tightens delivery for source-specific sockets. The same filter
+on a RAW socket is a natural extension (no current consumer).
 
 ---
 
@@ -485,9 +493,19 @@ follow-on tracked in
   INCLUDE → EXCLUDE{}), the `ip_mc_source` errno table (EINVAL
   mode conflict, EADDRNOTAVAIL missing source), and close-release.
 
-**Status:** locked in (control plane). The data-plane RX
-source-delivery filter (`ip_mc_sf_allow`) is the documented §9
-follow-on; its test lands with that fix.
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip4_multicast_filter.py`
+  The `allows()` per-source delivery predicate (INCLUDE lists,
+  EXCLUDE complements, INCLUDE{} delivers nothing).
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__source_data_filter.py`
+  An inbound IPv4 multicast UDP datagram is delivered to the
+  socket only from an admitted source — an INCLUDE socket gets
+  its listed source and drops others (bumping
+  `udp__multicast_source_filtered__drop`); an EXCLUDE socket
+  drops a blocked source and gets an unblocked one.
+
+**Status:** locked in.
 
 ### §6 All-systems group never reported
 
@@ -538,7 +556,7 @@ follow-on; its test lands with that fix.
 | §8 timing / robustness sysctls                 | locked in |
 | §7 older-version querier interop               | locked in |
 | §9 source-specific filtering (control plane)   | locked in |
-| §9 data-plane RX source-delivery filter        | n/a (follow-on; test lands with fix) |
+| §3.1 / §9 data-plane RX source-delivery filter (UDP) | locked in |
 
 ---
 
@@ -556,7 +574,7 @@ follow-on; its test lands with that fix.
 | §7 older-version (v1/v2) querier interop        | met   |
 | §8 timing / robustness constants (sysctls)      | met   |
 | §9 source-specific multicast (control plane)    | met   |
-| §9 data-plane RX source-delivery filter         | follow-on (`ip_mc_sf_allow`) |
+| §3.1 / §9 data-plane RX source-delivery filter (UDP) | met (`ip_mc_sf_allow`) |
 | Router / querier role                           | out of scope (Phase 2) |
 
 PyTCP implements the IGMPv3 **host** role including source
@@ -572,8 +590,9 @@ Membership Queries are answered after the §5.2 random delay with
 real-mode Current-State Records (and the rule-3 IS_IN(A∩B) /
 IS_IN(B−A) math for Group-and-Source-Specific Queries), and the
 host falls back to IGMPv1/v2 report forms under an older-version
-querier (§7 Host Compatibility Mode). The one remaining host-side
-piece is the **data-plane** RX source-delivery filter
-(`ip_mc_sf_allow`) — dropping a received datagram from a
-non-included source before socket delivery; the IGMPv3
+querier (§7 Host Compatibility Mode). The **data-plane** RX
+source-delivery filter (`ip_mc_sf_allow`) is enforced for UDP —
+a received multicast datagram reaches a socket only from a source
+the socket's filter admits. The same gate on RAW sockets is a
+natural extension with no current consumer; the IGMPv3
 router/querier role is out of scope (Phase 2).

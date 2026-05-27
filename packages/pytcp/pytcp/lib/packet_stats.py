@@ -279,6 +279,7 @@ class PacketStatsRx(PacketStats):
     udp__failed_parse__drop: int = 0
     udp__ip6_zero_cksum__drop: int = 0
     udp__socket_match: int = 0
+    udp__multicast_source_filtered__drop: int = 0
     udp__ip_source_unspecified: int = 0
     udp__echo_native__respond_udp: int = 0
     udp__no_socket_match__respond_icmp4_unreachable: int = 0

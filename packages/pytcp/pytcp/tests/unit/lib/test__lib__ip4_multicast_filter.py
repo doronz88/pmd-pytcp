@@ -157,3 +157,27 @@ class TestIp4MulticastFilterReception(TestCase):
                     expected,
                     msg=f"Unexpected has_reception for {filter_!r}",
                 )
+
+    def test__ip4_multicast_filter__allows(self) -> None:
+        """
+        Ensure the per-source delivery predicate accepts a source only
+        when an INCLUDE filter lists it or an EXCLUDE filter does not —
+        the data-plane source-delivery gate.
+
+        Reference: RFC 3376 §3.1 (INCLUDE delivers listed sources, EXCLUDE delivers all but listed).
+        """
+
+        for filter_, source, expected in [
+            (_include(_A, _B), _A, True),
+            (_include(_A, _B), _C, False),
+            (_include(), _A, False),
+            (_exclude(_A), _A, False),
+            (_exclude(_A), _B, True),
+            (_exclude(), _A, True),
+        ]:
+            with self.subTest(filter=filter_, source=source):
+                self.assertEqual(
+                    filter_.allows(source),
+                    expected,
+                    msg=f"Unexpected allows({source!r}) for {filter_!r}",
+                )

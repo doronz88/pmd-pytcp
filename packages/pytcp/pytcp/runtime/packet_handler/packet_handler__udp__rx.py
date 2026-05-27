@@ -100,6 +100,26 @@ class UdpRxHandler:
                 return True
         return False
 
+    def __phrx_udp__multicast_source_allowed(self, socket: UdpSocket, packet_rx: PacketRx) -> bool:
+        """
+        Apply the RFC 3376 §3.1 data-plane source-delivery filter (Linux
+        'ip_mc_sf_allow') for a candidate socket. An IPv4 multicast
+        datagram is admitted only if the socket's source filter for this
+        (interface, group) admits the datagram's source; a socket with no
+        per-(interface, group) source filter keeps the existing
+        any-source delivery. Non-multicast and IPv6 datagrams are never
+        gated here.
+        """
+
+        if packet_rx.ip.ver is not IpVersion.IP4 or not packet_rx.ip4.dst.is_multicast:
+            return True
+
+        source_filter = socket._ip4_source_filters.get((self._if._ifindex, packet_rx.ip4.dst))
+        if source_filter is None:
+            return True
+
+        return source_filter.allows(packet_rx.ip4.src)
+
     def _phrx_udp(self, packet_rx: PacketRx, /) -> None:
         """
         Handle inbound UDP packets.
@@ -165,6 +185,21 @@ class UdpRxHandler:
 
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
+                # RFC 3376 §3.1 / Linux 'ip_mc_sf_allow' data-plane
+                # source filter: an IPv4 multicast datagram is delivered
+                # to a socket only if the socket's source filter for this
+                # (interface, group) admits the source. A socket with no
+                # source filter (no source-API join) keeps the existing
+                # any-source delivery; a filtered-out source falls through
+                # to the next candidate socket.
+                if not self.__phrx_udp__multicast_source_allowed(socket, packet_rx):
+                    self._if._packet_stats_rx.udp__multicast_source_filtered__drop += 1
+                    __debug__ and log(
+                        "udp",
+                        f"{packet_rx_md.tracker} - <INFO>Source {packet_rx.ip.src} filtered "
+                        f"for socket [{socket}] on group {packet_rx.ip.dst}</>",
+                    )
+                    continue
                 self._if._packet_stats_rx.udp__socket_match += 1
                 __debug__ and log(
                     "udp",

@@ -21,17 +21,16 @@ resolved.
 
 **IGMP / IPv4 multicast group membership is now feature-complete**
 (the IPv4 analog of the shipped MLDv2 listener): the host membership
-machine, RFC 3376 §7 v1/v2 querier fallback, the §5.2 timers, and §9
-source-specific multicast (control plane) all shipped (see §2.0). The
-single remaining host-side IGMP piece is the **data-plane** RX
-source-delivery filter (`ip_mc_sf_allow`), a forwarding/delivery-path
-change distinct from the control-plane signalling now shipped. A
-2026-05-25 freshness sweep of the refactor docs also corrected several
-stale claims (§1.2).
+machine, RFC 3376 §7 v1/v2 querier fallback, the §5.2 timers, §9
+source-specific multicast (control plane), and the §3.1 data-plane RX
+source-delivery filter (`ip_mc_sf_allow`, UDP) all shipped (see §2.0).
+A 2026-05-25 freshness sweep of the refactor docs also corrected
+several stale claims (§1.2).
 
 If the answer to "is 3.0.6 done?" is needed in one word: **yes** for
-the host data path; the IGMP host stack is complete bar the one
-data-plane RX source-delivery filter follow-on.
+the host data path; the IGMP host stack is complete (the RAW-socket
+data-plane source gate is a natural extension with no current
+consumer, and the IGMPv3 router/querier role is Phase-2).
 
 ---
 
@@ -95,7 +94,7 @@ Per-package (net_addr → net_proto → pytcp):
 
 ## 2. Genuinely open Phase-1 items — deferred with a plan (not blocking)
 
-### 2.0 IGMP — IPv4 multicast group membership  (host stack complete; one data-plane follow-on)
+### 2.0 IGMP — IPv4 multicast group membership  (host stack complete)
 
 Source of truth: `docs/refactor/igmp_host_membership.md` (detailed
 phased plan, authored 2026-05-25). **Substantially shipped 2026-05-25/26**
@@ -124,18 +123,18 @@ source-filter model + RFC 3376 §3.2 merge, the source-filter socket
 options (`IP_ADD_SOURCE_MEMBERSHIP` / `IP_DROP_SOURCE_MEMBERSHIP` /
 `IP_BLOCK_SOURCE` / `IP_UNBLOCK_SOURCE`), the §5.1 source-bearing
 state-change records (ALLOW / BLOCK / CHANGE_TO_*), and the §5.2
-Group-and-Source-Specific Query IS_IN(A∩B) / IS_IN(B−A) math. RFC 3376
-adherence flipped to met for §3.1 / §3.2 / §4.2.12 / §5.1 / §5.2 / §9
-(control plane). The IGMPv3 router/querier role is Phase-2 / future
-work. The **one remaining host-side IGMP piece** is the data-plane RX
-source-delivery filter (`ip_mc_sf_allow` — dropping a received datagram
-from a non-included source before socket delivery), a
-forwarding/delivery-path change distinct from the control-plane
-signalling now shipped; noted as a follow-on in the §9 adherence
-record. With that, the IGMP host stack is feature-complete bar that one
-delivery-path filter; it was surfaced and decided during the 2026-05-25
-release-readiness pass (the 2026-05-24 ledger missed it — it lived only
-in `ip4_audit_punchlist.md` item E).
+Group-and-Source-Specific Query IS_IN(A∩B) / IS_IN(B−A) math. The
+**data-plane** RX source-delivery filter (`ip_mc_sf_allow` — dropping a
+received multicast datagram from a non-admitted source before socket
+delivery) also shipped for UDP (`Ip4MulticastFilter.allows` gating
+`UdpRxHandler`, counter `udp__multicast_source_filtered__drop`). RFC
+3376 adherence flipped to met for §3.1 / §3.2 / §4.2.12 / §5.1 / §5.2 /
+§9 (control plane + UDP data-plane filter). The IGMP host stack is now
+feature-complete; the RAW-socket data-plane source gate is a natural
+extension with no current consumer, and the IGMPv3 router/querier role
+is Phase-2 / future work. (Surfaced and decided during the 2026-05-25
+release-readiness pass; the 2026-05-24 ledger missed it — it lived only
+in `ip4_audit_punchlist.md` item E.)
 
 ### 2.1 PLPMTUD active probe-segment emit  (lower-stakes)
 
