@@ -48,6 +48,7 @@ from pytcp.socket import (
     IPPROTO_IP,
     socket,
 )
+from pytcp.stack import sysctl
 
 
 def _ip_mreq(group: Ip4Address, /) -> bytes:
@@ -96,25 +97,33 @@ class MulticastListenerService(UdpService):
         if __debug__:
             self._log(f"Joined IPv4 multicast group {self._group}, listening on port {self._local_port}.")
 
-        try:
-            while not self._event__stop_subsystem.is_set():
-
-                try:
-                    message, remote_address = socket.recvfrom(timeout=1)
-
-                    if message and __debug__:
-                        self._log(
-                            f"Received {len(message)} bytes for group {self._group} "
-                            f"from {remote_address[0]}, port {remote_address[1]}."
-                        )
-
-                except TimeoutError:
-                    continue
-
-        finally:
-            socket.setsockopt(IPPROTO_IP, IP_DROP_MEMBERSHIP, _ip_mreq(self._group))
+        # Let the host answer 'ping <group>' for the duration of the demo
+        # by clearing the Linux-style 'icmp4.echo_ignore_broadcasts' knob
+        # (default 1 = ignore broadcast/multicast echo); restored on exit.
+        # The Echo Reply is sourced from the stack's unicast address.
+        with sysctl.override("icmp4.echo_ignore_broadcasts", 0):
             if __debug__:
-                self._log(f"Left IPv4 multicast group {self._group}.")
+                self._log("Set icmp4.echo_ignore_broadcasts=0 so the group answers ping for this demo.")
+
+            try:
+                while not self._event__stop_subsystem.is_set():
+
+                    try:
+                        message, remote_address = socket.recvfrom(timeout=1)
+
+                        if message and __debug__:
+                            self._log(
+                                f"Received {len(message)} bytes for group {self._group} "
+                                f"from {remote_address[0]}, port {remote_address[1]}."
+                            )
+
+                    except TimeoutError:
+                        continue
+
+            finally:
+                socket.setsockopt(IPPROTO_IP, IP_DROP_MEMBERSHIP, _ip_mreq(self._group))
+                if __debug__:
+                    self._log(f"Left IPv4 multicast group {self._group}.")
 
 
 @click.command()
