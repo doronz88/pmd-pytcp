@@ -31,6 +31,7 @@ net_proto/../pytcp/tests/integration/protocols/igmp/test__igmp__socket_membershi
 ver 3.0.6
 """
 
+import sys
 from typing import override
 
 from net_addr import Ip4Address, MacAddress
@@ -137,6 +138,41 @@ class TestIgmpSocketMembershipOptions(NetworkTestCase):
 
         with self.assertRaises(OSError):
             self._socket.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, _ip_mreq("192.0.2.1", "0.0.0.0"))
+
+    def test__socket__add_membership_ip_mreqn_explicit_ifindex_takes_precedence(self) -> None:
+        """
+        Ensure setsockopt(IP_ADD_MEMBERSHIP) with a 12-byte ip_mreqn
+        joins on the interface named by imr_ifindex, even when
+        imr_address matches no interface (the explicit ifindex wins).
+
+        Reference: PyTCP test infrastructure (ip_mreqn parity, no RFC clause).
+        """
+
+        ifindex = self._packet_handler._ifindex
+        mreqn = (
+            bytes(Ip4Address("239.3.3.3"))  # imr_multiaddr
+            + bytes(Ip4Address("192.0.2.123"))  # imr_address (not owned by any interface)
+            + ifindex.to_bytes(4, sys.byteorder)  # imr_ifindex (host order, C int)
+        )
+
+        self._socket.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, mreqn)
+
+        self.assertIn(Ip4Address("239.3.3.3"), self._packet_handler._ip4_multicast)
+
+    def test__socket__add_membership_ip_mreqn_zero_ifindex_falls_back_to_address(self) -> None:
+        """
+        Ensure a 12-byte ip_mreqn with imr_ifindex 0 falls back to
+        selecting the interface by imr_address.
+
+        Reference: PyTCP test infrastructure (ip_mreqn parity, no RFC clause).
+        """
+
+        interface_address = self._packet_handler._ip4_unicast[0]
+        mreqn = bytes(Ip4Address("239.4.4.4")) + bytes(interface_address) + (0).to_bytes(4, sys.byteorder)
+
+        self._socket.setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, mreqn)
+
+        self.assertIn(Ip4Address("239.4.4.4"), self._packet_handler._ip4_multicast)
 
     def test__socket__add_membership_rejects_short_mreq(self) -> None:
         """

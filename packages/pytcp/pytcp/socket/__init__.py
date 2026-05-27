@@ -33,6 +33,7 @@ ver 3.0.6
 import errno
 import os
 import socket as _stdlib_socket
+import sys
 import threading
 from abc import ABC
 from enum import IntEnum
@@ -628,7 +629,9 @@ class socket(ABC):
         (reference-counted) hold. An imr_interface of 0.0.0.0
         (INADDR_ANY) selects the first IPv4-capable interface, mirroring
         the Linux "let the kernel pick" behaviour. The 12-byte 'ip_mreqn'
-        form is a deferred extension.
+        form (… + imr_ifindex) is also accepted; a non-zero imr_ifindex
+        selects the interface directly and takes precedence over
+        imr_address (Linux 'ip_mreqn').
 
         This socket records each (ifindex, group) it joins so the
         interface only leaves a group when its last holder drops it.
@@ -646,9 +649,18 @@ class socket(ABC):
         group = Ip4Address(mreq[0:4])
         interface_address = Ip4Address(mreq[4:8])
 
-        ifindex = _resolve_membership_ifindex(interface_address)
-        if ifindex is None:
-            raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
+        # 'ip_mreqn' carries a host-order C-int imr_ifindex; when present
+        # and non-zero it selects the interface directly, overriding the
+        # imr_address selection used by the 8-byte 'ip_mreq'.
+        imr_ifindex = int.from_bytes(mreq[8:12], sys.byteorder) if len(mreq) >= 12 else 0
+        if imr_ifindex != 0:
+            ifindex = imr_ifindex if imr_ifindex in _stack.interfaces else None
+            if ifindex is None:
+                raise OSError(errno.EADDRNOTAVAIL, f"No interface with ifindex {imr_ifindex}")
+        else:
+            ifindex = _resolve_membership_ifindex(interface_address)
+            if ifindex is None:
+                raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
 
         api = _stack.membership.interface(ifindex)
         membership = (ifindex, group)

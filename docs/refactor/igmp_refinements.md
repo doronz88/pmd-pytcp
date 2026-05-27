@@ -2,7 +2,7 @@
 
 | Field        | Value                                                              |
 |--------------|--------------------------------------------------------------------|
-| Status       | Plan — refinements to the shipped IGMP host implementation         |
+| Status       | SHIPPED — R1-R7 all landed; only §C feature follow-ons remain       |
 | Author       | IGMP design review (2026-05-26)                                    |
 | Parent       | `docs/refactor/igmp_host_membership.md` (Phases 0-6 shipped)       |
 | Sibling      | `docs/refactor/igmp_version_fallback.md` (the RFC 3376 §7 feature track) |
@@ -192,12 +192,15 @@ has senders set Router Alert, but IGMPv2 senders predate it and Linux
 does not drop received IGMP for a missing RA — requiring it would
 break interop. Send-side already sets RA (per the TX handler).
 
-### R6 — `ip_mreqn` (12-byte) socket-option form (PARITY)
+### R6 — `ip_mreqn` (12-byte) socket-option form (PARITY) — SHIPPED
 
-`_ipproto_ip_membership` parses only the 8-byte `ip_mreq`
-(imr_multiaddr + imr_interface). Linux also accepts the 12-byte
-`ip_mreqn` (… + imr_ifindex). Parse the 12-byte form and prefer its
-explicit ifindex when present.
+**Shipped.** `_ipproto_ip_membership` now accepts the 12-byte
+`ip_mreqn` (imr_multiaddr + imr_address + host-order C-int
+imr_ifindex): a non-zero imr_ifindex selects the interface directly and
+takes precedence over imr_address, while imr_ifindex 0 falls back to
+the 8-byte address selection. Tests:
+`test__igmp__socket_membership_opts.py::...ip_mreqn_explicit_ifindex_takes_precedence`
+and `...ip_mreqn_zero_ifindex_falls_back_to_address`.
 
 ### R7 — Graceful Leave on shutdown / link-down (HOST-CONFORMANCE SHOULD) — SHIPPED (IPv4)
 
