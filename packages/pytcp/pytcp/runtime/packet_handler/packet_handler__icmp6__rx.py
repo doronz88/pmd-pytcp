@@ -635,7 +635,7 @@ class Icmp6RxHandler:
 
             for socket_id in packet.socket_ids:
                 if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                    stack.pmtu_cache[cast(Ip6Address, embedded.remote_ip)] = message.mtu
+                    stack.record_classical_pmtu(cast(Ip6Address, embedded.remote_ip), message.mtu)
                     socket.notify_pmtu(
                         next_hop_mtu=message.mtu,
                         icmp_origin=SoEeOrigin.ICMP6,

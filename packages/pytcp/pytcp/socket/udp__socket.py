@@ -1051,7 +1051,7 @@ class UdpSocket(socket):
         new MTU.
         """
 
-        stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+        stack.record_classical_pmtu(self._remote_ip_address, next_hop_mtu)
 
         # Route the classical PMTU signal through the per-socket
         # PLPMTUD adapter; lazy-allocate if the socket is connected
@@ -1061,7 +1061,7 @@ class UdpSocket(socket):
         adapter = self._ensure_plpmtud_adapter()
         if adapter is not None:
             adapter.on_classical_pmtu(next_hop_mtu, now=time.monotonic())
-            stack.pmtu_state[self._remote_ip_address] = adapter.engine
+            stack.record_pmtu_engine(self._remote_ip_address, adapter.engine)
 
         if offender_ip is None or not self._is_recverr_enabled():
             return

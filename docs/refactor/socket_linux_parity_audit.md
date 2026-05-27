@@ -553,16 +553,22 @@ or torn-invariant exposure and carries its own lock):
   lock-discipline test in
   `test__igmp__thread_safety.py`.
 
-- **F3 (H2/benign under GIL).** `stack.pmtu_cache` /
-  `stack.pmtu_state` are bare dicts written from the rx-ring
-  thread (ICMPv4 Frag-Needed `icmp4__rx.py:233`, ICMPv6
-  Packet-Too-Big `icmp6__rx.py:638`) and from app/tx paths (UDP
-  `udp__socket.py:1054/1064`, TCP `tcp__session.py:1042/1051`),
-  read via `.get(dst)` (`stack/__init__.py:373/376`). Every
-  access is an independent single-key set or get — no iteration,
-  no multi-key invariant — so all are GIL-atomic; worst case a
-  reader sees a slightly stale per-destination MTU. Benign on
-  standard CPython.
+- **F3 (H2/benign under GIL; real under no-GIL).** `stack.pmtu_cache`
+  / `stack.pmtu_state` were bare dicts written from the rx-ring
+  thread (ICMPv4 Frag-Needed, ICMPv6 Packet-Too-Big) and from
+  app/tx paths (UDP, TCP), read via `.get(dst)` in `current_pmtu`.
+  Every access is an independent single-key set or get — no
+  iteration, no multi-key invariant — so all are GIL-atomic
+  (worst case a reader sees a slightly stale per-destination
+  MTU). On a free-threaded build, an unguarded dict write racing
+  another access tears the map. **FIXED (2026-05-27):** a shared
+  module `stack._pmtu_lock` now guards every access; the maps
+  stay plain dicts (so the test-harness snapshot/clear/restore
+  idioms keep working) but all reads/writes go through
+  `current_pmtu` / `record_classical_pmtu` / `record_pmtu_engine`,
+  each holding the lock. The four ICMP/UDP/TCP write sites were
+  migrated to the accessors. Pinned by `test__pmtu_cache.py`
+  (`TestPmtuCacheLocking`).
 
 - **F4 (H2/benign under GIL).** The interface-wide General-Query
   response scalars `_igmp_query__pending_response_at_ms` /
@@ -584,16 +590,16 @@ is sound and is the template for the rest.
   serialisation gap (matches a Linux lock PyTCP lacks); F3/F4
   do not crash or corrupt.
 - **For the no-GIL north star:** F2, F3, and F4 are all real
-  correctness bugs. **F2 is now fixed** (the per-interface
-  `_lock__multicast` — see the finding above). The remaining
-  no-GIL backlog is **F3** (`pmtu_cache` / `pmtu_state` need a
-  `_lock`-guarded accessor, mirror `RouteTable`) and **F4** (the
-  IGMP General-Query response scalars — foldable under
-  `_lock__multicast` or a dedicated lock). The pattern is settled:
-  extend lock-per-structure to every remaining bare dict /
-  cross-thread scalar. Not a 3.0.6-on-CPython blocker, but in
-  scope for the stated north star — not to be dismissed as "GIL
-  makes it fine."
+  correctness bugs. **F2 and F3 are now fixed** — the
+  per-interface `_lock__multicast` and the shared module
+  `_pmtu_lock` (see the findings above). The remaining no-GIL
+  backlog is **F4** (the IGMP General-Query response scalars
+  `_igmp_query__pending_response_at_ms` / `_igmp_query__handle`
+  — RX-write vs timer-clear; foldable under `_lock__multicast` or
+  a dedicated lock). The pattern is settled: extend
+  lock-per-structure to every remaining bare dict / cross-thread
+  scalar. Not a 3.0.6-on-CPython blocker, but in scope for the
+  stated north star — not to be dismissed as "GIL makes it fine."
 
 ### X2. `accept()` returns blocking sockets
 
@@ -759,7 +765,7 @@ that's intentional.
 
 | Item | Status | Note |
 |------|--------|------|
-| **X1 stack-thread safety audit** | performed (2026-05-27) | See §X1. Locked structures (sockets/FIB/timer/neighbor/ip4-id/per-socket buffers) are sound. One GIL-present defect — **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (one-line snapshot fix). F2 (app-vs-app multicast-membership RMW) **fixed** via per-interface `_lock__multicast`. F3 (`pmtu_cache`/`pmtu_state`), F4 (IGMP General-Query scalars) don't bite on today's GIL build but **are real bugs for the no-GIL north star** — each still needs its own lock (extend the lock-per-structure pattern). |
+| **X1 stack-thread safety audit** | performed (2026-05-27) | See §X1. Locked structures (sockets/FIB/timer/neighbor/ip4-id/per-socket buffers) are sound. One GIL-present defect — **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (one-line snapshot fix). F2 (app-vs-app multicast-membership RMW) **fixed** via per-interface `_lock__multicast`; F3 (`pmtu_cache`/`pmtu_state`) **fixed** via shared module `_pmtu_lock` + guarded accessors. F4 (IGMP General-Query scalars) doesn't bite on today's GIL build but **is a real bug for the no-GIL north star** — still needs its own lock (extend the lock-per-structure pattern). |
 | **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
 | **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
 

@@ -1039,7 +1039,7 @@ class TcpSession:
         if shrunk:
             self._win.snd_mss = new_mss
 
-        stack.pmtu_cache[self._remote_ip_address] = next_hop_mtu
+        stack.record_classical_pmtu(self._remote_ip_address, next_hop_mtu)
 
         # Route the classical PMTU signal through the per-session
         # PLPMTUD adapter (which dispatches to the engine), then
@@ -1048,7 +1048,7 @@ class TcpSession:
         # same state.
         now = time.monotonic()
         self._plpmtud_adapter.on_classical_pmtu(next_hop_mtu, now=now)
-        stack.pmtu_state[self._remote_ip_address] = self._plpmtud_adapter.engine
+        stack.record_pmtu_engine(self._remote_ip_address, self._plpmtud_adapter.engine)
 
         # RFC 1191 §6.5 walkback. Only fire when (a) the MSS actually
         # shrunk and (b) at least one in-flight segment is oversized

@@ -230,7 +230,7 @@ class Icmp4RxHandler:
                 embedded_datagram = bytes(message.data)
                 offender_ip = packet_rx.ip4.src
                 if is_frag_needed and message.mtu is not None:
-                    stack.pmtu_cache[cast(Ip4Address, embedded.remote_ip)] = message.mtu
+                    stack.record_classical_pmtu(cast(Ip4Address, embedded.remote_ip), message.mtu)
                     socket.notify_pmtu(
                         next_hop_mtu=message.mtu,
                         icmp_origin=SoEeOrigin.ICMP,
