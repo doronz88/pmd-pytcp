@@ -311,6 +311,7 @@ class PacketHandler(Subsystem, ABC):
     # (a loop-local in '_phtx_ip6_frag'), not stored on the handler.
     _ip4_id: int
     _lock__ip4_id: threading.Lock
+    _lock__multicast: threading.RLock
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
@@ -421,6 +422,15 @@ class PacketHandler(Subsystem, ABC):
         # group 224.0.0.1 is assigned directly at boot and is never
         # ref-managed.
         self._ip4_multicast_refs = {}
+
+        # Guards every read / write of the two IPv4 multicast reception-
+        # state structures above against concurrent application-thread
+        # membership changes and the RX/timer read paths. Reentrant
+        # because the mutators nest ('_mc_ref_acquire' -> '_mc_recompute'
+        # -> '_assign_ip4_multicast' -> '_ip4_multicast_filter_for').
+        # GIL atomicity is not relied upon — PyTCP targets free-threaded
+        # CPython, where a bare dict RMW racing another thread corrupts.
+        self._lock__multicast = threading.RLock()
 
         # IPv4 Identification counter (last value) + its lock. The
         # IPv6 Fragment Identification is generated fresh per
@@ -596,7 +606,8 @@ class PacketHandler(Subsystem, ABC):
         view the RX accept / TX source / IGMP report paths consume.
         """
 
-        return list(self._ip4_multicast_filters)
+        with self._lock__multicast:
+            return list(self._ip4_multicast_filters)
 
     @property
     def _ip4_broadcast(self) -> list[Ip4Address]:
@@ -770,7 +781,8 @@ class PacketHandler(Subsystem, ABC):
         also covers the permanent all-systems group 224.0.0.1.
         """
 
-        return group in self._ip4_multicast_filters
+        with self._lock__multicast:
+            return group in self._ip4_multicast_filters
 
     def _mc_recompute(self, group: Ip4Address, /) -> None:
         """
@@ -784,24 +796,25 @@ class PacketHandler(Subsystem, ABC):
         224.0.0.1 is assigned directly and never recomputed here.
         """
 
-        membership = self._ip4_multicast_refs.get(group)
-        merged = Ip4MulticastFilter.merge(membership.contributors() if membership is not None else [])
-        joined = self._mc_is_joined(group)
+        with self._lock__multicast:
+            membership = self._ip4_multicast_refs.get(group)
+            merged = Ip4MulticastFilter.merge(membership.contributors() if membership is not None else [])
+            joined = self._mc_is_joined(group)
 
-        if merged.has_reception:
-            if not joined:
-                # Reception edge: '_assign_ip4_multicast' materializes the
-                # merged filter, programs the MAC, and emits the §5.1
-                # join difference record(s).
-                self._assign_ip4_multicast(group)
-            elif merged != self._ip4_multicast_filters[group]:
-                # Still joined, filter changed: emit the §5.1 source delta
-                # (ALLOW / BLOCK / CHANGE_TO_*) and re-materialize.
-                old = self._ip4_multicast_filters[group]
-                self._ip4_multicast_filters[group] = merged
-                self._send_igmp_state_change(group, old=old, new=merged)
-        elif joined:
-            self._remove_ip4_multicast(group)
+            if merged.has_reception:
+                if not joined:
+                    # Reception edge: '_assign_ip4_multicast' materializes
+                    # the merged filter, programs the MAC, and emits the
+                    # §5.1 join difference record(s).
+                    self._assign_ip4_multicast(group)
+                elif merged != self._ip4_multicast_filters[group]:
+                    # Still joined, filter changed: emit the §5.1 source
+                    # delta (ALLOW / BLOCK / CHANGE_TO_*) and re-materialize.
+                    old = self._ip4_multicast_filters[group]
+                    self._ip4_multicast_filters[group] = merged
+                    self._send_igmp_state_change(group, old=old, new=merged)
+            elif joined:
+                self._remove_ip4_multicast(group)
 
     def _mc_ref_acquire(self, group: Ip4Address, /) -> None:
         """
@@ -814,8 +827,9 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).operator = True
-        self._mc_recompute(group)
+        with self._lock__multicast:
+            self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).operator = True
+            self._mc_recompute(group)
 
     def _mc_ref_release(self, group: Ip4Address, /) -> None:
         """
@@ -829,14 +843,15 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        membership = self._ip4_multicast_refs.get(group)
-        if membership is None:
-            return
+        with self._lock__multicast:
+            membership = self._ip4_multicast_refs.get(group)
+            if membership is None:
+                return
 
-        membership.operator = False
-        if not membership.operator and not membership.socket_filters:
-            del self._ip4_multicast_refs[group]
-        self._mc_recompute(group)
+            membership.operator = False
+            if not membership.operator and not membership.socket_filters:
+                del self._ip4_multicast_refs[group]
+            self._mc_recompute(group)
 
     def _mc_set_socket_filter(self, group: Ip4Address, /, *, token: int, source_filter: Ip4MulticastFilter) -> None:
         """
@@ -850,8 +865,9 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).socket_filters[token] = source_filter
-        self._mc_recompute(group)
+        with self._lock__multicast:
+            self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).socket_filters[token] = source_filter
+            self._mc_recompute(group)
 
     def _mc_clear_socket_filter(self, group: Ip4Address, /, *, token: int) -> None:
         """
@@ -865,14 +881,15 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        membership = self._ip4_multicast_refs.get(group)
-        if membership is None:
-            return
+        with self._lock__multicast:
+            membership = self._ip4_multicast_refs.get(group)
+            if membership is None:
+                return
 
-        membership.socket_filters.pop(token, None)
-        if not membership.operator and not membership.socket_filters:
-            del self._ip4_multicast_refs[group]
-        self._mc_recompute(group)
+            membership.socket_filters.pop(token, None)
+            if not membership.operator and not membership.socket_filters:
+                del self._ip4_multicast_refs[group]
+            self._mc_recompute(group)
 
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
@@ -2047,10 +2064,11 @@ class PacketHandler(Subsystem, ABC):
         test-driven direct assign).
         """
 
-        membership = self._ip4_multicast_refs.get(group)
-        if membership is None:
-            return Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
-        return Ip4MulticastFilter.merge(membership.contributors())
+        with self._lock__multicast:
+            membership = self._ip4_multicast_refs.get(group)
+            if membership is None:
+                return Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+            return Ip4MulticastFilter.merge(membership.contributors())
 
     def _send_igmp_leave_all(self) -> None:
         """
@@ -3134,23 +3152,24 @@ class PacketHandlerL2(
         Assign IPv4 multicast group to the list stack listens on.
         """
 
-        # Materialize the merged §3.2 reception filter (EXCLUDE{} for a
-        # directly-assigned / any-source group, the merged contributors'
-        # filter for a source-specific join).
-        new = self._ip4_multicast_filter_for(ip4_multicast)
-        self._ip4_multicast_filters[ip4_multicast] = new
+        with self._lock__multicast:
+            # Materialize the merged §3.2 reception filter (EXCLUDE{} for a
+            # directly-assigned / any-source group, the merged contributors'
+            # filter for a source-specific join).
+            new = self._ip4_multicast_filter_for(ip4_multicast)
+            self._ip4_multicast_filters[ip4_multicast] = new
 
-        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+            __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
-        # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
-        # multicast MAC 01:00:5e + low 23 bits of the group address.
-        self._assign_mac_multicast(ip4_multicast.multicast_mac)
+            # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
+            # multicast MAC 01:00:5e + low 23 bits of the group address.
+            self._assign_mac_multicast(ip4_multicast.multicast_mac)
 
-        # RFC 3376 §5.1 — announce the new membership with an unsolicited
-        # state-change Report describing the INCLUDE{}→'new' transition
-        # (the all-systems group is exempt, handled inside the TX method
-        # per RFC 3376 §6).
-        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
+            # RFC 3376 §5.1 — announce the new membership with an unsolicited
+            # state-change Report describing the INCLUDE{}→'new' transition
+            # (the all-systems group is exempt, handled inside the TX method
+            # per RFC 3376 §6).
+            self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3158,17 +3177,18 @@ class PacketHandlerL2(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        old = self._ip4_multicast_filters[ip4_multicast]
-        del self._ip4_multicast_filters[ip4_multicast]
+        with self._lock__multicast:
+            old = self._ip4_multicast_filters[ip4_multicast]
+            del self._ip4_multicast_filters[ip4_multicast]
 
-        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+            __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
-        self._remove_mac_multicast(ip4_multicast.multicast_mac)
+            self._remove_mac_multicast(ip4_multicast.multicast_mac)
 
-        # RFC 3376 §5.1 — announce the departure with a state-change
-        # Report describing the 'old'→INCLUDE{} transition (no longer a
-        # member).
-        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
+            # RFC 3376 §5.1 — announce the departure with a state-change
+            # Report describing the 'old'→INCLUDE{} transition (no longer a
+            # member).
+            self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
 
     def _assign_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -3346,18 +3366,19 @@ class PacketHandlerL3(
         programmed.
         """
 
-        # Materialize the merged §3.2 reception filter (EXCLUDE{} for an
-        # any-source group, the merged contributors' filter otherwise).
-        new = self._ip4_multicast_filter_for(ip4_multicast)
-        self._ip4_multicast_filters[ip4_multicast] = new
+        with self._lock__multicast:
+            # Materialize the merged §3.2 reception filter (EXCLUDE{} for an
+            # any-source group, the merged contributors' filter otherwise).
+            new = self._ip4_multicast_filter_for(ip4_multicast)
+            self._ip4_multicast_filters[ip4_multicast] = new
 
-        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+            __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
-        # RFC 3376 §5.1 — announce the new membership with an unsolicited
-        # state-change Report describing the INCLUDE{}→'new' transition
-        # (the all-systems group is exempt per RFC 3376 §6, handled inside
-        # the TX method).
-        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
+            # RFC 3376 §5.1 — announce the new membership with an unsolicited
+            # state-change Report describing the INCLUDE{}→'new' transition
+            # (the all-systems group is exempt per RFC 3376 §6, handled inside
+            # the TX method).
+            self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3365,11 +3386,12 @@ class PacketHandlerL3(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        old = self._ip4_multicast_filters[ip4_multicast]
-        del self._ip4_multicast_filters[ip4_multicast]
+        with self._lock__multicast:
+            old = self._ip4_multicast_filters[ip4_multicast]
+            del self._ip4_multicast_filters[ip4_multicast]
 
-        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+            __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
-        # RFC 3376 §5.1 — announce the departure with a state-change
-        # Report describing the 'old'→INCLUDE{} transition.
-        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
+            # RFC 3376 §5.1 — announce the departure with a state-change
+            # Report describing the 'old'→INCLUDE{} transition.
+            self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)

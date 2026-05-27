@@ -112,7 +112,9 @@ class IgmpTxHandler:
         when the interface has no reception state for the group.
         """
 
-        filter_ = self._if._ip4_multicast_filters.get(group)
+        with self._if._lock__multicast:
+            filter_ = self._if._ip4_multicast_filters.get(group)
+
         if filter_ is None:
             return None
 
@@ -399,7 +401,9 @@ class IgmpTxHandler:
         IS_IN(B−A); an empty result sends no response.
         """
 
-        filter_ = self._if._ip4_multicast_filters.get(group)
+        with self._if._lock__multicast:
+            filter_ = self._if._ip4_multicast_filters.get(group)
+
         if filter_ is None:
             return
 
