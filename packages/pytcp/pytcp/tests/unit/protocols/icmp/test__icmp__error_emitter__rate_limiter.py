@@ -30,6 +30,7 @@ pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__rate_limiter.py
 ver 3.0.6
 """
 
+import threading
 from typing import Any
 from unittest import TestCase
 
@@ -42,6 +43,41 @@ from pytcp.protocols.icmp.icmp__constants import (
 from pytcp.protocols.icmp.icmp__error_emitter import (
     IcmpErrorRateLimiter,
 )
+
+
+class _TrackingLock:
+    """
+    A lock stand-in that records the maximum context-manager hold
+    depth reached so a test can prove a critical section was entered
+    around an operation and released afterwards.
+    """
+
+    def __init__(self) -> None:
+        """
+        Wrap a real lock and start at zero hold depth.
+        """
+
+        self._lock = threading.Lock()
+        self.depth = 0
+        self.max_depth = 0
+
+    def __enter__(self) -> "_TrackingLock":
+        """
+        Acquire the underlying lock and record the deeper hold.
+        """
+
+        self._lock.acquire()
+        self.depth += 1
+        self.max_depth = max(self.max_depth, self.depth)
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        """
+        Record the shallower hold and release the underlying lock.
+        """
+
+        self.depth -= 1
+        self._lock.release()
 
 
 @parameterized_class(
@@ -281,4 +317,38 @@ class TestIcmpErrorRateLimiter__SubSecond(TestCase):
         self.assertTrue(
             limiter.try_consume(now=0.25),
             msg="Second half-period brings cumulative to one full token.",
+        )
+
+
+class TestIcmpErrorRateLimiter__Locking(TestCase):
+    """
+    The 'IcmpErrorRateLimiter' token-bucket lock-discipline tests.
+    """
+
+    def test__icmp__rate_limiter__try_consume_holds_the_lock(self) -> None:
+        """
+        Ensure 'try_consume' performs its token-bucket read-modify-write
+        while holding the limiter lock, so the stack-wide singleton
+        limiter cannot over- or under-count tokens when multiple
+        interface RX threads consume concurrently on a free-threaded
+        build.
+
+        Reference: RFC 1812 §4.3.2.8 (ICMP error rate limiting).
+        """
+
+        limiter = IcmpErrorRateLimiter(rate_pps=4, burst=5)
+        tracking = _TrackingLock()
+        setattr(limiter, "_lock", tracking)
+
+        limiter.try_consume(now=0.0)
+
+        self.assertGreaterEqual(
+            tracking.max_depth,
+            1,
+            msg="try_consume must acquire the limiter lock around the token-bucket update.",
+        )
+        self.assertEqual(
+            tracking.depth,
+            0,
+            msg="try_consume must release the limiter lock.",
         )

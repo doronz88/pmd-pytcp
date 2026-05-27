@@ -71,6 +71,7 @@ pattern is visible.
 | IPv4 IGMP query-response state | `_lock__multicast` (F4) | `runtime/packet_handler/packet_handler__igmp__rx.py` |
 | IPv4 IGMP state-change retransmit (timer thread) | `_lock__multicast` (M2) | `runtime/packet_handler/packet_handler__igmp__tx.py` |
 | IPv6 MLDv2 query-response timer state | `_lock__multicast` (M1) | `runtime/packet_handler/packet_handler__icmp6__rx.py` |
+| ICMP error rate-limiter token bucket | `_lock` in `try_consume` (I1) | `protocols/icmp/icmp__error_emitter.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
 | `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
@@ -222,13 +223,19 @@ assumption.
 
 ### 2.6 ICMP
 
-**I1 · ICMP error rate limiters — MEDIUM**
-`protocols/icmp/icmp__error_emitter.py:160` `try_consume`
+**I1 · ICMP error rate limiters — MEDIUM — SHIPPED 2026-05-27**
+`protocols/icmp/icmp__error_emitter.py` `try_consume`
 mutates `_tokens` / `_last_refill` (token-bucket RMW). The
 limiters are **stack-wide singletons** (`stack/__init__.py`),
 so in multi-interface mode every interface's rx-ring thread
 hits the same limiter concurrently (H2 — token over/under-
 count). No lock.
+
+*Fix:* added `IcmpErrorRateLimiter._lock` (`threading.Lock`)
+and wrapped the whole `try_consume` token-bucket RMW in it.
+Pinned by
+`test__icmp__error_emitter__rate_limiter.py::TestIcmpErrorRateLimiter__Locking`
+(tracking-lock max-depth probe, red→green).
 
 ### 2.7 Observability — PacketStats
 
@@ -269,8 +276,9 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
    `TestIgmpStateChangeRetransmitLocking` red→green. The IPv6
    membership-list read in the MLD Report emitter is the IPv6
    half of N1, not M1. See §2.4 for detail.
-3. **I1 — ICMP rate-limiter lock.** Add a `threading.Lock`
-   inside `IcmpErrorRateLimiter.try_consume`. Tiny.
+3. **I1 — ICMP rate-limiter lock. ✅ DONE 2026-05-27.** Added
+   `IcmpErrorRateLimiter._lock` and wrapped the `try_consume`
+   token-bucket RMW. Test red→green. See §2.6 for detail.
 4. **U1 — per-socket source-filter lock.** Guard
    `_ip4_source_filters` with a per-socket lock (or reuse
    `_lock__io`), both the app-write RMW and the RX-read gate.
