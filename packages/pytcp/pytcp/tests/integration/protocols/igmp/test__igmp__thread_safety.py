@@ -36,7 +36,13 @@ ver 3.0.6
 import threading
 from typing import override
 
-from net_addr import Ip4Address
+from net_addr import Ip4Address, MacAddress
+from net_proto import IpProto
+from net_proto.lib.buffer import Buffer
+from net_proto.lib.inet_cksum import inet_cksum
+from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
+from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
+from net_proto.protocols.raw.raw__assembler import RawAssembler
 from pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilter,
     Ip4MulticastFilterMode,
@@ -47,6 +53,33 @@ from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 _GROUP = Ip4Address("239.7.7.7")
 _SOURCE = Ip4Address("10.0.0.5")
+_QUERY_GROUP = Ip4Address("239.8.8.8")
+_ROUTER_MAC = MacAddress("02:00:00:00:00:91")
+_ROUTER_IP = Ip4Address("10.0.1.1")
+
+
+def _group_specific_query_frame(group: Ip4Address, /) -> bytes:
+    """
+    Build an Ethernet/IPv4 frame carrying an IGMPv3 Group-Specific Query
+    for 'group' (Max Resp Code 100 = 10 s, no source list).
+    """
+
+    body = b"\x11" + bytes([100]) + b"\x00\x00" + bytes(group) + b"\x02\x7d" + b"\x00\x00"
+    body = body[:2] + inet_cksum(body).to_bytes(2, "big") + body[4:]
+    ethernet = EthernetAssembler(
+        ethernet__src=_ROUTER_MAC,
+        ethernet__dst=group.multicast_mac,
+        ethernet__payload=Ip4Assembler(
+            ip4__src=_ROUTER_IP,
+            ip4__dst=group,
+            ip4__ttl=1,
+            ip4__payload=RawAssembler(raw__payload=body, ip_proto=IpProto.IGMP),
+        ),
+    )
+    buffers: list[Buffer] = []
+    ethernet.assemble(buffers)
+
+    return b"".join(bytes(buf) for buf in buffers)
 
 
 class _TrackingRLock:
@@ -183,4 +216,58 @@ class TestIgmpMulticastReceptionStateLocking(IcmpTestCase):
         self.assertTrue(
             all(observed),
             msg="Every reception-state mutation must occur while the interface multicast lock is held.",
+        )
+
+
+class TestIgmpQueryResponseStateLocking(IcmpTestCase):
+    """
+    The IPv4 IGMP query-response state lock-discipline tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Build the harness, join a group, and pin robustness to 1 so the
+        join's state-change report leaves no retransmit train behind.
+        """
+
+        super().setUp()
+        self.enterContext(sysctl.override("igmp.robustness", 1))
+        self._packet_handler._mac_multicast.append(_QUERY_GROUP.multicast_mac)
+        self._packet_handler._assign_ip4_multicast(_QUERY_GROUP)
+
+    def test__igmp__group_query_scheduling_holds_the_multicast_lock(self) -> None:
+        """
+        Ensure scheduling a Group-Specific Query's pending response
+        mutates the per-group pending-response map while holding the
+        interface multicast lock, so the RX query handler and the
+        timer-thread deferred-send cannot corrupt the IGMP query-response
+        state on a free-threaded build.
+
+        Reference: RFC 3376 §5.2 (Group-Specific Query per-group response timer).
+        """
+
+        handler = self._packet_handler
+        tracking = _TrackingRLock()
+        observed: list[bool] = []
+
+        # A deterministic non-zero response delay so the Query arms a
+        # pending per-group timer (a zero delay would respond inline).
+        handler._igmp_rx._igmp_query__pick_response_delay_ms = lambda max_resp_ms: 500  # type: ignore[method-assign]
+        setattr(handler, "_lock__multicast", tracking)
+        setattr(
+            handler,
+            "_igmp_group_query__pending",
+            _LockAssertingDict(tracking, observed, handler._igmp_group_query__pending),
+        )
+
+        self._drive_rx(frame=_group_specific_query_frame(_QUERY_GROUP))
+
+        self.assertTrue(
+            observed,
+            msg="The Group-Specific Query must arm a pending per-group response.",
+        )
+        self.assertTrue(
+            all(observed),
+            msg="The pending per-group response must be armed while the interface multicast lock is held.",
         )
