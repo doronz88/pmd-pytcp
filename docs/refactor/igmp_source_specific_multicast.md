@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | Phased — Phase 1 (data model + §3.2 merge) SHIPPED; Phases 2-5 open    |
+| Status       | Phased — Phases 1-2 (data model + §3.2 merge + source socket options) SHIPPED; Phases 3-5 open |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -133,13 +133,44 @@ view wiring (integration, `test__igmp__source_filter_model.py`). The §9 /
 §3.2 adherence flip waits for Phase 5 (no user-facing source filters until
 Phase 2).
 
-### Phase 2 — source socket options
+### Phase 2 — source socket options  (SHIPPED)
 
-`IP_ADD/DROP_SOURCE_MEMBERSHIP`, `IP_BLOCK/UNBLOCK_SOURCE` (IpOption
-37-40) parsing the 12-byte `ip_mreq_source`; per-socket filter mutation
-+ `EINVAL` on mode conflict; `close()` releases source filters. Tests:
-each option's effect on the socket + interface filter; mode-conflict
-errno.
+`IP_UNBLOCK_SOURCE` (37) / `IP_BLOCK_SOURCE` (38) /
+`IP_ADD_SOURCE_MEMBERSHIP` (39) / `IP_DROP_SOURCE_MEMBERSHIP` (40)
+added to `IpOption` + bare aliases, parsing the 12-byte `ip_mreq_source`
+(imr_multiaddr + imr_sourceaddr + imr_interface). The socket facade
+holds `_ip4_source_filters: dict[(ifindex, group), Ip4MulticastFilter]`
+(replacing the old presence-set `_ip4_memberships`) and runs the
+per-option state machine + errno mapping in `_apply_source_op`; the
+resulting filter (or its absence) is pushed to the interface §3.2 merge
+through the new membership-API surface `set_socket_filter` /
+`clear_socket_filter` (keyed by `id(socket)`). The handler keys
+per-socket filters by that token (`_Ip4GroupMembership.socket_filters:
+dict[int, Ip4MulticastFilter]`); the operator hold stays a separate
+boolean. `MembershipRefKind` is gone — operator (`join`/`leave`) and
+socket (`set_socket_filter`/`clear_socket_filter`) are now distinct
+API methods. `close()` releases every source filter (Linux
+`ip_mc_drop_socket`).
+
+Per-socket state machine (cur = the socket's filter for the group;
+`ip_mc_source` errno parity):
+
+| Option | cur = none | cur = INCLUDE{S} | cur = EXCLUDE{S} |
+|--------|-----------|------------------|------------------|
+| ADD_MEMBERSHIP | set EXCLUDE{}; join | EADDRINUSE | EADDRINUSE |
+| DROP_MEMBERSHIP | EADDRNOTAVAIL | clear; leave | clear; leave |
+| ADD_SOURCE (s) | set INCLUDE{s}; join | add s (idempotent) | **EINVAL** |
+| DROP_SOURCE (s) | EADDRNOTAVAIL | remove s (empty ⇒ leave); s∉S ⇒ EADDRNOTAVAIL | **EINVAL** |
+| BLOCK_SOURCE (s) | **EINVAL** | **EINVAL** | add s (idempotent) |
+| UNBLOCK_SOURCE (s) | **EINVAL** | **EINVAL** | remove s; s∉S ⇒ EADDRNOTAVAIL |
+
+A non-multicast group or a short `ip_mreq_source` is EINVAL. Reports
+stay the Phase-1 coarse reception-edge form (CHANGE_TO_EXCLUDE on join,
+CHANGE_TO_INCLUDE on leave); the interface filter materializes the true
+merged §3.2 value but the source-bearing state-change records
+(ALLOW/BLOCK/CHANGE_TO_* with sources) are Phase 3. Tests:
+`test__igmp__source_socket_opts.py` (each option's socket + interface
+effect, the §3.2 merge across two sockets, the errno table, close-release).
 
 ### Phase 3 — source state-change reports
 

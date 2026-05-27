@@ -99,10 +99,7 @@ from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
-from pytcp.stack.membership import (
-    IP4__MULTICAST__ALL_SYSTEMS,
-    MembershipRefKind,
-)
+from pytcp.stack.membership import IP4__MULTICAST__ALL_SYSTEMS
 
 from .dispatch import DispatchRegistry
 from .packet_handler__arp__rx import ArpRxHandler
@@ -143,17 +140,21 @@ class _Ip4GroupMembership:
     The per-socket source filters contributing to one IPv4 multicast
     group's reception on an interface — the operator hold ('ip maddr'-
     style, set-once, an EXCLUDE{} any-source contributor) and each
-    'IP_ADD_MEMBERSHIP' socket's filter. The merged interface filter
-    (RFC 3376 §3.2) is derived from 'contributors()'; the group stays
-    joined while that merge has reception state.
+    socket's filter keyed by an opaque socket token (the BSD socket
+    options 'IP_ADD_MEMBERSHIP' / 'IP_ADD_SOURCE_MEMBERSHIP' / …). The
+    merged interface filter (RFC 3376 §3.2) is derived from
+    'contributors()'; the group stays joined while that merge has
+    reception state.
     """
 
     operator: bool = False
-    # One filter per socket join. Phase 1 only ever appends EXCLUDE{}
-    # (the any-source join 'IP_ADD_MEMBERSHIP' produces); Phase 2 keys
-    # these by socket identity and carries source-option-driven INCLUDE
-    # / EXCLUDE filters.
-    socket_filters: list[Ip4MulticastFilter] = field(default_factory=list)
+    # The current source filter each socket holds on this group, keyed
+    # by the socket's opaque token (its 'id()'). 'IP_ADD_MEMBERSHIP'
+    # registers an EXCLUDE{} any-source filter; the source options
+    # register INCLUDE / EXCLUDE-with-sources filters. A socket's entry
+    # is replaced on each of its own filter mutations and removed when
+    # it leaves the group.
+    socket_filters: dict[int, Ip4MulticastFilter] = field(default_factory=dict)
 
     def contributors(self) -> list[Ip4MulticastFilter]:
         """
@@ -162,7 +163,7 @@ class _Ip4GroupMembership:
         when the operator hold is set.
         """
 
-        contributors = list(self.socket_filters)
+        contributors = list(self.socket_filters.values())
         if self.operator:
             contributors.append(Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE))
         return contributors
@@ -763,44 +764,54 @@ class PacketHandler(Subsystem, ABC):
 
         return group in self._ip4_multicast_filters
 
-    def _mc_ref_acquire(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
+    def _mc_recompute(self, group: Ip4Address, /) -> None:
         """
-        Acquire a reference of 'kind' on IPv4 multicast 'group' and
-        re-derive the merged interface filter (RFC 3376 §3.2). When the
-        merge crosses into reception state and the group was not already
-        joined, actually join it (install the MAC filter + emit the
-        state-change Report via '_assign_ip4_multicast'). The operator
-        hold is set-once; socket holds append an EXCLUDE{} filter
-        (Phase 1). The permanent all-systems group 224.0.0.1 is never
-        ref-managed (RFC 3376 §5.1 join edge).
+        Re-derive the merged interface filter for 'group' from its
+        per-socket + operator contributors (RFC 3376 §3.2) and reconcile
+        the materialized reception state. Crossing into reception joins
+        the group (MAC filter + state-change Report via
+        '_assign_ip4_multicast'); losing reception leaves it (via
+        '_remove_ip4_multicast'); a filter change while still joined
+        updates the materialized filter. The permanent all-systems group
+        224.0.0.1 is assigned directly and never recomputed here.
+        """
+
+        membership = self._ip4_multicast_refs.get(group)
+        merged = Ip4MulticastFilter.merge(membership.contributors() if membership is not None else [])
+        joined = self._mc_is_joined(group)
+
+        if merged.has_reception:
+            if not joined:
+                self._assign_ip4_multicast(group)
+            # Materialize the true merged §3.2 filter (the assign path
+            # above seeds EXCLUDE{}; an INCLUDE / sourced merge overwrites
+            # it here). Phase 3 emits the ALLOW / BLOCK / CHANGE_TO_*
+            # delta when this changes a still-joined group's filter.
+            self._ip4_multicast_filters[group] = merged
+        elif joined:
+            self._remove_ip4_multicast(group)
+
+    def _mc_ref_acquire(self, group: Ip4Address, /) -> None:
+        """
+        Acquire the operator hold on IPv4 multicast 'group' (the
+        set-once 'ip maddr'-style EXCLUDE{} any-source contributor) and
+        recompute the merged interface filter. The permanent all-systems
+        group 224.0.0.1 is never ref-managed (RFC 3376 §5.1 join edge).
         """
 
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        membership = self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership())
-        match kind:
-            case MembershipRefKind.OPERATOR:
-                membership.operator = True
-            case MembershipRefKind.SOCKET:
-                membership.socket_filters.append(Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE))
+        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).operator = True
+        self._mc_recompute(group)
 
-        merged = Ip4MulticastFilter.merge(membership.contributors())
-        if merged.has_reception and not self._mc_is_joined(group):
-            self._assign_ip4_multicast(group)
-        # Phase 3: a merged filter that changed while still in reception
-        # state emits an ALLOW / BLOCK / CHANGE_TO_* delta here.
-
-    def _mc_ref_release(self, group: Ip4Address, /, *, kind: MembershipRefKind) -> None:
+    def _mc_ref_release(self, group: Ip4Address, /) -> None:
         """
-        Release a reference of 'kind' on IPv4 multicast 'group' and
-        re-derive the merged interface filter (RFC 3376 §3.2). When the
-        merge no longer has reception state, actually leave the group
-        (drop the MAC filter + emit the state-change Leave via
-        '_remove_ip4_multicast'). Idempotent — releasing a group with no
-        outstanding reference is a no-op. The permanent all-systems group
-        224.0.0.1 is never dropped here (RFC 1112 §4; RFC 3376 §5.1 leave
-        edge).
+        Release the operator hold on IPv4 multicast 'group' and recompute
+        the merged interface filter; the group leaves only when no
+        contributor (operator or socket) remains. Idempotent. The
+        permanent all-systems group 224.0.0.1 is never dropped here
+        (RFC 1112 §4; RFC 3376 §5.1 leave edge).
         """
 
         if group == IP4__MULTICAST__ALL_SYSTEMS:
@@ -810,20 +821,46 @@ class PacketHandler(Subsystem, ABC):
         if membership is None:
             return
 
-        match kind:
-            case MembershipRefKind.OPERATOR:
-                membership.operator = False
-            case MembershipRefKind.SOCKET:
-                if membership.socket_filters:
-                    membership.socket_filters.pop()
-
-        merged = Ip4MulticastFilter.merge(membership.contributors())
-        if not merged.has_reception:
+        membership.operator = False
+        if not membership.operator and not membership.socket_filters:
             del self._ip4_multicast_refs[group]
-            if self._mc_is_joined(group):
-                self._remove_ip4_multicast(group)
-        # Phase 3: a merged filter that changed but kept reception state
-        # emits an ALLOW / BLOCK / CHANGE_TO_* delta here.
+        self._mc_recompute(group)
+
+    def _mc_set_socket_filter(self, group: Ip4Address, /, *, token: int, source_filter: Ip4MulticastFilter) -> None:
+        """
+        Register / replace the source filter socket 'token' holds on IPv4
+        multicast 'group' (RFC 3376 §3.1 per-socket state) and recompute
+        the merged interface filter (§3.2). A socket joining the
+        all-systems group 224.0.0.1 is a no-op — it is permanent and
+        never IGMP-managed.
+        """
+
+        if group == IP4__MULTICAST__ALL_SYSTEMS:
+            return
+
+        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).socket_filters[token] = source_filter
+        self._mc_recompute(group)
+
+    def _mc_clear_socket_filter(self, group: Ip4Address, /, *, token: int) -> None:
+        """
+        Drop the source filter socket 'token' held on IPv4 multicast
+        'group' (the socket left, per RFC 3376 §3.1 INCLUDE{} delete) and
+        recompute the merged interface filter (§3.2); the group leaves
+        only when no contributor remains. Idempotent. The all-systems
+        group 224.0.0.1 is never managed here.
+        """
+
+        if group == IP4__MULTICAST__ALL_SYSTEMS:
+            return
+
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
+            return
+
+        membership.socket_filters.pop(token, None)
+        if not membership.operator and not membership.socket_filters:
+            del self._ip4_multicast_refs[group]
+        self._mc_recompute(group)
 
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """

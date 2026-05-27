@@ -36,10 +36,10 @@ pytcp/stack/membership.py
 ver 3.0.6
 """
 
-from enum import Enum
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address
+from pytcp.lib.ip4_multicast_filter import Ip4MulticastFilter
 from pytcp.lib.logger import log
 from pytcp.protocols.igmp import igmp__constants
 
@@ -62,19 +62,6 @@ class MembershipLimitError(ValueError):
     """
 
 
-class MembershipRefKind(Enum):
-    """
-    The kind of reference held on an IPv4 multicast group membership:
-    an operator-API hold ('ip maddr'-style, set-once and idempotent) or
-    a per-socket hold ('IP_ADD_MEMBERSHIP', reference-counted). The
-    interface keeps a group joined while any reference of either kind
-    remains.
-    """
-
-    OPERATOR = 1
-    SOCKET = 2
-
-
 class MembershipApi:
     """
     The multicast-membership-control surface — joins / leaves IPv4
@@ -87,10 +74,13 @@ class MembershipApi:
     surface. It never reaches into 'packet_handler._ip4_multicast'
     directly; that is the Phase-3 architectural seam.
 
-    Membership is presence-based per interface (a group is joined or
-    not). Per-socket join refcounting — so a group survives until the
-    last socket leaves — is a deferred enhancement; today the first
-    'leave' drops the group.
+    Two contributor kinds drive a group's interface reception state: the
+    operator hold ('join' / 'leave', a set-once any-source EXCLUDE{}
+    contributor) and the per-socket source filters ('set_socket_filter'
+    / 'clear_socket_filter', keyed by an opaque socket token, carrying
+    RFC 3376 §3.1 INCLUDE / EXCLUDE source lists). The interface filter
+    is the RFC 3376 §3.2 merge of all contributors; the group stays
+    joined while that merge has reception state.
     """
 
     def __init__(
@@ -134,48 +124,59 @@ class MembershipApi:
 
         return MembershipApi(packet_handler=stack.interfaces[ifindex])
 
-    def join(self, *, group: Ip4Address, kind: MembershipRefKind = MembershipRefKind.OPERATOR) -> None:
+    def _enforce_membership_cap(
+        self,
+        handler: "PacketHandlerL2 | PacketHandlerL3",
+        group: Ip4Address,
+    ) -> None:
         """
-        Join the IPv4 multicast 'group' on the bound interface — Linux
-        'IP_ADD_MEMBERSHIP' equivalent. Acquires a reference of 'kind'
-        (operator hold by default; the BSD socket facade passes
-        'MembershipRefKind.SOCKET'); the actual join + state-change
-        Report fires only when the group crosses the not-joined→joined
-        edge. The operator hold is idempotent. Raises 'ValueError' for a
-        non-multicast address.
+        Enforce the Linux 'net.ipv4.igmp_max_memberships' cap on the
+        number of joined IPv4 multicast groups. The cap applies only when
+        the requested operation would newly join 'group'; the implicit
+        all-systems group 224.0.0.1 does not count. Qualified module
+        access so an operator override of 'igmp.max_memberships' resolves
+        on every call. Raises 'MembershipLimitError' over the cap.
+        """
+
+        if handler._mc_is_joined(group):
+            return
+
+        joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
+        if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
+            raise MembershipLimitError(
+                f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
+                f"(sysctl 'igmp.max_memberships'); cannot join {group}."
+            )
+
+    def join(self, *, group: Ip4Address) -> None:
+        """
+        Join the IPv4 multicast 'group' on the bound interface as the
+        operator hold ('ip maddr' / Linux 'IP_ADD_MEMBERSHIP' from the
+        operator surface). The actual join + state-change Report fires
+        only when the group crosses the not-joined→joined edge; the
+        operator hold is idempotent. The per-socket source-filter holds
+        (the BSD socket options) go through 'set_socket_filter' instead.
+        Raises 'ValueError' for a non-multicast address.
         """
 
         if not group.is_multicast:
             raise ValueError(f"The 'group' must be a multicast address. Got: {group!r}")
 
         handler = self._resolve_handler()
+        self._enforce_membership_cap(handler, group)
+        handler._mc_ref_acquire(group)
+        __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group} (operator)")
 
-        # Linux 'net.ipv4.igmp_max_memberships' — cap the number of
-        # joined groups. The cap applies only when this acquisition
-        # would newly join the group; the implicit all-systems group
-        # 224.0.0.1 does not count. Qualified module access so an
-        # operator override of 'igmp.max_memberships' resolves on every
-        # join.
-        if not handler._mc_is_joined(group):
-            joined = sum(1 for member in handler._ip4_multicast if member != IP4__MULTICAST__ALL_SYSTEMS)
-            if joined >= igmp__constants.IGMP__MAX_MEMBERSHIPS:
-                raise MembershipLimitError(
-                    f"The multicast-membership limit ({igmp__constants.IGMP__MAX_MEMBERSHIPS}) is reached "
-                    f"(sysctl 'igmp.max_memberships'); cannot join {group}."
-                )
-
-        handler._mc_ref_acquire(group, kind=kind)
-        __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group} ({kind.name})")
-
-    def leave(self, *, group: Ip4Address, kind: MembershipRefKind = MembershipRefKind.OPERATOR) -> None:
+    def leave(self, *, group: Ip4Address) -> None:
         """
-        Leave the IPv4 multicast 'group' on the bound interface — Linux
-        'IP_DROP_MEMBERSHIP' equivalent. Releases the reference of 'kind'
-        (operator hold by default); the actual leave + state-change Leave
-        Report fires only when the last reference of any kind is dropped
-        (the joined→not-joined edge). Idempotent. Refuses to drop the
-        all-systems group 224.0.0.1, which a host belongs to permanently
-        (RFC 1112 §4). Raises 'ValueError' for a non-multicast address.
+        Release the operator hold on the IPv4 multicast 'group' on the
+        bound interface ('ip maddr' / Linux 'IP_DROP_MEMBERSHIP' from the
+        operator surface). The actual leave + state-change Leave Report
+        fires only when the last contributor (operator or socket) is
+        dropped (the joined→not-joined edge). Idempotent. Refuses to drop
+        the all-systems group 224.0.0.1, which a host belongs to
+        permanently (RFC 1112 §4). Raises 'ValueError' for a non-multicast
+        address.
         """
 
         if not group.is_multicast:
@@ -185,8 +186,38 @@ class MembershipApi:
             raise ValueError("The all-systems group 224.0.0.1 is joined permanently and cannot be left (RFC 1112 §4).")
 
         handler = self._resolve_handler()
-        handler._mc_ref_release(group, kind=kind)
-        __debug__ and log("stack", f"<lg>Membership API</>: left IPv4 group {group} ({kind.name})")
+        handler._mc_ref_release(group)
+        __debug__ and log("stack", f"<lg>Membership API</>: left IPv4 group {group} (operator)")
+
+    def set_socket_filter(self, *, group: Ip4Address, token: int, source_filter: Ip4MulticastFilter) -> None:
+        """
+        Register / replace the per-socket source filter (RFC 3376 §3.1)
+        that the socket identified by the opaque 'token' holds on the
+        IPv4 multicast 'group', then re-derive the merged interface
+        filter (§3.2). This is the surface the BSD socket facade's
+        'IP_ADD_MEMBERSHIP' / 'IP_ADD_SOURCE_MEMBERSHIP' /
+        'IP_BLOCK_SOURCE' family dispatches to; the per-option state
+        machine + errno mapping live in the facade. Raises
+        'MembershipLimitError' when a newly-joined group would exceed the
+        'igmp.max_memberships' cap.
+        """
+
+        handler = self._resolve_handler()
+        self._enforce_membership_cap(handler, group)
+        handler._mc_set_socket_filter(group, token=token, source_filter=source_filter)
+
+    def clear_socket_filter(self, *, group: Ip4Address, token: int) -> None:
+        """
+        Drop the per-socket source filter the socket identified by 'token'
+        held on the IPv4 multicast 'group' (the socket left — RFC 3376
+        §3.1 INCLUDE{} delete) and re-derive the merged interface filter
+        (§3.2). The surface the BSD socket facade's 'IP_DROP_MEMBERSHIP' /
+        'IP_DROP_SOURCE_MEMBERSHIP'-to-empty paths and socket close
+        dispatch to. Idempotent.
+        """
+
+        handler = self._resolve_handler()
+        handler._mc_clear_socket_filter(group, token=token)
 
     def list_memberships(self) -> tuple[Ip4Address, ...]:
         """

@@ -48,6 +48,10 @@ from net_proto.protocols.ip4.options.ip4__options import (
     IP4__OPTIONS__MAX_LEN,
     Ip4Options,
 )
+from pytcp.lib.ip4_multicast_filter import (
+    Ip4MulticastFilter,
+    Ip4MulticastFilterMode,
+)
 from pytcp.lib.name_enum import NameEnum
 from pytcp.socket.socket_id import SocketId
 
@@ -159,6 +163,10 @@ class IpOption(IntEnum):
     IP_MTU = 14  # int (getsockopt only): effective PMTU for connected peer (RFC 1122 §3.4 GET_MAXSIZES)
     IP_ADD_MEMBERSHIP = 35  # ip_mreq bytes: join an IPv4 multicast group (RFC 1112 / 3376)
     IP_DROP_MEMBERSHIP = 36  # ip_mreq bytes: leave an IPv4 multicast group (RFC 1112 / 3376)
+    IP_UNBLOCK_SOURCE = 37  # ip_mreq_source bytes: unblock a source on an EXCLUDE-mode group (RFC 3376 / 3678)
+    IP_BLOCK_SOURCE = 38  # ip_mreq_source bytes: block a source on an EXCLUDE-mode group (RFC 3376 / 3678)
+    IP_ADD_SOURCE_MEMBERSHIP = 39  # ip_mreq_source bytes: join a group in INCLUDE mode for a source (RFC 3376 / 3678)
+    IP_DROP_SOURCE_MEMBERSHIP = 40  # ip_mreq_source bytes: drop a source from an INCLUDE-mode group (RFC 3376 / 3678)
 
 
 IP_TOS = IpOption.IP_TOS
@@ -171,6 +179,10 @@ IP_RECVTOS = IpOption.IP_RECVTOS
 IP_MTU = IpOption.IP_MTU
 IP_ADD_MEMBERSHIP = IpOption.IP_ADD_MEMBERSHIP
 IP_DROP_MEMBERSHIP = IpOption.IP_DROP_MEMBERSHIP
+IP_UNBLOCK_SOURCE = IpOption.IP_UNBLOCK_SOURCE
+IP_BLOCK_SOURCE = IpOption.IP_BLOCK_SOURCE
+IP_ADD_SOURCE_MEMBERSHIP = IpOption.IP_ADD_SOURCE_MEMBERSHIP
+IP_DROP_SOURCE_MEMBERSHIP = IpOption.IP_DROP_SOURCE_MEMBERSHIP
 
 
 class IpV6Option(IntEnum):
@@ -456,7 +468,12 @@ class socket(ABC):
     _ipv6_tclass: int
     _ipv6_recvtclass: bool
     _ipv6_recverr: bool
-    _ip4_memberships: set[tuple[int, Ip4Address]]
+    # The source filter (RFC 3376 §3.1) this socket holds per joined
+    # (ifindex, group). 'IP_ADD_MEMBERSHIP' records an EXCLUDE{}
+    # any-source filter; the source options build INCLUDE / EXCLUDE
+    # source lists. Presence of a key is the socket's membership; the
+    # value is pushed to the interface merge via the membership API.
+    _ip4_source_filters: dict[tuple[int, Ip4Address], Ip4MulticastFilter]
 
     def __init__(
         self,
@@ -507,7 +524,7 @@ class socket(ABC):
         self._ipv6_recverr = False
         # Per-socket IPv4 multicast holds (ifindex, group) for the
         # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
-        self._ip4_memberships = set()
+        self._ip4_source_filters = {}
         # SO_BINDTODEVICE: when set, pins this socket's egress to one
         # interface by name (the resolved ifindex is the egress the
         # send path uses, bypassing FIB route selection). Empty / unset
@@ -618,67 +635,193 @@ class socket(ABC):
                     )
                 self._ipproto_ip_membership(optname, bytes(value))
                 return True
+            case _ if optname in (
+                IP_ADD_SOURCE_MEMBERSHIP,
+                IP_DROP_SOURCE_MEMBERSHIP,
+                IP_BLOCK_SOURCE,
+                IP_UNBLOCK_SOURCE,
+            ):
+                if not isinstance(value, (bytes, bytearray, memoryview)):
+                    raise OSError(
+                        errno.EINVAL,
+                        f"IP source-membership value must be an ip_mreq_source bytes object, "
+                        f"got {type(value).__name__}",
+                    )
+                self._ipproto_ip_source_membership(optname, bytes(value))
+                return True
         return False
 
-    def _ipproto_ip_membership(self, optname: int, mreq: bytes, /) -> None:
+    def _resolve_membership_interface(self, interface_address: Ip4Address, imr_ifindex: int, /) -> int:
         """
-        Apply IP_ADD_MEMBERSHIP / IP_DROP_MEMBERSHIP by parsing the
-        'ip_mreq' structure (4-byte imr_multiaddr + 4-byte
-        imr_interface) and dispatching to the stack membership API on
-        the interface 'imr_interface' selects, as a per-socket
-        (reference-counted) hold. An imr_interface of 0.0.0.0
-        (INADDR_ANY) selects the first IPv4-capable interface, mirroring
-        the Linux "let the kernel pick" behaviour. The 12-byte 'ip_mreqn'
-        form (… + imr_ifindex) is also accepted; a non-zero imr_ifindex
-        selects the interface directly and takes precedence over
-        imr_address (Linux 'ip_mreqn').
-
-        This socket records each (ifindex, group) it joins so the
-        interface only leaves a group when its last holder drops it.
-        Joining a group this socket already holds raises EADDRINUSE, and
-        dropping a group it does not hold raises EADDRNOTAVAIL (Linux
-        'ip_mc_join_group' / 'ip_mc_leave_group' parity).
+        Resolve the interface a multicast-membership socket option
+        targets. A non-zero 'imr_ifindex' (the 'ip_mreqn' form) selects
+        the interface directly and takes precedence; otherwise the
+        'imr_interface' in_addr selects it (0.0.0.0 / INADDR_ANY picks
+        the first IPv4-capable interface, mirroring the Linux "let the
+        kernel pick" behaviour). Raises 'OSError(EADDRNOTAVAIL)' when no
+        interface matches.
         """
 
         import pytcp.stack as _stack
-        from pytcp.stack.membership import MembershipLimitError, MembershipRefKind
+
+        if imr_ifindex != 0:
+            if imr_ifindex not in _stack.interfaces:
+                raise OSError(errno.EADDRNOTAVAIL, f"No interface with ifindex {imr_ifindex}")
+            return imr_ifindex
+
+        ifindex = _resolve_membership_ifindex(interface_address)
+        if ifindex is None:
+            raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
+        return ifindex
+
+    def _ipproto_ip_membership(self, optname: int, mreq: bytes, /) -> None:
+        """
+        Apply IP_ADD_MEMBERSHIP / IP_DROP_MEMBERSHIP — an any-source join
+        / a full leave. Parses the 'ip_mreq' structure (4-byte
+        imr_multiaddr + 4-byte imr_interface; the 12-byte 'ip_mreqn' form
+        with a trailing host-order imr_ifindex is also accepted) and
+        records the socket's filter for (ifindex, group) as EXCLUDE{}
+        (any-source), pushing it to the interface merge via the stack
+        membership API.
+
+        Joining a group this socket already holds raises EADDRINUSE;
+        dropping one it does not hold raises EADDRNOTAVAIL (Linux
+        'ip_mc_join_group' / 'ip_mc_leave_group' parity). IP_DROP_MEMBERSHIP
+        leaves the group regardless of the socket's filter mode.
+        """
+
+        import pytcp.stack as _stack
+        from pytcp.stack.membership import MembershipLimitError
 
         if len(mreq) < 8:
             raise OSError(errno.EINVAL, f"ip_mreq must be at least 8 bytes, got {len(mreq)}")
 
         group = Ip4Address(mreq[0:4])
+        if not group.is_multicast:
+            raise OSError(errno.EINVAL, f"{group} is not a multicast group address")
         interface_address = Ip4Address(mreq[4:8])
-
-        # 'ip_mreqn' carries a host-order C-int imr_ifindex; when present
-        # and non-zero it selects the interface directly, overriding the
-        # imr_address selection used by the 8-byte 'ip_mreq'.
+        # 'ip_mreqn' carries a host-order C-int imr_ifindex after the
+        # 8-byte 'ip_mreq' prefix; 0 (or absent) falls back to imr_address.
         imr_ifindex = int.from_bytes(mreq[8:12], sys.byteorder) if len(mreq) >= 12 else 0
-        if imr_ifindex != 0:
-            ifindex = imr_ifindex if imr_ifindex in _stack.interfaces else None
-            if ifindex is None:
-                raise OSError(errno.EADDRNOTAVAIL, f"No interface with ifindex {imr_ifindex}")
-        else:
-            ifindex = _resolve_membership_ifindex(interface_address)
-            if ifindex is None:
-                raise OSError(errno.EADDRNOTAVAIL, f"No IPv4 interface matches imr_interface {interface_address}")
+        ifindex = self._resolve_membership_interface(interface_address, imr_ifindex)
 
         api = _stack.membership.interface(ifindex)
-        membership = (ifindex, group)
+        key = (ifindex, group)
         try:
             if optname == IP_ADD_MEMBERSHIP:
-                if membership in self._ip4_memberships:
+                if key in self._ip4_source_filters:
                     raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
-                api.join(group=group, kind=MembershipRefKind.SOCKET)
-                self._ip4_memberships.add(membership)
+                source_filter = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+                api.set_socket_filter(group=group, token=id(self), source_filter=source_filter)
+                self._ip4_source_filters[key] = source_filter
             else:
-                if membership not in self._ip4_memberships:
+                if key not in self._ip4_source_filters:
                     raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
-                api.leave(group=group, kind=MembershipRefKind.SOCKET)
-                self._ip4_memberships.discard(membership)
+                api.clear_socket_filter(group=group, token=id(self))
+                del self._ip4_source_filters[key]
         except MembershipLimitError as error:
             raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
             raise OSError(errno.EINVAL, str(error)) from error
+
+    def _ipproto_ip_source_membership(self, optname: int, mreqs: bytes, /) -> None:
+        """
+        Apply the source-filter socket options (RFC 3678 / RFC 3376 §3.1)
+        by parsing the 12-byte 'ip_mreq_source' structure (4-byte
+        imr_multiaddr + 4-byte imr_sourceaddr + 4-byte imr_interface) and
+        mutating this socket's per-(ifindex, group) filter, then pushing
+        the result to the interface merge via the stack membership API:
+
+        - IP_ADD_SOURCE_MEMBERSHIP: INCLUDE-mode; add the source.
+        - IP_DROP_SOURCE_MEMBERSHIP: remove the source from the INCLUDE
+          list (leave the group when it empties).
+        - IP_BLOCK_SOURCE: EXCLUDE-mode; add the blocked source.
+        - IP_UNBLOCK_SOURCE: remove a blocked source from the EXCLUDE list.
+
+        A mode conflict (an INCLUDE op on an EXCLUDE membership or vice
+        versa, and BLOCK / UNBLOCK with no prior any-source join) raises
+        EINVAL, mirroring Linux 'ip_mc_source'.
+        """
+
+        import pytcp.stack as _stack
+        from pytcp.stack.membership import MembershipLimitError
+
+        if len(mreqs) < 12:
+            raise OSError(errno.EINVAL, f"ip_mreq_source must be at least 12 bytes, got {len(mreqs)}")
+
+        group = Ip4Address(mreqs[0:4])
+        if not group.is_multicast:
+            raise OSError(errno.EINVAL, f"{group} is not a multicast group address")
+        source = Ip4Address(mreqs[4:8])
+        interface_address = Ip4Address(mreqs[8:12])
+        ifindex = self._resolve_membership_interface(interface_address, 0)
+
+        key = (ifindex, group)
+        # Compute the new socket filter (or None to leave the group)
+        # before any API call so a mode-conflict OSError aborts cleanly.
+        new_filter = self._apply_source_op(optname, self._ip4_source_filters.get(key), source)
+
+        api = _stack.membership.interface(ifindex)
+        try:
+            if new_filter is None:
+                api.clear_socket_filter(group=group, token=id(self))
+                self._ip4_source_filters.pop(key, None)
+            else:
+                api.set_socket_filter(group=group, token=id(self), source_filter=new_filter)
+                self._ip4_source_filters[key] = new_filter
+        except MembershipLimitError as error:
+            raise OSError(errno.ENOBUFS, str(error)) from error
+        except ValueError as error:
+            raise OSError(errno.EINVAL, str(error)) from error
+
+    @staticmethod
+    def _apply_source_op(
+        optname: int,
+        current: Ip4MulticastFilter | None,
+        source: Ip4Address,
+        /,
+    ) -> Ip4MulticastFilter | None:
+        """
+        Compute the new per-socket source filter for a source-filter
+        socket option (RFC 3376 §3.1 / RFC 3678), or 'None' when the
+        operation leaves the group. Raises 'OSError' with the Linux
+        'ip_mc_source' errno for an invalid transition: EINVAL on a
+        filter-mode conflict, EADDRNOTAVAIL on dropping / unblocking a
+        source the socket does not hold. Adding a source already present
+        is idempotent.
+        """
+
+        include = Ip4MulticastFilterMode.INCLUDE
+        exclude = Ip4MulticastFilterMode.EXCLUDE
+
+        match optname:
+            case _ if optname == IP_ADD_SOURCE_MEMBERSHIP:
+                if current is None:
+                    return Ip4MulticastFilter(include, frozenset({source}))
+                if current.mode is exclude:
+                    raise OSError(errno.EINVAL, "IP_ADD_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
+                return Ip4MulticastFilter(include, current.sources | {source})
+            case _ if optname == IP_DROP_SOURCE_MEMBERSHIP:
+                if current is None:
+                    raise OSError(errno.EADDRNOTAVAIL, "Socket is not a member of the group")
+                if current.mode is exclude:
+                    raise OSError(errno.EINVAL, "IP_DROP_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
+                if source not in current.sources:
+                    raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not in the include list")
+                remaining = current.sources - {source}
+                return Ip4MulticastFilter(include, remaining) if remaining else None
+            case _ if optname == IP_BLOCK_SOURCE:
+                if current is None or current.mode is include:
+                    raise OSError(errno.EINVAL, "IP_BLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
+                return Ip4MulticastFilter(exclude, current.sources | {source})
+            case _ if optname == IP_UNBLOCK_SOURCE:
+                if current is None or current.mode is include:
+                    raise OSError(errno.EINVAL, "IP_UNBLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
+                if source not in current.sources:
+                    raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not blocked")
+                return Ip4MulticastFilter(exclude, current.sources - {source})
+
+        raise OSError(errno.EINVAL, f"Unsupported source-membership option {optname}")
 
     def _ipproto_ip_getsockopt(self, optname: int, /) -> int | bytes | None:
         """
@@ -1112,32 +1255,29 @@ class socket(ABC):
 
     def _release_ip4_memberships(self) -> None:
         """
-        Release every IPv4 multicast membership this socket still holds —
-        the Linux 'ip_mc_drop_socket' equivalent run on close(). The
-        interface leaves a group (and emits the state-change Leave) only
-        when this socket was its last holder (R3). Idempotent: a socket
-        that joined no group clears an empty set. Released outside
-        '_lock__io' so the membership/timer path does not run under the
-        socket IO lock.
+        Release every IPv4 multicast source filter this socket still
+        holds — the Linux 'ip_mc_drop_socket' equivalent run on close().
+        The interface leaves a group (and emits the state-change Leave)
+        only when this socket was its last contributor (RFC 3376 §3.2).
+        Idempotent: a socket that joined no group clears an empty map.
+        Released outside '_lock__io' so the membership/timer path does
+        not run under the socket IO lock.
         """
 
-        if not self._ip4_memberships:
+        if not self._ip4_source_filters:
             return
 
         import pytcp.stack as _stack
-        from pytcp.stack.membership import MembershipRefKind
 
-        for ifindex, group in list(self._ip4_memberships):
+        for ifindex, group in list(self._ip4_source_filters):
             try:
-                _stack.membership.interface(ifindex).leave(group=group, kind=MembershipRefKind.SOCKET)
-            except KeyError, ValueError:
+                _stack.membership.interface(ifindex).clear_socket_filter(group=group, token=id(self))
+            except KeyError:
                 # Best-effort cleanup: the interface may already be torn
-                # down (KeyError) during stack shutdown, and a group that
-                # cannot be left (e.g. the permanent all-systems group,
-                # ValueError) needs no release. Mirrors the best-effort
-                # nature of the Linux close-time drop.
+                # down (KeyError) during stack shutdown. Mirrors the
+                # best-effort nature of the Linux close-time drop.
                 pass
-        self._ip4_memberships.clear()
+        self._ip4_source_filters.clear()
 
     def getsockname(self) -> tuple[str, int]:
         """
