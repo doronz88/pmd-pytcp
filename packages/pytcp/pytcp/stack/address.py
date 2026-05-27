@@ -135,17 +135,21 @@ class AddressApi:
         """
 
         handler = self._resolve_handler()
-        # Atomic-rebind rather than in-place '.append': the TX worker
-        # iterates the address list during source-address selection on
-        # a different thread, so control-plane mutation must swap a
-        # fresh list reference (the reader sees the old or new list
-        # whole, never a mid-append state). Mirrors 'remove' below.
+        # Atomic-rebind rather than in-place '.append', under the
+        # interface address-config lock: the TX worker iterates the
+        # address list during source-address selection on a different
+        # thread, so control-plane mutation swaps a fresh list reference
+        # (the reader sees the old or new list whole, never a
+        # mid-append state) while the lock serializes this writer
+        # against the RX / SLAAC / DAD writers. Mirrors 'remove' below.
         if isinstance(ifaddr, Ip6IfAddr):
-            handler._ip6_ifaddr = [*handler._ip6_ifaddr, ifaddr]
+            with handler._lock__addr_config:
+                handler._ip6_ifaddr = [*handler._ip6_ifaddr, ifaddr]
             handler._assign_ip6_multicast(ifaddr.address.solicited_node_multicast)
             __debug__ and log("stack", f"<lg>Address API</>: added IPv6 host {ifaddr}")
             return
-        handler._ip4_ifaddr = [*handler._ip4_ifaddr, ifaddr]
+        with handler._lock__addr_config:
+            handler._ip4_ifaddr = [*handler._ip4_ifaddr, ifaddr]
         __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ifaddr}")
 
     def remove(
@@ -174,8 +178,9 @@ class AddressApi:
 
         handler = self._resolve_handler()
         if isinstance(address, Ip6Address):
-            removed_hosts = [host for host in handler._ip6_ifaddr if host.address == address]
-            handler._ip6_ifaddr = [host for host in handler._ip6_ifaddr if host.address != address]
+            with handler._lock__addr_config:
+                removed_hosts = [host for host in handler._ip6_ifaddr if host.address == address]
+                handler._ip6_ifaddr = [host for host in handler._ip6_ifaddr if host.address != address]
             for host in removed_hosts:
                 handler._remove_ip6_multicast(host.address.solicited_node_multicast)
             __debug__ and log(
@@ -184,9 +189,10 @@ class AddressApi:
                 f"({len(removed_hosts)} host(s); abort_bound_sessions={abort_bound_sessions})",
             )
             return
-        before = len(handler._ip4_ifaddr)
-        handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != address]
-        removed = before - len(handler._ip4_ifaddr)
+        with handler._lock__addr_config:
+            before = len(handler._ip4_ifaddr)
+            handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != address]
+            removed = before - len(handler._ip4_ifaddr)
         __debug__ and log(
             "stack",
             f"<lg>Address API</>: removed IPv4 address {address} "

@@ -31,6 +31,7 @@ pytcp/tests/unit/stack/test__stack__address.py
 ver 3.0.6
 """
 
+import threading
 from typing import TYPE_CHECKING, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -59,6 +60,11 @@ class _FakePacketHandler:
     def __init__(self) -> None:
         self._ip4_ifaddr: list[Ip4IfAddr] = []
         self._ip6_ifaddr: list[Ip6IfAddr] = []
+        # The Address API serializes its copy-on-write rebinds of the
+        # ifaddr lists under the interface address-config lock (the
+        # no-GIL N1 guard); the stand-in supplies a real reentrant lock
+        # so the context-managed mutation runs.
+        self._lock__addr_config = threading.RLock()
         # Record the solicited-node-multicast groups the API joins /
         # leaves so the v6 tests can assert on SNM management.
         self.joined_snm: list[Ip6Address] = []

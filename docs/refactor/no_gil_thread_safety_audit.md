@@ -73,6 +73,7 @@ pattern is visible.
 | IPv6 MLDv2 query-response timer state | `_lock__multicast` (M1) | `runtime/packet_handler/packet_handler__icmp6__rx.py` |
 | ICMP error rate-limiter token bucket | `_lock` in `try_consume` (I1) | `protocols/icmp/icmp__error_emitter.py` |
 | per-socket IPv4 source-filter map | `_lock__ip4_source_filters` (U1) | `socket/__init__.py` |
+| per-interface address-config + IPv6-multicast lists (ifaddr / SLAAC / temp / routers / DAD-state / `_ip6_multicast`) | `_lock__addr_config` + copy-on-write; lock-free readers (N1) | `runtime/packet_handler/__init__.py`, `stack/address.py` |
 | PMTU maps (`pmtu_cache`/`pmtu_state`) | `_pmtu_lock` + accessors (F3) | `stack/__init__.py` |
 | `TcpStack` Fast-Open state (cookies/negative/pending) | `_lock` + accessors (T1) | `protocols/tcp/tcp__stack.py` |
 | RxRing `_rx_deque` / TxRing deque | `collections.deque` append/popleft (atomic in CPython incl. free-threaded build) + `os.eventfd` wakeup | `runtime/rx_ring.py`, `runtime/tx_ring.py` |
@@ -178,19 +179,51 @@ single bool/int — torn-but-benign (H4-like), LOW.
 
 **N1 · per-interface address-config state — HIGH**
 `runtime/packet_handler/__init__.py`. `_ip4_ifaddr` /
-`_ip6_ifaddr` (+ `_ip4/6_ifaddr_candidate`),
-`_icmp6_slaac_addresses`, `_icmp6_temp_addresses`,
-`_icmp6_default_routers`, `_icmp6_dad__states`, **and the
-multicast membership lists `_ip4_multicast` / `_ip6_multicast`
-themselves** (the M1 fix guards the MLD query *timer* state but
-the membership list the Report emitter reads is still bare).
-Written from the **RX** thread (RA processing — prefix/route/
-address list rebuilds), the **Timer**/async **DAD-claim**
-threads (SLAAC + ACD confirm), the **app** thread (Address /
-Membership API), and boot. No lock → list/dict tear (H3) and
-RA-vs-claim races (H2). The `DadSlotRegistry` itself is locked,
-but the address *lists* it feeds are not. This is the
-Address-API Phase-3 boundary; design the lock with that API.
+`_ip6_ifaddr`, `_icmp6_slaac_addresses`,
+`_icmp6_temp_addresses`, `_icmp6_default_routers`,
+`_icmp6_dad__states`, **and the IPv6 multicast membership list
+`_ip6_multicast`** (the M1 residual — the MLD Report emitter
+reads it). Written from the **RX** thread (RA processing —
+prefix/route/address list rebuilds), the **Timer**/async
+**DAD-claim** threads (SLAAC + ACD confirm + sweeps), the
+**app** thread (Address / Membership API), and boot. No lock →
+list/dict tear (H3) and RA-vs-claim races (H2). The
+`DadSlotRegistry` itself is locked, but the address *lists* it
+feeds are not.
+
+*Fix (SHIPPED 2026-05-27):* added a per-interface
+`_lock__addr_config` (RLock) that serializes **writers** and
+publishes a fresh list/dict object every mutation
+(copy-on-write); the per-packet RX/TX **readers stay lock-free**,
+loading the attribute reference once (atomic on free-threaded
+CPython per PEP 703) and iterating the immutable snapshot — the
+only no-GIL-safe way to iterate without crashing, since PEP 703
+makes individual list/dict ops atomic but does NOT make
+iterate-during-mutation safe. This finishes the atomic-rebind
+pattern the Address API had already started. Every in-place
+`.append`/`.remove`/`[k]=`/`.pop`/`.setdefault` on these
+attributes is converted to a rebind under the lock
+(`_assign/_remove_ipX_host`, `_assign/_remove_ip6_multicast`,
+`_update_icmp6_{default_router,slaac_address,temp_address}`, the
+`_icmp6_sweep_{temp,slaac}_addresses` cluster mutators, the
+`_icmp6_regen_temp_addresses` append, the five DAD-state writes,
+and the `address.py` Address-API mutators). The lock is **never
+held across the DAD blocking waits** — the DAD loop locks only
+at its individual mutation points. Lock ordering: taken before
+`tx_ring` on the emit paths, never under `_lock__multicast`
+(the MLD emitter reads `_ip6_multicast` lock-free, so the
+M1→N1 cross-lock hazard is dissolved). Pinned by
+`test__addr_config__thread_safety.py` (5 writers × copy-on-write
+identity-change + lock-acquired, red→green).
+
+*Out of scope (LOW, documented):* `_ip4_ifaddr_candidate` /
+`_ip6_ifaddr_candidate` stay in-place — they are mutated only by
+the single boot-time addressing thread (`_create_stack_*_addressing`,
+which iterates a `list(...)` snapshot) and are never read on the
+per-packet path, so they carry no cross-thread hazard (same
+class as `F-frag`). `_ip4_multicast` is a derived `@property`
+over `_ip4_multicast_filters`, already under `_lock__multicast`
+(F2).
 
 ### 2.4 Network — multicast (residuals after F2/F4)
 
@@ -306,11 +339,13 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
    and `_lock__io` is non-reentrant) guarding both the
    app-write RMW (all three mutators) and the unified RX-read
    gate. Test red→green. See §2.2 for detail.
-5. **N1 — address-config lock.** Per-interface
-   `_lock__addr_config` guarding the IPv4/IPv6 ifaddr +
-   candidate + SLAAC/temp/router/DAD-state lists; wire it
-   through the Address API and the RA/claim paths. Larger;
-   design with the Phase-3 Address-API boundary.
+5. **N1 — address-config lock. ✅ DONE 2026-05-27.**
+   Per-interface `_lock__addr_config` (RLock) serializing
+   writers + copy-on-write publish; readers lock-free. Covers
+   the IPv4/IPv6 ifaddr, SLAAC/temp/router lists, DAD-state map,
+   and `_ip6_multicast`, wired through the RA/claim/sweep paths
+   and the Address API. Candidates excluded (boot single-writer).
+   Test red→green. See §2.3 for detail.
 6. **T2 — TcpSession timer/CC state.** Largest and most
    intricate; **do not bolt on** — fold the lock discipline
    into the TCP god-class decomposition so it is designed

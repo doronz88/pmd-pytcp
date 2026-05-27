@@ -312,6 +312,7 @@ class PacketHandler(Subsystem, ABC):
     _ip4_id: int
     _lock__ip4_id: threading.Lock
     _lock__multicast: threading.RLock
+    _lock__addr_config: threading.RLock
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
     _ip_configuration_in_progress: Semaphore
@@ -431,6 +432,20 @@ class PacketHandler(Subsystem, ABC):
         # GIL atomicity is not relied upon — PyTCP targets free-threaded
         # CPython, where a bare dict RMW racing another thread corrupts.
         self._lock__multicast = threading.RLock()
+
+        # Serializes writers to the per-interface address-configuration
+        # cluster — '_ip4_ifaddr' / '_ip6_ifaddr', '_ip6_multicast',
+        # the RA-derived SLAAC / temporary / default-router lists and
+        # the DAD-state map. Writers publish a fresh list/dict object
+        # under this lock (copy-on-write); the per-packet RX / TX
+        # readers stay lock-free, iterating the immutable snapshot they
+        # load. Reentrant because the RA / sweep / DAD-claim paths nest
+        # ('_icmp6_sweep_* -> _remove_ip6_multicast', '_assign_ip6_host
+        # -> _assign_ip6_multicast'). NEVER held across a blocking DAD
+        # wait — the DAD loop locks only at its individual mutation
+        # points. Ordering: this lock is taken before 'tx_ring' on the
+        # emit paths and never under '_lock__multicast'.
+        self._lock__addr_config = threading.RLock()
 
         # IPv4 Identification counter (last value) + its lock. The
         # IPv6 Fragment Identification is generated fresh per
@@ -704,7 +719,8 @@ class PacketHandler(Subsystem, ABC):
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        self._ip6_ifaddr.append(ip6_host)
+        with self._lock__addr_config:
+            self._ip6_ifaddr = [*self._ip6_ifaddr, ip6_host]
 
         __debug__ and log("stack", f"Assigned IPv6 unicast address {ip6_host}")
 
@@ -715,7 +731,8 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv6 host unicast address from the list stack listens on.
         """
 
-        self._ip6_ifaddr.remove(ip6_host)
+        with self._lock__addr_config:
+            self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
 
         __debug__ and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
@@ -896,7 +913,8 @@ class PacketHandler(Subsystem, ABC):
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        self._ip4_ifaddr.append(ip4_host)
+        with self._lock__addr_config:
+            self._ip4_ifaddr = [*self._ip4_ifaddr, ip4_host]
 
         __debug__ and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
 
@@ -905,7 +923,8 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv4 host unicast address from the list stack listens on.
         """
 
-        self._ip4_ifaddr.remove(ip4_host)
+        with self._lock__addr_config:
+            self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host != ip4_host]
 
         __debug__ and log("stack", f"Removed IPv4 unicast address {ip4_host}")
 
@@ -1042,22 +1061,24 @@ class PacketHandler(Subsystem, ABC):
 
         if router_lifetime > 0:
             normalised_prf = Icmp6NdRoutePreference.MEDIUM if prf is Icmp6NdRoutePreference.RESERVED else prf
-            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
-            self._icmp6_default_routers.append(
-                Icmp6DefaultRouter(
-                    address=address,
-                    lifetime=router_lifetime,
-                    expires_at=time.monotonic() + router_lifetime,
-                    prf=normalised_prf,
-                ),
+            new_router = Icmp6DefaultRouter(
+                address=address,
+                lifetime=router_lifetime,
+                expires_at=time.monotonic() + router_lifetime,
+                prf=normalised_prf,
             )
+            with self._lock__addr_config:
+                self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address] + [
+                    new_router
+                ]
             self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
             if route_api is not None:
                 route_api.replace_default(gateway=address, protocol=RouteProtocol.RA)
             return
 
         if existing is not None:
-            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
+            with self._lock__addr_config:
+                self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
             self._packet_stats_rx.icmp6__nd_router_advertisement__remove_router += 1
             if route_api is not None:
                 route_api.remove_default(family=AddressFamily.INET6)
@@ -1117,7 +1138,8 @@ class PacketHandler(Subsystem, ABC):
 
         if valid_lifetime == 0:
             if existing is not None:
-                self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
+                with self._lock__addr_config:
+                    self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
                 self._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_address += 1
             return
 
@@ -1141,16 +1163,15 @@ class PacketHandler(Subsystem, ABC):
 
         address = self._derive_ip6_host(ip6_network=prefix).address
 
-        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
-        self._icmp6_slaac_addresses.append(
-            Icmp6SlaacAddress(
-                address=address,
-                prefix=prefix,
-                preferred_until=now + preferred_lifetime,
-                valid_until=now + new_valid_lifetime,
-                router_address=router_address,
-            ),
+        new_slaac = Icmp6SlaacAddress(
+            address=address,
+            prefix=prefix,
+            preferred_until=now + preferred_lifetime,
+            valid_until=now + new_valid_lifetime,
+            router_address=router_address,
         )
+        with self._lock__addr_config:
+            self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix] + [new_slaac]
         self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address += 1
 
         # Runtime stable-address claim: a brand-new prefix
@@ -1221,7 +1242,8 @@ class PacketHandler(Subsystem, ABC):
 
         if valid_lifetime == 0:
             if existing is not None:
-                self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
+                with self._lock__addr_config:
+                    self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
             return
 
         # RFC 8981 §3.4 lifetime clamps. The preferred lifetime
@@ -1245,8 +1267,8 @@ class PacketHandler(Subsystem, ABC):
                 created_at=existing.created_at,
                 router_address=router_address,
             )
-            self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
-            self._icmp6_temp_addresses.append(refreshed)
+            with self._lock__addr_config:
+                self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix] + [refreshed]
             return
 
         # New entry — generate random IID, spawn DAD claim.
@@ -1258,16 +1280,16 @@ class PacketHandler(Subsystem, ABC):
             # entry still carries the prefix.
             return
 
-        self._icmp6_temp_addresses.append(
-            Icmp6TempAddress(
-                address=temp_host.address,
-                prefix=prefix,
-                preferred_until=now + clamped_preferred,
-                valid_until=now + clamped_valid,
-                created_at=now,
-                router_address=router_address,
-            ),
+        new_temp = Icmp6TempAddress(
+            address=temp_host.address,
+            prefix=prefix,
+            preferred_until=now + clamped_preferred,
+            valid_until=now + clamped_valid,
+            created_at=now,
+            router_address=router_address,
         )
+        with self._lock__addr_config:
+            self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, new_temp]
 
         # RFC 8981 §3.3.3 — on DAD failure, retry with a fresh
         # random IID up to 'icmp6.idgen_retries' times. Each
@@ -1320,27 +1342,32 @@ class PacketHandler(Subsystem, ABC):
         if not expired:
             return
 
-        for entry in expired:
-            __debug__ and log(
-                "stack",
-                f"<INFO>RFC 8981 sweep: temp address {entry.address} "
-                f"(prefix {entry.prefix}) past valid_until — removing</>",
-            )
-            # Drop from '_ip6_ifaddr'. The address may already
-            # be absent (e.g. if a manual operator action
-            # removed it). The solicited-node multicast may
-            # already be absent too (manual cleanup, never
-            # joined). Both are tolerated — best-effort.
-            for ip6_host in list(self._ip6_ifaddr):
-                if ip6_host.address == entry.address:
-                    self._ip6_ifaddr.remove(ip6_host)
-                    snm = ip6_host.address.solicited_node_multicast
-                    if snm in self._ip6_multicast:
-                        self._remove_ip6_multicast(snm)
-                    break
+        # Hold the address-config lock across the cluster mutation so
+        # '_ip6_ifaddr', '_ip6_multicast' and '_icmp6_temp_addresses'
+        # are republished (copy-on-write) as a consistent set. No
+        # blocking call runs inside the lock.
+        with self._lock__addr_config:
+            for entry in expired:
+                __debug__ and log(
+                    "stack",
+                    f"<INFO>RFC 8981 sweep: temp address {entry.address} "
+                    f"(prefix {entry.prefix}) past valid_until — removing</>",
+                )
+                # Drop from '_ip6_ifaddr'. The address may already
+                # be absent (e.g. if a manual operator action
+                # removed it). The solicited-node multicast may
+                # already be absent too (manual cleanup, never
+                # joined). Both are tolerated — best-effort.
+                for ip6_host in self._ip6_ifaddr:
+                    if ip6_host.address == entry.address:
+                        self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
+                        snm = ip6_host.address.solicited_node_multicast
+                        if snm in self._ip6_multicast:
+                            self._remove_ip6_multicast(snm)
+                        break
 
-        # Drop from the temp-address table.
-        self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
+            # Drop from the temp-address table.
+            self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
 
     def _icmp6_regen_temp_addresses(self) -> None:
         """
@@ -1400,16 +1427,16 @@ class PacketHandler(Subsystem, ABC):
             clamped_valid = nd__constants.ICMP6__TEMP_VALID_LIFETIME_S
             clamped_preferred = max(0.0, nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S - desync)
 
-            self._icmp6_temp_addresses.append(
-                Icmp6TempAddress(
-                    address=temp_host.address,
-                    prefix=prefix,
-                    preferred_until=now + clamped_preferred,
-                    valid_until=now + clamped_valid,
-                    created_at=now,
-                    router_address=newest.router_address,
-                ),
+            regen_temp = Icmp6TempAddress(
+                address=temp_host.address,
+                prefix=prefix,
+                preferred_until=now + clamped_preferred,
+                valid_until=now + clamped_valid,
+                created_at=now,
+                router_address=newest.router_address,
             )
+            with self._lock__addr_config:
+                self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, regen_temp]
 
             # RFC 8981 §3.3.3 regen via §20.3 retry: each retry
             # mints a fresh random IID.
@@ -1447,21 +1474,26 @@ class PacketHandler(Subsystem, ABC):
         if not expired:
             return
 
-        for entry in expired:
-            __debug__ and log(
-                "stack",
-                f"<INFO>SLAAC sweep: stable address {entry.address} "
-                f"(prefix {entry.prefix}) past valid_until — removing</>",
-            )
-            for ip6_host in list(self._ip6_ifaddr):
-                if ip6_host.address == entry.address:
-                    self._ip6_ifaddr.remove(ip6_host)
-                    snm = ip6_host.address.solicited_node_multicast
-                    if snm in self._ip6_multicast:
-                        self._remove_ip6_multicast(snm)
-                    break
+        # Hold the address-config lock across the cluster mutation so
+        # '_ip6_ifaddr', '_ip6_multicast' and '_icmp6_slaac_addresses'
+        # are republished (copy-on-write) as a consistent set. No
+        # blocking call runs inside the lock.
+        with self._lock__addr_config:
+            for entry in expired:
+                __debug__ and log(
+                    "stack",
+                    f"<INFO>SLAAC sweep: stable address {entry.address} "
+                    f"(prefix {entry.prefix}) past valid_until — removing</>",
+                )
+                for ip6_host in self._ip6_ifaddr:
+                    if ip6_host.address == entry.address:
+                        self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
+                        snm = ip6_host.address.solicited_node_multicast
+                        if snm in self._ip6_multicast:
+                            self._remove_ip6_multicast(snm)
+                        break
 
-        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+            self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
 
     def get_icmp6_default_router_for_destination(
         self,
@@ -2758,7 +2790,8 @@ class PacketHandlerL2(
         # emitted, no initial delay taken, and no per-address
         # DAD-state slot. Linux 'accept_dad=0' parity.
         if nd__constants.ICMP6__ACCEPT_DAD == 0:
-            self._icmp6_dad__states[ip6_unicast_candidate] = Icmp6DadState.VALID
+            with self._lock__addr_config:
+                self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
             return True
 
         # Per-address DAD slot. Populated BEFORE the first probe
@@ -2769,7 +2802,12 @@ class PacketHandlerL2(
         dad_event = self._icmp6_nd_dad__registry.install(ip6_unicast_candidate)
         # Default to TENTATIVE; the Optimistic-DAD wrapper
         # promotes this to OPTIMISTIC before invoking us.
-        self._icmp6_dad__states.setdefault(ip6_unicast_candidate, Icmp6DadState.TENTATIVE)
+        with self._lock__addr_config:
+            if ip6_unicast_candidate not in self._icmp6_dad__states:
+                self._icmp6_dad__states = {
+                    **self._icmp6_dad__states,
+                    ip6_unicast_candidate: Icmp6DadState.TENTATIVE,
+                }
 
         # RFC 4862 §5.4.2 — random initial delay before the
         # first DAD probe to alleviate fleet-wide
@@ -2830,7 +2868,10 @@ class PacketHandlerL2(
             # caller is responsible for reverting any pre-claim
             # (Optimistic-DAD wrapper removes the address from
             # '_ip6_ifaddr'; the strict path never assigned it).
-            self._icmp6_dad__states.pop(ip6_unicast_candidate, None)
+            with self._lock__addr_config:
+                self._icmp6_dad__states = {
+                    addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
+                }
         else:
             __debug__ and log(
                 "stack",
@@ -2841,7 +2882,8 @@ class PacketHandlerL2(
             # OPTIMISTIC-source Override-flag suppression no
             # longer applies (RFC 9131 §3 announcement carries
             # Override=1 by design, RFC 4429 §3.3 step 5).
-            self._icmp6_dad__states[ip6_unicast_candidate] = Icmp6DadState.VALID
+            with self._lock__addr_config:
+                self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
             # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
             # on host attachment so peers preemptively populate
             # their neighbour cache for our newly-claimed
@@ -2873,7 +2915,8 @@ class PacketHandlerL2(
         Returns True on DAD success, False on collision.
         """
 
-        self._icmp6_dad__states[ip6_host.address] = Icmp6DadState.OPTIMISTIC
+        with self._lock__addr_config:
+            self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_host.address: Icmp6DadState.OPTIMISTIC}
         self._assign_ip6_host(ip6_host=ip6_host)
         if self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address):
             return True
@@ -3126,7 +3169,8 @@ class PacketHandlerL2(
         Assign IPv6 multicast address to the list stack listens on.
         """
 
-        self._ip6_multicast.append(ip6_multicast)
+        with self._lock__addr_config:
+            self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
         __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
@@ -3140,7 +3184,8 @@ class PacketHandlerL2(
         Remove IPv6 multicast address from the list stack listens on.
         """
 
-        self._ip6_multicast.remove(ip6_multicast)
+        with self._lock__addr_config:
+            self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
@@ -3342,7 +3387,8 @@ class PacketHandlerL3(
         Assign IPv6 multicast address to the list stack listens on.
         """
 
-        self._ip6_multicast.append(ip6_multicast)
+        with self._lock__addr_config:
+            self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
         __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
@@ -3354,7 +3400,8 @@ class PacketHandlerL3(
         Remove IPv6 multicast address from the list stack listens on.
         """
 
-        self._ip6_multicast.remove(ip6_multicast)
+        with self._lock__addr_config:
+            self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
