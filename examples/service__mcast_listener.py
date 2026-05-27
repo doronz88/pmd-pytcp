@@ -34,6 +34,7 @@ examples/service__mcast_listener.py
 ver 3.0.6
 """
 
+import contextlib
 import threading
 from typing import Any, override
 
@@ -70,7 +71,7 @@ class MulticastListenerService(UdpService):
 
     _event__stop_subsystem: threading.Event
 
-    def __init__(self, *, group: Ip4Address, local_port: int) -> None:
+    def __init__(self, *, group: Ip4Address, local_port: int, pingable: bool) -> None:
         """
         Class constructor.
         """
@@ -81,6 +82,7 @@ class MulticastListenerService(UdpService):
         self._local_ip_address = Ip4Address()
         self._local_port = local_port
         self._group = group
+        self._pingable = pingable
 
         super().__init__()
 
@@ -97,14 +99,21 @@ class MulticastListenerService(UdpService):
         if __debug__:
             self._log(f"Joined IPv4 multicast group {self._group}, listening on port {self._local_port}.")
 
-        # Let the host answer 'ping <group>' for the duration of the demo
-        # by clearing the Linux-style 'icmp4.echo_ignore_broadcasts' knob
-        # (default 1 = ignore broadcast/multicast echo); restored on exit.
-        # The Echo Reply is sourced from the stack's unicast address.
-        with sysctl.override("icmp4.echo_ignore_broadcasts", 0):
+        # With '--pingable', answer 'ping <group>' for the life of the
+        # service by clearing the Linux-style 'icmp4.echo_ignore_broadcasts'
+        # knob (default 1 = ignore broadcast/multicast echo); restored on
+        # exit. The Echo Reply is sourced from the stack's unicast address.
+        # Without it, the Smurf-mitigation default stays and the group does
+        # not answer ping.
+        echo_gate: contextlib.AbstractContextManager[None]
+        if self._pingable:
+            echo_gate = sysctl.override("icmp4.echo_ignore_broadcasts", 0)
             if __debug__:
-                self._log("Set icmp4.echo_ignore_broadcasts=0 so the group answers ping for this demo.")
+                self._log("--pingable: set icmp4.echo_ignore_broadcasts=0 so the group answers ping.")
+        else:
+            echo_gate = contextlib.nullcontext()
 
+        with echo_gate:
             try:
                 while not self._event__stop_subsystem.is_set():
 
@@ -139,6 +148,15 @@ class MulticastListenerService(UdpService):
     type=int,
     help="Local UDP port the listener binds to.",
 )
+@click.option(
+    "--pingable/--no-pingable",
+    default=False,
+    help=(
+        "Answer 'ping <group>' while running by clearing the "
+        "'icmp4.echo_ignore_broadcasts' sysctl (Echo Reply sourced from "
+        "the stack unicast address). Off by default (Smurf mitigation)."
+    ),
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -146,6 +164,7 @@ def cli(
     *,
     group: str,
     local_port: int,
+    pingable: bool,
     **kwargs: Any,
 ) -> None:
     """
@@ -169,6 +188,7 @@ def cli(
             MulticastListenerService(
                 group=group_address,
                 local_port=local_port,
+                pingable=pingable,
             )
         ],
         **kwargs,

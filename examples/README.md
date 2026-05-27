@@ -102,7 +102,7 @@ To test the example code with 3rd party tools (assuming you are connected with t
  - On join the stack emits an IGMP membership Report (visible by piping the output through grep IGMP, or with tcpdump -i tap7 igmp on the host).
  - In the second terminal window, send a datagram to the group, e.g.: ncat -u 239.1.1.1 5007  (type a word and press enter), or use a tool such as iperf/socat multicast.
  - Observe the listener log the received datagram; stopping the stack (Ctrl-C) emits the IGMP Leave.
- - While the listener runs it also clears the icmp4.echo_ignore_broadcasts sysctl, so you can verify reachability with: ping 239.1.1.1 (the Echo Reply comes from the stack's unicast address). Outside this demo the stack ignores multicast/broadcast pings by default (Smurf mitigation).
+ - To also make the group answer ping, add --pingable: examples/service__mcast_listener.py --stack-interface tap7 --group 239.1.1.1 --pingable — then ping 239.1.1.1 gets a reply from the stack's unicast address. Without --pingable (the default) the stack ignores multicast/broadcast pings (Smurf mitigation); the flag clears the icmp4.echo_ignore_broadcasts sysctl for the life of the service and restores it on exit.
 
 ## Testing Examples Using Two Stacks Talking to Each Other
 To test the example code with two stack instances talking to each other (assuming you are connected with two terminals to the Linux machine pictured in the above diagram):
