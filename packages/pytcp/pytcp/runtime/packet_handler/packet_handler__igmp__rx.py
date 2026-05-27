@@ -33,7 +33,7 @@ ver 3.0.6
 import random
 from typing import TYPE_CHECKING
 
-from net_proto import IgmpType, PacketValidationError
+from net_proto import IgmpType, IgmpVersion, PacketValidationError
 from net_proto.lib.packet_rx import PacketRx
 from net_proto.protocols.igmp.igmp__parser import IgmpParser
 from net_proto.protocols.igmp.message.igmp__message__query import (
@@ -41,6 +41,7 @@ from net_proto.protocols.igmp.message.igmp__message__query import (
 )
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.igmp import igmp__constants
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -135,6 +136,11 @@ class IgmpRxHandler:
         message = packet_rx.igmp.message
         assert isinstance(message, IgmpMessageQuery)
 
+        # RFC 3376 §7.2.1 — arm the Older Version Querier Present timer
+        # and, on a mode change, cancel pending IGMP timers, before
+        # scheduling this Query's response.
+        self._igmp_update_compatibility_mode(message)
+
         max_resp_ms = message.max_response_time * IGMP__MAX_RESP_TIME__UNIT_MS
         delay_ms = self._igmp_query__pick_response_delay_ms(max_resp_ms)
 
@@ -160,6 +166,53 @@ class IgmpRxHandler:
         self._if._igmp_query__pending_response_at_ms = response_at
         self._if._igmp_query__handle = stack.timer.call_later(delay_ms, self._igmp_query__deferred_send)
         self._if._packet_stats_rx.igmp__membership_query__scheduled += 1
+
+    def _igmp_update_compatibility_mode(self, message: IgmpMessageQuery, /) -> None:
+        """
+        Arm the RFC 3376 §7.2.1 Older Version Querier Present timer for
+        an older-version (v1/v2) General Query and, if that changes the
+        interface's Host Compatibility Mode, cancel all pending IGMP
+        response and retransmission timers (the mode switch is
+        immediate). A v3 Query never lowers the mode.
+
+        The §8.12 timeout is [Robustness Variable] × [Query Interval] +
+        [Query Response Interval]; a v1/v2 Query carries no QQIC so the
+        default 'igmp.query_interval' is used, and a v1 Query's Max Resp
+        Code of 0 is interpreted as 100 (10 s) per §7.2.1.
+        """
+
+        if message.version is IgmpVersion.V3:
+            return
+
+        old_mode = self._if._igmp_host_compatibility_mode()
+
+        query_response_interval_deci = message.max_response_time if message.version is IgmpVersion.V2 else 100
+        timeout_ms = (
+            igmp__constants.IGMP__ROBUSTNESS_VARIABLE * igmp__constants.IGMP__QUERY_INTERVAL__MS
+            + query_response_interval_deci * IGMP__MAX_RESP_TIME__UNIT_MS
+        )
+        deadline_ms = stack.timer.now_ms + timeout_ms
+
+        if message.version is IgmpVersion.V1:
+            self._if._igmp__v1_querier_present_until_ms = deadline_ms
+        else:
+            self._if._igmp__v2_querier_present_until_ms = deadline_ms
+
+        if self._if._igmp_host_compatibility_mode() is not old_mode:
+            self._igmp_cancel_pending_timers()
+
+    def _igmp_cancel_pending_timers(self) -> None:
+        """
+        Cancel the pending query-response timer and the state-change
+        retransmit train (RFC 3376 §7.2.1 — a compatibility-mode change
+        cancels all pending response and retransmission timers).
+        """
+
+        if self._if._igmp_query__handle is not None:
+            stack.timer.cancel(self._if._igmp_query__handle)
+            self._if._igmp_query__handle = None
+        self._if._igmp_query__pending_response_at_ms = None
+        self._if._igmp_tx._cancel_state_change_retransmits()
 
     def _igmp_query__pick_response_delay_ms(self, max_resp_ms: int, /) -> int:
         """

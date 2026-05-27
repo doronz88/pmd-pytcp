@@ -50,10 +50,26 @@ IGMP__UNSOLICITED_REPORT_INTERVAL__MS = 1000
 # bring-up, does not count against this limit). Linux defaults to 20.
 IGMP__MAX_MEMBERSHIPS = 20
 
+# RFC 3376 §7 forced Host Compatibility Mode (Linux
+# 'net.ipv4.conf.*.force_igmp_version'): 0 = automatic version fallback
+# (track the querier per §7.2.1), 1/2/3 = pin the host to IGMPv1 /
+# IGMPv2 / IGMPv3 regardless of the queriers heard.
+IGMP__FORCE_VERSION = 0
+
+# RFC 3376 §8.2 Query Interval default (125 s), in milliseconds. A
+# v1/v2 Query carries no QQIC, so this default is the [Query Interval]
+# term of the §8.12 Older Version Querier Present Timeout the host arms
+# when it hears such a Query.
+IGMP__QUERY_INTERVAL__MS = 125_000
+
 # Sysctl registration. Every constant above is a policy knob,
 # operator-tunable at boot via 'stack.init(sysctls={...})' or at
 # runtime via 'pytcp.stack.sysctl["igmp...."] = N'.
-from pytcp.stack.sysctl import is_positive_int, register  # noqa: E402
+from pytcp.stack.sysctl import (  # noqa: E402
+    is_int_in_range,
+    is_positive_int,
+    register,
+)
 
 register(
     key="igmp.robustness",
@@ -78,4 +94,20 @@ register(
     default=IGMP__MAX_MEMBERSHIPS,
     validator=is_positive_int("igmp.max_memberships"),
     description="Linux 'net.ipv4.igmp_max_memberships' — max multicast groups joinable via the membership API.",
+)
+register(
+    key="igmp.version",
+    module_name=__name__,
+    attr="IGMP__FORCE_VERSION",
+    default=IGMP__FORCE_VERSION,
+    validator=is_int_in_range("igmp.version", low=0, high=3),
+    description="RFC 3376 §7 forced Host Compatibility Mode — 0 = auto fallback, 1/2/3 = pin IGMPv1/v2/v3.",
+)
+register(
+    key="igmp.query_interval",
+    module_name=__name__,
+    attr="IGMP__QUERY_INTERVAL__MS",
+    default=IGMP__QUERY_INTERVAL__MS,
+    validator=is_positive_int("igmp.query_interval"),
+    description="RFC 3376 §8.2 Query Interval (ms) — default term of the §8.12 Older Version Querier Present Timeout.",
 )

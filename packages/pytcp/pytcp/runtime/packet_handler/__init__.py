@@ -60,6 +60,7 @@ from net_proto import (
     Icmp6Message,
     Icmp6NdRoutePreference,
     IgmpV3RecordType,
+    IgmpVersion,
     Ip4Payload,
     Ip6Assembler,
     Ip6Payload,
@@ -85,6 +86,7 @@ from pytcp.protocols.icmp6.nd.nd__router_state import (
     Icmp6SlaacAddressState,
     Icmp6TempAddress,
 )
+from pytcp.protocols.igmp import igmp__constants
 from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pytcp.runtime.fib import RouteProtocol
@@ -169,6 +171,8 @@ class PacketHandler(Subsystem, ABC):
     _igmp_tx: IgmpTxHandler
     _igmp_query__pending_response_at_ms: int | None
     _igmp_query__handle: TimerHandle | None
+    _igmp__v1_querier_present_until_ms: int | None
+    _igmp__v2_querier_present_until_ms: int | None
     _ip6_frag_rx: Ip6FragRxHandler
     _ip6_frag_tx: Ip6FragTxHandler
     _ip4_rx: Ip4RxHandler
@@ -456,6 +460,10 @@ class PacketHandler(Subsystem, ABC):
         # Queries the same way the MLDv2 sibling does.
         self._igmp_query__pending_response_at_ms: int | None = None
         self._igmp_query__handle: TimerHandle | None = None
+        # RFC 3376 §7.2.1 Older Version Querier Present deadlines (ms);
+        # None = no v1/v2 querier seen within the timeout (IGMPv3 mode).
+        self._igmp__v1_querier_present_until_ms: int | None = None
+        self._igmp__v2_querier_present_until_ms: int | None = None
 
         self._ip6_proto_registry = DispatchRegistry()
         self._ip6_proto_registry.register(IpProto.ICMP6, self._phrx_icmp6)
@@ -1928,6 +1936,27 @@ class PacketHandler(Subsystem, ABC):
         """
 
         self._igmp_tx._send_igmp_leave_all()
+
+    def _igmp_host_compatibility_mode(self) -> IgmpVersion:
+        """
+        Return the RFC 3376 §7.2.1 Host Compatibility Mode for this
+        interface: a forced 'igmp.version' (1/2/3) overrides; otherwise
+        IGMPv1 while the v1 Older-Version-Querier-Present timer runs,
+        else IGMPv2 while the v2 timer runs, else IGMPv3. Reading
+        'igmp.version' via qualified module access so an operator
+        override resolves live.
+        """
+
+        forced = igmp__constants.IGMP__FORCE_VERSION
+        if forced != 0:
+            return IgmpVersion(forced)
+
+        now_ms = stack.timer.now_ms
+        if self._igmp__v1_querier_present_until_ms is not None and now_ms < self._igmp__v1_querier_present_until_ms:
+            return IgmpVersion.V1
+        if self._igmp__v2_querier_present_until_ms is not None and now_ms < self._igmp__v2_querier_present_until_ms:
+            return IgmpVersion.V2
+        return IgmpVersion.V3
 
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """

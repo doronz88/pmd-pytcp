@@ -220,6 +220,18 @@ class IgmpTxHandler:
         if self._igmp_state_change__pending:
             self._arm_state_change_retransmit()
 
+    def _cancel_state_change_retransmits(self) -> None:
+        """
+        Cancel the in-flight state-change retransmit ticket and drop
+        every pending per-group change record (RFC 3376 §7.2.1 — a
+        compatibility-mode change cancels all pending retransmissions).
+        """
+
+        if self._igmp_state_change__handle is not None:
+            stack.timer.cancel(self._igmp_state_change__handle)
+            self._igmp_state_change__handle = None
+        self._igmp_state_change__pending.clear()
+
     def _emit_v3_report(self, records: list[IgmpV3GroupRecord], /) -> None:
         """
         Assemble and send an IGMPv3 Membership Report carrying 'records'

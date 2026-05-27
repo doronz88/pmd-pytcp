@@ -624,3 +624,30 @@ class TestSysctlValidatorHelpers(_SysctlFixtureBase):
             sysctl.is_positive_int("test.foo")(1.5)
         with self.assertRaises(ValueError):
             sysctl.is_positive_int("test.foo")(True)
+
+    def test__lib__sysctl__is_int_in_range_accepts_in_range(self) -> None:
+        """
+        Ensure 'is_int_in_range' accepts (does not raise on) the
+        inclusive bounds and an interior value.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        validator = sysctl.is_int_in_range("test.foo", low=0, high=3)
+        validator(0)
+        validator(2)
+        validator(3)
+
+    def test__lib__sysctl__is_int_in_range_rejects_out_of_range_and_non_int(self) -> None:
+        """
+        Ensure 'is_int_in_range' rejects values below / above the
+        range, booleans, and non-int types.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        validator = sysctl.is_int_in_range("test.foo", low=0, high=3)
+        for bad in (-1, 4, True, 1.5, "2"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    validator(bad)

@@ -327,3 +327,27 @@ def is_float_in_range(name: str, *, low: float, high: float) -> Callable[[Any], 
             )
 
     return validator
+
+
+def is_int_in_range(name: str, *, low: int, high: int) -> Callable[[Any], None]:
+    """
+    Build a validator that requires an integer in the inclusive
+    range '[low, high]'. Rejects booleans and non-int types.
+    Surfaces 'name' in the rejection message.
+    """
+
+    def validator(value: Any) -> None:
+        """
+        Raise 'ValueError' unless 'value' is an int in '[low, high]'.
+        """
+
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(
+                f"sysctl {name!r} must be an int in [{low}, {high}]; got {type(value).__name__}({value!r})",
+            )
+        if not low <= value <= high:
+            raise ValueError(
+                f"sysctl {name!r} must be in [{low}, {high}]; got {value!r}",
+            )
+
+    return validator
