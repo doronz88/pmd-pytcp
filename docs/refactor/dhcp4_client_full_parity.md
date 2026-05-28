@@ -2,7 +2,7 @@
 
 | Field           | Value                                                |
 |-----------------|------------------------------------------------------|
-| Status          | Phases 0–7 + 8.1/8.2/8.3 SHIPPED; 8.4 + Phase 9 deferred (see below) |
+| Status          | Phases 0–8 SHIPPED; Phase 9 deferred (each item dependency-blocked on a consumer PyTCP does not have today — see below) |
 | Plan author     | Audit pass (2026-05-11)                              |
 | Source audit    | `docs/rfc/dhcp4/rfcXXXX__*/adherence.md` (11 records)|
 | Target branch   | `PyTCP_3_0__pre_release`                             |
@@ -109,9 +109,8 @@ like Linux dhcpcd at the wire level:
 - Client FQDN (RFC 4702).
 - FORCERENEW (RFC 3203 — gated on RFC 3118 auth).
 - Captive-Portal option (RFC 8910).
-- Option Overload (option 52) parsing of
-  `sname`/`file` extension areas.
-- RFC 3396 long-option concatenation.
+- RFC 3396 long-option concatenation. *(Client/receive
+  side SHIPPED 2026-05-25 — see Phase 8.3.)*
 
 ---
 
@@ -812,11 +811,26 @@ Update parser to concatenate split options before
 typed-codec invocation. Required by RFC 3442 and
 RFC 4702.
 
-**8.4 Option Overload (option 52)**
+**8.4 Option Overload (option 52)** — SHIPPED
 
 Parse `sname` / `file` overload — when option 52 is
 present with value 1, 2, or 3, parse those fields as
 additional options.
+
+Shipped in `Dhcp4Parser._apply_option_overload` at
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__parser.py:115-176`.
+The option dataclass is at
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__overload.py`
+with `includes_file` / `includes_sname` accessors.
+Hostile-wire safety: each overloaded sub-block is preflighted
+through `Dhcp4Options.validate_integrity(offset=0)` so a
+truncated / over-length option inside the overlay raises a
+typed `Dhcp4IntegrityError` before `from_buffer` dispatches
+(commit `4c84b682`). Tests:
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
+(10 tests, codec round-trip + integrity) and
+`test__dhcp4__parser__option_overload.py` (6 tests,
+parser-side merge happy + hostile paths).
 
 ### Phase 9 — Deferred RFCs
 

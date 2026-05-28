@@ -253,8 +253,14 @@ to expand scope.
   `socket_linux_parity_audit.md`. (The X1 stack-thread-safety audit
   bundled here in earlier ledger revisions is **CLOSED** —
   `no_gil_thread_safety_audit.md` §3.1.)
-- **DHCPv4 Phase 8.4 / Phase 9** (Option Overload parse; RFCs 4702 / 3203
-  / 8910) — deferred per `dhcp4_client_full_parity.md`.
+- **DHCPv4 Phase 9** (RFCs 4702 Client FQDN / 3203 FORCERENEW / 8910
+  Captive Portal) — each dependency-blocked on a consumer PyTCP does
+  not have today (DDNS / DHCP-auth / HTTP-UA). Phase 8.4 (Option
+  Overload parse) is SHIPPED — the prior "Phase 8.4 + Phase 9 deferred"
+  reading was stale; the option dataclass + parser-side merge +
+  hostile-wire preflight are in tree at
+  `packages/net_proto/net_proto/protocols/dhcp4/dhcp4__parser.py:115-176`
+  with 16 tests. `dhcp4_client_full_parity.md`.
 
 ---
 
@@ -286,8 +292,8 @@ PLPMTUD active probe-segment emit closed 2026-05-28 (commits
 `docs/refactor/plpmtud_closeout.md`). Everything else is either §3
 on-touch-only (do NOT open as a standalone task) or §4 deferred
 future-phase (Phase-2 router/forwarding, the socket Linux-parity tail,
-DHCPv4 8.4/Phase 9) — do not start a §4 track without an explicit
-decision to expand scope beyond the 3.0.6 host stack.
+DHCPv4 Phase 9 — dependency-blocked) — do not start a §4 track without
+an explicit decision to expand scope beyond the 3.0.6 host stack.
 
 I want to work on: <PICK ONE, or state a new task>
   - a §4 deferred track (name it + confirm the scope-expansion decision).

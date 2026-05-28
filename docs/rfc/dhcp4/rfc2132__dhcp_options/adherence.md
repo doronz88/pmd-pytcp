@@ -660,7 +660,7 @@ bytes but exposes no typed accessor.
 | 47   | NetBIOS over TCP/IP Scope         | §6.8   | NetBIOS — obsolete                                    |
 | 48   | X Window System Font Server       | §6.9   | Obsolete                                              |
 | 49   | X Window System Display Manager   | §6.10  | Obsolete                                              |
-| 52   | Option Overload                   | §9.3   | Not implemented — see below                           |
+| 52   | Option Overload                   | §9.3   | met (parsing) — see §9.3 below                        |
 | 56   | Message                           | §9.9   | Server-side error string                              |
 | 57   | Maximum DHCP Message Size         | §9.10  | Not emitted; see RFC 2131 §3.5 audit gap              |
 | 58   | Renewal Time (T1)                 | §9.11  | Not consumed (no FSM)                                 |
@@ -801,14 +801,21 @@ value (RFC 2131 §3.3 gap).
 
 ### §9.3 Option Overload
 
-**No test surface — gap not yet closed.** When the gap
-is fixed, the natural test is one that:
+- **Unit:**
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
+  (10 tests) — codec round-trip for legal values
+  (1 / 2 / 3), `includes_file` / `includes_sname`
+  decoders, integrity rejections (bad length, bad
+  value, wrong option type).
+- **Unit:**
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__option_overload.py`
+  (6 tests) — parser-side merge of options from BOOTP
+  'sname' / 'file' fields for overload=1/2/3, the
+  negative case that those fields stay inert without
+  option 52, and hostile-blob preflight rejection
+  paths.
 
-1. Sends a DHCP frame with Option Overload = 1 (file
-   field contains options) plus options in the file
-   field.
-2. Asserts the parser exposes the file-field options
-   alongside the option-field options.
+**Status:** locked in (Phase 8.4).
 
 ### Test coverage summary
 
@@ -817,7 +824,7 @@ is fixed, the natural test is one that:
 | Implemented option wire format (11 codecs)      | locked in (~5 200 unit lines)     |
 | Unknown option fallthrough                      | locked in                         |
 | Options container ordering / lookup             | locked in                         |
-| Option Overload (code 52) parsing               | not implemented; no test          |
+| Option Overload (code 52) parsing               | locked in (16 unit tests)         |
 | Maximum DHCP Message Size (57) emission         | not implemented; no test          |
 | RFC 3396 long-option concatenation              | not implemented; no test          |
 | Lease-time consumption by client                | n/a (parsed, not consumed)        |
@@ -835,7 +842,7 @@ is fixed, the natural test is one that:
 | §3.14 Host Name (12)                         | met (emitted as "PyTCP")                                        |
 | §9.1 Requested IP Address (50)               | met (emitted in REQUEST)                                        |
 | §9.2 IP Address Lease Time (51)              | wire-only (parsed but unused)                                   |
-| §9.3 Option Overload (52)                    | not implemented                                                 |
+| §9.3 Option Overload (52)                    | met (parsing — `Dhcp4Parser._apply_option_overload` + hostile-blob preflight) |
 | §9.6 DHCP Message Type (53)                  | met (all 8 codepoints declared; DISCOVER/REQUEST emitted)       |
 | §9.7 Server Identifier (54)                  | met (echoed in REQUEST)                                         |
 | §9.8 Parameter Request List (55)             | met (consistent across DISCOVER/REQUEST)                        |
