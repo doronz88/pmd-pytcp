@@ -355,7 +355,18 @@ omitted: passes-alone / fails-in-suite.
 
 **Effort:** ~half-day.
 
-### Phase 3 — TCP adapter + probe emission — PARTIAL (3a + 3b shipped 2026-05-14)
+### Phase 3 — TCP adapter + probe emission — SHIPPED 2026-05-14 / 2026-05-28
+
+> **Close-out 2026-05-28.** The operator-facing enable that
+> made the active-probing gate REACHABLE in default
+> deployments — `tcp.mtu_probing` tristate sysctl +
+> `tcp.base_mss` cold-start seed + `_mss_ceiling()`
+> helper that keeps the seed alive past the handshake —
+> shipped under the close-out plan at
+> `docs/refactor/plpmtud_closeout.md` (Phases 1-2,
+> commits `0f02938e` + `59466338`). The "Known
+> limitation" paragraph in §3c-minimum below was the
+> precise gap this close-out plan closed.
 
 **Shipped (3a + 3b):**
 - `packages/pytcp/pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — adapter
@@ -393,15 +404,23 @@ omitted: passes-alone / fails-in-suite.
 - 4 integration tests at
   `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_probe_emit.py`.
 
-**Known limitation:** the probe-emit gate
-`probe_payload > snd_mss` only fires when `snd_mss` is
-below the engine's candidate. In PyTCP's current
-classical-PMTUD coupling, `snd_mss` saturates at
-`interface_mtu - overhead`, so probe-emit fires only
-under artificially-shrunken `snd_mss` conditions (or
-post-ICMP shrink where the engine's binary search has
-walked the candidate above the new `snd_mss` ceiling —
-rare in practice).
+**Known limitation (CLOSED 2026-05-28):** the
+probe-emit gate `probe_payload > snd_mss` only fires
+when `snd_mss` is below the engine's candidate. As
+originally shipped (Phase 3c-min) `snd_mss` saturated at
+`interface_mtu - overhead` once the handshake clamp
+ran, so probe-emit fired only under artificially-
+shrunken `snd_mss` conditions (or post-ICMP shrink with
+search-band headroom — rare in practice).
+**Closed** by `docs/refactor/plpmtud_closeout.md`
+Phases 1-2 (2026-05-28): the new `tcp.mtu_probing`
+sysctl + `tcp.base_mss` cold-start seed +
+`TcpSession._mss_ceiling()` helper consumed by the
+four handshake `snd_mss`-clamp sites mean operators
+flipping `tcp.mtu_probing=2` get an `snd_mss` seeded
+below `interface_mtu - overhead` and the seed survives
+the handshake — the gate trips on the first
+sufficiently-buffered data send.
 
 **3d Linux-aligned (SHIPPED 2026-05-14):**
 - Engine fix: `on_classical_pmtu` now shrinks

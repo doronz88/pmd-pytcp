@@ -1,8 +1,16 @@
 # PLPMTUD — close-out plan (the "remaining 20%")
 
-**Authored:** 2026-05-28 on `PyTCP_3_0_6`. Successor to
+**Status: CLOSED 2026-05-28** on `PyTCP_3_0_6`. Successor to
 `docs/refactor/plpmtud_unified_engine.md` (the 2026-05-14
 implementation plan; Phases 0–5 SHIPPED).
+
+Commits, in order:
+
+| Phase | Subject                                          | Commit       |
+|-------|--------------------------------------------------|--------------|
+| 1     | `tcp.base_mss` per-interface sysctl              | `0f02938e`   |
+| 2     | `tcp.mtu_probing` enable + cold-start MSS seed   | `59466338`   |
+| 3     | Doc reconciliation (this paragraph; ledger + plpmtud_unified_engine.md Phase 3 header + RFC 4821 / 8899 adherence top-lines refreshed in lockstep with Phase 2) | (this commit) |
 
 This doc covers the **actually open** PLPMTUD work — the
 piece the v3.0.6 ledger §2.1 lists as "remaining 20%" but

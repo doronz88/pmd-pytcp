@@ -20,7 +20,8 @@ claim cross-checked against the actual code + referenced commits).
 shipped; the host data path is feature-complete and the branch is
 green, lint-clean, with no source TODO markers. The three items the
 2026-05-24 ledger listed as "genuinely open optional" (§2) are
-resolved.
+resolved — including the §2.1 PLPMTUD active probe-segment emit
+gap, closed 2026-05-28 (commits `0f02938e` + `59466338`).
 
 **IGMP / IPv4 multicast group membership is now feature-complete**
 (the IPv4 analog of the shipped MLDv2 listener): the host membership
@@ -176,14 +177,25 @@ is Phase-2 / future work. (Surfaced and decided during the 2026-05-25
 release-readiness pass; the 2026-05-24 ledger missed it — it lived only
 in `ip4_audit_punchlist.md` item E.)
 
-### 2.1 PLPMTUD active probe-segment emit  (lower-stakes)
+### 2.1 PLPMTUD active probe-segment emit  CLOSED 2026-05-28
 
 `plpmtud_unified_engine.md` "remaining 20%" — the two transport-specific
 rows (probe-segment emit + probe ACK/loss detection, the RFC 4821 /
 8899 *active* path). **Passive** ICMP-driven PMTUD (RFC 1191 / 8201) is
 shipped; the active packetization-layer probe is the enhancement on top
 and is often disabled-by-default even on Linux (`tcp_mtu_probing`).
-Deferred.
+
+**CLOSED 2026-05-28** under `docs/refactor/plpmtud_closeout.md`
+(commits `0f02938e` + `59466338` on `PyTCP_3_0_6`). The probe-segment
+emit hook had shipped at Phase 3c-min back in 2026-05-14; the actual
+remaining gap was the operator-facing enable and the cold-start
+`snd_mss` seed that keeps the engine's `candidate_mtu > snd_mss` gate
+reachable past the handshake clamp. Phase 1 (`tcp.base_mss` sysctl) +
+Phase 2 (`tcp.mtu_probing` tristate + `_mss_ceiling()` helper +
+session init seed + four-clamp-site update) close it. Linux mode 1
+("enable after RTO black-hole suspected") and the RFC §7.4 cwnd-exempt
+/ §7.5 probe-only-RTO strict deviations remain deferred-with-rationale
+per the close-out plan §2.
 
 ### 2.2 Resolved since the 2026-05-24 ledger
 
@@ -273,10 +285,10 @@ demo (--pingable flag). There is NO blocking or in-scope-required host
 work left. The one honest residual is the X1 stack-thread-safety audit
 (§4 / §1.3) — unaudited cross-thread dict state, pre-existing hazard class.
 
-The only genuinely-open OPTIONAL host item is §2.1 — PLPMTUD active
-probe-segment emit (RFC 4821 / 8899; passive ICMP-driven PMTUD already
-ships, the active packetization-layer probe is the enhancement on top,
-disabled-by-default even on Linux). Everything else is either §3
+There is NO genuinely-open OPTIONAL host item remaining — §2.1
+PLPMTUD active probe-segment emit closed 2026-05-28 (commits
+`0f02938e` + `59466338`; close-out plan at
+`docs/refactor/plpmtud_closeout.md`). Everything else is either §3
 on-touch-only (do NOT open as a standalone task) or §4 deferred
 future-phase (Phase-2 router/forwarding, the socket Linux-parity tail +
 X1 stack-thread-safety audit, TCP god-class decomposition, DHCPv4
@@ -284,8 +296,6 @@ X1 stack-thread-safety audit, TCP god-class decomposition, DHCPv4
 expand scope beyond the 3.0.6 host stack.
 
 I want to work on: <PICK ONE, or state a new task>
-  - 2.1 PLPMTUD active probe — source of truth
-        docs/refactor/plpmtud_unified_engine.md ("remaining 20%").
   - a §4 deferred track (name it + confirm the scope-expansion decision).
   - something else entirely (state it).
 
