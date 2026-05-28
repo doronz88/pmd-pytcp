@@ -122,14 +122,15 @@ pass added (commits up to `f13b8527`, all pushed):
   (default off, Smurf-safe) opts into clearing the echo knob so
   `ping <group>` is answered. README recipe added.
 
-**Open thread-safety caveat (NOT closed):** the X1 stack-thread-safety
-audit (§4) — the source-filter work added cross-thread dict state
-(`_ip4_multicast_filters` / `socket._ip4_source_filters` read on the RX
-thread, written on the app/setsockopt thread) under no lock. Pre-existing
-hazard class (the old `_ip4_multicast` list shared the same exposure);
-not made categorically worse, but unaudited. This is the one honest
-residual on the IGMP work and is the project-wide X1 track, not
-IGMP-specific.
+**Thread-safety caveat resolved 2026-05-27:** the stack-wide no-GIL
+audit (`docs/refactor/no_gil_thread_safety_audit.md`) followed the
+same day and shipped the missing locks — F2 (`_lock__multicast`)
+guards `_ip4_multicast_filters`; U1 (`_lock__ip4_source_filters`)
+guards `socket._ip4_source_filters`. The audit doc §3.1 records
+"**The no-GIL backlog is fully closed**" (T1, T2, M1, M2, I1, U1,
+N1, P1 all SHIPPED). No honest residual remains on the IGMP / source-
+filter front; the narrower `socket_linux_parity_audit.md` §X1
+conclusion was superseded in the same sweep (see §4 of the audit).
 
 ---
 
@@ -247,10 +248,11 @@ to expand scope.
   IP forwarding, ICMP Redirect generation, PMTU on transit, IGMP/MLD
   querier role. DHCPv4 option-121 router-0.0.0.0 (on-link) routes also
   wait on the Phase-2 per-interface oif on DHCP-learned routes.
-- **Socket Linux parity — HIGH/MEDIUM/LOW tail** + the **X1 stack-thread-
-  safety audit** (overlaps packet-handler concurrency review). Phase 1
-  fully shipped, Phase 2 mostly; the rest is deferred-with-rationale.
-  `socket_linux_parity_audit.md`.
+- **Socket Linux parity — HIGH/MEDIUM/LOW tail**. Phase 1 fully shipped,
+  Phase 2 mostly; the rest is deferred-with-rationale.
+  `socket_linux_parity_audit.md`. (The X1 stack-thread-safety audit
+  bundled here in earlier ledger revisions is **CLOSED** —
+  `no_gil_thread_safety_audit.md` §3.1.)
 - **DHCPv4 Phase 8.4 / Phase 9** (Option Overload parse; RFCs 4702 / 3203
   / 8910) — deferred per `dhcp4_client_full_parity.md`.
 
@@ -274,18 +276,18 @@ finalizer (leaked-membership release on GC), the
 icmp4.echo_ignore_broadcasts sysctl (+ unicast-sourced mcast echo reply,
 RFC 1122 §3.2.2.6 / Linux parity), and the examples/service__mcast_listener.py
 demo (--pingable flag). There is NO blocking or in-scope-required host
-work left. The one honest residual is the X1 stack-thread-safety audit
-(§4 / §1.3) — unaudited cross-thread dict state, pre-existing hazard class.
+work left and no honest thread-safety residual — the stack-wide
+no_gil_thread_safety_audit.md closed the full backlog (T1, T2, M1, M2,
+I1, U1, N1, P1 all SHIPPED 2026-05-27).
 
 There is NO genuinely-open OPTIONAL host item remaining — §2.1
 PLPMTUD active probe-segment emit closed 2026-05-28 (commits
 `0f02938e` + `59466338`; close-out plan at
 `docs/refactor/plpmtud_closeout.md`). Everything else is either §3
 on-touch-only (do NOT open as a standalone task) or §4 deferred
-future-phase (Phase-2 router/forwarding, the socket Linux-parity tail +
-X1 stack-thread-safety audit, DHCPv4 8.4/Phase 9) — do not start a §4
-track without an explicit decision to expand scope beyond the 3.0.6
-host stack.
+future-phase (Phase-2 router/forwarding, the socket Linux-parity tail,
+DHCPv4 8.4/Phase 9) — do not start a §4 track without an explicit
+decision to expand scope beyond the 3.0.6 host stack.
 
 I want to work on: <PICK ONE, or state a new task>
   - a §4 deferred track (name it + confirm the scope-expansion decision).
