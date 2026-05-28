@@ -204,14 +204,16 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             session._socket._tcp_nodelay = listen_socket._tcp_nodelay
             session._tcp_nodelay = listen_socket._tcp_nodelay
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
-            # bounds: at most 'mtu - 40' (so we never fragment on
-            # the local link), at least 'TCP__MIN_MSS = 536' (the
-            # SMSS floor that 'option absent' would yield - any
-            # smaller peer-advertised value, including the
-            # malformed 0, is treated as 'option absent').
+            # bounds: at most '_mss_ceiling()' (the egress
+            # interface MTU minus IP+TCP overhead, or the smaller
+            # PLPMTUD cold-start ceiling when 'tcp.mtu_probing' is
+            # enabled), at least 'TCP__MIN_MSS = 536' (the SMSS
+            # floor that 'option absent' would yield - any smaller
+            # peer-advertised value, including the malformed 0,
+            # is treated as 'option absent').
             session._win.snd_mss = max(
                 TCP__MIN_MSS,
-                min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
+                min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2:

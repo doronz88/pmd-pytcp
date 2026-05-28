@@ -707,6 +707,30 @@ def egress_interface_mtu(destination: Ip4Address | Ip6Address, /) -> int | None:
     return handler._interface_mtu if handler is not None else None
 
 
+def egress_interface_name(destination: Ip4Address | Ip6Address, /) -> str | None:
+    """
+    Return the name (e.g. 'tap7') of the interface that egresses
+    stack-originated traffic toward 'destination', or None when no
+    egress interface can be resolved (a reduced context — no interface
+    registered, the routing plane is not up yet, or a multi-homed host
+    with no route covering the destination).
+
+    The per-destination companion to 'egress_interface_mtu'. The TCP
+    PLPMTUD cold-start path reads this so 'TcpSession.__init__' can
+    resolve the per-interface 'tcp.mtu_probing' / 'tcp.base_mss'
+    sysctls through 'sysctl_iface.get_for_iface(..., ifname)' without
+    reaching into 'packet_handler._interface_name' directly — keeping
+    the Phase-3 boundary clean.
+
+    Resolution mirrors 'egress_interface_mtu' — FIB 'oif', or None.
+    """
+
+    if "ip4_fib" not in globals() or "ip6_fib" not in globals():
+        return None
+    handler = _egress_handler_via_fib(destination)
+    return handler._interface_name if handler is not None else None
+
+
 def local_ip4_hosts() -> tuple[Ip4IfAddr, ...]:
     """
     Return every configured IPv4 interface address across ALL registered

@@ -244,14 +244,16 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         # SYN+ACK and the handshake would stall.
         if lt32(session._snd_seq.una, packet_rx_md.tcp__ack) and le32(packet_rx_md.tcp__ack, session._snd_seq.nxt):
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
-            # bounds: at most 'mtu - 40' (so we never fragment on
-            # the local link), at least 'TCP__MIN_MSS = 536' (the
-            # SMSS floor that 'option absent' would yield - any
-            # smaller peer-advertised value, including the
-            # malformed 0, is treated as 'option absent').
+            # bounds: at most '_mss_ceiling()' (the egress
+            # interface MTU minus IP+TCP overhead, or the smaller
+            # PLPMTUD cold-start ceiling when 'tcp.mtu_probing' is
+            # enabled), at least 'TCP__MIN_MSS = 536' (the SMSS
+            # floor that 'option absent' would yield - any smaller
+            # peer-advertised value, including the malformed 0,
+            # is treated as 'option absent').
             session._win.snd_mss = max(
                 TCP__MIN_MSS,
-                min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
+                min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
             # Initial '_snd_wnd' = peer's literal SYN+ACK win
             # (unshifted per RFC 7323 §2.2 - "WSopt is not used
@@ -464,11 +466,13 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
         # Packet sanity check.
         if packet_rx_md.tcp__ack == 0 and not packet_rx_md.tcp__data:
             # Clamp the effective send-MSS to RFC 879 / RFC 6691
-            # bounds: at most 'mtu - overhead', at least
-            # 'TCP__MIN_MSS = 536'.
+            # bounds: at most '_mss_ceiling()' (the egress
+            # interface MTU minus IP+TCP overhead, or the smaller
+            # PLPMTUD cold-start ceiling when 'tcp.mtu_probing' is
+            # enabled), at least 'TCP__MIN_MSS = 536'.
             session._win.snd_mss = max(
                 TCP__MIN_MSS,
-                min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
+                min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2.

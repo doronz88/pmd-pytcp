@@ -21,16 +21,18 @@ Considerations) are omitted.
 
 ## Top-line adherence
 
-PyTCP has the **DPLPMTUD engine + UDP manual probe API**
-shipped. The TCP probe-segment emit path (which would let
-TCP drive the engine through active probing) is deferred to
-Phase 3c of the PLPMTUD plan. After the
-`plpmtud_unified_engine` plan Phases 1-4 (commits through
-`7ad011c1` on `PyTCP_3_0__pre_release`), the RFC 8899 §5
-state machine, §5.1 timers/constants, §5.3 binary search,
-§6 datagram-transport probe API, and black-hole detection
-are all shipped; the §7 cwnd interaction is implementable
-once Phase 3c lands the TCP probe-emit path.
+PyTCP has the **DPLPMTUD engine + UDP manual probe API +
+TCP probe-segment emit + TCP operator-facing cold-start
+enable** all shipped. After the `plpmtud_unified_engine`
+plan Phases 1-4 (commits through `7ad011c1` on
+`PyTCP_3_0__pre_release`) the §5 state machine,
+§5.1 timers/constants, §5.3 binary search, §6 datagram
+probe API, and black-hole detection landed; Phase 3c-min
+shipped the TCP probe-segment emit hook; the
+`plpmtud_closeout` Phases 1-2 (2026-05-28) shipped the
+per-interface `tcp.mtu_probing` / `tcp.base_mss`
+operator-facing enable that makes the cold-start TCP
+probing reachable in default deployments.
 
 | Mechanism                                          | Status                            |
 |----------------------------------------------------|-----------------------------------|
@@ -45,16 +47,15 @@ once Phase 3c lands the TCP probe-emit path.
 | §5.1.2 MIN_PLPMTU / MAX_PLPMTU / BASE_PLPMTU       | met (module-level constants)      |
 | §5.3 Binary-search algorithm                       | met (`PmtuSearch._next_candidate`)|
 | §6 UDP probe-send / ack / loss API                 | met (`UdpSocket.probe_pmtu` ...)  |
-| §6 TCP probe-send / ack / loss API                 | met (Phase 3c-min default-off + 3d Linux-aligned snd_mss growth) |
+| §6 TCP probe-send / ack / loss API                 | met (Phase 3c-min + 3d Linux-aligned snd_mss growth) |
+| §6 TCP operator-facing enable                      | met (`tcp.mtu_probing=2` + `tcp.base_mss` cold-start seed; `_mss_ceiling()` preserves seed past handshake) |
 | §7 Black-hole detection                            | met (`PmtuSearch.on_probe_loss` + ERROR state) |
 | §3 #7 Probes excluded from cwnd                    | **Linux-pragmatic deviation** (probes share cwnd; matches Linux tcp_mtu_probing) |
 
-The remaining gap is the TCP TX-path probe-segment emit
-(Phase 3c) — the engine and adapter framework are fully in
-place and exercised end-to-end from the UDP side. The TCP
-adapter's ack/RTO hooks are wired and locked in by
-integration tests; the missing piece is the segment-factory
-surgery that pads data segments to `candidate_mtu`.
+The §7.4 / §7.5 cwnd-exempt + probe-only-RTO deviation is
+the only remaining gap and is documented as a deliberate
+Linux-pragmatic deviation — see the overall-assessment
+table for the rationale.
 
 ---
 
@@ -450,7 +451,7 @@ for the consumer; the natural future test name is
 | §3 #2 IPv4 DF=1 / IPv6 no-fragmentation on probe    | met for non-probe; TCP probe path deferred (Phase 3c) |
 | §3 #3 Reception feedback                            | met for UDP (manual API); met for TCP (snd.una hook for ack/loss) |
 | §3 #7 Probes excluded from cwnd                     | **Linux-pragmatic deviation** (probes share cwnd; matches Linux tcp_mtu_probing) |
-| §4.1 Probe packet generation                        | met for UDP; met for TCP (Phase 3c-min default-off) |
+| §4.1 Probe packet generation                        | met for UDP; met for TCP (Phase 3c-min + `tcp.mtu_probing=2` enable + `tcp.base_mss` cold-start seed) |
 | §4.3 Unsupported-PLPMTU detection                   | met                          |
 | §4.6.4 BASE_PLPMTU floor enforcement                | met                          |
 | §5.1.1 PROBE_TIMER / PMTU_RAISE_TIMER               | met                          |

@@ -114,11 +114,11 @@ TCP__TS_RECENT__OUTDATED_THRESHOLD_MS = 24 * 86_400 * 1_000
 
 # Per-interface conf-plane policy storage. 'dict[str, int]' keyed by
 # interface name with a mandatory '"default"' template slot — the
-# operator addresses a specific interface ('tcp.<ifname>.base_mss') or
-# the template ('tcp.default.base_mss'); the runtime read path
-# ('TcpSession.__init__' when active PLPMTUD probing is enabled) goes
-# through 'sysctl_iface.get_for_iface(...)' which falls back from
-# 'storage[<ifname>]' to 'storage["default"]'.
+# operator addresses a specific interface ('tcp.<ifname>.<field>') or
+# the template ('tcp.default.<field>'); the runtime read path
+# ('TcpSession.__init__' / '_mss_ceiling' when active PLPMTUD probing
+# is enabled) goes through 'sysctl_iface.get_for_iface(...)' which
+# falls back from 'storage[<ifname>]' to 'storage["default"]'.
 #
 # Linux 'net.ipv4.tcp_base_mss' — the cold-start 'snd_mss' seed used
 # when 'tcp.mtu_probing' enables active PLPMTUD probing on a session.
@@ -131,6 +131,25 @@ TCP__TS_RECENT__OUTDATED_THRESHOLD_MS = 24 * 86_400 * 1_000
 # 'include/net/tcp.h' and stays comfortably above the RFC 791 §3.1
 # minimum-MTU arithmetic safety margin.
 TCP__BASE_MSS: dict[str, int] = {"default": 1024}
+
+# Linux 'net.ipv4.tcp_mtu_probing' tristate — the operator-facing
+# enable for active PLPMTUD probing.
+#   0 (default) = probing OFF. Cold-start seed in 'TcpSession.__init__'
+#                 is skipped; behaviour identical to the pre-Phase-2
+#                 baseline (snd_mss capped at 'interface_mtu - overhead'
+#                 by the handshake clamp, classical PMTUD via ICMP PTB).
+#   2           = probing ON ("always-on aggressive"). Session init
+#                 seeds 'snd_mss' from 'tcp.base_mss - overhead' so the
+#                 engine's 'candidate_mtu > snd_mss' gate trips on the
+#                 first data send; handshake clamp consults the same
+#                 ceiling so peer-advertised MSS does NOT raise
+#                 snd_mss past the base.
+# Linux's mode 1 ("enable after RTO loss suspected to be black-hole")
+# needs heuristics PyTCP does not have today — it is rejected by the
+# validator with a message naming the deferred-mode rationale. See
+# 'docs/refactor/plpmtud_closeout.md' §2 for the deferred-with-rationale
+# block.
+TCP__MTU_PROBING: dict[str, int] = {"default": 0}
 
 
 # Sysctl registration. Every constant above is a policy knob,
@@ -279,6 +298,43 @@ register(
         "Linux 'net.ipv4.tcp_base_mss' — cold-start 'snd_mss' seed "
         "when 'tcp.mtu_probing' enables active PLPMTUD probing on "
         "a session (default 1024; floor 88 = Linux TCP_MIN_MSS)."
+    ),
+    interface_scope=True,
+)
+
+
+def _tcp_mtu_probing_validator(value: object) -> None:
+    """
+    Reject values outside {0, 2}.
+
+    Mode 1 (Linux's "enable after RTO loss suspected to be a black-
+    hole") needs heuristics PyTCP does not have today — it depends
+    on observing a configurable burst of consecutive RTO timeouts
+    with no successful ACK in between. Mode 2 ("always-on
+    aggressive") is the simpler always-on alternative and is
+    sufficient for the RFC 4821 §3 conformance case the PLPMTUD
+    close-out targets. The rejection message names the
+    deferred-mode rationale so an operator who chose mode 1 from
+    Linux muscle memory sees actionable feedback.
+    """
+
+    if isinstance(value, bool) or value not in (0, 2):
+        raise ValueError(
+            f"sysctl 'tcp.mtu_probing' must be 0 (off) or 2 (always-on); "
+            f"got {value!r}. Mode 1 (enable after RTO black-hole suspected) "
+            f"is deferred — see docs/refactor/plpmtud_closeout.md."
+        )
+
+
+register(
+    key="tcp.mtu_probing",
+    module_name=__name__,
+    attr="TCP__MTU_PROBING",
+    default=TCP__MTU_PROBING["default"],
+    validator=_tcp_mtu_probing_validator,
+    description=(
+        "Linux 'net.ipv4.tcp_mtu_probing' tristate — 0=off (default), "
+        "2=always-on. Mode 1 is deferred (needs RTO-black-hole heuristic)."
     ),
     interface_scope=True,
 )

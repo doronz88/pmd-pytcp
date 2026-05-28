@@ -21,14 +21,18 @@ omitted.
 
 ## Top-line adherence
 
-PyTCP has the **PLPMTUD engine + ack/RTO hooks but not yet
-probe-segment emit on TCP**. After the
-`plpmtud_unified_engine` plan Phases 1-4 (commits through
-`7ad011c1` on `PyTCP_3_0__pre_release`), the PmtuSearch
-state machine, classical-PMTUD coexistence, ack/RTO
-detection, and the UDP manual probe API are all shipped;
-the remaining gap is the TCP probe-segment emit path
-(Phase 3c, deferred).
+PyTCP has the **PLPMTUD engine + ack/RTO hooks + TCP
+probe-segment emit + operator-facing cold-start enable**
+all shipped. After the `plpmtud_unified_engine` plan
+Phases 1-4 (commits through `7ad011c1` on
+`PyTCP_3_0__pre_release`) the PmtuSearch state machine,
+classical-PMTUD coexistence, ack/RTO detection, and the
+UDP manual probe API landed; the probe-segment emit hook
+landed in Phase 3c-min; the operator-facing
+`tcp.mtu_probing` / `tcp.base_mss` cold-start enable
+that makes the TCP "Probing without ICMP" scenario
+reachable in default deployments landed in the
+`plpmtud_closeout` Phases 1-2 (2026-05-28).
 
 | Mechanism                                              | Status                            |
 |--------------------------------------------------------|-----------------------------------|
@@ -41,17 +45,20 @@ the remaining gap is the TCP probe-segment emit path
 | Re-probe periodically (PMTU_RAISE_TIMER)               | met (`PmtuSearch.next_probe_size`) |
 | ICMP coexistence (shrink-only, ERROR recovery)         | met (`PmtuSearch.on_classical_pmtu`) |
 | TCP adapter (ack / RTO hooks)                          | met (`TcpPlpmtudAdapter`)         |
-| TCP probe-segment emit                                 | met (Phase 3c-min, default-off)   |
+| TCP probe-segment emit                                 | met (Phase 3c-min)                |
+| TCP operator-facing enable (`tcp.mtu_probing` sysctl)  | met (`tcp.mtu_probing=2`, `tcp.base_mss` seed) |
 | TCP cwnd-exempt + probe-only RTO (RFC §7.4 / §7.5)     | **Linux-pragmatic deviation** (probes share cwnd / regular RTO; matches Linux tcp_mtu_probing) |
 | UDP manual probe API (probe_pmtu / ack_probe / timeout)| met (`UdpSocket.probe_pmtu` ...)  |
 
 The "PmtuSearch unified engine" plan at
 `docs/refactor/plpmtud_unified_engine.md` is the
-implementation track. Phase 3c (TCP probe-segment emit) is
-the single remaining piece — the engine is fully exercised
-from the UDP side and from the TCP ack/RTO hooks, but the
-TCP TX path does not yet pad data segments to
-`candidate_mtu` for active probing.
+implementation track, closed by the close-out at
+`docs/refactor/plpmtud_closeout.md` (Phases 1-2 added the
+per-interface `tcp.mtu_probing` tristate and the
+`tcp.base_mss` cold-start seed, plus the four-clamp-site
+`_mss_ceiling()` helper that keeps the seed alive past
+the handshake — so the engine's `candidate_mtu > snd_mss`
+gate trips immediately on `tcp.mtu_probing=2`).
 
 ---
 
@@ -369,7 +376,7 @@ Phase 3c lands, the natural tests are:
 | §7.1 Active probing state machine                   | met                          |
 | §7.3 Binary-search probe selection                  | met                          |
 | §7.4 Probes excluded from cwnd                      | **Linux-pragmatic deviation** (Linux probes share cwnd; ~15 years deployment without observed harm) |
-| §7.5 Probe-segment emit (TCP)                       | met (Phase 3c-min; default-off via `_plpmtud_probing_enabled`) |
+| §7.5 Probe-segment emit (TCP)                       | met (Phase 3c-min + operator enable via `tcp.mtu_probing=2`) |
 | §7.5 Probe-only RTO                                 | **Linux-pragmatic deviation** (Linux uses regular RTO for probe-loss detection) |
 | §7.5 Probe-segment emit (UDP manual API)            | met                          |
 | §7.6 Probe-result feedback to engine                | met                          |

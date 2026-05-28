@@ -399,12 +399,14 @@ class TcpSegmentValidator:
         session._tx.seq_mod = new_iss
 
         # Adopt peer's new SYN parameters. MSS is clamped to the
-        # RFC 879 / RFC 6691 bounds; an explicit floor at TCP__MIN_MSS
-        # treats peer-advertised 0 (or any malformed sub-floor value)
-        # as 'option absent'.
+        # RFC 879 / RFC 6691 bounds (via '_mss_ceiling()', which
+        # honours the PLPMTUD cold-start base_mss ceiling when
+        # 'tcp.mtu_probing' is enabled); an explicit floor at
+        # TCP__MIN_MSS treats peer-advertised 0 (or any malformed
+        # sub-floor value) as 'option absent'.
         session._win.snd_mss = max(
             TCP__MIN_MSS,
-            min(packet_rx_md.tcp__mss, session._egress_interface_mtu() - session._ip_tcp_overhead),
+            min(packet_rx_md.tcp__mss, session._mss_ceiling()),
         )
         session._win.snd_wnd = packet_rx_md.tcp__win
         session._win.max_window = session._win.snd_wnd

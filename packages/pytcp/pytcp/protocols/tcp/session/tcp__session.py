@@ -87,6 +87,7 @@ from pytcp.protocols.tcp.tcp__rack import RackSegment
 from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32, sub32
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -177,17 +178,36 @@ class TcpSession:
             remote_ip_address=remote_ip_address,
             interface_mtu=self._egress_interface_mtu(),
         )
-        # Linux 'tcp_mtu_probing' sysctl equivalent. Default
-        # OFF matching Linux's tcp_mtu_probing=0 — operators
-        # opt in by flipping this flag. When enabled, the
-        # probe-emit hook in '_transmit_data' polls the
-        # adapter on each transmission and emits a probe-
-        # sized segment when the engine has a candidate
-        # larger than the current snd_mss. Linux's
-        # intermediate value 1 ("enable after RTO loss
-        # suspected to be black-hole") is not yet modeled;
-        # PyTCP treats this as a hard on/off boolean.
-        self._plpmtud_probing_enabled: bool = False
+        # Linux 'net.ipv4.tcp_mtu_probing' tristate sysctl —
+        # the operator-facing enable for active PLPMTUD probing
+        # ('tcp.mtu_probing' = 0 off / 2 always-on; mode 1
+        # deferred per the close-out plan §2). The flag is
+        # consulted by the probe-emit hook in
+        # 'session/tcp__session__tx.py' AND by '_mss_ceiling'
+        # below so the handshake clamp keeps 'snd_mss' under
+        # 'base_mss - overhead' instead of rising to
+        # 'interface_mtu - overhead' — the gap that the
+        # cold-start path closes.
+        _probing_mode = sysctl_iface.get_for_iface(
+            "tcp.mtu_probing",
+            self._egress_interface_name(),
+        )
+        self._plpmtud_probing_enabled: bool = _probing_mode != 0
+        # Linux 'net.ipv4.tcp_base_mss' cold-start seed. With
+        # probing enabled, prime 'snd_mss' below
+        # 'interface_mtu - overhead' so the engine's
+        # 'candidate_mtu > snd_mss' probe-emit gate trips
+        # on the first data send. Without this seed
+        # 'snd_mss' would saturate at 'interface_mtu -
+        # overhead' (the engine's '_max_mtu' ceiling) and
+        # the gate would never fire — RFC 4821 §3 'Probing
+        # without ICMP' unreachable. The handshake clamp
+        # sites (FSM listen / syn_sent / syn_sent-reuse /
+        # validate-rfc6191-reuse) consult '_mss_ceiling()'
+        # so peer-advertised MSS does NOT raise 'snd_mss'
+        # back above the seed.
+        if self._plpmtud_probing_enabled:
+            self._win.snd_mss = self._mss_ceiling()
 
         # Whether to advertise WSCALE on this session's outbound
         # SYN / SYN+ACK. Defaults True (the modern, throughput-
@@ -538,6 +558,50 @@ class TcpSession:
         """
 
         return stack.egress_interface_mtu(self._remote_ip_address) or stack.INTERFACE__TAP__MTU
+
+    def _egress_interface_name(self) -> str | None:
+        """
+        Return the name of the interface that egresses toward this
+        session's remote — the per-iface sysctl key the cold-start
+        PLPMTUD path consults to resolve 'tcp.mtu_probing' and
+        'tcp.base_mss'. Returns None when no FIB route covers the
+        destination (mirrors '_egress_interface_mtu'); the per-iface
+        lookup then falls through to the '"default"' template slot.
+        """
+
+        return stack.egress_interface_name(self._remote_ip_address)
+
+    def _mss_ceiling(self) -> int:
+        """
+        Return the effective send-side MSS ceiling consumed by both
+        the cold-start seed in '__init__' and the four handshake
+        clamp sites (FSM listen / syn_sent / syn_sent-reuse /
+        validate-rfc6191-reuse).
+
+        When PLPMTUD active probing is disabled (the default), the
+        ceiling is 'interface_mtu - overhead' — same value the
+        handshake clamp used pre-Phase-2.
+
+        When probing is enabled, the ceiling shrinks to
+        'min(base_mss, interface_mtu) - overhead' so the engine has
+        upward-probing headroom. The 'min' guards against a
+        pathological operator config that raises 'tcp.base_mss'
+        above the egress interface MTU; the seed always stays at
+        or below the link ceiling so probes have somewhere to
+        climb to.
+
+        Reference: RFC 4821 §3 (Probing without ICMP).
+        Reference: Linux 'tcp_mtu_probing=2' MSS-ceiling semantics.
+        """
+
+        iface_ceiling = self._egress_interface_mtu() - self._ip_tcp_overhead
+        if not self._plpmtud_probing_enabled:
+            return iface_ceiling
+        base_mss: int = sysctl_iface.get_for_iface(
+            "tcp.base_mss",
+            self._egress_interface_name(),
+        )
+        return min(base_mss - self._ip_tcp_overhead, iface_ceiling)
 
     def _arm_timer(self, name: str, delay_ms: int, /) -> None:
         """
