@@ -1,7 +1,8 @@
 # PyTCP sysctl — per-interface namespace migration
 
 **Status:** Phase 0 SHIPPED 2026-05-28 (registry scaffold +
-24 tests + helper module). Phases 1-5 remain. Successor to
+24 tests + helper module). Phase 1 (ARP, 4 knobs) SHIPPED
+2026-05-28. Phases 2-5 remain. Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -474,18 +475,48 @@ Decisions taken in this commit body for the §8 open questions:
 Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 24 new
 tests, 11828 total green.
 
-### Phase 1 — ARP (1 commit, 4 knobs)
+### Phase 1 — ARP (SHIPPED 2026-05-28)
 
-Migrate the 4 ARP conf-plane knobs:
+Migrated the 4 ARP conf-plane knobs:
 
 - `arp.accept`, `arp.ignore`, `arp.announce`, `arp.filter`
 - Storage: `arp__constants.ARP__{ACCEPT,IGNORE,ANNOUNCE,FILTER}`
-  flip from `int` to `dict[str, int]` with `{"default": <value>}`.
-- Consumers: `packet_handler__arp__rx.py` (the gate-decision sites)
-  flip to `sysctl_iface.get_for_iface("arp.X", self._interface_name)`.
-- Tests: new `test__arp__sysctl_per_interface.py` pinning the
-  per-interface override path; the existing integration tests'
-  patches flip to `sysctl_iface` form.
+  flipped from `int` to `dict[str, int]` with
+  `{"default": <value>}` initial state; registrations carry
+  `interface_scope=True`.
+- Consumers (4 sites): `packet_handler__arp__rx.py` (`ARP__ACCEPT`
+  one site, `ARP__IGNORE` two sites) and
+  `packet_handler__arp__tx.py` (`ARP__ANNOUNCE` one site)
+  flipped to
+  `sysctl_iface.get_for_iface("arp.<field>", self._if._interface_name)`.
+- Helper widened: `sysctl_iface.get_for_iface(base, ifname:
+  str | None)` accepts `None` (test fixtures with no
+  `interface_name` plumbed through) and resolves directly
+  to the `"default"` slot.
+- Stale "Phase 2: per-interface" comment stripped from
+  `ARP__FILTER`'s docstring; description rewritten to
+  reflect actual multi-interface behaviour.
+- New test file
+  `tests/integration/protocols/arp/test__arp__sysctl_per_interface.py`
+  (5 tests, two-interface fixture): kill-switch scoped to
+  one iface, off-subnet accept scoped to one iface,
+  `default`-slot template applies to every iface without an
+  override, bare-base-key rejection, pre-attach config
+  persists across the live-process lifetime and is cleared
+  by `reset_to_defaults`.
+- Existing test files updated in lockstep:
+  - `tests/unit/protocols/arp/test__arp__constants.py` — the
+    `ARP__ANNOUNCE` / `ARP__FILTER` default-value checks
+    became `ARP__X["default"]`; every
+    `sysctl_module.set("arp.<field>", v)` /
+    `.override("arp.<field>", v)` became
+    `"arp.default.<field>"`.
+  - `tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__{rx,tx}.py`
+    — `_StubInterface` carries `_interface_name`; every
+    bare-base-key override became `arp.default.<field>`.
+
+Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 5 new
+tests + 31 unit tests modernised, 11833 total green.
 
 ### Phase 2 — Neighbor cache (1 commit, 6 knobs)
 

@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 from net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
 from pytcp.lib.logger import log
-from pytcp.protocols.arp import arp__constants
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2
@@ -108,7 +108,7 @@ class ArpRxHandler:
         # address that could be spoofed by an attacker.
         spa_on_local_subnet = any(packet_rx.arp.spa in host.network for host in self._if._ip4_ifaddr)
         if (
-            (spa_on_local_subnet or arp__constants.ARP__ACCEPT == 1)
+            (spa_on_local_subnet or sysctl_iface.get_for_iface("arp.accept", self._if._interface_name) == 1)
             and (packet_rx.ethernet.dst == self._if._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
             and packet_rx.arp.spa not in self._if._ip4_unicast
         ):
@@ -208,7 +208,8 @@ class ArpRxHandler:
             # a probe is the peer's "is this IP free?" wire
             # signal and has no SPA yet.
             should_reply = True
-            if arp__constants.ARP__IGNORE == 8:
+            arp_ignore = sysctl_iface.get_for_iface("arp.ignore", self._if._interface_name)
+            if arp_ignore == 8:
                 __debug__ and log(
                     "arp",
                     f"{packet_rx.tracker} - <INFO>arp.ignore=8 dropped Reply: " f"kill switch active",
@@ -218,7 +219,7 @@ class ArpRxHandler:
                 sender_on_local_subnet = packet_rx.arp.spa.is_unspecified or any(
                     packet_rx.arp.spa in host.network for host in self._if._ip4_ifaddr
                 )
-                if arp__constants.ARP__IGNORE == 2 and not sender_on_local_subnet:
+                if arp_ignore == 2 and not sender_on_local_subnet:
                     __debug__ and log(
                         "arp",
                         f"{packet_rx.tracker} - <INFO>arp.ignore=2 dropped Reply: "

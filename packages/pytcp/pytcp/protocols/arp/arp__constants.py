@@ -85,12 +85,23 @@ ARP__PROBE_MAX = 2
 # loop ends.
 ARP__ANNOUNCE_WAIT = 2
 
+# Per-interface conf-plane policy storage. The four
+# attributes below are 'dict[str, int]' keyed by interface
+# name with a mandatory '"default"' template slot — the
+# operator addresses a specific interface
+# ('arp.<ifname>.<field>') or the template
+# ('arp.default.<field>'); the runtime read path (the
+# packet-handler ARP RX/TX code) goes through
+# 'sysctl_iface.get_for_iface(...)' which falls back from
+# 'storage[<ifname>]' to 'storage["default"]'. Plan:
+# docs/refactor/sysctl_per_interface.md.
+
 # Linux net.ipv4.conf.<iface>.arp_accept policy. Controls
 # whether the cache is updated from ARP Requests / Replies
 # whose sender IP is NOT on any of our local subnets.
 #   0 = reject off-subnet senders (default, conservative).
 #   1 = admit off-subnet senders (multi-VLAN / proxy-ARP setups).
-ARP__ACCEPT = 0
+ARP__ACCEPT: dict[str, int] = {"default": 0}
 
 # Linux net.ipv4.conf.<iface>.arp_ignore policy. Controls when
 # we reply to inbound ARP Requests.
@@ -108,7 +119,7 @@ ARP__ACCEPT = 0
 # the validator: mode 3 needs an address-scope concept PyTCP
 # does not have today; modes 4-7 are Linux-reserved unused
 # slots.
-ARP__IGNORE = 1
+ARP__IGNORE: dict[str, int] = {"default": 1}
 
 # Linux net.ipv4.conf.<iface>.arp_announce policy. Controls
 # the source-IP selection for outbound ARP Requests when the
@@ -125,23 +136,17 @@ ARP__IGNORE = 1
 #       address list has no notion of "primary" beyond first-
 #       listed. Mode 2 is the most restrictive in Linux; we
 #       collapse it to mode 1's selection for now.
-ARP__ANNOUNCE = 0
+ARP__ANNOUNCE: dict[str, int] = {"default": 0}
 
 # Linux net.ipv4.conf.<iface>.arp_filter policy. Multi-
 # interface ARP source-routing filter.
 #   0 = reply for any locally-configured target IP regardless
-#       of which interface received the Request (Linux default;
-#       and PyTCP's only feasible behaviour today since PyTCP
-#       runs on a single TAP/TUN interface).
+#       of which interface received the Request (Linux default).
 #   1 = reply only if the kernel would route a packet to the
 #       sender IP through the receiving interface (requires
-#       source-based routing; multi-interface only).
-# Phase 2: per-interface — mode 1 has no observable effect on
-# single-interface PyTCP today; the knob exists for parity
-# and for forward-compat with the eventual multi-interface
-# work. The receive path treats mode 1 as a no-op on the
-# single-interface path.
-ARP__FILTER = 0
+#       source-based routing). Honoured per-interface; the
+#       receive path consults the per-iface slot.
+ARP__FILTER: dict[str, int] = {"default": 0}
 
 # Sysctl registration. Every constant above is a policy knob
 # (operator-tunable at boot via 'stack.init(sysctls={...})'
@@ -258,8 +263,7 @@ def _arp_announce_validator(value: object) -> None:
 
 def _arp_filter_validator(value: object) -> None:
     """
-    Reject values outside {0, 1}. Mode 1 is a no-op on single-
-    interface PyTCP today (Phase 2 / multi-interface).
+    Reject values outside {0, 1}.
     """
 
     if isinstance(value, bool) or value not in (0, 1):
@@ -270,33 +274,37 @@ register(
     key="arp.accept",
     module_name=__name__,
     attr="ARP__ACCEPT",
-    default=ARP__ACCEPT,
+    default=ARP__ACCEPT["default"],
     validator=_arp_accept_validator,
     description="Linux 'net.ipv4.conf.<iface>.arp_accept' (0=reject off-subnet, 1=admit).",
+    interface_scope=True,
 )
 register(
     key="arp.ignore",
     module_name=__name__,
     attr="ARP__IGNORE",
-    default=ARP__IGNORE,
+    default=ARP__IGNORE["default"],
     validator=_arp_ignore_validator,
     description="Linux 'net.ipv4.conf.<iface>.arp_ignore' (0/1/2/8; 3 needs scope, 4-7 reserved).",
+    interface_scope=True,
 )
 register(
     key="arp.announce",
     module_name=__name__,
     attr="ARP__ANNOUNCE",
-    default=ARP__ANNOUNCE,
+    default=ARP__ANNOUNCE["default"],
     validator=_arp_announce_validator,
     description="Linux 'net.ipv4.conf.<iface>.arp_announce' (0/1/2 source-IP selection).",
+    interface_scope=True,
 )
 register(
     key="arp.filter",
     module_name=__name__,
     attr="ARP__FILTER",
-    default=ARP__FILTER,
+    default=ARP__FILTER["default"],
     validator=_arp_filter_validator,
-    description="Linux 'net.ipv4.conf.<iface>.arp_filter' (0/1; Phase 2 multi-interface).",
+    description="Linux 'net.ipv4.conf.<iface>.arp_filter' (0/1 multi-interface ARP source-routing filter).",
+    interface_scope=True,
 )
 
 

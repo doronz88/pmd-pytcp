@@ -142,7 +142,7 @@ class _StubInterface:
     removing.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, interface_name: str | None = None) -> None:
         """
         Initialize the stub interface. The spy records the arguments
         passed to the TX-side reply the RX handler invokes.
@@ -152,6 +152,7 @@ class _StubInterface:
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_ifaddr = [STACK__IP4_HOST]
         self._arp_cache: ArpCache | None = None
+        self._interface_name = interface_name
 
         self.arp_replies_sent: list[dict[str, object]] = []
 
@@ -651,7 +652,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.accept", 1):
+        with sysctl_module.override("arp.default.accept", 1):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
@@ -710,7 +711,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.ignore", 2):
+        with sysctl_module.override("arp.default.ignore", 2):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
@@ -742,7 +743,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.ignore", 2):
+        with sysctl_module.override("arp.default.ignore", 2):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
@@ -774,7 +775,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.ignore", 8):
+        with sysctl_module.override("arp.default.ignore", 8):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
@@ -811,7 +812,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.ignore", 2), sysctl_module.override("arp.accept", 1):
+        with sysctl_module.override("arp.default.ignore", 2), sysctl_module.override("arp.default.accept", 1):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
@@ -845,7 +846,7 @@ class TestPacketHandlerArpRxPolicySysctls(_ArpRxTestBase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.ignore", 8):
+        with sysctl_module.override("arp.default.ignore", 8):
             frame = _arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,

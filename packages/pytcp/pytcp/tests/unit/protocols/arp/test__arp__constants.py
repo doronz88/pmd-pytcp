@@ -170,32 +170,37 @@ class TestArpConstants(TestCase):
 
     def test__arp__constants__announce_default_matches_linux(self) -> None:
         """
-        Ensure 'ARP__ANNOUNCE' defaults to 0 — Linux's
-        'arp_announce' default ("use any local address,
-        configured on any interface").
+        Ensure the 'arp.announce' template slot defaults to 0
+        — Linux's 'arp_announce' default ("use any local
+        address, configured on any interface"). The storage
+        is per-interface ('dict[str, int]') with a '"default"'
+        template; the operator-facing key is
+        'arp.default.announce'.
 
         Reference: Linux net.ipv4.conf.<iface>.arp_announce (mode 0 default).
         """
 
         self.assertEqual(
-            ARP__ANNOUNCE,
+            ARP__ANNOUNCE["default"],
             0,
-            msg=f"ARP__ANNOUNCE must default to 0 (mode 0). Got: {ARP__ANNOUNCE}.",
+            msg=f"ARP__ANNOUNCE['default'] must equal 0 (mode 0). Got: {ARP__ANNOUNCE['default']}.",
         )
 
     def test__arp__constants__filter_default_matches_linux(self) -> None:
         """
-        Ensure 'ARP__FILTER' defaults to 0 — Linux's
-        'arp_filter' default (no source-routing filter; reply
-        regardless of receiving interface).
+        Ensure the 'arp.filter' template slot defaults to 0 —
+        Linux's 'arp_filter' default (no source-routing
+        filter; reply regardless of receiving interface). The
+        storage is per-interface ('dict[str, int]') with a
+        '"default"' template.
 
         Reference: Linux net.ipv4.conf.<iface>.arp_filter (mode 0 default).
         """
 
         self.assertEqual(
-            ARP__FILTER,
+            ARP__FILTER["default"],
             0,
-            msg=f"ARP__FILTER must default to 0 (mode 0). Got: {ARP__FILTER}.",
+            msg=f"ARP__FILTER['default'] must equal 0 (mode 0). Got: {ARP__FILTER['default']}.",
         )
 
 
@@ -223,11 +228,11 @@ class TestArpPolicySysctlValidators(TestCase):
         """
 
         for mode in (0, 1, 2):
-            sysctl_module.set("arp.announce", mode)
+            sysctl_module.set("arp.default.announce", mode)
             self.assertEqual(
-                sysctl_module.get("arp.announce"),
+                sysctl_module.get("arp.default.announce"),
                 mode,
-                msg=f"arp.announce must accept mode {mode}.",
+                msg=f"arp.default.announce must accept mode {mode}.",
             )
 
     def test__arp__sysctl__announce_rejects_out_of_range(self) -> None:
@@ -240,7 +245,7 @@ class TestArpPolicySysctlValidators(TestCase):
 
         for bad in (-1, 3, 99):
             with self.assertRaises(ValueError) as ctx:
-                sysctl_module.set("arp.announce", bad)
+                sysctl_module.set("arp.default.announce", bad)
             self.assertIn(
                 "arp.announce",
                 str(ctx.exception),
@@ -256,11 +261,11 @@ class TestArpPolicySysctlValidators(TestCase):
         """
 
         for mode in (0, 1):
-            sysctl_module.set("arp.filter", mode)
+            sysctl_module.set("arp.default.filter", mode)
             self.assertEqual(
-                sysctl_module.get("arp.filter"),
+                sysctl_module.get("arp.default.filter"),
                 mode,
-                msg=f"arp.filter must accept mode {mode}.",
+                msg=f"arp.default.filter must accept mode {mode}.",
             )
 
     def test__arp__sysctl__filter_rejects_out_of_range(self) -> None:
@@ -273,7 +278,7 @@ class TestArpPolicySysctlValidators(TestCase):
 
         for bad in (-1, 2, 99):
             with self.assertRaises(ValueError) as ctx:
-                sysctl_module.set("arp.filter", bad)
+                sysctl_module.set("arp.default.filter", bad)
             self.assertIn(
                 "arp.filter",
                 str(ctx.exception),
@@ -289,11 +294,11 @@ class TestArpPolicySysctlValidators(TestCase):
         Reference: Linux net.ipv4.conf.<iface>.arp_ignore (mode 8 kill-switch).
         """
 
-        sysctl_module.set("arp.ignore", 8)
+        sysctl_module.set("arp.default.ignore", 8)
         self.assertEqual(
-            sysctl_module.get("arp.ignore"),
+            sysctl_module.get("arp.default.ignore"),
             8,
-            msg="arp.ignore must accept mode 8 (kill-switch).",
+            msg="arp.default.ignore must accept mode 8 (kill-switch).",
         )
 
     def test__arp__sysctl__ignore_rejects_modes_three_through_seven(self) -> None:
@@ -308,7 +313,7 @@ class TestArpPolicySysctlValidators(TestCase):
 
         for bad in (3, 4, 5, 6, 7):
             with self.assertRaises(ValueError) as ctx:
-                sysctl_module.set("arp.ignore", bad)
+                sysctl_module.set("arp.default.ignore", bad)
             self.assertIn(
                 "arp.ignore",
                 str(ctx.exception),

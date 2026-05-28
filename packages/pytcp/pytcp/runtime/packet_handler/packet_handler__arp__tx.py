@@ -36,7 +36,7 @@ from net_addr import Ip4Address, MacAddress
 from net_proto import ArpAssembler, ArpOperation, Tracker
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
-from pytcp.protocols.arp import arp__constants
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandlerL2
@@ -70,7 +70,7 @@ class ArpTxHandler:
         if not self._if._ip4_unicast:
             return Ip4Address()
 
-        if arp__constants.ARP__ANNOUNCE in (1, 2):
+        if sysctl_iface.get_for_iface("arp.announce", self._if._interface_name) in (1, 2):
             for host in self._if._ip4_ifaddr:
                 if arp__tpa in host.network:
                     return host.address

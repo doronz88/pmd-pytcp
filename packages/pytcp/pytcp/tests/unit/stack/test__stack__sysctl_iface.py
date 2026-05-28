@@ -543,6 +543,30 @@ class TestSysctlIfaceHelper(_SysctlIfaceFixtureBase):
             msg="get_for_iface must fall back to 'default' when the per-iface slot is absent.",
         )
 
+    def test__lib__sysctl_iface__get_for_iface_none_resolves_to_default(self) -> None:
+        """
+        Ensure 'sysctl_iface.get_for_iface(base, None)'
+        resolves to the '"default"' slot directly. The runtime
+        passes 'None' when no interface name is in scope (test
+        harnesses that skip 'interface_name=' on the
+        'PacketHandler' ctor).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._register_iface_int(
+            key="test.arp.ignore",
+            carrier_name="pytcp_test_iface_carrier_helper_none",
+            attr="ARP__IGNORE",
+            default=4,
+            initial_slots={"tap7": 99},
+        )
+        self.assertEqual(
+            sysctl_iface.get_for_iface("test.arp.ignore", None),
+            4,
+            msg="get_for_iface(base, None) must resolve directly to the 'default' slot.",
+        )
+
     def test__lib__sysctl_iface__get_for_iface_on_flat_key_raises(self) -> None:
         """
         Ensure 'sysctl_iface.get_for_iface' rejects a flat

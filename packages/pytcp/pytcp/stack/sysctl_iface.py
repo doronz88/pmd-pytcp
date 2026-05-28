@@ -62,7 +62,7 @@ def _resolve_iface_knob(base_key: str) -> Any:
     return knob
 
 
-def get_for_iface(base_key: str, ifname: str, /) -> Any:
+def get_for_iface(base_key: str, ifname: str | None, /) -> Any:
     """
     Return the per-interface live value for an interface-scope
     sysctl. Resolution chain: 'storage[<ifname>]' if present,
@@ -71,13 +71,18 @@ def get_for_iface(base_key: str, ifname: str, /) -> Any:
     loops — each consumer has its own '_interface_name' in
     scope.
 
+    Pass 'None' when no interface is in scope (test harnesses
+    that skip 'interface_name=' on the 'PacketHandler' ctor);
+    the read falls back to the '"default"' template slot
+    directly.
+
     Raises 'KeyError' on unknown bases AND on flat keys (see
     '_resolve_iface_knob' for the contract).
     """
 
     knob = _resolve_iface_knob(base_key)
     storage: dict[str, Any] = getattr(sys.modules[knob.module_name], knob.attr)
-    if ifname in storage:
+    if ifname is not None and ifname in storage:
         return storage[ifname]
     return storage["default"]
 

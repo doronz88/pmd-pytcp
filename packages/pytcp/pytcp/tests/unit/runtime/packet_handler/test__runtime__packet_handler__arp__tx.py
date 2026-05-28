@@ -99,6 +99,7 @@ class _StubInterface:
         ip4_support: bool = True,
         ip4_unicast: list[Ip4Address] | None = None,
         ip4_host: list[Ip4IfAddr] | None = None,
+        interface_name: str | None = None,
     ) -> None:
         """
         Initialize the stub interface and record every _phtx_ethernet call.
@@ -107,6 +108,7 @@ class _StubInterface:
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
         self._ip4_support = ip4_support
+        self._interface_name = interface_name
         if ip4_host is not None:
             self._ip4_ifaddr: list[Ip4IfAddr] = list(ip4_host)
             self._ip4_unicast_list = [host.address for host in self._ip4_ifaddr]
@@ -485,7 +487,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.announce", 1):
+        with sysctl_module.override("arp.default.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
 
         payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
@@ -508,7 +510,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.announce", 1):
+        with sysctl_module.override("arp.default.announce", 1):
             self._handler.send_arp_request(arp__tpa=Ip4Address("172.16.0.1"))
 
         payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
@@ -531,7 +533,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.announce", 2):
+        with sysctl_module.override("arp.default.announce", 2):
             self._handler.send_arp_request(arp__tpa=Ip4Address("192.168.5.99"))
 
         payload = self._if.ethernet_tx_calls[0]["ethernet__payload"]
@@ -553,7 +555,7 @@ class TestPacketHandlerArpTxAnnounceSysctl(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("arp.announce", 1):
+        with sysctl_module.override("arp.default.announce", 1):
             self._handler.send_arp_unicast_request(
                 arp__tpa=Ip4Address("192.168.5.99"),
                 ethernet__dst=MacAddress("02:00:00:00:00:91"),
