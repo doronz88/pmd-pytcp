@@ -51,6 +51,13 @@ class _Knob:
     key, the backing module + attribute that holds the live
     value, the registration-time default (for restore), and an
     optional per-knob validator.
+
+    'interface_scope' marks per-interface knobs whose backing
+    attribute is a 'dict[str, T]' keyed by interface name with
+    a mandatory '"default"' slot. Operator-side reads / writes
+    use the expanded key 'ns.<ifname>.field' (see the parser
+    in 'set' / 'get'); the bare base key is rejected. Plan:
+    docs/refactor/sysctl_per_interface.md.
     """
 
     key: str
@@ -59,6 +66,7 @@ class _Knob:
     default: Any
     validator: Callable[[Any], None] | None
     description: str
+    interface_scope: bool = False
 
 
 _registry: dict[str, _Knob] = {}
@@ -73,6 +81,7 @@ def register(
     default: Any,
     validator: Callable[[Any], None] | None = None,
     description: str = "",
+    interface_scope: bool = False,
 ) -> None:
     """
     Register a runtime-tunable knob. Called from inside a
@@ -81,6 +90,10 @@ def register(
     module's '__name__'; the registry resolves it via
     'sys.modules' on each access so the binding survives
     re-imports.
+
+    Pass 'interface_scope=True' for per-interface knobs whose
+    backing attribute is a 'dict[str, T]' keyed by interface
+    name. Plan: docs/refactor/sysctl_per_interface.md.
     """
 
     _registry[key] = _Knob(
@@ -90,6 +103,7 @@ def register(
         default=default,
         validator=validator,
         description=description,
+        interface_scope=interface_scope,
     )
 
 
@@ -108,7 +122,9 @@ def register_finalize_validator(callback: Callable[[], None], /) -> None:
 def _resolve(key: str) -> _Knob:
     """
     Look up the registry entry for a key, raising 'KeyError'
-    with a self-explanatory message on miss.
+    with a self-explanatory message on miss. Strict base-key
+    lookup — does NOT expand interface-scope operator keys;
+    use '_resolve_with_iface' for that.
     """
 
     knob = _registry.get(key)
@@ -117,16 +133,66 @@ def _resolve(key: str) -> _Knob:
     return knob
 
 
+def _resolve_with_iface(key: str) -> tuple[_Knob, str | None]:
+    """
+    Resolve a sysctl key against the registry, splitting
+    interface-scope operator keys ('<ns>.<ifname>.<field>')
+    into the base key '<ns>.<field>' plus '<ifname>'. Returns
+    '(knob, None)' for flat keys and '(knob, ifname)' for
+    interface-scope keys.
+
+    Raises 'KeyError' on unknown keys AND on a bare base-key
+    access ('<ns>.<field>' with no '<ifname>' segment) against
+    an interface-scope knob — the operator MUST address a
+    specific interface or the '"default"' template slot.
+    """
+
+    knob = _registry.get(key)
+    if knob is not None:
+        if knob.interface_scope:
+            raise KeyError(
+                f"sysctl {key!r} is interface-scope; specify "
+                f"'<namespace>.<ifname>.<field>' or "
+                f"'<namespace>.default.<field>'",
+            )
+        return knob, None
+
+    # The operator key may be the expanded form
+    # '<ns...>.<ifname>.<field>' for an interface-scope knob
+    # whose registered base is '<ns...>.<field>'. The
+    # '<ifname>' segment always sits just before the field —
+    # Linux's per-iface sysctls put the device name
+    # immediately before the leaf field name (e.g.
+    # 'net.ipv4.conf.<iface>.arp_ignore').
+    parts = key.split(".")
+    if len(parts) >= 3:
+        base = ".".join(parts[:-2] + parts[-1:])
+        candidate = _registry.get(base)
+        if candidate is not None and candidate.interface_scope:
+            return candidate, parts[-2]
+
+    raise KeyError(f"unknown sysctl: {key!r}")
+
+
 def get(key: str) -> Any:
     """
     Return the live value of the named sysctl by reading the
     backing module attribute through 'getattr'. Raises
     'KeyError' with the offending key in the message when no
     such knob is registered.
+
+    For interface-scope knobs the operator-supplied key takes
+    the form '<ns>.<ifname>.<field>' and the value resolves
+    through the chain ifname-slot → '"default"' slot.
     """
 
-    knob = _resolve(key)
-    return getattr(sys.modules[knob.module_name], knob.attr)
+    knob, ifname = _resolve_with_iface(key)
+    if ifname is None:
+        return getattr(sys.modules[knob.module_name], knob.attr)
+    storage: dict[str, Any] = getattr(sys.modules[knob.module_name], knob.attr)
+    if ifname in storage:
+        return storage[ifname]
+    return storage["default"]
 
 
 def set(key: str, value: Any) -> None:
@@ -137,12 +203,22 @@ def set(key: str, value: Any) -> None:
     'KeyError' on unknown keys, 'ValueError' on validator
     rejection (with both the offending key and the value in
     the message).
+
+    For interface-scope knobs the operator-supplied key takes
+    the form '<ns>.<ifname>.<field>' and the write lands in
+    'storage[<ifname>]'; pre-attach configuration is allowed
+    (Linux parity — the slot persists until an interface with
+    that name attaches).
     """
 
-    knob = _resolve(key)
+    knob, ifname = _resolve_with_iface(key)
     if knob.validator is not None:
         knob.validator(value)
-    setattr(sys.modules[knob.module_name], knob.attr, value)
+    if ifname is None:
+        setattr(sys.modules[knob.module_name], knob.attr, value)
+        return
+    storage: dict[str, Any] = getattr(sys.modules[knob.module_name], knob.attr)
+    storage[ifname] = value
 
 
 def list_keys() -> list[str]:
@@ -168,9 +244,21 @@ def snapshot() -> dict[str, Any]:
     Return a snapshot of every registered key's current live
     value. Used for debug dumps and as a save-point for
     'reset_to_defaults'-style restoration.
+
+    For interface-scope knobs the snapshot surfaces the full
+    per-interface storage dict (every slot — '"default"' plus
+    each per-iface override) so a debug dump captures the
+    complete state. Flat knobs surface the scalar live value
+    as today.
     """
 
-    return {key: get(key) for key in _registry}
+    result: dict[str, Any] = {}
+    for key, knob in _registry.items():
+        if knob.interface_scope:
+            result[key] = getattr(sys.modules[knob.module_name], knob.attr)
+        else:
+            result[key] = get(key)
+    return result
 
 
 def reset_to_defaults() -> None:
@@ -179,10 +267,17 @@ def reset_to_defaults() -> None:
     value passed at registration time. Used by 'stack.stop()'
     and test teardown to guarantee per-run mutation does not
     leak across runs.
+
+    For interface-scope knobs the storage dict is replaced
+    with a fresh '{"default": <registered>}' — every per-iface
+    slot is cleared AND the template is restored.
     """
 
     for knob in _registry.values():
-        setattr(sys.modules[knob.module_name], knob.attr, knob.default)
+        if knob.interface_scope:
+            setattr(sys.modules[knob.module_name], knob.attr, {"default": knob.default})
+        else:
+            setattr(sys.modules[knob.module_name], knob.attr, knob.default)
 
 
 def finalize_validators() -> None:

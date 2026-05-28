@@ -1,6 +1,7 @@
 # PyTCP sysctl — per-interface namespace migration
 
-**Status:** plan drafted 2026-05-28. Successor to
+**Status:** Phase 0 SHIPPED 2026-05-28 (registry scaffold +
+24 tests + helper module). Phases 1-5 remain. Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -416,24 +417,62 @@ restored, NOT a deep snapshot — verify per-test cleanup hygiene).
 Each phase is one atomic commit per the framework's no-half-
 migrated rule. Push only when the user asks.
 
-### Phase 0 — registry scaffolding (1 commit)
+### Phase 0 — registry scaffolding (SHIPPED 2026-05-28)
 
-Extend `pytcp.stack.sysctl` for interface-scope knobs:
+Extended `pytcp.stack.sysctl` for interface-scope knobs:
 
-- Add `interface_scope: bool` to `_Knob`.
-- Add `set()` / `get()` parsing logic: if the registered knob
-  is `interface_scope=True`, the operator-supplied key must be
-  `<namespace>.<ifname>.<field>` (or `.default.`); base key is
-  rejected.
-- Add `sysctl.reset_to_defaults()` to reset the per-interface
-  dicts back to `{"default": <registered default>}`.
+- Added `interface_scope: bool = False` to `_Knob`.
+- Added `_resolve_with_iface(key)` parser: if the registered
+  knob is `interface_scope=True`, the operator-supplied key
+  must be `<namespace...>.<ifname>.<field>` (the ifname is
+  the second-to-last segment, matching Linux); bare base key
+  is rejected with a self-explanatory `KeyError`.
+- `set()` / `get()` dispatch on `(knob, ifname)` from the
+  resolver; per-iface writes land in `storage[<ifname>]`;
+  per-iface reads fall back through the chain
+  `storage[<ifname>]` → `storage["default"]`.
+- `reset_to_defaults()` replaces the per-interface dict with
+  a fresh `{"default": <registered>}`.
+- `snapshot()` returns the full per-interface dict for
+  interface-scope knobs (operator debug-dump surface).
 - New helper module `pytcp.stack.sysctl_iface` with
-  `get_for_iface(key, ifname) -> Any`.
+  `get_for_iface(base_key, ifname)` and
+  `set_for_iface(base_key, ifname, value)` — the runtime read
+  / write path for per-interface consumers; both reject flat
+  keys with a helpful `KeyError`.
 - New test file `tests/unit/stack/test__stack__sysctl_iface.py`
-  pinning the registry's new interface-scope behavior.
+  — 24 tests pinning every aspect of the new shape:
+  registration flag, per-iface set / get / fallback / unknown
+  ifname, bare-base rejection, validator run-through, reset
+  semantics, helper surface, override round-trip, list_keys
+  bounded-by-base, snapshot dict surface.
 
-No production code reads the new API yet. This is a pure
-scaffold commit.
+No production code reads the new API yet. Pure scaffold
+commit; the per-package migrations in Phases 1–4 will flip
+each `*__constants.py` policy attribute from scalar to
+`dict[str, T]` with `{"default": <scalar>}` initial state
+and register with `interface_scope=True`.
+
+Decisions taken in this commit body for the §8 open questions:
+
+- **Q1 (write for absent ifname):** accepted. Pre-attach
+  config persists in `storage[<ifname>]` until reset;
+  matches Linux `sysctl -w net.ipv4.conf.fake0.arp_ignore=2`.
+- **Q2 (detach):** the slot persists across detach (matches
+  Linux). Will be re-validated in Phase 1 when the first
+  consumer (ARP) lands.
+- **Q3 (introspection helpers):** `sysctl.snapshot()` already
+  surfaces the per-interface dict for interface-scope knobs,
+  so the dedicated `sysctl_iface.snapshot()` /
+  `sysctl_iface.list_keys()` helpers were not added — defer
+  to Phase 5 close-out if operator demand emerges.
+- **Q4 (`all` pseudo-interface):** deferred per the plan.
+  Only `default` is wired; `all` write-fan-out can land
+  later as an additive helper without touching the registry
+  shape.
+
+Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 24 new
+tests, 11828 total green.
 
 ### Phase 1 — ARP (1 commit, 4 knobs)
 
