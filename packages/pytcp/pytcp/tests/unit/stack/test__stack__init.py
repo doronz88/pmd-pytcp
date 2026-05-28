@@ -149,14 +149,14 @@ class TestStackModuleConstants(TestCase):
         from pytcp.lib import neighbor__constants
 
         self.assertGreater(
-            neighbor__constants.NEIGHBOR__REACHABLE_TIME,
+            neighbor__constants.NEIGHBOR__REACHABLE_TIME["default"],
             0,
-            msg="NEIGHBOR__REACHABLE_TIME must be positive.",
+            msg="NEIGHBOR__REACHABLE_TIME['default'] must be positive.",
         )
         self.assertGreater(
-            neighbor__constants.NEIGHBOR__RETRANS_TIMER,
+            neighbor__constants.NEIGHBOR__RETRANS_TIMER["default"],
             0,
-            msg="NEIGHBOR__RETRANS_TIMER must be positive.",
+            msg="NEIGHBOR__RETRANS_TIMER['default'] must be positive.",
         )
 
     def test__stack__ephemeral_port_range(self) -> None:

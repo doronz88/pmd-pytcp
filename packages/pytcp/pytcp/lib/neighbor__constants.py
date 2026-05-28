@@ -43,8 +43,22 @@ from typing import Any, Callable
 
 from pytcp.stack.sysctl import get, is_positive_int, register, register_finalize_validator
 
-# RFC 4861 §10 / Linux net.ipv4.neigh.default.* defaults,
-# scaled to seconds.
+# RFC 4861 §10 / Linux net.ipv4.neigh.<iface>.* defaults,
+# scaled to seconds. The six per-interface knobs below
+# (REACHABLE_TIME, DELAY_FIRST_PROBE_TIME, RETRANS_TIMER,
+# MAX_UNICAST_SOLICIT, MAX_MULTICAST_SOLICIT, UNRES_QLEN)
+# carry per-iface storage so a multi-homed host can express
+# different NUD policies on different interfaces; the GC
+# thresholds remain flat (table-wide).
+#
+# Storage shape: 'dict[str, int]' keyed by interface name
+# with a mandatory '"default"' template slot. Operator
+# addresses a specific iface ('neighbor.<ifname>.<field>')
+# or the template ('neighbor.default.<field>'); the runtime
+# read path (NeighborCache._subsystem_loop /
+# _enqueue_pending) goes through
+# 'sysctl_iface.get_for_iface(...)' with the cache's bound
+# '_iface_name'. Plan: docs/refactor/sysctl_per_interface.md.
 
 # Time a confirmed-reachable entry stays in NUD_REACHABLE
 # before transitioning to NUD_STALE. Linux randomises this
@@ -52,27 +66,27 @@ from pytcp.stack.sysctl import get, is_positive_int, register, register_finalize
 # synchronised aging; PyTCP uses the base value directly for
 # now (deterministic; refine when synchronised-aging surfaces
 # as a real problem).
-NEIGHBOR__REACHABLE_TIME = 30
+NEIGHBOR__REACHABLE_TIME: dict[str, int] = {"default": 30}
 
 # Time a STALE entry stays in NUD_DELAY before promoting to
 # NUD_PROBE in the absence of an upper-layer reachability
 # confirmation. Window during which TCP's confirm_reachability
 # hook can short-circuit the unicast probe.
-NEIGHBOR__DELAY_FIRST_PROBE_TIME = 5
+NEIGHBOR__DELAY_FIRST_PROBE_TIME: dict[str, int] = {"default": 5}
 
 # Time between successive solicits while in NUD_INCOMPLETE
 # (multicast/broadcast) or NUD_PROBE (unicast). Linux uses
 # 1 s by default for both code paths.
-NEIGHBOR__RETRANS_TIMER = 1
+NEIGHBOR__RETRANS_TIMER: dict[str, int] = {"default": 1}
 
 # Number of unicast solicits the cache attempts in NUD_PROBE
 # before giving up and transitioning to NUD_FAILED.
-NEIGHBOR__MAX_UNICAST_SOLICIT = 3
+NEIGHBOR__MAX_UNICAST_SOLICIT: dict[str, int] = {"default": 3}
 
 # Number of multicast/broadcast solicits the cache attempts
 # in NUD_INCOMPLETE before giving up and transitioning to
 # NUD_FAILED.
-NEIGHBOR__MAX_MULTICAST_SOLICIT = 3
+NEIGHBOR__MAX_MULTICAST_SOLICIT: dict[str, int] = {"default": 3}
 
 # Linux GC thresholds (Phase 5 of the NUD migration plan).
 # Below thresh1: never GC. Above thresh2: GC after
@@ -91,13 +105,13 @@ NEIGHBOR__GC_STALE_TIME = 60
 
 # Maximum number of outbound packets queued against a single
 # unresolved neighbour while ARP/ND resolution is in flight
-# (Linux 'net.ipv4.neigh.default.unres_qlen'). On overflow the
+# (Linux 'net.ipv4.neigh.<iface>.unres_qlen'). On overflow the
 # oldest queued packet is dropped. Linux moved from a 3-packet
 # 'unres_qlen' to a byte-based 'unres_qlen_bytes' precisely so a
 # fragmented datagram fits the queue; PyTCP keeps a packet-count
 # knob and defaults it high enough to hold every fragment of a
 # maximum-size IPv4 datagram at a 1500-byte MTU (~45 fragments).
-NEIGHBOR__UNRES_QLEN = 64
+NEIGHBOR__UNRES_QLEN: dict[str, int] = {"default": 64}
 
 
 def _is_non_negative_int(name: str) -> Callable[[Any], None]:
@@ -121,41 +135,46 @@ register(
     key="neighbor.reachable_time",
     module_name=__name__,
     attr="NEIGHBOR__REACHABLE_TIME",
-    default=NEIGHBOR__REACHABLE_TIME,
+    default=NEIGHBOR__REACHABLE_TIME["default"],
     validator=is_positive_int("neighbor.reachable_time"),
     description="NUD_REACHABLE lifetime, seconds (Linux base_reachable_time).",
+    interface_scope=True,
 )
 register(
     key="neighbor.delay_first_probe_time",
     module_name=__name__,
     attr="NEIGHBOR__DELAY_FIRST_PROBE_TIME",
-    default=NEIGHBOR__DELAY_FIRST_PROBE_TIME,
+    default=NEIGHBOR__DELAY_FIRST_PROBE_TIME["default"],
     validator=is_positive_int("neighbor.delay_first_probe_time"),
     description="NUD_DELAY → NUD_PROBE timer, seconds.",
+    interface_scope=True,
 )
 register(
     key="neighbor.retrans_timer",
     module_name=__name__,
     attr="NEIGHBOR__RETRANS_TIMER",
-    default=NEIGHBOR__RETRANS_TIMER,
+    default=NEIGHBOR__RETRANS_TIMER["default"],
     validator=is_positive_int("neighbor.retrans_timer"),
     description="Inter-solicit retransmit timer, seconds.",
+    interface_scope=True,
 )
 register(
     key="neighbor.max_unicast_solicit",
     module_name=__name__,
     attr="NEIGHBOR__MAX_UNICAST_SOLICIT",
-    default=NEIGHBOR__MAX_UNICAST_SOLICIT,
+    default=NEIGHBOR__MAX_UNICAST_SOLICIT["default"],
     validator=is_positive_int("neighbor.max_unicast_solicit"),
     description="Max unicast probes in NUD_PROBE before NUD_FAILED.",
+    interface_scope=True,
 )
 register(
     key="neighbor.max_multicast_solicit",
     module_name=__name__,
     attr="NEIGHBOR__MAX_MULTICAST_SOLICIT",
-    default=NEIGHBOR__MAX_MULTICAST_SOLICIT,
+    default=NEIGHBOR__MAX_MULTICAST_SOLICIT["default"],
     validator=is_positive_int("neighbor.max_multicast_solicit"),
     description="Max multicast/broadcast probes in NUD_INCOMPLETE before NUD_FAILED.",
+    interface_scope=True,
 )
 register(
     key="neighbor.gc_thresh1",
@@ -193,9 +212,10 @@ register(
     key="neighbor.unres_qlen",
     module_name=__name__,
     attr="NEIGHBOR__UNRES_QLEN",
-    default=NEIGHBOR__UNRES_QLEN,
+    default=NEIGHBOR__UNRES_QLEN["default"],
     validator=is_positive_int("neighbor.unres_qlen"),
     description="Max packets queued per unresolved neighbour; drop-oldest on overflow.",
+    interface_scope=True,
 )
 
 

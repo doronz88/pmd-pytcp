@@ -812,7 +812,7 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with sysctl_module.override("neighbor.reachable_time", 5):
+        with sysctl_module.override("neighbor.default.reachable_time", 5):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
                 self._cache._add_entry(ADDR_A, MAC_A)
 
@@ -830,7 +830,7 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
 
         # After context-exit the default is restored.
         self.assertEqual(
-            neighbor__constants.NEIGHBOR__REACHABLE_TIME,
+            neighbor__constants.NEIGHBOR__REACHABLE_TIME["default"],
             30,
             msg="Override must restore the default on context exit.",
         )
@@ -1130,7 +1130,7 @@ class TestNeighborCachePendingQueue(_NeighborCacheFixture):
 
         p1, p2, p3, p4, p5 = object(), object(), object(), object(), object()
 
-        with sysctl_module.override("neighbor.unres_qlen", 3):
+        with sysctl_module.override("neighbor.default.unres_qlen", 3):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
                 self._cache._find_entry(ADDR_A)
                 for pkt in (p1, p2, p3, p4, p5):

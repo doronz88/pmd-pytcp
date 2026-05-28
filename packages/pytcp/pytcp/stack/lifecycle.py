@@ -279,11 +279,15 @@ def add_interface(
             # Bind the per-interface neighbor caches to this handler
             # and the reverse owner back-reference so the caches'
             # solicit / flush callbacks route through this interface.
-            # ARP is L2-only; ND is used by both layers.
+            # ARP is L2-only; ND is used by both layers. '_iface_name'
+            # plumbs the interface name into the per-iface
+            # 'neighbor.<ifname>.*' sysctl resolution path.
             packet_handler._arp_cache = arp_cache
             packet_handler._nd_cache = nd_cache
             arp_cache._owner = packet_handler
+            arp_cache._iface_name = interface_name
             nd_cache._owner = packet_handler
+            nd_cache._iface_name = interface_name
         case InterfaceLayer.L3:
             assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
             packet_handler = PacketHandlerL3(
@@ -302,6 +306,7 @@ def add_interface(
             # L3 (TUN) has no ARP; bind only the ND cache + its owner.
             packet_handler._nd_cache = nd_cache
             nd_cache._owner = packet_handler
+            nd_cache._iface_name = interface_name
 
     # The table allocates the next ifindex (first_ifindex when empty,
     # else max+1) and stamps it onto the handler, atomically under its

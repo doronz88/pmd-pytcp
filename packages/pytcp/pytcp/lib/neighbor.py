@@ -67,6 +67,7 @@ from pytcp.lib import neighbor__constants as nbr_const
 from pytcp.lib.logger import log
 from pytcp.lib.name_enum import NameEnum
 from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+from pytcp.stack import sysctl_iface
 
 
 class NudState(NameEnum):
@@ -147,6 +148,14 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
     # REACHABLE_TIME comes from the sysctl. Class-level default
     # so 'create_autospec(...)' fixtures pick it up.
     _reachable_time_override_s: float | None = None
+
+    # Per-cache interface name for the 'neighbor.<ifname>.*'
+    # sysctl namespace. Set by 'stack.init()' / 'add_interface'
+    # alongside '_owner' (each cache binds to exactly one
+    # interface). 'None' for harness fixtures with no interface
+    # name plumbed; 'sysctl_iface.get_for_iface' treats 'None'
+    # as a fallback to the '"default"' slot.
+    _iface_name: str | None = None
 
     @override
     def __init__(
@@ -380,8 +389,10 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 # next find will create the entry.
                 return
             # Re-resolve the bound on every enqueue so a live
-            # sysctl override takes effect immediately.
-            bound = nbr_const.NEIGHBOR__UNRES_QLEN
+            # sysctl override takes effect immediately. Per-iface
+            # slot wins; 'self._iface_name' is None for harness
+            # fixtures (resolves to '"default"' slot).
+            bound = sysctl_iface.get_for_iface("neighbor.unres_qlen", self._iface_name)
             queue = entry.queued_packets
             while len(queue) >= bound:
                 queue.popleft()
@@ -402,10 +413,21 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
             PROBE → FAILED  past MAX_UNICAST_SOLICIT.
         """
 
-        # 'nbr_const' is imported at module top; qualified
-        # attribute access re-resolves the live sysctl value
-        # on every read so operator overrides land on the next
-        # loop iteration.
+        # Resolve the six per-interface NUD timing knobs once
+        # per loop iteration through 'sysctl_iface.get_for_iface',
+        # which falls back from 'storage[<ifname>]' to the
+        # '"default"' slot. The per-iteration cost is one dict
+        # lookup per knob; the alternative (resolve at every
+        # FSM branch) would multiply that without observable
+        # benefit since the operator-set values change at human
+        # timescales, not per-iteration.
+        iface = self._iface_name
+        sysctl_reachable_time = sysctl_iface.get_for_iface("neighbor.reachable_time", iface)
+        delay_first_probe_time = sysctl_iface.get_for_iface("neighbor.delay_first_probe_time", iface)
+        retrans_timer = sysctl_iface.get_for_iface("neighbor.retrans_timer", iface)
+        max_multicast_solicit = sysctl_iface.get_for_iface("neighbor.max_multicast_solicit", iface)
+        max_unicast_solicit = sysctl_iface.get_for_iface("neighbor.max_unicast_solicit", iface)
+
         now = time.monotonic()
         # Snapshot keys to allow mutation during iteration.
         with self._lock:
@@ -426,13 +448,13 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 effective_reachable_time = (
                     self._reachable_time_override_s
                     if self._reachable_time_override_s is not None
-                    else nbr_const.NEIGHBOR__REACHABLE_TIME
+                    else sysctl_reachable_time
                 )
                 if state is NudState.REACHABLE and age >= effective_reachable_time:
                     self._transition(entry, NudState.STALE, now)
                     continue
 
-                if state is NudState.DELAY and age >= nbr_const.NEIGHBOR__DELAY_FIRST_PROBE_TIME:
+                if state is NudState.DELAY and age >= delay_first_probe_time:
                     self._transition(entry, NudState.PROBE, now)
                     object.__setattr__(entry, "probe_count", 1)
                     cached_mac = entry.mac_address
@@ -441,20 +463,20 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 # callback (the protocol-side TX path may itself
                 # take other locks).
                 elif state is NudState.INCOMPLETE:
-                    if entry.probe_count >= nbr_const.NEIGHBOR__MAX_MULTICAST_SOLICIT:
+                    if entry.probe_count >= max_multicast_solicit:
                         self._transition(entry, NudState.FAILED, now)
                         continue
-                    if age >= nbr_const.NEIGHBOR__RETRANS_TIMER:
+                    if age >= retrans_timer:
                         object.__setattr__(entry, "probe_count", entry.probe_count + 1)
                         object.__setattr__(entry, "state_changed_at", now)
                         cached_mac = None
                     else:
                         continue
                 elif state is NudState.PROBE:
-                    if entry.probe_count >= nbr_const.NEIGHBOR__MAX_UNICAST_SOLICIT:
+                    if entry.probe_count >= max_unicast_solicit:
                         self._transition(entry, NudState.FAILED, now)
                         continue
-                    if age >= nbr_const.NEIGHBOR__RETRANS_TIMER:
+                    if age >= retrans_timer:
                         object.__setattr__(entry, "probe_count", entry.probe_count + 1)
                         object.__setattr__(entry, "state_changed_at", now)
                         cached_mac = entry.mac_address

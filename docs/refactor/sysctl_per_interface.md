@@ -2,7 +2,8 @@
 
 **Status:** Phase 0 SHIPPED 2026-05-28 (registry scaffold +
 24 tests + helper module). Phase 1 (ARP, 4 knobs) SHIPPED
-2026-05-28. Phases 2-5 remain. Successor to
+2026-05-28. Phase 2 (Neighbor cache, 6 knobs) SHIPPED
+2026-05-28. Phases 3-5 remain. Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -518,18 +519,55 @@ Migrated the 4 ARP conf-plane knobs:
 Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 5 new
 tests + 31 unit tests modernised, 11833 total green.
 
-### Phase 2 — Neighbor cache (1 commit, 6 knobs)
+### Phase 2 — Neighbor cache (SHIPPED 2026-05-28)
 
-Migrate 6 of 10 `neighbor.*` knobs (the per-interface subset).
-Leave `gc_thresh{1,2,3}` and `gc_stale_time` flat (table-wide).
+Migrated 6 of 10 `neighbor.*` knobs (the per-interface
+subset). The four table-wide GC knobs (`gc_thresh{1,2,3}` +
+`gc_stale_time`) stay flat — Linux runs neighbour-table GC
+over the unified table.
 
-- Storage: 6 dict promotions in `lib/neighbor__constants.py`.
-- Consumers: `NeighborCache` and its `ArpCache` / `NdCache`
-  adapters thread the interface name through their existing
-  `_interface_name` attribute (already set per-instance, one
-  cache per interface).
-- Tests: per-interface override test; existing NUD tests stay
-  green.
+- Storage: 6 dict promotions in `lib/neighbor__constants.py`
+  (`NEIGHBOR__REACHABLE_TIME`,
+  `NEIGHBOR__DELAY_FIRST_PROBE_TIME`,
+  `NEIGHBOR__RETRANS_TIMER`,
+  `NEIGHBOR__MAX_UNICAST_SOLICIT`,
+  `NEIGHBOR__MAX_MULTICAST_SOLICIT`,
+  `NEIGHBOR__UNRES_QLEN`) → `dict[str, int]` with
+  `{"default": <value>}` initial state. The four GC knobs
+  remain plain `int`.
+- Plumbing: `NeighborCache` base gains a class-level
+  `_iface_name: str | None = None` attribute. `stack/lifecycle.py`
+  sets `arp_cache._iface_name = interface_name` /
+  `nd_cache._iface_name = interface_name` right after the
+  `_owner` binding (both L2 and L3 paths).
+- Consumers (6 sites in `lib/neighbor.py`): the FSM loop
+  resolves all five timing knobs once per iteration through
+  `sysctl_iface.get_for_iface("neighbor.<field>", iface)`;
+  the `_enqueue_pending` consumer reads the queue cap the
+  same way.
+- New behavioural pin
+  `tests/unit/lib/test__lib__neighbor__sysctl_per_interface.py`
+  (4 tests, two-cache fixture binding `_iface_name` to
+  `"tap_a"` / `"tap_b"`): per-iface `unres_qlen` constrains
+  one cache's queue while the other inherits the default,
+  per-iface `reachable_time` flips one cache's
+  REACHABLE → STALE transition without affecting the other,
+  bare-base-key rejection, GC thresholds stay flat
+  (per-iface form on a flat key rejected).
+- Existing tests updated in lockstep:
+  - `tests/unit/lib/test__lib__neighbor.py` —
+    `"neighbor.reachable_time"` / `"neighbor.unres_qlen"`
+    overrides became `"neighbor.default.X"`; default-value
+    check reads `NEIGHBOR__REACHABLE_TIME["default"]`.
+  - `tests/unit/stack/test__stack__init.py` — two
+    `assertGreater(NEIGHBOR__X, 0)` checks updated to
+    `NEIGHBOR__X["default"]`.
+  - `tests/unit/protocols/arp/test__arp__cache.py`,
+    `tests/unit/protocols/icmp6/nd/test__nd__cache.py` —
+    bare-base override → `"neighbor.default.reachable_time"`.
+
+Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 4 new
+tests, 11838 total green.
 
 ### Phase 3 — ICMPv6 / ND (1 commit, 22 knobs)
 

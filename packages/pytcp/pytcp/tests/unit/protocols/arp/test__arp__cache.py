@@ -173,7 +173,7 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
         # Drive entry to STALE manually, then confirm.
         with patch("pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache.add_entry(ip4_address=ip, mac_address=mac)
-        with sysctl_module.override("neighbor.reachable_time", 1):
+        with sysctl_module.override("neighbor.default.reachable_time", 1):
             with patch("pytcp.lib.neighbor.time.monotonic", return_value=1100.0):
                 with patch.object(
                     self._cache._event__stop_subsystem,
