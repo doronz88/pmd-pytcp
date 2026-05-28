@@ -1,18 +1,19 @@
 # PyTCP sysctl migration — current state + remaining work
 
-**Status:** audit 2026-05-28; TCP migrated 2026-05-28.
-Companion to `docs/refactor/sysctl_framework.md` (the framework
-design and the Phase-1/Phase-2 retrospective). This document is
-the "what's left" ledger.
+**Status:** audit 2026-05-28; TCP + ICMP rate-limiter
+migrated 2026-05-28. Companion to
+`docs/refactor/sysctl_framework.md` (the framework design and
+the Phase-1/Phase-2 retrospective). This document is the
+"what's left" ledger.
 
 ## 0. TL;DR
 
-11 of 11 `*__constants.py` modules are now fully migrated
-(TCP landed 2026-05-28). The ICMPv6/ND module is
-functionally complete (22/23 — the one remaining constant
-is an RFC-pinned invariant that correctly stays static).
-Two migration targets remain, both deferred-by-design per
-the framework's "migrate-when-touched" rule, not by
+12 of 12 `*__constants.py` modules are now fully migrated
+(TCP + ICMP rate-limiter landed 2026-05-28). The ICMPv6/ND
+module is functionally complete (22/23 — the one remaining
+constant is an RFC-pinned invariant that correctly stays
+static). One migration target remains, deferred-by-design
+per the framework's "migrate-when-touched" rule, not by
 oversight:
 
 1. ~~**`protocols/tcp/tcp__constants.py`** — 10 policy knobs.~~
@@ -20,8 +21,10 @@ oversight:
    `TCP__<SUBJECT>__<FIELD>` per `source_files.md` §7 and
    registered all ten with the sysctl framework in one
    atomic commit. See §4 below for the per-knob inventory.
-2. **`protocols/icmp/icmp__constants.py`** — 2 knobs (the
-   shared ICMP error rate-limiter).
+2. ~~**`protocols/icmp/icmp__constants.py`** — 2 knobs.~~
+   **SHIPPED 2026-05-28.** Renamed `ICMP_ERROR__X` to the
+   canonical `ICMP__ERROR__X` form and registered both
+   knobs with the sysctl framework. See §3 below.
 3. **`stack/__init__.py`** — 4 policy constants (accept-
    source-route + fragment-flow-timeout v4/v6 + ephemeral
    port range).
@@ -46,7 +49,7 @@ sweep when an operator wants to.
 | `protocols/ip4/link_local/link_local__constants.py` | 3 | 3 | ✅ full |
 | `protocols/ip6/ip6__constants.py` | 4 | 4 | ✅ full |
 | `protocols/tcp/tcp__constants.py` | 10 | 10 | ✅ full — shipped 2026-05-28 |
-| **`protocols/icmp/icmp__constants.py`** | **2** | **0** | ❌ §3 |
+| `protocols/icmp/icmp__constants.py` | 2 | 2 | ✅ full — shipped 2026-05-28 |
 | **`stack/__init__.py`** | **~4 policy + others static-by-design** | **0** | ❌ §5 |
 
 ## 2. Effectively-complete cases (no action needed)
@@ -60,31 +63,47 @@ heuristic ("if Linux uses `#define`, it's invariant"), it
 correctly stays as a plain module-level constant. No
 action.
 
-## 3. ICMP error rate-limiter — `protocols/icmp/icmp__constants.py`
+## 3. ICMP error rate-limiter — `protocols/icmp/icmp__constants.py` ✅ shipped 2026-05-28
 
-Two knobs, both registered with the shared rate-limiter
-that powers ICMPv4 + ICMPv6 error origination.
+Two knobs registered + the bare-name pattern normalised to
+`ICMP__ERROR__<FIELD>` (was `ICMP_ERROR__<FIELD>`, with a
+single underscore between `ICMP` and `ERROR`) so the
+attribute hierarchy mirrors the dotted sysctl key
+`icmp.error.<field>` exactly, parallel to TCP's
+`TCP__<SUBJECT>__<FIELD>` convention.
 
-| Current constant | Value | Proposed sysctl key | Validator | Linux equivalent | RFC citation |
+| Current constant | Value | Sysctl key | Validator | Linux equivalent | RFC citation |
 |---|---|---|---|---|---|
-| `ICMP_ERROR__RATE_PPS` | 100 | `icmp.error.rate_pps` | positive int | `net.ipv4.icmp_ratelimit` (1000 ms / N tokens); IPv6 `net.ipv6.icmp.ratelimit` is the same shape | RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) |
-| `ICMP_ERROR__BURST` | 50 | `icmp.error.burst` | positive int | `net.ipv4.icmp_msgs_burst` (5.x kernels) | n/a (RFC permits implementation choice) |
+| `ICMP__ERROR__RATE_PPS` | 100 | `icmp.error.rate_pps` | positive int | `net.ipv4.icmp_ratelimit` (1000 ms / N tokens); IPv6 `net.ipv6.icmp.ratelimit` is the same shape | RFC 1812 §4.3.2.8 / RFC 4443 §2.4(f) |
+| `ICMP__ERROR__BURST` | 50 | `icmp.error.burst` | positive int | `net.ipv4.icmp_msgs_burst` (5.x kernels) | n/a (RFC permits implementation choice) |
 
 Sysctl-naming note: Linux uses `icmp_ratelimit` (period in
 ms — tokens per second is `1000 / period`). PyTCP's
-`ICMP_ERROR__RATE_PPS` is more direct (packets per
-second). Keep PyTCP's `rate_pps` semantics; document the
-Linux mapping in the `description=` field.
+`ICMP__ERROR__RATE_PPS` is more direct (packets per
+second). PyTCP's `rate_pps` semantics are kept; the Linux
+mapping is documented in the `description=` field of the
+registration.
 
-No explicit `stack.init()` kwarg needed — niche knob;
-operators reach it via `sysctls={"icmp.error.rate_pps": ...}`
-or `pytcp.stack.sysctl["icmp.error.rate_pps"] = N`.
+**Behaviour preserved** — every existing ICMP / TCP test
+continues passing because:
 
-Single-commit migration. Test pin already exists at
-`tests/unit/protocols/icmp/test__icmp__error_emitter__rate_limiter.py`
-(the §I1 no-GIL lock-discipline test); confirm it keeps
-passing through qualified-module-access reads from the rate
-limiter.
+- `IcmpErrorRateLimiter.__init__` was updated to default
+  the `rate_pps` / `burst` kwargs to `None` and resolve
+  via qualified module access
+  (`icmp__constants.ICMP__ERROR__RATE_PPS` /
+  `..ICMP__ERROR__BURST`) inside the body. This makes
+  operators tuning the sysctl BEFORE the limiter is
+  constructed see the override take effect on the resulting
+  instance (the previous `: int = ICMP_ERROR__RATE_PPS`
+  default-argument form bound at module-import time and
+  would not have re-resolved on a later sysctl override).
+- The §I1 no-GIL lock-discipline test at
+  `tests/unit/protocols/icmp/test__icmp__error_emitter__rate_limiter.py`
+  exercises the limiter end-to-end and continues passing
+  through qualified-module-access reads.
+
+No explicit `stack.init()` kwarg — niche knob, matches
+the bag-only pattern of every other migrated package.
 
 ## 4. TCP — `protocols/tcp/tcp__constants.py` ✅ shipped 2026-05-28
 
@@ -239,9 +258,9 @@ choice in the commit body.
 1. ~~**TCP** (§4)~~ — **SHIPPED 2026-05-28.** Naming +
    registration landed in one atomic commit; 16 files
    touched (10 source + 5 source-test pairs).
-2. **ICMP rate-limiter** (§3) — small (2 knobs); pairs
-   well as a follow-up because the I1 no-GIL test already
-   covers it.
+2. ~~**ICMP rate-limiter** (§3)~~ — **SHIPPED 2026-05-28.**
+   Naming + registration + rate-limiter constructor
+   refresh landed in one atomic commit.
 3. **Stack-wide** (§5) — smallest, 4 knobs; needs the
    `sysctl_seeds.py` (or equivalent) decision.
 
@@ -292,8 +311,8 @@ The sysctl-migration track is closed when:
 1. ~~`protocols/tcp/tcp__constants.py` has every policy
    constant registered + renamed to the
    `TCP__<SUBJECT>__<FIELD>` convention.~~ **DONE 2026-05-28.**
-2. `protocols/icmp/icmp__constants.py` has both knobs
-   registered.
+2. ~~`protocols/icmp/icmp__constants.py` has both knobs
+   registered.~~ **DONE 2026-05-28.**
 3. `stack/__init__.py`'s four policy candidates are
    registered (via whichever seeds module the migration
    commit chooses).

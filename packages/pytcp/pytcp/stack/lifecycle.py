@@ -524,6 +524,7 @@ def init(
     # registry is populated before we set anything.
     from pytcp.lib import neighbor__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.arp import arp__constants  # noqa: F401  pylint: disable=unused-import
+    from pytcp.protocols.icmp import icmp__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.icmp6.nd import nd__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.ip4 import ip4__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.protocols.ip4.link_local import (  # noqa: F401  pylint: disable=unused-import

@@ -36,10 +36,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import override
 
-from pytcp.protocols.icmp.icmp__constants import (
-    ICMP_ERROR__BURST,
-    ICMP_ERROR__RATE_PPS,
-)
+from pytcp.protocols.icmp import icmp__constants
 
 
 class IcmpErrorBlockReason(IntEnum):
@@ -128,12 +125,22 @@ class IcmpErrorRateLimiter:
     def __init__(
         self,
         *,
-        rate_pps: int = ICMP_ERROR__RATE_PPS,
-        burst: int = ICMP_ERROR__BURST,
+        rate_pps: int | None = None,
+        burst: int | None = None,
     ) -> None:
         """
-        Initialize the ICMP error rate limiter.
+        Initialize the ICMP error rate limiter. With no explicit
+        'rate_pps' / 'burst' kwargs, read the LIVE sysctl-backed
+        defaults via qualified module access so operators tuning
+        the sysctl BEFORE construction (e.g. via
+        'stack.init(sysctls={"icmp.error.rate_pps": ...})') see the
+        override take effect on this instance.
         """
+
+        if rate_pps is None:
+            rate_pps = icmp__constants.ICMP__ERROR__RATE_PPS
+        if burst is None:
+            burst = icmp__constants.ICMP__ERROR__BURST
 
         assert rate_pps > 0, f"The 'rate_pps' field must be positive. Got: {rate_pps!r}"
         assert burst > 0, f"The 'burst' field must be positive. Got: {burst!r}"

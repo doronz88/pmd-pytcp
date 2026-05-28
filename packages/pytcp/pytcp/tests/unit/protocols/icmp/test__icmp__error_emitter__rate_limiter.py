@@ -37,8 +37,8 @@ from unittest import TestCase
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pytcp.protocols.icmp.icmp__constants import (
-    ICMP_ERROR__BURST,
-    ICMP_ERROR__RATE_PPS,
+    ICMP__ERROR__BURST,
+    ICMP__ERROR__RATE_PPS,
 )
 from pytcp.protocols.icmp.icmp__error_emitter import (
     IcmpErrorRateLimiter,
@@ -91,8 +91,8 @@ class _TrackingLock:
             "_description": "Construct with default rate and burst.",
             "_kwargs": {},
             "_results": {
-                "rate_pps": ICMP_ERROR__RATE_PPS,
-                "burst": ICMP_ERROR__BURST,
+                "rate_pps": ICMP__ERROR__RATE_PPS,
+                "burst": ICMP__ERROR__BURST,
             },
         },
     ]
