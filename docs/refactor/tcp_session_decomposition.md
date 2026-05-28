@@ -16,21 +16,34 @@ deferral noted in `no_gil_thread_safety_audit.md` §3 (item T2).
   `emit_challenge_ack`. Session keeps thin delegators
   (`_transmit_packet`/`_transmit_data`/etc.). Pure structural
   extraction — no behaviour or lock change.
-- **Phase 3 — `TcpAckProcessor`: SHIPPED.** 6 methods + ~690
-  LOC moved to `session/tcp__session__ack.py`:
+- **Phase 3 — `TcpAckProcessor`: SHIPPED.** Commit `5492c4d1`.
+  6 methods + ~690 LOC moved to `session/tcp__session__ack.py`:
   `process_ack_packet` + the five `_phase1..5` inbound-ACK
   helpers (cum-ACK side effects, F-RTO spurious-RTO detection,
   RTT-sample harvest, loss-detection + recovery-exit, segment
   consume + delayed-ACK postprocess). Session keeps the thin
   `_process_ack_packet` delegator. Pure structural extraction —
-  no behaviour or lock change. 11751 tests passing (+3
-  collaborator-seam parity tests at
-  `test__tcp__session__ack_processor.py`).
-- Phases 4-5 (SegmentValidator, Retransmitter) pending.
+  no behaviour or lock change.
+- **Phase 4 — `TcpSegmentValidator`: SHIPPED.** 5 methods +
+  ~310 LOC moved to `session/tcp__session__validate.py`:
+  `is_seq_in_window` (public, called from ICMP RX handlers) +
+  `check_segment_acceptability` + `check_paws_and_update_ts_recent`
+  + `check_rst_acceptability` + `reinit_for_rfc6191_reuse`.
+  Session keeps thin delegators (`is_seq_in_window` public;
+  `_check_segment_acceptability` / `_check_paws_and_update_ts_recent`
+  / `_check_rst_acceptability` / `_reinit_for_rfc6191_reuse`
+  private). Pure structural extraction — no behaviour or lock
+  change. 11754 tests passing (+3 collaborator-seam parity
+  tests at `test__tcp__session__validator.py`).
+- Phase 5 (`TcpRetransmitter`) pending.
 
 **Session line-count progression:** 4423 (start) → 4435
 (Phase 1 +12 wiring) → 3380 (Phase 2 -1055) → 2683 (Phase 3
--697). Target after Phase 5: ~800-1000 lines.
+-697) → 2373 (Phase 4 -310). Target after Phase 5:
+~1500-1700 lines (well under the original 4423 even after
+keeping the BSD-facade methods, `tcp_fsm` gateway, RX-buffer/
+SACK-ingest helpers, and the keepalive / hystart / neighbor
+helpers on the session).
 
 ## 1. Why
 
@@ -201,10 +214,25 @@ and advances RCV.NXT (Phase 5 consume), and the delegator
 invokes the engine's `process_ack_packet` with the same packet
 object (no shadow path).
 
-### Phase 4 — `TcpSegmentValidator`
-Move `_check_segment_acceptability` / PAWS / RST-acceptability /
-`is_seq_in_window` / `_reinit_for_rfc6191_reuse`. Self-contained
-read-mostly validation.
+### Phase 4 — `TcpSegmentValidator` ✅ SHIPPED 2026-05-27
+Moved `is_seq_in_window` (public, RFC 5927 §4 — called from
+ICMP4/ICMP6 RX handlers), `_check_segment_acceptability`
+(RFC 9293 §3.10.7.4 step 1), `_check_paws_and_update_ts_recent`
+(RFC 7323 §5 PAWS + §4.3 _ts_recent refresh),
+`_check_rst_acceptability` (RFC 9293 §3.10.7.4 / RFC 5961 §3.2
+three-way RST), and `_reinit_for_rfc6191_reuse` (RFC 6191 §3
+TIME-WAIT 4-tuple reuse re-init) into `TcpSegmentValidator`
+at `session/tcp__session__validate.py`. Session keeps thin
+delegators (`is_seq_in_window` public; the four underscore
+methods private). Pure structural extraction — no behaviour
+or lock change. Pinned by `test__tcp__session__validator.py`
+(3 seam tests): session owns a `TcpSegmentValidator` reachable
+as `session._validator`, back-reference correct, the public
+`is_seq_in_window` delegator and the engine's helper agree on
+both in-window and out-of-window seq values, and the
+`_check_segment_acceptability` delegator invokes the engine's
+`check_segment_acceptability` with the same packet object (no
+shadow path).
 
 ### Phase 5 — `TcpRetransmitter`
 Move `_retransmit_packet_timeout` / `_retransmit_packet_request` +

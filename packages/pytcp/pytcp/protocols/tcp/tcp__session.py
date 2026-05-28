@@ -38,7 +38,6 @@ import time
 from typing import TYPE_CHECKING, override
 
 from net_addr import Ip4Address, Ip6Address
-from net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
@@ -49,6 +48,7 @@ from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_
 from pytcp.protocols.tcp.session.tcp__session__ack import TcpAckProcessor
 from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
 from pytcp.protocols.tcp.session.tcp__session__tx import TcpTxEngine
+from pytcp.protocols.tcp.session.tcp__session__validate import TcpSegmentValidator
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__advertise import AdvertiseState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
@@ -97,7 +97,7 @@ from pytcp.protocols.tcp.tcp__rack import (
 )
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
-from pytcp.protocols.tcp.tcp__seq import Seq32, add32, gt32, in_range32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__seq import Seq32, gt32, le32, lt32, sub32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -520,6 +520,16 @@ class TcpSession:
         # consume + delayed-ACK postprocess). Phase 3 of the
         # TcpSession god-class decomposition.
         self._ack_processor: TcpAckProcessor = TcpAckProcessor(self)
+
+        # Per-session segment validator — owns the read-mostly
+        # acceptability checks (RFC 9293 §3.10.7.4 step 1
+        # segment acceptability, RFC 7323 §5 PAWS + §4.3
+        # '_ts_recent' refresh, RFC 9293 / RFC 5961 §3.2 RST
+        # acceptability, RFC 5927 §4 ICMP-embedded-seq
+        # acceptability) plus the RFC 6191 §3 4-tuple-reuse
+        # re-initialisation helper. Phase 4 of the TcpSession
+        # god-class decomposition.
+        self._validator: TcpSegmentValidator = TcpSegmentValidator(self)
 
     def _egress_interface_mtu(self) -> int:
         """
@@ -952,25 +962,12 @@ class TcpSession:
 
     def is_seq_in_window(self, seq: int) -> bool:
         """
-        Return True when 'seq' falls in the SND.UNA..SND.NXT range —
-        the RFC 5927 §4 acceptability check for an ICMP error
-        targeting an embedded TCP segment. ICMP RX handlers call this
-        before notifying the session so an off-path attacker cannot
-        forge an error for an arbitrary 4-tuple.
-
-        For unsynchronized states (no SND.NXT yet) the check accepts
-        anything since no flight is outstanding to validate against.
-
-        Reference: RFC 5927 §4 (ICMP attacks against TCP).
+        Return True when 'seq' falls in the SND.UNA..SND.NXT range
+        (RFC 5927 §4 ICMP-embedded-seq acceptability). Thin
+        delegator over 'TcpSegmentValidator.is_seq_in_window'.
         """
 
-        if self._snd_seq.nxt == 0 and self._snd_seq.una == 0:
-            return True
-
-        # Modular comparison via Seq32 wrap-aware arithmetic.
-        if self._snd_seq.una <= self._snd_seq.nxt:
-            return self._snd_seq.una <= seq <= self._snd_seq.nxt
-        return seq >= self._snd_seq.una or seq <= self._snd_seq.nxt
+        return self._validator.is_seq_in_window(seq)
 
     def _apply_pmtu_update(self, *, next_hop_mtu: int, ip_version: int) -> None:
         """
@@ -1152,353 +1149,39 @@ class TcpSession:
 
     def _check_segment_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
         """
-        Apply the RFC 9293 §3.10.7.4 step 1 receive-window
-        acceptability check to an inbound segment. Return True
-        when the segment is acceptable (caller should continue
-        processing); return False when the segment is
-        unacceptable (caller MUST drop and return - this method
-        has already emitted the mandated ACK reply).
-
-        Acceptability table (RFC 9293 §3.10.7.4):
-
-            SEG.LEN == 0:
-              RCV.WND > 0  -> RCV.NXT <= SEG.SEQ <= RCV.NXT+RCV.WND
-              RCV.WND == 0 -> SEG.SEQ == RCV.NXT
-            SEG.LEN > 0:
-              RCV.WND > 0  -> SEG.SEQ < RCV.NXT+RCV.WND AND
-                              SEG.SEQ + SEG.LEN > RCV.NXT
-              RCV.WND == 0 -> not acceptable
-
-        SEG.LEN here counts data plus the SYN / FIN flag bytes
-        that also consume sequence space. All comparisons are
-        modular per RFC 9293 §3.4.
-
-        On unacceptable segments the spec mandates an ACK reply
-        carrying our current SND.NXT / RCV.NXT, EXCEPT when the
-        segment carries RST (RFC 9293 §3.10.7.4 step 1 explicit
-        RST clause: 'unless the RST bit is set, if so drop the
-        segment and return' - replying with an ACK to a blind
-        RST would amplify a possible attack).
-
-        RFC 2883 DSACK case 1: when bilateral SACK is enabled
-        and the unacceptable segment is a fully-duplicate data
-        retransmit (entirely below RCV.NXT), stash the
-        duplicated range as a pending DSACK so the next
-        outbound ACK reports it as the FIRST SACK block.
+        RFC 9293 §3.10.7.4 step 1 receive-window acceptability
+        check. Thin delegator over
+        'TcpSegmentValidator.check_segment_acceptability'.
         """
 
-        seg_len = len(packet_rx_md.tcp__data) + packet_rx_md.tcp__flag_syn + packet_rx_md.tcp__flag_fin
-        seg_end = add32(packet_rx_md.tcp__seq, seg_len)
-        if seg_len == 0:
-            if self._rcv_wnd > 0:
-                acceptable = in_range32(
-                    packet_rx_md.tcp__seq, self._rcv_seq.nxt, add32(self._rcv_seq.nxt, self._rcv_wnd)
-                )
-            else:
-                acceptable = packet_rx_md.tcp__seq == self._rcv_seq.nxt
-        else:
-            if self._rcv_wnd > 0:
-                acceptable = lt32(packet_rx_md.tcp__seq, add32(self._rcv_seq.nxt, self._rcv_wnd)) and gt32(
-                    seg_end, self._rcv_seq.nxt
-                )
-            else:
-                acceptable = False
-
-        if acceptable:
-            return True
-
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Packet seq {packet_rx_md.tcp__seq} + " f"{seg_len} doesn't fit into receive window, dropping",
-        )
-        # RFC 9293 §3.10.7.4 step 1 RST exception: an
-        # unacceptable RST is dropped silently to avoid an
-        # ACK-amplification path against blind off-path
-        # attackers.
-        if packet_rx_md.tcp__flag_rst:
-            return False
-        # RFC 2883 DSACK case 1: stash the duplicate range so
-        # the ACK below reports it as the FIRST SACK block.
-        if (
-            self._advertise.send_sack
-            and len(packet_rx_md.tcp__data) > 0
-            and lt32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
-            and le32(seg_end, self._rcv_seq.nxt)
-        ):
-            self._pending_dsack = (packet_rx_md.tcp__seq, seg_end)
-        # RFC 9293 §3.10.7.4 step 1: ACK the unacceptable
-        # segment so peer's retransmit machinery sees fresh
-        # activity and can stop retransmitting. Rate-limited
-        # per RFC 5961 §3 so a burst of unacceptable segments
-        # cannot amplify into an outbound ACK flood.
-        self._emit_challenge_ack()
-        return False
+        return self._validator.check_segment_acceptability(packet_rx_md)
 
     def _check_paws_and_update_ts_recent(self, packet_rx_md: TcpMetadata) -> bool:
         """
-        RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh as a
-        single helper invoked at every inbound dispatch
-        boundary. Returns True when the segment passes PAWS
-        (caller may continue normal processing) and False
-        when the segment must be silently dropped per §5.4.
-
-        Side effect: on a non-stale segment carrying TSopt,
-        '_ts_recent' is refreshed to the segment's TSval.
-
-        Bilateral-success-gated: returns True (and skips both
-        the PAWS check and the '_ts_recent' update) when
-        '_send_ts' is False or the inbound segment carries no
-        TSopt. Legacy non-TSopt peers fall through unchanged.
-
-        Modular comparison via 'lt32' so the check is correct
-        across the 32-bit TSval clock wrap (24 days at 1 ms
-        granularity).
+        RFC 7323 §5 PAWS + §4.3 '_ts_recent' refresh. Thin
+        delegator over
+        'TcpSegmentValidator.check_paws_and_update_ts_recent'.
         """
 
-        if not self._ts.send_ts:
-            return True
-        # RFC 7323 §3.2: "If a non-<RST> segment is received
-        # without a TSopt, a TCP SHOULD silently drop the
-        # segment." The SHOULD applies to in-stream segments;
-        # SYN-bearing segments are exempt because they may
-        # legitimately re-initiate (RFC 6191 §3 4-tuple reuse,
-        # RFC 9293 §3.10.7.4 SYN-in-synchronized challenge-ACK
-        # path) and the per-segment TSopt expectation has not
-        # yet been re-established for the new incarnation.
-        if packet_rx_md.tcp__tsval is None:
-            if packet_rx_md.tcp__flag_syn:
-                return True
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - PAWS: silently dropping segment "
-                "missing TSopt on TS-negotiated session "
-                "(RFC 7323 §3.2 SHOULD)",
-            )
-            return False
-        # RFC 7323 §4.3 rule (2) Last.ACK.sent gate: TS.Recent
-        # is only refreshed when SEG.SEQ <= Last.ACK.sent so an
-        # OOO segment cannot inflate TS.Recent and corrupt the
-        # TSecr echoed back to the peer's RTT estimator. Last.
-        # ACK.sent equals RCV.NXT at the moment of our last
-        # outbound ACK and is monotone non-decreasing; using
-        # the current RCV.NXT as the upper bound is a tightening
-        # safe approximation (it can only suppress refreshes
-        # that the strict algorithm would also suppress, never
-        # the reverse). SYN-bearing segments are exempt: they
-        # establish (or, on RFC 6191 §3 reuse, re-establish)
-        # the connection's TS.Recent and the §4.3 algorithm
-        # assumes a stable seq-space relationship that has not
-        # yet been negotiated for the new incarnation.
-        ts_recent_refresh_gate_ok = packet_rx_md.tcp__flag_syn or le32(packet_rx_md.tcp__seq, self._rcv_seq.nxt)
-        if lt32(packet_rx_md.tcp__tsval, self._ts.ts_recent):
-            # RFC 7323 §5.5 outdated-timestamps mitigation:
-            # if the connection has been idle longer than the
-            # 24-day threshold, 'TS.Recent' MUST be treated as
-            # invalidated and the segment accepted (rule R3
-            # then refreshes TS.Recent with the segment's
-            # TSval). Without this gate, a recovered idle
-            # connection past the 24-day mark would freeze
-            # because every subsequent segment's TSval would
-            # appear stale until the peer's TS clock wrapped
-            # its sign bit. The check requires a non-zero
-            # last-update timestamp so freshly-handshaked
-            # sessions (initialised to 0) cannot trigger
-            # the mitigation spuriously.
-            if (
-                self._ts.ts_recent_updated_at_ms != 0
-                and stack.timer.now_ms - self._ts.ts_recent_updated_at_ms
-                > tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS
-            ):
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - PAWS: TS.Recent outdated past "
-                    f"{tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS} ms idle threshold, "
-                    "accepting segment per RFC 7323 §5.5 mitigation "
-                    f"(tsval={packet_rx_md.tcp__tsval}, "
-                    f"_ts_recent={self._ts.ts_recent})",
-                )
-                self._ts.update(tsval=packet_rx_md.tcp__tsval, now_ms=stack.timer.now_ms)
-                return True
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - PAWS: dropping stale-TSval segment "
-                f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
-                f"{self._ts.ts_recent})",
-            )
-            # RFC 7323 §5.3 R1: "Send an acknowledgment in
-            # reply" on the PAWS-stale drop so the peer can
-            # recover its sender state without waiting for its
-            # own RTO. Reuses the rate-limited challenge-ACK
-            # emit which is the canonical "ACK at SND.NXT,
-            # RCV.NXT" wire shape.
-            self._emit_challenge_ack()
-            return False
-        if ts_recent_refresh_gate_ok:
-            self._ts.update(tsval=packet_rx_md.tcp__tsval, now_ms=stack.timer.now_ms)
-        return True
+        return self._validator.check_paws_and_update_ts_recent(packet_rx_md)
 
     def _check_rst_acceptability(self, packet_rx_md: TcpMetadata) -> bool:
         """
-        RFC 9293 §3.10.7.4 / RFC 5961 §3.2 three-way RST handling
-        for synchronized states. Returns True when the inbound
-        RST is in-window AND its 'seq' exactly matches RCV.NXT
-        (case 1: caller MUST reset the connection via state ->
-        CLOSED). Returns False otherwise; if the segment was
-        in-window but its seq did not match RCV.NXT (case 2),
-        this method has already emitted a rate-limited challenge
-        ACK so a legitimate peer can retransmit at the right
-        seq, while a blind off-path attacker cannot leverage the
-        silent drop. Out-of-window RSTs (case 3) fall through to
-        silent drop with no reply.
-
-        The 'ack' field is also validated against
-        '[SND.UNA, SND.MAX]' for case 1 to preserve the
-        defensive guard the per-state RST handlers carried
-        previously; an RST whose ack value implausibly points
-        at unsent data is treated like a case-3 out-of-window
-        drop. RFC 9293 does not strictly require this guard but
-        the conservative behaviour is harmless and matches the
-        pre-helper code's invariant.
+        RFC 9293 §3.10.7.4 / RFC 5961 §3.2 three-way RST handling.
+        Thin delegator over
+        'TcpSegmentValidator.check_rst_acceptability'.
         """
 
-        seq = packet_rx_md.tcp__seq
-        # The 'ack' field is only meaningful when the ACK flag is
-        # set (RFC 9293 §3.1). A bare RST carries no ack value;
-        # the in-range guard is skipped in that case so the
-        # case-1 reset path remains reachable for peer TCPs that
-        # send bare RST instead of the more common RST+ACK.
-        ack_acceptable = (not packet_rx_md.tcp__flag_ack) or in_range32(
-            packet_rx_md.tcp__ack, self._snd_seq.una, self._snd_seq.max
-        )
-        if seq == self._rcv_seq.nxt and ack_acceptable:
-            return True
-        if lt32(self._rcv_seq.nxt, seq) and lt32(seq, add32(self._rcv_seq.nxt, self._rcv_wnd)):
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - In-window mismatched RST (seq={seq}, RCV.NXT={self._rcv_seq.nxt}); challenge-ACK",
-            )
-            self._emit_challenge_ack()
-        return False
+        return self._validator.check_rst_acceptability(packet_rx_md)
 
     def _reinit_for_rfc6191_reuse(self, packet_rx_md: TcpMetadata) -> None:
         """
-        RFC 6191 §3 TIME-WAIT 4-tuple reuse: re-initialise
-        this session's runtime state in place so a fresh
-        three-way handshake can proceed against peer's new
-        SYN. The 4-tuple is unchanged (RFC 6191 reuse
-        applies on the same 4-tuple); the helper resets
-        send-side seq state to a fresh ISS, refreshes
-        peer-derived parameters (MSS / window / WSCALE /
-        SACK / TSopt) from the inbound SYN, clears the
-        previous-incarnation buffers and recovery state, and
-        cancels every per-session timer the prior incarnation
-        may have armed.
-
-        After the helper returns, the caller transitions to
-        SYN_RCVD and emits the SYN+ACK. The previously-
-        registered 'TIME-WAIT' timer is dropped via the
-        prefix-keyed unregister so any other per-session
-        timers (delayed-ACK, retransmit, persist, keep-
-        alive) are also cleared - they would otherwise fire
-        against the stale state of the prior connection.
+        RFC 6191 §3 TIME-WAIT 4-tuple reuse re-initialisation.
+        Thin delegator over
+        'TcpSegmentValidator.reinit_for_rfc6191_reuse'.
         """
 
-        # Cancel every per-session logical timer the prior
-        # incarnation may have armed (TIME-WAIT, retransmit,
-        # delayed-ACK, persist, keep-alive, challenge-ACK).
-        self._cancel_all_timers()
-
-        # Fresh ISS for the new incarnation. The 4-tuple is
-        # unchanged but the time-driven 'M' clock advance in
-        # 'compute_iss' guarantees a different ISS from the
-        # previous incarnation, preserving RFC 6528's blind-
-        # injection defence across the reuse boundary.
-        new_iss = compute_iss(
-            local_address=self._local_ip_address,
-            local_port=self._local_port,
-            remote_address=self._remote_ip_address,
-            remote_port=self._remote_port,
-            secret=stack.TCP__ISS_SECRET,
-            clock_us=time.monotonic_ns() // 1000,
-        )
-        self._snd_seq.ini = new_iss
-        self._snd_seq.una = new_iss
-        self._snd_seq.nxt = new_iss
-        self._snd_seq.max = new_iss
-        self._snd_seq.sml = new_iss
-        self._snd_seq.fin = 0
-        self._snd_seq.fin_sent = False
-        self._tx.seq_mod = new_iss
-
-        # Adopt peer's new SYN parameters. MSS is clamped to the
-        # RFC 879 / RFC 6691 bounds; an explicit floor at TCP__MIN_MSS
-        # treats peer-advertised 0 (or any malformed sub-floor value)
-        # as 'option absent'.
-        self._win.snd_mss = max(
-            TCP__MIN_MSS,
-            min(packet_rx_md.tcp__mss, self._egress_interface_mtu() - self._ip_tcp_overhead),
-        )
-        self._win.snd_wnd = packet_rx_md.tcp__win
-        self._win.max_window = self._win.snd_wnd
-
-        # Re-run the bilateral negotiation against peer's new SYN -
-        # WSCALE / SACK / TSopt may all differ between incarnations.
-        if self._advertise.wscale and packet_rx_md.tcp__wscale:
-            self._win.snd_wsc = packet_rx_md.tcp__wscale
-        else:
-            self._win.rcv_wsc = 0
-            self._win.snd_wsc = 0
-        self._advertise.send_sack = self._advertise.sack and packet_rx_md.tcp__sackperm
-        self._ts.send_ts = self._advertise.ts and packet_rx_md.tcp__tsval is not None
-        # '_ts_recent' was already refreshed to peer's new TSval
-        # by the PAWS helper in the FSM handler before this point.
-
-        # RFC 5681 §3.1 + RFC 6928 §2: reset cwnd to the post-handshake
-        # IW and ssthresh to the canonical large-constant default. The
-        # actual IW assignment happens at the SYN_RCVD -> ESTABLISHED
-        # transition; here we set the SYN-RCVD-phase value
-        # (one SMSS) so the outbound SYN+ACK is emitted correctly.
-        self._cc.cwnd = self._win.snd_mss
-        self._cc.ssthresh = 0x7FFF_FFFF
-        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
-
-        # Receive-side state from the new SYN.
-        self._rcv_seq.ini = packet_rx_md.tcp__seq
-        self._rcv_seq.nxt = add32(
-            packet_rx_md.tcp__seq,
-            packet_rx_md.tcp__flag_syn,
-            len(packet_rx_md.tcp__data),
-        )
-        self._rcv_seq.una = self._rcv_seq.nxt
-        self._peer_contacted = True
-
-        # Reset RFC 6298 RTO estimator + sample tracker so the new
-        # incarnation re-establishes its own RTT measurements.
-        self._rto_state = initial_state()
-        self._retransmit_count = 0
-        self._rtt.last_send_time_ms = None
-        self._rtt.clear()
-
-        # Clear SACK + DSACK + recovery state from the prior incarnation.
-        self._sack_scoreboard = SackScoreboard()
-        self._cc.recovery_point = 0
-        self._cc.recover_fs = 0
-        self._cc.prr_delivered = 0
-        self._cc.prr_out = 0
-        self._pending_dsack = None
-        self._dsack_received = 0
-
-        # Clear OOO queue + buffers (TIME-WAIT should already have
-        # them empty, but be defensive against state that an earlier
-        # bug or a spurious-FIN-retransmit path may have left).
-        self._ooo_packet_queue.clear()
-        self._tx.buffer.clear()
-        self._rx_buffer.clear()
-
-        # Queue any data the new SYN piggybacked (RFC 9293 §3.10.7.2
-        # step 3 permits this; rare but legal).
-        if packet_rx_md.tcp__data:
-            self._enqueue_rx_buffer(packet_rx_md.tcp__data)
+        self._validator.reinit_for_rfc6191_reuse(packet_rx_md)
 
     def _hystart_check_phase_transition(self) -> None:
         """
