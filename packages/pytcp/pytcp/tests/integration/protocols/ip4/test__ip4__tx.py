@@ -1667,7 +1667,7 @@ class TestIp4TxRfc919AllowBroadcast(Ip4TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("ip4.allow_broadcast", 1):
+        with sysctl_module.override("ip4.default.allow_broadcast", 1):
             tx_status = self._packet_handler._phtx_ip4(
                 ip4__src=STACK__IP4_HOST.address,
                 ip4__dst=IP4__BROADCAST__LIMITED,

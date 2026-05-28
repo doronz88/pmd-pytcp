@@ -55,7 +55,7 @@ class TestStackSysctlDefaults(NetworkTestCase):
         """
 
         self.assertIs(
-            sysctl.get("ip4.accept_source_route"),
+            sysctl.get("ip4.default.accept_source_route"),
             False,
             msg="ip4.accept_source_route must default to False.",
         )
@@ -125,22 +125,23 @@ class TestStackSysctlOverrides(NetworkTestCase):
 
     def test__stack__sysctl__ip4_accept_source_route_override_updates_attr(self) -> None:
         """
-        Ensure overriding 'ip4.accept_source_route' writes through to
-        the backing 'IP4__ACCEPT_SOURCE_ROUTE' module attribute that
-        the IPv4 RX handler reads via 'stack.IP4__ACCEPT_SOURCE_ROUTE'.
+        Ensure overriding 'ip4.default.accept_source_route' writes
+        through to the 'IP4__ACCEPT_SOURCE_ROUTE["default"]' slot of
+        the per-interface storage dict that the IPv4 RX handler reads
+        via 'sysctl_iface.get_for_iface' (Linux per-interface scope).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with sysctl.override("ip4.accept_source_route", True):
+        with sysctl.override("ip4.default.accept_source_route", True):
             self.assertIs(
-                stack.IP4__ACCEPT_SOURCE_ROUTE,
+                stack.IP4__ACCEPT_SOURCE_ROUTE["default"],
                 True,
-                msg="Override must flip the backing attribute to True.",
+                msg="Override must flip the 'default' slot to True.",
             )
 
         self.assertIs(
-            stack.IP4__ACCEPT_SOURCE_ROUTE,
+            stack.IP4__ACCEPT_SOURCE_ROUTE["default"],
             False,
             msg="Override exit must restore the registered default.",
         )
@@ -183,9 +184,10 @@ class TestStackSysctlValidators(NetworkTestCase):
 
     def test__stack__sysctl__ip4_accept_source_route_rejects_non_bool(self) -> None:
         """
-        Ensure 'ip4.accept_source_route' rejects non-bool values —
-        the knob is a clean 0/1 switch and non-bool values would
-        muddle the semantics.
+        Ensure 'ip4.default.accept_source_route' rejects non-bool
+        values — the knob is a clean 0/1 switch and non-bool values
+        would muddle the semantics. The validator runs on the
+        per-interface set path same as on the 'default' slot.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -193,7 +195,7 @@ class TestStackSysctlValidators(NetworkTestCase):
         for bad in (1, 0, "true", None):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError):
-                    sysctl.set("ip4.accept_source_route", bad)
+                    sysctl.set("ip4.default.accept_source_route", bad)
 
     def test__stack__sysctl__ip4_frag_flow_timeout_rejects_zero(self) -> None:
         """

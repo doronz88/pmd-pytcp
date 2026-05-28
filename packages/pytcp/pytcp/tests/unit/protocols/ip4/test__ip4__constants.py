@@ -227,9 +227,11 @@ class TestIp4AllowBroadcastSysctl(TestCase):
         """
 
         self.assertEqual(
-            ip4_const.IP4__ALLOW_BROADCAST,
+            ip4_const.IP4__ALLOW_BROADCAST["default"],
             0,
-            msg=f"IP4__ALLOW_BROADCAST must default to 0. Got: {ip4_const.IP4__ALLOW_BROADCAST}.",
+            msg=(
+                f"IP4__ALLOW_BROADCAST['default'] must equal 0. " f"Got: {ip4_const.IP4__ALLOW_BROADCAST['default']}."
+            ),
         )
 
     def test__ip4__sysctl__allow_broadcast_is_registered(self) -> None:
@@ -257,9 +259,9 @@ class TestIp4AllowBroadcastSysctl(TestCase):
         """
 
         for value in (0, 1):
-            sysctl_module.set("ip4.allow_broadcast", value)
+            sysctl_module.set("ip4.default.allow_broadcast", value)
             self.assertEqual(
-                sysctl_module.get("ip4.allow_broadcast"),
+                sysctl_module.get("ip4.default.allow_broadcast"),
                 value,
                 msg=f"ip4.allow_broadcast must accept value {value}.",
             )
@@ -274,7 +276,7 @@ class TestIp4AllowBroadcastSysctl(TestCase):
 
         for bad in (-1, 2, 99, True, False, "1", 1.0, None):
             with self.assertRaises(ValueError) as ctx:
-                sysctl_module.set("ip4.allow_broadcast", bad)
+                sysctl_module.set("ip4.default.allow_broadcast", bad)
             self.assertIn(
                 "ip4.allow_broadcast",
                 str(ctx.exception),

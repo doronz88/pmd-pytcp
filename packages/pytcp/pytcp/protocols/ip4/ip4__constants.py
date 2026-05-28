@@ -54,7 +54,14 @@ IP4__DEFAULT_TTL = 64
 # originated broadcast is per-socket 'SO_BROADCAST' (default
 # 0); the sysctl gives an operator a single dial that gates
 # every broadcast-capable consumer at the IPv4 layer.
-IP4__ALLOW_BROADCAST = 0
+#
+# Per-interface storage — 'dict[str, int]' keyed by interface
+# name with a mandatory '"default"' slot. Operator addresses
+# 'ip4.<ifname>.allow_broadcast' or 'ip4.default.allow_broadcast';
+# the TX consumer reads through 'sysctl_iface.get_for_iface'
+# with the sending interface's name. Plan:
+# docs/refactor/sysctl_per_interface.md.
+IP4__ALLOW_BROADCAST: dict[str, int] = {"default": 0}
 
 
 def _is_ip4_default_ttl(value: object) -> None:
@@ -107,7 +114,11 @@ register(
     key="ip4.allow_broadcast",
     module_name=__name__,
     attr="IP4__ALLOW_BROADCAST",
-    default=IP4__ALLOW_BROADCAST,
+    default=IP4__ALLOW_BROADCAST["default"],
     validator=_is_ip4_allow_broadcast,
-    description="RFC 919/922 — gate outbound broadcast emission (0=deny, 1=allow); DHCP-client path bypasses.",
+    description=(
+        "Linux 'net.ipv4.conf.<iface>.bc_forwarding' — gate outbound "
+        "broadcast emission (0=deny, 1=allow); DHCP-client path bypasses."
+    ),
+    interface_scope=True,
 )

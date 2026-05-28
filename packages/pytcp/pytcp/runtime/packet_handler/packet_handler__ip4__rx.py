@@ -53,6 +53,7 @@ from pytcp.protocols.ip.ip_frag import IpFragFlowId
 from pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -138,18 +139,23 @@ class Ip4RxHandler:
         __debug__ and log("ip4", f"{packet_rx.tracker} - {packet_rx.ip4}")
 
         # Source-route gate: drop inbound packets carrying LSRR or
-        # SSRR options unless 'IP4__ACCEPT_SOURCE_ROUTE' is True.
+        # SSRR options unless the per-interface
+        # 'ip4.<iface>.accept_source_route' sysctl is True.
         # Default False matches Linux's
-        # 'net.ipv4.conf.*.accept_source_route' default and closes
-        # an attack surface that the LSRR/SSRR echo support
+        # 'net.ipv4.conf.<iface>.accept_source_route' default and
+        # closes an attack surface that the LSRR/SSRR echo support
         # otherwise widens — the Echo Reply path stays in place
         # for operators that explicitly opt in.
-        if not stack.IP4__ACCEPT_SOURCE_ROUTE and (packet_rx.ip4.lsrr is not None or packet_rx.ip4.ssrr is not None):
+        accept_source_route = sysctl_iface.get_for_iface(
+            "ip4.accept_source_route",
+            self._if._interface_name,
+        )
+        if not accept_source_route and (packet_rx.ip4.lsrr is not None or packet_rx.ip4.ssrr is not None):
             self._if._packet_stats_rx.ip4__source_route__drop += 1
             __debug__ and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping source-routed IPv4 packet "
-                f"from {packet_rx.ip4.src} (IP4__ACCEPT_SOURCE_ROUTE=False)</>",
+                f"from {packet_rx.ip4.src} (ip4.accept_source_route=False)</>",
             )
             return
 

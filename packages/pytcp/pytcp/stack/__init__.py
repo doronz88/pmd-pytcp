@@ -183,8 +183,15 @@ IP4__SUPPORT = True
 # Default False matches Linux's 'net.ipv4.conf.*.accept_source_route'
 # default since the early 2000s — source-routed packets are dropped
 # at the IPv4 RX gate. Operators that genuinely need source-route
-# acceptance set this to True.
-IP4__ACCEPT_SOURCE_ROUTE = False
+# acceptance set this to True per-interface.
+#
+# Per-interface storage — 'dict[str, bool]' keyed by interface
+# name with a mandatory '"default"' slot. Operator addresses
+# 'ip4.<ifname>.accept_source_route' or 'ip4.default.accept_source_route';
+# the IPv4 RX consumer reads through 'sysctl_iface.get_for_iface'
+# with the receiving interface's name. Plan:
+# docs/refactor/sysctl_per_interface.md.
+IP4__ACCEPT_SOURCE_ROUTE: dict[str, bool] = {"default": False}
 
 # ARP runtime configuration constants live alongside the ARP
 # protocol code at 'pytcp/protocols/arp/arp__constants.py'.
@@ -273,8 +280,9 @@ _sysctl_register(
     key="ip4.accept_source_route",
     module_name=__name__,
     attr="IP4__ACCEPT_SOURCE_ROUTE",
-    default=IP4__ACCEPT_SOURCE_ROUTE,
+    default=IP4__ACCEPT_SOURCE_ROUTE["default"],
     validator=_stack__bool_validator("ip4.accept_source_route"),
+    interface_scope=True,
     description=(
         "RFC 791 §3.1 LSRR / SSRR acceptance gate; Linux" " 'net.ipv4.conf.<iface>.accept_source_route' analogue."
     ),

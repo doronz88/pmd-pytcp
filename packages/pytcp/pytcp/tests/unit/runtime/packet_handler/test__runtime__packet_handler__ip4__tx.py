@@ -110,6 +110,7 @@ class _StubInterface:
         self._ip4_support = ip4_support
         self._interface_layer = interface_layer
         self._interface_mtu = interface_mtu
+        self._interface_name: str | None = None
         self._ip4_ifaddr = ip4_hosts if ip4_hosts is not None else [STACK__IP4_HOST]
         self._ip4_multicast = [STACK__IP4_MULTICAST]
         self._ip4_id = 0

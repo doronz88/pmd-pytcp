@@ -48,6 +48,7 @@ from net_proto import (
 )
 from net_proto.lib.packet_rx import PacketRx
 from pytcp import stack
+from pytcp.stack import sysctl as sysctl_module
 from pytcp.tests.lib.ip4_testcase import Ip4TestCase
 
 
@@ -97,8 +98,8 @@ class TestIp4SourceRouteGate(Ip4TestCase):
         """
 
         self.assertFalse(
-            stack.IP4__ACCEPT_SOURCE_ROUTE,
-            msg="Default 'IP4__ACCEPT_SOURCE_ROUTE' must be False.",
+            stack.IP4__ACCEPT_SOURCE_ROUTE["default"],
+            msg="Default 'IP4__ACCEPT_SOURCE_ROUTE[\"default\"]' must be False.",
         )
 
         frame = _build_echo_request_with_options(
@@ -168,30 +169,29 @@ class TestIp4SourceRouteGate(Ip4TestCase):
         Echo Reply).
         """
 
-        stack.IP4__ACCEPT_SOURCE_ROUTE = True
-
-        frame = _build_echo_request_with_options(
-            options=Ip4Options(
-                Ip4OptionLsrr(
-                    pointer=12,
-                    route=[Ip4Address("10.0.1.10"), Ip4Address("10.0.1.20")],
+        with sysctl_module.override("ip4.default.accept_source_route", True):
+            frame = _build_echo_request_with_options(
+                options=Ip4Options(
+                    Ip4OptionLsrr(
+                        pointer=12,
+                        route=[Ip4Address("10.0.1.10"), Ip4Address("10.0.1.20")],
+                    ),
+                    Ip4OptionEol(),
                 ),
-                Ip4OptionEol(),
-            ),
-        )
+            )
 
-        self._packet_handler._phrx_ethernet(PacketRx(frame))
+            self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-        self.assertEqual(
-            self._packet_handler.packet_stats_rx.ip4__source_route__drop,
-            0,
-            msg="Source-routed packet must NOT bump the drop counter when accept=True.",
-        )
-        self.assertEqual(
-            len(self._frames_tx),
-            1,
-            msg="Echo Reply must be emitted when source-route is accepted.",
-        )
+            self.assertEqual(
+                self._packet_handler.packet_stats_rx.ip4__source_route__drop,
+                0,
+                msg="Source-routed packet must NOT bump the drop counter when accept=True.",
+            )
+            self.assertEqual(
+                len(self._frames_tx),
+                1,
+                msg="Echo Reply must be emitted when source-route is accepted.",
+            )
 
     def test__ip4__source_route__no_source_route__not_affected(self) -> None:
         """

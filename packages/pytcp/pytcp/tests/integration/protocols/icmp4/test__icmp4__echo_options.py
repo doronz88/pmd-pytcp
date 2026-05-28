@@ -90,14 +90,26 @@ class TestIcmp4EchoOptions(IcmpTestCase):
 
     def setUp(self) -> None:
         """
-        Opt into 'IP4__ACCEPT_SOURCE_ROUTE' so the inbound LSRR/SSRR
-        gate does not drop the test frames before they reach the
-        Echo Reply path. The default-False gate is exercised
-        separately in 'test__packet_handler__ip4__rx__source_route'.
+        Opt into 'ip4.default.accept_source_route' so the inbound
+        LSRR/SSRR gate does not drop the test frames before they
+        reach the Echo Reply path. The default-False gate is
+        exercised separately in
+        'test__packet_handler__ip4__rx__source_route'. The original
+        value is restored in tearDown.
         """
 
         super().setUp()
-        stack.IP4__ACCEPT_SOURCE_ROUTE = True
+        self._asr_prior = stack.IP4__ACCEPT_SOURCE_ROUTE["default"]
+        stack.IP4__ACCEPT_SOURCE_ROUTE["default"] = True
+
+    def tearDown(self) -> None:
+        """
+        Restore the prior 'ip4.default.accept_source_route' so the
+        opt-in in setUp does not leak across tests.
+        """
+
+        stack.IP4__ACCEPT_SOURCE_ROUTE["default"] = self._asr_prior
+        super().tearDown()
 
     def _parse_reply_lsrr(self, reply_frame: bytes) -> Ip4OptionLsrr | None:
         """

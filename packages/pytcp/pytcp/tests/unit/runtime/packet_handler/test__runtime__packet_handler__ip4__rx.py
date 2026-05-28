@@ -113,6 +113,7 @@ class _StubInterface:
         """
 
         self._packet_stats_rx = PacketStatsRx()
+        self._interface_name: str | None = None
         self._ip4_multicast = ip4_multicast if ip4_multicast is not None else [STACK__IP4_MULTICAST]
         self._ip4_unicast_list = ip4_unicast if ip4_unicast is not None else [STACK__IP4_ADDRESS]
         self._ip4_broadcast_list = (

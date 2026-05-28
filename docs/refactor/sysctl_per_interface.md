@@ -4,7 +4,8 @@
 24 tests + helper module). Phase 1 (ARP, 4 knobs) SHIPPED
 2026-05-28. Phase 2 (Neighbor cache, 6 knobs) SHIPPED
 2026-05-28. Phase 3 (ICMPv6 / ND, 22 knobs) SHIPPED
-2026-05-28. Phases 4-5 remain. Successor to
+2026-05-28. Phase 4 (IPv4 conf-plane, 2 knobs) SHIPPED
+2026-05-28. Phase 5 (close-out) remains. Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -621,10 +622,42 @@ together per the no-half-migrated rule.
 Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 4 new
 tests, 11842 total green.
 
-### Phase 4 — IPv4 conf-plane (1 commit, 2 knobs)
+### Phase 4 — IPv4 conf-plane (SHIPPED 2026-05-28)
 
-- `ip4.accept_source_route` and `ip4.allow_broadcast` storage
-  promotion + RX-handler consumer update.
+Migrated the 2 ip4 conf-plane knobs:
+
+- `ip4.accept_source_route` and `ip4.allow_broadcast` —
+  storage promotion from scalar to `dict[str, T]` with
+  `{"default": <value>}` initial state.
+- `IP4__ACCEPT_SOURCE_ROUTE` lives on `stack/__init__.py`;
+  `IP4__ALLOW_BROADCAST` lives on
+  `protocols/ip4/ip4__constants.py`. Both registrations
+  carry `interface_scope=True`.
+- Consumers (2 sites): `packet_handler__ip4__rx.py` (the
+  LSRR/SSRR drop gate) and `packet_handler__ip4__tx.py`
+  (the broadcast-emission gate) both flip to
+  `sysctl_iface.get_for_iface("ip4.<field>",
+  self._if._interface_name)`.
+- New behavioural pin
+  `tests/integration/protocols/ip4/test__ip4__sysctl_per_interface.py`
+  (6 tests): each knob's interface_scope flag, bare-base-key
+  rejection, per-iface override scoped, broadcast per-iface
+  override, default-slot template update.
+- Existing tests modernised in lockstep: bare-base
+  `sysctl_module.override` calls → `ip4.default.<field>`;
+  direct attribute reads `stack.IP4__ACCEPT_SOURCE_ROUTE`
+  → `stack.IP4__ACCEPT_SOURCE_ROUTE["default"]`; direct
+  attribute writes in `test__ip4__source_route.py` and
+  `test__icmp4__echo_options.py` switched to either
+  `sysctl_module.override` (auto-restore on exit) or a
+  snapshot/restore pattern in `setUp`/`tearDown`; the
+  `test__ip4__constants.py` default-value check now reads
+  `IP4__ALLOW_BROADCAST["default"]`; the ip4 rx and ip4 tx
+  unit-test stub interfaces gained
+  `_interface_name: str | None = None`.
+
+Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 6 new
+tests, 11848 total green.
 
 ### Phase 5 — close-out (1 commit)
 

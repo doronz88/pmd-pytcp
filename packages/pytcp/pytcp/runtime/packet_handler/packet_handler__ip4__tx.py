@@ -54,6 +54,7 @@ from pytcp.protocols.ip4.ip4__source_selection import (
     ip4_address_scope,
 )
 from pytcp.protocols.ip.ip_frag import iter_fragment_chunks
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -152,9 +153,11 @@ class Ip4TxHandler:
         # __validate_src_ip4_address pinpoints DHCP because the
         # validator preserves src=0.0.0.0 only for that specific
         # pattern.
-        if (
-            ip4__dst.is_limited_broadcast or ip4__dst in self._if._ip4_broadcast
-        ) and not ip4_const.IP4__ALLOW_BROADCAST:
+        allow_broadcast = sysctl_iface.get_for_iface(
+            "ip4.allow_broadcast",
+            self._if._interface_name,
+        )
+        if (ip4__dst.is_limited_broadcast or ip4__dst in self._if._ip4_broadcast) and not allow_broadcast:
             is_dhcp_client = (
                 ip4__src.is_unspecified
                 and isinstance(ip4__payload, UdpAssembler)

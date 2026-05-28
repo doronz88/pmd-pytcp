@@ -760,7 +760,7 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        sysctl_module.set("ip4.allow_broadcast", 1)
+        sysctl_module.set("ip4.default.allow_broadcast", 1)
         self.addCleanup(sysctl_module.reset_to_defaults)
 
         ip4_host = Ip4IfAddr("10.0.1.7/24")
