@@ -1,8 +1,25 @@
 # TCP Session Decomposition — Plan
 
-**Status:** PLAN / awaiting sign-off. Written 2026-05-27. No code
-landed yet. Supersedes the "fold T2 into the TCP decomposition"
+**Status:** IN PROGRESS. Written 2026-05-27. Phases 1+2 shipped
+the same day. Supersedes the "fold T2 into the TCP decomposition"
 deferral noted in `no_gil_thread_safety_audit.md` §3 (item T2).
+
+**Progress (2026-05-27):**
+- **Phase 1 — `TcpTimerService` + close no-GIL T2: SHIPPED.**
+  Commit `b11f5aba`. 9 timer helpers + deadline map + coalesced
+  service handle on `session/tcp__session__timers.py` with its
+  own `threading.Lock`; `_kick_pump` no longer needs `_lock__fsm`.
+- **Phase 2 — `TcpTxEngine`: SHIPPED.** 11 methods + ~1100 LOC
+  moved to `session/tcp__session__tx.py`: `transmit_packet` +
+  the six `_phase0..5` segment-construction helpers,
+  `transmit_data`, `delayed_ack`, `build_sack_blocks`,
+  `emit_challenge_ack`. Session keeps thin delegators
+  (`_transmit_packet`/`_transmit_data`/etc.). Pure structural
+  extraction — no behaviour or lock change. 11748 tests passing
+  (+4 collaborator-seam parity tests at
+  `test__tcp__session__tx_engine.py`).
+- Phases 3-5 (AckProcessor, SegmentValidator, Retransmitter)
+  pending.
 
 ## 1. Why
 
@@ -129,11 +146,26 @@ the deadline-map mutation in `_reschedule_service` from non-FSM
 context is the actual exposed gap). This is the most self-contained
 cluster and the precondition for the rest. **Closes no-GIL T2.**
 
-### Phase 2 — `TcpTxEngine`
-Move `_transmit_packet` + `_phase0..5` + `_transmit_data` +
-`_delayed_ack` + `_build_sack_blocks` into `TcpTxEngine`. Largest
-cluster; cohesive (segment construction + the RFC 1122 send pump).
-Folds in keep-alive/persist/challenge-ACK emit helpers.
+### Phase 2 — `TcpTxEngine` ✅ SHIPPED 2026-05-27
+Moved `_transmit_packet` + `_phase0..5` + `_transmit_data` +
+`_delayed_ack` + `_build_sack_blocks` + `_emit_challenge_ack`
+into `TcpTxEngine` at `session/tcp__session__tx.py`. Session
+keeps thin delegators (`_transmit_packet`/`_transmit_data`/
+`_delayed_ack`/`_build_sack_blocks`/`_emit_challenge_ack`)
+so `fsm/` handlers and retransmit-path callers are
+untouched; the six `_phase0..5` segment-construction helpers
+are engine-internal (no delegators). Pure structural
+extraction — no behaviour or lock change.
+**Not moved (deferred):** `_keepalive_arm_idle` /
+`_keepalive_tick` (the keepalive timer-handler family —
+arguably its own collaborator, not strictly "TX engine"; can
+be folded later if the lines warrant it). Persist-probe
+logic was already inline in `_transmit_data` (zero-window
+branch); it moves with the engine.
+Pinned by `test__tcp__session__tx_engine.py` (4 seam tests):
+session owns a `TcpTxEngine` reachable as `session._tx_engine`,
+back-reference correct, delegators emit the expected wire
+effect, the §5961 §3 rate-limit gate fires through the engine.
 
 ### Phase 3 — `TcpAckProcessor`
 Move `_process_ack_packet` + `_phase1..5`. The inbound-ACK side
