@@ -383,3 +383,80 @@ class TestTcpSysctlCrossKnobConstraints(NetworkTestCase):
             str(ctx.exception),
             msg="The cross-knob rejection must surface the offending key.",
         )
+
+
+class TestTcpSysctlBaseMss(NetworkTestCase):
+    """
+    The 'tcp.base_mss' per-interface sysctl tests — the
+    Linux-parity cold-start MSS seed knob the PLPMTUD
+    close-out reads when 'tcp.mtu_probing' enables active
+    probing. Per-iface storage; bare base key rejected.
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Clear every per-iface slot and reset the template so
+        a write in one test cannot leak into the next.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__tcp__sysctl__base_mss_default_is_1024(self) -> None:
+        """
+        Ensure 'tcp.base_mss' registers with the Linux-parity
+        default of 1024 in the '"default"' template slot.
+
+        Reference: Linux net.ipv4.tcp_base_mss (default 1024).
+        """
+
+        self.assertEqual(
+            sysctl.get("tcp.default.base_mss"),
+            1024,
+            msg="tcp.base_mss must default to 1024 in the 'default' template (Linux parity).",
+        )
+
+    def test__tcp__sysctl__base_mss_per_iface_override(self) -> None:
+        """
+        Ensure writing 'tcp.<ifname>.base_mss' lands in the
+        per-interface slot only — the '"default"' template
+        stays at 1024 and an unconfigured interface continues
+        to resolve through the template.
+
+        Reference: Linux net.ipv4.tcp_base_mss per-iface override.
+        """
+
+        sysctl.set("tcp.tap_x.base_mss", 576)
+
+        self.assertEqual(
+            sysctl.get("tcp.tap_x.base_mss"),
+            576,
+            msg="Per-iface write must surface on the same key.",
+        )
+        self.assertEqual(
+            sysctl.get("tcp.default.base_mss"),
+            1024,
+            msg="Per-iface write must NOT mutate the 'default' template.",
+        )
+        self.assertEqual(
+            sysctl.get("tcp.tap_y.base_mss"),
+            1024,
+            msg="Unconfigured ifaces must fall back to the 'default' template.",
+        )
+
+    def test__tcp__sysctl__base_mss_rejects_below_min_mss(self) -> None:
+        """
+        Ensure 'tcp.base_mss' rejects 87 — one below the
+        Linux 'TCP_MIN_MSS = 88' floor (include/net/tcp.h).
+        A base MSS below this floor would size a cold-start
+        probe so small that no useful headway is gained and
+        would also slip below the IPv4 minimum-MTU arithmetic
+        safety margin.
+
+        Reference: Linux include/net/tcp.h TCP_MIN_MSS=88.
+        Reference: RFC 791 §3.1 (IPv4 minimum host-handle MTU).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("tcp.default.base_mss", 87)

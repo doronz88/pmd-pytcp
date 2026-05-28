@@ -112,6 +112,26 @@ TCP__KEEPALIVE__PROBE_MAX_COUNT = 9
 # arithmetic-friendly.
 TCP__TS_RECENT__OUTDATED_THRESHOLD_MS = 24 * 86_400 * 1_000
 
+# Per-interface conf-plane policy storage. 'dict[str, int]' keyed by
+# interface name with a mandatory '"default"' template slot — the
+# operator addresses a specific interface ('tcp.<ifname>.base_mss') or
+# the template ('tcp.default.base_mss'); the runtime read path
+# ('TcpSession.__init__' when active PLPMTUD probing is enabled) goes
+# through 'sysctl_iface.get_for_iface(...)' which falls back from
+# 'storage[<ifname>]' to 'storage["default"]'.
+#
+# Linux 'net.ipv4.tcp_base_mss' — the cold-start 'snd_mss' seed used
+# when 'tcp.mtu_probing' enables active PLPMTUD probing on a session.
+# Without this seed 'snd_mss' would saturate at 'interface_mtu -
+# overhead' and the engine's 'candidate_mtu > snd_mss' probe-emit gate
+# would never trip — making the RFC 4821 §3 'Probing without ICMP'
+# scenario unreachable on the TCP transport. The default of 1024 (576
+# IP datagram minus IP+TCP overhead, rounded up) matches Linux. The
+# validator's '≥ 88' floor matches Linux's 'TCP_MIN_MSS' in
+# 'include/net/tcp.h' and stays comfortably above the RFC 791 §3.1
+# minimum-MTU arithmetic safety margin.
+TCP__BASE_MSS: dict[str, int] = {"default": 1024}
+
 
 # Sysctl registration. Every constant above is a policy knob,
 # operator-tunable at boot via 'stack.init(sysctls={"tcp....": ...})'
@@ -248,6 +268,19 @@ register(
     default=TCP__TS_RECENT__OUTDATED_THRESHOLD_MS,
     validator=is_positive_int("tcp.ts_recent.outdated_threshold_ms"),
     description="RFC 7323 §5.5 outdated-timestamps threshold in milliseconds (~24 days).",
+)
+register(
+    key="tcp.base_mss",
+    module_name=__name__,
+    attr="TCP__BASE_MSS",
+    default=TCP__BASE_MSS["default"],
+    validator=_is_int_at_least("tcp.base_mss", low=88),
+    description=(
+        "Linux 'net.ipv4.tcp_base_mss' — cold-start 'snd_mss' seed "
+        "when 'tcp.mtu_probing' enables active PLPMTUD probing on "
+        "a session (default 1024; floor 88 = Linux TCP_MIN_MSS)."
+    ),
+    interface_scope=True,
 )
 
 
