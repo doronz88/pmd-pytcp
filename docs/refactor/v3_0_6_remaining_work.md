@@ -226,10 +226,6 @@ Do **not** open these as standalone tasks — the rules forbid piecemeal
 sweeps (`pytcp.md` §2.4, `sysctl_framework.md` §8). They land naturally
 as feature work touches the relevant package.
 
-- **sysctl Phase-3 per-package constant migration** — TCP / ICMP4 /
-  ICMP6 / UDP `*__constants.py` policy constants not yet registry-backed.
-  Migrate the *whole* touched package's policy constants in the same
-  commit when you touch it for any other reason. `sysctl_framework.md`.
 - **Enum migration on touch** — bare-int → IntEnum/ProtoEnum per
   `enums.md` §5; fix in the same commit when you touch a file.
 - **Legacy typing modernisation on touch** — `python_features.md` §22 /
@@ -255,10 +251,6 @@ to expand scope.
   safety audit** (overlaps packet-handler concurrency review). Phase 1
   fully shipped, Phase 2 mostly; the rest is deferred-with-rationale.
   `socket_linux_parity_audit.md`.
-- **TCP god-class decomposition** (`tcp_codebase_improvement_plan.md`
-  #1–#5). These are **internal code-quality refactors, not conformance**;
-  status partly *unverified* — re-audit before treating any as "open".
-  Deferrable.
 - **DHCPv4 Phase 8.4 / Phase 9** (Option Overload parse; RFCs 4702 / 3203
   / 8910) — deferred per `dhcp4_client_full_parity.md`.
 
@@ -291,9 +283,9 @@ PLPMTUD active probe-segment emit closed 2026-05-28 (commits
 `docs/refactor/plpmtud_closeout.md`). Everything else is either §3
 on-touch-only (do NOT open as a standalone task) or §4 deferred
 future-phase (Phase-2 router/forwarding, the socket Linux-parity tail +
-X1 stack-thread-safety audit, TCP god-class decomposition, DHCPv4
-8.4/Phase 9) — do not start a §4 track without an explicit decision to
-expand scope beyond the 3.0.6 host stack.
+X1 stack-thread-safety audit, DHCPv4 8.4/Phase 9) — do not start a §4
+track without an explicit decision to expand scope beyond the 3.0.6
+host stack.
 
 I want to work on: <PICK ONE, or state a new task>
   - a §4 deferred track (name it + confirm the scope-expansion decision).
