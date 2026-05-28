@@ -1,12 +1,17 @@
 # Socket-Layer Linux Parity Audit
 
-> **STATUS UPDATE (post-`89da6654`):** Phase 1 is fully shipped (8
-> commits since audit creation `ccae024c`). Phase 2 server-compat
-> options are mostly shipped; substantial items (H3 IPV6_V6ONLY,
-> H2 SO_REUSEPORT, H4 multicast, M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE,
-> H8 SO_LINGER) are deliberately deferred with rationale below —
-> they each need a meaningful refactor that earns its own focused
-> work block. See §100 "Shipping status" for the full ledger.
+> **STATUS UPDATE (post-`89da6654`, refreshed 2026-05-28):** Phase 1
+> is fully shipped (8 commits since audit creation `ccae024c`).
+> Phase 2 server-compat options are mostly shipped. **H4 IPv4
+> IP_ADD_MEMBERSHIP shipped 2026-05-26 via the IGMP track** (commits
+> `f837d017` initial + `8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/
+> `e9abe066` R3-R6 refinements + `c98e409c`/`9cc7dfdc` §9 source
+> filters + `752d2bfd` finalizer); the H4 IPv6 half (IPV6_JOIN_GROUP)
+> remains deferred. Other substantial items (H3 IPV6_V6ONLY, H2
+> SO_REUSEPORT, M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8 SO_LINGER)
+> are deliberately deferred with rationale below — they each need
+> a meaningful refactor that earns its own focused work block. See
+> §100 "Shipping status" for the full ledger.
 
 
 
@@ -246,23 +251,40 @@ AF_INET6 socket has V6ONLY=0, register both IPv4 and IPv6
 listeners under the hood and translate inbound IPv4
 connections into IPv4-mapped peer addresses on accept().
 
-### H4. No multicast group membership (IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP)
+### H4. Multicast group membership — IPv4 SHIPPED, IPv6 deferred
 
 **Linux:** UDP multicast receivers MUST call
 `setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, struct ip_mreq)`
 to instruct the kernel to listen on the multicast address.
 
-**PyTCP:** No setsockopt for these. Multicast receivers
-can't subscribe to groups via the normal socket API. (The
-stack does manage MLDv2 reports for some multicast
-addresses, but applications have no API to drive
-membership.)
+**IPv4 — SHIPPED 2026-05-26** via the IGMP track. Initial
+landing at commit `f837d017`
+(`feat(igmp): add IP_ADD/DROP_MEMBERSHIP socket options`); the
+post-review refinements R3-R6 (membership refcount + close
+release + EADDRINUSE/EADDRNOTAVAIL parity + ENOBUFS cap +
+`ip_mreqn` accepted form, commits `8aa1a257` /
+`0e5fff39` / `a4b95781` / `5ed73306` / `e9abe066`)
+hardened the surface. The RFC 3376 §9 source-filter
+controls (`IP_ADD/DROP_SOURCE_MEMBERSHIP`,
+`IP_BLOCK/UNBLOCK_SOURCE`) shipped under the same track
+(`c98e409c` + `9cc7dfdc`). The socket finalizer
+(`752d2bfd`) releases leaked memberships on GC. See
+`project_igmp_shipped` memory entry for the full
+inventory.
 
-**Sketch:** Map IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP to
-`stack.packet_handler._ip4/6_multicast` mutation + (for v6)
-trigger an outbound MLDv2 Report. Conversely
-IP_DROP_MEMBERSHIP / IPV6_LEAVE_GROUP removes from the list
-+ MLDv2 LEAVE.
+**IPv6 — deferred.** No app-driven `IPV6_JOIN_GROUP` /
+`IPV6_LEAVE_GROUP` setsockopt yet — the IPv6 multicast
+machinery exists (`_ip6_multicast` list on the packet
+handler, MLDv2 listener replies to queries) but is
+SLAAC-driven only (auto-join solicited-node multicast on
+address assignment); applications cannot drive a
+user-requested join. Lift the IPv4 IGMP socket-options
+pattern (`socket/__init__.py` lines ~638-720) to a
+parallel IPv6 surface + emit an MLDv2 Report on join,
+MLDv2 Done on leave. The MLDv2 report-emitter side is
+already in tree (`packet_handler__icmp6__tx.py`); this
+gap is purely the app-facing setsockopt + per-socket
+membership table.
 
 ### H5. No `SO_BROADCAST`
 
@@ -765,7 +787,8 @@ that's intentional.
 
 | Gap | Status | Rationale |
 |-----|--------|-----------|
-| **H4 IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP** | deferred | Substantial — needs MLDv2 querier role / group-membership table refactor in the packet handler. Crosses into Phase-2 (router) North Star territory. |
+| **H4 IPv4 IP_ADD_MEMBERSHIP** | shipped | `f837d017` initial + R3-R6 refinements (`8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/`e9abe066`) + `c98e409c`/`9cc7dfdc` §9 source filters + `752d2bfd` finalizer. Full IGMP host stack (RFC 3376 §7 v1/v2 fallback + §9 SSM). |
+| **H4 IPv6 IPV6_JOIN_GROUP** | deferred | App-driven IPv6 membership not yet exposed; MLDv2 listener emits Reports for SLAAC-driven groups but applications can't request a join. Lift the IPv4 IGMP setsockopt pattern (~80 lines in `socket/__init__.py`) to a parallel IPv6 surface + MLDv2 Report on join. |
 | **H5 SO_BROADCAST** | partially shipped | `705a4617` stored the flag; full broadcast-send gate enforcement (refuse with EACCES when flag is False, matching Linux) deferred — would break existing PyTCP callers that don't set the flag, needs a coordinated stack-internal audit first. |
 | **H2 SO_REUSEPORT** | (see Phase 2)    |  |
 | **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | partial | (see Phase 2 row above) |
@@ -808,8 +831,9 @@ If resuming this work, prioritise (rough order):
   3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most
      servers expect dual-stack); substantial refactor in
      `net_addr.Ip6Address` + dual-stack listener pivot.
-  4. **H4 multicast** — needs MLDv2 querier role; pair with the
-     Phase-2 (router) North Star work.
+  4. **H4 IPv6 IPV6_JOIN_GROUP** — IPv4 half SHIPPED (IGMP track);
+     IPv6 half remains. Lift the IPv4 setsockopt pattern to a
+     parallel IPv6 surface + MLDv2 Report on join.
   5. **H2 SO_REUSEPORT** — `stack.sockets` multi-listener refactor.
   6. **M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE** — control-message
      layer; one focused work block.
@@ -941,13 +965,14 @@ After reading, confirm you understand:
     H8 SO_LINGER (substantial refactors deferred per §100).
   - Suggested resume order (per §100 "Suggested resume
     points"): M5 TCP_INFO → M6 TCP_USER_TIMEOUT + M7
-    TCP_MAXSEG → H3 IPV6_V6ONLY → H4 multicast → H2
-    SO_REUSEPORT → M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE.
+    TCP_MAXSEG → H3 IPV6_V6ONLY → H4 IPv6 IPV6_JOIN_GROUP
+    (IPv4 half SHIPPED via IGMP track) → H2 SO_REUSEPORT
+    → M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE.
   - Out-of-scope per North Star: AF_UNIX, TCP_MD5SIG,
     IPsec socket options, SCM_RIGHTS, socketpair (Unix
     domain). Don't add these even if asked.
 
-Branch: PyTCP_3_0__pre_release
+Branch: PyTCP_3_0_6
 
 Then ask the user which item to start with (default to
 M5 TCP_INFO if they say "go" or "next"). Tests-first per
