@@ -395,19 +395,32 @@ layer setsockopt to drive it from the application.
 **Sketch:** Map IP_TOS / IPV6_TCLASS to a per-socket
 DSCP+ECN override; thread to the emit path.
 
-### M5. No `TCP_INFO`
+### M5. `TCP_INFO` — SHIPPED 2026-05-28
 
 **Linux:** `getsockopt(IPPROTO_TCP, TCP_INFO, struct
 tcp_info)` returns ~50 fields of connection statistics —
 RTT, RTO, cwnd, ssthresh, retransmits, etc.
 
-**PyTCP:** A `status()` method returns a `TcpStatus`
-dataclass with similar info, but it's not the standard
-`TCP_INFO` getsockopt API.
-
-**Sketch:** Wrap `status()` output into a serialized
-`tcp_info`-shaped struct; expose via `getsockopt(IPPROTO_TCP,
-TCP_INFO)` in addition to the current `status()` method.
+**PyTCP:** SHIPPED. `getsockopt(IPPROTO_TCP, TCP_INFO)`
+returns the canonical 240-byte Linux 5.5 struct layout
+packed from the underlying `TcpSession`. State byte maps
+PyTCP `FsmState` → Linux `enum tcp_states` via
+`_FSM_TO_TCP_INFO_STATE`; populated fields include
+`tcpi_snd_mss` / `tcpi_rcv_mss` from `WindowState`,
+`tcpi_snd_cwnd` / `tcpi_snd_ssthresh` from `CcState`
+(BYTES → SEGMENTS conversion per Linux units),
+`tcpi_rtt` / `tcpi_rttvar` from `RtoState` (ms → μs),
+`tcpi_options` flags from negotiated TS / SACK / WSCALE /
+ECN state, `tcpi_snd_wscale` / `tcpi_rcv_wscale` bit-
+packed nibbles, `tcpi_pmtu` from the PLPMTUD engine's
+current MTU. The pre-existing `TcpSocket.status()` →
+`TcpStatus` dataclass surface remains; TCP_INFO is the
+Linux-shaped wire surface bolted on top so applications
+written against the stdlib socket pattern see the bytes
+they expect. Counters PyTCP doesn't track per-session
+(pacing rate, busy time, bytes-acked counters, segs-out
+/-in) zero-fill with inline rationale. See
+`pytcp/socket/tcp__info.py` for the packer.
 
 ### M6. No `TCP_USER_TIMEOUT`
 
@@ -792,7 +805,7 @@ that's intentional.
 | **H5 SO_BROADCAST** | partially shipped | `705a4617` stored the flag; full broadcast-send gate enforcement (refuse with EACCES when flag is False, matching Linux) deferred — would break existing PyTCP callers that don't set the flag, needs a coordinated stack-internal audit first. |
 | **H2 SO_REUSEPORT** | (see Phase 2)    |  |
 | **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | partial | (see Phase 2 row above) |
-| **M5 TCP_INFO**     | deferred | Needs to pack `TcpStatus` (already exposed via `socket.status()`) into the Linux `tcp_info` struct (~50 fields, ~232 bytes). Mostly mechanical; one commit. |
+| **M5 TCP_INFO**     | shipped  | 240-byte Linux 5.5 layout packed by `pytcp/socket/tcp__info.py::pack_tcp_info` from `TcpSession`; surfaced via `getsockopt(IPPROTO_TCP, TCP_INFO)`. 9 integration tests. |
 
 ### Phase 4 — specialised — all deferred (5/5)
 
@@ -825,7 +838,7 @@ that's intentional.
 
 If resuming this work, prioritise (rough order):
 
-  1. **M5 TCP_INFO** — small, high-value (debugging / monitoring).
+  1. ~~**M5 TCP_INFO**~~ — SHIPPED 2026-05-28.
   2. **M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG** — small, per-connection
      TCP options that round out application-level control.
   3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most

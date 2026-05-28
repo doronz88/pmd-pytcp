@@ -62,6 +62,7 @@ from pytcp.socket import (
     SOL_SOCKET,
     TCP_CONGESTION,
     TCP_FASTOPEN,
+    TCP_INFO,
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
@@ -70,6 +71,7 @@ from pytcp.socket import (
     SocketType,
     gaierror,
     socket,
+    tcp__info,
 )
 from pytcp.socket.error_queue import (
     ERROR_QUEUE__MAX_LEN,
@@ -408,6 +410,14 @@ class TcpSocket(socket):
             return int(self._cc_mode.value)
         if level == IPPROTO_TCP and optname == TCP_NODELAY:
             return int(self._tcp_nodelay)
+        if level == IPPROTO_TCP and optname == TCP_INFO:
+            # Linux exposes ~50 fields of per-connection state via
+            # 'getsockopt(IPPROTO_TCP, TCP_INFO)' — the wire-format
+            # diagnostic tools ('ss -i') key off. PyTCP packs the
+            # snapshot from the underlying 'TcpSession'; on a
+            # never-connected socket the packer returns the
+            # canonical 'all zeros + state=TCP_CLOSE' struct.
+            return tcp__info.pack_tcp_info(self._tcp_session)
         raise OSError(
             errno.ENOPROTOOPT,
             f"getsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
