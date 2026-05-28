@@ -118,8 +118,8 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
 
         self._packet_handler._ip6_addressing_complete = True
 
-        with sysctl_module.override("icmp6.dad_transmits", 0):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 self._drive_rx(
                     frame=self._make_nd_ra_frame(
                         eth_src=ROUTER__MAC,
@@ -167,8 +167,8 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
         # '_create_stack_ip6_addressing' completes.
         self._packet_handler._ip6_addressing_complete = False
 
-        with sysctl_module.override("icmp6.dad_transmits", 0):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 self._drive_rx(
                     frame=self._make_nd_ra_frame(
                         eth_src=ROUTER__MAC,
@@ -214,8 +214,8 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
 
         self._packet_handler._ip6_addressing_complete = True
 
-        with sysctl_module.override("icmp6.dad_transmits", 0):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 # First PI installs the entry.
                 self._drive_rx(
                     frame=self._make_nd_ra_frame(

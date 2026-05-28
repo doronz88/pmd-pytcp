@@ -109,6 +109,7 @@ class _StubInterface:
         self._ip6_support = ip6_support
         self._interface_layer = interface_layer
         self._interface_mtu = interface_mtu
+        self._interface_name: str | None = None
         self._ip6_ifaddr = ip6_hosts if ip6_hosts is not None else [STACK__IP6_HOST]
         self._ip6_multicast = [STACK__IP6_MULTICAST]
         self._icmp6_slaac_addresses: list[Icmp6SlaacAddress] = []

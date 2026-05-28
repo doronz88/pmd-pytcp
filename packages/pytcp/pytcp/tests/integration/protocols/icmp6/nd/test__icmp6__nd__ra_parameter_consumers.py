@@ -231,7 +231,7 @@ class TestIcmp6Nd__RaConsumer__DadRetransTimer(NdTestCase):
         # at the class level — the per-address Event is created
         # inside '_perform_ip6_nd_dad' so we cannot patch a
         # specific instance before the call.
-        with sysctl_module.override("icmp6.retrans_timer_ms", 60000):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 60000):
             with patch.object(
                 threading.Event,
                 "wait",

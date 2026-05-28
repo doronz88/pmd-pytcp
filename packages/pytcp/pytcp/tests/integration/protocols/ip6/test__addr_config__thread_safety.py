@@ -243,7 +243,7 @@ class TestAddressConfigLocking(NetworkTestCase):
 
         # 'accept_dad=0' short-circuits DAD to a single VALID dict
         # write with no probes / blocking waits.
-        with sysctl.override("icmp6.accept_dad", 0):
+        with sysctl.override("icmp6.default.accept_dad", 0):
             handler._perform_ip6_nd_dad(ip6_unicast_candidate=_DAD_CANDIDATE)
 
         self.assertIsNot(

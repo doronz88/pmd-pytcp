@@ -132,7 +132,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_A, _PREFIX_A)]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 2):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 2):
             result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_IN_A)
 
         self.assertEqual(
@@ -155,7 +155,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_B, _PREFIX_B)]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 2):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 2):
             result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_IN_A)
 
         self.assertEqual(
@@ -181,7 +181,7 @@ class TestRfc6724Rule7TempPreferenceEnabled(Ip6TestCase):
             _temp(_HOST_TEMP_A, _PREFIX_A, deprecated=True),
         ]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 2):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 2):
             result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_IN_A)
 
         self.assertEqual(
@@ -220,7 +220,7 @@ class TestRfc6724Rule7TempNoPreference(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_A, _PREFIX_A)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_B, _PREFIX_B)]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
             result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_IN_A)
 
         self.assertEqual(
@@ -260,7 +260,7 @@ class TestRfc6724Rule7TempDisabled(Ip6TestCase):
         self._packet_handler._icmp6_slaac_addresses = [_slaac(_HOST_STABLE_B, _PREFIX_B)]
         self._packet_handler._icmp6_temp_addresses = [_temp(_HOST_TEMP_A, _PREFIX_A)]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 0):
             result = self._packet_handler._ip6_tx._select_ip6_source(ip6__dst=_DST_IN_B)
 
         self.assertEqual(

@@ -47,13 +47,13 @@ from net_proto import (
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
-from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp6.nd.nd__router_state import Icmp6SlaacAddressState
 from pytcp.protocols.ip6.ip6__policy_table import lookup as ip6_policy_lookup
 from pytcp.protocols.ip6.ip6__source_selection import (
     common_prefix_len,
     ip6_address_scope,
 )
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -367,7 +367,7 @@ class Ip6TxHandler:
         # actively prefers them ('use_tempaddr=2'); for values 0
         # and 1 the rule-7 score is 0 for every candidate and
         # the membership set never needs to be consulted.
-        prefer_temp = nd__constants.ICMP6__USE_TEMPADDR == 2
+        prefer_temp = sysctl_iface.get_for_iface("icmp6.use_tempaddr", self._if._interface_name) == 2
         temp_addresses = {entry.address for entry in self._if._icmp6_temp_addresses} if prefer_temp else set()
         dst_scope = ip6_address_scope(ip6__dst)
         _, dst_label = ip6_policy_lookup(ip6__dst)

@@ -79,7 +79,7 @@ class TestIcmp6Nd__IdgenRetries__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.idgen_retries"),
+            sysctl_module.get("icmp6.default.idgen_retries"),
             3,
             msg="Default must be 3 (RFC 7217 IDGEN_RETRIES).",
         )
@@ -92,8 +92,8 @@ class TestIcmp6Nd__IdgenRetries__SysctlRegistration(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sysctl_module.set("icmp6.idgen_retries", 0)
-        self.assertEqual(sysctl_module.get("icmp6.idgen_retries"), 0)
+        sysctl_module.set("icmp6.default.idgen_retries", 0)
+        self.assertEqual(sysctl_module.get("icmp6.default.idgen_retries"), 0)
 
     def test__icmp6__nd__idgen_retries__validator_rejects_negative(self) -> None:
         """
@@ -103,7 +103,7 @@ class TestIcmp6Nd__IdgenRetries__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.idgen_retries", -1)
+            sysctl_module.set("icmp6.default.idgen_retries", -1)
 
     def test__icmp6__nd__idgen_retries__validator_rejects_bool(self) -> None:
         """
@@ -113,7 +113,7 @@ class TestIcmp6Nd__IdgenRetries__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.idgen_retries", True)
+            sysctl_module.set("icmp6.default.idgen_retries", True)
 
 
 class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
@@ -161,7 +161,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             attempted.append(ip6_unicast_candidate)
             return ip6_unicast_candidate == regen2.address
 
-        with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
             with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
                 thread = self._packet_handler._claim_ip6_address_async(
                     ip6_host=original,
@@ -210,8 +210,8 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             attempted.append(ip6_unicast_candidate)
             return False  # always fail
 
-        with sysctl_module.override("icmp6.idgen_retries", 3):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.idgen_retries", 3):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
                     thread = self._packet_handler._claim_ip6_address_async(
                         ip6_host=original,
@@ -248,7 +248,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             attempted.append(ip6_unicast_candidate)
             return False
 
-        with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
             with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
                 thread = self._packet_handler._claim_ip6_address_async(ip6_host=original)
                 thread.join(timeout=5.0)
@@ -279,8 +279,8 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         def _regenerate() -> Ip6IfAddr:
             return regen_calls[0]
 
-        with sysctl_module.override("icmp6.idgen_retries", 0):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.idgen_retries", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
                     thread = self._packet_handler._claim_ip6_address_async(
                         ip6_host=original,
@@ -334,9 +334,9 @@ class TestIcmp6Nd__IdgenRetries__AcceptDadCompose(NdTestCase):
         def _mock_dad(*, ip6_unicast_candidate: Ip6Address) -> bool:
             return False
 
-        with sysctl_module.override("icmp6.accept_dad", 2):
-            with sysctl_module.override("icmp6.idgen_retries", 3):
-                with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.accept_dad", 2):
+            with sysctl_module.override("icmp6.default.idgen_retries", 3):
+                with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                     with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
                         thread = self._packet_handler._claim_ip6_address_async(
                             ip6_host=original,

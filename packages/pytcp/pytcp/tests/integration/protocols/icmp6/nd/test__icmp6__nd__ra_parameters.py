@@ -188,7 +188,7 @@ class TestIcmp6Nd__RaParameters__CurHopLimit(NdTestCase):
         Reference: Linux 'net.ipv6.conf.<iface>.accept_ra_min_hop_limit'.
         """
 
-        with sysctl_module.override("icmp6.accept_ra_min_hop_limit", 128):
+        with sysctl_module.override("icmp6.default.accept_ra_min_hop_limit", 128):
             self._drive_rx(
                 frame=self._make_nd_ra_frame(
                     eth_src=ROUTER__MAC,
@@ -220,7 +220,7 @@ class TestIcmp6Nd__RaParameters__CurHopLimit(NdTestCase):
         Reference: Linux 'net.ipv6.conf.<iface>.accept_ra_min_hop_limit' (≥ semantics).
         """
 
-        with sysctl_module.override("icmp6.accept_ra_min_hop_limit", 64):
+        with sysctl_module.override("icmp6.default.accept_ra_min_hop_limit", 64):
             self._drive_rx(
                 frame=self._make_nd_ra_frame(
                     eth_src=ROUTER__MAC,

@@ -107,6 +107,7 @@ class _StubInterface:
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
         self._mac_unicast = STACK__MAC_UNICAST
+        self._interface_name: str | None = None
         self._icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address] = DadSlotRegistry()
         self._icmp6_ra__event = threading.Semaphore(0)
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []

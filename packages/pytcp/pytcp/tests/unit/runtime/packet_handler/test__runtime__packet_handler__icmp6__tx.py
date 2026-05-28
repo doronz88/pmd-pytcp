@@ -101,6 +101,7 @@ class _StubInterface:
     def __init__(self, *, ip6_multicast: list[Ip6Address] | None = None) -> None:
         self._packet_stats_tx = PacketStatsTx()
         self._mac_unicast = STACK__MAC_UNICAST
+        self._interface_name: str | None = None
         self._ip6_ifaddr = [STACK__IP6_HOST]
         self._ip6_multicast = ip6_multicast if ip6_multicast is not None else []
         self._icmp6_dad__states: dict[Ip6Address, Icmp6DadState] = {}
@@ -499,7 +500,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("icmp6.gratuitous_na_count", 3):
+        with sysctl_module.override("icmp6.default.gratuitous_na_count", 3):
             self._handler.send_icmp6_neighbor_advertisement_gratuitous(
                 ip6_unicast=STACK__IP6_ADDRESS,
             )
@@ -523,7 +524,7 @@ class TestPacketHandlerIcmp6TxGratuitousNa(TestCase):
 
         from pytcp.stack import sysctl as sysctl_module
 
-        with sysctl_module.override("icmp6.gratuitous_na_count", 0):
+        with sysctl_module.override("icmp6.default.gratuitous_na_count", 0):
             self._handler.send_icmp6_neighbor_advertisement_gratuitous(
                 ip6_unicast=STACK__IP6_ADDRESS,
             )

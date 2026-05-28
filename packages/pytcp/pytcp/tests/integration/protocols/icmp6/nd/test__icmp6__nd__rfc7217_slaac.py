@@ -128,7 +128,7 @@ class TestIcmp6Nd__Rfc7217Slaac__SysctlZeroFallsBackToEui64(NdTestCase):
 
         prefix = Ip6Network("2001:db8::/64")
 
-        with sysctl_module.override("icmp6.use_rfc7217", 0):
+        with sysctl_module.override("icmp6.default.use_rfc7217", 0):
             derived = self._packet_handler._derive_ip6_host(ip6_network=prefix)
 
         eui64 = Ip6IfAddr.from_eui64(

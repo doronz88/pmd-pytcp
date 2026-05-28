@@ -103,6 +103,7 @@ from pytcp.runtime.subsystem import Subsystem
 from pytcp.runtime.timer import TimerHandle
 from pytcp.runtime.tx_ring import TxRing
 from pytcp.socket import AddressFamily
+from pytcp.stack import sysctl_iface
 from pytcp.stack.membership import IP4__MULTICAST__ALL_SYSTEMS
 
 from .dispatch import DispatchRegistry
@@ -1266,7 +1267,7 @@ class PacketHandler(Subsystem, ABC):
         consume the offset to schedule rotation.
         """
 
-        if nd__constants.ICMP6__USE_TEMPADDR == 0:
+        if sysctl_iface.get_for_iface("icmp6.use_tempaddr", self._interface_name) == 0:
             return
 
         existing = next(
@@ -1285,9 +1286,13 @@ class PacketHandler(Subsystem, ABC):
         # of hosts created together don't all rotate at the same
         # instant.
         now = time.monotonic()
-        desync = random.uniform(0, nd__constants.ICMP6__MAX_DESYNC_FACTOR_S)
-        clamped_valid = min(valid_lifetime, nd__constants.ICMP6__TEMP_VALID_LIFETIME_S)
-        clamped_preferred_base = min(preferred_lifetime, nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S)
+        desync = random.uniform(0, sysctl_iface.get_for_iface("icmp6.max_desync_factor_s", self._interface_name))
+        clamped_valid = min(
+            valid_lifetime, sysctl_iface.get_for_iface("icmp6.temp_valid_lifetime_s", self._interface_name)
+        )
+        clamped_preferred_base = min(
+            preferred_lifetime, sysctl_iface.get_for_iface("icmp6.temp_preferred_lifetime_s", self._interface_name)
+        )
         clamped_preferred = max(0.0, clamped_preferred_base - desync)
 
         if existing is not None:
@@ -1422,13 +1427,13 @@ class PacketHandler(Subsystem, ABC):
                                   expires).
         """
 
-        if nd__constants.ICMP6__USE_TEMPADDR == 0:
+        if sysctl_iface.get_for_iface("icmp6.use_tempaddr", self._interface_name) == 0:
             return
         if not self._icmp6_temp_addresses:
             return
 
         now = time.monotonic()
-        regen_advance_s = nd__constants.ICMP6__REGEN_ADVANCE_S
+        regen_advance_s = sysctl_iface.get_for_iface("icmp6.regen_advance_s", self._interface_name)
 
         # Group entries by prefix; for each prefix, find the
         # newest 'preferred_until'. If that newest entry is at
@@ -1457,9 +1462,11 @@ class PacketHandler(Subsystem, ABC):
             # Append a NEW entry alongside (not replacing) the
             # existing one. Lifetimes derived from the same
             # TEMP_*_LIFETIME ceilings as §18b.
-            desync = random.uniform(0, nd__constants.ICMP6__MAX_DESYNC_FACTOR_S)
-            clamped_valid = nd__constants.ICMP6__TEMP_VALID_LIFETIME_S
-            clamped_preferred = max(0.0, nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S - desync)
+            desync = random.uniform(0, sysctl_iface.get_for_iface("icmp6.max_desync_factor_s", self._interface_name))
+            clamped_valid = sysctl_iface.get_for_iface("icmp6.temp_valid_lifetime_s", self._interface_name)
+            clamped_preferred = max(
+                0.0, sysctl_iface.get_for_iface("icmp6.temp_preferred_lifetime_s", self._interface_name) - desync
+            )
 
             regen_temp = Icmp6TempAddress(
                 address=temp_host.address,
@@ -1664,7 +1671,7 @@ class PacketHandler(Subsystem, ABC):
         new_retrans = prior.retrans_timer_ms
 
         if cur_hop_limit > 0:
-            if cur_hop_limit >= nd__constants.ICMP6__ACCEPT_RA_MIN_HOP_LIMIT:
+            if cur_hop_limit >= sysctl_iface.get_for_iface("icmp6.accept_ra_min_hop_limit", self._interface_name):
                 new_hop = cur_hop_limit
                 self._packet_stats_rx.icmp6__nd_router_advertisement__cur_hop_limit__update += 1
             else:
@@ -1713,7 +1720,7 @@ class PacketHandler(Subsystem, ABC):
         Reference: RFC 4291 §2.5.1 (legacy EUI-64 fallback).
         """
 
-        if nd__constants.ICMP6__USE_RFC7217:
+        if sysctl_iface.get_for_iface("icmp6.use_rfc7217", self._interface_name):
             return Ip6IfAddr.from_rfc7217(
                 ip6_network=ip6_network,
                 mac_address=self._mac_unicast,
@@ -1739,7 +1746,7 @@ class PacketHandler(Subsystem, ABC):
         produce the same address.
         """
 
-        if not nd__constants.ICMP6__USE_RFC7217:
+        if not sysctl_iface.get_for_iface("icmp6.use_rfc7217", self._interface_name):
             return None
 
         counter = [0]
@@ -2745,7 +2752,7 @@ class PacketHandlerL2(
         """
 
         now = time.monotonic()
-        interval = nd__constants.ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S
+        interval = sysctl_iface.get_for_iface("icmp6.temp_addr_sweep_interval_s", self._interface_name)
         if now - self._last_temp_addr_sweep_at < interval:
             return
         self._last_temp_addr_sweep_at = now
@@ -2772,12 +2779,12 @@ class PacketHandlerL2(
         is the kill switch — no RS is emitted.
         """
 
-        max_attempts = nd__constants.ICMP6__MAX_RTR_SOLICITATIONS
+        max_attempts = sysctl_iface.get_for_iface("icmp6.max_rtr_solicitations", self._interface_name)
         if max_attempts <= 0:
             return
 
-        rt_ms = nd__constants.ICMP6__RTR_SOLICITATION_INTERVAL_MS
-        mrt_ms = nd__constants.ICMP6__RTR_SOLICITATION_MAX_RT_MS
+        rt_ms = sysctl_iface.get_for_iface("icmp6.rtr_solicitation_interval_ms", self._interface_name)
+        mrt_ms = sysctl_iface.get_for_iface("icmp6.rtr_solicitation_max_rt_ms", self._interface_name)
 
         for _ in range(max_attempts):
             self._send_icmp6_nd_router_solicitation()
@@ -2823,7 +2830,7 @@ class PacketHandlerL2(
         # candidate goes straight to VALID with no probes
         # emitted, no initial delay taken, and no per-address
         # DAD-state slot. Linux 'accept_dad=0' parity.
-        if nd__constants.ICMP6__ACCEPT_DAD == 0:
+        if sysctl_iface.get_for_iface("icmp6.accept_dad", self._interface_name) == 0:
             with self._lock__addr_config:
                 self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
             return True
@@ -2849,7 +2856,7 @@ class PacketHandlerL2(
         # instant. Ceiling is 'icmp6.max_rtr_solicitation_delay_ms'
         # (default 1000 ms = RFC 4861 §10). Setting the sysctl
         # to 0 disables.
-        max_initial_delay_ms = nd__constants.ICMP6__MAX_RTR_SOLICITATION_DELAY_MS
+        max_initial_delay_ms = sysctl_iface.get_for_iface("icmp6.max_rtr_solicitation_delay_ms", self._interface_name)
         if max_initial_delay_ms > 0:
             time.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
 
@@ -2865,10 +2872,12 @@ class PacketHandlerL2(
         # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
         # supersedes the operator-configured sysctl default. The
         # mirror is captured by §13a; consumer wiring is §13b.
-        effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or nd__constants.ICMP6__RETRANS_TIMER_MS
+        effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or sysctl_iface.get_for_iface(
+            "icmp6.retrans_timer_ms", self._interface_name
+        )
         retrans_timer_s = effective_retrans_timer_ms / 1000.0
         conflict = False
-        for _probe_index in range(nd__constants.ICMP6__DAD_TRANSMITS):
+        for _probe_index in range(sysctl_iface.get_for_iface("icmp6.dad_transmits", self._interface_name)):
             # RFC 7527 §4.1: every NS(DAD) carries a fresh
             # random nonce when Enhanced DAD is enabled. The
             # nonce is registered with the slot under the
@@ -2876,7 +2885,7 @@ class PacketHandlerL2(
             # in 'registry.try_signal_conflict' cannot observe
             # a partially-mutated set.
             nonce: bytes | None = None
-            if nd__constants.ICMP6__ENHANCED_DAD:
+            if sysctl_iface.get_for_iface("icmp6.enhanced_dad", self._interface_name):
                 nonce = secrets.token_bytes(6)
                 self._icmp6_nd_dad__registry.register_nonce(ip6_unicast_candidate, nonce)
             self._send_icmp6_nd_dad_message(
@@ -2993,7 +3002,7 @@ class PacketHandlerL2(
         """
 
         def _attempt_claim(candidate: Ip6IfAddr) -> bool:
-            if nd__constants.ICMP6__OPTIMISTIC_DAD == 1:
+            if sysctl_iface.get_for_iface("icmp6.optimistic_dad", self._interface_name) == 1:
                 return self._claim_ip6_address_optimistic(ip6_host=candidate)
             ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=candidate.address)
             if ok:
@@ -3001,7 +3010,9 @@ class PacketHandlerL2(
             return ok
 
         def _worker() -> None:
-            max_retries = nd__constants.ICMP6__IDGEN_RETRIES if regenerate is not None else 0
+            max_retries = (
+                sysctl_iface.get_for_iface("icmp6.idgen_retries", self._interface_name) if regenerate is not None else 0
+            )
             current = ip6_host
             for attempt in range(max_retries + 1):
                 ok = _attempt_claim(current)
@@ -3027,7 +3038,7 @@ class PacketHandlerL2(
             # (after retries are exhausted) disables IPv6 on
             # the interface entirely. Linux 'accept_dad=2'
             # parity.
-            if nd__constants.ICMP6__ACCEPT_DAD == 2:
+            if sysctl_iface.get_for_iface("icmp6.accept_dad", self._interface_name) == 2:
                 __debug__ and log(
                     "stack",
                     f"<CRIT>icmp6.accept_dad=2 — DAD failure on {current} " "disables IPv6 on this interface</>",
@@ -3072,7 +3083,7 @@ class PacketHandlerL2(
             regenerate: Callable[[], Ip6IfAddr] | None = None,
         ) -> None:
             thread = self._claim_ip6_address_async(ip6_host=ip6_host, regenerate=regenerate)
-            if nd__constants.ICMP6__OPTIMISTIC_DAD == 0:
+            if sysctl_iface.get_for_iface("icmp6.optimistic_dad", self._interface_name) == 0:
                 thread.join()
 
         # Assign IPv6 All Nodes multicast address.

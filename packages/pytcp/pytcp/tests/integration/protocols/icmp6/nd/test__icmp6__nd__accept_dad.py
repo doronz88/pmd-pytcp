@@ -83,7 +83,7 @@ class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.accept_dad"),
+            sysctl_module.get("icmp6.default.accept_dad"),
             1,
             msg="Default must be 1 (normal DAD).",
         )
@@ -96,8 +96,8 @@ class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):
         """
 
         for value in (0, 1, 2):
-            sysctl_module.set("icmp6.accept_dad", value)
-            self.assertEqual(sysctl_module.get("icmp6.accept_dad"), value)
+            sysctl_module.set("icmp6.default.accept_dad", value)
+            self.assertEqual(sysctl_module.get("icmp6.default.accept_dad"), value)
 
     def test__icmp6__nd__accept_dad__validator_rejects_three(self) -> None:
         """
@@ -107,7 +107,7 @@ class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.accept_dad", 3)
+            sysctl_module.set("icmp6.default.accept_dad", 3)
 
     def test__icmp6__nd__accept_dad__validator_rejects_bool(self) -> None:
         """
@@ -117,7 +117,7 @@ class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.accept_dad", True)
+            sysctl_module.set("icmp6.default.accept_dad", True)
 
 
 class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
@@ -146,8 +146,8 @@ class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
 
         before_tx = len(self._frames_tx)
 
-        with sysctl_module.override("icmp6.accept_dad", 0):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
+        with sysctl_module.override("icmp6.default.accept_dad", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 ok = self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertTrue(ok, msg="accept_dad=0 must short-circuit DAD as success.")
@@ -196,9 +196,9 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
             msg="Pre-condition: _ip6_support must be True before the test.",
         )
 
-        with sysctl_module.override("icmp6.accept_dad", 2):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
-                with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.accept_dad", 2):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
+                with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                     threading.Timer(0.005, _trigger_conflict).start()
                     thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
                     thread.join(timeout=5.0)
@@ -228,8 +228,8 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                 threading.Timer(0.005, _trigger_conflict).start()
                 thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
                 thread.join(timeout=5.0)
@@ -248,9 +248,9 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         Reference: Linux 'accept_dad=2' (failure-only side effect).
         """
 
-        with sysctl_module.override("icmp6.accept_dad", 2):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
-                with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.accept_dad", 2):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
+                with sysctl_module.override("icmp6.default.dad_transmits", 0):
                     thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
                     thread.join(timeout=5.0)
 

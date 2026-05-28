@@ -3,7 +3,8 @@
 **Status:** Phase 0 SHIPPED 2026-05-28 (registry scaffold +
 24 tests + helper module). Phase 1 (ARP, 4 knobs) SHIPPED
 2026-05-28. Phase 2 (Neighbor cache, 6 knobs) SHIPPED
-2026-05-28. Phases 3-5 remain. Successor to
+2026-05-28. Phase 3 (ICMPv6 / ND, 22 knobs) SHIPPED
+2026-05-28. Phases 4-5 remain. Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -569,19 +570,56 @@ over the unified table.
 Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 4 new
 tests, 11838 total green.
 
-### Phase 3 — ICMPv6 / ND (1 commit, 22 knobs)
+### Phase 3 — ICMPv6 / ND (SHIPPED 2026-05-28)
 
-The biggest single phase. All 22 `icmp6.*` knobs migrate
+The biggest single phase. All 22 `icmp6.*` knobs migrated
 together per the no-half-migrated rule.
 
-- Storage: 22 dict promotions in `protocols/icmp6/nd/nd__constants.py`.
-- Consumers: `packet_handler__icmp6__rx.py` (ND inbound),
-  `packet_handler__icmp6__tx.py` (RS/NS/NA emit),
-  `nd_cache.py`, the SLAAC / temp-addr / RFC 7217 code paths.
-  All consumers already have `_interface_name` in scope.
-- Tests: per-interface override pin for one representative
-  knob from each cluster (accept_redirects / dad_transmits /
-  use_tempaddr / use_rfc7217); existing ND tests stay green.
+- Storage: 22 dict promotions in
+  `protocols/icmp6/nd/nd__constants.py` (every
+  registered `ICMP6__X` scalar → `dict[str, T]` with
+  `{"default": <value>}` initial state; the
+  `ICMP6__SLAAC__TWO_HOUR_RULE_S` constant remains scalar
+  — it's a protocol invariant, not a knob).
+- Each migrated `register(...)` call now carries
+  `interface_scope=True`; the registered `default=` is the
+  scalar template that seeds the `"default"` slot.
+- Consumer-side updates (28 production-code sites):
+  - `packet_handler__icmp6__rx.py` (3 sites: `accept_ra_pinfo`,
+    `accept_ra_defrtr`, `accept_redirects`).
+  - `packet_handler__icmp6__tx.py` (1 site:
+    `gratuitous_na_count`).
+  - `packet_handler__ip6__tx.py` (1 site: `use_tempaddr`
+    inside the §6724 rule-7 source-address selector).
+  - `runtime/packet_handler/__init__.py` (25 sites across
+    SLAAC mint / temp-addr regen / RA min-hop-limit / RS
+    backoff / RFC 7217 IID gen / DAD initial-delay /
+    enhanced DAD / accept_dad / use_rfc7217 /
+    optimistic_dad / idgen_retries / temp_addr_sweep).
+  - All consumer reads go through
+    `sysctl_iface.get_for_iface("icmp6.<field>",
+    self._interface_name)` (PacketHandler) or
+    `sysctl_iface.get_for_iface("icmp6.<field>",
+    self._if._interface_name)` (sub-handlers).
+- New behavioural pin
+  `tests/integration/protocols/icmp6/nd/test__icmp6__nd__sysctl_per_interface.py`
+  (4 tests): registry-meta check that all 22 knobs are
+  `interface_scope=True`, bare-base-key rejection, default-
+  slot template applies to unnamed iface, per-iface override
+  scoped to one iface only. Red before Phase 3 (bare key
+  registered as flat); green after.
+- Bulk-modernised 20 existing ICMPv6/ND integration tests
+  and 1 unit test (131 override-key replacements:
+  `sysctl_module.override("icmp6.<field>", v)` →
+  `"icmp6.default.<field>"`); 5 direct attribute reads in
+  `test__icmp6__nd__rfc8981_temp.py` updated to
+  `nd__constants.ICMP6__X["default"]`; the
+  `test__addr_config__thread_safety.py` outlier (`sysctl.override`
+  variant) updated manually; 3 unit-test stubs gained
+  `_interface_name: str | None = None`.
+
+Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 4 new
+tests, 11842 total green.
 
 ### Phase 4 — IPv4 conf-plane (1 commit, 2 knobs)
 

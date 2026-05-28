@@ -51,26 +51,26 @@ from pytcp.stack.sysctl import register
 #       outweighs the route-optimisation benefit).
 #   1 = process Redirects subject to RFC 4861 §8.1 acceptance
 #       gates (host-side default; matches Linux's host default).
-ICMP6__ACCEPT_REDIRECTS = 1
+ICMP6__ACCEPT_REDIRECTS: dict[str, int] = {"default": 1}
 
 # Number of gratuitous Neighbor Advertisement messages emitted
 # on host attachment (RFC 9131 §3 — the IPv6 analogue of
 # RFC 5227 §2.3 ARP Announcement). Linux's default is 1; a
 # value of 0 suppresses gratuitous-NA emission entirely (kill
 # switch for stealth deployments).
-ICMP6__GRATUITOUS_NA_COUNT = 1
+ICMP6__GRATUITOUS_NA_COUNT: dict[str, int] = {"default": 1}
 
 # Number of DAD (Duplicate Address Detection) probes emitted
 # per candidate address per RFC 4862 §5.1 ('DupAddrDetectTransmits',
 # default 1). Linux exposes this as 'net.ipv6.conf.<iface>.
 # dad_transmits'. A value of 0 disables DAD entirely.
-ICMP6__DAD_TRANSMITS = 1
+ICMP6__DAD_TRANSMITS: dict[str, int] = {"default": 1}
 
 # Inter-probe wait between successive DAD probes, in
 # milliseconds, per RFC 4861 §10 ('RetransTimer', default
 # 1000ms). Linux exposes this as
 # 'net.ipv6.conf.<iface>.retrans_time_ms'.
-ICMP6__RETRANS_TIMER_MS = 1000
+ICMP6__RETRANS_TIMER_MS: dict[str, int] = {"default": 1000}
 
 # Linux net.ipv6.conf.<iface>.accept_ra_defrtr policy. Controls
 # whether inbound RA messages with a non-zero Router Lifetime
@@ -81,7 +81,7 @@ ICMP6__RETRANS_TIMER_MS = 1000
 #       it — useful for static-routing or isolated deployments).
 #   1 = process default-router updates per RFC 4861 §6.3.4 (Linux
 #       host default).
-ICMP6__ACCEPT_RA_DEFRTR = 1
+ICMP6__ACCEPT_RA_DEFRTR: dict[str, int] = {"default": 1}
 
 # Linux net.ipv6.conf.<iface>.accept_ra_pinfo policy. Controls
 # whether inbound RA Prefix-Information options install / refresh
@@ -91,7 +91,7 @@ ICMP6__ACCEPT_RA_DEFRTR = 1
 #       where addresses come from DHCPv6).
 #   1 = process PI options per RFC 4862 §5.5.3 (Linux host
 #       default).
-ICMP6__ACCEPT_RA_PINFO = 1
+ICMP6__ACCEPT_RA_PINFO: dict[str, int] = {"default": 1}
 
 # RFC 4862 §5.5.3 (e)(6) 2-hour rule constant. Defends an
 # existing autoconfigured address from a router that advertises
@@ -110,28 +110,28 @@ ICMP6__SLAAC__TWO_HOUR_RULE_S = 7200
 # advertise pathologically low Hop Limits which would cause
 # legitimate destinations to become unreachable. Linux's
 # default is 1.
-ICMP6__ACCEPT_RA_MIN_HOP_LIMIT = 1
+ICMP6__ACCEPT_RA_MIN_HOP_LIMIT: dict[str, int] = {"default": 1}
 
 # RFC 4861 §6.3.7 RTR_SOLICITATION_INTERVAL — the initial
 # retransmission timeout for the host's Router Solicitation
 # loop, in milliseconds. RFC 7559 §2 amends this to be the
 # IRT base for truncated binary exponential backoff. Default
 # 4000 ms (4 s).
-ICMP6__RTR_SOLICITATION_INTERVAL_MS = 4000
+ICMP6__RTR_SOLICITATION_INTERVAL_MS: dict[str, int] = {"default": 4000}
 
 # RFC 7559 §2 maximum retransmission timeout (MRT cap) for
 # the RS exponential-backoff loop, in milliseconds. Default
 # 3 600 000 ms (1 hour). Combined with MAX_RTR_SOLICITATIONS
 # this bounds how long a host pauses between unsuccessful RS
 # retransmissions.
-ICMP6__RTR_SOLICITATION_MAX_RT_MS = 3600000
+ICMP6__RTR_SOLICITATION_MAX_RT_MS: dict[str, int] = {"default": 3600000}
 
 # RFC 4861 §6.3.7 MAX_RTR_SOLICITATIONS — the maximum number
 # of RS messages the host emits before giving up on RA-driven
 # auto-configuration. Default 3 per RFC 4861. A value of 0
 # disables RS entirely (kill switch for static-config-only
 # deployments).
-ICMP6__MAX_RTR_SOLICITATIONS = 3
+ICMP6__MAX_RTR_SOLICITATIONS: dict[str, int] = {"default": 3}
 
 # RFC 7527 Enhanced DAD — when enabled, every NS(DAD) probe
 # carries a randomly-generated 6-byte Nonce option. The host
@@ -142,7 +142,7 @@ ICMP6__MAX_RTR_SOLICITATIONS = 3
 # 1 per RFC 7527 / Linux 'enhanced_dad'. 0 disables the
 # feature; DAD then uses RFC 4861 plain semantics where any
 # NS targeting our tentative address aborts the claim.
-ICMP6__ENHANCED_DAD = 1
+ICMP6__ENHANCED_DAD: dict[str, int] = {"default": 1}
 
 # RFC 8981 §3.8 REGEN_ADVANCE — number of seconds before
 # a temporary address's preferred lifetime expires that the
@@ -154,7 +154,7 @@ ICMP6__ENHANCED_DAD = 1
 # Setting to 0 disables advance regeneration (the host
 # regenerates exactly at preferred_until expiry, leaving
 # no overlap window).
-ICMP6__REGEN_ADVANCE_S = 5
+ICMP6__REGEN_ADVANCE_S: dict[str, int] = {"default": 5}
 
 # Interval (seconds) between RFC 8981 temporary-address
 # sweeps. The PacketHandler subsystem loop wakes up at
@@ -166,7 +166,7 @@ ICMP6__REGEN_ADVANCE_S = 5
 # in the kernel, but PyTCP exposes it for test runs that
 # want a tighter sweep interval. Must be > 0 (a zero
 # interval would tight-loop).
-ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S = 60
+ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S: dict[str, int] = {"default": 60}
 
 # RFC 7217 §6 IDGEN_RETRIES — the host re-derives the
 # Interface Identifier and retries DAD up to this many times
@@ -178,7 +178,7 @@ ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S = 60
 # 'dad_counter') and the §18b temp-address mutator wires it
 # for RFC 8981 (each retry mints a fresh random IID). A value
 # of 0 disables retry entirely (give up on first DAD failure).
-ICMP6__IDGEN_RETRIES = 3
+ICMP6__IDGEN_RETRIES: dict[str, int] = {"default": 3}
 
 # Linux net.ipv6.conf.<iface>.accept_dad policy. Tristate
 # matching Linux's host-side semantics:
@@ -193,7 +193,7 @@ ICMP6__IDGEN_RETRIES = 3
 #       by paranoid deployments where conflicting addresses
 #       are treated as a security incident. Linux's kernel
 #       has the same behaviour.
-ICMP6__ACCEPT_DAD = 1
+ICMP6__ACCEPT_DAD: dict[str, int] = {"default": 1}
 
 # RFC 4861 §10 MAX_RTR_SOLICITATION_DELAY — the upper bound
 # on the random initial delay before the first DAD probe (RFC
@@ -205,7 +205,7 @@ ICMP6__ACCEPT_DAD = 1
 # per RFC 4861 §10. A value of 0 disables the delay entirely
 # (kill switch — useful for low-latency boot environments
 # where the operator accepts the synchronisation risk).
-ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000
+ICMP6__MAX_RTR_SOLICITATION_DELAY_MS: dict[str, int] = {"default": 1000}
 
 # Linux net.ipv6.conf.<iface>.use_tempaddr policy. Controls
 # whether RFC 8981 temporary addresses are generated alongside
@@ -222,12 +222,12 @@ ICMP6__MAX_RTR_SOLICITATION_DELAY_MS = 1000
 #       'pytcp/runtime/packet_handler/packet_handler__ip6__tx.py';
 #       values 0 and 1 leave rule 7 as a no-op and rule 8
 #       decides.
-ICMP6__USE_TEMPADDR = 0
+ICMP6__USE_TEMPADDR: dict[str, int] = {"default": 0}
 
 # RFC 8981 §3.8 TEMP_VALID_LIFETIME — total valid lifetime cap
 # for temporary addresses. Default 7 days (604800 seconds).
 # Linux exposes this as 'net.ipv6.conf.<iface>.temp_valid_lft'.
-ICMP6__TEMP_VALID_LIFETIME_S = 604800
+ICMP6__TEMP_VALID_LIFETIME_S: dict[str, int] = {"default": 604800}
 
 # RFC 8981 §3.8 TEMP_PREFERRED_LIFETIME — preferred lifetime cap
 # for temporary addresses. Default 1 day (86400 seconds). Linux
@@ -235,14 +235,14 @@ ICMP6__TEMP_VALID_LIFETIME_S = 604800
 # (note the kernel's spelling 'prefered' without the second 'r'
 # — a long-standing typo PyTCP does NOT propagate; PyTCP uses
 # the correct 'preferred' spelling).
-ICMP6__TEMP_PREFERRED_LIFETIME_S = 86400
+ICMP6__TEMP_PREFERRED_LIFETIME_S: dict[str, int] = {"default": 86400}
 
 # RFC 8981 §3.8 MAX_DESYNC_FACTOR — upper bound on the random
 # offset subtracted from TEMP_PREFERRED_LIFETIME at address
 # creation, preventing fleet-wide synchronised regeneration.
 # Default 600 seconds (10 minutes). Linux exposes this as
 # 'net.ipv6.conf.<iface>.max_desync_factor'.
-ICMP6__MAX_DESYNC_FACTOR_S = 600
+ICMP6__MAX_DESYNC_FACTOR_S: dict[str, int] = {"default": 600}
 
 # Linux net.ipv6.conf.<iface>.optimistic_dad policy. Controls
 # whether RFC 4429 Optimistic DAD is used: when enabled, a
@@ -256,7 +256,7 @@ ICMP6__MAX_DESYNC_FACTOR_S = 600
 # §6.3 marks the feature as optional / MAY for general-purpose
 # devices; it is primarily a mobility / fast-handover
 # optimisation.
-ICMP6__OPTIMISTIC_DAD = 0
+ICMP6__OPTIMISTIC_DAD: dict[str, int] = {"default": 0}
 
 # RFC 7217 stable opaque IIDs — when enabled, SLAAC derives
 # the Interface Identifier via SHA-256(prefix || mac ||
@@ -267,7 +267,7 @@ ICMP6__OPTIMISTIC_DAD = 0
 # since 4.16). 0 falls back to EUI-64 — useful for testing
 # and for callers that need MAC-derived addresses for
 # legacy interop.
-ICMP6__USE_RFC7217 = 1
+ICMP6__USE_RFC7217: dict[str, int] = {"default": 1}
 
 
 def _accept_redirects_validator(value: object) -> None:
@@ -526,40 +526,45 @@ register(
     key="icmp6.accept_redirects",
     module_name=__name__,
     attr="ICMP6__ACCEPT_REDIRECTS",
-    default=ICMP6__ACCEPT_REDIRECTS,
+    default=ICMP6__ACCEPT_REDIRECTS["default"],
     validator=_accept_redirects_validator,
+    interface_scope=True,
     description="Linux 'net.ipv6.conf.<iface>.accept_redirects' (0 = drop all RFC 4861 §8 Redirects; 1 = process).",
 )
 register(
     key="icmp6.gratuitous_na_count",
     module_name=__name__,
     attr="ICMP6__GRATUITOUS_NA_COUNT",
-    default=ICMP6__GRATUITOUS_NA_COUNT,
+    default=ICMP6__GRATUITOUS_NA_COUNT["default"],
     validator=_gratuitous_na_count_validator,
+    interface_scope=True,
     description="Number of gratuitous NAs emitted on host attachment (RFC 9131 §3); 0 = kill switch.",
 )
 register(
     key="icmp6.dad_transmits",
     module_name=__name__,
     attr="ICMP6__DAD_TRANSMITS",
-    default=ICMP6__DAD_TRANSMITS,
+    default=ICMP6__DAD_TRANSMITS["default"],
     validator=_dad_transmits_validator,
+    interface_scope=True,
     description="Number of DAD probes per candidate address (RFC 4862 §5.1 DupAddrDetectTransmits); 0 disables DAD.",
 )
 register(
     key="icmp6.retrans_timer_ms",
     module_name=__name__,
     attr="ICMP6__RETRANS_TIMER_MS",
-    default=ICMP6__RETRANS_TIMER_MS,
+    default=ICMP6__RETRANS_TIMER_MS["default"],
     validator=_retrans_timer_ms_validator,
+    interface_scope=True,
     description="Inter-probe wait between DAD probes in milliseconds (RFC 4861 §10 RetransTimer; default 1000).",
 )
 register(
     key="icmp6.accept_ra_defrtr",
     module_name=__name__,
     attr="ICMP6__ACCEPT_RA_DEFRTR",
-    default=ICMP6__ACCEPT_RA_DEFRTR,
+    default=ICMP6__ACCEPT_RA_DEFRTR["default"],
     validator=_accept_ra_defrtr_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_defrtr' "
         "(0 = drop default-router learning; 1 = process RFC 4861 §6.3.4)."
@@ -569,8 +574,9 @@ register(
     key="icmp6.accept_ra_pinfo",
     module_name=__name__,
     attr="ICMP6__ACCEPT_RA_PINFO",
-    default=ICMP6__ACCEPT_RA_PINFO,
+    default=ICMP6__ACCEPT_RA_PINFO["default"],
     validator=_accept_ra_pinfo_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_pinfo' " "(0 = drop PI consumption; 1 = process RFC 4862 §5.5.3)."
     ),
@@ -579,8 +585,9 @@ register(
     key="icmp6.accept_ra_min_hop_limit",
     module_name=__name__,
     attr="ICMP6__ACCEPT_RA_MIN_HOP_LIMIT",
-    default=ICMP6__ACCEPT_RA_MIN_HOP_LIMIT,
+    default=ICMP6__ACCEPT_RA_MIN_HOP_LIMIT["default"],
     validator=_accept_ra_min_hop_limit_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_ra_min_hop_limit' "
         "(floor for accepting Cur-Hop-Limit; 0 accepts any value)."
@@ -590,8 +597,9 @@ register(
     key="icmp6.rtr_solicitation_interval_ms",
     module_name=__name__,
     attr="ICMP6__RTR_SOLICITATION_INTERVAL_MS",
-    default=ICMP6__RTR_SOLICITATION_INTERVAL_MS,
+    default=ICMP6__RTR_SOLICITATION_INTERVAL_MS["default"],
     validator=_rtr_solicitation_interval_ms_validator,
+    interface_scope=True,
     description=(
         "RFC 7559 §2 IRT (initial retransmission timeout) for " "the RS exponential-backoff loop; default 4000 ms."
     ),
@@ -600,8 +608,9 @@ register(
     key="icmp6.rtr_solicitation_max_rt_ms",
     module_name=__name__,
     attr="ICMP6__RTR_SOLICITATION_MAX_RT_MS",
-    default=ICMP6__RTR_SOLICITATION_MAX_RT_MS,
+    default=ICMP6__RTR_SOLICITATION_MAX_RT_MS["default"],
     validator=_rtr_solicitation_max_rt_ms_validator,
+    interface_scope=True,
     description=(
         "RFC 7559 §2 MRT (maximum retransmission timeout) cap "
         "for the RS exponential-backoff loop; default 3600000 ms."
@@ -611,16 +620,18 @@ register(
     key="icmp6.max_rtr_solicitations",
     module_name=__name__,
     attr="ICMP6__MAX_RTR_SOLICITATIONS",
-    default=ICMP6__MAX_RTR_SOLICITATIONS,
+    default=ICMP6__MAX_RTR_SOLICITATIONS["default"],
     validator=_max_rtr_solicitations_validator,
+    interface_scope=True,
     description=("RFC 4861 §6.3.7 MAX_RTR_SOLICITATIONS; default 3. " "0 disables RS entirely (kill switch)."),
 )
 register(
     key="icmp6.enhanced_dad",
     module_name=__name__,
     attr="ICMP6__ENHANCED_DAD",
-    default=ICMP6__ENHANCED_DAD,
+    default=ICMP6__ENHANCED_DAD["default"],
     validator=_enhanced_dad_validator,
+    interface_scope=True,
     description=(
         "RFC 7527 Enhanced DAD with Nonce option (Linux 'enhanced_dad'); "
         "default 1. 0 falls back to RFC 4861 plain DAD semantics."
@@ -630,8 +641,9 @@ register(
     key="icmp6.regen_advance_s",
     module_name=__name__,
     attr="ICMP6__REGEN_ADVANCE_S",
-    default=ICMP6__REGEN_ADVANCE_S,
+    default=ICMP6__REGEN_ADVANCE_S["default"],
     validator=_regen_advance_s_validator,
+    interface_scope=True,
     description=(
         "RFC 8981 §3.8 REGEN_ADVANCE — seconds before "
         "preferred_lifetime expiry that a fresh temp address "
@@ -642,8 +654,9 @@ register(
     key="icmp6.temp_addr_sweep_interval_s",
     module_name=__name__,
     attr="ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S",
-    default=ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S,
+    default=ICMP6__TEMP_ADDR_SWEEP_INTERVAL_S["default"],
     validator=_temp_addr_sweep_interval_s_validator,
+    interface_scope=True,
     description=(
         "Interval (seconds) between RFC 8981 temporary-address "
         "sweeps; default 60. Removes entries past 'valid_until' "
@@ -654,8 +667,9 @@ register(
     key="icmp6.idgen_retries",
     module_name=__name__,
     attr="ICMP6__IDGEN_RETRIES",
-    default=ICMP6__IDGEN_RETRIES,
+    default=ICMP6__IDGEN_RETRIES["default"],
     validator=_idgen_retries_validator,
+    interface_scope=True,
     description=(
         "RFC 7217 §6 IDGEN_RETRIES — number of times the host "
         "re-derives the IID and retries DAD on collision; "
@@ -666,8 +680,9 @@ register(
     key="icmp6.accept_dad",
     module_name=__name__,
     attr="ICMP6__ACCEPT_DAD",
-    default=ICMP6__ACCEPT_DAD,
+    default=ICMP6__ACCEPT_DAD["default"],
     validator=_accept_dad_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.accept_dad' tristate "
         "{0,1,2}; 0=skip DAD, 1=normal (default), 2=fail-hard "
@@ -678,8 +693,9 @@ register(
     key="icmp6.max_rtr_solicitation_delay_ms",
     module_name=__name__,
     attr="ICMP6__MAX_RTR_SOLICITATION_DELAY_MS",
-    default=ICMP6__MAX_RTR_SOLICITATION_DELAY_MS,
+    default=ICMP6__MAX_RTR_SOLICITATION_DELAY_MS["default"],
     validator=_max_rtr_solicitation_delay_ms_validator,
+    interface_scope=True,
     description=(
         "RFC 4861 §10 MAX_RTR_SOLICITATION_DELAY — random "
         "initial delay ceiling for the first DAD probe (RFC "
@@ -691,8 +707,9 @@ register(
     key="icmp6.use_tempaddr",
     module_name=__name__,
     attr="ICMP6__USE_TEMPADDR",
-    default=ICMP6__USE_TEMPADDR,
+    default=ICMP6__USE_TEMPADDR["default"],
     validator=_use_tempaddr_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.use_tempaddr' (RFC 8981); "
         "tristate 0/1/2. 0=off, 1=generate without preference, "
@@ -703,8 +720,9 @@ register(
     key="icmp6.temp_valid_lifetime_s",
     module_name=__name__,
     attr="ICMP6__TEMP_VALID_LIFETIME_S",
-    default=ICMP6__TEMP_VALID_LIFETIME_S,
+    default=ICMP6__TEMP_VALID_LIFETIME_S["default"],
     validator=_temp_valid_lifetime_s_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.temp_valid_lft' " "(RFC 8981 §3.8 TEMP_VALID_LIFETIME); default 604800 (7d)."
     ),
@@ -713,8 +731,9 @@ register(
     key="icmp6.temp_preferred_lifetime_s",
     module_name=__name__,
     attr="ICMP6__TEMP_PREFERRED_LIFETIME_S",
-    default=ICMP6__TEMP_PREFERRED_LIFETIME_S,
+    default=ICMP6__TEMP_PREFERRED_LIFETIME_S["default"],
     validator=_temp_preferred_lifetime_s_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.temp_prefered_lft' "
         "(RFC 8981 §3.8 TEMP_PREFERRED_LIFETIME); default 86400 (1d)."
@@ -724,8 +743,9 @@ register(
     key="icmp6.max_desync_factor_s",
     module_name=__name__,
     attr="ICMP6__MAX_DESYNC_FACTOR_S",
-    default=ICMP6__MAX_DESYNC_FACTOR_S,
+    default=ICMP6__MAX_DESYNC_FACTOR_S["default"],
     validator=_max_desync_factor_s_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.max_desync_factor' " "(RFC 8981 §3.8 MAX_DESYNC_FACTOR); default 600 (10m)."
     ),
@@ -734,8 +754,9 @@ register(
     key="icmp6.optimistic_dad",
     module_name=__name__,
     attr="ICMP6__OPTIMISTIC_DAD",
-    default=ICMP6__OPTIMISTIC_DAD,
+    default=ICMP6__OPTIMISTIC_DAD["default"],
     validator=_optimistic_dad_validator,
+    interface_scope=True,
     description=(
         "Linux 'net.ipv6.conf.<iface>.optimistic_dad' (RFC 4429 §3.1); " "default 0. 1 enables Optimistic DAD."
     ),
@@ -744,8 +765,9 @@ register(
     key="icmp6.use_rfc7217",
     module_name=__name__,
     attr="ICMP6__USE_RFC7217",
-    default=ICMP6__USE_RFC7217,
+    default=ICMP6__USE_RFC7217["default"],
     validator=_use_rfc7217_validator,
+    interface_scope=True,
     description=(
         "RFC 7217 stable opaque IIDs (Linux 'addr_gen_mode = 2'); " "default 1. 0 falls back to legacy EUI-64 IIDs."
     ),

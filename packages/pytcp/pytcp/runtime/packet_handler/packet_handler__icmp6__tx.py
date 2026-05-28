@@ -65,7 +65,7 @@ from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__router_alert import (
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__options import Ip6HbhOptions
 from pytcp.lib.logger import log
 from pytcp.lib.tx_status import TxStatus
-from pytcp.protocols.icmp6.nd import nd__constants
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -497,7 +497,7 @@ class Icmp6TxHandler:
         kill switch).
         """
 
-        for _ in range(nd__constants.ICMP6__GRATUITOUS_NA_COUNT):
+        for _ in range(sysctl_iface.get_for_iface("icmp6.gratuitous_na_count", self._if._interface_name)):
             self.send_icmp6_neighbor_advertisement(
                 ip6__src=ip6_unicast,
                 ip6__dst=Ip6Address("ff02::1"),

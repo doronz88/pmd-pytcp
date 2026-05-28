@@ -263,7 +263,7 @@ class TestIcmp6Rx__NdRedirect__AcceptRedirectsZero(NdTestCase):
         Reference: Linux net.ipv6.conf.<iface>.accept_redirects (mode 0).
         """
 
-        with sysctl_module.override("icmp6.accept_redirects", 0):
+        with sysctl_module.override("icmp6.default.accept_redirects", 0):
             frame = self._make_nd_redirect_frame(
                 eth_src=ROUTER__MAC,
                 eth_dst=STACK__MAC_ADDRESS,

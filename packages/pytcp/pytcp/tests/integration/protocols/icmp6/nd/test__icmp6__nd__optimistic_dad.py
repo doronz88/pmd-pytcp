@@ -115,7 +115,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.optimistic_dad"),
+            sysctl_module.get("icmp6.default.optimistic_dad"),
             0,
             msg="'icmp6.optimistic_dad' must default to 0 (off).",
         )
@@ -129,7 +129,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.optimistic_dad", 2)
+            sysctl_module.set("icmp6.default.optimistic_dad", 2)
 
     def test__icmp6__nd__optimistic_dad__sysctl_validator_rejects_bool(self) -> None:
         """
@@ -140,7 +140,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.optimistic_dad", True)
+            sysctl_module.set("icmp6.default.optimistic_dad", True)
 
 
 class TestIcmp6Nd__OptimisticDad__StateAccessorUnknown(NdTestCase):
@@ -187,7 +187,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
         Reference: RFC 4862 §5.4 (DAD passes → address VALID).
         """
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 10):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
             self.assertTrue(
                 self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
                 msg="Without a conflict, sync DAD must succeed.",
@@ -215,7 +215,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
             threading.Timer(0.005, _trigger_conflict).start()
             self.assertFalse(
                 self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
@@ -264,8 +264,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.optimistic_dad", 1):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.optimistic_dad", 1):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                 threading.Timer(0.010, _trigger_conflict).start()
                 self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
@@ -290,8 +290,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         flag suppression, address VALID).
         """
 
-        with sysctl_module.override("icmp6.optimistic_dad", 1):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 10):
+        with sysctl_module.override("icmp6.default.optimistic_dad", 1):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
                 self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
         self.assertEqual(
@@ -322,8 +322,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.optimistic_dad", 1):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.optimistic_dad", 1):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                 threading.Timer(0.005, _trigger_conflict).start()
                 self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
@@ -463,7 +463,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
             threading.Timer(0.010, _trigger_conflict).start()
             self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 

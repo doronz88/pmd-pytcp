@@ -203,8 +203,8 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
         Reference: RFC 7527 §4.1 (sender MUST include nonce in NS(DAD)).
         """
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 1):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 1):
                 self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
 
         # Find the NS(DAD) frame the stack emitted.
@@ -257,9 +257,9 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
         Reference: Linux 'enhanced_dad' (kill switch).
         """
 
-        with sysctl_module.override("icmp6.enhanced_dad", 0):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 1):
-                with sysctl_module.override("icmp6.dad_transmits", 1):
+        with sysctl_module.override("icmp6.default.enhanced_dad", 0):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 1):
+                with sysctl_module.override("icmp6.default.dad_transmits", 1):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
 
         # Find the NS(DAD) frame the stack emitted.

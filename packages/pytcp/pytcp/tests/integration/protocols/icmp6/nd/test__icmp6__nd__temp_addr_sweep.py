@@ -83,7 +83,7 @@ class TestIcmp6Nd__TempAddrSweep__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.temp_addr_sweep_interval_s"),
+            sysctl_module.get("icmp6.default.temp_addr_sweep_interval_s"),
             60,
             msg="Default must be 60 seconds.",
         )
@@ -97,7 +97,7 @@ class TestIcmp6Nd__TempAddrSweep__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.temp_addr_sweep_interval_s", 0)
+            sysctl_module.set("icmp6.default.temp_addr_sweep_interval_s", 0)
 
     def test__icmp6__nd__temp_addr_sweep__sysctl_validator_rejects_negative(self) -> None:
         """
@@ -107,7 +107,7 @@ class TestIcmp6Nd__TempAddrSweep__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.temp_addr_sweep_interval_s", -1)
+            sysctl_module.set("icmp6.default.temp_addr_sweep_interval_s", -1)
 
     def test__icmp6__nd__temp_addr_sweep__sysctl_validator_rejects_bool(self) -> None:
         """
@@ -117,7 +117,7 @@ class TestIcmp6Nd__TempAddrSweep__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.temp_addr_sweep_interval_s", True)
+            sysctl_module.set("icmp6.default.temp_addr_sweep_interval_s", True)
 
 
 class TestIcmp6Nd__TempAddrSweep__RemovesExpired(NdTestCase):

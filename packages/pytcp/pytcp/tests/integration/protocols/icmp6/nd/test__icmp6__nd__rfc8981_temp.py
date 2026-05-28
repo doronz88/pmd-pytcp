@@ -118,7 +118,7 @@ class TestIcmp6Nd__Rfc8981Temp__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.use_tempaddr"),
+            sysctl_module.get("icmp6.default.use_tempaddr"),
             0,
             msg="'icmp6.use_tempaddr' must default to 0.",
         )
@@ -132,17 +132,17 @@ class TestIcmp6Nd__Rfc8981Temp__SysctlRegistration(NdTestCase):
         """
 
         for value in (0, 1, 2):
-            sysctl_module.set("icmp6.use_tempaddr", value)
+            sysctl_module.set("icmp6.default.use_tempaddr", value)
             self.assertEqual(
-                sysctl_module.get("icmp6.use_tempaddr"),
+                sysctl_module.get("icmp6.default.use_tempaddr"),
                 value,
                 msg=f"Validator must accept tristate value {value}.",
             )
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.use_tempaddr", 3)
+            sysctl_module.set("icmp6.default.use_tempaddr", 3)
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.use_tempaddr", True)
+            sysctl_module.set("icmp6.default.use_tempaddr", True)
 
     def test__icmp6__nd__rfc8981__lifetime_constants(self) -> None:
         """
@@ -155,17 +155,17 @@ class TestIcmp6Nd__Rfc8981Temp__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            nd__constants.ICMP6__TEMP_VALID_LIFETIME_S,
+            nd__constants.ICMP6__TEMP_VALID_LIFETIME_S["default"],
             604800,
             msg="TEMP_VALID_LIFETIME default must be 7 days (604800s).",
         )
         self.assertEqual(
-            nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S,
+            nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S["default"],
             86400,
             msg="TEMP_PREFERRED_LIFETIME default must be 1 day (86400s).",
         )
         self.assertEqual(
-            nd__constants.ICMP6__MAX_DESYNC_FACTOR_S,
+            nd__constants.ICMP6__MAX_DESYNC_FACTOR_S["default"],
             600,
             msg="MAX_DESYNC_FACTOR default must be 10 minutes (600s).",
         )
@@ -220,8 +220,8 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
         Reference: RFC 8981 §3.3.2 (random IID generation).
         """
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._update_icmp6_temp_address(
                     prefix=PREFIX_A,
                     valid_lifetime=2592000,
@@ -261,8 +261,8 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
         """
 
         before = time.monotonic()
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._update_icmp6_temp_address(
                     prefix=PREFIX_A,
                     valid_lifetime=99999999,
@@ -274,14 +274,14 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
         # Valid lifetime clamped to TEMP_VALID_LIFETIME = 7 days.
         self.assertLessEqual(
             entry.valid_until,
-            before + nd__constants.ICMP6__TEMP_VALID_LIFETIME_S + 1.0,
+            before + nd__constants.ICMP6__TEMP_VALID_LIFETIME_S["default"] + 1.0,
             msg=f"valid_until must clamp to TEMP_VALID_LIFETIME. Got: {entry.valid_until - before}s",
         )
         # Preferred lifetime clamped to TEMP_PREFERRED_LIFETIME -
         # DESYNC margin; allow up to MAX_DESYNC slack.
         self.assertLessEqual(
             entry.preferred_until,
-            before + nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S + 1.0,
+            before + nd__constants.ICMP6__TEMP_PREFERRED_LIFETIME_S["default"] + 1.0,
             msg=f"preferred_until must clamp to TEMP_PREFERRED_LIFETIME. Got: {entry.preferred_until - before}s",
         )
 
@@ -294,8 +294,8 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
         Reference: RFC 4862 §5.5.3 (e)(4) (zero-lifetime PI removes entry).
         """
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._update_icmp6_temp_address(
                     prefix=PREFIX_A,
                     valid_lifetime=2592000,
@@ -326,8 +326,8 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
         Reference: RFC 8981 §3.4 (lifetime refresh on PI update).
         """
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._update_icmp6_temp_address(
                     prefix=PREFIX_A,
                     valid_lifetime=2592000,
@@ -414,8 +414,8 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
         Reference: RFC 8981 §3.3 (per-PI temp-address creation).
         """
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._drive_rx(
                     frame=self._make_nd_ra_frame(
                         eth_src=ROUTER__MAC,
@@ -468,7 +468,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
         Reference: RFC 8981 §3.1 (use_tempaddr=0 disables).
         """
 
-        with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.dad_transmits", 0):
             self._drive_rx(
                 frame=self._make_nd_ra_frame(
                     eth_src=ROUTER__MAC,
@@ -507,8 +507,8 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
         Reference: RFC 8981 §3.3 (temp address installed after DAD).
         """
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._drive_rx(
                     frame=self._make_nd_ra_frame(
                         eth_src=ROUTER__MAC,

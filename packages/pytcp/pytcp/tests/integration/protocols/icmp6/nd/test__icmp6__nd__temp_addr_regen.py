@@ -81,7 +81,7 @@ class TestIcmp6Nd__TempAddrRegen__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.regen_advance_s"),
+            sysctl_module.get("icmp6.default.regen_advance_s"),
             5,
             msg="Default must be 5 seconds (RFC 8981 §3.8).",
         )
@@ -94,8 +94,8 @@ class TestIcmp6Nd__TempAddrRegen__SysctlRegistration(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sysctl_module.set("icmp6.regen_advance_s", 0)
-        self.assertEqual(sysctl_module.get("icmp6.regen_advance_s"), 0)
+        sysctl_module.set("icmp6.default.regen_advance_s", 0)
+        self.assertEqual(sysctl_module.get("icmp6.default.regen_advance_s"), 0)
 
     def test__icmp6__nd__temp_addr_regen__validator_rejects_negative(self) -> None:
         """
@@ -105,7 +105,7 @@ class TestIcmp6Nd__TempAddrRegen__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.regen_advance_s", -1)
+            sysctl_module.set("icmp6.default.regen_advance_s", -1)
 
     def test__icmp6__nd__temp_addr_regen__validator_rejects_bool(self) -> None:
         """
@@ -115,7 +115,7 @@ class TestIcmp6Nd__TempAddrRegen__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.regen_advance_s", True)
+            sysctl_module.set("icmp6.default.regen_advance_s", True)
 
 
 class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
@@ -203,8 +203,8 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         )
         self._packet_handler._icmp6_temp_addresses = [about_to_deprecate]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._icmp6_regen_temp_addresses()
 
         entries = self._packet_handler._icmp6_temp_addresses
@@ -251,7 +251,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         )
         self._packet_handler._icmp6_temp_addresses = [fresh]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
             self._packet_handler._icmp6_regen_temp_addresses()
 
         self.assertEqual(
@@ -284,7 +284,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         )
         self._packet_handler._icmp6_temp_addresses = [about_to_deprecate, already_regenned]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
             self._packet_handler._icmp6_regen_temp_addresses()
 
         self.assertEqual(
@@ -316,8 +316,8 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         )
         self._packet_handler._icmp6_temp_addresses = [about_to_deprecate_a, fresh_b]
 
-        with sysctl_module.override("icmp6.use_tempaddr", 1):
-            with sysctl_module.override("icmp6.dad_transmits", 0):
+        with sysctl_module.override("icmp6.default.use_tempaddr", 1):
+            with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._icmp6_regen_temp_addresses()
 
         # PREFIX_A got a regen (now 2 entries).

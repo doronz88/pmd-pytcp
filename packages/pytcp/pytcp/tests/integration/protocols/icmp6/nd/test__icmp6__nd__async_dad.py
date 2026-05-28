@@ -116,7 +116,7 @@ class TestIcmp6Nd__AsyncDad__ConcurrentClaims(NdTestCase):
         def _claim(addr: Ip6Address) -> None:
             results[addr] = self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=addr)
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 50):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 50):
             t_a = threading.Thread(target=_claim, args=(_CANDIDATE_A,))
             t_b = threading.Thread(target=_claim, args=(_CANDIDATE_B,))
             t_a.start()
@@ -258,7 +258,7 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 50):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 50):
             thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
             self.assertIsInstance(thread, threading.Thread, msg="Must return a Thread.")
             self.assertTrue(thread.daemon, msg="Worker thread must be a daemon.")
@@ -286,8 +286,8 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
         Reference: RFC 4429 §3.3 (Optimistic Tentative Address).
         """
 
-        with sysctl_module.override("icmp6.optimistic_dad", 1):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.optimistic_dad", 1):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                 thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
                 # The worker's first action under optimistic=1 is
                 # '_assign_ip6_host'. Poll briefly for it to land

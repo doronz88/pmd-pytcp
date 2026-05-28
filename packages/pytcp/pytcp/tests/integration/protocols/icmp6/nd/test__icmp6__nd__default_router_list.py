@@ -429,7 +429,7 @@ class TestIcmp6Nd__DefaultRouterList__SysctlAcceptRaDefrtr(NdTestCase):
         Reference: Linux 'net.ipv6.conf.<iface>.accept_ra_defrtr'.
         """
 
-        with sysctl_module.override("icmp6.accept_ra_defrtr", 0):
+        with sysctl_module.override("icmp6.default.accept_ra_defrtr", 0):
             self._drive_rx(
                 frame=self._make_nd_ra_frame(
                     eth_src=ROUTER_A__MAC,

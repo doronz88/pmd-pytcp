@@ -105,7 +105,7 @@ class TestIcmp6Nd__MultiProbeDad__Default(NdTestCase):
         Reference: RFC 4862 §5.1 (DupAddrDetectTransmits default = 1).
         """
 
-        with sysctl_module.override("icmp6.retrans_timer_ms", 10):
+        with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
             result = self._packet_handler._perform_ip6_nd_dad(
                 ip6_unicast_candidate=_CANDIDATE,
             )
@@ -143,8 +143,8 @@ class TestIcmp6Nd__MultiProbeDad__TransmitsTwo(NdTestCase):
         Reference: RFC 4862 §5.1 (DupAddrDetectTransmits configurable).
         """
 
-        with sysctl_module.override("icmp6.dad_transmits", 2):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 10):
+        with sysctl_module.override("icmp6.default.dad_transmits", 2):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
                 result = self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=_CANDIDATE,
                 )
@@ -197,8 +197,8 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
                 inbound_nonce=None,
             )
 
-        with sysctl_module.override("icmp6.dad_transmits", 3):
-            with sysctl_module.override("icmp6.retrans_timer_ms", 200):
+        with sysctl_module.override("icmp6.default.dad_transmits", 3):
+            with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
                 threading.Timer(0.005, _trigger_conflict).start()
                 result = self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=_CANDIDATE,

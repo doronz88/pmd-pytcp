@@ -62,7 +62,6 @@ from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSignalResult
 from pytcp.lib.logger import log
 from pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply
-from pytcp.protocols.icmp6.nd import nd__constants
 from pytcp.protocols.icmp.icmp__error_demux import EmbeddedL4, parse_embedded_l4
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpCategory, IcmpMetadata
 from pytcp.socket import AddressFamily, SocketType
@@ -73,6 +72,7 @@ from pytcp.socket.socket_id import SocketId
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
+from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
@@ -830,7 +830,7 @@ class Icmp6RxHandler:
         )
 
         admitted: list[tuple[Ip6Network, Ip6Address]] = []
-        accept_pinfo = bool(nd__constants.ICMP6__ACCEPT_RA_PINFO)
+        accept_pinfo = bool(sysctl_iface.get_for_iface("icmp6.accept_ra_pinfo", self._if._interface_name))
         for option in packet_rx.icmp6.message.pi:
             reason: str | None = None
             if not option.flag_a:
@@ -884,7 +884,7 @@ class Icmp6RxHandler:
         # 'icmp6.accept_ra_defrtr' Linux-parity sysctl: when 0 the
         # host still consumes the prefix-info options but does not
         # learn the RA source as a default router.
-        if nd__constants.ICMP6__ACCEPT_RA_DEFRTR:
+        if sysctl_iface.get_for_iface("icmp6.accept_ra_defrtr", self._if._interface_name):
             self._if._update_icmp6_default_router(
                 address=packet_rx.ip6.src,
                 router_lifetime=packet_rx.icmp6.message.router_lifetime,
@@ -1086,7 +1086,7 @@ class Icmp6RxHandler:
         )
 
         # 1. 'icmp6.accept_redirects' kill switch.
-        if nd__constants.ICMP6__ACCEPT_REDIRECTS == 0:
+        if sysctl_iface.get_for_iface("icmp6.accept_redirects", self._if._interface_name) == 0:
             self._if._packet_stats_rx.icmp6__nd_redirect__accept_redirects_zero__drop += 1
             __debug__ and log(
                 "icmp6",

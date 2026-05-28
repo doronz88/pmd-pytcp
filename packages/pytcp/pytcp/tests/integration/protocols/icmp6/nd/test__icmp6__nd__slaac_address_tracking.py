@@ -510,7 +510,7 @@ class TestIcmp6Nd__SlaacPrefix__SysctlAcceptRaPinfo(NdTestCase):
         Reference: Linux 'net.ipv6.conf.<iface>.accept_ra_pinfo'.
         """
 
-        with sysctl_module.override("icmp6.accept_ra_pinfo", 0):
+        with sysctl_module.override("icmp6.default.accept_ra_pinfo", 0):
             self._drive_rx(
                 frame=self._make_nd_ra_frame(
                     eth_src=ROUTER__MAC,

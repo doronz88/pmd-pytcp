@@ -81,7 +81,7 @@ class TestIcmp6Nd__DadInitialDelay__SysctlRegistration(NdTestCase):
         """
 
         self.assertEqual(
-            sysctl_module.get("icmp6.max_rtr_solicitation_delay_ms"),
+            sysctl_module.get("icmp6.default.max_rtr_solicitation_delay_ms"),
             1000,
             msg="Default must be 1000ms (RFC 4861 §10).",
         )
@@ -93,9 +93,9 @@ class TestIcmp6Nd__DadInitialDelay__SysctlRegistration(NdTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sysctl_module.set("icmp6.max_rtr_solicitation_delay_ms", 0)
+        sysctl_module.set("icmp6.default.max_rtr_solicitation_delay_ms", 0)
         self.assertEqual(
-            sysctl_module.get("icmp6.max_rtr_solicitation_delay_ms"),
+            sysctl_module.get("icmp6.default.max_rtr_solicitation_delay_ms"),
             0,
             msg="Validator must accept 0 (disable).",
         )
@@ -108,7 +108,7 @@ class TestIcmp6Nd__DadInitialDelay__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.max_rtr_solicitation_delay_ms", -1)
+            sysctl_module.set("icmp6.default.max_rtr_solicitation_delay_ms", -1)
 
     def test__icmp6__nd__dad_initial_delay__validator_rejects_bool(self) -> None:
         """
@@ -119,7 +119,7 @@ class TestIcmp6Nd__DadInitialDelay__SysctlRegistration(NdTestCase):
         """
 
         with self.assertRaises(ValueError):
-            sysctl_module.set("icmp6.max_rtr_solicitation_delay_ms", True)
+            sysctl_module.set("icmp6.default.max_rtr_solicitation_delay_ms", True)
 
 
 class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
@@ -153,8 +153,8 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
             sleeps.append(duration)
 
         with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 1000):
-                with sysctl_module.override("icmp6.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 1000):
+                with sysctl_module.override("icmp6.default.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         # 'dad_transmits=0' skips the probe loop, so the only
@@ -190,8 +190,8 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
             sleeps.append(duration)
 
         with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 0):
-                with sysctl_module.override("icmp6.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
+                with sysctl_module.override("icmp6.default.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertEqual(
@@ -215,8 +215,8 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
             sleeps.append(duration)
 
         with patch("pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
-            with sysctl_module.override("icmp6.max_rtr_solicitation_delay_ms", 200):
-                with sysctl_module.override("icmp6.dad_transmits", 0):
+            with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 200):
+                with sysctl_module.override("icmp6.default.dad_transmits", 0):
                     self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertEqual(len(sleeps), 1)
