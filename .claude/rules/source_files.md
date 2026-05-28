@@ -184,18 +184,31 @@ Rules for this exception:
    (refactor likely), and a search shows no current deep
    imports from outside production code.
 
-The canonical example is
-`packages/pytcp/pytcp/protocols/tcp/session/` — the
-TcpSession + five collaborator subpackage that emerged from
-the Phase-1..5 god-class decomposition (see
-`docs/refactor/tcp_session_decomposition.md`). Outside code
-sees only `TcpSession`; the five collaborator files are
-free to be split / merged / renamed without touching any
-import outside `session/`. The only deep-path consumers are
-the collaborator-seam parity tests in
-`tests/integration/protocols/tcp/test__tcp__session__<collab>.py`,
-which exist specifically to test the collaborator classes
-and are tolerated as test-side reach-throughs.
+Canonical examples (both at
+`packages/pytcp/pytcp/protocols/tcp/`):
+
+- **`session/`** — the TcpSession + five collaborator
+  subpackage that emerged from the Phase-1..5 god-class
+  decomposition (see
+  `docs/refactor/tcp_session_decomposition.md`). Outside
+  code sees only `TcpSession`; the five collaborator files
+  are free to be split / merged / renamed without touching
+  any import outside `session/`. Deep-path consumers are
+  limited to the collaborator-seam parity tests in
+  `tests/integration/protocols/tcp/test__tcp__session__<collab>.py`,
+  which exist specifically to test the collaborator
+  classes and are tolerated as test-side reach-throughs.
+- **`fsm/`** — the per-state TCP finite-state-machine
+  handlers and the four event-kind dispatchers. Outside
+  code sees only the four dispatch functions
+  (`dispatch_packet` / `dispatch_syscall` / `dispatch_timer`
+  / `dispatch_icmp`); the dispatch-table module
+  (`tcp__fsm`) and the eleven per-state handler modules
+  (`tcp__fsm__<state>`) are private to the subpackage. The
+  only deep-path consumer is the FSM unit test at
+  `tests/unit/protocols/tcp/fsm/test__tcp__fsm.py`, which
+  reaches for the `FSM_*_HANDLERS` dispatch dicts to
+  exercise the table contents directly.
 
 ## 3. Copyright / license block (MANDATORY, verbatim)
 

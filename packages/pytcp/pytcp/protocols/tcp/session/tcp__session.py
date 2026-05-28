@@ -42,10 +42,10 @@ from net_addr import Ip4Address, Ip6Address
 from pytcp import stack
 from pytcp.lib.logger import log
 from pytcp.protocols.tcp import tcp__constants
-from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
-from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
-from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
-from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
+from pytcp.protocols.tcp.fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
+from pytcp.protocols.tcp.fsm import dispatch_packet as tcp_fsm_dispatch_packet
+from pytcp.protocols.tcp.fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
+from pytcp.protocols.tcp.fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.session.tcp__session__ack import TcpAckProcessor
 from pytcp.protocols.tcp.session.tcp__session__retransmit import TcpRetransmitter
 from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
