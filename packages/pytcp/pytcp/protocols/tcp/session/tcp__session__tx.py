@@ -552,13 +552,13 @@ class TcpTxEngine:
                     # on first entry into the state, then on each
                     # expiry emit a 1-byte probe at SND.UNA and re-arm
                     # with double the timeout (capped at
-                    # tcp__constants.PERSIST_TIMEOUT_MAX). RFC 1122 §4.2.2.17 makes
+                    # tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS). RFC 1122 §4.2.2.17 makes
                     # probing mandatory because without it the
                     # connection would stall indefinitely whenever the
                     # peer temporarily closed its window.
                     if not session._persist.active:
                         session._persist.active = True
-                        session._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+                        session._persist.timeout = tcp__constants.TCP__RTO__INITIAL_MS
                         session._arm_timer("persist", session._persist.timeout)
                         __debug__ and log(
                             "tcp-ss",
@@ -578,7 +578,7 @@ class TcpTxEngine:
                         session._snd_seq.sml = session._snd_seq.nxt
                         session._persist.timeout = min(
                             session._persist.timeout * 2,
-                            tcp__constants.PERSIST_TIMEOUT_MAX,
+                            tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS,
                         )
                         session._arm_timer("persist", session._persist.timeout)
                 return
@@ -610,7 +610,7 @@ class TcpTxEngine:
                     "tcp-ss",
                     f"[{session}] - Sent out delayed ACK ({session._rcv_seq.nxt})",
                 )
-            session._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
+            session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
 
     def build_sack_blocks(self) -> list[tuple[int, int]]:
         """
@@ -679,7 +679,7 @@ class TcpTxEngine:
             )
             return
         self.transmit_packet(flag_ack=True)
-        session._arm_timer("challenge_ack", tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
+        session._arm_timer("challenge_ack", tcp__constants.TCP__CHALLENGE_ACK__RATE_LIMIT_MS)
 
     # ------------------------------------------------------------------
     # Private engine helpers — phases of 'transmit_packet'.
@@ -1132,7 +1132,7 @@ class TcpTxEngine:
 
         # If in ESTABLISHED state then reset ACK delay timer.
         if session._state is FsmState.ESTABLISHED:
-            session._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
+            session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
 
         # RFC 6298 §5.1: every packet containing data (including a
         # retransmission) starts the retransmit timer if it is not

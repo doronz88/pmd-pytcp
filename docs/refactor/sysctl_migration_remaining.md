@@ -1,22 +1,25 @@
 # PyTCP sysctl migration — current state + remaining work
 
-**Status:** audit performed 2026-05-28. Companion to
-`docs/refactor/sysctl_framework.md` (the framework design and
-the Phase-1/Phase-2 retrospective). This document is the
-"what's left" ledger.
+**Status:** audit 2026-05-28; TCP migrated 2026-05-28.
+Companion to `docs/refactor/sysctl_framework.md` (the framework
+design and the Phase-1/Phase-2 retrospective). This document is
+the "what's left" ledger.
 
 ## 0. TL;DR
 
-10 of 11 `*__constants.py` modules are fully migrated. The
-ICMPv6/ND module is functionally complete (22/23 — the one
-remaining constant is an RFC-pinned invariant that
-correctly stays static). Three migration targets remain,
-all deferred-by-design per the framework's "migrate-when-
-touched" rule, not by oversight:
+11 of 11 `*__constants.py` modules are now fully migrated
+(TCP landed 2026-05-28). The ICMPv6/ND module is
+functionally complete (22/23 — the one remaining constant
+is an RFC-pinned invariant that correctly stays static).
+Two migration targets remain, both deferred-by-design per
+the framework's "migrate-when-touched" rule, not by
+oversight:
 
-1. **`protocols/tcp/tcp__constants.py`** — ~10 policy knobs,
-   biggest gap. Naming-convention fix bundled in (bare
-   `PACKET_RETRANSMIT_TIMEOUT` → `TCP__<SUBJECT>__<FIELD>`).
+1. ~~**`protocols/tcp/tcp__constants.py`** — 10 policy knobs.~~
+   **SHIPPED 2026-05-28.** Renamed bare names to
+   `TCP__<SUBJECT>__<FIELD>` per `source_files.md` §7 and
+   registered all ten with the sysctl framework in one
+   atomic commit. See §4 below for the per-knob inventory.
 2. **`protocols/icmp/icmp__constants.py`** — 2 knobs (the
    shared ICMP error rate-limiter).
 3. **`stack/__init__.py`** — 4 policy constants (accept-
@@ -42,8 +45,8 @@ sweep when an operator wants to.
 | `protocols/ip4/ip4__constants.py` | 2 | 2 | ✅ full |
 | `protocols/ip4/link_local/link_local__constants.py` | 3 | 3 | ✅ full |
 | `protocols/ip6/ip6__constants.py` | 4 | 4 | ✅ full |
+| `protocols/tcp/tcp__constants.py` | 10 | 10 | ✅ full — shipped 2026-05-28 |
 | **`protocols/icmp/icmp__constants.py`** | **2** | **0** | ❌ §3 |
-| **`protocols/tcp/tcp__constants.py`** | **~10** | **0** | ❌ §4 |
 | **`stack/__init__.py`** | **~4 policy + others static-by-design** | **0** | ❌ §5 |
 
 ## 2. Effectively-complete cases (no action needed)
@@ -83,14 +86,32 @@ Single-commit migration. Test pin already exists at
 passing through qualified-module-access reads from the rate
 limiter.
 
-## 4. TCP — `protocols/tcp/tcp__constants.py` (biggest gap)
+## 4. TCP — `protocols/tcp/tcp__constants.py` ✅ shipped 2026-05-28
 
-Ten policy knobs, none registered. **Two work items bundle
-here**: register all ten + normalise the bare-name pattern
-(`PACKET_RETRANSMIT_TIMEOUT`) to the
-`TCP__<SUBJECT>__<FIELD>` double-underscore hierarchy
-mandated by `source_files.md` §7. Both changes land in one
-commit per the framework's per-package-atomic rule.
+Ten policy knobs registered + the bare-name pattern
+normalised to `TCP__<SUBJECT>__<FIELD>`. Both changes landed
+in one atomic commit per the framework's per-package-atomic
+rule.
+
+**Behaviour preserved** — every existing TCP integration test
+continues passing because the registry writes through to the
+renamed module attribute. The new pin file at
+`tests/integration/protocols/tcp/test__tcp__sysctls.py` (21
+tests) covers per-knob default-registration, override
+round-trip, validator rejection (positive-int / delayed-ACK
+500 ms cap / keep-alive 2 h floor), and the cross-knob
+`persist_max ≥ rto_initial` finalize-validator.
+
+**Operator surface** — all ten knobs are reachable via the
+`sysctls={"tcp....": ...}` bag at boot or
+`pytcp.stack.sysctl["tcp...."] = N` at runtime. Per the
+framework's "don't promote niche knobs to explicit kwargs
+just in case" anti-pattern, none of the ten got an explicit
+`stack.init()` kwarg in this pass — the bag-only path
+matches every other migrated package (arp / igmp / ip4 /
+ip6 / nd / dhcp4 / link_local / icmp4 / neighbor). If an
+operator request surfaces, individual knobs can be promoted
+to explicit kwargs later (one-line addition).
 
 ### 4.1 Knob inventory
 
@@ -131,21 +152,18 @@ hooks:
   (RFC 1122 §4.2.3.6 hard floor; per-knob validator alone
   is enough, no cross-knob check needed).
 
-### 4.4 Explicit `stack.init()` kwargs
+### 4.4 Explicit `stack.init()` kwargs — DEFERRED
 
-Promote the operator-facing ones (anything Linux exposes
-under `/proc/sys/net/ipv4/tcp_*`) to explicit kwargs:
-
-- `tcp_rto_initial_ms`
-- `tcp_retransmit_max_count`
-- `tcp_time_wait_delay_ms`
-- `tcp_keepalive_idle_time_ms`
-- `tcp_keepalive_probe_interval_ms`
-- `tcp_keepalive_probe_max_count`
-
-Leave the others on the `sysctls={...}` bag (niche;
-delayed-ACK, challenge-ACK, persist-max, ts-recent
-threshold).
+The plan originally proposed promoting six operator-facing
+knobs (`tcp_rto_initial_ms`, `tcp_retransmit_max_count`,
+`tcp_time_wait_delay_ms`, plus the three keep-alive knobs)
+to explicit kwargs on `stack.init()`. The 2026-05-28
+migration commit kept all ten knobs on the `sysctls={...}`
+bag for uniformity with every other migrated package — no
+existing PyTCP knob has an explicit kwarg, and the framework
++ `sysctl_knob` skill both flag "promote just in case" as
+the canonical anti-pattern. Reversible later: if operator
+demand surfaces, promotion is a one-line addition per knob.
 
 ### 4.5 Test plan
 
@@ -218,8 +236,9 @@ choice in the commit body.
 
 ## 6. Migration order
 
-1. **TCP** (§4) — biggest, naming-convention fix bundled.
-   One commit. Expect ~20 files touched.
+1. ~~**TCP** (§4)~~ — **SHIPPED 2026-05-28.** Naming +
+   registration landed in one atomic commit; 16 files
+   touched (10 source + 5 source-test pairs).
 2. **ICMP rate-limiter** (§3) — small (2 knobs); pairs
    well as a follow-up because the I1 no-GIL test already
    covers it.
@@ -270,9 +289,9 @@ first, audit-doc Reference, §7.2 docstring audit, commit.
 
 The sysctl-migration track is closed when:
 
-1. `protocols/tcp/tcp__constants.py` has every policy
+1. ~~`protocols/tcp/tcp__constants.py` has every policy
    constant registered + renamed to the
-   `TCP__<SUBJECT>__<FIELD>` convention.
+   `TCP__<SUBJECT>__<FIELD>` convention.~~ **DONE 2026-05-28.**
 2. `protocols/icmp/icmp__constants.py` has both knobs
    registered.
 3. `stack/__init__.py`'s four policy candidates are

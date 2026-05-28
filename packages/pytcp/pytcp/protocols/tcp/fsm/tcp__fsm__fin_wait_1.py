@@ -133,7 +133,7 @@ def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
                 # Change state to TIME_WAIT
                 session._change_state(FsmState.TIME_WAIT)
                 # Initialize TIME_WAIT delay.
-                session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
+                session._arm_timer("time_wait", tcp__constants.TCP__TIME_WAIT__DELAY_MS)
             else:
                 # Change state to CLOSING.
                 session._change_state(FsmState.CLOSING)

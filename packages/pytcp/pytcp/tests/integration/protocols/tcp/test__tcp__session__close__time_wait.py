@@ -37,7 +37,7 @@ Reference RFCs:
     RFC 9293 §3.10.4     CLOSE Call
     RFC 9293 §3.4.2      MSL / 2 * MSL = TIME_WAIT delay (PyTCP
                          deviates from the RFC's 240 s suggestion;
-                         see the TIME_WAIT_DELAY constant)
+                         see the TCP__TIME_WAIT__DELAY_MS constant)
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__close__time_wait.py
 
@@ -138,10 +138,10 @@ class TestTcpClose__TimeWait(TcpTestCase):
         Reference: RFC 9293 §3.4.2 (TIME-WAIT 2*MSL).
         """
 
-        # Patch TIME_WAIT_DELAY before driving the FSM into TIME_WAIT
+        # Patch TCP__TIME_WAIT__DELAY_MS before driving the FSM into TIME_WAIT
         # so the timer is registered with the small test value.
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.TIME_WAIT_DELAY",
+            "pytcp.protocols.tcp.tcp__constants.TCP__TIME_WAIT__DELAY_MS",
             TEST__TIME_WAIT_DELAY_MS,
         )
 
@@ -213,7 +213,7 @@ class TestTcpClose__TimeWait(TcpTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.TIME_WAIT_DELAY",
+            "pytcp.protocols.tcp.tcp__constants.TCP__TIME_WAIT__DELAY_MS",
             TEST__TIME_WAIT_DELAY_MS,
         )
 
@@ -504,7 +504,7 @@ class TestTcpClose__TimeWaitRfc6191(TcpTestCase):
     HTTP keep-alive churn, repeated 'curl' hits, bench
     fixtures cycling sockets) accumulate stale TIME_WAIT
     entries that block legitimate reconnects on the same
-    4-tuple for the full TIME_WAIT_DELAY (~30 s in PyTCP).
+    4-tuple for the full TCP__TIME_WAIT__DELAY_MS (~30 s in PyTCP).
 
     The bilateral matrix:
 

@@ -1793,7 +1793,7 @@ class TestTcpClose__IdempotencyHalfClose(TcpTestCase):
         timer_remaining_post = self._pending_session_timers(session)[time_wait_timer_name]
         # The advance(ms=1) above should have decremented the
         # timer by 1 ms; if close() cancelled-and-rearmed it,
-        # the value would jump to TIME_WAIT_DELAY (much
+        # the value would jump to TCP__TIME_WAIT__DELAY_MS (much
         # larger).
         self.assertLessEqual(
             timer_remaining_post,

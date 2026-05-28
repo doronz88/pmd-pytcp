@@ -54,7 +54,7 @@ ver 3.0.6
 """
 
 from net_addr import Ip4Address  # noqa: F401
-from pytcp.protocols.tcp.tcp__constants import PACKET_RETRANSMIT_TIMEOUT
+from pytcp.protocols.tcp.tcp__constants import TCP__RTO__INITIAL_MS
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,
@@ -111,10 +111,10 @@ class TestTcpSession__Frto(TcpTestCase):
         ssthresh_before_rto = session._cc.ssthresh
         snd_max_at_rto = session._snd_seq.max
 
-        # Don't ACK; advance past PACKET_RETRANSMIT_TIMEOUT
+        # Don't ACK; advance past TCP__RTO__INITIAL_MS
         # so the RTO fires. After RTO, cwnd is collapsed to
         # 1 MSS and ssthresh is halved per RFC 5681 §3.1.
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         self.assertNotEqual(
             session._cc.cwnd,
@@ -190,7 +190,7 @@ class TestTcpSession__Frto(TcpTestCase):
         ssthresh_before_rto = session._cc.ssthresh
 
         # Don't ACK; trigger RTO.
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         ssthresh_after_rto = session._cc.ssthresh
 
@@ -270,7 +270,7 @@ class TestTcpSession__Frto(TcpTestCase):
         cubic_w_est_before = session._cc.cubic_w_est
 
         # Trigger RTO without peer ACK.
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         # Peer's cum-ACK covers all pre-RTO data: spurious
         # signature.
@@ -350,7 +350,7 @@ class TestTcpSession__Frto(TcpTestCase):
         self._advance(ms=10)
 
         snd_una_at_rto = session._snd_seq.una
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         # Snapshot post-RTO CUBIC state.
         cubic_w_max_after_rto = session._cc.cubic_w_max
@@ -426,7 +426,7 @@ class TestTcpSession__FrtoStep2Step3(TcpTestCase):
         peer_iss_after_handshake = PEER__ISS + 1
 
         # Force RTO.
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
         assert session._cc.cwnd != cwnd_before_rto, "Setup precondition: cwnd must collapse on RTO."
 
         # First post-RTO ACK: partial — covers ONE segment past
@@ -529,7 +529,7 @@ class TestTcpSession__FrtoStep2Step3(TcpTestCase):
         first_pre_rto_cwnd = session._cc.cwnd
 
         # First RTO: snapshot taken.
-        self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        self._advance(ms=TCP__RTO__INITIAL_MS + 1)
         first_pre_cwnd = session._cc.frto_pre_cwnd
         first_pre_ssthresh = session._cc.frto_pre_ssthresh
 

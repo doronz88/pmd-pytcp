@@ -598,7 +598,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
                 f"By t = 60 s of peer silence, the RFC 6298 cadence "
                 f"(initial + retransmits at 1, 3, 7, 15, 31 s) must "
                 f"produce at least 6 SYN transmissions. Got {len(probes)} "
-                f"- 'PACKET_RETRANSMIT_MAX_COUNT = 3' aborts the "
+                f"- 'TCP__RETRANSMIT__MAX_COUNT = 3' aborts the "
                 f"connection too early per RFC 1122 §4.2.3.5 R2 >= 100 s."
             ),
         )

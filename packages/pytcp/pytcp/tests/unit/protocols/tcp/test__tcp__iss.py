@@ -443,7 +443,7 @@ class TestComputeIss(TestCase):
         collision-resistance guarantee.
 
         Specifically, after one MSL has elapsed (PyTCP's
-        TIME_WAIT_DELAY = 30 s = 30_000_000 µs), an ISS for
+        TCP__TIME_WAIT__DELAY_MS = 30 s = 30_000_000 µs), an ISS for
         the SAME 4-tuple computed at the post-MSL clock is
         guaranteed to differ from the pre-MSL ISS by
         '30_000_000 / ISS_CLOCK_RATE_US = 7_500_000' ticks.
@@ -454,7 +454,7 @@ class TestComputeIss(TestCase):
         Reference: RFC 9293 §3.4.3 (Quiet Time MAY-skip alternative).
         """
 
-        msl_us = 30_000_000  # PyTCP's TIME_WAIT_DELAY in microseconds.
+        msl_us = 30_000_000  # PyTCP's TCP__TIME_WAIT__DELAY_MS in microseconds.
         expected_delta_ticks = msl_us // ISS_CLOCK_RATE_US
 
         iss_pre = compute_iss(

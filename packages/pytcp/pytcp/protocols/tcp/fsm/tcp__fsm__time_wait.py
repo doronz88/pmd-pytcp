@@ -151,7 +151,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     # already accepted (RCV.NXT - 1).
     if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_seq.nxt:
         session._transmit_packet(flag_ack=True)
-        session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
+        session._arm_timer("time_wait", tcp__constants.TCP__TIME_WAIT__DELAY_MS)
         __debug__ and log(
             "tcp-ss",
             f"[{session}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",

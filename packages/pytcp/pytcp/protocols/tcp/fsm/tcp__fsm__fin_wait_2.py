@@ -109,7 +109,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             # Change state to TIME_WAIT.
             session._change_state(FsmState.TIME_WAIT)
             # Initialize TIME_WAIT delay
-            session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
+            session._arm_timer("time_wait", tcp__constants.TCP__TIME_WAIT__DELAY_MS)
             return
 
     # Got RST (bare or RST+ACK) -> Process per RFC 9293 §3.10.7.4

@@ -704,7 +704,7 @@ class TcpAckProcessor:
         # how we acknowledge it: count pending unacked segments since the
         # last ACK, force an inline ACK once two segments are pending
         # ("every other segment"), and otherwise arm the delayed-ACK
-        # timer so the ACK fires within tcp__constants.DELAYED_ACK_DELAY rather than
+        # timer so the ACK fires within tcp__constants.TCP__DELAYED_ACK__DELAY_MS rather than
         # immediately. Arming the timer here (rather than only inside
         # '_transmit_packet') ensures the FIRST inbound data segment
         # after the handshake is properly delayed - without this, the
@@ -734,8 +734,8 @@ class TcpAckProcessor:
             else:
                 # First pending segment: ensure the delayed-ACK timer is
                 # armed so the timer-driven '_delayed_ack' will fire the
-                # ACK after tcp__constants.DELAYED_ACK_DELAY rather than immediately.
-                session._arm_timer("delayed_ack", tcp__constants.DELAYED_ACK_DELAY)
+                # ACK after tcp__constants.TCP__DELAYED_ACK__DELAY_MS rather than immediately.
+                session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
         # Purge acked data from TX buffer.
         with session._lock__tx_buffer:
             session._tx.drain(bytes_count=session._tx_buffer_una)
@@ -768,7 +768,7 @@ class TcpAckProcessor:
         # (RFC 9293 §3.8.6.1).
         if session._win.snd_wnd > 0 and session._persist.active:
             __debug__ and log("tcp-ss", f"[{session}] - Persist: peer reopened window, deactivating timer")
-            session._persist.deactivate(initial_timeout=tcp__constants.PACKET_RETRANSMIT_TIMEOUT)
+            session._persist.deactivate(initial_timeout=tcp__constants.TCP__RTO__INITIAL_MS)
         __debug__ and log(
             "tcp-ss",
             f"[{session}] - cwnd={session._cc.cwnd} ssthresh={session._cc.ssthresh} snd_ewn={session._cc.snd_ewn}",

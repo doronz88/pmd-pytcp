@@ -864,10 +864,10 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
 
     PyTCP's implementation (tcp__session.py:1589-1610):
 
-        initial: PACKET_RETRANSMIT_TIMEOUT (1000 ms)
+        initial: TCP__RTO__INITIAL_MS (1000 ms)
         after each probe: persist_timeout = min(persist_timeout * 2,
-                                                PERSIST_TIMEOUT_MAX)
-        cap: PERSIST_TIMEOUT_MAX (60_000 ms)
+                                                TCP__PERSIST__TIMEOUT_MAX_MS)
+        cap: TCP__PERSIST__TIMEOUT_MAX_MS (60_000 ms)
 
     Cadence: 1 s -> 2 s -> 4 s -> 8 s -> 16 s -> 32 s -> 60 s
              -> 60 s -> ... (capped indefinitely until peer
@@ -998,7 +998,7 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
     def test__persist__interval_caps_at_60_seconds(self) -> None:
         """
         Ensure that after enough probes that the doubled
-        interval would exceed PERSIST_TIMEOUT_MAX (60 s),
+        interval would exceed TCP__PERSIST__TIMEOUT_MAX_MS (60 s),
         the cap kicks in and subsequent probes fire on a
         fixed 60 s schedule.
 
@@ -1013,11 +1013,11 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
         self._advance(ms=1001)
         # Pin '_persist_timeout' to the cap directly and re-arm
         # the timer at that interval. The next probe must fire
-        # at exactly PERSIST_TIMEOUT_MAX, NOT 2 * PERSIST_TIMEOUT_MAX.
-        session._persist.timeout = tcp__constants.PERSIST_TIMEOUT_MAX
-        session._arm_timer("persist", tcp__constants.PERSIST_TIMEOUT_MAX)
+        # at exactly TCP__PERSIST__TIMEOUT_MAX_MS, NOT 2 * TCP__PERSIST__TIMEOUT_MAX_MS.
+        session._persist.timeout = tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS
+        session._arm_timer("persist", tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS)
 
-        early_tx = self._advance(ms=tcp__constants.PERSIST_TIMEOUT_MAX - 100)
+        early_tx = self._advance(ms=tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS - 100)
         early_probes = [self._parse_tx(f) for f in early_tx if self._parse_tx(f).payload]
         self.assertEqual(
             len(early_probes),
@@ -1036,17 +1036,17 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
             1,
             msg=(
                 f"Persist cap: probe MUST fire at t = "
-                f"{tcp__constants.PERSIST_TIMEOUT_MAX} ms after "
+                f"{tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS} ms after "
                 f"the previous one (the cap'd interval). Got "
                 f"{len(cap_probes)} probe(s)."
             ),
         )
         self.assertEqual(
             session._persist.timeout,
-            tcp__constants.PERSIST_TIMEOUT_MAX,
+            tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS,
             msg=(
                 "Persist cap: '_persist_timeout' MUST stay at "
-                "PERSIST_TIMEOUT_MAX after a post-cap probe. "
+                "TCP__PERSIST__TIMEOUT_MAX_MS after a post-cap probe. "
                 f"Got _persist_timeout={session._persist.timeout} ms."
             ),
         )
@@ -1056,7 +1056,7 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
         Ensure that when peer reopens the window, the
         persist timer is deactivated AND '_persist_timeout'
         is reset to the initial value
-        (PACKET_RETRANSMIT_TIMEOUT) so a future zero-window
+        (TCP__RTO__INITIAL_MS) so a future zero-window
         event starts fresh at 1 s, not at the previously-
         doubled value.
 
@@ -1095,10 +1095,10 @@ class TestTcpDataTransfer__PersistCadence(TcpTestCase):
         )
         self.assertEqual(
             session._persist.timeout,
-            tcp__constants.PACKET_RETRANSMIT_TIMEOUT,
+            tcp__constants.TCP__RTO__INITIAL_MS,
             msg=(
                 "RFC 9293 §3.8.6.1: peer's window reopen MUST reset "
-                "'_persist_timeout' to PACKET_RETRANSMIT_TIMEOUT "
+                "'_persist_timeout' to TCP__RTO__INITIAL_MS "
                 "(1000 ms) so a future zero-window event restarts "
                 "the geometric series from the beginning, not from "
                 "the previously-doubled value. Got "

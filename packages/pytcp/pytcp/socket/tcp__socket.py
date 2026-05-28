@@ -396,7 +396,7 @@ class TcpSocket(socket):
             return ip6_value
         if level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             # 0 means "no override set"; the session falls back
-            # to 'tcp__constants.KEEPALIVE_IDLE_TIME' at runtime.
+            # to 'tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS' at runtime.
             return self._tcp_keepidle if self._tcp_keepidle is not None else 0
         if level == IPPROTO_TCP and optname == TCP_KEEPINTVL:
             return self._tcp_keepintvl if self._tcp_keepintvl is not None else 0

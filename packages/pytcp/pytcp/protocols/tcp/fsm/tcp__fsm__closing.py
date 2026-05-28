@@ -96,7 +96,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
             # If our FIN is now acked, enter TIME_WAIT.
             if ge32(session._snd_seq.una, session._snd_seq.fin):
                 session._change_state(FsmState.TIME_WAIT)
-                session._arm_timer("time_wait", tcp__constants.TIME_WAIT_DELAY)
+                session._arm_timer("time_wait", tcp__constants.TCP__TIME_WAIT__DELAY_MS)
             return
         # RFC 9293 §3.10.7.4 step 5: an ACK acknowledging
         # data we have never sent (ack > SND.MAX) MUST elicit

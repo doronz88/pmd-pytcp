@@ -508,7 +508,7 @@ class TestTcpDataTransfer__Window(TcpTestCase):
         )
 
         # Peer sends 1 byte to arm a delayed-ACK. Drain past
-        # 'DELAYED_ACK_DELAY' so the timer-driven ACK fires.
+        # 'TCP__DELAYED_ACK__DELAY_MS' so the timer-driven ACK fires.
         peer_data = build_tcp4(
             sport=PEER__PORT,
             dport=STACK__PORT,
@@ -524,7 +524,7 @@ class TestTcpDataTransfer__Window(TcpTestCase):
         self.assertEqual(
             len(delayed_ack_tx),
             1,
-            msg="Setup precondition: the delayed ACK must fire on the next tick after DELAYED_ACK_DELAY.",
+            msg="Setup precondition: the delayed ACK must fire on the next tick after TCP__DELAYED_ACK__DELAY_MS.",
         )
         ack_probe = self._parse_tx(delayed_ack_tx[0])
         effective_window = ack_probe.win << session._win.rcv_wsc

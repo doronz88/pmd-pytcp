@@ -65,7 +65,7 @@ wait on stack startup is omitted because the RFC 6528 hashed ISS
 provides the equivalent collision-resistance guarantee. Same-4-
 tuple ISS values at clocks differing by an MSL differ by
 'MSL / ISS_CLOCK_RATE_US' ticks (= 7_500_000 for PyTCP's
-TIME_WAIT_DELAY = 30 s), so a delayed segment from a prior
+TCP__TIME_WAIT__DELAY_MS = 30 s), so a delayed segment from a prior
 incarnation cannot collide with a fresh ISN. Pinned by
 'test__compute_iss__same_4tuple_post_msl_yields_different_iss'.
 

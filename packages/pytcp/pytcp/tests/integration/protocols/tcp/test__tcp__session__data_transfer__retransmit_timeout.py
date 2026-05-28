@@ -51,7 +51,7 @@ ver 3.0.6
 
 from net_addr import Ip4Address
 from pytcp.protocols.tcp.session import TcpSession
-from pytcp.protocols.tcp.tcp__constants import PACKET_RETRANSMIT_TIMEOUT
+from pytcp.protocols.tcp.tcp__constants import TCP__RTO__INITIAL_MS
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -139,7 +139,7 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpTestCase):
                 f"cadence (1, 3, 7, 15, 31 s) must produce at least 5 "
                 f"retransmits. Got {len(retransmits)} - check the "
                 "exponential-back-off arithmetic and "
-                "PACKET_RETRANSMIT_MAX_COUNT."
+                "TCP__RETRANSMIT__MAX_COUNT."
             ),
         )
 
@@ -533,10 +533,10 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpTestCase):
         )
 
         # Step 3: peer stays silent. Advance past the initial RTO.
-        # 'PACKET_RETRANSMIT_TIMEOUT' is 1000 ms (the initial
+        # 'TCP__RTO__INITIAL_MS' is 1000 ms (the initial
         # RTO); +1 ms past the boundary so the timer fires on
         # the boundary tick.
-        retransmit_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        retransmit_tx = self._advance(ms=TCP__RTO__INITIAL_MS + 1)
         retransmit_segments = [self._parse_tx(frame) for frame in retransmit_tx]
 
         # Step 4: the RTO MUST fire one retransmit. Today the
@@ -607,9 +607,9 @@ class TestTcpDataTransfer__RetransmitTimeout(TcpTestCase):
         session._win.snd_wnd = 0
         session._cc.snd_ewn = 0
 
-        # Step 4: advance past PACKET_RETRANSMIT_TIMEOUT so the
+        # Step 4: advance past TCP__RTO__INITIAL_MS so the
         # RTO timer for the unacked segment fires.
-        rto_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        rto_tx = self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         # Spec: post-RTO '_snd_ewn' must reflect peer's 0-window.
         self.assertEqual(

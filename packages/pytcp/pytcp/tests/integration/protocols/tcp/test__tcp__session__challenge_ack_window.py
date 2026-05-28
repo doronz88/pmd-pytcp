@@ -123,7 +123,7 @@ class TestTcpChallengeAckWindow(TcpTestCase):
         first_tx = self._drive_rx(frame=self._unacceptable_segment())
         self.assertEqual(len(first_tx), 1, msg="Setup invariant: first segment must emit a challenge ACK.")
 
-        self._advance(ms=tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS)
+        self._advance(ms=tcp__constants.TCP__CHALLENGE_ACK__RATE_LIMIT_MS)
 
         post_window_tx = self._drive_rx(frame=self._unacceptable_segment())
         self.assertEqual(
@@ -135,7 +135,7 @@ class TestTcpChallengeAckWindow(TcpTestCase):
     def test__challenge_ack__suppressed_at_window_boundary_minus_one_ms(self) -> None:
         """
         Ensure the rate-limit window expires at exactly
-        'CHALLENGE_ACK_RATE_LIMIT_MS': one ms early the segment
+        'TCP__CHALLENGE_ACK__RATE_LIMIT_MS': one ms early the segment
         is still suppressed; at the boundary it is emitted. This
         pins the exact fire-ms the Phase-4 trigger flip must
         preserve.
@@ -149,7 +149,7 @@ class TestTcpChallengeAckWindow(TcpTestCase):
         first_tx = self._drive_rx(frame=self._unacceptable_segment())
         self.assertEqual(len(first_tx), 1, msg="Setup invariant: first segment must emit a challenge ACK.")
 
-        self._advance(ms=tcp__constants.CHALLENGE_ACK_RATE_LIMIT_MS - 1)
+        self._advance(ms=tcp__constants.TCP__CHALLENGE_ACK__RATE_LIMIT_MS - 1)
         pre_boundary_tx = self._drive_rx(frame=self._unacceptable_segment())
         self.assertEqual(
             len(pre_boundary_tx),
@@ -162,5 +162,8 @@ class TestTcpChallengeAckWindow(TcpTestCase):
         self.assertEqual(
             len(boundary_tx),
             1,
-            msg="At exactly CHALLENGE_ACK_RATE_LIMIT_MS the window has elapsed and a challenge ACK MUST be emitted.",
+            msg=(
+                "At exactly TCP__CHALLENGE_ACK__RATE_LIMIT_MS the window has elapsed "
+                "and a challenge ACK MUST be emitted."
+            ),
         )

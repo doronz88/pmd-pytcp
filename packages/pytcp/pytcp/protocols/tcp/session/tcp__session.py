@@ -412,10 +412,10 @@ class TcpSession:
         # an ACK while we still have data to send; it flips False
         # when peer reopens the window. '_persist_timeout' carries
         # the current back-off interval (initial =
-        # tcp__constants.PACKET_RETRANSMIT_TIMEOUT, doubled per probe up to
-        # tcp__constants.PERSIST_TIMEOUT_MAX).
+        # tcp__constants.TCP__RTO__INITIAL_MS, doubled per probe up to
+        # tcp__constants.TCP__PERSIST__TIMEOUT_MAX_MS).
         self._persist: PersistState = PersistState()
-        self._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+        self._persist.timeout = tcp__constants.TCP__RTO__INITIAL_MS
 
         # Number of in-order data segments received since we last transmitted
         # an ACK. Tracks the RFC 1122 §4.2.3.2 "ACK every other segment"
@@ -1251,7 +1251,7 @@ class TcpSession:
         self._keepalive.reset_for_idle()
         self._arm_timer(
             "keepalive",
-            self._keepalive.idle_timeout(default=tcp__constants.KEEPALIVE_IDLE_TIME),
+            self._keepalive.idle_timeout(default=tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS),
         )
 
     def _keepalive_tick(self) -> None:
@@ -1261,7 +1261,7 @@ class TcpSession:
         Called from the synchronized-state FSM timer branch
         (currently ESTABLISHED only). When the keep-alive timer
         fires, either emit another probe or - if
-        'KEEPALIVE_PROBE_MAX_COUNT' probes have already gone
+        'TCP__KEEPALIVE__PROBE_MAX_COUNT' probes have already gone
         unanswered - tear the connection down per RFC 1122
         §4.2.3.6. The probe wire shape is an ACK with
         'SEG.SEQ = SND.NXT - 1' so peer's TCP is forced to respond
@@ -1287,7 +1287,7 @@ class TcpSession:
             return
         if not self._timer_expired("keepalive"):
             return
-        max_count = self._keepalive.max_probes(default=tcp__constants.KEEPALIVE_PROBE_MAX_COUNT)
+        max_count = self._keepalive.max_probes(default=tcp__constants.TCP__KEEPALIVE__PROBE_MAX_COUNT)
         if self._keepalive.probes_unacked >= max_count:
             __debug__ and log(
                 "tcp-ss",
@@ -1313,7 +1313,7 @@ class TcpSession:
         self._keepalive.probes_unacked += 1
         self._arm_timer(
             "keepalive",
-            self._keepalive.interval_timeout(default=tcp__constants.KEEPALIVE_PROBE_INTERVAL),
+            self._keepalive.interval_timeout(default=tcp__constants.TCP__KEEPALIVE__PROBE_INTERVAL_MS),
         )
         __debug__ and log(
             "tcp-ss",

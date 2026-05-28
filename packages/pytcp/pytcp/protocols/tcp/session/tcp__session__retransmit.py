@@ -121,12 +121,12 @@ class TcpRetransmitter:
         if session._snd_seq.una == session._snd_seq.max:
             return
 
-        # RFC 1122 §4.2.3.5 R2: after PACKET_RETRANSMIT_MAX_COUNT
+        # RFC 1122 §4.2.3.5 R2: after TCP__RETRANSMIT__MAX_COUNT
         # consecutive timeouts without progress, abort the
         # connection. The counter resets on every cum-ACK that
         # advances SND.UNA in '_process_ack_packet', so the abort
         # is gated on prolonged silence, not lifetime retransmits.
-        if session._retransmit_count >= tcp__constants.PACKET_RETRANSMIT_MAX_COUNT:
+        if session._retransmit_count >= tcp__constants.TCP__RETRANSMIT__MAX_COUNT:
             # Send RST to peer iff peer was actually contacted
             # (i.e. we processed at least one inbound segment
             # post-handshake-start). The check uses the explicit

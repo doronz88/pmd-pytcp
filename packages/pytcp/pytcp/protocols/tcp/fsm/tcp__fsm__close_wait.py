@@ -143,7 +143,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",
                     )
                     session._persist.active = False
-                    session._persist.timeout = tcp__constants.PACKET_RETRANSMIT_TIMEOUT
+                    session._persist.timeout = tcp__constants.TCP__RTO__INITIAL_MS
                 session._ingest_sack_info(packet_rx_md)
                 return
             # Window unchanged -> true duplicate ACK per RFC

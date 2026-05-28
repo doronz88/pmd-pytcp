@@ -35,15 +35,15 @@ RFC 1122 §4.2.3.6 mandates four behavioural invariants:
     2. The application MUST be able to enable / disable keep-alive
        per-connection (in PyTCP, via 'TcpSession._keepalive_enabled').
     3. The keep-alive idle timer MUST default to no less than 2 h
-       (the constant 'KEEPALIVE_IDLE_TIME = 7_200_000' satisfies this
+       (the constant 'TCP__KEEPALIVE__IDLE_TIME_MS = 7_200_000' satisfies this
        at the implementation level; tests patch it to small values).
     4. After the idle timer expires, the implementation emits a
        probe ('ACK' with 'SEG.SEQ = SND.NXT - 1' so peer's TCP
        responds with an ACK at the current SND.NXT without
        delivering any segment text to peer's application). On
        probe-ack the idle timer is rearmed; on lack of response the
-       probe is retransmitted every 'KEEPALIVE_PROBE_INTERVAL', and
-       after 'KEEPALIVE_PROBE_MAX_COUNT' unanswered probes the
+       probe is retransmitted every 'TCP__KEEPALIVE__PROBE_INTERVAL_MS', and
+       after 'TCP__KEEPALIVE__PROBE_MAX_COUNT' unanswered probes the
        connection is declared dead.
 
 Reference RFCs:
@@ -58,7 +58,7 @@ ver 3.0.6
 from net_addr import Ip4Address
 from pytcp import stack
 from pytcp.protocols.tcp.session import TcpSession
-from pytcp.protocols.tcp.tcp__constants import DELAYED_ACK_DELAY
+from pytcp.protocols.tcp.tcp__constants import TCP__DELAYED_ACK__DELAY_MS
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET, AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
@@ -111,15 +111,15 @@ class TestTcpKeepalive(TcpTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_IDLE_TIME",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS",
             TEST__KEEPALIVE_IDLE_TIME_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_INTERVAL",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_INTERVAL_MS",
             TEST__KEEPALIVE_PROBE_INTERVAL_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_MAX_COUNT",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_MAX_COUNT",
             TEST__KEEPALIVE_PROBE_MAX_COUNT,
         )
 
@@ -161,7 +161,7 @@ class TestTcpKeepalive(TcpTestCase):
         """
         Ensure that when '_keepalive_enabled = True' and the
         connection has been idle (no inbound or outbound
-        data) for 'KEEPALIVE_IDLE_TIME', the session emits
+        data) for 'TCP__KEEPALIVE__IDLE_TIME_MS', the session emits
         exactly one keep-alive probe.
 
         Reference: RFC 1122 §4.2.3.6 (idle-timer probe emission).
@@ -254,7 +254,7 @@ class TestTcpKeepalive(TcpTestCase):
         Ensure that when peer responds to a keep-alive probe
         with an ACK at SND.NXT, the implementation treats it
         as a probe-ack and re-arms the idle timer for another
-        full KEEPALIVE_IDLE_TIME interval.
+        full TCP__KEEPALIVE__IDLE_TIME_MS interval.
 
         Reference: RFC 1122 §4.2.3.6 (probe-ack rearms idle timer).
         """
@@ -310,7 +310,7 @@ class TestTcpKeepalive(TcpTestCase):
     ) -> None:
         """
         Ensure that when peer is silent and
-        'KEEPALIVE_PROBE_MAX_COUNT' consecutive probes go
+        'TCP__KEEPALIVE__PROBE_MAX_COUNT' consecutive probes go
         unanswered, the connection is torn down (state ->
         CLOSED).
 
@@ -322,8 +322,8 @@ class TestTcpKeepalive(TcpTestCase):
         session._keepalive.enabled = True
 
         # Run the full idle + probe-retransmit window. Total virtual
-        # time: KEEPALIVE_IDLE_TIME (initial wait) +
-        # (KEEPALIVE_PROBE_MAX_COUNT + 1) * KEEPALIVE_PROBE_INTERVAL
+        # time: TCP__KEEPALIVE__IDLE_TIME_MS (initial wait) +
+        # (TCP__KEEPALIVE__PROBE_MAX_COUNT + 1) * TCP__KEEPALIVE__PROBE_INTERVAL_MS
         # for safety past the tear-down boundary.
         total_ms = (
             TEST__KEEPALIVE_IDLE_TIME_MS + (TEST__KEEPALIVE_PROBE_MAX_COUNT + 1) * TEST__KEEPALIVE_PROBE_INTERVAL_MS
@@ -335,7 +335,7 @@ class TestTcpKeepalive(TcpTestCase):
             probe_count,
             TEST__KEEPALIVE_PROBE_MAX_COUNT,
             msg=(
-                "RFC 1122 §4.2.3.6: at least KEEPALIVE_PROBE_MAX_COUNT="
+                "RFC 1122 §4.2.3.6: at least TCP__KEEPALIVE__PROBE_MAX_COUNT="
                 f"{TEST__KEEPALIVE_PROBE_MAX_COUNT} probes must be emitted before "
                 f"the connection is declared dead. Got {probe_count} probes."
             ),
@@ -344,7 +344,7 @@ class TestTcpKeepalive(TcpTestCase):
             session.state,
             FsmState.ESTABLISHED,
             msg=(
-                "RFC 1122 §4.2.3.6: after KEEPALIVE_PROBE_MAX_COUNT unanswered "
+                "RFC 1122 §4.2.3.6: after TCP__KEEPALIVE__PROBE_MAX_COUNT unanswered "
                 "probes, the connection must be torn down (state must transition "
                 "out of ESTABLISHED). State is still ESTABLISHED, indicating no "
                 "tear-down occurred."
@@ -355,7 +355,7 @@ class TestTcpKeepalive(TcpTestCase):
         """
         Ensure that data-bearing peer activity resets the
         keep-alive idle timer; after a reset the timer
-        re-arms to fire one full KEEPALIVE_IDLE_TIME later.
+        re-arms to fire one full TCP__KEEPALIVE__IDLE_TIME_MS later.
 
         Reference: RFC 1122 §4.2.3.6 (idle timer counts time since last segment).
         """
@@ -411,15 +411,15 @@ class TestTcpKeepalive(TcpTestCase):
 
         # Advance to one tick past the EFFECTIVE new boundary.
         # Peer data triggers the RFC 1122 §4.2.3.2 delayed-ACK
-        # timer (DELAYED_ACK_DELAY ms). When that timer fires,
+        # timer (TCP__DELAYED_ACK__DELAY_MS ms). When that timer fires,
         # the session emits its inline ACK to peer's data; that
         # outbound ACK itself counts as activity for keep-alive
-        # purposes and resets the idle timer to KEEPALIVE_IDLE_TIME.
+        # purposes and resets the idle timer to TCP__KEEPALIVE__IDLE_TIME_MS.
         # The keep-alive probe therefore fires at
-        # 'data_arrival + DELAYED_ACK_DELAY + KEEPALIVE_IDLE_TIME'.
+        # 'data_arrival + TCP__DELAYED_ACK__DELAY_MS + TCP__KEEPALIVE__IDLE_TIME_MS'.
         # We are currently '2 * margin_ms' past data arrival, so
         # the remaining advance is the difference.
-        new_boundary_offset = DELAYED_ACK_DELAY + TEST__KEEPALIVE_IDLE_TIME_MS
+        new_boundary_offset = TCP__DELAYED_ACK__DELAY_MS + TEST__KEEPALIVE_IDLE_TIME_MS
         remaining_to_new_boundary = new_boundary_offset - 2 * margin_ms + 1
         new_boundary_tx = self._advance(ms=remaining_to_new_boundary)
         probes_at_new_boundary = sum(1 for frame in new_boundary_tx if _is_probe(frame))
@@ -456,15 +456,15 @@ class TestTcpKeepaliveOverrides(TcpTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_IDLE_TIME",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS",
             TEST__KEEPALIVE_IDLE_TIME_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_INTERVAL",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_INTERVAL_MS",
             TEST__KEEPALIVE_PROBE_INTERVAL_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_MAX_COUNT",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_MAX_COUNT",
             TEST__KEEPALIVE_PROBE_MAX_COUNT,
         )
 
@@ -474,7 +474,7 @@ class TestTcpKeepaliveOverrides(TcpTestCase):
         """
         Ensure '_keepalive_idle_override' makes
         '_keepalive_arm_idle' use the per-connection value
-        instead of 'tcp__constants.KEEPALIVE_IDLE_TIME'.
+        instead of 'tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS'.
 
         Reference: RFC 1122 §4.2.3.6 (per-connection keep-alive timing).
         """
@@ -502,7 +502,7 @@ class TestTcpKeepaliveOverrides(TcpTestCase):
             1,
             msg=(
                 f"Override TCP_KEEPIDLE={override_ms} ms must take precedence "
-                "over the patched KEEPALIVE_IDLE_TIME constant. Probe must fire "
+                "over the patched TCP__KEEPALIVE__IDLE_TIME_MS constant. Probe must fire "
                 f"at the override boundary; got {len(boundary_tx)} probe(s) "
                 f"after {override_ms + 1} ms of idle."
             ),
@@ -526,15 +526,15 @@ class TestTcpKeepaliveListenerForkInheritance(TcpTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_IDLE_TIME",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__IDLE_TIME_MS",
             TEST__KEEPALIVE_IDLE_TIME_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_INTERVAL",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_INTERVAL_MS",
             TEST__KEEPALIVE_PROBE_INTERVAL_MS,
         )
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__constants.KEEPALIVE_PROBE_MAX_COUNT",
+            "pytcp.protocols.tcp.tcp__constants.TCP__KEEPALIVE__PROBE_MAX_COUNT",
             TEST__KEEPALIVE_PROBE_MAX_COUNT,
         )
 
@@ -643,7 +643,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpTestCase):
 
         # End-to-end: drive the third leg of the handshake to bring
         # the child session into ESTABLISHED, then advance past
-        # KEEPALIVE_IDLE_TIME and assert exactly one probe fires -
+        # TCP__KEEPALIVE__IDLE_TIME_MS and assert exactly one probe fires -
         # proving keep-alive is FUNCTIONALLY armed on the accepted
         # child, not just configured.
         self._advance(ms=1)  # let SYN+ACK fire from SYN_RCVD timer branch
@@ -676,7 +676,7 @@ class TestTcpKeepaliveListenerForkInheritance(TcpTestCase):
             1,
             msg=(
                 "After listener-fork inheritance, the accepted child must "
-                "fire exactly one keep-alive probe past KEEPALIVE_IDLE_TIME "
+                "fire exactly one keep-alive probe past TCP__KEEPALIVE__IDLE_TIME_MS "
                 f"of idle time. Got {probe_count} probe(s)."
             ),
         )

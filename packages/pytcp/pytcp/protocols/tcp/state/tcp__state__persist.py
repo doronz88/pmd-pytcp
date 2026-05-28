@@ -50,7 +50,7 @@ class PersistState:
 
     # Current persist back-off interval (ms). Resets to the
     # initial RTO when the timer arms; doubles on each probe
-    # firing up to PERSIST_TIMEOUT_MAX (RFC 9293 §3.8.6.1
+    # firing up to TCP__PERSIST__TIMEOUT_MAX_MS (RFC 9293 §3.8.6.1
     # exponential back-off).
     timeout: int = 0
 

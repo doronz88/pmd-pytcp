@@ -551,7 +551,7 @@ class TestTcpDataTransfer__RetransmitDupack(TcpTestCase):
             FsmState.ESTABLISHED,
             msg=(
                 "Sanity: after one RTO retry the connection must "
-                "still be in ESTABLISHED - PACKET_RETRANSMIT_MAX_COUNT "
+                "still be in ESTABLISHED - TCP__RETRANSMIT__MAX_COUNT "
                 "is 6, we have only used 2 retries (initial + fast-"
                 "retransmit + 1 RTO)."
             ),

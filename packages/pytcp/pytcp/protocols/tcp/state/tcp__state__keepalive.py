@@ -95,7 +95,7 @@ class KeepaliveState:
         """
         Return the idle-window timeout in milliseconds: the
         per-session override if set, else the supplied canonical
-        default (KEEPALIVE_IDLE_TIME from tcp__constants).
+        default (TCP__KEEPALIVE__IDLE_TIME_MS from tcp__constants).
 
         Reference: RFC 1122 §4.2.3.6 (idle-window default).
         """
@@ -106,7 +106,7 @@ class KeepaliveState:
         """
         Return the inter-probe interval timeout in milliseconds:
         the per-session override if set, else the supplied
-        canonical default (KEEPALIVE_PROBE_INTERVAL).
+        canonical default (TCP__KEEPALIVE__PROBE_INTERVAL_MS).
 
         Reference: RFC 1122 §4.2.3.6 (probe interval default).
         """
@@ -117,7 +117,7 @@ class KeepaliveState:
         """
         Return the unanswered-probe ceiling: the per-session
         override if set, else the supplied canonical default
-        (KEEPALIVE_PROBE_MAX_COUNT).
+        (TCP__KEEPALIVE__PROBE_MAX_COUNT).
 
         Reference: RFC 1122 §4.2.3.6 (probe-count ceiling).
         """

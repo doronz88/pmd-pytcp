@@ -51,7 +51,7 @@ ver 3.0.6
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__constants import DELAYED_ACK_DELAY
+from pytcp.protocols.tcp.tcp__constants import TCP__DELAYED_ACK__DELAY_MS
 from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -88,7 +88,7 @@ class TestTcpDataTransfer__Recv(TcpTestCase):
         Ensure in-order data arriving on an ESTABLISHED
         session is queued into '_rx_buffer' and acknowledged
         via the delayed-ACK mechanism: no inline ACK on
-        arrival; the ACK fires within DELAYED_ACK_DELAY ms
+        arrival; the ACK fires within TCP__DELAYED_ACK__DELAY_MS ms
         carrying ack = RCV.NXT.
 
         Reference: RFC 1122 §4.2.3.2 (delayed ACK timer < 500 ms).
@@ -143,26 +143,26 @@ class TestTcpDataTransfer__Recv(TcpTestCase):
         )
 
         # No ACK during the first half of the delayed-ACK interval.
-        early_tx = self._advance(ms=DELAYED_ACK_DELAY // 2)
+        early_tx = self._advance(ms=TCP__DELAYED_ACK__DELAY_MS // 2)
         self.assertEqual(
             early_tx,
             [],
             msg=(
-                f"Within {DELAYED_ACK_DELAY // 2} ms of data receipt, "
+                f"Within {TCP__DELAYED_ACK__DELAY_MS // 2} ms of data receipt, "
                 f"no ACK may fire - the delayed-ACK timer (interval "
-                f"{DELAYED_ACK_DELAY} ms) is still counting down per "
+                f"{TCP__DELAYED_ACK__DELAY_MS} ms) is still counting down per "
                 "RFC 1122 §4.2.3.2."
             ),
         )
 
         # Within the delayed-ACK interval (plus a small grace for the
         # tick boundary), exactly one bare ACK must fire.
-        ack_tx = self._advance(ms=DELAYED_ACK_DELAY)
+        ack_tx = self._advance(ms=TCP__DELAYED_ACK__DELAY_MS)
         self.assertEqual(
             len(ack_tx),
             1,
             msg=(
-                f"Within {DELAYED_ACK_DELAY} ms of the half-interval "
+                f"Within {TCP__DELAYED_ACK__DELAY_MS} ms of the half-interval "
                 "tick, exactly one delayed ACK must fire. Got "
                 f"{len(ack_tx)} TX frames."
             ),
@@ -387,12 +387,12 @@ class TestTcpDataTransfer__Recv(TcpTestCase):
 
         # Drive past the delayed-ACK interval. Because 'rcv_nxt ==
         # rcv_una', the timer must NOT fire an ACK.
-        late_tx = self._advance(ms=DELAYED_ACK_DELAY * 2)
+        late_tx = self._advance(ms=TCP__DELAYED_ACK__DELAY_MS * 2)
         self.assertEqual(
             late_tx,
             [],
             msg=(
-                f"After {DELAYED_ACK_DELAY * 2} ms of virtual time "
+                f"After {TCP__DELAYED_ACK__DELAY_MS * 2} ms of virtual time "
                 "with no new data received, the delayed-ACK timer "
                 "must not fire any ACK - 'rcv_nxt == rcv_una' so "
                 "there is nothing to acknowledge."

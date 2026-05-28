@@ -37,10 +37,10 @@ ver 3.0.6
 from unittest import TestCase
 
 from pytcp.protocols.tcp.tcp__constants import (
-    DELAYED_ACK_DELAY,
-    PACKET_RETRANSMIT_MAX_COUNT,
-    PACKET_RETRANSMIT_TIMEOUT,
-    TIME_WAIT_DELAY,
+    TCP__DELAYED_ACK__DELAY_MS,
+    TCP__RETRANSMIT__MAX_COUNT,
+    TCP__RTO__INITIAL_MS,
+    TCP__TIME_WAIT__DELAY_MS,
 )
 from pytcp.protocols.tcp.tcp__enums import (
     ConnError,
@@ -57,7 +57,7 @@ class TestTcpSessionModuleConstants(TestCase):
 
     def test__tcp_session__retransmit_timeout_is_1000(self) -> None:
         """
-        Ensure 'PACKET_RETRANSMIT_TIMEOUT' stays at the canonical 1000
+        Ensure 'TCP__RTO__INITIAL_MS' stays at the canonical 1000
         ms base delay. Changing it shifts every retransmit cadence, so
         any drift must be an intentional, reviewed change.
 
@@ -66,14 +66,14 @@ class TestTcpSessionModuleConstants(TestCase):
         """
 
         self.assertEqual(
-            PACKET_RETRANSMIT_TIMEOUT,
+            TCP__RTO__INITIAL_MS,
             1000,
-            msg="PACKET_RETRANSMIT_TIMEOUT must remain 1000 ms.",
+            msg="TCP__RTO__INITIAL_MS must remain 1000 ms.",
         )
 
     def test__tcp_session__retransmit_max_count(self) -> None:
         """
-        Ensure 'PACKET_RETRANSMIT_MAX_COUNT' stays at 6 retries so the
+        Ensure 'TCP__RETRANSMIT__MAX_COUNT' stays at 6 retries so the
         connection-abort timeout reaches 2**7 - 1 = 127 s under the
         binary-doubling cadence, satisfying the R2 floor of >= 100 s.
 
@@ -82,10 +82,10 @@ class TestTcpSessionModuleConstants(TestCase):
         """
 
         self.assertEqual(
-            PACKET_RETRANSMIT_MAX_COUNT,
+            TCP__RETRANSMIT__MAX_COUNT,
             6,
             msg=(
-                "PACKET_RETRANSMIT_MAX_COUNT must remain 6 - lower "
+                "TCP__RETRANSMIT__MAX_COUNT must remain 6 - lower "
                 "values violate the RFC 1122 §4.2.3.5 R2 floor "
                 "(>= 100 s before connection abort)."
             ),
@@ -93,7 +93,7 @@ class TestTcpSessionModuleConstants(TestCase):
 
     def test__tcp_session__time_wait_delay(self) -> None:
         """
-        Ensure 'TIME_WAIT_DELAY' stays at the canonical 30-second
+        Ensure 'TCP__TIME_WAIT__DELAY_MS' stays at the canonical 30-second
         value used for the TCP TIME_WAIT state. PyTCP uses 30 s
         rather than the spec's 240 s default — a documented deviation.
 
@@ -101,23 +101,23 @@ class TestTcpSessionModuleConstants(TestCase):
         """
 
         self.assertEqual(
-            TIME_WAIT_DELAY,
+            TCP__TIME_WAIT__DELAY_MS,
             30000,
-            msg="TIME_WAIT_DELAY must remain 30000 ms (30 seconds).",
+            msg="TCP__TIME_WAIT__DELAY_MS must remain 30000 ms (30 seconds).",
         )
 
     def test__tcp_session__delayed_ack_delay(self) -> None:
         """
-        Ensure 'DELAYED_ACK_DELAY' stays at the canonical 100 ms delay
+        Ensure 'TCP__DELAYED_ACK__DELAY_MS' stays at the canonical 100 ms delay
         for consecutive delayed ACKs.
 
         Reference: RFC 1122 §4.2.3.2 (delayed ACK timer must be < 500 ms).
         """
 
         self.assertEqual(
-            DELAYED_ACK_DELAY,
+            TCP__DELAYED_ACK__DELAY_MS,
             100,
-            msg="DELAYED_ACK_DELAY must remain 100 ms.",
+            msg="TCP__DELAYED_ACK__DELAY_MS must remain 100 ms.",
         )
 
 

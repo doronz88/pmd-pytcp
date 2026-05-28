@@ -273,12 +273,12 @@ class TcpSegmentValidator:
             if (
                 session._ts.ts_recent_updated_at_ms != 0
                 and stack.timer.now_ms - session._ts.ts_recent_updated_at_ms
-                > tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS
+                > tcp__constants.TCP__TS_RECENT__OUTDATED_THRESHOLD_MS
             ):
                 __debug__ and log(
                     "tcp-ss",
                     f"[{session}] - PAWS: TS.Recent outdated past "
-                    f"{tcp__constants.TS_RECENT_OUTDATED_THRESHOLD_MS} ms idle threshold, "
+                    f"{tcp__constants.TCP__TS_RECENT__OUTDATED_THRESHOLD_MS} ms idle threshold, "
                     "accepting segment per RFC 7323 §5.5 mitigation "
                     f"(tsval={packet_rx_md.tcp__tsval}, "
                     f"_ts_recent={session._ts.ts_recent})",

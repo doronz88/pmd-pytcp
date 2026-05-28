@@ -530,6 +530,7 @@ def init(
         link_local__constants,
     )
     from pytcp.protocols.ip6 import ip6__constants  # noqa: F401  pylint: disable=unused-import
+    from pytcp.protocols.tcp import tcp__constants  # noqa: F401  pylint: disable=unused-import
     from pytcp.stack import sysctl as sysctl_module
 
     if sysctls is not None:

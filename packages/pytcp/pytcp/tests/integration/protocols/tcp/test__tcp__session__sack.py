@@ -776,7 +776,7 @@ class TestTcpSession__Sack(TcpTestCase):
         # tick; advance enough ticks so all 4 outstanding
         # segments fire and SND.MAX = LOCAL__ISS + 1 + 4*MSS.
         # The post-handshake retransmit-timer cadence puts each
-        # tick safely under PACKET_RETRANSMIT_TIMEOUT.
+        # tick safely under TCP__RTO__INITIAL_MS.
         for _ in range(4):
             self._advance(ms=1)
         self.assertEqual(

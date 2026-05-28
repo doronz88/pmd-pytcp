@@ -58,7 +58,7 @@ ver 3.0.6
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__constants import PACKET_RETRANSMIT_TIMEOUT
+from pytcp.protocols.tcp.tcp__constants import TCP__RTO__INITIAL_MS
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -739,10 +739,10 @@ class TestTcpSeqWraparound__FinSentinel(TcpTestCase):
         )
 
         # Step 6: advance the virtual clock to fire the RTO.
-        # 'PACKET_RETRANSMIT_TIMEOUT' is the initial RTO (1000 ms).
+        # 'TCP__RTO__INITIAL_MS' is the initial RTO (1000 ms).
         # Advance one extra ms past the timeout so the timer fires
         # cleanly on the boundary tick.
-        retransmit_tx = self._advance(ms=PACKET_RETRANSMIT_TIMEOUT + 1)
+        retransmit_tx = self._advance(ms=TCP__RTO__INITIAL_MS + 1)
 
         # Pick out the retransmit segments from the advance window.
         # Multiple ticks fire while we advance; only the RTO tick

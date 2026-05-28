@@ -44,7 +44,7 @@ ver 3.0.6
 """
 
 from net_addr import Ip4Address
-from pytcp.protocols.tcp.tcp__constants import DELAYED_ACK_DELAY
+from pytcp.protocols.tcp.tcp__constants import TCP__DELAYED_ACK__DELAY_MS
 from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
@@ -250,12 +250,13 @@ class TestTcpRobustness__BadSegments(TcpTestCase):
         )
 
         # Tick past the delayed-ACK boundary to fire the outbound ACK.
-        ack_window_tx = self._advance(ms=DELAYED_ACK_DELAY)
+        ack_window_tx = self._advance(ms=TCP__DELAYED_ACK__DELAY_MS)
         self.assertEqual(
             len(ack_window_tx),
             1,
             msg=(
-                f"Within {DELAYED_ACK_DELAY} ms of receipt the delayed-" "ACK timer must fire exactly one outbound ACK."
+                f"Within {TCP__DELAYED_ACK__DELAY_MS} ms of receipt the delayed-"
+                "ACK timer must fire exactly one outbound ACK."
             ),
         )
 
