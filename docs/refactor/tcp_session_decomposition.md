@@ -9,17 +9,28 @@ deferral noted in `no_gil_thread_safety_audit.md` §3 (item T2).
   Commit `b11f5aba`. 9 timer helpers + deadline map + coalesced
   service handle on `session/tcp__session__timers.py` with its
   own `threading.Lock`; `_kick_pump` no longer needs `_lock__fsm`.
-- **Phase 2 — `TcpTxEngine`: SHIPPED.** 11 methods + ~1100 LOC
-  moved to `session/tcp__session__tx.py`: `transmit_packet` +
-  the six `_phase0..5` segment-construction helpers,
-  `transmit_data`, `delayed_ack`, `build_sack_blocks`,
+- **Phase 2 — `TcpTxEngine`: SHIPPED.** Commit `d1921440`. 11
+  methods + ~1100 LOC moved to `session/tcp__session__tx.py`:
+  `transmit_packet` + the six `_phase0..5` segment-construction
+  helpers, `transmit_data`, `delayed_ack`, `build_sack_blocks`,
   `emit_challenge_ack`. Session keeps thin delegators
   (`_transmit_packet`/`_transmit_data`/etc.). Pure structural
-  extraction — no behaviour or lock change. 11748 tests passing
-  (+4 collaborator-seam parity tests at
-  `test__tcp__session__tx_engine.py`).
-- Phases 3-5 (AckProcessor, SegmentValidator, Retransmitter)
-  pending.
+  extraction — no behaviour or lock change.
+- **Phase 3 — `TcpAckProcessor`: SHIPPED.** 6 methods + ~690
+  LOC moved to `session/tcp__session__ack.py`:
+  `process_ack_packet` + the five `_phase1..5` inbound-ACK
+  helpers (cum-ACK side effects, F-RTO spurious-RTO detection,
+  RTT-sample harvest, loss-detection + recovery-exit, segment
+  consume + delayed-ACK postprocess). Session keeps the thin
+  `_process_ack_packet` delegator. Pure structural extraction —
+  no behaviour or lock change. 11751 tests passing (+3
+  collaborator-seam parity tests at
+  `test__tcp__session__ack_processor.py`).
+- Phases 4-5 (SegmentValidator, Retransmitter) pending.
+
+**Session line-count progression:** 4423 (start) → 4435
+(Phase 1 +12 wiring) → 3380 (Phase 2 -1055) → 2683 (Phase 3
+-697). Target after Phase 5: ~800-1000 lines.
 
 ## 1. Why
 
@@ -167,10 +178,28 @@ session owns a `TcpTxEngine` reachable as `session._tx_engine`,
 back-reference correct, delegators emit the expected wire
 effect, the §5961 §3 rate-limit gate fires through the engine.
 
-### Phase 3 — `TcpAckProcessor`
-Move `_process_ack_packet` + `_phase1..5`. The inbound-ACK side
-effects (SND.UNA advance, CC, RTO, RTT harvest, F-RTO, loss
-detection). Pairs naturally with Phase 2's TX state ownership.
+### Phase 3 — `TcpAckProcessor` ✅ SHIPPED 2026-05-27
+Moved `_process_ack_packet` + `_phase1..5` into `TcpAckProcessor`
+at `session/tcp__session__ack.py`. Session keeps the thin
+`_process_ack_packet` delegator so `fsm/` handlers continue to
+call it unchanged; the five `_phase1..5` helpers are
+engine-internal (no delegators). Pure structural extraction —
+no behaviour or lock change. The five phases comprise: Phase 1
+(cum-ACK side effects: SND.UNA advance, RFC 9406 round-boundary
+rotate, RFC 6582 recover_seq decay, RFC 6937 PRR delivered
+accumulation, RFC 9438 / 5681 / 6928 cwnd growth, RFC 6298
+retransmit-timer manage, RFC 8985 §7.2/§7.4 TLP loss-detect /
+repair / cancel); Phase 2 (RFC 5682 F-RTO spurious-RTO
+detection); Phase 3 (RFC 6298 §4 + RFC 7323 §4 RTT-sample
+harvest + HyStart++ fold); Phase 4 (RACK fold + recovery exit);
+Phase 5 (segment consume + delayed-ACK + ooo-queue drain).
+Pinned by `test__tcp__session__ack_processor.py` (3 seam tests):
+session owns a `TcpAckProcessor` reachable as
+`session._ack_processor`, back-reference correct, an inbound
+peer data segment routes through the delegator into the engine
+and advances RCV.NXT (Phase 5 consume), and the delegator
+invokes the engine's `process_ack_packet` with the same packet
+object (no shadow path).
 
 ### Phase 4 — `TcpSegmentValidator`
 Move `_check_segment_acceptability` / PAWS / RST-acceptability /
