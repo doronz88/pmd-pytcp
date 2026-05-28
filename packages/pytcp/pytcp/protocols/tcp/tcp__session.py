@@ -46,6 +46,7 @@ from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
 from pytcp.protocols.tcp.session.tcp__session__ack import TcpAckProcessor
+from pytcp.protocols.tcp.session.tcp__session__retransmit import TcpRetransmitter
 from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
 from pytcp.protocols.tcp.session.tcp__session__tx import TcpTxEngine
 from pytcp.protocols.tcp.session.tcp__session__validate import TcpSegmentValidator
@@ -64,14 +65,7 @@ from pytcp.protocols.tcp.state.tcp__state__shutdown import ShutdownState
 from pytcp.protocols.tcp.state.tcp__state__timestamps import TimestampsState
 from pytcp.protocols.tcp.state.tcp__state__tx_buffer import TxBufferState
 from pytcp.protocols.tcp.state.tcp__state__window import WindowState
-from pytcp.protocols.tcp.tcp__cubic import (
-    cubic_compute_K,
-    cubic_loss_event_ssthresh,
-)
-from pytcp.protocols.tcp.tcp__cwnd import (
-    compute_ecn_event_ssthresh,
-    compute_loss_event_ssthresh,
-)
+from pytcp.protocols.tcp.tcp__cwnd import compute_ecn_event_ssthresh
 from pytcp.protocols.tcp.tcp__enums import (
     CcMode,
     ConnError,
@@ -87,17 +81,11 @@ from pytcp.protocols.tcp.tcp__hystart import (
 )
 from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
 from pytcp.protocols.tcp.tcp__iss import compute_iss
-from pytcp.protocols.tcp.tcp__loss_recovery import is_lost, next_seg
 from pytcp.protocols.tcp.tcp__plpmtud_adapter import TcpPlpmtudAdapter
-from pytcp.protocols.tcp.tcp__rack import (
-    RackSegment,
-    rack_compute_reo_wnd,
-    rack_detect_loss,
-    rack_update,
-)
-from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state
+from pytcp.protocols.tcp.tcp__rack import RackSegment
+from pytcp.protocols.tcp.tcp__rto import RtoState, initial_state
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
-from pytcp.protocols.tcp.tcp__seq import Seq32, gt32, le32, lt32, sub32
+from pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32, sub32
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -530,6 +518,14 @@ class TcpSession:
         # re-initialisation helper. Phase 4 of the TcpSession
         # god-class decomposition.
         self._validator: TcpSegmentValidator = TcpSegmentValidator(self)
+
+        # Per-session retransmitter — owns the RFC 6298 §5 RTO
+        # timeout path, the RFC 5681 §3.2 / RFC 6675 §3 fast-
+        # retransmit-request path, the RFC 8985 §7.3 Tail Loss
+        # Probe firing path, and the RFC 8985 §6.2 RACK
+        # reorder-window + per-ACK update helpers. Phase 5
+        # (final) of the TcpSession god-class decomposition.
+        self._retransmitter: TcpRetransmitter = TcpRetransmitter(self)
 
     def _egress_interface_mtu(self) -> int:
         """
@@ -1504,675 +1500,45 @@ class TcpSession:
 
     def _retransmit_packet_timeout(self) -> None:
         """
-        Retransmit packet after expired timeout.
-
-        RFC 6298 §5 specifies the timer's lifecycle:
-            §5.1 Arm on data send if not running.
-            §5.2 Stop on cum-ACK that drains all in-flight.
-            §5.3 Restart on cum-ACK that advances SND.UNA.
-            §5.4 Retransmit the earliest unacked segment.
-            §5.5 Back off RTO (cap at MAX_RTO_MS).
-            §5.6 Re-arm with the new RTO.
+        Retransmit packet after expired timeout (RFC 6298 §5).
+        Thin delegator over 'TcpRetransmitter.retransmit_packet_timeout'.
         """
 
-        # RFC 6298 §5: only act when the session-level retransmit
-        # timer has fired. '_timer_expired' is True only when the
-        # timer was armed and its deadline has passed (an unarmed
-        # timer is NOT expired), so the second guard 'snd_una !=
-        # snd_max' is the genuine RFC 6298 §5 "nothing in flight"
-        # condition — do not retransmit when there is no unacked
-        # data — not a disambiguation crutch.
-        if not self._timer_expired("retransmit"):
-            return
-        if self._snd_seq.una == self._snd_seq.max:
-            return
-
-        # RFC 1122 §4.2.3.5 R2: after PACKET_RETRANSMIT_MAX_COUNT
-        # consecutive timeouts without progress, abort the
-        # connection. The counter resets on every cum-ACK that
-        # advances SND.UNA in '_process_ack_packet', so the abort
-        # is gated on prolonged silence, not lifetime retransmits.
-        if self._retransmit_count >= tcp__constants.PACKET_RETRANSMIT_MAX_COUNT:
-            # Send RST to peer iff peer was actually contacted
-            # (i.e. we processed at least one inbound segment
-            # post-handshake-start). The check uses the explicit
-            # '_peer_contacted' flag rather than 'RCV.NXT > 0'
-            # because 'RCV.NXT' is a Seq32 that legitimately
-            # takes the value 0 when peer's ISN happened to be
-            # 0xFFFF_FFFF ('add32(peer_isn, 1)' wraps to 0); a
-            # raw '> 0' comparison would suppress the RST in
-            # that case.
-            if self._peer_contacted:
-                self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_seq.una)
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Packet retransmit counter expired, resetting session",
-                )
-            else:
-                __debug__ and log(
-                    "tcp-ss",
-                    f"[{self}] - Packet retransmit counter expired",
-                )
-            # If in any state with established connection inform socket
-            # about connection failure.
-            if self._state in {
-                FsmState.ESTABLISHED,
-                FsmState.FIN_WAIT_1,
-                FsmState.FIN_WAIT_2,
-                FsmState.CLOSE_WAIT,
-            }:
-                self._connection_error = ConnError.TIMEOUT
-                self._event__rx_buffer.set()
-                self._socket._signal_readable()
-            # If in SYN_SENT state inform CONNECT syscall that the
-            # connection related event happened.
-            if self._state is FsmState.SYN_SENT:
-                self._connection_error = ConnError.TIMEOUT
-                self._event__connect.release()
-            # Change state to CLOSED
-            self._change_state(FsmState.CLOSED)
-            return
-
-        # RFC 6298 §3 (Karn): if the segment now being
-        # retransmitted carries a pending RTT sample, taint
-        # the sample so the harvest hook in
-        # '_process_ack_packet' clears the tracker without
-        # folding the (now-ambiguous) RTT into '_rto_state'.
-        # The pending sample's send-time and seq remain set
-        # so the harvest path can recognise the covering
-        # ACK; only the "skip update" flag flips.
-        if self._rtt.seq is not None and self._rtt.seq == self._snd_seq.una:
-            self._rtt.taint()
-
-        # RFC 8985 §6.3: on RTO, mark all in-flight segments
-        # lost. Subsequent retransmit walking treats them as
-        # the loss set; the existing _transmit_data
-        # machinery (with snd_nxt rewound to snd_una below)
-        # will re-fire them. Replace each entry with the
-        # 'lost=True / xmit_ts=INFINITE_TS' form per
-        # RFC 8985 §5.2.
-        from pytcp.protocols.tcp.tcp__rack import INFINITE_TS
-
-        self._rack_tlp.rack_segments = {
-            seq: RackSegment(
-                end_seq=seg.end_seq,
-                xmit_ts=INFINITE_TS,
-                retransmitted=seg.retransmitted,
-                lost=True,
-            )
-            for seq, seg in self._rack_tlp.rack_segments.items()
-        }
-
-        # RFC 6298 §5.5 binary backoff and §5.6 re-arm with the
-        # new RTO. 'back_off' caps at 'MAX_RTO_MS' so a long-
-        # silent peer cannot drive 'rto_ms' to overflow.
-        self._rto_state = back_off(self._rto_state)
-        self._retransmit_count += 1
-        # PLPMTUD adapter: declare any in-flight probe lost so
-        # the engine sees the RTO event as a probe-loss
-        # signal. No-op when no probes were in flight (RFC
-        # 4821 §7.5 — data-RTO alone does not feed
-        # probe-loss).
-        self._plpmtud_adapter.on_rto_timeout(now=time.monotonic())
-        # RFC 6298 §5.7 second-clause SYN-retransmit counter.
-        # Increment when the retransmit fires while the
-        # handshake is still in progress: SYN_SENT (active
-        # open's SYN) or SYN_RCVD (passive / simultaneous
-        # open's SYN+ACK). Survives '_process_ack_packet's
-        # cum-ACK reset of '_retransmit_count' so the §5.7
-        # floor checks at the ESTABLISHED-transition sites
-        # see the count regardless of evaluation order.
-        if self._state in {FsmState.SYN_SENT, FsmState.SYN_RCVD}:
-            self._syn_retransmit_count += 1
-            # RFC 7413 §4.4: SYN retransmits MUST NOT carry the
-            # TFO option or SYN-data. Mark the connection so
-            # '_transmit_packet' suppresses TFO emission on the
-            # retransmit. Set in SYN_SENT only; the peer side
-            # (SYN_RCVD) doesn't replay TFO on its SYN+ACK
-            # retransmit by construction.
-            if self._state is FsmState.SYN_SENT and self._advertise.fastopen:
-                self._fastopen.syn_retransmitted = True
-                # RFC 7413 §4.1.3.1: a SYN-RTO during TFO
-                # active-open is a strong signal that the path
-                # drops TFO-bearing SYNs. Add the peer to the
-                # negative-response cache so future active-
-                # opens to the same peer skip TFO entirely.
-                stack.tcp_stack.mark_fastopen_negative(self._remote_ip_address)
-        self._arm_timer("retransmit", self._rto_state.rto_ms)
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - RFC 6298 §5.5 back-off: rto_ms -> "
-            f"{self._rto_state.rto_ms} (retry "
-            f"#{self._retransmit_count})",
-        )
-
-        # RFC 5682 §2.1 step 1: snapshot pre-RTO state and
-        # store SND.MAX into 'recover' (= '_frto_pre_snd_max'
-        # in PyTCP's vocabulary). The already-in-RTO gate
-        # (§2.1 step 1: "If the TCP sender is already in RTO
-        # recovery AND 'recover' is larger than or equal to
-        # SND.UNA, do not enter step 2 of this algorithm.
-        # Instead, store the highest sequence number
-        # transmitted so far in variable 'recover'") fires
-        # when a second RTO arrives while the first F-RTO is
-        # still pending and SND.UNA has not yet covered the
-        # original recover marker. In that case, only the
-        # recover marker is updated; the original pre-RTO
-        # cwnd / ssthresh / CUBIC snapshots are preserved so
-        # the eventual restoration anchors at the genuine
-        # pre-loss values rather than the post-first-RTO
-        # collapsed values.
-        already_in_frto = self._cc.frto_step != 0 and not lt32(self._cc.frto_pre_snd_max, self._snd_seq.una)
-        if already_in_frto:
-            # Update recover only; preserve original snapshots.
-            self._cc.frto_pre_snd_max = self._snd_seq.max
-            __debug__ and log(
-                "tcp-ss",
-                f"[{self}] - RFC 5682 §2.1 already-in-RTO gate: "
-                f"recover updated to {self._cc.frto_pre_snd_max}; "
-                "step 2 skipped (preserving original pre-RTO snapshot)",
-            )
-        else:
-            self._cc.save_frto_snapshot(snd_max=self._snd_seq.max)
-
-        # RFC 5681 §3.1 step 1: on RTO, halve ssthresh so the
-        # post-RTO slow-start exits at the previously-observed
-        # loss point. The 'max(FlightSize/2, 2*SMSS)' floor
-        # prevents a single tiny in-flight segment from
-        # collapsing ssthresh below the canonical minimum and
-        # prematurely terminating slow-start. FlightSize is
-        # computed BEFORE the SND.NXT rewind below so it
-        # reflects the unacked-bytes count at the moment of
-        # loss detection. Modular subtraction per RFC 9293 §3.4
-        # so the value is correct across the 32-bit wrap.
-        flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
-        # RFC 9438 §4.6 + §4.7: in CUBIC mode, replace the RFC
-        # 5681 §3.1 0.5 halving with beta_cubic = 0.7 and
-        # update '_cubic_w_max' / '_cubic_K_ms' /
-        # '_cubic_epoch_start_ms' so the post-RTO CA growth
-        # curve has a fresh anchor. Fast convergence (§4.7) is
-        # active by default: when the new cwnd is smaller than
-        # the W_max from the prior loss event, W_max is reduced
-        # further to release bandwidth to new flows.
-        if self._cc.cc_mode is CcMode.CUBIC:
-            prior_w_max = self._cc.cubic_w_max
-            self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
-                cwnd=max(self._cc.cwnd, self._win.snd_mss),
-                smss=self._win.snd_mss,
-                fast_conv_active=True,
-                prior_w_max=prior_w_max,
-            )
-            self._cc.cubic_w_last_max = prior_w_max
-            # Curve epoch reset: post-RTO cwnd = 1 SMSS, so
-            # cwnd_epoch = SMSS for the cube-root computation.
-            self._cc.cubic_K_ms = cubic_compute_K(
-                w_max=self._cc.cubic_w_max,
-                cwnd_epoch=self._win.snd_mss,
-                smss=self._win.snd_mss,
-            )
-            self._cc.cubic_epoch_start_ms = stack.timer.now_ms
-            self._cc.cubic_in_ca = False
-            # RFC 9438 §4.3: reset W_est so the next CA stage
-            # bootstraps from cwnd_epoch (re-init on first CA
-            # cum-ACK in '_process_ack_packet').
-            self._cc.cubic_w_est = 0
-        else:
-            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._win.snd_mss)
-        # RFC 5681 §3.1: cwnd collapses to LW = 1 SMSS for
-        # slow-start re-entry. RFC 9293 §3.8.6.1 / RFC 1122
-        # §4.2.2.16 still require respecting peer's advertised
-        # window: a 0-window peer means '_snd_ewn = 0' so
-        # '_transmit_data' falls through to the persist branch.
-        self._cc.cwnd = self._win.snd_mss
-        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
-        self._snd_seq.nxt = self._snd_seq.una
-        # RFC 5681 §3.1 hard reset: an RTO is a fresh loss
-        # event, distinct from the dup-ACK-driven fast-
-        # retransmit recovery. The RFC 6675 §5 RecoveryPoint
-        # marker (the SND.MAX at fast-retransmit entry) is
-        # meaningless once SND.NXT has been rewound to
-        # SND.UNA above; leaving it set would inhibit the
-        # next dup-ACK from re-entering recovery via the
-        # one-shot guard in '_retransmit_packet_request'.
-        self._cc.recovery_point = 0
-        # RFC 6675 §5.1: "A SACK TCP sender SHOULD utilize all
-        # SACK information made available during the loss
-        # recovery following an RTO." PyTCP retains the SACK
-        # scoreboard across the RTO so the post-RTO recovery
-        # can use the prior SACK reports to skip already-
-        # delivered ranges, matching the RFC 6675 modern
-        # interpretation that supersedes RFC 2018 §5's older
-        # "turn off SACKed bits" guidance. Reneging by the
-        # peer would violate RFC 8985 RACK-TLP's xmit_ts
-        # invariants and would be detected separately.
-        # RFC 6582 §3.2 step 4: record the highest SND.MAX
-        # transmitted before the RTO so a subsequent burst of
-        # dup-ACKs (often produced by the post-RTO retransmit
-        # storm) cannot re-trigger fast retransmit until the
-        # cum-ACK has progressed past the recover marker.
-        # Setting this AFTER '_recovery_point = 0' so the
-        # '_retransmit_packet_request' entry gate keys on the
-        # recover marker rather than the now-cleared
-        # recovery point.
-        self._cc.recover_seq = self._snd_seq.max
-        # SYN and FIN consume one byte of sequence space but do
-        # not occupy a slot in the TX buffer. After
-        # '_transmit_packet' fired the original SYN/FIN it
-        # incremented '_tx_buffer_seq_mod' by 1 to account for
-        # that phantom byte; on retransmit we walk the offset
-        # back so the packet builder finds the pre-SYN/FIN
-        # alignment again. The FIN branch compares against
-        # 'sub32(_snd_fin, 1)' because '_snd_fin' carries the
-        # post-FIN-seq (assigned in '_transmit_packet' AFTER
-        # 'SND.NXT' was already advanced past the FIN's byte),
-        # while the rewind above sets 'SND.NXT = SND.UNA =
-        # FIN_seq = _snd_fin - 1' on the canonical "FIN sent,
-        # peer ACKed everything before it but not the FIN"
-        # path. The branch is gated on '_fin_sent' to prevent
-        # the sentinel '_snd_fin = 0' from colliding with a
-        # post-wrap 'SND.NXT == 0xFFFF_FFFF' (which would
-        # otherwise walk '_tx_buffer_seq_mod' back spuriously
-        # and silently corrupt subsequent transmissions).
-        if self._snd_seq.nxt == self._snd_seq.ini or (
-            self._snd_seq.fin_sent and self._snd_seq.nxt == sub32(self._snd_seq.fin, 1)
-        ):
-            self._tx.seq_mod = sub32(self._tx.seq_mod, 1)
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Got retransmit timeout, sending segment "
-            f"{self._snd_seq.nxt}, resetting snd_ewn to {self._cc.snd_ewn}",
-        )
+        self._retransmitter.retransmit_packet_timeout()
 
     def _retransmit_packet_request(self, packet_rx_md: TcpMetadata) -> None:
         """
-        Retransmit packet after receiving fast-retransmit request from
-        peer (RFC 5681 §3.2: third duplicate ACK, one-shot per loss
-        event).
+        Retransmit packet after fast-retransmit request (RFC 5681
+        §3.2 / RFC 6675 §3). Thin delegator over
+        'TcpRetransmitter.retransmit_packet_request'.
         """
 
-        # Ingest any SACK blocks carried on this dup-ACK before the
-        # fast-retransmit decision so IsLost() sees the latest
-        # peer-reported scoreboard state. SND.UNA does not advance
-        # on a dup-ACK so no prune is needed here.
-        self._ingest_sack_info(packet_rx_md)
-
-        # RFC 8985 §6.2 step 1-2 RACK fold + step 5 loss
-        # detection on the dup-ACK path. SACK-acked segments
-        # advance RACK.xmit_ts even when the cum-ACK does not
-        # advance, so a SACK-only dup-ACK can still drive
-        # time-based loss detection per RFC 8985 §6.2.
-        self._rack_process_ack(packet_rx_md)
-
-        self._tx.retransmit_request_counter[packet_rx_md.tcp__ack] = (
-            self._tx.retransmit_request_counter.get(packet_rx_md.tcp__ack, 0) + 1
-        )
-
-        # RFC 5681 §3.2 / RFC 6675 §5: enter recovery exactly
-        # once per loss event. While 'recovery_point > 0' we are
-        # still recovering from an earlier trigger; further
-        # dup-ACKs MUST NOT re-fire the retransmit. Cwnd
-        # inflation on each dup-ACK is now driven by RFC 6937
-        # PRR: a bare dup-ACK delivers no new bytes
-        # (DeliveredData = 0) so prr_delivered is unchanged
-        # and cwnd stays steady - PRR's proportional pacing
-        # replaces the legacy RFC 5681 §3.2 step 4 'cwnd +=
-        # SMSS per dup-ACK' rule, which over-inflated cwnd on
-        # bare dup-ACK bursts and caused the post-recovery
-        # send burst PRR is designed to smooth. SACK-bearing
-        # dup-ACKs that delivered new bytes update
-        # 'prr_delivered' inside '_ingest_sack_info' and the
-        # cwnd recompute on cum-ACK in '_process_ack_packet'
-        # picks them up.
-        if self._cc.recovery_point != 0:
-            return
-
-        # RFC 6582 §3.2 step 4 / step 2 post-RTO gate. After an
-        # RTO recorded SND.MAX into '_recover_seq', refuse fast-
-        # retransmit entry until SND.UNA has advanced to or past
-        # the marker. This prevents the post-RTO retransmit
-        # storm's dup-ACK echoes (which carry an old 'ack' value
-        # still below the marker) from spuriously triggering a
-        # second fast retransmit on top of the just-completed
-        # RTO recovery. The 0 sentinel means "no recover marker
-        # set" so a fresh connection's first loss event still
-        # enters FR.
-        if self._cc.recover_seq != 0 and lt32(self._snd_seq.una, self._cc.recover_seq):
-            return
-
-        # Two independent triggers, either of which enters
-        # recovery:
-        #   - Count-based (RFC 5681 §3.2): the third duplicate
-        #     ACK at the same 'ack' value.
-        #   - SACK byte-rule (RFC 6675 §3 IsLost): the
-        #     receiver has reported MORE THAN '(dup_thresh - 1)
-        #     * SMSS' bytes SACKed above SND.UNA. This rule
-        #     can fire on the very first dup-ACK if peer
-        #     reports a single large SACK block, recovering
-        #     faster than the count-based threshold on bursty
-        #     loss patterns.
-        count_trigger = self._tx.retransmit_request_counter[packet_rx_md.tcp__ack] == 3
-        sack_trigger = self._advertise.send_sack and is_lost(
-            self._snd_seq.una,
-            scoreboard=self._sack_scoreboard,
-            snd_una=self._snd_seq.una,
-            mss=self._win.snd_mss,
-        )
-        # RFC 3042 Limited Transmit: on the first two
-        # duplicate ACKs, send one new segment from the TX
-        # buffer if budget permits. The budget is
-        # 'cwnd + 2*SMSS' total - one extra segment per
-        # dup-ACK (1st and 2nd). Limited Transmit injects
-        # new segments into the pipe so a small-window
-        # flow can still generate three dup-ACKs at the
-        # peer and trigger fast retransmit on real loss
-        # rather than waiting for an RTO. The third dup-ACK
-        # falls through to the count_trigger path below
-        # and runs RFC 5681 §3.2 fast retransmit instead.
-        count = self._tx.retransmit_request_counter[packet_rx_md.tcp__ack]
-        if count in (1, 2) and len(self._tx.buffer) > 0:
-            saved_ewn = self._cc.snd_ewn
-            self._cc.snd_ewn = min(self._cc.cwnd + count * self._win.snd_mss, self._win.snd_wnd)
-            self._transmit_data()
-            self._cc.snd_ewn = saved_ewn
-
-        if not (count_trigger or sack_trigger):
-            return
-
-        # RFC 5681 §3.2 step 2: ssthresh = max(FlightSize/2,
-        # 2*SMSS). Captures the just-observed loss point so
-        # the post-recovery slow-start exits at this boundary.
-        flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
-        # RFC 9438 §4.6 + §4.7: in CUBIC mode, ssthresh halves
-        # by beta_cubic = 0.7 (vs RFC 5681's 0.5). Records
-        # '_cubic_w_max' = cwnd-at-loss for the post-recovery
-        # cubic curve. Fast convergence (§4.7) reduces W_max
-        # further when the new cwnd is smaller than the prior
-        # W_max anchor.
-        if self._cc.cc_mode is CcMode.CUBIC:
-            prior_w_max = self._cc.cubic_w_max
-            # RFC 9438 §4.9.2 spurious-fast-retransmit snapshot:
-            # capture the pre-FR CUBIC state so a DSACK during
-            # this recovery episode can roll back the
-            # multiplicative decrease + curve re-anchor below.
-            self._cc.save_fr_cubic_snapshot()
-            self._cc.ssthresh, self._cc.cubic_w_max = cubic_loss_event_ssthresh(
-                cwnd=self._cc.cwnd,
-                smss=self._win.snd_mss,
-                fast_conv_active=True,
-                prior_w_max=prior_w_max,
-            )
-            self._cc.cubic_w_last_max = prior_w_max
-            self._cc.cubic_K_ms = cubic_compute_K(
-                w_max=self._cc.cubic_w_max,
-                cwnd_epoch=self._cc.ssthresh,
-                smss=self._win.snd_mss,
-            )
-            self._cc.cubic_epoch_start_ms = stack.timer.now_ms
-            self._cc.cubic_in_ca = True
-            # RFC 9438 §4.3: reset W_est so the next CA stage
-            # bootstraps from the post-recovery cwnd anchor.
-            self._cc.cubic_w_est = 0
-        else:
-            self._cc.ssthresh = compute_loss_event_ssthresh(flight_size, self._win.snd_mss)
-
-        # RFC 6937 §3.1 PRR per-recovery state initialisation:
-        # snapshot pipe at entry as 'RecoverFS' so the per-ACK
-        # send-pacing math has the denominator for the
-        # 'prr_delivered * ssthresh / RecoverFS' ratio. Reset
-        # the prr_delivered / prr_out counters to zero so the
-        # accumulators only cover this recovery episode.
-        self._cc.recover_fs = flight_size
-        self._cc.prr_delivered = 0
-        self._cc.prr_out = 0
-
-        # RFC 6937 §3.1: at entry 'prr_delivered = 0' and
-        # 'prr_out = 0' so the per-ACK formula yields
-        # 'sndcnt = 0 - 0 = 0' and 'cwnd = pipe + 0 = pipe'.
-        # Pipe at entry equals 'flight_size' (no SACKs ingested
-        # this ACK). This replaces the legacy RFC 5681 §3.2
-        # step 3 'cwnd = ssthresh + 3*SMSS' coarse approximation
-        # with PRR's data-driven per-ACK pacing - subsequent
-        # ACKs recompute cwnd via the proportional ratio in
-        # '_process_ack_packet'.
-        self._cc.cwnd = flight_size
-        self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
-
-        # Mark RecoveryPoint at SND.MAX so subsequent dup-ACKs
-        # within the loss event do not re-trigger; '_process_ack_packet'
-        # clears it once the cumulative ACK has fully recovered.
-        # Setting to 'max(SND.MAX, 1)' guarantees the marker is
-        # non-zero even when SND.MAX wraps to 0; the actual
-        # comparison is modular.
-        self._cc.recovery_point = self._snd_seq.max if self._snd_seq.max != 0 else 1
-
-        # RFC 6675 §3 NextSeg() chooses the smallest unsacked
-        # seq in '[SND.UNA, SND.MAX)' that IsLost() flags as
-        # lost. When bilateral SACK is enabled and the
-        # scoreboard's contents satisfy IsLost, NextSeg returns
-        # the actual gap; in single-gap scenarios this equals
-        # 'SND.UNA' (matching the count-based path). When SACK
-        # is disabled or the scoreboard is below IsLost
-        # thresholds, fall back to '_snd_una' so the count-based
-        # RFC 5681 path remains intact for non-SACK peers.
-        ns = (
-            next_seg(
-                scoreboard=self._sack_scoreboard,
-                snd_una=self._snd_seq.una,
-                snd_max=self._snd_seq.max,
-                mss=self._win.snd_mss,
-            )
-            if self._advertise.send_sack
-            else None
-        )
-        self._snd_seq.nxt = ns if ns is not None else self._snd_seq.una
-        __debug__ and log(
-            "tcp-ss",
-            f"[{self}] - Got retransmit request, sending segment "
-            f"{self._snd_seq.nxt}, keeping snd_ewn at {self._cc.snd_ewn}, "
-            f"recovery_point {self._cc.recovery_point}",
-        )
+        self._retransmitter.retransmit_packet_request(packet_rx_md)
 
     def _tlp_pto_tick(self) -> None:
         """
-        Per-tick service for the RFC 8985 §7.3 Tail Loss
-        Probe. Fires when the f'{session}-tlp' timer expires
-        and there is data in flight. Prefers sending new data
-        from the TX buffer (when available); falls back to
-        retransmitting the highest-seq in-flight segment.
-
-        On emission, marks '_tlp_is_retrans' (True for
-        retransmit, False for new-data probe) and stashes the
-        post-probe SND.MAX in '_tlp_end_seq' so the §7.4
-        loss-detection path can reason about the probe's fate.
-        Re-arms the RTO timer at 'rto_state.rto_ms' so the
-        connection still has a timeout-driven recovery path
-        if the probe itself is lost.
+        Per-tick service for the RFC 8985 §7.3 Tail Loss Probe.
+        Thin delegator over 'TcpRetransmitter.tlp_pto_tick'.
         """
 
-        # tlp_armed gates the firing path: only when the
-        # arming logic in '_transmit_packet' actually armed
-        # the TLP timer should this tick treat a
-        # '_timer_expired' result as a real timer expiration.
-        # Without this gate a session that armed a TLP, let it
-        # fire, and never re-armed would still satisfy the
-        # downstream expiry check and _tlp_pto_tick would
-        # spuriously fire a retransmit on every FSM tick.
-        if not self._rack_tlp.tlp_armed:
-            return
-        if not self._timer_expired("tlp"):
-            return
-        if self._snd_seq.una == self._snd_seq.max:
-            # Nothing in flight - no tail to probe.
-            return
-        # RFC 8985 §7 once-per-tail gate: TLP fires at most one
-        # probe per outstanding tail. '_tlp_end_seq' is set on
-        # probe emission and cleared by §7.4 loss-detection
-        # logic (Phase 8) once the probe outcome is determined,
-        # OR by '_process_ack_packet' when a cum-ACK drains all
-        # in-flight bytes (no tail left).
-        if self._rack_tlp.tlp_end_seq is not None:
-            return
-        # RFC 8985 §8 timer arbitration: if RTO recovery is in
-        # progress (this tick's _retransmit_packet_timeout
-        # incremented _retransmit_count, OR a fast-recovery is
-        # underway, OR F-RTO is active), TLP yields. The
-        # ongoing recovery machinery handles the loss already;
-        # a TLP probe would race it and emit a duplicate.
-        if self._retransmit_count > 0 or self._cc.recovery_point != 0 or self._cc.frto_active:
-            return
-
-        # New-data probe path: the TX buffer has bytes past
-        # SND.MAX (i.e. data the application has queued but
-        # the wire has not yet seen). When this is the case
-        # we send the next segment from SND.MAX rather than
-        # retransmitting an already-sent one. Compute the
-        # buffer offset of SND.MAX modularly so a wrapped
-        # session is handled correctly.
-        tx_buffer_max = sub32(self._snd_seq.max, self._tx.seq_mod)
-        new_data_available = tx_buffer_max < len(self._tx.buffer) and self._cc.snd_ewn > tx_buffer_max
-        if new_data_available:
-            # Force '_transmit_data' to start at SND.MAX (the
-            # bytes immediately past the highest-seq sent).
-            self._snd_seq.nxt = self._snd_seq.max
-            self._rack_tlp.tlp_is_retrans = False
-        else:
-            # Retransmit-style probe: walk SND.NXT back by one
-            # MSS (or less if in-flight is shorter) so
-            # _transmit_data re-sends the highest-seq segment.
-            flight_size = (self._snd_seq.max - self._snd_seq.una) & 0xFFFF_FFFF
-            walk_back = min(self._win.snd_mss, flight_size)
-            self._snd_seq.nxt = sub32(self._snd_seq.max, walk_back)
-            self._rack_tlp.tlp_is_retrans = True
-
-        self._transmit_data()
-        self._rack_tlp.tlp_end_seq = self._snd_seq.max
-        # Probe is in flight; clear armed flag so the next
-        # tick's _tlp_pto_tick early-returns. The flag is
-        # re-set by '_transmit_packet' when a fresh TLP timer
-        # arms, e.g. on a subsequent data send.
-        self._rack_tlp.tlp_armed = False
-
-        # RFC 8985 §7.3: re-arm the RTO timer after probe so
-        # the connection retains its timeout fallback.
-        self._arm_timer("retransmit", self._rto_state.rto_ms)
+        self._retransmitter.tlp_pto_tick()
 
     def _rack_reorder_tick(self) -> None:
         """
-        Per-tick service for the RFC 8985 §6.2 step 5
-        reordering timer. When the f'{session}-rack' timer
-        has expired, re-run rack_detect_loss with the current
-        scalars and reo_wnd to mark any pending 'sent before'
-        segments lost. Subsequent ticks may re-arm the timer
-        if more candidates exist.
+        Per-tick service for the RFC 8985 §6.2 step 5 reordering
+        timer. Thin delegator over 'TcpRetransmitter.rack_reorder_tick'.
         """
 
-        if not self._timer_expired("rack"):
-            return
-        if self._rack_tlp.rack_xmit_ts == 0:
-            return
-        reo_wnd_ms = rack_compute_reo_wnd(
-            reordering_seen=self._rack_tlp.rack_reordering_seen,
-            reo_wnd_mult=self._rack_tlp.rack_reo_wnd_mult,
-            min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
-        )
-        self._rack_tlp.rack_segments, rack_timeout_ms = rack_detect_loss(
-            segments=self._rack_tlp.rack_segments,
-            rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
-            rack_end_seq=self._rack_tlp.rack_end_seq,
-            reo_wnd_ms=reo_wnd_ms,
-            now_ms=stack.timer.now_ms,
-        )
-        if rack_timeout_ms > 0:
-            self._arm_timer("rack", rack_timeout_ms)
+        self._retransmitter.rack_reorder_tick()
 
     def _rack_process_ack(self, packet_rx_md: TcpMetadata) -> None:
         """
         Apply RFC 8985 §6.2 step 1-2 (rack_update) + step 5
-        (rack_detect_loss) on every accepted ACK. Called from
-        both '_process_ack_packet' (cum-ACK path) and
-        '_retransmit_packet_request' (SACK-only / dup-ACK
-        path) after SACK ingest so the scoreboard reflects
-        the latest peer-reported state.
-
-        The 'newly acknowledged' set per §6.2 includes BOTH
-        cum-ACKed AND SACK-acked segments delivered for the
-        first time on this ACK. The '_rack_acked_seqs' guard
-        ensures each segment contributes to the rack_update
-        scalars exactly once across multiple ACKs.
-
-        For Phase 3 the loss-detection helper is called with
-        'reo_wnd_ms=0' (no reordering tolerance); Phase 4
-        will compute reo_wnd dynamically via
-        'rack_compute_reo_wnd'.
+        (rack_detect_loss) on every accepted ACK. Thin delegator
+        over 'TcpRetransmitter.rack_process_ack'.
         """
 
-        newly_acked: list[RackSegment] = []
-        for seq, seg in self._rack_tlp.rack_segments.items():
-            if seq in self._rack_tlp.rack_acked_seqs:
-                continue
-            cum_acked = le32(seg.end_seq, self._snd_seq.una)
-            sack_acked = self._advertise.send_sack and self._sack_scoreboard.is_sacked(sub32(seg.end_seq, 1))
-            if cum_acked or sack_acked:
-                newly_acked.append(seg)
-                self._rack_tlp.rack_acked_seqs.add(seq)
-        if newly_acked:
-            # RFC 8985 §6.2 step 3 reordering detection. For
-            # each newly-acked segment, compare its 'end_seq'
-            # to '_rack_fack' (the highest end_seq we have
-            # seen acked so far). A delivered segment whose
-            # end_seq is strictly below fack means the network
-            # has reordered: a later-sent segment was already
-            # acked before this one. Once 'reordering_seen' is
-            # True it stays True; the §6.2 step 4 reo_wnd
-            # computation uses it to switch from the dup-ACK
-            # trigger (reo_wnd=0) to the time-based trigger
-            # (reo_wnd = min_RTT / 4 * reo_wnd_mult).
-            for seg in newly_acked:
-                if self._rack_tlp.rack_fack != 0 and lt32(seg.end_seq, self._rack_tlp.rack_fack):
-                    self._rack_tlp.rack_reordering_seen = True
-                if gt32(seg.end_seq, self._rack_tlp.rack_fack):
-                    self._rack_tlp.rack_fack = seg.end_seq
-            (
-                self._rack_tlp.rack_min_rtt_ms,
-                self._rack_tlp.rack_rtt_ms,
-                self._rack_tlp.rack_xmit_ts,
-                self._rack_tlp.rack_end_seq,
-            ) = rack_update(
-                newly_acked_segments=newly_acked,
-                now_ms=stack.timer.now_ms,
-                ts_recent_echo_ms=(packet_rx_md.tcp__tsecr if packet_rx_md.tcp__tsecr else None),
-                prior_min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
-                prior_rack_rtt_ms=self._rack_tlp.rack_rtt_ms,
-                prior_rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
-                prior_rack_end_seq=self._rack_tlp.rack_end_seq,
-            )
-
-        if self._rack_tlp.rack_xmit_ts > 0:
-            # RFC 8985 §6.2 step 4 dynamic reo_wnd via
-            # rack_compute_reo_wnd. Phase 3 used 0; Phase 4
-            # adapts based on observed reordering and DSACK
-            # rounds.
-            reo_wnd_ms = rack_compute_reo_wnd(
-                reordering_seen=self._rack_tlp.rack_reordering_seen,
-                reo_wnd_mult=self._rack_tlp.rack_reo_wnd_mult,
-                min_rtt_ms=self._rack_tlp.rack_min_rtt_ms,
-            )
-            self._rack_tlp.rack_segments, rack_timeout_ms = rack_detect_loss(
-                segments=self._rack_tlp.rack_segments,
-                rack_xmit_ts=self._rack_tlp.rack_xmit_ts,
-                rack_end_seq=self._rack_tlp.rack_end_seq,
-                reo_wnd_ms=reo_wnd_ms,
-                now_ms=stack.timer.now_ms,
-            )
-            # RFC 8985 §6.2 step 5 reordering-timer arming.
-            # When rack_detect_loss leaves any 'sent before'
-            # segment within its reo_wnd (timeout_ms > 0),
-            # arm a single session-level timer at the earliest
-            # 'xmit_ts + reo_wnd - now_ms' so the FSM tick can
-            # re-run the loss-detection check and mark the
-            # segment lost once the window has elapsed.
-            if rack_timeout_ms > 0:
-                self._arm_timer("rack", rack_timeout_ms)
+        self._retransmitter.rack_process_ack(packet_rx_md)
 
     def _confirm_neighbor_reachability(self) -> None:
         """

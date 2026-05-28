@@ -1,8 +1,9 @@
 # TCP Session Decomposition — Plan
 
-**Status:** IN PROGRESS. Written 2026-05-27. Phases 1+2 shipped
-the same day. Supersedes the "fold T2 into the TCP decomposition"
-deferral noted in `no_gil_thread_safety_audit.md` §3 (item T2).
+**Status:** ✅ COMPLETE. Written 2026-05-27. All five phases
+shipped the same day. Supersedes the "fold T2 into the TCP
+decomposition" deferral noted in
+`no_gil_thread_safety_audit.md` §3 (item T2).
 
 **Progress (2026-05-27):**
 - **Phase 1 — `TcpTimerService` + close no-GIL T2: SHIPPED.**
@@ -24,26 +25,44 @@ deferral noted in `no_gil_thread_safety_audit.md` §3 (item T2).
   consume + delayed-ACK postprocess). Session keeps the thin
   `_process_ack_packet` delegator. Pure structural extraction —
   no behaviour or lock change.
-- **Phase 4 — `TcpSegmentValidator`: SHIPPED.** 5 methods +
-  ~310 LOC moved to `session/tcp__session__validate.py`:
-  `is_seq_in_window` (public, called from ICMP RX handlers) +
+- **Phase 4 — `TcpSegmentValidator`: SHIPPED.** Commit
+  `6f2ed20b`. 5 methods + ~310 LOC moved to
+  `session/tcp__session__validate.py`: `is_seq_in_window`
+  (public, called from ICMP RX handlers) +
   `check_segment_acceptability` + `check_paws_and_update_ts_recent`
   + `check_rst_acceptability` + `reinit_for_rfc6191_reuse`.
   Session keeps thin delegators (`is_seq_in_window` public;
-  `_check_segment_acceptability` / `_check_paws_and_update_ts_recent`
-  / `_check_rst_acceptability` / `_reinit_for_rfc6191_reuse`
-  private). Pure structural extraction — no behaviour or lock
-  change. 11754 tests passing (+3 collaborator-seam parity
-  tests at `test__tcp__session__validator.py`).
-- Phase 5 (`TcpRetransmitter`) pending.
+  the four underscore methods private). Pure structural
+  extraction — no behaviour or lock change.
+- **Phase 5 — `TcpRetransmitter`: SHIPPED.** 5 methods +
+  ~670 LOC moved to `session/tcp__session__retransmit.py`:
+  `retransmit_packet_timeout` (RFC 6298 §5 RTO timeout + RFC
+  1122 §4.2.3.5 R2 abort + RFC 5682 §2.1 F-RTO snapshot +
+  RFC 9438 §4.6/§4.7 CUBIC loss-event ssthresh + RFC 6582
+  §3.2 step 4 recover marker), `retransmit_packet_request`
+  (RFC 5681 §3.2 / RFC 6675 §3 fast-retransmit + RFC 3042
+  Limited Transmit + PRR entry), `tlp_pto_tick` (RFC 8985
+  §7.3 Tail Loss Probe firing), `rack_reorder_tick` (RFC
+  8985 §6.2 step 5 reordering timer), `rack_process_ack`
+  (RFC 8985 §6.2 step 1-2 / step 5 per-ACK update + loss
+  detect). Session keeps thin delegators
+  (`_retransmit_packet_timeout` / `_retransmit_packet_request`
+  / `_tlp_pto_tick` / `_rack_reorder_tick` /
+  `_rack_process_ack`). Pure structural extraction — no
+  behaviour or lock change. 11757 tests passing (+3
+  collaborator-seam parity tests at
+  `test__tcp__session__retransmitter.py`).
 
 **Session line-count progression:** 4423 (start) → 4435
 (Phase 1 +12 wiring) → 3380 (Phase 2 -1055) → 2683 (Phase 3
--697) → 2373 (Phase 4 -310). Target after Phase 5:
-~1500-1700 lines (well under the original 4423 even after
-keeping the BSD-facade methods, `tcp_fsm` gateway, RX-buffer/
-SACK-ingest helpers, and the keepalive / hystart / neighbor
-helpers on the session).
+-697) → 2373 (Phase 4 -310) → **1751 (Phase 5 -622, final)**.
+Net reduction: 4423 → 1751 = -2672 lines (60% smaller). The
+final TcpSession holds the BSD-facade methods (listen /
+connect / send / receive / close / shutdown / abort), the
+`tcp_fsm` gateway, `_change_state` / `_apply_pmtu_update`,
+the RX-buffer / SACK-ingest helpers, the keepalive /
+hystart / neighbor helpers, and the wiring that constructs
+the five collaborators.
 
 ## 1. Why
 
@@ -234,10 +253,22 @@ both in-window and out-of-window seq values, and the
 `check_segment_acceptability` with the same packet object (no
 shadow path).
 
-### Phase 5 — `TcpRetransmitter`
-Move `_retransmit_packet_timeout` / `_retransmit_packet_request` +
-the RACK/TLP ticks. Depends on Phase 2 (re-uses the TX engine to
-re-emit segments).
+### Phase 5 — `TcpRetransmitter` ✅ SHIPPED 2026-05-27
+Moved `_retransmit_packet_timeout`, `_retransmit_packet_request`,
+`_tlp_pto_tick`, `_rack_reorder_tick`, `_rack_process_ack` into
+`TcpRetransmitter` at `session/tcp__session__retransmit.py`.
+Session keeps the thin delegators for all five so the seven
+fsm/ handlers and the Phase-3 ACK processor's `_rack_process_ack`
+call site are untouched. The function-local
+`from pytcp.protocols.tcp.tcp__rack import INFINITE_TS` shadow
+inside `_retransmit_packet_timeout` is promoted to a module-top
+import on the engine (modernise-on-touch). Pure structural
+extraction — no behaviour or lock change. Pinned by
+`test__tcp__session__retransmitter.py` (3 seam tests): session
+owns a `TcpRetransmitter` reachable as `session._retransmitter`,
+back-reference correct, the `_retransmit_packet_timeout` and
+`_rack_process_ack` delegators invoke the engine's methods
+verbatim (no shadow path).
 
 After Phase 5 the session is ~the facade + `tcp_fsm` gateway +
 `_change_state`/`_apply_pmtu_update` + RX-buffer/SACK-ingest +
