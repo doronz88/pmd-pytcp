@@ -67,11 +67,17 @@ that bypass the type+length header.
 >  multiple options, with each having a length of at
 >  most 255 octets."
 
-**Adherence:** not implemented. RFC 3396 (Long Options)
-defines the concatenation rule; PyTCP's option parser
-does not concatenate split options. None of PyTCP's
-implemented options approach the 255-octet ceiling, so
-the gap is latent.
+**Adherence:** met (client / receive side).
+`Dhcp4Options.from_buffer` concatenates the data of all
+same-code instances before invoking the typed codec —
+required by RFC 3442 Classless Static Routes (option
+121) which routinely splits across the 255-octet
+boundary. The implementation lives at
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`
+in `_concatenated_classless_static_route_data` (Phase
+8.3, shipped 2026-05-25). Server-side splitting on
+assembly is a Phase-2 DHCP-server concern and remains
+out of scope for the host client.
 
 ---
 
@@ -662,7 +668,7 @@ bytes but exposes no typed accessor.
 | 49   | X Window System Display Manager   | §6.10  | Obsolete                                              |
 | 52   | Option Overload                   | §9.3   | met (parsing) — see §9.3 below                        |
 | 56   | Message                           | §9.9   | Server-side error string                              |
-| 57   | Maximum DHCP Message Size         | §9.10  | Not emitted; see RFC 2131 §3.5 audit gap              |
+| 57   | Maximum DHCP Message Size         | §9.10  | met (emitted in DISCOVER + REQUEST; Phase 8.1)        |
 | 58   | Renewal Time (T1)                 | §9.11  | Not consumed (no FSM)                                 |
 | 59   | Rebinding Time (T2)               | §9.12  | Not consumed (no FSM)                                 |
 | 60   | Vendor class identifier           | §9.13  | Not emitted                                           |
@@ -825,8 +831,8 @@ value (RFC 2131 §3.3 gap).
 | Unknown option fallthrough                      | locked in                         |
 | Options container ordering / lookup             | locked in                         |
 | Option Overload (code 52) parsing               | locked in (16 unit tests)         |
-| Maximum DHCP Message Size (57) emission         | not implemented; no test          |
-| RFC 3396 long-option concatenation              | not implemented; no test          |
+| Maximum DHCP Message Size (57) emission         | locked in (Phase 8.1; 9 codec tests + emit tests) |
+| RFC 3396 long-option concatenation              | locked in (Phase 8.3 client/receive side; same-code merge before codec) |
 | Lease-time consumption by client                | n/a (parsed, not consumed)        |
 
 ---
@@ -846,11 +852,11 @@ value (RFC 2131 §3.3 gap).
 | §9.6 DHCP Message Type (53)                  | met (all 8 codepoints declared; DISCOVER/REQUEST emitted)       |
 | §9.7 Server Identifier (54)                  | met (echoed in REQUEST)                                         |
 | §9.8 Parameter Request List (55)             | met (consistent across DISCOVER/REQUEST)                        |
-| §9.10 Maximum DHCP Message Size (57)         | not implemented                                                 |
+| §9.10 Maximum DHCP Message Size (57)         | met (emitted in DISCOVER + REQUEST; sysctl-tunable `DHCP4__MAX_MSG_SIZE`; Phase 8.1) |
 | §9.11 / §9.12 T1 / T2 (58, 59)               | not consumed (no FSM)                                           |
 | §9.13 Vendor class identifier (60)           | not implemented                                                 |
 | §9.14 Client Identifier (61)                 | partial — emitted in DISCOVER only, missing in REQUEST          |
-| RFC 3396 long-option concatenation           | not implemented                                                 |
+| RFC 3396 long-option concatenation           | met (client / receive — same-code merge in `Dhcp4Options.from_buffer`; Phase 8.3). Server-side splitting deferred to Phase-2 DHCP server. |
 | All other 60+ options (DNS, NTP, NIS, ...)   | not implemented (out of host-parity scope)                      |
 
 **Principal compliance gap.** Two real issues, both
