@@ -1,11 +1,21 @@
 # PyTCP sysctl — per-interface namespace migration
 
-**Status:** Phase 0 SHIPPED 2026-05-28 (registry scaffold +
-24 tests + helper module). Phase 1 (ARP, 4 knobs) SHIPPED
-2026-05-28. Phase 2 (Neighbor cache, 6 knobs) SHIPPED
-2026-05-28. Phase 3 (ICMPv6 / ND, 22 knobs) SHIPPED
-2026-05-28. Phase 4 (IPv4 conf-plane, 2 knobs) SHIPPED
-2026-05-28. Phase 5 (close-out) remains. Successor to
+**Status:** **CLOSED** 2026-05-28. All six phases (0
+through 5) shipped on `PyTCP_3_0_6` the same day:
+
+- Phase 0 (`f76eda00`) — registry scaffold + helper module.
+- Phase 1 (`5119eb55`) — ARP (4 knobs).
+- Phase 2 (`3a3c4ffc`) — Neighbor cache (6 knobs).
+- Phase 3 (`75a8c5b7`) — ICMPv6 / ND (22 knobs).
+- Phase 4 (`9b213b2a`) — IPv4 conf-plane (2 knobs).
+- Phase 5 (this commit) — close-out (stale-comment sweep
+  + ledger refresh).
+
+34 of 85 registered knobs migrated to per-interface scope;
+the remaining 51 stay flat by design (TCP-stack-wide, table-
+wide neighbor GC, RFC 5227 ARP-probe timing, Linux-global
+fragment timeouts, etc.). 11848 tests green; lint clean.
+Successor to
 `docs/refactor/sysctl_migration_remaining.md` (the flat-namespace
 migration that closed earlier the same day with three commits —
 `d0a25807` TCP, `812f02d8` ICMP rate-limiter, `7b281322` stack-wide).
@@ -659,15 +669,26 @@ Migrated the 2 ip4 conf-plane knobs:
 Commit: `<filled-in-by-commit>` on `PyTCP_3_0_6`. 6 new
 tests, 11848 total green.
 
-### Phase 5 — close-out (1 commit)
+### Phase 5 — close-out (SHIPPED 2026-05-28)
 
-- Strip the now-stale "Phase 2: per-interface" comments from
-  `arp__constants.py`, `neighbor__constants.py`,
-  `nd__constants.py`, `stack/__init__.py`.
-- Update `description=` fields to drop the `<iface>`
-  placeholder (it's no longer aspirational — it's real).
-- Bump the `docs/refactor/sysctl_migration_remaining.md`
-  closure note to record the per-interface follow-up.
+Final ledger sweep:
+
+- The "Phase 2: per-interface" wording on `ARP__FILTER`
+  was the only stale per-interface marker in the migrated
+  constants files; Phase 1 already rewrote it. The
+  remaining `Phase 2` mentions in `stack/__init__.py`
+  refer to OTHER tracks (Link API, PLPMTUD, directory
+  restructure) and stay as-is.
+- `description=` strings on the migrated knobs already
+  cite `net.<family>.<iface>.<knob>` (the `<iface>`
+  placeholder is now the canonical key segment, not a
+  Phase-2 aspiration).
+- `docs/refactor/sysctl_migration_remaining.md` head
+  rewritten — the closure note now points at this doc as
+  the follow-up that closed the per-interface namespace
+  gap.
+- This document's `**Status:**` flipped to **CLOSED**.
+- `MEMORY.md` index pointer added in the same commit.
 
 ## 6. Phasing rationale
 

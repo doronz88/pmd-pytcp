@@ -1,11 +1,14 @@
 # PyTCP sysctl migration — current state + remaining work
 
 **Status:** audit 2026-05-28; TCP + ICMP rate-limiter
-+ stack-wide migrated 2026-05-28. Sysctl-migration track is
-now **CLOSED**. Companion to
-`docs/refactor/sysctl_framework.md` (the framework design and
-the Phase-1/Phase-2 retrospective). This document is preserved
-as the "what was done" record.
++ stack-wide migrated 2026-05-28. Flat-namespace sysctl-
+migration track is **CLOSED**. The follow-up per-interface
+namespace migration shipped the same day across Phases 0-5;
+its ledger is `docs/refactor/sysctl_per_interface.md`.
+Companion to `docs/refactor/sysctl_framework.md` (the
+framework design and the Phase-1/Phase-2 retrospective).
+This document is preserved as the "what was done" record
+for the flat-namespace pass.
 
 ## 0. TL;DR
 
