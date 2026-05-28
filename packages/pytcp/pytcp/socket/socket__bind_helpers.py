@@ -139,12 +139,29 @@ def pick_local_ip4_address(
     return Ip4Address()
 
 
+def _ephemeral_port_pool() -> range:
+    """
+    Return the current ephemeral-port pool — a 'range' constructed
+    fresh on every call from the sysctl-backed low/high bounds,
+    so a boot-time or runtime override of
+    'net.ephemeral_port_range.low' / '.high' takes effect on the
+    next pick. Test fixtures patch this helper to control the
+    candidate pool in unit tests.
+    """
+
+    return range(
+        stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
+        stack.STACK__EPHEMERAL_PORT_RANGE__HIGH,
+    )
+
+
 def pick_local_port() -> int:
     """
-    Pick an ephemeral local port from 'stack.EPHEMERAL_PORT_RANGE',
-    excluding any port currently held by an existing socket, using
-    a CSPRNG-backed primitive ('secrets.choice') as the entropy
-    source.
+    Pick an ephemeral local port from the
+    '[STACK__EPHEMERAL_PORT_RANGE__LOW, STACK__EPHEMERAL_PORT_RANGE__HIGH)'
+    interval, excluding any port currently held by an existing
+    socket, using a CSPRNG-backed primitive ('secrets.choice') as
+    the entropy source.
 
     Implements the RFC 6056 §3.3.1 "Simple Port Randomization"
     pattern with the §3.1 obfuscation SHOULD honoured: each pick
@@ -156,7 +173,7 @@ def pick_local_port() -> int:
     """
 
     used = {socket.local_port for socket in stack.sockets.values()}
-    available = [port for port in stack.EPHEMERAL_PORT_RANGE if port not in used]
+    available = [port for port in _ephemeral_port_pool() if port not in used]
 
     if not available:
         raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
@@ -174,9 +191,10 @@ def pick_local_port_for(
     Pick an ephemeral local port using RFC 6056 §3.3.3
     Algorithm 3: a BLAKE2s-keyed hash of (local_ip, remote_ip,
     remote_port) under the stack-wide 'TCP__PORT_SECRET' computes
-    a starting offset into 'stack.EPHEMERAL_PORT_RANGE'; a linear
-    scan from that offset returns the first port not currently
-    held by an existing socket.
+    a starting offset into the
+    '[STACK__EPHEMERAL_PORT_RANGE__LOW, STACK__EPHEMERAL_PORT_RANGE__HIGH)'
+    interval; a linear scan from that offset returns the first
+    port not currently held by an existing socket.
 
     Two RFC-relevant properties follow:
 
@@ -202,7 +220,7 @@ def pick_local_port_for(
     ).digest()
     offset = int.from_bytes(digest, "big")
 
-    pool = list(stack.EPHEMERAL_PORT_RANGE)
+    pool = list(_ephemeral_port_pool())
     used = {socket.local_port for socket in stack.sockets.values()}
     pool_len = len(pool)
 

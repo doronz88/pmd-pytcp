@@ -118,7 +118,7 @@ class _StubInterface:
         self._ip4_broadcast_list = (
             ip4_broadcast if ip4_broadcast is not None else [STACK__IP4_NETWORK_BROADCAST, STACK__IP4_BROADCAST]
         )
-        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT)
+        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT__S)
 
         self.dispatched: list[str] = []
         self.last_udp_packet: PacketRx | None = None
@@ -1015,7 +1015,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
     def test__stack__packet_handler__ip4__rx__expired_flow_is_reaped(self) -> None:
         """
         Ensure a fragment flow whose timestamp is older than
-        'IP4__FRAG_FLOW_TIMEOUT' seconds is removed from the flow
+        'IP4__FRAG_FLOW_TIMEOUT__S' seconds is removed from the flow
         table on the next defragment pass, freeing the buffer that
         would otherwise grow without bound.
 
@@ -1054,7 +1054,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
         object.__setattr__(
             stale_flow,
             "timestamp",
-            stale_flow.timestamp - (stack.IP4__FRAG_FLOW_TIMEOUT + 1),
+            stale_flow.timestamp - (stack.IP4__FRAG_FLOW_TIMEOUT__S + 1),
         )
 
         # Fire an unrelated fragment so '__defragment_ip4_packet' runs
@@ -1076,7 +1076,7 @@ class TestPacketHandlerIp4RxFragmentFlowState(_Ip4RxTestBase):
             stale_flow_id,
             self._if._ip4_frag_table.flows,
             msg=(
-                "A flow whose timestamp predates 'time() - IP4__FRAG_FLOW_TIMEOUT' "
+                "A flow whose timestamp predates 'time() - IP4__FRAG_FLOW_TIMEOUT__S' "
                 "must be removed by the cleanup pass at the start of "
                 "'__defragment_ip4_packet'."
             ),

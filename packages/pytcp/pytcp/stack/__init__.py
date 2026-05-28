@@ -135,7 +135,7 @@ TCP__FASTOPEN_SECRET: bytes = secrets.token_bytes(16)
 # RFC 6056 §3.3.3 Algorithm 3 port-selection secret. Used
 # by 'pytcp.socket.socket__bind_helpers.pick_local_port_for' to compute
 # a per-(local_ip, remote_ip, remote_port) BLAKE2s-keyed
-# offset into 'EPHEMERAL_PORT_RANGE' so the source port
+# offset into the ephemeral port range so the source port
 # for a TCP connect() is unpredictable to an off-path
 # attacker AND independent of the source ports chosen for
 # connections to other destinations (the §3.3.3
@@ -200,11 +200,14 @@ IP4__ACCEPT_SOURCE_ROUTE = False
 # or the 'sysctls={"neighbor.X": ...}' bag kwarg on
 # 'stack.init()'.
 
-# IPv4 and IPv6 fragmnt flow expiration time, determines for how many seconds
-# IP fragment flow is considered valid. Fragemnt flows are being cleaned up prior
-# of handling every fragmented packet.
-IP4__FRAG_FLOW_TIMEOUT = 5
-IP6__FRAG_FLOW_TIMEOUT = 5
+# IPv4 and IPv6 fragment flow expiration time, in seconds. Determines
+# how long a fragment-reassembly flow is considered valid; flows older
+# than this are cleaned up before every fragmented-packet handling
+# pass. Linux exposes 'net.ipv4.ipfrag_time' / 'net.ipv6.ip6frag_time'
+# with the same semantics; the IPv6 RFC recommends 60 s but Linux
+# ships 5 s and PyTCP matches Linux.
+IP4__FRAG_FLOW_TIMEOUT__S = 5
+IP6__FRAG_FLOW_TIMEOUT__S = 5
 
 # Native support for UDP Echo (used for packet flow unit testing only
 # and should always be disabled).
@@ -218,7 +221,137 @@ UDP__ECHO_NATIVE = False
 # obfuscation SHOULD meaningful guessing-space against an
 # off-path attacker. Step=1 (every port is a candidate);
 # the historical step=2 even-only restriction is gone.
-EPHEMERAL_PORT_RANGE = range(32768, 61000)
+# Stored as two ints — low (inclusive) and high (exclusive,
+# matching Python's 'range(low, high)' semantics) — so each
+# bound is independently tunable via the sysctl registry.
+# Consumers build a 'range' on each call.
+STACK__EPHEMERAL_PORT_RANGE__LOW = 32768
+STACK__EPHEMERAL_PORT_RANGE__HIGH = 61000
+
+
+# Sysctl registration. Every constant above (the four stack-wide
+# policy knobs) is operator-tunable at boot via
+# 'stack.init(sysctls={...})' or at runtime via
+# 'pytcp.stack.sysctl["<dotted.key>"] = N'. Per the framework's
+# per-package-atomic rule (and the documented migration in
+# 'docs/refactor/sysctl_migration_remaining.md' §5), the
+# 'register' calls live inline at the bottom of the constants
+# section — same shape as the protocol packages' '*__constants.py'
+# files. Cryptographic boot secrets ('TCP__ISS_SECRET',
+# 'IP6__FLOW_SECRET', 'TCP__FASTOPEN_SECRET', 'TCP__PORT_SECRET'),
+# boot-time defaults ('MAC_ADDRESS', 'IP4_ADDRESS', etc.),
+# per-link MTUs, hard on/off support flags, and logger config
+# are deliberately NOT registered — see §5.1 of that doc for
+# the rationale.
+from pytcp.stack.sysctl import get as _sysctl_get  # noqa: E402
+from pytcp.stack.sysctl import is_int_in_range as _sysctl_is_int_in_range  # noqa: E402
+from pytcp.stack.sysctl import is_positive_int as _sysctl_is_positive_int  # noqa: E402
+from pytcp.stack.sysctl import register as _sysctl_register  # noqa: E402
+from pytcp.stack.sysctl import register_finalize_validator as _sysctl_register_finalize_validator  # noqa: E402
+
+
+def _stack__bool_validator(name: str) -> Any:
+    """
+    Build a validator that requires a real 'bool' value — rejects
+    int / str / None so the knob's 0/1-switch semantics stay clean.
+    """
+
+    def validator(value: object) -> None:
+        """
+        Raise 'ValueError' unless 'value' is exactly 'True' or 'False'.
+        """
+
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"sysctl {name!r} must be a bool; got {type(value).__name__}({value!r})",
+            )
+
+    return validator
+
+
+_sysctl_register(
+    key="ip4.accept_source_route",
+    module_name=__name__,
+    attr="IP4__ACCEPT_SOURCE_ROUTE",
+    default=IP4__ACCEPT_SOURCE_ROUTE,
+    validator=_stack__bool_validator("ip4.accept_source_route"),
+    description=(
+        "RFC 791 §3.1 LSRR / SSRR acceptance gate; Linux" " 'net.ipv4.conf.<iface>.accept_source_route' analogue."
+    ),
+)
+_sysctl_register(
+    key="ip4.frag.flow_timeout_s",
+    module_name=__name__,
+    attr="IP4__FRAG_FLOW_TIMEOUT__S",
+    default=IP4__FRAG_FLOW_TIMEOUT__S,
+    validator=_sysctl_is_positive_int("ip4.frag.flow_timeout_s"),
+    description=("RFC 815 IPv4 fragment-reassembly TTL in seconds; Linux" " 'net.ipv4.ipfrag_time' analogue."),
+)
+_sysctl_register(
+    key="ip6.frag.flow_timeout_s",
+    module_name=__name__,
+    attr="IP6__FRAG_FLOW_TIMEOUT__S",
+    default=IP6__FRAG_FLOW_TIMEOUT__S,
+    validator=_sysctl_is_positive_int("ip6.frag.flow_timeout_s"),
+    description=(
+        "RFC 8200 §4.5 IPv6 fragment-reassembly TTL in seconds (Linux"
+        " 'net.ipv6.ip6frag_time' ships 5 s; PyTCP matches Linux)."
+    ),
+)
+_sysctl_register(
+    key="net.ephemeral_port_range.low",
+    module_name=__name__,
+    attr="STACK__EPHEMERAL_PORT_RANGE__LOW",
+    default=STACK__EPHEMERAL_PORT_RANGE__LOW,
+    validator=_sysctl_is_int_in_range(
+        "net.ephemeral_port_range.low",
+        low=1024,
+        high=65535,
+    ),
+    description=(
+        "RFC 6056 §3.2 ephemeral-port-range lower bound (inclusive);"
+        " Linux 'net.ipv4.ip_local_port_range' lower-bound field."
+    ),
+)
+_sysctl_register(
+    key="net.ephemeral_port_range.high",
+    module_name=__name__,
+    attr="STACK__EPHEMERAL_PORT_RANGE__HIGH",
+    default=STACK__EPHEMERAL_PORT_RANGE__HIGH,
+    validator=_sysctl_is_int_in_range(
+        "net.ephemeral_port_range.high",
+        low=1024,
+        high=65535,
+    ),
+    description=(
+        "RFC 6056 §3.2 ephemeral-port-range upper bound (exclusive,"
+        " matching Python 'range' semantics); Linux"
+        " 'net.ipv4.ip_local_port_range' upper-bound field."
+    ),
+)
+
+
+def _stack__finalize__ephemeral_port_range_low_lt_high() -> None:
+    """
+    Cross-knob constraint — 'net.ephemeral_port_range.low' must be
+    strictly less than 'net.ephemeral_port_range.high'. The pool
+    consumers iterate as 'range(low, high)', which is empty when
+    'low >= high' and would make every 'bind()' fall into the
+    no-free-port branch.
+    """
+
+    low = _sysctl_get("net.ephemeral_port_range.low")
+    high = _sysctl_get("net.ephemeral_port_range.high")
+    if low >= high:
+        raise ValueError(
+            f"sysctl 'net.ephemeral_port_range.low' ({low}) must be strictly less than "
+            f"'net.ephemeral_port_range.high' ({high}); the range pool 'range(low, high)' "
+            f"would otherwise be empty."
+        )
+
+
+_sysctl_register_finalize_validator(_stack__finalize__ephemeral_port_range_low_lt_high)
+
 
 # Logger configuration - LOG__CHANNEL sets which subsystems of stack log to the
 # console, LOG__DEBUG adds info about class/method caller.

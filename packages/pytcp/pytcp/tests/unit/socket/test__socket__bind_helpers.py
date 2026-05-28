@@ -361,14 +361,14 @@ class TestPickLocalPort(TestCase):
     def test__ip_helper__pick_local_port__returns_value_from_range(self) -> None:
         """
         Ensure the helper returns a port drawn from
-        'stack.EPHEMERAL_PORT_RANGE' when no socket has claimed anything
+        '_ephemeral_port_pool()' when no socket has claimed anything
         yet.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10004, 2)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(10000, 10004, 2)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
         ):
             port = pick_local_port()
@@ -394,7 +394,7 @@ class TestPickLocalPort(TestCase):
         }
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(10000, 10006, 2)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
         ):
             port = pick_local_port()
@@ -411,7 +411,7 @@ class TestPickLocalPort(TestCase):
         'secrets.choice', a CSPRNG-backed primitive, rather than
         relying on Python set-pop hash ordering. The
         'secrets.choice' call MUST receive the unused-ports
-        collection (anything in EPHEMERAL_PORT_RANGE that no
+        collection (anything in the ephemeral-port pool that no
         existing socket has claimed) so an attacker observing
         one selection learns nothing useful about future ones.
 
@@ -422,7 +422,7 @@ class TestPickLocalPort(TestCase):
         sockets = {"s1": SimpleNamespace(local_port=10002)}
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(10000, 10006)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
             patch("pytcp.socket.socket__bind_helpers.secrets.choice", return_value=10005) as mock_choice,
         ):
@@ -440,7 +440,7 @@ class TestPickLocalPort(TestCase):
             [10000, 10001, 10003, 10004, 10005],
             msg=(
                 "secrets.choice must be invoked with every port from "
-                "EPHEMERAL_PORT_RANGE that no existing socket has claimed."
+                "the ephemeral-port pool that no existing socket has claimed."
             ),
         )
 
@@ -456,7 +456,7 @@ class TestPickLocalPort(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(10000, 10006, 2)}
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(10000, 10006, 2)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(10000, 10006, 2)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
         ):
             with self.assertRaises(OSError) as context:
@@ -486,7 +486,7 @@ class TestPickLocalPortFor(TestCase):
         """
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 50000)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
@@ -519,7 +519,7 @@ class TestPickLocalPortFor(TestCase):
         """
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 50000)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
@@ -555,7 +555,7 @@ class TestPickLocalPortFor(TestCase):
         remote_port = 443
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 50000)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
@@ -566,7 +566,7 @@ class TestPickLocalPortFor(TestCase):
             )
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 50000)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", {}),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\xff" * 16),
         ):
@@ -586,7 +586,7 @@ class TestPickLocalPortFor(TestCase):
         """
         Ensure the picker scans forward from the hashed offset
         when the initial pick is already taken — Algorithm 3's
-        linear scan over EPHEMERAL_PORT_RANGE.
+        linear scan over the ephemeral-port pool.
 
         Reference: RFC 6056 §3.3.3 (linear scan on collision).
         """
@@ -597,7 +597,7 @@ class TestPickLocalPortFor(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in used_ports}
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 50000)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 50000)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):
@@ -631,7 +631,7 @@ class TestPickLocalPortFor(TestCase):
         sockets = {f"s{p}": SimpleNamespace(local_port=p) for p in range(40000, 40010)}
 
         with (
-            patch("pytcp.socket.socket__bind_helpers.stack.EPHEMERAL_PORT_RANGE", range(40000, 40010)),
+            patch("pytcp.socket.socket__bind_helpers._ephemeral_port_pool", return_value=range(40000, 40010)),
             patch("pytcp.socket.socket__bind_helpers.stack.sockets", sockets),
             patch("pytcp.socket.socket__bind_helpers.stack.TCP__PORT_SECRET", b"\x00" * 16),
         ):

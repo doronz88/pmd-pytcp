@@ -471,8 +471,8 @@ class PacketHandler(Subsystem, ABC):
         self._lock__ip4_id = threading.Lock()
 
         # Used to defragment IPv4 and IPv6 packets.
-        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT)
-        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT)
+        self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT__S)
+        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)
 
         # Used for IPv4 and IPv6 address configuration.
         self._ip_configuration_in_progress: Semaphore = threading.Semaphore(0)

@@ -168,49 +168,46 @@ class TestStackModuleConstants(TestCase):
         """
 
         self.assertGreaterEqual(
-            stack.EPHEMERAL_PORT_RANGE.start,
+            stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
             0,
-            msg="EPHEMERAL_PORT_RANGE start must be >= 0.",
+            msg="STACK__EPHEMERAL_PORT_RANGE__LOW must be >= 0.",
         )
         self.assertLessEqual(
-            stack.EPHEMERAL_PORT_RANGE.stop,
+            stack.STACK__EPHEMERAL_PORT_RANGE__HIGH,
             65536,
-            msg="EPHEMERAL_PORT_RANGE stop must be <= 65536.",
+            msg="STACK__EPHEMERAL_PORT_RANGE__HIGH must be <= 65536.",
         )
         self.assertGreater(
-            stack.EPHEMERAL_PORT_RANGE.stop,
-            stack.EPHEMERAL_PORT_RANGE.start,
-            msg="EPHEMERAL_PORT_RANGE must be non-empty.",
+            stack.STACK__EPHEMERAL_PORT_RANGE__HIGH,
+            stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
+            msg="STACK__EPHEMERAL_PORT_RANGE__HIGH must exceed __LOW.",
         )
 
     def test__stack__ephemeral_port_range__rfc6056_conformant(self) -> None:
         """
-        Ensure the ephemeral port range is contiguous (step == 1)
-        so every port in the range is a valid candidate, and the
-        pool is at least the size of the IANA dynamic range
-        (16384 ports) to give an off-path attacker a sufficiently
-        large guessing space.
+        Ensure the ephemeral port pool is at least the size of the
+        IANA dynamic range (16384 ports) to give an off-path
+        attacker a sufficiently large guessing space, and that the
+        lower bound sits above the IANA Well-Known Ports range so
+        no static-port conflicts arise. (The 'range(low, high)'
+        consumer iterates with step=1; the historical step=2
+        even-only affordance is gone.)
 
         Reference: RFC 6056 §3.2 (Ephemeral Port Number Range).
         """
 
-        self.assertEqual(
-            stack.EPHEMERAL_PORT_RANGE.step,
-            1,
-            msg="EPHEMERAL_PORT_RANGE must have step=1; gaps reduce entropy without benefit.",
-        )
         self.assertGreaterEqual(
-            len(stack.EPHEMERAL_PORT_RANGE),
+            stack.STACK__EPHEMERAL_PORT_RANGE__HIGH - stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
             16384,
             msg=(
-                "EPHEMERAL_PORT_RANGE must contain at least 16384 ports "
+                "The ephemeral-port pool must contain at least 16384 ports "
                 "(IANA dynamic-range size) to satisfy the largest-possible-range SHOULD."
             ),
         )
         self.assertGreaterEqual(
-            stack.EPHEMERAL_PORT_RANGE.start,
+            stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
             1024,
-            msg="EPHEMERAL_PORT_RANGE start must be >= 1024 (above the Well-Known Ports range).",
+            msg="STACK__EPHEMERAL_PORT_RANGE__LOW must be >= 1024 (above the Well-Known Ports range).",
         )
 
     def test__stack__fragment_timeouts_positive(self) -> None:
@@ -222,14 +219,14 @@ class TestStackModuleConstants(TestCase):
         """
 
         self.assertGreater(
-            stack.IP4__FRAG_FLOW_TIMEOUT,
+            stack.IP4__FRAG_FLOW_TIMEOUT__S,
             0,
-            msg="IP4__FRAG_FLOW_TIMEOUT must be positive.",
+            msg="IP4__FRAG_FLOW_TIMEOUT__S must be positive.",
         )
         self.assertGreater(
-            stack.IP6__FRAG_FLOW_TIMEOUT,
+            stack.IP6__FRAG_FLOW_TIMEOUT__S,
             0,
-            msg="IP6__FRAG_FLOW_TIMEOUT must be positive.",
+            msg="IP6__FRAG_FLOW_TIMEOUT__S must be positive.",
         )
 
     def test__stack__log_channels_present(self) -> None:

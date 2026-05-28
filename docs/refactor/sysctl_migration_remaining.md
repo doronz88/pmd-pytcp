@@ -1,33 +1,37 @@
 # PyTCP sysctl migration — current state + remaining work
 
 **Status:** audit 2026-05-28; TCP + ICMP rate-limiter
-migrated 2026-05-28. Companion to
++ stack-wide migrated 2026-05-28. Sysctl-migration track is
+now **CLOSED**. Companion to
 `docs/refactor/sysctl_framework.md` (the framework design and
-the Phase-1/Phase-2 retrospective). This document is the
-"what's left" ledger.
+the Phase-1/Phase-2 retrospective). This document is preserved
+as the "what was done" record.
 
 ## 0. TL;DR
 
-12 of 12 `*__constants.py` modules are now fully migrated
-(TCP + ICMP rate-limiter landed 2026-05-28). The ICMPv6/ND
-module is functionally complete (22/23 — the one remaining
-constant is an RFC-pinned invariant that correctly stays
-static). One migration target remains, deferred-by-design
-per the framework's "migrate-when-touched" rule, not by
-oversight:
+All 12 `*__constants.py` modules + `stack/__init__.py` are
+fully migrated as of 2026-05-28. The ICMPv6/ND module is
+functionally complete (22/23 — the one remaining constant
+is an RFC-pinned invariant that correctly stays static).
+No targets remain.
 
 1. ~~**`protocols/tcp/tcp__constants.py`** — 10 policy knobs.~~
-   **SHIPPED 2026-05-28.** Renamed bare names to
-   `TCP__<SUBJECT>__<FIELD>` per `source_files.md` §7 and
-   registered all ten with the sysctl framework in one
-   atomic commit. See §4 below for the per-knob inventory.
+   **SHIPPED 2026-05-28** (commit `d0a25807`). Renamed bare
+   names to `TCP__<SUBJECT>__<FIELD>` per `source_files.md`
+   §7 and registered all ten with the sysctl framework in
+   one atomic commit. See §4 below for the per-knob
+   inventory.
 2. ~~**`protocols/icmp/icmp__constants.py`** — 2 knobs.~~
-   **SHIPPED 2026-05-28.** Renamed `ICMP_ERROR__X` to the
-   canonical `ICMP__ERROR__X` form and registered both
-   knobs with the sysctl framework. See §3 below.
-3. **`stack/__init__.py`** — 4 policy constants (accept-
-   source-route + fragment-flow-timeout v4/v6 + ephemeral
-   port range).
+   **SHIPPED 2026-05-28** (commit `812f02d8`). Renamed
+   `ICMP_ERROR__X` to the canonical `ICMP__ERROR__X` form
+   and registered both knobs with the sysctl framework. See
+   §3 below.
+3. ~~**`stack/__init__.py`** — 4 policy constants.~~
+   **SHIPPED 2026-05-28.** Registered `ip4.accept_source_route`,
+   `ip4.frag.flow_timeout_s`, `ip6.frag.flow_timeout_s`, and
+   split `EPHEMERAL_PORT_RANGE` into two int knobs
+   (`net.ephemeral_port_range.low` / `.high`) with a
+   `low < high` cross-knob finalize-validator. See §5 below.
 
 No feature work blocks on any of these; they sit on the
 "next time the package is touched" cadence the framework
@@ -50,7 +54,7 @@ sweep when an operator wants to.
 | `protocols/ip6/ip6__constants.py` | 4 | 4 | ✅ full |
 | `protocols/tcp/tcp__constants.py` | 10 | 10 | ✅ full — shipped 2026-05-28 |
 | `protocols/icmp/icmp__constants.py` | 2 | 2 | ✅ full — shipped 2026-05-28 |
-| **`stack/__init__.py`** | **~4 policy + others static-by-design** | **0** | ❌ §5 |
+| `stack/__init__.py` | 4 policy + others static-by-design | 5 (incl. ephemeral_port_range split into low+high) | ✅ full — shipped 2026-05-28 |
 
 ## 2. Effectively-complete cases (no action needed)
 
@@ -210,20 +214,55 @@ These are deliberate one-shot-per-boot `secrets.token_bytes(16)`
 calls — NOT policy, do not migrate. Document this in the
 TCP migration commit's body so the choice is greppable.
 
-## 5. Stack-wide — `pytcp/stack/__init__.py`
+## 5. Stack-wide — `pytcp/stack/__init__.py` ✅ shipped 2026-05-28
 
 Many module-level constants here are static-by-design
-(secrets, boot-time addresses, version strings). The
-genuinely-policy candidates are:
+(secrets, boot-time addresses, version strings). Four policy
+constants were registered as five sysctls (the
+`EPHEMERAL_PORT_RANGE` `range` was split into two int knobs
+so each bound is independently tunable). Attribute names
+were also normalised — `IP4__FRAG_FLOW_TIMEOUT` →
+`IP4__FRAG_FLOW_TIMEOUT__S` (and the IPv6 counterpart) gain
+the `__S` unit suffix that parallels IGMP's
+`IGMP__QUERY_INTERVAL__MS`; `EPHEMERAL_PORT_RANGE` was
+replaced by `STACK__EPHEMERAL_PORT_RANGE__LOW` /
+`STACK__EPHEMERAL_PORT_RANGE__HIGH`.
 
-| Current constant | Value | Proposed sysctl key | Validator | Linux equivalent | RFC citation |
+| New attribute | Sysctl key | Default | Validator | Linux equivalent | RFC citation |
 |---|---|---|---|---|---|
-| `IP4__ACCEPT_SOURCE_ROUTE` | `False` | `ip4.accept_source_route` | bool | `net.ipv4.conf.<if>.accept_source_route` | RFC 791 §3.1 (LSRR / SSRR) |
-| `IP4__FRAG_FLOW_TIMEOUT` | `5` sec | `ip4.frag.flow_timeout_s` | positive int | `net.ipv4.ipfrag_time` | RFC 815 (reassembly TTL) |
-| `IP6__FRAG_FLOW_TIMEOUT` | `5` sec | `ip6.frag.flow_timeout_s` | positive int | `net.ipv6.ip6frag_time` | RFC 8200 §4.5 (60 s recommended; PyTCP defaults to Linux's 5 s) |
-| `EPHEMERAL_PORT_RANGE` | `range(32768, 61000)` | `net.ephemeral_port_range_low` + `_high` (two keys) OR a single typed key | `_is_valid_port_range` (low < high, both ∈ [1024, 65535]) | `net.ipv4.ip_local_port_range` | RFC 6056 §3.2 |
+| `IP4__ACCEPT_SOURCE_ROUTE` | `ip4.accept_source_route` | `False` | bool | `net.ipv4.conf.<if>.accept_source_route` | RFC 791 §3.1 (LSRR / SSRR) |
+| `IP4__FRAG_FLOW_TIMEOUT__S` | `ip4.frag.flow_timeout_s` | 5 sec | positive int | `net.ipv4.ipfrag_time` | RFC 815 |
+| `IP6__FRAG_FLOW_TIMEOUT__S` | `ip6.frag.flow_timeout_s` | 5 sec | positive int | `net.ipv6.ip6frag_time` | RFC 8200 §4.5 (60 s recommended; PyTCP matches Linux at 5 s) |
+| `STACK__EPHEMERAL_PORT_RANGE__LOW` | `net.ephemeral_port_range.low` | 32768 | int in [1024, 65535] | `net.ipv4.ip_local_port_range` lower-bound field | RFC 6056 §3.2 |
+| `STACK__EPHEMERAL_PORT_RANGE__HIGH` | `net.ephemeral_port_range.high` | 61000 | int in [1024, 65535] | `net.ipv4.ip_local_port_range` upper-bound field | RFC 6056 §3.2 |
 
-### 5.1 Constants explicitly kept static (rationale documented)
+Cross-knob constraint:
+`net.ephemeral_port_range.low < net.ephemeral_port_range.high`
+(registered via `register_finalize_validator`). The pool
+consumers iterate as `range(low, high)`, which is empty
+when `low >= high` and would make every `bind()` fall into
+the no-free-port branch.
+
+**Behaviour preserved** — the two ephemeral-port-range
+consumers in `socket__bind_helpers.py`
+(`pick_local_port` / `pick_local_port_for`) were refactored
+to call a new module-local helper `_ephemeral_port_pool()`
+that builds `range(stack.STACK__EPHEMERAL_PORT_RANGE__LOW,
+stack.STACK__EPHEMERAL_PORT_RANGE__HIGH)` on every call.
+Test fixtures patch the helper to control the candidate
+pool. Sysctl mutation propagates to the next pick without
+any per-consumer change. The legacy `EPHEMERAL_PORT_RANGE`
+attribute is gone.
+
+Implementation host: the `_register(...)` calls live inline
+at the bottom of `stack/__init__.py` itself (same pattern
+as `arp__constants.py` / `igmp__constants.py` /
+`tcp__constants.py` / `icmp__constants.py` — host the
+registrations alongside the constants they back). The
+plan's §5.2 fallback `sysctl_seeds.py` indirection was not
+needed.
+
+### 5.1 Constants explicitly kept static (rationale documented as shipped)
 
 | Constant | Why static |
 |---|---|
@@ -235,38 +274,32 @@ genuinely-policy candidates are:
 | `UDP__ECHO_NATIVE` | Test-only debug flag; the comment says "should always be disabled." Stays static. |
 | `STACK__DEFAULT_IFINDEX`, `INTERFACE__MAX_COUNT`, `PYTCP_VERSION`, `GITHUB_REPO`, `EPHEMERAL_PORT_RANGE_STEP` (if added), `LOG__CHANNEL` / `LOG__DEBUG` / `LOG__OUTPUT` | Invariants or logging-system config, not network policy. |
 
-### 5.2 Where the knobs land in code
+### 5.2 Where the knobs land in code — DECIDED
 
-`stack/__init__.py` is restricted under the Phase-3
-directory restructure (per the `pytcp_directory_restructure`
-memory) — it now holds only Phase-3 public APIs +
-boot-time configuration. The four migration targets above
-need a home. Recommendation: place the `_register(...)`
-calls in a new `pytcp/stack/sysctl_seeds.py` module
-imported by `stack/lifecycle.py::init()`, so
-`stack/__init__.py` keeps the module-level constants (the
-canonical storage) but the registration metadata lives
-beside the lifecycle. Alternative: register in
-`stack/sysctl.py` itself in a `_seed_stack_constants()` hook
-called from `init()`.
+The `_register(...)` calls live inline at the bottom of the
+constants section in `stack/__init__.py` itself — same
+pattern as every other migrated package's `*__constants.py`.
+This was the simpler choice: the constants ARE defined in
+`stack/__init__.py`, so co-locating their registration
+avoids an indirection layer and keeps the import-time
+registration semantics (no extra defensive import needed in
+`lifecycle.py::init()`, because `stack/__init__.py` always
+runs before `lifecycle.init()` is called). The plan's
+proposed `sysctl_seeds.py` host module was not needed.
 
-Decide the home in the migration commit; document the
-choice in the commit body.
+## 6. Migration order — COMPLETE
 
-## 6. Migration order
-
-1. ~~**TCP** (§4)~~ — **SHIPPED 2026-05-28.** Naming +
-   registration landed in one atomic commit; 16 files
-   touched (10 source + 5 source-test pairs).
-2. ~~**ICMP rate-limiter** (§3)~~ — **SHIPPED 2026-05-28.**
-   Naming + registration + rate-limiter constructor
-   refresh landed in one atomic commit.
-3. **Stack-wide** (§5) — smallest, 4 knobs; needs the
-   `sysctl_seeds.py` (or equivalent) decision.
-
-Each is one atomic commit per the framework's "no
-half-migrated package state" rule. Push only when the user
-asks.
+1. ~~**TCP** (§4)~~ — **SHIPPED 2026-05-28** (`d0a25807`).
+   Naming + registration landed in one atomic commit; 16
+   files touched (10 source + 5 source-test pairs).
+2. ~~**ICMP rate-limiter** (§3)~~ — **SHIPPED 2026-05-28**
+   (`812f02d8`). Naming + registration + rate-limiter
+   constructor refresh landed in one atomic commit.
+3. ~~**Stack-wide** (§5)~~ — **SHIPPED 2026-05-28.** Four
+   policy constants registered (five sysctls — port range
+   split into two int knobs) with a cross-knob low<high
+   finalize-validator. Inline register block at the bottom
+   of `stack/__init__.py` (no `sysctl_seeds.py` needed).
 
 ## 7. Per-knob workflow
 
@@ -304,20 +337,24 @@ first, audit-doc Reference, §7.2 docstring audit, commit.
 - [`.claude/skills/sysctl_knob/SKILL.md`](../../.claude/skills/sysctl_knob/SKILL.md)
   — per-knob workflow.
 
-## 10. Definition of done
+## 10. Definition of done — CLOSED 2026-05-28
 
-The sysctl-migration track is closed when:
+The sysctl-migration track is closed:
 
 1. ~~`protocols/tcp/tcp__constants.py` has every policy
    constant registered + renamed to the
    `TCP__<SUBJECT>__<FIELD>` convention.~~ **DONE 2026-05-28.**
 2. ~~`protocols/icmp/icmp__constants.py` has both knobs
    registered.~~ **DONE 2026-05-28.**
-3. `stack/__init__.py`'s four policy candidates are
-   registered (via whichever seeds module the migration
-   commit chooses).
-4. `make test` + `make lint` green.
-5. This document is amended to reflect "DONE" status, OR
-   marked DELETED with the closure recorded in a memory
-   entry.
-6. `MEMORY.md` index entry for sysctl status updated.
+3. ~~`stack/__init__.py`'s four policy candidates are
+   registered.~~ **DONE 2026-05-28** — registered as five
+   sysctls (port range split into two int knobs) with a
+   cross-knob `low < high` finalize-validator. Inline
+   register block at the bottom of `stack/__init__.py`.
+4. ~~`make test` + `make lint` green.~~ **DONE.**
+5. ~~This document is amended to reflect "DONE" status.~~
+   **DONE** — this ledger preserved as a "what was done"
+   record.
+6. ~~`MEMORY.md` index entry for sysctl status updated.~~
+   **DONE** — the per-target memory entry was kept in
+   lockstep.

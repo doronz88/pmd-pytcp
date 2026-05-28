@@ -89,7 +89,7 @@ class _StubInterface:
 
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
-        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT)
+        self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)
 
         # Spy: record each reassembled packet forwarded to _phrx_ip6.
         self.ip6_reassembled: list[PacketRx] = []
@@ -533,7 +533,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
     def test__stack__packet_handler__ip6_frag__rx__expired_flow_is_reaped(self) -> None:
         """
         Ensure a fragment flow whose timestamp is older than
-        'IP6__FRAG_FLOW_TIMEOUT' seconds is removed from the flow
+        'IP6__FRAG_FLOW_TIMEOUT__S' seconds is removed from the flow
         table on the next defragment pass, freeing the buffer that
         would otherwise grow without bound.
 
@@ -566,7 +566,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
         object.__setattr__(
             stale_flow,
             "timestamp",
-            stale_flow.timestamp - (stack.IP6__FRAG_FLOW_TIMEOUT + 1),
+            stale_flow.timestamp - (stack.IP6__FRAG_FLOW_TIMEOUT__S + 1),
         )
 
         # Fire an unrelated fragment so '__defragment_ip6_packet' runs
@@ -583,7 +583,7 @@ class TestPacketHandlerIp6FragRx(TestCase):
             stale_flow_id,
             self._if._ip6_frag_table.flows,
             msg=(
-                "A flow whose timestamp predates 'time() - IP6__FRAG_FLOW_TIMEOUT' "
+                "A flow whose timestamp predates 'time() - IP6__FRAG_FLOW_TIMEOUT__S' "
                 "must be removed by the cleanup pass at the start of "
                 "'__defragment_ip6_packet'."
             ),
