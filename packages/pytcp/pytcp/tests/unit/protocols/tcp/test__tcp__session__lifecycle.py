@@ -36,8 +36,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState
-from pytcp.protocols.tcp.tcp__session import TcpSession
 
 
 class _TcpSessionFixture(TestCase):
@@ -60,13 +60,13 @@ class _TcpSessionFixture(TestCase):
             now_ms=0,
         )
         self._timer_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.timer",
+            "pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
         )
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_interface_mtu",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_interface_mtu",
             return_value=1500,
         )
         self._mtu_patch.start()

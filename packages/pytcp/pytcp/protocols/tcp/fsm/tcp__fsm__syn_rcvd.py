@@ -42,7 +42,7 @@ from pytcp.protocols.tcp.tcp__cwnd import initial_window
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 
 if TYPE_CHECKING:
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 

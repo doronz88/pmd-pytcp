@@ -38,8 +38,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, IpVersion
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket.tcp__metadata import TcpMetadata
 
 
@@ -63,25 +63,25 @@ class _TcpSessionFsmFixture(TestCase):
             now_ms=0,
         )
         self._timer_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.timer",
+            "pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
         )
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_interface_mtu",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_interface_mtu",
             return_value=1500,
         )
         self._mtu_patch.start()
 
         self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.sockets",
+            "pytcp.protocols.tcp.session.tcp__session.stack.sockets",
             self._sockets,
         )
         self._sockets_patch.start()
 
-        self._log_patch = patch("pytcp.protocols.tcp.tcp__session.log")
+        self._log_patch = patch("pytcp.protocols.tcp.session.tcp__session.log")
         self._log_patch.start()
 
     def tearDown(self) -> None:
@@ -521,9 +521,9 @@ class TestTcpFsmIcmpDispatch(_TcpSessionFsmFixture):
         session = self._make_session()
 
         with (
-            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_packet") as mock_packet,
-            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_syscall") as mock_syscall,
-            patch("pytcp.protocols.tcp.tcp__session.tcp_fsm_dispatch_timer") as mock_timer,
+            patch("pytcp.protocols.tcp.session.tcp__session.tcp_fsm_dispatch_packet") as mock_packet,
+            patch("pytcp.protocols.tcp.session.tcp__session.tcp_fsm_dispatch_syscall") as mock_syscall,
+            patch("pytcp.protocols.tcp.session.tcp__session.tcp_fsm_dispatch_timer") as mock_timer,
         ):
             session._state = FsmState.ESTABLISHED  # any synchronized state
             session.tcp_fsm(
@@ -916,7 +916,7 @@ class TestTcpFsmSynchronizedHandleIcmp(_TcpSessionFsmFixture):
 
                 cache: dict[object, int] = {}
                 with patch(
-                    "pytcp.protocols.tcp.tcp__session.stack.pmtu_cache",
+                    "pytcp.protocols.tcp.session.tcp__session.stack.pmtu_cache",
                     cache,
                     create=True,
                 ):
@@ -961,7 +961,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
         handler.send_tcp_packet = MagicMock()
 
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_packet_handler",
             return_value=handler,
         ):
             session = self._make_session()
@@ -1010,7 +1010,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
 
         handler = MagicMock()
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_packet_handler",
             return_value=handler,
         ):
             session = self._make_session()
@@ -1034,7 +1034,7 @@ class TestTcpSessionTransmitPacket(_TcpSessionFsmFixture):
 
         handler = MagicMock()
         with patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_packet_handler",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_packet_handler",
             return_value=handler,
         ):
             session = self._make_session()

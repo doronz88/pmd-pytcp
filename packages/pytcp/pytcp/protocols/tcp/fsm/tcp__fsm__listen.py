@@ -44,8 +44,8 @@ from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.protocols.tcp.tcp__seq import add32
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.session import TcpSession
     from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
-    from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 
@@ -82,7 +82,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     TCP FSM LISTEN state packet handler.
     """
 
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
     from pytcp.socket import AddressFamily
     from pytcp.socket.tcp__socket import TcpSocket
 

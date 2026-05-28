@@ -21,12 +21,13 @@
 ##                                                                            ##
 ################################################################################
 
+# pylint: disable=protected-access
 # pyright: reportPrivateUsage=false
 
 """
 This module contains the class supporting TCP finite state machine.
 
-pytcp/protocols/tcp/tcp__session.py
+pytcp/protocols/tcp/session/tcp__session.py
 
 ver 3.0.6
 """

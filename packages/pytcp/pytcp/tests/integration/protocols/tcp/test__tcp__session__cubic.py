@@ -39,8 +39,8 @@ ver 3.0.6
 
 from net_addr import Ip4Address
 from pytcp import stack
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import CcMode
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import (
     IPPROTO_TCP,
     TCP_CONGESTION,

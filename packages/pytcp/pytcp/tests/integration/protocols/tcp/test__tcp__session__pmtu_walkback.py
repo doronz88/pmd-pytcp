@@ -47,7 +47,7 @@ from net_proto import (
     Ip4Assembler,
     TcpAssembler,
 )
-from pytcp.protocols.tcp.tcp__session import TcpSession
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     STACK__IP4_HOST,

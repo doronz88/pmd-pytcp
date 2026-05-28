@@ -45,8 +45,8 @@ from net_proto import (
     TcpAssembler,
 )
 from pytcp import stack
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (

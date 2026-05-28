@@ -22,6 +22,7 @@
 ################################################################################
 
 
+# pylint: disable=protected-access
 # pyright: reportPrivateUsage=false
 
 
@@ -56,7 +57,7 @@ from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.runtime.timer import TimerHandle
 
 if TYPE_CHECKING:
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
 
 
 # Which logical timers may wake the session in each FSM state

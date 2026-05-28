@@ -145,6 +145,58 @@ packages/net_proto/net_proto/protocols/foo/__init__.py  # empty file
 packages/net_proto/net_proto/protocols/foo/foo__header.py
 ```
 
+### 2.4.1 Encapsulated subpackages — narrow carve-out
+
+A subpackage MAY carry a non-empty `__init__.py` when the
+subpackage is deliberately encapsulated: it has a single
+public symbol (or small symbol set) and every other module
+inside it is private implementation that outside code MUST
+NOT import directly. In that case `__init__.py` is a tiny
+re-export shim, never a code-bearing module:
+
+```python
+# packages/pytcp/pytcp/protocols/tcp/session/__init__.py
+"""... encapsulation contract docstring ..."""
+
+from pytcp.protocols.tcp.session.tcp__session import TcpSession
+
+__all__ = ["TcpSession"]
+```
+
+Rules for this exception:
+
+1. The shim contains **only** the docstring, the canonical
+   copyright block, and the re-export(s) + `__all__`. No
+   class definitions, no helper functions, no side-effecting
+   statements.
+2. The subpackage `__init__.py` docstring **MUST** spell out
+   the encapsulation contract: which symbol(s) are public,
+   that every other module inside the subpackage is private,
+   and what test-side reach-throughs (if any) are explicitly
+   tolerated.
+3. The contract is enforced socially (rule + reviewer
+   attention) and by convention; PyTCP does not yet run a
+   mechanical "no deep imports from outside the subpackage"
+   check.
+4. The carve-out is granted **only** when an encapsulation
+   payoff exists: outside code already treats the subpackage
+   as a black box, the internal layout is genuinely volatile
+   (refactor likely), and a search shows no current deep
+   imports from outside production code.
+
+The canonical example is
+`packages/pytcp/pytcp/protocols/tcp/session/` — the
+TcpSession + five collaborator subpackage that emerged from
+the Phase-1..5 god-class decomposition (see
+`docs/refactor/tcp_session_decomposition.md`). Outside code
+sees only `TcpSession`; the five collaborator files are
+free to be split / merged / renamed without touching any
+import outside `session/`. The only deep-path consumers are
+the collaborator-seam parity tests in
+`tests/integration/protocols/tcp/test__tcp__session__<collab>.py`,
+which exist specifically to test the collaborator classes
+and are tolerated as test-side reach-throughs.
+
 ## 3. Copyright / license block (MANDATORY, verbatim)
 
 The 80-character-wide GPL block below is identical in every

@@ -45,8 +45,8 @@ from unittest.mock import MagicMock, create_autospec
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip4Network, Ip6IfAddr, MacAddress
 from pytcp import stack
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import SysCall
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.runtime.fib import Route
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket import socket as SocketBase

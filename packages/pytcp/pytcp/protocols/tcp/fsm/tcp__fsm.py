@@ -93,8 +93,8 @@ from pytcp.protocols.tcp.fsm.tcp__fsm__time_wait import (
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.session import TcpSession
     from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
-    from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 

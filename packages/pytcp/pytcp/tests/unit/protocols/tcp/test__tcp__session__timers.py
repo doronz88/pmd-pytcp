@@ -37,9 +37,10 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from pytcp.protocols.tcp.session import TcpSession
+from pytcp.protocols.tcp.session.tcp__session import _PUMP
 from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
 from pytcp.protocols.tcp.tcp__enums import FsmState
-from pytcp.protocols.tcp.tcp__session import _PUMP, TcpSession
 from pytcp.runtime.timer import TimerHandle
 
 
@@ -67,7 +68,7 @@ class TestTcpSessionTimers(TestCase):
         # patches the same attribute, so a single patch covers both
         # the session module and the service module.
         self._stack_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.timer",
+            "pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
             create=True,
         )

@@ -22,6 +22,7 @@
 ################################################################################
 
 
+# pylint: disable=protected-access
 # pyright: reportPrivateUsage=false
 
 
@@ -62,7 +63,7 @@ from pytcp.protocols.tcp.tcp__rto import initial_state
 from pytcp.protocols.tcp.tcp__seq import add32, gt32, in_range32, lt32
 
 if TYPE_CHECKING:
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
 
 
 class TcpTxEngine:

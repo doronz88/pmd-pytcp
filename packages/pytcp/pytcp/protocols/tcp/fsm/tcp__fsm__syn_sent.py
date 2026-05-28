@@ -45,8 +45,8 @@ from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__seq import add32, le32, lt32
 
 if TYPE_CHECKING:
+    from pytcp.protocols.tcp.session import TcpSession
     from pytcp.protocols.tcp.tcp__icmp_metadata import IcmpMetadata
-    from pytcp.protocols.tcp.tcp__session import TcpSession
     from pytcp.socket.tcp__metadata import TcpMetadata
 
 

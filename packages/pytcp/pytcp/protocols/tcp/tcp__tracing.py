@@ -38,7 +38,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
 
 
 def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:

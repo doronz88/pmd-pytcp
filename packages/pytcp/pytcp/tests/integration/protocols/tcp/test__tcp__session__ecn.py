@@ -52,8 +52,8 @@ ver 3.0.6
 
 from net_addr import Ip4Address  # noqa: F401
 from pytcp import stack
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (

@@ -48,9 +48,9 @@ from net_proto.lib.enums import IpProto
 from net_proto.lib.proto_enum import ProtoEnum
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.socket import (
     IP_RECVERR,
     IPPROTO_IP,

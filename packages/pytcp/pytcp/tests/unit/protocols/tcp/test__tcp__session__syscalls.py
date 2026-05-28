@@ -37,9 +37,9 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
-from pytcp.protocols.tcp.tcp__session import TcpSession
 
 
 class _TcpSessionSyscallFixture(TestCase):
@@ -61,25 +61,25 @@ class _TcpSessionSyscallFixture(TestCase):
             now_ms=0,
         )
         self._timer_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.timer",
+            "pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
         )
         self._timer_patch.start()
 
         self._mtu_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.egress_interface_mtu",
+            "pytcp.protocols.tcp.session.tcp__session.stack.egress_interface_mtu",
             return_value=1500,
         )
         self._mtu_patch.start()
 
         self._sockets: dict[Any, Any] = {}
         self._sockets_patch = patch(
-            "pytcp.protocols.tcp.tcp__session.stack.sockets",
+            "pytcp.protocols.tcp.session.tcp__session.stack.sockets",
             self._sockets,
         )
         self._sockets_patch.start()
 
-        self._log_patch = patch("pytcp.protocols.tcp.tcp__session.log")
+        self._log_patch = patch("pytcp.protocols.tcp.session.tcp__session.log")
         self._log_patch.start()
 
     def tearDown(self) -> None:

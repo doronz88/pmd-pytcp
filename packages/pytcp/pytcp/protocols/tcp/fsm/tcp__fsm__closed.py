@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 
 if TYPE_CHECKING:
-    from pytcp.protocols.tcp.tcp__session import TcpSession
+    from pytcp.protocols.tcp.session import TcpSession
 
 
 def fsm__closed__syscall(session: TcpSession, syscall: SysCall) -> None:

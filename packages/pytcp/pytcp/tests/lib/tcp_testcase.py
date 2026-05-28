@@ -50,8 +50,8 @@ from net_proto.protocols.ip6.ip6__parser import Ip6Parser
 from net_proto.protocols.tcp.tcp__parser import TcpParser
 from pytcp import stack
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import CcMode, FsmState, SysCall
-from pytcp.protocols.tcp.tcp__session import TcpSession
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.runtime.timer import Timer
 from pytcp.socket import AddressFamily
@@ -264,7 +264,7 @@ class TcpTestCase(NetworkTestCase):
         """
 
         self._start_patch(
-            "pytcp.protocols.tcp.tcp__session.compute_iss",
+            "pytcp.protocols.tcp.session.tcp__session.compute_iss",
             lambda *_args, **_kwargs: value,
         )
 
