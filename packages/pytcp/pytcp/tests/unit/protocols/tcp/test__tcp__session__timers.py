@@ -37,6 +37,7 @@ from typing import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
 from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.protocols.tcp.tcp__session import _PUMP, TcpSession
 from pytcp.runtime.timer import TimerHandle
@@ -51,7 +52,9 @@ class TestTcpSessionTimers(TestCase):
     def setUp(self) -> None:
         """
         Build a bare TcpSession (no __init__) wired to a fake
-        'stack.timer' with a controllable virtual clock.
+        'stack.timer' with a controllable virtual clock, and
+        attach a fresh 'TcpTimerService' so the delegator helper
+        methods on the session have something to delegate to.
         """
 
         self._timer = SimpleNamespace(
@@ -59,6 +62,10 @@ class TestTcpSessionTimers(TestCase):
             cancel=MagicMock(),
             call_later=MagicMock(return_value="HANDLE"),
         )
+        # 'TcpTimerService' imports 'stack' via 'from pytcp import
+        # stack' — patching 'stack.timer' on either consumer module
+        # patches the same attribute, so a single patch covers both
+        # the session module and the service module.
         self._stack_patch = patch(
             "pytcp.protocols.tcp.tcp__session.stack.timer",
             self._timer,
@@ -68,8 +75,6 @@ class TestTcpSessionTimers(TestCase):
         self.addCleanup(self._stack_patch.stop)
 
         self._session = TcpSession.__new__(TcpSession)
-        self._session._timer_deadlines = {}
-        self._session._service_handle = None
         # Extra bare-session state for the §5.6/§5.7 mechanism
         # tests (harmless for the deadline-map helper tests).
         self._session._state = FsmState.ESTABLISHED
@@ -77,6 +82,10 @@ class TestTcpSessionTimers(TestCase):
         self._session._tx = SimpleNamespace(buffer=bytearray())  # type: ignore[assignment]
         self._session._snd_seq = SimpleNamespace(una=0, max=0)  # type: ignore[assignment]
         self._session._closing = False
+        # Wire the timer service AFTER the session state attributes
+        # are populated — '_reschedule_locked' reads
+        # 'self._session._state' on every public call.
+        self._session._timers = TcpTimerService(self._session)
 
     def test__tcp__timers__arm_sets_absolute_deadline(self) -> None:
         """
@@ -88,7 +97,7 @@ class TestTcpSessionTimers(TestCase):
 
         self._session._arm_timer("retransmit", 200)
         self.assertEqual(
-            self._session._timer_deadlines["retransmit"],
+            self._session._timers._deadlines["retransmit"],
             1200,
             msg="_arm_timer must store now_ms + delay_ms as the absolute deadline.",
         )
@@ -168,7 +177,7 @@ class TestTcpSessionTimers(TestCase):
         self._session._cancel_timer("persist")
         self.assertNotIn(
             "persist",
-            self._session._timer_deadlines,
+            self._session._timers._deadlines,
             msg="_cancel_timer must drop the deadline entry.",
         )
         self.assertFalse(
@@ -191,12 +200,12 @@ class TestTcpSessionTimers(TestCase):
         self._session._arm_timer("retransmit", 100)
         self._session._arm_timer("delayed_ack", 40)
         handle = TimerHandle(method=MagicMock(), args=(), kwargs={}, deadline_ms=0, seq=0)
-        self._session._service_handle = handle
+        self._session._timers._service_handle = handle
 
         self._session._cancel_all_timers()
 
         self.assertEqual(
-            self._session._timer_deadlines,
+            self._session._timers._deadlines,
             {},
             msg="_cancel_all_timers must empty the deadline map.",
         )
@@ -206,7 +215,7 @@ class TestTcpSessionTimers(TestCase):
         # cleared — not an exact call count.
         self._timer.cancel.assert_any_call(handle)
         self.assertIsNone(
-            self._session._service_handle,
+            self._session._timers._service_handle,
             msg="_cancel_all_timers must clear the service handle.",
         )
 
@@ -222,7 +231,7 @@ class TestTcpSessionTimers(TestCase):
         self._timer.now_ms = 1050
         self._session._arm_timer("retransmit", 100)
         self.assertEqual(
-            self._session._timer_deadlines["retransmit"],
+            self._session._timers._deadlines["retransmit"],
             1150,
             msg="Re-arm must overwrite the deadline with the fresh now_ms + delay_ms.",
         )
@@ -276,7 +285,7 @@ class TestTcpSessionTimers(TestCase):
         """
 
         # Deadline already in the past (overdue).
-        self._session._timer_deadlines["retransmit"] = self._timer.now_ms - 50
+        self._session._timers._deadlines["retransmit"] = self._timer.now_ms - 50
         self._session._reschedule_service()
         args, _ = self._timer.call_later.call_args
         self.assertEqual(
@@ -296,7 +305,7 @@ class TestTcpSessionTimers(TestCase):
 
         self._session._reschedule_service()
         self.assertIsNone(
-            self._session._service_handle,
+            self._session._timers._service_handle,
             msg="With nothing armed there MUST be no coalesced service handle.",
         )
         self._timer.call_later.assert_not_called()
@@ -313,11 +322,11 @@ class TestTcpSessionTimers(TestCase):
         # 'delayed_ack' is serviced in ESTABLISHED/CLOSE_WAIT,
         # NOT in SYN_SENT.
         self._session._state = FsmState.SYN_SENT
-        self._session._timer_deadlines["delayed_ack"] = self._timer.now_ms + 10
+        self._session._timers._deadlines["delayed_ack"] = self._timer.now_ms + 10
         self._session._reschedule_service()
         self._timer.call_later.assert_not_called()
         self.assertIsNone(
-            self._session._service_handle,
+            self._session._timers._service_handle,
             msg="A timer out of the current state's scope MUST NOT arm the service handle.",
         )
 
@@ -350,7 +359,7 @@ class TestTcpSessionTimers(TestCase):
 
         self._session._kick_pump()
         self.assertEqual(
-            self._session._timer_deadlines.get(_PUMP),
+            self._session._timers._deadlines.get(_PUMP),
             self._timer.now_ms + 1,
             msg="_kick_pump MUST arm tx_pump at now + 1 ms.",
         )
@@ -367,7 +376,7 @@ class TestTcpSessionTimers(TestCase):
         self._session._kick_pump()
         self.assertNotIn(
             _PUMP,
-            self._session._timer_deadlines,
+            self._session._timers._deadlines,
             msg="_kick_pump MUST NOT arm tx_pump on a CLOSED session.",
         )
 
@@ -382,29 +391,29 @@ class TestTcpSessionTimers(TestCase):
 
         # Quiescent timer dispatch (not external, no state
         # change, no pump work) -> consumed, not re-armed.
-        self._session._timer_deadlines[_PUMP] = self._timer.now_ms
+        self._session._timers._deadlines[_PUMP] = self._timer.now_ms
         self._session._pump_tail(FsmState.ESTABLISHED, False)
         self.assertNotIn(
             _PUMP,
-            self._session._timer_deadlines,
+            self._session._timers._deadlines,
             msg="A fully quiescent dispatch MUST consume tx_pump and not re-arm it.",
         )
 
         # External dispatch -> re-armed at now + 1.
         self._session._pump_tail(FsmState.ESTABLISHED, True)
         self.assertEqual(
-            self._session._timer_deadlines.get(_PUMP),
+            self._session._timers._deadlines.get(_PUMP),
             self._timer.now_ms + 1,
             msg="An external dispatch MUST re-arm tx_pump at now + 1 ms.",
         )
 
         # Not external, no state change, but pump work pending
         # -> re-armed (pacing).
-        self._session._timer_deadlines.pop(_PUMP, None)
+        self._session._timers._deadlines.pop(_PUMP, None)
         self._session._closing = True
         self._session._pump_tail(FsmState.ESTABLISHED, False)
         self.assertIn(
             _PUMP,
-            self._session._timer_deadlines,
+            self._session._timers._deadlines,
             msg="Pending pump work MUST keep tx_pump re-armed (pacing).",
         )

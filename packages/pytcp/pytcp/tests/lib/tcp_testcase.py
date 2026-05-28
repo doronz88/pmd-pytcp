@@ -418,13 +418,16 @@ class TcpTestCase(NetworkTestCase):
     def _pending_session_timers(self, session: TcpSession, /) -> dict[str, int]:
         """
         Build a '{f"{session}-<name>": remaining_ms}' view from the
-        session's deadline map (the source of truth). A logical
-        timer is "pending" while it is armed and has not yet fired.
+        session's timer-service deadline map (the source of truth).
+        A logical timer is "pending" while it is armed and has not
+        yet fired.
         """
 
         now = self._timer.now_ms
         return {
-            f"{session}-{name}": deadline - now for name, deadline in session._timer_deadlines.items() if deadline > now
+            f"{session}-{name}": deadline - now
+            for name, deadline in session._timers._deadlines.items()
+            if deadline > now
         }
 
     def _expire_timer(self, session: TcpSession, name: str, /) -> None:
@@ -433,7 +436,7 @@ class TcpTestCase(NetworkTestCase):
         next service tick by back-dating its deadline to now.
         """
 
-        session._timer_deadlines[name] = self._timer.now_ms
+        session._timers._deadlines[name] = self._timer.now_ms
 
     def _parse_tx(self, frame: bytes, /) -> TcpProbe:
         """

@@ -7,8 +7,12 @@ cross-thread backlog was empty — it was empty only for the
 IGMP/PMTU path that triggered it).
 
 **Backlog progress (2026-05-27):** T1, M1, M2, I1, U1, N1, P1
-all SHIPPED. Only **T2** (`TcpSession` timer/CC state) remains,
-deferred into the TCP god-class decomposition. See §3.1.
+all SHIPPED. **T2** (`TcpSession` timer/CC state) SHIPPED as
+Phase 1 of the TCP god-class decomposition — the timer
+deadline map + coalesced service handle moved onto a
+`TcpTimerService` collaborator carrying its own
+`threading.Lock`. **The no-GIL backlog is now fully closed.**
+See §3.1.
 
 ## 0. Why this exists
 
@@ -85,6 +89,7 @@ pattern is visible.
 | `Subsystem` stop signalling | `threading.Event` (thread-safe) | `runtime/subsystem.py` |
 | per-socket rx queue / accept queue / error queue | `_lock__io` + `threading.Semaphore` + atomic `deque` | `socket/*.py` |
 | TcpSession `_rx_buffer` / `_tx_buffer` / `_state` | `_lock__rx_buffer` / `_lock__tx_buffer` / `_lock__fsm` | `protocols/tcp/tcp__session.py` |
+| TcpSession logical-timer deadline map + coalesced service handle | `TcpTimerService._lock` (Lock; `_reschedule_locked` helper assumes held) (T2) | `protocols/tcp/session/tcp__session__timers.py` |
 
 ---
 
@@ -122,25 +127,46 @@ setup) remains a benign TOCTOU that can transiently overshoot
 only); a fused check-and-admit accessor is a possible later
 refinement.
 
-**T2 · `TcpSession` timer + congestion/retransmit state — HIGH (intricate)**
-`protocols/tcp/tcp__session.py`. `_lock__fsm` covers FSM
-*dispatch*, but:
-- `_timer_deadlines` (dict) + `_service_handle` are mutated
-  by `_arm_timer`/`_cancel_timer`/`_reschedule_service` —
-  some call paths hold `_lock__fsm`, some (timer-thread
-  `_reschedule_service`) do not (H2/H3).
-- The timer thread reads `_cc` (cwnd/ssthresh/PRR),
-  `_rto_state`, `_sack_scoreboard`, `_rack_tlp`,
-  `_retransmit_count`/`_syn_retransmit_count`,
-  `_delayed_ack_segments_pending` while the RX thread mutates
-  them inside `tcp_fsm()` (H2 — torn reads of CC/RTO state).
-- `_ooo_packet_queue` is guarded (all access under
-  `_lock__fsm`).
+**T2 · `TcpSession` timer state — HIGH — SHIPPED 2026-05-27 (TCP decomposition Phase 1)**
+`protocols/tcp/tcp__session.py`. Pre-fix: `_lock__fsm` covered
+FSM dispatch and (by accident, via the umbrella) deadline-map
+mutations; `_kick_pump()` had to acquire `_lock__fsm` from the
+caller thread just to arm a timer; the deadline-map's
+load-bearing invariant ("only mutated under `_lock__fsm`") was
+documented only in a single docstring, brittle to drift.
 
-Best folded into the planned TCP god-class decomposition
-(`docs/refactor/` TCP-decomposition track) rather than bolted
-on — the lock discipline should be designed with the session
-split, not retrofitted twice.
+*Fix:* extracted the 9 timer helpers + `_timer_deadlines` +
+`_service_handle` into a per-session `TcpTimerService`
+collaborator at
+`protocols/tcp/session/tcp__session__timers.py`, carrying its
+own `threading.Lock` (a non-reentrant `Lock`, not an `RLock`
+— public mutators take it exactly once and call a private
+`_reschedule_locked` helper that assumes the lock is held).
+Session keeps thin delegators (`_arm_timer` → `self._timers.
+arm(...)`, etc.); `_kick_pump` no longer needs `_lock__fsm`
+(the `_state` read is a single attribute load whose worst-
+case torn-transition outcome is one extra pump tick that
+no-ops in the next FSM dispatch's CLOSED branch — benign).
+Lock ordering: `_lock__fsm` → `_lock__timer` → `stack.timer
+._lock`; the timer-worker callback runs lock-free and
+re-acquires `_lock__fsm` on entry to `tcp_fsm`. Pinned by
+`test__tcp__session__timer_service.py::TestTcpTimerService
+Locking` (tracking-lock max-depth, red→green) +
+`TestTcpTimerServiceBehaviourParity` (the public delegators
+preserve arm/cancel/armed/expired/cancel-all/kick-pump
+semantics).
+
+The other concerns originally listed under T2 — the timer
+thread's reads of `_cc` / `_rto_state` / `_sack_scoreboard`
+/ `_rack_tlp` / retransmit counters — are NOT exposed by
+this fix: all of those reads happen inside `tcp_fsm(timer=
+True)`, which acquires `_lock__fsm` on the timer-worker
+thread before touching them, the same way the RX thread
+does. Those state structures are mutated only from within
+`tcp_fsm`. The umbrella `_lock__fsm` is what guards them.
+Future phases of the TCP god-class decomposition may move
+those reads to dedicated collaborators with finer-grained
+locks; that work no longer blocks the no-GIL goal.
 
 ### 2.2 Transport — UDP / RAW
 
@@ -377,11 +403,16 @@ per commit; refresh this doc + `socket_linux_parity_audit.md`
    and `_ip6_multicast`, wired through the RA/claim/sweep paths
    and the Address API. Candidates excluded (boot single-writer).
    Test red→green. See §2.3 for detail.
-6. **T2 — TcpSession timer/CC state.** Largest and most
-   intricate; **do not bolt on** — fold the lock discipline
-   into the TCP god-class decomposition so it is designed
-   once. Until then, document the `_lock__fsm`-coverage gap
-   inline with `# Phase: no-GIL` markers.
+6. **T2 — TcpSession timer state. ✅ DONE 2026-05-27 (TCP
+   decomposition Phase 1).** Extracted the 9 timer helpers
+   + deadline map + coalesced service handle into
+   `TcpTimerService` (`protocols/tcp/session/
+   tcp__session__timers.py`) carrying its own `Lock`.
+   Session keeps thin delegators; `_kick_pump` no longer
+   needs `_lock__fsm`. The CC / RTO / SACK / RACK state the
+   timer-worker thread touches is already guarded by
+   `_lock__fsm` (timer callbacks run via `tcp_fsm(timer=True)`
+   which acquires it). Test red→green. See §2.1 for detail.
 7. **P1 — PacketStats strategy. ✅ DONE 2026-05-27.** Decided
    on per-thread sharded counters summed on read
    (`PacketStatsShards`, the `percpu_counter` model) over
@@ -401,14 +432,17 @@ Every Part-2 item either carries a lock (or documented
 lock-free design) or an inline `# Phase: no-GIL — <why
 safe>` justification.
 
-**Status 2026-05-27:** T1, M1, M2, I1, U1, N1, P1 all SHIPPED.
-The ONLY remaining item is **T2 — `TcpSession` timer/CC/
-retransmit state**, deliberately deferred into the planned TCP
-god-class decomposition (so the lock discipline is designed
-with the session split, not retrofitted twice). `F-frag` and
-the per-socket scalar options remain documented-LOW. Once T2
-lands, `socket_linux_parity_audit.md` §X1 can claim the no-GIL
-backlog fully closed.
+**Status 2026-05-27:** T1, M1, M2, I1, U1, N1, P1, **and T2**
+all SHIPPED. **The no-GIL backlog is fully closed.** T2 was
+fixed as Phase 1 of the TCP god-class decomposition — the
+deadline map + coalesced service handle moved onto a
+`TcpTimerService` collaborator carrying its own lock; CC /
+RTO / SACK / RACK state remain guarded by `_lock__fsm` via
+the `tcp_fsm(timer=True)` callback path (no additional work
+required there). `F-frag` and the per-socket scalar options
+remain documented-LOW (single-writer / benign-tear).
+`socket_linux_parity_audit.md` §X1 has been updated in
+lockstep.
 
 ---
 

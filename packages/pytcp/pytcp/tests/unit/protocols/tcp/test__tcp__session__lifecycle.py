@@ -131,11 +131,11 @@ class TestTcpSessionInit(_TcpSessionFixture):
 
         mock_periodic.assert_not_called()
         self.assertIsNone(
-            session._service_handle,
+            session._timers._service_handle,
             msg="A fresh TcpSession must have no coalesced service handle.",
         )
         self.assertEqual(
-            session._timer_deadlines,
+            session._timers._deadlines,
             {},
             msg="A fresh TcpSession must have an empty deadline map (nothing armed at construction).",
         )

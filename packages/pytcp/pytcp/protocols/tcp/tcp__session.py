@@ -46,6 +46,7 @@ from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_icmp as tcp_fsm_dispatch_i
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_packet as tcp_fsm_dispatch_packet
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_syscall as tcp_fsm_dispatch_syscall
 from pytcp.protocols.tcp.fsm.tcp__fsm import dispatch_timer as tcp_fsm_dispatch_timer
+from pytcp.protocols.tcp.session.tcp__session__timers import TcpTimerService
 from pytcp.protocols.tcp.state.tcp__state__accecn import AccEcnState
 from pytcp.protocols.tcp.state.tcp__state__advertise import AdvertiseState
 from pytcp.protocols.tcp.state.tcp__state__cc import CcState
@@ -104,7 +105,6 @@ from pytcp.protocols.tcp.tcp__rack import (
 from pytcp.protocols.tcp.tcp__rto import RtoState, back_off, initial_state, update
 from pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pytcp.protocols.tcp.tcp__seq import Seq32, add32, ge32, gt32, in_range32, le32, lt32, sub32
-from pytcp.runtime.timer import TimerHandle
 
 if TYPE_CHECKING:
     from threading import Event, Lock, RLock, Semaphore
@@ -113,30 +113,12 @@ if TYPE_CHECKING:
     from pytcp.socket.tcp__socket import TcpSocket
 
 
-# Which logical timers may wake the session in each FSM state
-# (the §4.3 scope matrix as data; §5.6/§5.7). Correctness
-# rule: under-inclusion is a bug (a serviced timer that never
-# wakes the session = missed action); over-inclusion is
-# harmless (a timer not actually armed simply is not pending;
-# a timer whose handler no-ops just costs one extra wakeup, as
-# the old 1 ms poll did). Hence 'persist' is in scope for
-# EVERY state whose handler calls '_transmit_data' (which
-# holds the persist logic), and the reserved 'tx_pump'
-# FSM-pump is in scope for EVERY state. 'challenge_ack' is
-# intentionally absent — a packet-path rate-limit gate that
-# needs no wakeup.
+# Name of the per-session 'tx_pump' FSM-pump logical timer
+# (§5.6/§5.7). The §4.3 scope matrix mapping FSM-state to the
+# set of logical timers that may wake the session lives on the
+# service module 'session/tcp__session__timers.py' alongside
+# the '_reschedule_locked' helper that consumes it.
 _PUMP: str = "tx_pump"
-_SERVICED_TIMERS_BY_STATE: dict[FsmState, frozenset[str]] = {
-    FsmState.SYN_SENT: frozenset({"retransmit", "persist", _PUMP}),
-    FsmState.SYN_RCVD: frozenset({"retransmit", "persist", _PUMP}),
-    FsmState.ESTABLISHED: frozenset({"retransmit", "persist", "delayed_ack", "keepalive", "rack", "tlp", _PUMP}),
-    FsmState.CLOSE_WAIT: frozenset({"retransmit", "persist", "delayed_ack", _PUMP}),
-    FsmState.FIN_WAIT_1: frozenset({"retransmit", "persist", _PUMP}),
-    FsmState.FIN_WAIT_2: frozenset({_PUMP}),
-    FsmState.CLOSING: frozenset({_PUMP}),
-    FsmState.LAST_ACK: frozenset({"retransmit", "persist", _PUMP}),
-    FsmState.TIME_WAIT: frozenset({"time_wait", _PUMP}),
-}
 
 
 class TcpSession:
@@ -511,24 +493,21 @@ class TcpSession:
         # Used to report cause of connection failure.
         self._connection_error: ConnError = ConnError.NONE
 
-        # Per-session logical-timer deadline map (absolute
-        # monotonic ms; key absent == not armed). Keyed by bare
-        # logical name ("retransmit", "time_wait", "persist",
-        # "delayed_ack", "challenge_ack", "keepalive", "tlp",
-        # "rack").
-        self._timer_deadlines: dict[str, int] = {}
-
-        # Coalesced per-session service handle. Unused in Phase 1
-        # (the 1 ms periodic below still drives servicing); armed
-        # by '_reschedule_service' from Phase 4 on.
-        self._service_handle: TimerHandle | None = None
-
-        # The FSM timer is event-driven — there is no 1 ms
-        # periodic. The coalesced '_service_handle' (armed by
-        # '_reschedule_service' from '_arm_timer' /
-        # '_cancel_timer' / '_kick_pump' and the 'tcp_fsm' tail)
-        # drives both logical-timer servicing and the 'tx_pump'
-        # FSM-pump (§5.6/§5.7).
+        # Per-session timer service — owns the logical-timer
+        # deadline map ('_deadlines') and the coalesced service
+        # handle ('_service_handle') plus the dedicated lock
+        # ('_lock') that guards both. The FSM timer is
+        # event-driven — there is no 1 ms periodic. The coalesced
+        # service handle (armed by 'TcpTimerService._reschedule_locked'
+        # from every public mutator and from the 'tcp_fsm' tail
+        # via 'self._timers.reschedule()') drives both
+        # logical-timer servicing and the 'tx_pump' FSM-pump
+        # (§5.6/§5.7). Closes the no-GIL backlog item T2: the
+        # deadline-map mutations no longer ride the FSM lock.
+        # Lock ordering for the rest of the session is
+        # '_lock__fsm' -> '_timers._lock' -> 'stack.timer._lock';
+        # the timer-worker callback re-enters 'tcp_fsm' lock-free.
+        self._timers: TcpTimerService = TcpTimerService(self)
 
     def _egress_interface_mtu(self) -> int:
         """
@@ -544,11 +523,13 @@ class TcpSession:
     def _arm_timer(self, name: str, delay_ms: int, /) -> None:
         """
         Arm or re-arm the named logical timer to fire 'delay_ms'
-        milliseconds from now.
+        milliseconds from now. Thin delegator over
+        'TcpTimerService.arm' — the deadline-map mutation +
+        coalesced-service reschedule are serialized under the
+        service's own '_lock'.
         """
 
-        self._timer_deadlines[name] = stack.timer.now_ms + delay_ms
-        self._reschedule_service()
+        self._timers.arm(name, delay_ms)
 
     def _timer_expired(self, name: str, /) -> bool:
         """
@@ -559,8 +540,7 @@ class TcpSession:
         query).
         """
 
-        deadline = self._timer_deadlines.get(name)
-        return deadline is not None and stack.timer.now_ms >= deadline
+        return self._timers.expired(name)
 
     def _timer_armed(self, name: str, /) -> bool:
         """
@@ -568,60 +548,37 @@ class TcpSession:
         not yet fired (the 'is it still running?' query).
         """
 
-        deadline = self._timer_deadlines.get(name)
-        return deadline is not None and stack.timer.now_ms < deadline
+        return self._timers.armed(name)
 
     def _cancel_timer(self, name: str, /) -> None:
         """
-        Cancel the named logical timer if armed.
+        Cancel the named logical timer if armed. Thin delegator
+        over 'TcpTimerService.cancel'.
         """
 
-        self._timer_deadlines.pop(name, None)
-        self._reschedule_service()
+        self._timers.cancel(name)
 
     def _cancel_all_timers(self) -> None:
         """
         Cancel every logical timer for this session and release
         the coalesced service handle. The session-teardown sweep
         that drops all of this session's armed timers in one call.
+        Thin delegator over 'TcpTimerService.cancel_all'.
         """
 
-        self._timer_deadlines.clear()
-        if self._service_handle is not None:
-            stack.timer.cancel(self._service_handle)
-            self._service_handle = None
+        self._timers.cancel_all()
 
     def _reschedule_service(self) -> None:
         """
         Re-arm the coalesced per-session service handle to the
         soonest deadline among the logical timers serviced in
-        the current state. The 1 ms periodic is gone (Phase 4c);
-        this is the sole driver of timer-tick servicing.
-        Idempotent and cheap to call repeatedly (the prior
-        handle is lazily cancelled).
+        the current state. Thin delegator over
+        'TcpTimerService.reschedule' — kept on the session as a
+        named hook for the rare external caller that needs to
+        re-poke the schedule after an out-of-band state change.
         """
 
-        if self._service_handle is not None:
-            stack.timer.cancel(self._service_handle)
-            self._service_handle = None
-
-        relevant = _SERVICED_TIMERS_BY_STATE.get(self._state, frozenset())
-        pending = [deadline for name, deadline in self._timer_deadlines.items() if name in relevant]
-        if not pending:
-            return
-
-        # Floor at 1 ms, never 0. The old 1 ms periodic NEVER
-        # serviced a timer instantly — it ticked at 1 ms
-        # granularity, so a due/overdue timer was acted on at
-        # the next ms tick. Reproducing that floor (a) keeps the
-        # cadence byte-identical to the periodic and (b)
-        # guarantees every service fire advances the clock by
-        # >= 1 ms, so a handler that no-ops on an expired timer
-        # without re-arming/cancelling it (legal under the old
-        # poll) cannot spin the coalesced handle at delay 0 —
-        # 'advance(N)' terminates in <= N service fires.
-        delay_ms = max(1, min(pending) - stack.timer.now_ms)
-        self._service_handle = stack.timer.call_later(delay_ms, self.tcp_fsm, timer=True)
+        self._timers.reschedule()
 
     def _has_pump_work(self) -> bool:
         """
@@ -674,15 +631,16 @@ class TcpSession:
         residual was send()-path): the sole non-'tcp_fsm'
         FSM-progression mutator is 'send()'; listen / connect /
         close / shutdown route through 'tcp_fsm', and receive /
-        abort need no pump. No-op once CLOSED. Takes
-        '_lock__fsm' (the deadline map is otherwise mutated only
-        under that lock by 'tcp_fsm' on the timer-worker thread;
-        'send()' runs on the caller thread).
+        abort need no pump. No-op once CLOSED. Takes the
+        'TcpTimerService' lock via '_arm_timer' (the deadline
+        map's dedicated guard); the '_state' read is a single
+        attribute read whose worst-case outcome on a torn
+        transition is one extra pump tick that no-ops in the
+        CLOSED branch of the next FSM dispatch — benign.
         """
 
-        with self._lock__fsm:
-            if self._state is not FsmState.CLOSED:
-                self._arm_timer(_PUMP, 1)
+        if self._state is not FsmState.CLOSED:
+            self._arm_timer(_PUMP, 1)
 
     @override
     def __str__(self) -> str:

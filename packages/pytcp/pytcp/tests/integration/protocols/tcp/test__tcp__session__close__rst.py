@@ -1153,12 +1153,12 @@ class TestTcpClose__Rst(TcpTestCase):
             msg=(
                 "After the session has terminated (state -> CLOSED), "
                 "every per-session entry in the session's "
-                "'_timer_deadlines' map MUST be cleared. Today the "
-                f"entries persist ({timers_after}). On a long-running "
-                "stack handling many connection churns this "
-                "accumulates as a slow memory leak. Fix: "
-                "'_change_state' on CLOSED must pop every per-session "
-                "entry."
+                "'_timers._deadlines' map MUST be cleared. Today "
+                f"the entries persist ({timers_after}). On a "
+                "long-running stack handling many connection "
+                "churns this accumulates as a slow memory leak. "
+                "Fix: '_change_state' on CLOSED must pop every "
+                "per-session entry."
             ),
         )
 
@@ -1166,9 +1166,9 @@ class TestTcpClose__Rst(TcpTestCase):
         """
         Ensure that when a session terminates (state ->
         CLOSED) the event-driven timer state is fully released
-        — the coalesced '_service_handle' is cancelled-and-None
-        and the '_timer_deadlines' map is empty — so no
-        callback can fire on the dead session and it is
+        — the coalesced 'TcpTimerService' service handle is
+        cancelled-and-None and its deadline map is empty — so
+        no callback can fire on the dead session and it is
         GC-eligible (no dead-session ticks, no leak).
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -1202,16 +1202,17 @@ class TestTcpClose__Rst(TcpTestCase):
 
         # Post-migration teardown contract: no per-tick periodic
         # exists anymore; the session is driven by the coalesced
-        # '_service_handle' + the deadline map, both of which
-        # '_cancel_all_timers' must release on CLOSED. Otherwise
-        # a stale handle could fire 'tcp_fsm' on a dead session
-        # (CPU per dead session) and pin it against GC.
+        # 'TcpTimerService' service handle + deadline map, both
+        # of which '_cancel_all_timers' must release on CLOSED.
+        # Otherwise a stale handle could fire 'tcp_fsm' on a
+        # dead session (CPU per dead session) and pin it against
+        # GC.
         self.assertIsNone(
-            session._service_handle,
-            msg="On CLOSED the coalesced '_service_handle' MUST be cancelled and cleared to None.",
+            session._timers._service_handle,
+            msg="On CLOSED the coalesced service handle MUST be cancelled and cleared to None.",
         )
         self.assertEqual(
-            session._timer_deadlines,
+            session._timers._deadlines,
             {},
-            msg="On CLOSED the '_timer_deadlines' map MUST be empty (every logical timer cancelled).",
+            msg="On CLOSED the timer-service deadline map MUST be empty (every logical timer cancelled).",
         )
