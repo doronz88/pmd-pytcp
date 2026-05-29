@@ -1290,6 +1290,254 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg=("connect() must propagate '_tcp_nodelay' to the new " "TcpSession so the Nagle gate can read it."),
         )
 
+    def test__tcp_socket__getsockopt__tcp_user_timeout_default_zero(self) -> None:
+        """
+        Ensure a freshly-constructed 'TcpSocket' reports
+        'TCP_USER_TIMEOUT = 0' from 'getsockopt' — the "no
+        override" sentinel matching Linux.
+
+        Reference: Linux net.ipv4.tcp_user_timeout (0 = no override).
+        """
+
+        from pytcp.socket import TCP_USER_TIMEOUT
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT),
+            0,
+            msg="TCP_USER_TIMEOUT must default to 0 on a freshly-constructed socket.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_user_timeout_round_trip(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT,
+        30000)' stores the value and 'getsockopt' round-trips
+        it.
+
+        Reference: Linux net.ipv4.tcp_user_timeout.
+        """
+
+        from pytcp.socket import TCP_USER_TIMEOUT
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT, 30000)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT),
+            30000,
+            msg="TCP_USER_TIMEOUT setsockopt → getsockopt must round-trip the ms budget.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_user_timeout_rejects_negative(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_USER_TIMEOUT, -1)' raises
+        'OSError(EINVAL)' — a negative budget is meaningless.
+
+        Reference: Linux net.ipv4.tcp_user_timeout (rejects negative).
+        """
+
+        from pytcp.socket import TCP_USER_TIMEOUT
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(OSError) as ctx:
+            s.setsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT, -1)
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EINVAL,
+            msg="setsockopt(TCP_USER_TIMEOUT, -1) must raise OSError(EINVAL).",
+        )
+
+    def test__tcp_socket__connect_propagates_tcp_user_timeout_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_USER_TIMEOUT, 30000)' followed
+        by 'connect()' propagates onto the freshly-constructed
+        'TcpSession._user_timeout_ms' so the R2-abort site
+        can consult it.
+
+        Reference: Linux net.ipv4.tcp_user_timeout (R2-abort override).
+        """
+
+        from pytcp.socket import TCP_USER_TIMEOUT
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT, 30000)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertEqual(
+            self._session_cls.return_value._user_timeout_ms,
+            30000,
+            msg="connect() must propagate '_tcp_user_timeout' to TcpSession._user_timeout_ms.",
+        )
+
+    def test__tcp_socket__listen_propagates_tcp_user_timeout_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_USER_TIMEOUT, 30000)' followed
+        by 'listen()' propagates onto the listening session's
+        '_user_timeout_ms' so accepted children inherit it
+        through the listener-fork pivot.
+
+        Reference: Linux net.ipv4.tcp_user_timeout (R2-abort override).
+        """
+
+        from pytcp.socket import TCP_USER_TIMEOUT
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_USER_TIMEOUT, 30000)
+        s._local_ip_address = Ip4Address("10.0.0.1")
+        s._local_port = 40000
+        s.listen()
+
+        self.assertEqual(
+            self._session_cls.return_value._user_timeout_ms,
+            30000,
+            msg="listen() must propagate '_tcp_user_timeout' to TcpSession._user_timeout_ms.",
+        )
+
+    def test__tcp_socket__getsockopt__tcp_maxseg_default_zero(self) -> None:
+        """
+        Ensure a freshly-constructed 'TcpSocket' (no session)
+        reports 'TCP_MAXSEG = 0' from 'getsockopt' — the
+        "no clamp" sentinel matching Linux's pre-connect
+        behaviour.
+
+        Reference: Linux TCP_MAXSEG (0 = no clamp, pre-connect).
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_MAXSEG),
+            0,
+            msg="TCP_MAXSEG must default to 0 pre-connect (no clamp).",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_maxseg_round_trip(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_TCP, TCP_MAXSEG, 1200)'
+        stores the value and 'getsockopt' round-trips it
+        pre-connect (no session yet to defer to).
+
+        Reference: Linux TCP_MAXSEG.
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 1200)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_MAXSEG),
+            1200,
+            msg="TCP_MAXSEG setsockopt → getsockopt must round-trip pre-connect.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_maxseg_rejects_below_min_mss(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_MAXSEG, 87)' raises
+        'OSError(EINVAL)' — Linux's 'include/net/tcp.h'
+        'TCP_MIN_MSS = 88' is the acceptance floor; values
+        below are rejected.
+
+        Reference: Linux include/net/tcp.h TCP_MIN_MSS=88.
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(OSError) as ctx:
+            s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 87)
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EINVAL,
+            msg="setsockopt(TCP_MAXSEG, 87) must raise OSError(EINVAL) below 88 floor.",
+        )
+
+    def test__tcp_socket__setsockopt__tcp_maxseg_zero_clears_clamp(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_MAXSEG, 0)' is accepted — the
+        Linux convention for "remove the clamp" matches the
+        default-off behaviour.
+
+        Reference: Linux TCP_MAXSEG (0 = no clamp).
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 1200)
+        s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_TCP, TCP_MAXSEG),
+            0,
+            msg="setsockopt(TCP_MAXSEG, 0) after an earlier clamp must clear the clamp.",
+        )
+
+    def test__tcp_socket__connect_propagates_tcp_maxseg_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_MAXSEG, 1200)' followed by
+        'connect()' propagates onto the freshly-constructed
+        'TcpSession._maxseg_override' so the SYN-options
+        clamp can consult it.
+
+        Reference: Linux TCP_MAXSEG (per-connection SYN MSS clamp).
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 1200)
+        with (
+            patch(
+                "pytcp.socket.tcp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch("pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
+        ):
+            s.connect(("10.0.0.5", 80))
+
+        self.assertEqual(
+            self._session_cls.return_value._maxseg_override,
+            1200,
+            msg="connect() must propagate '_tcp_maxseg' to TcpSession._maxseg_override.",
+        )
+
+    def test__tcp_socket__listen_propagates_tcp_maxseg_to_session(self) -> None:
+        """
+        Ensure 'setsockopt(TCP_MAXSEG, 1200)' followed by
+        'listen()' propagates onto the listening session's
+        '_maxseg_override' so the listener-fork pivot pushes
+        it into accepted children.
+
+        Reference: Linux TCP_MAXSEG (per-connection SYN MSS clamp).
+        """
+
+        from pytcp.socket import TCP_MAXSEG
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(IPPROTO_TCP, TCP_MAXSEG, 1200)
+        s._local_ip_address = Ip4Address("10.0.0.1")
+        s._local_port = 40000
+        s.listen()
+
+        self.assertEqual(
+            self._session_cls.return_value._maxseg_override,
+            1200,
+            msg="listen() must propagate '_tcp_maxseg' to TcpSession._maxseg_override.",
+        )
+
 
 class TestTcpSocketFileno(_TcpSocketTestCase):
     """

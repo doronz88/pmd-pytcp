@@ -66,7 +66,9 @@ from pytcp.socket import (
     TCP_KEEPCNT,
     TCP_KEEPIDLE,
     TCP_KEEPINTVL,
+    TCP_MAXSEG,
     TCP_NODELAY,
+    TCP_USER_TIMEOUT,
     AddressFamily,
     SocketType,
     gaierror,
@@ -92,6 +94,13 @@ if TYPE_CHECKING:
     from threading import Semaphore
 
     from pytcp.socket.tcp__metadata import TcpMetadata
+
+
+# Linux 'include/net/tcp.h' TCP_MIN_MSS = 88. The acceptance floor
+# for 'setsockopt(IPPROTO_TCP, TCP_MAXSEG, ...)' — Linux rejects
+# any value below this. PyTCP mirrors the Linux floor exactly so
+# applications that probe the boundary see the same behaviour.
+_LINUX__TCP_MIN_MSS: int = 88
 
 
 # Default cap on the listening socket's '_tcp_accept' queue when
@@ -185,6 +194,28 @@ class TcpSocket(socket):
         # issues cookies and accepts SYN-data when this is
         # > 0) is a subsequent phase.
         self._tcp_fastopen_qlen: int = 0
+
+        # Linux 'TCP_USER_TIMEOUT' per-connection abort budget
+        # (RFC 9293 §3.10.7.4 R2 abort, RFC 1122 §4.2.3.5
+        # alternative budget). Integer milliseconds; 0 means
+        # "no override — use the system-default
+        # 'tcp.retransmit.max_count'-driven budget". The value
+        # bounds the total wall-time the stack will retransmit
+        # data without an ACK before tearing down the
+        # connection. 'connect()' / 'listen()' propagate this
+        # onto the freshly-constructed 'TcpSession' so the
+        # R2-abort site can consult it. M6 of
+        # 'socket_linux_parity_audit.md'.
+        self._tcp_user_timeout: int = 0
+
+        # Linux 'TCP_MAXSEG' per-connection MSS-option clamp
+        # (RFC 9293 §3.7.1 / RFC 6691). Integer bytes; 0 means
+        # "no clamp — emit our usual rcv_mss in the SYN's MSS
+        # option". When set, the SYN-options assembly clamps
+        # the emitted MSS to no more than this value. Linux
+        # requires the value be ≥ TCP__MIN_MSS (88); a smaller
+        # value is rejected by setsockopt.
+        self._tcp_maxseg: int = 0
 
         # RFC 9438 congestion-control algorithm selector,
         # settable via 'setsockopt(IPPROTO_TCP, TCP_CONGESTION,
@@ -372,6 +403,37 @@ class TcpSocket(socket):
             if self._tcp_session is not None:
                 self._tcp_session._tcp_nodelay = flag
             return
+        if isinstance(value, int) and level == IPPROTO_TCP and optname == TCP_USER_TIMEOUT:
+            # Linux: positive ms = budget; 0 = no override. A
+            # negative value is rejected.
+            if value < 0:
+                raise OSError(
+                    errno.EINVAL,
+                    f"setsockopt(TCP_USER_TIMEOUT) rejects negative value {value!r}; pass 0 for no override.",
+                )
+            self._tcp_user_timeout = int(value)
+            # Mid-connection mutation honoured so the next R2
+            # check reads the new budget.
+            if self._tcp_session is not None:
+                self._tcp_session._user_timeout_ms = int(value)
+            return
+        if isinstance(value, int) and level == IPPROTO_TCP and optname == TCP_MAXSEG:
+            # Linux: positive bytes = clamp; 0 = no clamp.
+            # Value below TCP__MIN_MSS (88) is rejected — Linux
+            # uses 88 as the floor too (include/net/tcp.h).
+            if value < 0 or (value > 0 and value < _LINUX__TCP_MIN_MSS):
+                raise OSError(
+                    errno.EINVAL,
+                    f"setsockopt(TCP_MAXSEG) rejects {value!r}; pass 0 (no clamp) or ≥ {_LINUX__TCP_MIN_MSS}.",
+                )
+            self._tcp_maxseg = int(value)
+            # Mid-connection mutation has no effect on the
+            # already-sent SYN; only the per-session storage
+            # is refreshed so any future SYN (e.g. RFC 6191
+            # ID-reuse re-handshake) consults it.
+            if self._tcp_session is not None:
+                self._tcp_session._maxseg_override = int(value)
+            return
         raise OSError(
             errno.ENOPROTOOPT,
             f"setsockopt: unsupported (level, optname) pair: level={level!r}, optname={optname!r}",
@@ -410,6 +472,16 @@ class TcpSocket(socket):
             return int(self._cc_mode.value)
         if level == IPPROTO_TCP and optname == TCP_NODELAY:
             return int(self._tcp_nodelay)
+        if level == IPPROTO_TCP and optname == TCP_USER_TIMEOUT:
+            return self._tcp_user_timeout
+        if level == IPPROTO_TCP and optname == TCP_MAXSEG:
+            # Linux's TCP_MAXSEG getsockopt returns the current
+            # effective MSS — the override when set, else the
+            # session's live 'snd_mss'. Pre-connect (no session)
+            # falls through to the stored override (or 0).
+            if self._tcp_session is not None:
+                return self._tcp_session._win.snd_mss
+            return self._tcp_maxseg
         if level == IPPROTO_TCP and optname == TCP_INFO:
             # Linux exposes ~50 fields of per-connection state via
             # 'getsockopt(IPPROTO_TCP, TCP_INFO)' — the wire-format
@@ -621,6 +693,12 @@ class TcpSocket(socket):
         # TCP_NODELAY, 1)'.
         self._tcp_session._tcp_nodelay = self._tcp_nodelay
 
+        # Linux TCP_USER_TIMEOUT / TCP_MAXSEG per-connection
+        # overrides — propagate so the FSM's R2 abort and the
+        # SYN-options MSS clamp can consult them.
+        self._tcp_session._user_timeout_ms = self._tcp_user_timeout
+        self._tcp_session._maxseg_override = self._tcp_maxseg
+
         # RFC 7413 §3.1 connect-with-data: pre-load the
         # session's TX buffer with caller-supplied bytes
         # before driving the FSM into SYN_SENT. The session-
@@ -698,6 +776,14 @@ class TcpSocket(socket):
         # accepted children inherit through the listener-fork
         # pivot.
         self._tcp_session._tcp_nodelay = self._tcp_nodelay
+
+        # Linux TCP_USER_TIMEOUT / TCP_MAXSEG per-connection
+        # overrides — same pattern: the listener-fork pivot
+        # mutates the listening session in-place into the
+        # accepted child, so the overrides on the listener
+        # naturally inherit.
+        self._tcp_session._user_timeout_ms = self._tcp_user_timeout
+        self._tcp_session._maxseg_override = self._tcp_maxseg
 
         __debug__ and log(
             "socket",

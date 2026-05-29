@@ -422,6 +422,34 @@ class TcpSession:
         # False (Nagle enabled per RFC 1122 SHOULD).
         self._tcp_nodelay: bool = False
 
+        # Linux 'TCP_USER_TIMEOUT' per-connection R2-abort
+        # override (ms). 0 means "no override — use the
+        # 'tcp.retransmit.max_count' system-default budget".
+        # When > 0 the retransmit-timeout site converts the ms
+        # budget to a count via 'budget = max(1,
+        # _user_timeout_ms // current_rto_ms)' so the abort
+        # fires after the user's wall-time budget elapses
+        # under the current RTO. PyTCP's count-based machinery
+        # approximates Linux's time-based 'tcp_time_stamp -
+        # tp->retrans_stamp' check; an exact time-based
+        # implementation would need an additional
+        # 'first_unacked_at_ms' tracker that the cum-ACK path
+        # would have to maintain — out of scope for the
+        # M6 surgery. Propagated from
+        # 'TcpSocket._tcp_user_timeout' at connect() /
+        # listen() time. M6 of
+        # 'socket_linux_parity_audit.md'.
+        self._user_timeout_ms: int = 0
+
+        # Linux 'TCP_MAXSEG' per-connection SYN MSS-option
+        # clamp (bytes). 0 means "no clamp — emit our usual
+        # rcv_mss in the SYN's MSS option". When > 0 the
+        # SYN-options assembly clamps the emitted MSS to no
+        # more than this value. Propagated from
+        # 'TcpSocket._tcp_maxseg' at connect() / listen() time.
+        # M7 of 'socket_linux_parity_audit.md'.
+        self._maxseg_override: int = 0
+
         # Zero-window persist timer state per RFC 9293 §3.8.6.1.
         # '_persist_active' is the sentinel that tells the timer
         # branch in '_tcp_fsm_established' whether a persist probe

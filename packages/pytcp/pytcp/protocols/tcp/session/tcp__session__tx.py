@@ -265,8 +265,22 @@ class TcpTxEngine:
             # mis-configured super-jumbo MTU) would otherwise
             # overflow the assembler's uint16 assert. Cap at 65535
             # which RFC 2675 reserves as the "use path-MTU-derived
-            # MSS" signal for jumbogram-capable IPv6 paths.
-            tcp__mss=min(session._win.rcv_mss, 0xFFFF) if flag_syn else None,
+            # MSS" signal for jumbogram-capable IPv6 paths. The
+            # Linux 'TCP_MAXSEG' per-connection override
+            # (propagated as 'session._maxseg_override',
+            # 0 = no clamp) takes precedence — clamp to the
+            # user-supplied ceiling so the peer learns no
+            # advertised MSS larger than the application
+            # wants. M7 of 'socket_linux_parity_audit.md'.
+            tcp__mss=(
+                min(
+                    session._win.rcv_mss,
+                    0xFFFF,
+                    session._maxseg_override if session._maxseg_override > 0 else 0xFFFF,
+                )
+                if flag_syn
+                else None
+            ),
             tcp__wscale=tcp__wscale,
             tcp__sackperm=tcp__sackperm,
             tcp__sack_blocks=tcp__sack_blocks,

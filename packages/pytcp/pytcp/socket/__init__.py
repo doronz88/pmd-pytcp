@@ -99,6 +99,7 @@ class SocketOption(IntEnum):
     below the enum to avoid IntEnum aliasing.
     """
 
+    TCP_MAXSEG = 2  # level=IPPROTO_TCP; int: clamp negotiated SMSS (RFC 6691)
     TCP_NODELAY = 1  # level=IPPROTO_TCP; bool: disable Nagle (RFC 1122 §4.2.3.4)
     TCP_KEEPIDLE = 4  # level=IPPROTO_TCP; int seconds: per-conn idle override
     TCP_KEEPINTVL = 5  # level=IPPROTO_TCP; int seconds: per-conn probe interval override
@@ -106,9 +107,11 @@ class SocketOption(IntEnum):
     SO_KEEPALIVE = 9  # level=SOL_SOCKET; bool: enable keep-alive (RFC 1122 §4.2.3.6)
     TCP_INFO = 11  # level=IPPROTO_TCP; bytes: read-only struct tcp_info snapshot
     TCP_CONGESTION = 13  # level=IPPROTO_TCP; str: per-conn CC algorithm name (RFC 9438)
+    TCP_USER_TIMEOUT = 18  # level=IPPROTO_TCP; int ms: per-conn data-unacked abort budget
     TCP_FASTOPEN = 23  # level=IPPROTO_TCP; int qlen: TFO accept-queue depth (RFC 7413)
 
 
+TCP_MAXSEG = SocketOption.TCP_MAXSEG
 TCP_NODELAY = SocketOption.TCP_NODELAY
 SO_KEEPALIVE = SocketOption.SO_KEEPALIVE
 TCP_KEEPIDLE = SocketOption.TCP_KEEPIDLE
@@ -116,6 +119,7 @@ TCP_KEEPINTVL = SocketOption.TCP_KEEPINTVL
 TCP_KEEPCNT = SocketOption.TCP_KEEPCNT
 TCP_INFO = SocketOption.TCP_INFO
 TCP_CONGESTION = SocketOption.TCP_CONGESTION
+TCP_USER_TIMEOUT = SocketOption.TCP_USER_TIMEOUT
 TCP_FASTOPEN = SocketOption.TCP_FASTOPEN
 
 

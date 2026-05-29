@@ -422,27 +422,45 @@ they expect. Counters PyTCP doesn't track per-session
 /-in) zero-fill with inline rationale. See
 `pytcp/socket/tcp__info.py` for the packer.
 
-### M6. No `TCP_USER_TIMEOUT`
+### M6. `TCP_USER_TIMEOUT` — SHIPPED 2026-05-28
 
 **Linux:** Per-connection abort-after-no-ACK timeout
 (replaces the RFC 1122 default ~100 s).
 
-**PyTCP:** Stack-default RFC 6298 timeout applies; no
-per-socket override.
+**PyTCP:** SHIPPED. `setsockopt(IPPROTO_TCP,
+TCP_USER_TIMEOUT, ms)` stores a per-socket
+`_tcp_user_timeout`; `connect()` / `listen()` propagate
+it onto `TcpSession._user_timeout_ms`. The R2 abort
+site in `session/tcp__session__retransmit.py` consults
+the override and computes
+`budget = max(1, _user_timeout_ms // current_rto_ms)` so
+the abort fires after the user's wall-time budget elapses
+under the current RTO. PyTCP's count-based machinery
+approximates Linux's time-based
+`tcp_time_stamp - tp->retrans_stamp` check; an exact
+time-based implementation would need an additional
+`first_unacked_at_ms` tracker the cum-ACK path would
+have to maintain — documented inline as out-of-scope for
+the M6 surgery.
 
-**Sketch:** Per-session override on `TcpSession._rto_state`
-that the R2 abort path consults.
-
-### M7. No `TCP_MAXSEG`
+### M7. `TCP_MAXSEG` — SHIPPED 2026-05-28
 
 **Linux:** Clamp / read the negotiated MSS. Some apps need
 to verify the path MSS.
 
-**PyTCP:** MSS visible via `status().snd_mss` (read-only);
-no setsockopt to clamp.
-
-**Sketch:** Per-session MSS clamp consulted during
-SYN-options assembly.
+**PyTCP:** SHIPPED. `setsockopt(IPPROTO_TCP, TCP_MAXSEG,
+mss)` stores a per-socket `_tcp_maxseg`; `connect()` /
+`listen()` propagate it onto
+`TcpSession._maxseg_override`. The SYN-options assembly in
+`session/tcp__session__tx.py` clamps the emitted MSS
+option to `min(rcv_mss, 0xFFFF, _maxseg_override)` when
+the override is positive — so the peer learns no
+advertised MSS larger than the application wants.
+`getsockopt(IPPROTO_TCP, TCP_MAXSEG)` returns the live
+`session._win.snd_mss` post-connect (matching Linux's
+"current effective MSS") or the stored override
+pre-connect. Validator rejects values below
+Linux `TCP_MIN_MSS = 88`.
 
 ### M8. No `MSG_ERRQUEUE` / IP_RECVERR
 
@@ -813,8 +831,8 @@ that's intentional.
 |-----|-----------|
 | **M2 sendmsg / recvmsg**  | Substantial — needs a control-message decoder/encoder layer (cmsg). Many apps don't use this; stubbing as `NotImplementedError` until a concrete consumer arrives is acceptable. |
 | **M3 MSG_OOB**            | Needs TCP-FSM URG-flag pivot to expose urgent-byte split through `recv(MSG_OOB)`; the FSM RX-side URG handling exists but isn't surfaced to the application. |
-| **M6 TCP_USER_TIMEOUT**   | Needs `TcpSession._rto_state` to consult a per-connection override on the R2 abort path. ~15-line change. |
-| **M7 TCP_MAXSEG**         | Needs `TcpSession` to clamp the SYN MSS option to the configured value during SYN options assembly. ~10-line change. |
+| **M6 TCP_USER_TIMEOUT**   | shipped — `TcpSession._user_timeout_ms` propagated from `TcpSocket._tcp_user_timeout`; R2-abort site computes `max(1, _user_timeout_ms // current_rto_ms)` as the approximated count budget. 5 unit + 2 integration tests. |
+| **M7 TCP_MAXSEG**         | shipped — `TcpSession._maxseg_override` propagated from `TcpSocket._tcp_maxseg`; SYN-options assembly in `session/tcp__session__tx.py` clamps to `min(rcv_mss, 0xFFFF, _maxseg_override)`. Validator rejects below Linux `TCP_MIN_MSS=88`. 6 unit + 3 integration tests. |
 | **M8 MSG_ERRQUEUE / IP_RECVERR** | Substantial — needs per-socket error queue, `notify_*` paths refactored to enqueue rather than inline-raise. |
 
 ### Phase 5 — polish (1/4 shipped + 3 deferred)
@@ -839,8 +857,7 @@ that's intentional.
 If resuming this work, prioritise (rough order):
 
   1. ~~**M5 TCP_INFO**~~ — SHIPPED 2026-05-28.
-  2. **M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG** — small, per-connection
-     TCP options that round out application-level control.
+  2. ~~**M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG**~~ — SHIPPED 2026-05-28.
   3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most
      servers expect dual-stack); substantial refactor in
      `net_addr.Ip6Address` + dual-stack listener pivot.

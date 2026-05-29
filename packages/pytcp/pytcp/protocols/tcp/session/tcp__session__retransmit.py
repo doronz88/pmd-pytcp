@@ -121,12 +121,24 @@ class TcpRetransmitter:
         if session._snd_seq.una == session._snd_seq.max:
             return
 
-        # RFC 1122 §4.2.3.5 R2: after TCP__RETRANSMIT__MAX_COUNT
-        # consecutive timeouts without progress, abort the
-        # connection. The counter resets on every cum-ACK that
-        # advances SND.UNA in '_process_ack_packet', so the abort
-        # is gated on prolonged silence, not lifetime retransmits.
-        if session._retransmit_count >= tcp__constants.TCP__RETRANSMIT__MAX_COUNT:
+        # RFC 1122 §4.2.3.5 R2: after the retransmit budget is
+        # exhausted without progress, abort the connection. The
+        # budget is normally 'TCP__RETRANSMIT__MAX_COUNT' (a
+        # consecutive-timeout count); when the application has
+        # set 'TCP_USER_TIMEOUT' (Linux ms-budget, propagated as
+        # 'session._user_timeout_ms'), the time budget is
+        # approximated as 'max(1, _user_timeout_ms //
+        # current_rto_ms)' so the abort fires after the user's
+        # wall-time budget elapses under the current RTO. The
+        # counter resets on every cum-ACK that advances SND.UNA
+        # in '_process_ack_packet', so the abort is gated on
+        # prolonged silence, not lifetime retransmits.
+        if session._user_timeout_ms > 0:
+            current_rto_ms = max(1, session._rto_state.rto_ms)
+            budget = max(1, session._user_timeout_ms // current_rto_ms)
+        else:
+            budget = tcp__constants.TCP__RETRANSMIT__MAX_COUNT
+        if session._retransmit_count >= budget:
             # Send RST to peer iff peer was actually contacted
             # (i.e. we processed at least one inbound segment
             # post-handshake-start). The check uses the explicit
