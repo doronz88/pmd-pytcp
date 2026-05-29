@@ -29,6 +29,10 @@ net_proto change. The work is a parallel `ip__dscp` kwarg flow
 mirroring the existing `ip__ecn` flow, plus an `_effective_ip_dscp()`
 accessor, wired from the UDP / TCP / RAW send paths.
 
+> **STATUS 2026-05-29: shipped.** Phase A (DSCP marking + plumbing)
+> landed in `81a86a46`; Phase B (the §0.1 fragmentation DSCP/ECN
+> preservation fix) landed alongside. The M4 DSCP item is closed.
+
 ### 0.1 Finding — fragmentation currently drops BOTH DSCP and ECN
 
 While tracing the plumbing, the fragmentation paths were found to drop

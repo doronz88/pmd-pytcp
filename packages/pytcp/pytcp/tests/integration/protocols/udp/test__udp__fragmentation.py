@@ -34,8 +34,18 @@ ver 3.0.6
 from typing import override
 
 from net_addr import Ip4Address
-from pytcp.socket import AddressFamily
-from pytcp.tests.lib.udp_testcase import UdpTestCase
+from pytcp.socket import (
+    IP_TOS,
+    IPPROTO_IP,
+    IPPROTO_IPV6,
+    IPV6_TCLASS,
+    AddressFamily,
+)
+from pytcp.tests.lib.udp_testcase import (
+    HOST_A__IP6_ADDRESS,
+    STACK__IP6_HOST,
+    UdpTestCase,
+)
 
 _STACK_IP4 = Ip4Address("10.0.1.7")
 _HOST_A_IP4 = Ip4Address("10.0.1.91")
@@ -113,6 +123,83 @@ class TestUdpIp4Fragmentation(UdpTestCase):
             msg="The fragments must together carry exactly the original "
             "UDP datagram (payload + 8-byte UDP header), losing no bytes.",
         )
+
+
+class TestUdpFragmentationDscp(UdpTestCase):
+    """
+    A per-socket DSCP / ECN marking is preserved on every IP fragment
+    of an over-MTU datagram, not zeroed on the second and later
+    fragments.
+    """
+
+    def test__udp__ip4__dscp_ecn_preserved_on_every_fragment(self) -> None:
+        """
+        Ensure an over-MTU IPv4 UDP datagram from a socket carrying
+        IP_TOS keeps the DSCP (high 6 bits) and ECN (low 2 bits) on
+        every emitted fragment, not just the first.
+
+        Reference: RFC 2474 §3 (DS field marking preserved per fragment).
+        Reference: RFC 791 §2.3 (each fragment is an independent datagram).
+        """
+
+        sock = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=_STACK_IP4,
+            local_port=_LOCAL_PORT,
+        )
+        sock.setsockopt(IPPROTO_IP, IP_TOS, (46 << 2) | 2)
+
+        sock.sendto(b"M" * 4000, (str(_HOST_A_IP4), _REMOTE_PORT))
+
+        self.assertGreaterEqual(len(self._frames_tx), 2, msg="Datagram must fragment into 2+ frames.")
+        for index, frame in enumerate(self._frames_tx):
+            # IPv4 TOS byte: Ethernet(14) + IPv4 byte 1.
+            tos = frame[15]
+            self.assertEqual(
+                tos >> 2,
+                46,
+                msg=f"Fragment {index} must carry DSCP 46 in its IPv4 TOS byte.",
+            )
+            self.assertEqual(
+                tos & 0x03,
+                2,
+                msg=f"Fragment {index} must carry ECN 2 in its IPv4 TOS byte.",
+            )
+
+    def test__udp__ip6__dscp_ecn_preserved_on_every_fragment(self) -> None:
+        """
+        Ensure an over-MTU IPv6 UDP datagram from a socket carrying
+        IPV6_TCLASS keeps the DSCP and ECN on the outer IPv6 header of
+        every emitted fragment.
+
+        Reference: RFC 2474 §3 (DS field marking preserved per fragment).
+        Reference: RFC 8200 §4.5 (IPv6 fragmentation).
+        """
+
+        sock = self._bind_udp_socket(
+            family=AddressFamily.INET6,
+            local_ip=STACK__IP6_HOST.address,
+            local_port=_LOCAL_PORT,
+        )
+        sock.setsockopt(IPPROTO_IPV6, IPV6_TCLASS, (46 << 2) | 2)
+
+        sock.sendto(b"M" * 4000, (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+
+        self.assertGreaterEqual(len(self._frames_tx), 2, msg="Datagram must fragment into 2+ frames.")
+        for index, frame in enumerate(self._frames_tx):
+            # IPv6 Traffic Class: Ethernet(14) + low nibble of byte 0
+            # and high nibble of byte 1.
+            tclass = ((frame[14] & 0x0F) << 4) | (frame[15] >> 4)
+            self.assertEqual(
+                tclass >> 2,
+                46,
+                msg=f"Fragment {index} must carry DSCP 46 in its IPv6 Traffic Class.",
+            )
+            self.assertEqual(
+                tclass & 0x03,
+                2,
+                msg=f"Fragment {index} must carry ECN 2 in its IPv6 Traffic Class.",
+            )
 
 
 class TestUdpSendtoArpQueued(UdpTestCase):

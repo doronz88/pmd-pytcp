@@ -162,6 +162,12 @@ class Ip6FragTxHandler:
                 self._if._phtx_ip6(
                     ip6__src=ip6_packet_tx.src,
                     ip6__dst=ip6_packet_tx.dst,
+                    # RFC 2474 §3 / RFC 8200 §4.5: every fragment's
+                    # outer IPv6 header inherits the original's DSCP +
+                    # ECN; copy them from the source packet rather than
+                    # zeroing the per-fragment Traffic Class.
+                    ip6__dscp=ip6_packet_tx.dscp,
+                    ip6__ecn=ip6_packet_tx.ecn,
                     ip6__payload=ip6_frag_tx,
                 )
             )

@@ -270,6 +270,12 @@ class Ip4TxHandler:
                 ip4_frag__src=ip4__src,
                 ip4_frag__dst=ip4__dst,
                 ip4_frag__ttl=ip4__ttl,
+                # RFC 791 §2.3 / RFC 2474 §3: each fragment is an
+                # independent datagram and inherits the original's
+                # DSCP + ECN; copy them from the source packet rather
+                # than zeroing the per-fragment TOS byte.
+                ip4_frag__dscp=ip4_packet_tx.dscp,
+                ip4_frag__ecn=ip4_packet_tx.ecn,
                 ip4_frag__options=fragment_options,
                 ip4_frag__payload=chunk,
                 ip4_frag__offset=offset,
