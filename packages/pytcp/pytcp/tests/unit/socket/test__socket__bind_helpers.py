@@ -892,3 +892,191 @@ class TestIsAddressInUse(TestCase):
             result,
             msg="is_address_in_use() must return False when no sockets are open.",
         )
+
+    def _make_socket_v6only(
+        self,
+        *,
+        family: AddressFamily,
+        type: SocketType,
+        local_ip_address: Ip4Address | Ip6Address,
+        local_port: int,
+        ipv6_v6only: bool = True,
+    ) -> SimpleNamespace:
+        """
+        Build a stub like '_make_socket' but with the extra
+        '_ipv6_v6only' flag the dual-stack conflict logic reads.
+        """
+
+        return SimpleNamespace(
+            family=family,
+            type=type,
+            local_ip_address=local_ip_address,
+            local_port=local_port,
+            _ipv6_v6only=ipv6_v6only,
+        )
+
+    def test__ip_helper__is_address_in_use__ipv6_v6only_off_blocks_ipv4(self) -> None:
+        """
+        Ensure an open AF_INET6 listener bound to '::' with
+        'IPV6_V6ONLY = 0' (dual-stack mode) blocks a subsequent
+        AF_INET bind on the same port — Linux's cross-family
+        EADDRINUSE semantic when an IPv6 dual-stack listener
+        already occupies the port.
+
+        Reference: Linux IPV6_V6ONLY (0 = dual-stack reserves both families).
+        """
+
+        opened = self._make_socket_v6only(
+            family=AddressFamily.INET6,
+            type=SocketType.STREAM,
+            local_ip_address=Ip6Address(),  # ::
+            local_port=8080,
+            ipv6_v6only=False,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+            )
+
+        self.assertTrue(
+            result,
+            msg=(
+                "An AF_INET6 V6ONLY=0 listener on '::' must block an AF_INET bind on the "
+                "same port (Linux cross-family EADDRINUSE)."
+            ),
+        )
+
+    def test__ip_helper__is_address_in_use__ipv6_v6only_on_does_not_block_ipv4(self) -> None:
+        """
+        Ensure an open AF_INET6 listener bound to '::' with
+        'IPV6_V6ONLY = 1' (strict IPv6) does NOT block a
+        subsequent AF_INET bind on the same port — the default
+        Python / Linux behaviour where IPv4 and IPv6 are
+        separate namespaces.
+
+        Reference: Linux IPV6_V6ONLY (1 = strict IPv6 namespace).
+        """
+
+        opened = self._make_socket_v6only(
+            family=AddressFamily.INET6,
+            type=SocketType.STREAM,
+            local_ip_address=Ip6Address(),  # ::
+            local_port=8080,
+            ipv6_v6only=True,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+            )
+
+        self.assertFalse(
+            result,
+            msg=(
+                "An AF_INET6 V6ONLY=1 listener must NOT block an AF_INET bind on the same "
+                "port (separate namespaces)."
+            ),
+        )
+
+    def test__ip_helper__is_address_in_use__ipv4_blocks_new_v6only_off_ipv6(self) -> None:
+        """
+        Ensure a pre-existing AF_INET listener on '0.0.0.0'
+        blocks a new AF_INET6 socket attempting to bind to
+        '::' with 'V6ONLY = 0' — the same cross-family lock
+        symmetrically in the other direction.
+
+        Reference: Linux IPV6_V6ONLY (0 = dual-stack vs existing IPv4 conflict).
+        """
+
+        opened = self._make_socket_v6only(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            local_ip_address=Ip4Address(),  # 0.0.0.0
+            local_port=8080,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip6Address(),  # ::
+                local_port=8080,
+                address_family=AddressFamily.INET6,
+                socket_type=SocketType.STREAM,
+                dual_stack=True,
+            )
+
+        self.assertTrue(
+            result,
+            msg=("A new V6ONLY=0 IPv6 bind to '::' must see an existing IPv4 listener as a " "conflict."),
+        )
+
+    def test__ip_helper__is_address_in_use__ipv4_does_not_block_new_strict_ipv6(self) -> None:
+        """
+        Ensure a pre-existing AF_INET listener does NOT block a
+        new AF_INET6 'V6ONLY = 1' (strict) bind on '::' same
+        port — strict IPv6 lives in its own namespace.
+
+        Reference: Linux IPV6_V6ONLY (1 = no cross-family conflict).
+        """
+
+        opened = self._make_socket_v6only(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            local_ip_address=Ip4Address(),
+            local_port=8080,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip6Address(),
+                local_port=8080,
+                address_family=AddressFamily.INET6,
+                socket_type=SocketType.STREAM,
+                dual_stack=False,
+            )
+
+        self.assertFalse(
+            result,
+            msg="A new V6ONLY=1 IPv6 bind must NOT see an existing IPv4 listener as a conflict.",
+        )
+
+    def test__ip_helper__is_address_in_use__v6only_off_on_specific_address_does_not_block_ipv4(self) -> None:
+        """
+        Ensure an open AF_INET6 'V6ONLY = 0' listener bound to
+        a SPECIFIC IPv6 address (not '::') does NOT block a
+        subsequent AF_INET bind same port — dual-stack
+        reservation only triggers when the IPv6 socket is bound
+        to the wildcard.
+
+        Reference: Linux IPV6_V6ONLY (dual-stack reserves only when bound to '::').
+        """
+
+        opened = self._make_socket_v6only(
+            family=AddressFamily.INET6,
+            type=SocketType.STREAM,
+            local_ip_address=Ip6Address("2001:db8::1"),
+            local_port=8080,
+            ipv6_v6only=False,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+            )
+
+        self.assertFalse(
+            result,
+            msg=(
+                "A V6ONLY=0 listener bound to a SPECIFIC IPv6 address must NOT cross-block "
+                "IPv4 — dual-stack reservation triggers only on '::'."
+            ),
+        )

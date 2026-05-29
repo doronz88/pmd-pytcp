@@ -238,18 +238,60 @@ def is_address_in_use(
     local_port: int,
     address_family: AddressFamily,
     socket_type: SocketType,
+    dual_stack: bool = False,
 ) -> bool:
     """
-    Check if the IP address and port combination is already in use.
+    Check if the (family, type, IP, port) combination is already in use.
+
+    Within the same family the canonical BSD overlap rules apply
+    (unspecified-address binds shadow specifics on the same port).
+
+    Cross-family conflicts arise for sockets bound to the wildcard
+    address with 'IPV6_V6ONLY = 0' (Linux dual-stack mode):
+
+      * An open AF_INET6 listener on '::' with 'V6ONLY = 0' reserves
+        BOTH IPv4 and IPv6 namespaces on its port; a subsequent
+        AF_INET bind on the same port is rejected with EADDRINUSE
+        (matches Linux).
+      * Symmetrically, a new AF_INET6 bind to '::' with 'V6ONLY = 0'
+        ('dual_stack=True' here) conflicts with any pre-existing
+        AF_INET listener on the same port.
+
+    'V6ONLY = 1' sockets keep IPv4 and IPv6 in separate namespaces
+    (the Python / Linux default). A 'V6ONLY = 0' listener bound to a
+    specific (non-wildcard) IPv6 address does not cross-block — the
+    dual-stack reservation only triggers when bound to '::'.
     """
 
     for opened_socket in stack.sockets.values():
-        if opened_socket.family == address_family and opened_socket.type == socket_type:
+        if opened_socket.type is not socket_type:
+            continue
+        if opened_socket.local_port != local_port:
+            continue
+
+        # Same-family conflict — canonical BSD overlap rules.
+        if opened_socket.family is address_family:
             if (
                 opened_socket.local_ip_address.is_unspecified
                 or opened_socket.local_ip_address == local_ip_address
                 or local_ip_address.is_unspecified
-            ) and opened_socket.local_port == local_port:
+            ):
                 return True
+            continue
+
+        # Cross-family conflict — only when one side is the IPv6 '::'
+        # wildcard with V6ONLY=0 (Linux dual-stack reservation).
+        opened_is_dual_stack_ipv6_wildcard = (
+            opened_socket.family is AddressFamily.INET6
+            and not getattr(opened_socket, "_ipv6_v6only", True)
+            and opened_socket.local_ip_address.is_unspecified
+        )
+        new_is_dual_stack_ipv6_wildcard = (
+            address_family is AddressFamily.INET6 and dual_stack and local_ip_address.is_unspecified
+        )
+        if address_family is AddressFamily.INET4 and opened_is_dual_stack_ipv6_wildcard:
+            return True
+        if new_is_dual_stack_ipv6_wildcard and opened_socket.family is AddressFamily.INET4:
+            return True
 
     return False

@@ -585,11 +585,16 @@ class TcpSocket(socket):
         # Confirm or pick local port number
         if (local_port := address[1]) > 0:
             # SO_REUSEADDR bypasses the in-use check (Linux parity).
+            # dual_stack=True flags an AF_INET6 V6ONLY=0 bind to '::'
+            # so the in-use check picks up cross-family conflicts
+            # with existing AF_INET listeners on the same port — the
+            # H3 dual-stack reservation rule.
             if not self._so_reuseaddr and is_address_in_use(
                 local_ip_address=local_ip_address,
                 local_port=local_port,
                 address_family=self._address_family,
                 socket_type=self._socket_type,
+                dual_stack=(self._address_family is AddressFamily.INET6 and not self._ipv6_v6only),
             ):
                 raise OSError(
                     errno.EADDRINUSE,
