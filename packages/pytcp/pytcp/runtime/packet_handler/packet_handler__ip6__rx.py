@@ -292,7 +292,7 @@ class Ip6RxHandler:
 
         self._if._packet_stats_rx.ip6_hbh__pre_parse += 1
         try:
-            Ip6HbhParser(packet_rx)
+            Ip6HbhParser(packet_rx, ip6_dst_is_multicast=packet_rx.ip6.dst.is_multicast)
         except Ip6HbhIntegrityError as error:
             self._if._packet_stats_rx.ip6_hbh__failed_parse += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
@@ -340,7 +340,7 @@ class Ip6RxHandler:
 
         self._if._packet_stats_rx.ip6_dest_opts__pre_parse += 1
         try:
-            Ip6DestOptsParser(packet_rx)
+            Ip6DestOptsParser(packet_rx, ip6_dst_is_multicast=packet_rx.ip6.dst.is_multicast)
         except Ip6DestOptsIntegrityError as error:
             self._if._packet_stats_rx.ip6_dest_opts__failed_parse += 1
             __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
@@ -371,14 +371,15 @@ class Ip6RxHandler:
         Handle an HBH / DestOpts options-walker sanity error per RFC
         8200 §4.2 action-on-unrecognized:
 
-          - 'pointer is None' (action 01) → silent discard.
-          - 'pointer' set, dst is unicast → discard + Param Problem code 2.
-          - 'pointer' set, dst is multicast → discard + Param Problem
-            code 2 for action 10; silent for action 11. The current
-            implementation conflates these (always emits when pointer
-            is set on multicast dst) — slight over-emission for the
-            action-11-multicast case is acceptable since ICMP errors
-            are advisory.
+          - 'pointer is None' → silent discard. Either action 01, or
+            action 11 on a multicast destination (the options walker
+            was given the destination's multicast bit and raised with
+            'multicast_only=True' / no pointer per RFC 8200 §4.2).
+          - 'pointer' set → discard + Param Problem code 2 (action 10
+            for any destination, or action 11 on a unicast
+            destination). The emit site flags the classifier so the
+            RFC 4443 §2.4(e.3) exception (2) lets a code-2 Parameter
+            Problem reach a multicast destination.
 
         Returns False unconditionally — the chain walker must stop on
         any options sanity error.
@@ -466,8 +467,16 @@ class Ip6RxHandler:
         if not self._if._ip6_unicast:
             return
 
+        # RFC 4443 §2.4(e.3) exception (2): a Parameter Problem code 2
+        # (Unrecognized IPv6 Option) MAY be sent in response to a
+        # packet destined to a multicast address — unlike most ICMPv6
+        # errors, which §2.4(e.3) bars for multicast destinations.
+        # Flag the classifier so the multicast-dst gate is bypassed
+        # for this code only. (RFC 8200 §4.2 action-11 multicast
+        # suppression is handled earlier, at the options-walker layer,
+        # so an action-11 option on a multicast dst never reaches here.)
         verdict = try_emit_icmp_error(
-            classify_inbound(packet_rx),
+            classify_inbound(packet_rx, is_param_problem_code_2=True),
             rate_limiter=stack.icmp6_error_rate_limiter,
             now=time_module.monotonic(),
         )

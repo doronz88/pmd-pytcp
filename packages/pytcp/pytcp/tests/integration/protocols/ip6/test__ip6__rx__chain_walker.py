@@ -42,6 +42,7 @@ ver 3.0.6
 
 from unittest import TestCase
 
+from net_addr import Ip6Address
 from net_proto import Icmp6MessageParameterProblem, IpProto
 from net_proto.lib.buffer import Buffer
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
@@ -66,10 +67,17 @@ from pytcp.tests.lib.network_testcase import (
 # whose own tests already cover their wire format.
 
 
-def _ethernet_ip6(*, ip6_payload: object, ip6_next: IpProto = IpProto.RAW) -> bytes:
+def _ethernet_ip6(
+    *,
+    ip6_payload: object,
+    ip6_next: IpProto = IpProto.RAW,
+    ip6_dst: Ip6Address | None = None,
+) -> bytes:
     """
     Wrap any IPv6 assembler-style payload in Ethernet/IPv6 framing
-    addressed from HOST_A to the stack's IPv6 address.
+    addressed from HOST_A to 'ip6_dst' (defaulting to the stack's
+    unicast IPv6 address; pass a multicast group the stack has joined
+    — e.g. the all-nodes 'ff02::1' — to exercise multicast-dst paths).
 
     Accepts either an existing assembler (used as the IPv6 payload
     directly so 'IpProto.from_proto' derives the Next Header field)
@@ -84,7 +92,7 @@ def _ethernet_ip6(*, ip6_payload: object, ip6_next: IpProto = IpProto.RAW) -> by
         payload = ip6_payload
     ip6 = Ip6Assembler(
         ip6__src=HOST_A__IP6_ADDRESS,
-        ip6__dst=STACK__IP6_HOST.address,
+        ip6__dst=STACK__IP6_HOST.address if ip6_dst is None else ip6_dst,
         ip6__payload=payload,  # type: ignore[arg-type]
     )
     eth = EthernetAssembler(
@@ -129,12 +137,13 @@ def _build_rh0_frame() -> bytes:
     return _ethernet_ip6(ip6_payload=rh0_bytes, ip6_next=IpProto.IP6_ROUTING)
 
 
-def _build_hbh_unknown_action_10_frame() -> bytes:
+def _build_hbh_unknown_action_10_frame(*, ip6_dst: Ip6Address | None = None) -> bytes:
     """
     Build Ethernet/IPv6/HBH where the HBH options block contains an
     unrecognized option whose top-2-bit action code is 10 (discard +
     Param Problem). RFC 8200 §4.2 mandates an ICMPv6 Param Problem
-    code 2 response.
+    code 2 response. 'ip6_dst' selects a unicast (default) or
+    multicast destination.
     """
 
     # HBH wire frame (8 bytes):
@@ -143,7 +152,25 @@ def _build_hbh_unknown_action_10_frame() -> bytes:
     #   Byte 3    : 0x04 -> opt_data_len=4
     #   Bytes 4-7 : 00 00 00 00 -> data
     hbh_bytes = b"\x06\x00\x85\x04\x00\x00\x00\x00"
-    return _ethernet_ip6(ip6_payload=hbh_bytes, ip6_next=IpProto.IP6_HBH)
+    return _ethernet_ip6(ip6_payload=hbh_bytes, ip6_next=IpProto.IP6_HBH, ip6_dst=ip6_dst)
+
+
+def _build_hbh_unknown_action_11_frame(*, ip6_dst: Ip6Address | None = None) -> bytes:
+    """
+    Build Ethernet/IPv6/HBH where the HBH options block contains an
+    unrecognized option whose top-2-bit action code is 11 (discard +
+    Param Problem code 2 only when the destination is NOT multicast,
+    RFC 8200 §4.2). 'ip6_dst' selects a unicast (default) or multicast
+    destination.
+    """
+
+    # HBH wire frame (8 bytes):
+    #   Bytes 0-1 : 06 00 -> next=TCP, hdr_ext_len=0
+    #   Byte 2    : 0xc5 -> unknown type, top-2-bits=11 (discard + ICMP unless mcast)
+    #   Byte 3    : 0x04 -> opt_data_len=4
+    #   Bytes 4-7 : 00 00 00 00 -> data
+    hbh_bytes = b"\x06\x00\xc5\x04\x00\x00\x00\x00"
+    return _ethernet_ip6(ip6_payload=hbh_bytes, ip6_next=IpProto.IP6_HBH, ip6_dst=ip6_dst)
 
 
 def _build_no_next_header_frame() -> bytes:
@@ -220,6 +247,93 @@ class TestIp6Rx__ChainWalker__Hbh(IcmpTestCase, TestCase):
             msg=(
                 f"Param Problem pointer must be 42 (40 IPv6 header + 2 HBH prefix "
                 f"+ option offset 0). Got: {probe.message.pointer}."
+            ),
+        )
+
+    def test__ip6__rx__hbh_action_11_unicast_emits_param_problem_code_2(self) -> None:
+        """
+        Ensure an unrecognized HBH option with action code 11 on a
+        unicast-destined packet elicits an ICMPv6 Parameter Problem
+        code 2 — the "discard + ICMP" half of the action-11 rule.
+
+        Reference: RFC 8200 §4.2 (action 11: discard + Param Problem
+        code 2 unless destination is multicast).
+        """
+
+        frames_tx = self._drive_rx(frame=_build_hbh_unknown_action_11_frame())
+
+        self.assertEqual(
+            len(frames_tx),
+            1,
+            msg="Action-11 HBH option on a unicast dst must emit one ICMPv6 error.",
+        )
+        probe = self._parse_tx_icmp6(frames_tx[0])
+        self.assertEqual(
+            probe.icmp_type,
+            4,
+            msg=f"Outbound ICMPv6 must be Parameter Problem (type 4). Got: {probe.icmp_type}.",
+        )
+        self.assertEqual(
+            probe.icmp_code,
+            2,
+            msg=f"Outbound ICMPv6 must be Unrecognized IPv6 Option (code 2). Got: {probe.icmp_code}.",
+        )
+
+    def test__ip6__rx__hbh_action_10_multicast_emits_param_problem(self) -> None:
+        """
+        Ensure an unrecognized HBH option with action code 10 on a
+        multicast-destined packet still emits an ICMPv6 Parameter
+        Problem code 2 — action 10 has no multicast exception, and
+        the code-2 Parameter Problem is the permitted exception to
+        the no-ICMP-error-to-multicast rule.
+
+        Reference: RFC 8200 §4.2 (action 10: discard + Param Problem
+        regardless of destination).
+        Reference: RFC 4443 §2.4 (e.3 exception 2: code-2 Param
+        Problem may be sent in response to a multicast packet).
+        """
+
+        frames_tx = self._drive_rx(
+            frame=_build_hbh_unknown_action_10_frame(ip6_dst=Ip6Address("ff02::1")),
+        )
+
+        self.assertEqual(
+            len(frames_tx),
+            1,
+            msg=(
+                "Action-10 HBH option on a multicast dst MUST still emit a "
+                f"code-2 Param Problem (RFC 4443 §2.4 exception 2). Got {len(frames_tx)} frame(s)."
+            ),
+        )
+        probe = self._parse_tx_icmp6(frames_tx[0])
+        self.assertEqual(
+            probe.icmp_code,
+            2,
+            msg=f"Outbound ICMPv6 must be Unrecognized IPv6 Option (code 2). Got: {probe.icmp_code}.",
+        )
+
+    def test__ip6__rx__hbh_action_11_multicast_suppresses_param_problem(self) -> None:
+        """
+        Ensure an unrecognized HBH option with action code 11 on a
+        multicast-destined packet (the all-nodes 'ff02::1', which the
+        stack has joined) is discarded WITHOUT emitting an ICMPv6
+        Parameter Problem — the multicast-suppression half of the
+        action-11 rule.
+
+        Reference: RFC 8200 §4.2 (action 11: no ICMP when destination
+        is a multicast address).
+        """
+
+        frames_tx = self._drive_rx(
+            frame=_build_hbh_unknown_action_11_frame(ip6_dst=Ip6Address("ff02::1")),
+        )
+
+        self.assertEqual(
+            len(frames_tx),
+            0,
+            msg=(
+                "Action-11 HBH option on a multicast dst MUST be silently "
+                f"discarded with no ICMPv6 error. Got {len(frames_tx)} frame(s)."
             ),
         )
 

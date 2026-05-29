@@ -86,16 +86,27 @@ parser's `_validate_sanity` phase. The walker raises
 `Ip6DestOptsSanityError(pointer=...)`) which the chain walker
 catches and translates to ICMPv6 Parameter Problem code 2.
 
-The action-11 multicast suppression rule is currently
-**partially** implemented: the `validate_sanity` static method
-accepts `ip6_dst_is_multicast=False` as default and the chain
-walker does not yet thread the destination's multicast bit
-through to that check. Practically this means a packet
-addressed to a multicast destination that carries an
-unrecognized action-11 option will receive an ICMPv6 reply
-where §4.2 requires silent suppression. ICMP errors are
-advisory so the over-emission is benign; a follow-up commit
-can plumb the multicast bit through cleanly.
+The action-11 multicast suppression rule is **shipped**
+(2026-05-29). The RX chain walker threads the parent IPv6
+header's destination-is-multicast bit into the parser
+constructor (`Ip6HbhParser(packet_rx,
+ip6_dst_is_multicast=packet_rx.ip6.dst.is_multicast)`, and the
+`Ip6DestOptsParser` equivalent), which forwards it to
+`validate_sanity`. An unrecognized action-11 option on a
+multicast destination therefore raises with
+`multicast_only=True` / no pointer, and the chain walker
+silently discards it without an ICMPv6 reply, exactly as
+§4.2 requires. On a unicast destination the same option
+raises with a pointer set and elicits Parameter Problem
+code 2.
+
+Action 10 (discard + Parameter Problem regardless of
+destination) emits even to a multicast destination: RFC 4443
+§2.4(e.3) exception (2) permits a code-2 Parameter Problem in
+response to a multicast packet, and the emit site flags the
+ICMP-error classifier (`classify_inbound(...,
+is_param_problem_code_2=True)`) so the multicast-destination
+gate is bypassed for this code only.
 
 > "Pad1 option ... [type 0]" / "PadN option ... [type 1]"
 
@@ -311,7 +322,7 @@ The §4 clauses above are pinned by the following test files:
 | Clause | Test file(s) |
 |--------|--------------|
 | §4.2 TLV format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py`, `..__option__padn.py`, plus the `ip6_dest_opts` mirrors |
-| §4.2 action-on-unrecognized | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__options.py::TestIp6HbhOptionsValidateSanity` (full 00/01/10/11 unicast/11 multicast matrix) |
+| §4.2 action-on-unrecognized | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__options.py::TestIp6HbhOptionsValidateSanity` (full 00/01/10/11 unicast/11 multicast matrix); `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__chain_walker.py::TestIp6Rx__ChainWalker__Hbh` (action-10/11 unicast emit, action-11 multicast suppressed, action-10 multicast emit per RFC 4443 §2.4(e.3) exception) |
 | §4.3 HBH wire format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__parser__operation.py` |
 | §4.3 HBH must be first | (chain-walker enforcement; integration coverage tracked but not yet shipped) |
 | §4.4 Routing wire format | `packages/net_proto/net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__parser__operation.py` |

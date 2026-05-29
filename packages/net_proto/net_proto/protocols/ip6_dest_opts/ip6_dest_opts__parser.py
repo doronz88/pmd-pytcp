@@ -51,12 +51,20 @@ class Ip6DestOptsParser(Ip6DestOpts, ProtoParser):
 
     _payload: Buffer
 
-    def __init__(self, packet_rx: PacketRx) -> None:
+    def __init__(self, packet_rx: PacketRx, *, ip6_dst_is_multicast: bool = False) -> None:
         """
         Initialize the IPv6 Dest Opts packet parser.
+
+        'ip6_dst_is_multicast' is the parent IPv6 header's
+        destination-is-multicast bit, threaded in by the RX
+        chain-walker so the RFC 8200 §4.2 action-11 option dispatch
+        (discard + ICMP only when the destination is NOT multicast)
+        can be evaluated correctly. Defaults to False (the
+        conservative unicast assumption) for standalone construction.
         """
 
         self._frame = packet_rx.frame
+        self._ip6__dst_is_multicast = ip6_dst_is_multicast
 
         self._validate_integrity()
         self._parse()
@@ -124,15 +132,17 @@ class Ip6DestOptsParser(Ip6DestOpts, ProtoParser):
         'pointer' / 'multicast_only' fields, and emits ICMPv6
         Parameter Problem code 2 (or silent discard) accordingly.
 
-        Multicast-destination context is not available at the
-        parser layer; the chain-walker may re-run sanity validation
-        with 'ip6_dst_is_multicast=True' once it has the IPv6
-        header in hand.
+        The destination-is-multicast bit is threaded in via the
+        constructor ('ip6_dst_is_multicast', supplied by the RX
+        chain-walker) so the §4.2 action-11 rule — discard + ICMP
+        only when the destination is NOT multicast — is evaluated
+        with the real destination scope.
         """
 
         total_hbh_len = (self._header.hdr_ext_len + 1) * 8
         Ip6DestOptsOptions.validate_sanity(
             buffer=self._frame[IP6_DEST_OPTS__HEADER__LEN:total_hbh_len],
+            ip6_dst_is_multicast=self._ip6__dst_is_multicast,
         )
 
     @property
