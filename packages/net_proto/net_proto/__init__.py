@@ -153,6 +153,13 @@ from net_proto.protocols.dhcp6.dhcp6__header import (
     DHCP6__HEADER__LEN,
     Dhcp6Header,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option import (
+    DHCP6__OPTION__LEN,
+    Dhcp6OptionType,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__unknown import (
+    Dhcp6OptionUnknown,
+)
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ethernet.ethernet__base import EthernetPayload
 from net_proto.protocols.ethernet.ethernet__errors import (
@@ -614,6 +621,7 @@ __all__ = [
     "DHCP4__OPTION__LEN",
     "DHCP4__OPTION__PAD__LEN",
     "DHCP6__HEADER__LEN",
+    "DHCP6__OPTION__LEN",
     "Dhcp4Header",
     "Dhcp4IntegrityError",
     "Dhcp4MessageType",
@@ -642,6 +650,8 @@ __all__ = [
     "Dhcp6Header",
     "Dhcp6IntegrityError",
     "Dhcp6MessageType",
+    "Dhcp6OptionType",
+    "Dhcp6OptionUnknown",
     "Dhcp6SanityError",
     "ETHERNET_802_3__HEADER__LEN",
     "ETHERNET_802_3__PACKET__MAX_LEN",
