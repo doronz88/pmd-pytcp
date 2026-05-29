@@ -397,11 +397,11 @@ facade at `packages/pytcp/pytcp/socket/tcp__socket.py`:
 |----------------|--------------------------------|
 | OPEN (active)  | `connect(...)`                 |
 | OPEN (passive) | `listen(...)` + `accept()`     |
-| SEND           | `send(data=...)`               |
-| RECEIVE        | `recv(bufsize=...)`            |
-| CLOSE          | `close()`, `shutdown(how)`     |
+| SEND           | `send(data=...)`, `sendmsg(buffers, ancdata, ...)` (scatter-gather; ancillary data accepted, Phase-1 ignored) |
+| RECEIVE        | `recv(bufsize=...)`, `recvmsg(bufsize, ancbufsize, flags, ...)` (`flags & MSG_ERRQUEUE` drains the IP_RECVERR error queue) |
+| CLOSE          | `close()`, `shutdown(how)`. `close()` honours `SO_LINGER`: linger-off/unset → graceful FIN (§3.10.4); `{l_onoff=1, l_linger>0}` → graceful FIN then block until CLOSED or the timeout elapses; `{l_onoff=1, l_linger=0}` → abortive close routed through the ABORT path (RST, §3.10.5). |
 | STATUS         | `status()` → `TcpStatus`       |
-| ABORT          | `abort()`                      |
+| ABORT          | `abort()`; also reached by `close()` under `SO_LINGER {l_onoff=1, l_linger=0}` |
 | FLUSH          | n/a (application-discretionary; RFC framing) |
 
 ### §3.9.2 TCP/Lower-Level Interface
@@ -449,24 +449,42 @@ Cross-cut with RFC 5961 (audited).
 
 **Adherence:** met. `send` at `tcp__socket.py` and
 the underlying `_tx_buffer` mechanism implement
-the §3.10.2 sequencing.
+the §3.10.2 sequencing. `sendmsg(buffers, ...)`
+concatenates the scatter-gather buffer list and
+feeds the same `_tx_buffer` path; a non-`None`
+`address` is rejected with `EISCONN` (a destination
+is invalid on a connected stream socket).
 
 ### §3.10.3 RECEIVE Call
 
 **Adherence:** met. `recv` consumes from
 `_rx_buffer`; `_rcv_wnd` advertisement reflects
-buffer occupancy.
+buffer occupancy. `recvmsg(...)` exposes the same
+byte stream plus the ancillary-data / `MSG_ERRQUEUE`
+surface (IP_RECVERR error-queue dequeue).
 
 ### §3.10.4 CLOSE Call
 
 **Adherence:** met. `close` triggers FIN emission
 and the appropriate state transition based on
-current state.
+current state. The disposition is selected by the
+`SO_LINGER` socket option: linger-off / unset is the
+default graceful close; `{l_onoff=1, l_linger>0}`
+emits the FIN then blocks until the session reaches
+CLOSED or the linger timeout elapses (the RX / timer
+threads advance the FSM via the `TcpSession.
+_event__closed` signal); `{l_onoff=1, l_linger=0}`
+diverts to the ABORT path (§3.10.5) — the BSD
+"SO_LINGER zero → RST" idiom.
 
 ### §3.10.5 ABORT Call
 
 **Adherence:** met. `abort` triggers RST emission
-and immediate CLOSED transition.
+and immediate CLOSED transition. Also invoked
+implicitly by `close()` when the socket carries
+`SO_LINGER {l_onoff=1, l_linger=0}`, so an abortive
+close discards queued data and emits a RST rather
+than the graceful FIN exchange.
 
 ### §3.10.6 STATUS Call
 
@@ -529,7 +547,7 @@ locations:
 | §3.4 Sequence numbers               | `test__tcp__session__seq_wraparound.py` + `tcp__seq.py` unit |
 | §3.4.1 ISS                          | RFC 6528 audit                                           |
 | §3.5 Connection establishment       | handshake tests                                          |
-| §3.6 Connection closing             | close tests (close__normal, close__rst, close__simultaneous, close__time_wait) |
+| §3.6 Connection closing             | close tests (close__normal, close__rst, close__simultaneous, close__time_wait); SO_LINGER disposition in `test__tcp__session__so_linger.py` |
 | §3.7 Segmentation                   | RFC 6691 audit + jumbogram cases                         |
 | §3.8.1 RTO                          | RFC 6298 audit                                           |
 | §3.8.2 Congestion control           | RFC 5681 + RFC 9438 audits                               |
@@ -538,7 +556,7 @@ locations:
 | §3.8.6.1 Persist timer              | data_transfer__send / window persist tests              |
 | §3.8.6.2 SWS                        | window tests                                             |
 | §3.8.6.3 Delayed ACK                | data_transfer__recv tests                                |
-| §3.9 Interfaces                     | socket tests + harness_smoke                             |
+| §3.9 Interfaces                     | socket tests + harness_smoke; `sendmsg` in `test__socket__tcp__socket.py::TestTcpSocketSendmsg`; SO_LINGER setsockopt/getsockopt in `::TestTcpSocketSoLinger` + close-path in `test__tcp__session__so_linger.py` |
 | §3.10.7 Per-state SEGMENT ARRIVES   | per-state test files                                     |
 | §3.10.8 Timeouts                    | RTO + persist + keep-alive + TIME-WAIT tests             |
 

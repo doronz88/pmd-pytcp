@@ -289,6 +289,19 @@ interface:
 - `sendto(data, address)` at `udp__socket.py:350` —
   specify data + destination, the source address/port
   picked from the bound state.
+- `recvmsg(bufsize, ancbufsize, flags, ...)` in
+  `udp__socket.py` — the richer receive form: returns the
+  data octets, the source `(address, port)` (a 4-tuple for
+  IPv6), and ancillary control data (IP_OPTIONS / IP_TOS /
+  IPV6_TCLASS cmsgs, and the IP_RECVERR error queue under
+  `MSG_ERRQUEUE`), satisfying the "indication of source"
+  requirement with the full cmsg surface.
+- `sendmsg(buffers, ancdata, flags, address=None)` in
+  `udp__socket.py` — the scatter-gather send: concatenates
+  the buffer list into one datagram and sends like
+  `send` (connected) or `sendto` (when `address` given);
+  ancillary data is accepted and Phase-1 ignored (Linux
+  silently ignores unhandled cmsgs).
 - `recv` / `send` / `connect` / `close` follow the BSD
   conventions for connected and unconnected use.
 
@@ -491,8 +504,16 @@ the natural follow-ups when a reader extends the audit.
 - **Unit:**
   `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py`
   — pins `bind` / `connect` / `send` / `sendto` / `recv`
-  / `recvfrom` / `close` plus the
+  / `recvfrom` / `recvmsg` / `close` plus the
   `setsockopt`/`getsockopt` plumbing.
+  `TestUdpSocketSendmsg` pins `sendmsg` scatter-gather
+  concatenation, the `address=` (unconnected) path, and
+  ancillary-data accept-and-ignore / malformed-cmsg
+  rejection.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiSendmsg`
+  — pins a `sendmsg` round-trip through the real TX path
+  (buffers concatenated land on the wire intact).
 
 **Status:** locked in.
 
