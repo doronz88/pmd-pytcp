@@ -36,6 +36,7 @@ import socket as _stdlib_socket
 import sys
 import threading
 from abc import ABC
+from collections.abc import Iterable
 from enum import IntEnum
 from types import TracebackType
 from typing import Any, override
@@ -1686,3 +1687,55 @@ class socket(ABC):
         """
 
         raise NotImplementedError
+
+    def recvmsg(
+        self,
+        bufsize: int | None = None,
+        ancbufsize: int = 0,
+        flags: int = 0,
+        timeout: float | None = None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
+        """
+        The 'recvmsg()' socket API placeholder. Mirrors stdlib
+        'socket.recvmsg(bufsize, ancbufsize=0, flags=0)'; each concrete
+        IP socket returns '(data, ancdata, msg_flags, address)'.
+        """
+
+        raise NotImplementedError
+
+    def sendmsg(
+        self,
+        buffers: Iterable[bytes | bytearray | memoryview],
+        ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
+        flags: int = 0,
+        address: Any = None,
+    ) -> int:
+        """
+        The 'sendmsg()' socket API placeholder. Mirrors stdlib
+        'socket.sendmsg(buffers, ancdata=[], flags=0, address=None)'.
+
+        The address is typed 'Any' because it is address-family
+        dependent (see 'sendto'); each concrete subclass narrows it.
+        """
+
+        raise NotImplementedError
+
+    @staticmethod
+    def _validate_sendmsg_ancdata(
+        ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]],
+        /,
+    ) -> None:
+        """
+        Validate the structural shape of sendmsg() ancillary data.
+
+        Phase-1 PyTCP honours no send-side cmsg type — per Linux,
+        unrecognised control messages are silently ignored. This guard
+        only enforces the stdlib structural contract: every entry must
+        be a '(cmsg_level, cmsg_type, cmsg_data)' 3-tuple.
+        """
+
+        for item in ancdata:
+            if not (isinstance(item, tuple) and len(item) == 3):
+                raise TypeError(
+                    "sendmsg(): ancillary data items must be " "(cmsg_level, cmsg_type, cmsg_data) 3-tuples",
+                )

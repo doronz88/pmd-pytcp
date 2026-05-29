@@ -35,6 +35,7 @@ from __future__ import annotations
 import errno
 import os
 import threading
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, cast, override
 
 from net_addr import (
@@ -341,6 +342,32 @@ class RawSocket(socket):
         return sent_data_len
 
     @override
+    def sendmsg(
+        self,
+        buffers: Iterable[bytes | bytearray | memoryview],
+        ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
+        flags: int = 0,
+        address: tuple[str, int] | None = None,
+    ) -> int:
+        """
+        Send a raw packet from the scatter-gather 'buffers' iterable,
+        mirroring stdlib 'socket.sendmsg'. The buffers are concatenated
+        into a single payload; when 'address' is given the call behaves
+        like sendto(), otherwise like send() on a connected socket.
+
+        Raw sockets carry no send-side cmsg consumer in PyTCP, so
+        'ancdata' is validated for shape then ignored.
+        """
+
+        self._validate_sendmsg_ancdata(ancdata)
+
+        payload = b"".join(bytes(buffer) for buffer in buffers)
+
+        if address is not None:
+            return self.sendto(payload, address)
+        return self.send(payload)
+
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
@@ -410,6 +437,25 @@ class RawSocket(socket):
         if effective_timeout is None and not self._blocking:
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("RAW Socket - Receive operation timed out.")
+
+    @override
+    def recvmsg(
+        self,
+        bufsize: int | None = None,
+        ancbufsize: int = 0,
+        flags: int = 0,
+        timeout: float | None = None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
+        """
+        Receive a raw packet with ancillary data, mirroring stdlib
+        'socket.recvmsg'. Returns '(data, ancdata, msg_flags,
+        address)'. Raw sockets carry no control messages in PyTCP, so
+        'ancdata' is always empty and 'msg_flags' is 0; 'ancbufsize'
+        and 'flags' are accepted for signature parity and ignored.
+        """
+
+        data, address = self.recvfrom(bufsize=bufsize, timeout=timeout)
+        return (data, [], 0, address)
 
     @override
     def close(self) -> None:

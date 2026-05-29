@@ -37,6 +37,7 @@ import os
 import threading
 import time
 from collections import deque
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, override
 
 from net_addr import (
@@ -557,6 +558,35 @@ class UdpSocket(socket):
         return sent_data_len
 
     @override
+    def sendmsg(
+        self,
+        buffers: Iterable[bytes | bytearray | memoryview],
+        ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
+        flags: int = 0,
+        address: tuple[str, int] | None = None,
+    ) -> int:
+        """
+        Send a datagram from the scatter-gather 'buffers' iterable,
+        mirroring stdlib 'socket.sendmsg(buffers, ancdata=[], flags=0,
+        address=None)'. The buffers are concatenated into a single
+        UDP payload; when 'address' is given the call behaves like
+        sendto(), otherwise like send() on a connected socket.
+
+        Phase-1 PyTCP honours no send-side cmsg type, so 'ancdata' is
+        validated for shape then ignored (Linux silently ignores
+        unhandled cmsgs).
+        """
+
+        # Phase 2: honour per-send IP_TOS / IP_TTL / IP_PKTINFO cmsg.
+        self._validate_sendmsg_ancdata(ancdata)
+
+        payload = b"".join(bytes(buffer) for buffer in buffers)
+
+        if address is not None:
+            return self.sendto(payload, address)
+        return self.send(payload)
+
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
@@ -662,6 +692,7 @@ class UdpSocket(socket):
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
+    @override
     def recvmsg(
         self,
         bufsize: int | None = None,

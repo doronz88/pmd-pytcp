@@ -35,10 +35,11 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
+from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
-from net_addr import Ip4Address, Ip6Address
+from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import AddressFamily, SocketType, gaierror
@@ -560,6 +561,94 @@ class TestRawSocketSend(_RawSocketTestCase):
                 4,
                 msg="sendto() on an IPv6 raw socket must route through send_ip6_packet.",
             )
+
+
+class TestRawSocketSendmsg(_RawSocketTestCase):
+    """
+    The 'RawSocket.sendmsg' / 'RawSocket.recvmsg' tests.
+    """
+
+    def _make_md(self) -> RawMetadata:
+        """
+        Build a canonical IPv4 'RawMetadata' envelope to feed the
+        socket's receive path.
+        """
+
+        return RawMetadata(
+            ip__ver=IpVersion.IP4,
+            ip__local_address=Ip4Address("10.0.0.1"),
+            ip__remote_address=Ip4Address("10.0.0.2"),
+            ip__proto=IpProto.ICMP4,
+            raw__data=b"payload",
+        )
+
+    def test__raw_socket__sendmsg_concatenates_buffers_with_address(self) -> None:
+        """
+        Ensure sendmsg() with an explicit 'address' concatenates the
+        scatter-gather buffers and sends like sendto() on an
+        unconnected raw socket, returning the total byte count.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        with patch(
+            "pytcp.socket.raw__socket.pick_local_ip_address",
+            return_value=Ip4Address("10.0.0.1"),
+        ):
+            self.assertEqual(
+                s.sendmsg([b"AB", b"CD"], address=("10.0.0.5", 7)),
+                4,
+                msg="sendmsg(address=...) must concatenate buffers and send like sendto().",
+            )
+
+    def test__raw_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+        """
+        Ensure sendmsg() rejects an ancillary-data entry that is not a
+        3-tuple with a TypeError, matching the stdlib structural
+        contract.
+
+        Reference: socket(7) sendmsg (ancillary-data structure).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        bad_ancdata: list[Any] = [(1, 2)]
+        with self.assertRaises(TypeError):
+            s.sendmsg([b"x"], bad_ancdata, address=("10.0.0.5", 7))
+
+    def test__raw_socket__recvmsg_returns_quadruple_with_empty_ancdata(self) -> None:
+        """
+        Ensure recvmsg() returns the stdlib
+        '(data, ancdata, msg_flags, address)' quadruple with an empty
+        ancillary-data list — raw sockets carry no cmsgs in PyTCP.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        s.process_raw_packet(self._make_md())
+
+        data, ancdata, msg_flags, address = s.recvmsg()
+        self.assertEqual(
+            data,
+            b"payload",
+            msg="recvmsg() must return the raw__data as the first tuple element.",
+        )
+        self.assertEqual(
+            ancdata,
+            [],
+            msg="recvmsg() on a raw socket must return an empty ancillary-data list.",
+        )
+        self.assertEqual(
+            msg_flags,
+            0,
+            msg="recvmsg() must return msg_flags=0 for a raw socket.",
+        )
+        self.assertEqual(
+            address,
+            ("10.0.0.2", 0),
+            msg="recvmsg() must return (remote_ip_str, 0) as the address.",
+        )
 
 
 class TestRawSocketReceive(_RawSocketTestCase):

@@ -304,6 +304,69 @@ class TestUdpSocketApiSend(UdpTestCase):
         )
 
 
+class TestUdpSocketApiSendmsg(UdpTestCase):
+    """
+    sendmsg() concatenates its scatter-gather buffers into one
+    datagram that lands on the wire intact.
+    """
+
+    def setUp(self) -> None:
+        """
+        Bind a UDP socket on STACK:4444 with no remote so the
+        'sendmsg(address=...)' send path is exercised.
+        """
+
+        super().setUp()
+        self._socket = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=STACK__IP4_HOST.address,
+            local_port=_LOCAL_PORT,
+        )
+
+    def test__udp_socket_api__sendmsg__concatenated_buffers_round_trip(self) -> None:
+        """
+        Ensure 'sendmsg()' concatenates its scatter-gather buffer
+        list into a single Ethernet/IPv4/UDP frame whose payload is
+        the buffers joined in order and whose destination 4-tuple
+        matches the 'address' argument.
+
+        Reference: RFC 768 (UDP datagram structure on the wire).
+        """
+
+        sent = self._socket.sendmsg(
+            [b"foo", b"bar", b"baz"],
+            address=(str(HOST_A__IP4_ADDRESS), _REMOTE_PORT),
+        )
+
+        self.assertEqual(
+            sent,
+            len(b"foobarbaz"),
+            msg="sendmsg() must report the total length of all concatenated buffers.",
+        )
+        self.assertEqual(
+            len(self._frames_tx),
+            1,
+            msg="sendmsg() must emit exactly one outbound UDP frame.",
+        )
+
+        probe = self._parse_tx(self._frames_tx[0])
+        self.assertEqual(
+            probe.ip_dst,
+            HOST_A__IP4_ADDRESS,
+            msg="Outbound IPv4 dst must be the sendmsg() target IP.",
+        )
+        self.assertEqual(
+            probe.dport,
+            _REMOTE_PORT,
+            msg="Outbound UDP dport must be the sendmsg() target port.",
+        )
+        self.assertEqual(
+            probe.payload,
+            b"foobarbaz",
+            msg="Outbound UDP payload must be the sendmsg() buffers concatenated in order.",
+        )
+
+
 class TestUdpSocketApiIpTtlOnWire(UdpTestCase):
     """
     A per-socket IP_TTL override appears on the outbound IPv4

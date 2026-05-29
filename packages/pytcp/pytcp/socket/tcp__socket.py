@@ -36,6 +36,7 @@ import errno
 import os
 import threading
 from collections import deque
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, cast, override
 
 from net_addr import (
@@ -870,6 +871,36 @@ class TcpSocket(socket):
         return bytes_sent
 
     @override
+    def sendmsg(
+        self,
+        buffers: Iterable[bytes | bytearray | memoryview],
+        ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
+        flags: int = 0,
+        address: tuple[str, int] | None = None,
+    ) -> int:
+        """
+        Send the scatter-gather 'buffers' iterable over the connected
+        stream, mirroring stdlib 'socket.sendmsg'. The buffers are
+        concatenated and handed to the session's byte-stream send().
+
+        A non-None 'address' is invalid on a connected stream socket
+        and raises 'OSError(EISCONN)' (Linux 'tcp_sendmsg' rejects a
+        destination on an already-connected socket). Phase-1 PyTCP
+        honours no send-side cmsg type, so 'ancdata' is validated for
+        shape then ignored.
+        """
+
+        if address is not None:
+            raise OSError(
+                errno.EISCONN,
+                "Transport endpoint is already connected - " "[sendmsg() address is invalid on a connected TCP socket]",
+            )
+
+        self._validate_sendmsg_ancdata(ancdata)
+
+        return self.send(b"".join(bytes(buffer) for buffer in buffers))
+
+    @override
     def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Receive data from socket.
@@ -1133,6 +1164,7 @@ class TcpSocket(socket):
             )
         )
 
+    @override
     def recvmsg(
         self,
         bufsize: int | None = None,

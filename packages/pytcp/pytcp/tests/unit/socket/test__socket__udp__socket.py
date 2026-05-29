@@ -43,6 +43,8 @@ from net_addr import Ip4Address, Ip6Address, IpVersion
 from net_proto.lib.enums import IpProto
 from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import (
+    IP_TOS,
+    IPPROTO_IP,
     SO_BROADCAST,
     SO_RCVBUF,
     SO_RCVTIMEO,
@@ -584,6 +586,128 @@ class TestUdpSocketSend(_UdpSocketTestCase):
             4444,
             msg="sendto() must reuse the existing local_port of a bound socket.",
         )
+
+
+class TestUdpSocketSendmsg(_UdpSocketTestCase):
+    """
+    The 'UdpSocket.sendmsg' tests.
+    """
+
+    def _connected_socket(self) -> UdpSocket:
+        """
+        Construct a connected IPv4 UDP socket ready for sendmsg().
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        with (
+            patch(
+                "pytcp.socket.udp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch(
+                "pytcp.socket.udp__socket.pick_local_port",
+                return_value=40000,
+            ),
+        ):
+            s.connect(("10.0.0.5", 5353))
+        return s
+
+    def _capture_payload(self) -> dict[str, Any]:
+        """
+        Replace the fixture handler's 'send_udp_packet' with a stub
+        that captures its keyword arguments, and return the capture
+        dict so a test can assert on the transmitted payload.
+        """
+
+        captured: dict[str, Any] = {}
+
+        def _send_udp_packet(**kwargs: Any) -> TxStatus:
+            captured.update(kwargs)
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        self._handler.send_udp_packet = _send_udp_packet
+        return captured
+
+    def test__udp_socket__sendmsg_concatenates_buffers(self) -> None:
+        """
+        Ensure sendmsg() concatenates the scatter-gather 'buffers'
+        iterable into a single datagram payload and returns the total
+        byte count, matching stdlib 'socket.sendmsg' semantics.
+
+        Reference: RFC 768 (UDP user interface).
+        """
+
+        s = self._connected_socket()
+        captured = self._capture_payload()
+
+        self.assertEqual(
+            s.sendmsg([b"AB", b"CD"]),
+            4,
+            msg="sendmsg() must return the total length of all concatenated buffers.",
+        )
+        self.assertEqual(
+            captured["udp__payload"],
+            b"ABCD",
+            msg="sendmsg() must transmit the buffers concatenated in order.",
+        )
+
+    def test__udp_socket__sendmsg_with_address_unconnected(self) -> None:
+        """
+        Ensure sendmsg() with an explicit 'address' on an unconnected
+        socket behaves like sendto() — it binds a local port and sends
+        to the supplied destination.
+
+        Reference: RFC 768 (UDP user interface).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        with (
+            patch(
+                "pytcp.socket.udp__socket.pick_local_ip_address",
+                return_value=Ip4Address("10.0.0.1"),
+            ),
+            patch(
+                "pytcp.socket.udp__socket.pick_local_port",
+                return_value=40000,
+            ),
+        ):
+            self.assertEqual(
+                s.sendmsg([b"hi"], address=("10.0.0.5", 5353)),
+                2,
+                msg="sendmsg(address=...) must send like sendto() and return the byte count.",
+            )
+
+    def test__udp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
+        """
+        Ensure sendmsg() accepts a well-formed ancillary-data list and
+        silently ignores it (Phase-1 honours no send-side cmsg type,
+        matching Linux's silent-ignore of unhandled cmsgs).
+
+        Reference: socket(7) sendmsg (ancillary-data ignore).
+        """
+
+        s = self._connected_socket()
+
+        self.assertEqual(
+            s.sendmsg([b"x"], [(int(IPPROTO_IP), int(IP_TOS), b"\x10")]),
+            1,
+            msg="sendmsg() must accept a valid cmsg 3-tuple and send the payload regardless.",
+        )
+
+    def test__udp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+        """
+        Ensure sendmsg() rejects an ancillary-data entry that is not a
+        '(cmsg_level, cmsg_type, cmsg_data)' 3-tuple with a TypeError,
+        matching the stdlib structural contract.
+
+        Reference: socket(7) sendmsg (ancillary-data structure).
+        """
+
+        s = self._connected_socket()
+
+        bad_ancdata: list[Any] = [(1, 2)]
+        with self.assertRaises(TypeError):
+            s.sendmsg([b"x"], bad_ancdata)
 
 
 class TestUdpSocketReceive(_UdpSocketTestCase):

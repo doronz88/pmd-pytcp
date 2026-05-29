@@ -36,7 +36,7 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -754,6 +754,98 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
 
         s = TcpSocket(family=AddressFamily.INET4)
         s.process_tcp_packet(MagicMock())  # must not raise
+
+
+class TestTcpSocketSendmsg(_TcpSocketTestCase):
+    """
+    The 'TcpSocket.sendmsg' tests.
+    """
+
+    def _connected_socket(self) -> tuple[TcpSocket, MagicMock]:
+        """
+        Build a 'TcpSocket' with a mocked, attached session ready for
+        sendmsg(). Returns both the socket and its session mock.
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s._local_ip_address = Ip4Address("10.0.0.1")
+        s._remote_ip_address = Ip4Address("10.0.0.5")
+        s._local_port = 40000
+        s._remote_port = 80
+        session = MagicMock()
+        s._tcp_session = session
+        return s, session
+
+    def test__tcp_socket__sendmsg_concatenates_buffers(self) -> None:
+        """
+        Ensure sendmsg() concatenates the scatter-gather 'buffers'
+        iterable into one byte string, hands it to the session's
+        send(), and returns the byte count, matching stdlib
+        'socket.sendmsg' semantics on a stream socket.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
+        s, session = self._connected_socket()
+        session.send.return_value = 4
+
+        self.assertEqual(
+            s.sendmsg([b"AB", b"CD"]),
+            4,
+            msg="sendmsg() must return the byte count reported by the session.",
+        )
+        session.send.assert_called_once_with(data=b"ABCD")
+
+    def test__tcp_socket__sendmsg_with_address_raises(self) -> None:
+        """
+        Ensure sendmsg() with a non-None 'address' on a connected
+        stream socket raises 'OSError(EISCONN)' — a destination
+        address is invalid on an already-connected TCP socket.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
+        s, _session = self._connected_socket()
+
+        with self.assertRaises(OSError) as context:
+            s.sendmsg([b"x"], address=("10.0.0.9", 80))
+        self.assertEqual(
+            context.exception.errno,
+            errno.EISCONN,
+            msg="sendmsg(address=...) on a connected TCP socket must raise EISCONN.",
+        )
+
+    def test__tcp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
+        """
+        Ensure sendmsg() accepts a well-formed ancillary-data list and
+        silently ignores it (Phase-1 honours no send-side cmsg type).
+
+        Reference: socket(7) sendmsg (ancillary-data ignore).
+        """
+
+        s, session = self._connected_socket()
+        session.send.return_value = 1
+
+        self.assertEqual(
+            s.sendmsg([b"x"], [(0, 0, b"\x00")]),
+            1,
+            msg="sendmsg() must accept a valid cmsg 3-tuple and send the payload regardless.",
+        )
+
+    def test__tcp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+        """
+        Ensure sendmsg() rejects an ancillary-data entry that is not a
+        3-tuple with a TypeError, matching the stdlib structural
+        contract.
+
+        Reference: socket(7) sendmsg (ancillary-data structure).
+        """
+
+        s, _session = self._connected_socket()
+
+        bad_ancdata: list[Any] = [(1, 2)]
+        with self.assertRaises(TypeError):
+            s.sendmsg([b"x"], bad_ancdata)
 
 
 class TestTcpSocketStateProperty(_TcpSocketTestCase):
