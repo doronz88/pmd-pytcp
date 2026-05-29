@@ -49,7 +49,7 @@ classified as one of:
 | §5.9    | RFC 4191 Default Router Preferences            | deferred            |
 | §5.10   | RFC 8028 First-Hop Router Selection            | deferred            |
 | §5.11   | RFC 3810 MLDv2                                 | partial (TX shipped; RX is querier-role Phase 2) |
-| §5.12   | RFC 3168 ECN                                   | partial (TCP ECN echo wired; IP-layer mark setting not yet) |
+| §5.12   | RFC 3168 ECN                                   | shipped (TCP ECN echo + IP-layer ECT/DSCP marking via IPV6_TCLASS + §5.3 reassembly aggregation) |
 | §6.1    | RFC 4291 Addressing Architecture               | shipped             |
 | §6.2    | Multiple address support                       | shipped             |
 | §6.3    | RFC 4862 SLAAC                                 | shipped (basic SLAAC + DAD + RFC 7217 stable IIDs + Optimistic DAD + Enhanced DAD + §5.5.3(e)(6) 2-hour rule) |
@@ -278,14 +278,20 @@ single `_ip6_ifaddr` model does not yet expose.
   `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py::__phrx_icmp6__mld2_report`
   (commit `3459cddf`) for the documented Phase-2 marker.
 
-### §5.12 RFC 3168 ECN — partial
+### §5.12 RFC 3168 ECN — shipped
 
-**Adherence:** partial. TCP-side ECN echo (CE detection,
+**Adherence:** shipped. TCP-side ECN echo (CE detection,
 ECE/CWR signalling) is wired in `packages/pytcp/pytcp/protocols/tcp/`
 (see TCP RFC adherence records). The IP-layer side — host
 upper layers asking the IP stack to set the ECT codepoint
-on outbound packets — is not yet exposed via the socket
-API. Phase-1 polish.
+on outbound packets — is now exposed via the socket API
+(2026-05-29): `setsockopt(IPPROTO_IPV6, IPV6_TCLASS, …)`
+threads the ECN bits (and the DSCP bits) onto every
+outbound IPv6 packet through `_effective_ip_ecn()` /
+`_effective_ip_dscp()`, and fragment reassembly aggregates
+the ECN per RFC 3168 §5.3. Full IPv6 ECN audit at
+`docs/rfc/ip6/rfc3168__ecn/adherence.md`; DSCP at
+`docs/rfc/ip6/rfc2474__dscp/adherence.md`.
 
 ---
 
