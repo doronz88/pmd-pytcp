@@ -477,6 +477,7 @@ class socket(ABC):
     _ipv6_recvtclass: bool
     _ipv6_recverr: bool
     _ipv6_v6only: bool
+    _dual_stack: bool
     # The source filter (RFC 3376 §3.1) this socket holds per joined
     # (ifindex, group). 'IP_ADD_MEMBERSHIP' records an EXCLUDE{}
     # any-source filter; the source options build INCLUDE / EXCLUDE
@@ -540,6 +541,20 @@ class socket(ABC):
         # of socket_linux_parity_audit.md) surfaces those peers
         # as IPv4-mapped IPv6 addresses on accept().
         self._ipv6_v6only = True
+
+        # H3 Phase 3c presentation flag. Set on the accepted
+        # child of an AF_INET6 V6ONLY=0 listener when the
+        # accepted peer is IPv4 (the dual-stack accept scenario).
+        # When True, the app-facing accessors ('local_ip_address'
+        # / 'remote_ip_address' / 'family' / 'getsockname' /
+        # 'getpeername') wrap the wire IPv4 addresses into the
+        # IPv4-mapped IPv6 form so applications see Linux
+        # dual-stack semantics; the wire attributes
+        # ('_local_ip_address' / '_remote_ip_address' /
+        # '_address_family' / 'socket_id') stay AF_INET4 so the
+        # RX-path active-socket lookup keeps matching the
+        # inbound IPv4 packets.
+        self._dual_stack = False
         # Per-socket IPv4 multicast holds (ifindex, group) for the
         # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
         self._ip4_source_filters = {}
@@ -1133,17 +1148,27 @@ class socket(ABC):
     @property
     def local_ip_address(self) -> Ip6Address | Ip4Address:
         """
-        Get the '_local_ip_address' attribute.
+        Get the application-facing local IP address. On a dual-stack
+        accepted child socket ('_dual_stack=True') the wire IPv4
+        address is wrapped into its IPv4-mapped IPv6 form so apps
+        see Linux dual-stack semantics; otherwise the wire address
+        is returned verbatim.
         """
 
+        if self._dual_stack and isinstance(self._local_ip_address, Ip4Address):
+            return Ip6Address.from_ipv4_mapped(self._local_ip_address)
         return self._local_ip_address
 
     @property
     def remote_ip_address(self) -> Ip6Address | Ip4Address:
         """
-        Get the '_remote_ip_address' attribute.
+        Get the application-facing remote IP address. Wraps to the
+        IPv4-mapped IPv6 form on a dual-stack accepted child, same
+        as 'local_ip_address'.
         """
 
+        if self._dual_stack and isinstance(self._remote_ip_address, Ip4Address):
+            return Ip6Address.from_ipv4_mapped(self._remote_ip_address)
         return self._remote_ip_address
 
     @property
@@ -1169,9 +1194,17 @@ class socket(ABC):
     @property
     def family(self) -> AddressFamily:
         """
-        Get the '_address_family' attribute.
+        Get the application-facing address family. On a dual-stack
+        accepted child socket ('_dual_stack=True') the wire family
+        is AF_INET4 but the application sees AF_INET6 — matches
+        Linux's accept() returning an AF_INET6 child from a V6ONLY=0
+        listener. The wire '_address_family' attribute stays
+        AF_INET4 so socket_id-keyed RX-path lookups still find the
+        socket for inbound IPv4 packets.
         """
 
+        if self._dual_stack:
+            return AddressFamily.INET6
         return self._address_family
 
     @property
@@ -1358,17 +1391,21 @@ class socket(ABC):
 
     def getsockname(self) -> tuple[str, int]:
         """
-        Get the local address and port.
+        Get the local address and port. Reads through the
+        'local_ip_address' property so a dual-stack accepted child
+        returns the IPv4-mapped IPv6 string form (Linux parity).
         """
 
-        return str(self._local_ip_address), self._local_port
+        return str(self.local_ip_address), self._local_port
 
     def getpeername(self) -> tuple[str, int]:
         """
-        Get the remote address and port.
+        Get the remote address and port. Reads through the
+        'remote_ip_address' property — dual-stack accepted children
+        return the IPv4-mapped IPv6 string form.
         """
 
-        return str(self._remote_ip_address), self._remote_port
+        return str(self.remote_ip_address), self._remote_port
 
     def bind(
         self,

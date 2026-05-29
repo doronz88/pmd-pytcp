@@ -1626,6 +1626,180 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         )
 
 
+class TestTcpSocketDualStackPresentation(_TcpSocketTestCase):
+    """
+    H3 Phase 3c — dual-stack presentation tests. When a socket has
+    '_dual_stack = True' (set by the listener-fork on an accepted
+    child of an AF_INET6 V6ONLY=0 listener that accepted an IPv4
+    inbound), the app-facing accessors wrap the wire-IPv4
+    addresses to the IPv4-mapped IPv6 form so the application
+    sees Linux dual-stack semantics. The wire attributes
+    ('_local_ip_address' / '_remote_ip_address' / '_address_family'
+    / 'socket_id') stay AF_INET4 so the RX-path active-socket
+    lookup keeps matching the inbound IPv4 packets.
+    """
+
+    def test__tcp_socket__dual_stack_default_off(self) -> None:
+        """
+        Ensure '_dual_stack' defaults to False on a freshly-
+        constructed socket — the regression pin against accidental
+        presentation wrapping.
+
+        Reference: socket_linux_parity_audit.md §H3 Phase 3c (default off).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET6)
+
+        self.assertFalse(
+            s._dual_stack,
+            msg="'_dual_stack' must default to False on a freshly-constructed socket.",
+        )
+
+    def test__tcp_socket__dual_stack_local_ip_address_wraps_to_mapped(self) -> None:
+        """
+        Ensure 'local_ip_address' returns the IPv4-mapped IPv6
+        form when '_dual_stack' is True — the property the
+        'getsockname()' surface reads.
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped surfacing on dual-stack).
+        """
+
+        from net_addr import Ip6Address
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s._local_ip_address = Ip4Address("10.0.0.7")
+        s._dual_stack = True
+
+        self.assertEqual(
+            s.local_ip_address,
+            Ip6Address("::ffff:10.0.0.7"),
+            msg="local_ip_address must wrap wire IPv4 to ::ffff:0:0/96 form when dual_stack.",
+        )
+
+    def test__tcp_socket__dual_stack_remote_ip_address_wraps_to_mapped(self) -> None:
+        """
+        Ensure 'remote_ip_address' returns the IPv4-mapped IPv6
+        form when '_dual_stack' is True — the property the
+        'getpeername()' / 'accept()' return surfaces read.
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped on dual-stack accept).
+        """
+
+        from net_addr import Ip6Address
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s._remote_ip_address = Ip4Address("10.0.0.91")
+        s._dual_stack = True
+
+        self.assertEqual(
+            s.remote_ip_address,
+            Ip6Address("::ffff:10.0.0.91"),
+            msg="remote_ip_address must wrap wire IPv4 to ::ffff:0:0/96 form when dual_stack.",
+        )
+
+    def test__tcp_socket__dual_stack_family_reports_af_inet6(self) -> None:
+        """
+        Ensure the 'family' property reports AF_INET6 when
+        '_dual_stack' is True even though '_address_family' is
+        AF_INET4 (for wire / RX-lookup correctness). Matches
+        Linux's accept() returning an AF_INET6 child of a
+        dual-stack listener.
+
+        Reference: Linux IPV6_V6ONLY (accepted child reports AF_INET6).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s._dual_stack = True
+
+        self.assertIs(
+            s.family,
+            AddressFamily.INET6,
+            msg="family property must report AF_INET6 when dual_stack is True.",
+        )
+        self.assertIs(
+            s._address_family,
+            AddressFamily.INET4,
+            msg="_address_family must stay AF_INET4 (wire) under dual_stack.",
+        )
+
+    def test__tcp_socket__dual_stack_getsockname_returns_mapped_string(self) -> None:
+        """
+        Ensure 'getsockname()' returns the IPv4-mapped IPv6
+        string form when '_dual_stack' is True — the application-
+        facing API the dual-stack contract exists for.
+
+        Reference: Linux IPV6_V6ONLY (getsockname IPv4-mapped surface).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s._local_ip_address = Ip4Address("10.0.0.7")
+        s._local_port = 8080
+        s._dual_stack = True
+
+        self.assertEqual(
+            s.getsockname(),
+            ("::ffff:10.0.0.7", 8080),
+            msg="getsockname() must return the IPv4-mapped string form when dual_stack.",
+        )
+
+    def test__tcp_socket__dual_stack_getpeername_returns_mapped_string(self) -> None:
+        """
+        Ensure 'getpeername()' returns the IPv4-mapped IPv6
+        string form when '_dual_stack' is True.
+
+        Reference: Linux IPV6_V6ONLY (getpeername IPv4-mapped surface).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s._remote_ip_address = Ip4Address("10.0.0.91")
+        s._remote_port = 12345
+        s._dual_stack = True
+
+        self.assertEqual(
+            s.getpeername(),
+            ("::ffff:10.0.0.91", 12345),
+            msg="getpeername() must return the IPv4-mapped string form when dual_stack.",
+        )
+
+    def test__tcp_socket__non_dual_stack_keeps_wire_form(self) -> None:
+        """
+        Ensure '_dual_stack=False' (the default) leaves the wire
+        addresses untouched on all four accessors — the
+        regression pin against accidental wrapping on
+        single-family sockets.
+
+        Reference: socket_linux_parity_audit.md §H3 Phase 3c (no-op when off).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s._local_ip_address = Ip4Address("10.0.0.7")
+        s._local_port = 8080
+        s._remote_ip_address = Ip4Address("10.0.0.91")
+        s._remote_port = 12345
+        # _dual_stack stays False (default).
+
+        self.assertEqual(
+            s.local_ip_address,
+            Ip4Address("10.0.0.7"),
+            msg="local_ip_address must return wire IPv4 when dual_stack is False.",
+        )
+        self.assertEqual(
+            s.remote_ip_address,
+            Ip4Address("10.0.0.91"),
+            msg="remote_ip_address must return wire IPv4 when dual_stack is False.",
+        )
+        self.assertIs(
+            s.family,
+            AddressFamily.INET4,
+            msg="family must report AF_INET4 when dual_stack is False.",
+        )
+        self.assertEqual(
+            s.getsockname(),
+            ("10.0.0.7", 8080),
+            msg="getsockname() must return wire string when dual_stack is False.",
+        )
+
+
 class TestTcpSocketFileno(_TcpSocketTestCase):
     """
     The 'TcpSocket.fileno' / read-readiness signal-and-drain tests.

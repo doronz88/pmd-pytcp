@@ -178,6 +178,22 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                 ),
                 tcp_session=session,
             )
+            # H3 Phase 3c — dual-stack presentation flag. When the
+            # listening parent is AF_INET6 with 'IPV6_V6ONLY = 0'
+            # AND the accepted peer is IPv4 (the inbound metadata
+            # is IPv4), mark the child so the application-facing
+            # accessors ('local_ip_address' / 'remote_ip_address' /
+            # 'family' / 'getsockname' / 'getpeername' / accept()
+            # return tuple) surface the IPv4 addresses as their
+            # IPv4-mapped IPv6 form. The wire attributes stay
+            # AF_INET4 so the RX-path active-socket lookup keeps
+            # matching the inbound IPv4 packets.
+            if (
+                listen_socket._address_family is AddressFamily.INET6
+                and not listen_socket._ipv6_v6only
+                and session._local_ip_address.version is IpVersion.IP4
+            ):
+                session._socket._dual_stack = True
             # POSIX accept(2) inherits the listener's O_NONBLOCK
             # onto the accepted child. Propagate the listener's
             # 'setblocking()' flag onto the freshly-constructed

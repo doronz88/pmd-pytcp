@@ -774,6 +774,11 @@ class _StubSocket(socket):
         self._remote_ip_address = remote_ip_address
         self._local_port = local_port
         self._remote_port = remote_port
+        # Default-off so the dual-stack presentation wrapper is a
+        # no-op in this base-class test path. Set by the listener-
+        # fork on accepted children of AF_INET6 V6ONLY=0 listeners
+        # (H3 Phase 3c).
+        self._dual_stack = False
 
 
 class TestSocketStringification(TestCase):

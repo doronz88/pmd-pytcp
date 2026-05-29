@@ -233,7 +233,7 @@ structure for ports that opted into REUSEPORT. Inbound
 connection demux picks one listener (round-robin or hash).
 This is a larger refactor.
 
-### H3. `IPV6_V6ONLY` — SHIPPED 2026-05-28 (Phases 1, 2, 3a, 3b)
+### H3. `IPV6_V6ONLY` — SHIPPED 2026-05-28 (Phases 1, 2, 3a, 3b, 3c)
 
 **Linux:** Default for Python is `IPV6_V6ONLY=1` (IPv6
 sockets accept only IPv6 peers). Setting it to 0 makes the
@@ -265,19 +265,19 @@ stack mode.
     so the IPv4 inbound falls through to the no-listener
     drop path.
 
-**Residual — Phase 3c (deferred-with-rationale):** When an
-IPv4 SYN reaches an AF_INET6 V6ONLY=0 listener via the
-Phase 3b path, the listener-fork pivot in
-`tcp__fsm__listen.py` currently constructs an AF_INET4 child
-session (since the peer's address is IPv4). Linux's
-canonical behaviour is to surface that child as an AF_INET6
-socket with IPv4-mapped peer/local addresses so `accept()`
-returns family `AF_INET6`. The Phase 3c work — wrapping
-IPv4 addresses into IPv4-mapped IPv6 at the listener-fork +
-keeping the wire transport as IPv4 — is bounded but
-non-trivial and is deferred to a focused follow-up commit.
-The current AF_INET4-child path is still functionally
-correct for apps that don't gate on `getpeername()` family.
+  * **Phase 3c:** Application-facing IPv4-mapped IPv6 surfacing.
+    Accepted children of an AF_INET6 V6ONLY=0 listener receiving an
+    IPv4 SYN now carry a `_dual_stack` presentation flag set by
+    the listener-fork. The app-facing accessors — `family` /
+    `local_ip_address` / `remote_ip_address` / `getsockname()` /
+    `getpeername()` / the `accept()` return tuple — wrap the wire
+    IPv4 addresses into the canonical `::ffff:0:0/96` form via
+    `Ip6Address.from_ipv4_mapped(ip4)` (the Phase 1 classmethod).
+    The wire attributes (`_address_family` = AF_INET4 /
+    `_local_ip_address` / `_remote_ip_address` / `socket_id`)
+    stay AF_INET4 so the RX-path active-socket lookup keeps
+    matching inbound IPv4 packets. Linux-parity end-to-end on the
+    common dual-stack use case.
 
 ### H4. Multicast group membership — IPv4 SHIPPED, IPv6 deferred
 
@@ -838,7 +838,7 @@ that's intentional.
 | H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded; TCP storage-only (FSM segment-emit propagation deferred). |
 | M1 SO_RCVTIMEO/SO_SNDTIMEO | shipped (RCVTIMEO) | `705a4617` — RCVTIMEO supplies recv-default timeout; SNDTIMEO storage-only (UDP/RAW sends today don't block on tx buffer space). |
 | M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
-| **H3 IPV6_V6ONLY**  | **deferred** | Substantial — needs IPv4-mapped IPv6 (`::ffff:0:0/96`) support in `Ip6Address`, plus dual-stack listener-fork that translates inbound IPv4 connections into IPv4-mapped peer addresses on `accept()`. Ship as a focused work block. |
+| **H3 IPV6_V6ONLY**  | shipped | Five-phase delivery: Phase 1 (`Ip6Address.is_ipv4_mapped` + `from_ipv4_mapped`) + Phase 2 (`IPV6_V6ONLY` setsockopt) + Phase 3a (bind cross-family conflict) + Phase 3b (IPv4 SYN finds AF_INET6 V6ONLY=0 listener via `listening_socket_ids` extension + RX-loop V6ONLY filter) + Phase 3c (accepted children carry `_dual_stack` presentation flag; family / addresses / getsockname / getpeername / accept return wrap to IPv4-mapped IPv6). |
 | **H2 SO_REUSEPORT** | **deferred** | Substantial — needs `stack.sockets` refactor from `dict[SocketId, socket]` to a multi-listener-aware structure, plus inbound-connection demux (round-robin or hash) across the REUSEPORT cohort. |
 | **H8 SO_LINGER**    | **deferred** | Needs a bytes-encoded `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", onoff, linger))` API; PyTCP's setsockopt currently takes `value: int`, so a kwarg-shape change is required first. Bundle with M2 sendmsg/recvmsg work. |
 
@@ -886,7 +886,7 @@ If resuming this work, prioritise (rough order):
 
   1. ~~**M5 TCP_INFO**~~ — SHIPPED 2026-05-28.
   2. ~~**M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG**~~ — SHIPPED 2026-05-28.
-  3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most
+  3. ~~**H3 IPV6_V6ONLY + IPv4-mapped IPv6**~~ — SHIPPED 2026-05-28. (Originally: high-value (most
      servers expect dual-stack); substantial refactor in
      `net_addr.Ip6Address` + dual-stack listener pivot.
   4. **H4 IPv6 IPV6_JOIN_GROUP** — IPv4 half SHIPPED (IGMP track);
