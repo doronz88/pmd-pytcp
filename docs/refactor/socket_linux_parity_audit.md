@@ -218,20 +218,41 @@ rejecting on existing TIME_WAIT entries. On UDP, the bind
 gate would allow the bind even if the (addr, port) tuple is
 in `stack.sockets`.
 
-### H2. No `SO_REUSEPORT`
+### H2. `SO_REUSEPORT` — SHIPPED 2026-05-29 (Phases 1–4)
 
 **Linux:** Multiple sockets on the same (addr, port) for
 load balancing across worker threads/processes. Linux's
 SO_REUSEPORT hashes incoming connections to one of the
-listening sockets.
+listening sockets (`net/core/sock_reuseport.c`); every
+socket in the group must opt into the flag.
 
-**PyTCP:** Single socket per (addr, port) tuple by
-construction (`stack.sockets` is a flat dict).
+**PyTCP:** Shipped. `SocketTable` (`pytcp/socket/socket_table.py`)
+now stores a *cohort* — `dict[SocketId, list[socket]]` — per
+id; only listening ids (remote unspecified, port 0) ever hold
+more than one member, so established-connection lookups stay
+size-1. `SocketTable.get` round-robins delivery across a
+multi-member cohort under the table lock (no new lock,
+no-GIL-safe), so the TCP / UDP RX handlers load-balance
+transparently with no RX-path change. `SO_REUSEPORT`
+(SolSocketOption optname 15) round-trips via
+setsockopt/getsockopt; `is_address_in_use` permits an overlap
+only when the binding socket **and** every overlapping open
+socket carry the flag (Linux's all-or-nothing group rule).
 
-**Sketch:** Convert `stack.sockets` to a multi-listener
-structure for ports that opted into REUSEPORT. Inbound
-connection demux picks one listener (round-robin or hash).
-This is a larger refactor.
+**Phase-1 simplification:** the demux is round-robin, not
+Linux's 4-tuple hash. Round-robin is retransmit-safe because a
+listener-fork child registers its full 5-tuple before any
+duplicate SYN arrives, so the exact-match path (not the cohort)
+wins on retransmits. eBPF / custom REUSEPORT hash selection and
+REUSEPORT × dual-stack mixed-`v6only` cohorts are out of scope
+(documented in `docs/refactor/socket_parity_followup.md`).
+
+**Tests:** `SocketTable` cohort/round-robin/register/unregister
+unit tests; `is_address_in_use` + TcpSocket/UdpSocket bind-gate
+unit tests; TCP + UDP cohort RX-demux integration tests
+(`test__tcp__session__reuseport_cohort.py`,
+`test__udp__reuseport_cohort.py`) covering one-per-listener
+distribution, cursor wrap, and retransmit stability.
 
 ### H3. `IPV6_V6ONLY` — SHIPPED 2026-05-28 (Phases 1, 2, 3a, 3b, 3c)
 
@@ -839,7 +860,7 @@ that's intentional.
 | M1 SO_RCVTIMEO/SO_SNDTIMEO | shipped (RCVTIMEO) | `705a4617` — RCVTIMEO supplies recv-default timeout; SNDTIMEO storage-only (UDP/RAW sends today don't block on tx buffer space). |
 | M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
 | **H3 IPV6_V6ONLY**  | shipped | Five-phase delivery: Phase 1 (`Ip6Address.is_ipv4_mapped` + `from_ipv4_mapped`) + Phase 2 (`IPV6_V6ONLY` setsockopt) + Phase 3a (bind cross-family conflict) + Phase 3b (IPv4 SYN finds AF_INET6 V6ONLY=0 listener via `listening_socket_ids` extension + RX-loop V6ONLY filter) + Phase 3c (accepted children carry `_dual_stack` presentation flag; family / addresses / getsockname / getpeername / accept return wrap to IPv4-mapped IPv6). |
-| **H2 SO_REUSEPORT** | **deferred** | Substantial — needs `stack.sockets` refactor from `dict[SocketId, socket]` to a multi-listener-aware structure, plus inbound-connection demux (round-robin or hash) across the REUSEPORT cohort. |
+| **H2 SO_REUSEPORT** | **shipped** | `af536889` (Phase 1 — `SocketTable` cohort storage `dict[SocketId, list[socket]]` + register/unregister + transparent round-robin `get` + writer migration) + `c41aa96b` (Phase 2 — SolSocketOption optname 15 + setsockopt/getsockopt) + `c76fa4f5` (Phase 3 — `is_address_in_use` reuseport group-rule gate) + Phase 4 (TCP/UDP cohort RX-demux integration tests). Demux is round-robin (deliberate Phase-1 simplification of Linux's 4-tuple hash; retransmit-safe via the exact-match-first path). |
 | **H8 SO_LINGER**    | **deferred** | Needs a bytes-encoded `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", onoff, linger))` API; PyTCP's setsockopt currently takes `value: int`, so a kwarg-shape change is required first. Bundle with M2 sendmsg/recvmsg work. |
 
 ### Phase 3 — multicast / advanced — all deferred (5/5)
