@@ -63,6 +63,16 @@ from net_proto.protocols.icmp6.message.icmp6__message__time_exceeded import (
 from net_proto.protocols.icmp6.message.icmp6__message__unknown import (
     Icmp6MessageUnknown,
 )
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__done import (
+    Icmp6Mld1MessageDone,
+)
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__query import (
+    Icmp6Mld1MessageQuery,
+)
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import (
+    ICMP6__MLD1__MESSAGE__LEN,
+    Icmp6Mld1MessageReport,
+)
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__query import (
     Icmp6Mld2MessageQuery,
 )
@@ -142,7 +152,14 @@ class Icmp6Parser(Icmp6, ProtoParser):
             case Icmp6Type.MLD2__REPORT:
                 return Icmp6Mld2MessageReport
             case Icmp6Type.MULTICAST_LISTENER_QUERY:
-                return Icmp6Mld2MessageQuery
+                # RFC 3810 §8.1: a 24-octet Query is the MLDv1 form;
+                # an MLDv2 Query is >= 28 octets. Discriminate by the
+                # declared IPv6 payload length.
+                return Icmp6Mld1MessageQuery if self._ip6__dlen == ICMP6__MLD1__MESSAGE__LEN else Icmp6Mld2MessageQuery
+            case Icmp6Type.MULTICAST_LISTENER_REPORT:
+                return Icmp6Mld1MessageReport
+            case Icmp6Type.MULTICAST_LISTENER_DONE:
+                return Icmp6Mld1MessageDone
             case _:
                 return Icmp6MessageUnknown
 
