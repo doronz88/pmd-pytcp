@@ -97,6 +97,18 @@ the migration sweep is mechanical but slow.
 
 ### 2.2 H8 + M2 + M8 bundle — control-message layer
 
+> **SCOPE CORRECTED 2026-05-29 — most of this bundle already
+> shipped.** A code survey found `recvmsg` (M2 recv-side) and
+> `MSG_ERRQUEUE` → `IP_RECVERR` cmsg (M8) are already implemented on
+> `UdpSocket` / `TcpSocket` with tests, and `error_queue.py` exists;
+> the cmsg form is already the stdlib `list[(level, type, data)]`
+> tuple (no byte-level CMSG codec needed). What actually remains is
+> `sendmsg` (the send-side of M2), the base/Raw msg-surface, and
+> `SO_LINGER` (H8) from scratch — ~1–2 days, not 3–4. The detailed,
+> corrected plan + resume prompt is in
+> **`docs/refactor/socket_sendmsg_so_linger.md`**. The prose below is
+> the original (stale) framing, retained for context.
+
 H8 (SO_LINGER), M2 (sendmsg/recvmsg), M8 (MSG_ERRQUEUE) are
 coupled because all three require an extended setsockopt /
 recv signature shape that PyTCP doesn't have today. Ship as one
