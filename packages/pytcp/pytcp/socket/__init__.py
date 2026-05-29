@@ -199,6 +199,8 @@ class IpV6Option(IntEnum):
     """
 
     IPV6_UNICAST_HOPS = 16  # int 1-255: per-socket Hop-Limit override
+    IPV6_JOIN_GROUP = 20  # ipv6_mreq bytes: join an IPv6 multicast group (RFC 3493 §5.2)
+    IPV6_LEAVE_GROUP = 21  # ipv6_mreq bytes: leave an IPv6 multicast group (RFC 3493 §5.2)
     IPV6_MTU = 24  # int (getsockopt only): effective PMTU for connected peer
     IPV6_RECVERR = 25  # int 0/1: enable IPv6 error queue (recvmsg MSG_ERRQUEUE — Linux ipv6(7))
     IPV6_V6ONLY = 26  # int 0/1: AF_INET6 socket accepts IPv4-mapped peers when 0 (dual-stack)
@@ -207,6 +209,14 @@ class IpV6Option(IntEnum):
 
 
 IPV6_UNICAST_HOPS = IpV6Option.IPV6_UNICAST_HOPS
+IPV6_JOIN_GROUP = IpV6Option.IPV6_JOIN_GROUP
+IPV6_LEAVE_GROUP = IpV6Option.IPV6_LEAVE_GROUP
+# Linux 'IPV6_ADD_MEMBERSHIP' / 'IPV6_DROP_MEMBERSHIP' are stdlib-
+# socket aliases for the same integer values (20 / 21). Re-export
+# both spellings so apps written for either API surface work
+# unchanged.
+IPV6_ADD_MEMBERSHIP = IpV6Option.IPV6_JOIN_GROUP
+IPV6_DROP_MEMBERSHIP = IpV6Option.IPV6_LEAVE_GROUP
 IPV6_MTU = IpV6Option.IPV6_MTU
 IPV6_RECVERR = IpV6Option.IPV6_RECVERR
 IPV6_V6ONLY = IpV6Option.IPV6_V6ONLY
@@ -478,6 +488,14 @@ class socket(ABC):
     _ipv6_recverr: bool
     _ipv6_v6only: bool
     _dual_stack: bool
+    # Per-socket IPv6 multicast memberships keyed by (ifindex, group).
+    # Presence-only set (no source-filter today — the IPv4 source-
+    # filter machinery is not yet mirrored for IPv6). The H4 IPv6
+    # row of socket_linux_parity_audit.md flips to "shipped (any-
+    # source join)" with this; full source-filter parity is a
+    # follow-up.
+    _ip6_memberships: set[tuple[int, Ip6Address]]
+    _lock__ip6_memberships: threading.Lock
     # The source filter (RFC 3376 §3.1) this socket holds per joined
     # (ifindex, group). 'IP_ADD_MEMBERSHIP' records an EXCLUDE{}
     # any-source filter; the source options build INCLUDE / EXCLUDE
@@ -555,6 +573,13 @@ class socket(ABC):
         # RX-path active-socket lookup keeps matching the
         # inbound IPv4 packets.
         self._dual_stack = False
+
+        # Per-socket IPv6 multicast memberships (H4 IPv6 row of
+        # socket_linux_parity_audit.md). Empty set on every fresh
+        # socket; populated by 'setsockopt(IPV6_JOIN_GROUP)' and
+        # drained by 'setsockopt(IPV6_LEAVE_GROUP)'.
+        self._ip6_memberships = set()
+        self._lock__ip6_memberships = threading.Lock()
         # Per-socket IPv4 multicast holds (ifindex, group) for the
         # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
         self._ip4_source_filters = {}
@@ -888,7 +913,7 @@ class socket(ABC):
                 return self._effective_pmtu()
         return None
 
-    def _ipproto_ipv6_setsockopt(self, optname: int, value: int, /) -> bool:
+    def _ipproto_ipv6_setsockopt(self, optname: int, value: int | bytes, /) -> bool:
         """
         Apply an IPPROTO_IPV6-level setsockopt option; return True if
         handled. Currently supports IPV6_UNICAST_HOPS (1-255 per-socket
@@ -913,7 +938,92 @@ class socket(ABC):
             case _ if optname == IPV6_V6ONLY:
                 self._ipv6_v6only = bool(value)
                 return True
+            case _ if optname in (IPV6_JOIN_GROUP, IPV6_LEAVE_GROUP):
+                if not isinstance(value, (bytes, bytearray, memoryview)):
+                    raise OSError(
+                        errno.EINVAL,
+                        f"IPV6_JOIN/LEAVE_GROUP value must be an ipv6_mreq bytes object, "
+                        f"got {type(value).__name__}",
+                    )
+                self._ipproto_ipv6_membership(optname, bytes(value))
+                return True
         return False
+
+    def _ipproto_ipv6_membership(self, optname: int, mreq: bytes, /) -> None:
+        """
+        Apply IPV6_JOIN_GROUP / IPV6_LEAVE_GROUP (RFC 3493 §5.2)
+        by parsing the 20-byte 'ipv6_mreq' structure (16-byte
+        ipv6mr_multiaddr + 4-byte ipv6mr_interface in host byte
+        order) and pushing the membership change to the egress
+        interface's '_ip6_multicast' list. Joining wires the
+        outbound MLDv2 Report automatically (the
+        '_assign_ip6_multicast' handler emits it). Joining a
+        group this socket already holds raises EADDRINUSE;
+        dropping one it does not hold raises EADDRNOTAVAIL —
+        matches Linux's 'ipv6_sock_mc_join' /
+        'ipv6_sock_mc_drop' errno surface.
+        """
+
+        import pytcp.stack as _stack
+
+        if len(mreq) < 20:
+            raise OSError(errno.EINVAL, f"ipv6_mreq must be at least 20 bytes, got {len(mreq)}")
+
+        group = Ip6Address(mreq[0:16])
+        if not group.is_multicast:
+            raise OSError(errno.EINVAL, f"{group} is not a multicast group address")
+        mreq_ifindex = int.from_bytes(mreq[16:20], sys.byteorder)
+
+        # ifindex=0 (the "let the kernel pick" sentinel) resolves
+        # to the first interface that owns an IPv6 unicast address,
+        # mirroring the IPv4 'IP_ADD_MEMBERSHIP' INADDR_ANY path.
+        if mreq_ifindex == 0:
+            for candidate_ifindex, handler in _stack.interfaces.items():
+                if handler._ip6_unicast:
+                    mreq_ifindex = candidate_ifindex
+                    break
+            else:
+                # No IPv6-capable interface configured.
+                raise OSError(errno.EADDRNOTAVAIL, "No IPv6-capable interface available")
+        if mreq_ifindex not in _stack.interfaces:
+            raise OSError(errno.EADDRNOTAVAIL, f"No interface with ifindex {mreq_ifindex}")
+
+        handler = _stack.interfaces[mreq_ifindex]
+        key = (mreq_ifindex, group)
+        with self._lock__ip6_memberships:
+            if optname == IPV6_JOIN_GROUP:
+                if key in self._ip6_memberships:
+                    raise OSError(
+                        errno.EADDRINUSE,
+                        f"Socket already a member of {group} on interface {mreq_ifindex}",
+                    )
+                # The handler's '_assign_ip6_multicast' is idempotent
+                # at the interface level — multiple sockets joining
+                # the same group keep one membership on the wire.
+                # PyTCP doesn't refcount per-interface IPv6
+                # membership today (parity with the IPv6 SLAAC
+                # solicited-node assignment path) — a leave by ONE
+                # socket would remove the group even if another
+                # socket still held it. The IPv4 IGMP track addresses
+                # this via the interface-membership API; mirroring
+                # that for IPv6 is a follow-up. The socket-side
+                # 'EADDRINUSE' check above keeps per-socket
+                # bookkeeping clean.
+                if group not in handler._ip6_multicast:
+                    handler._assign_ip6_multicast(group)
+                self._ip6_memberships.add(key)
+            else:
+                if key not in self._ip6_memberships:
+                    raise OSError(
+                        errno.EADDRNOTAVAIL,
+                        f"Socket is not a member of {group} on interface {mreq_ifindex}",
+                    )
+                self._ip6_memberships.discard(key)
+                # Only remove from the interface if no other
+                # socket on this stack holds the group. Today the
+                # check is best-effort — see the leave-side comment
+                # above.
+                handler._remove_ip6_multicast(group)
 
     def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
         """

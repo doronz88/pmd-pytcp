@@ -369,7 +369,7 @@ class TcpSocket(socket):
         # the FSM segment-emit path is a follow-up commit.
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
-        if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         if isinstance(value, int) and level == IPPROTO_TCP and optname == TCP_KEEPIDLE:
             self._tcp_keepidle = int(value)

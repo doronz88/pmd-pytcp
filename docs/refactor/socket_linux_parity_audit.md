@@ -847,7 +847,7 @@ that's intentional.
 | Gap | Status | Rationale |
 |-----|--------|-----------|
 | **H4 IPv4 IP_ADD_MEMBERSHIP** | shipped | `f837d017` initial + R3-R6 refinements (`8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/`e9abe066`) + `c98e409c`/`9cc7dfdc` §9 source filters + `752d2bfd` finalizer. Full IGMP host stack (RFC 3376 §7 v1/v2 fallback + §9 SSM). |
-| **H4 IPv6 IPV6_JOIN_GROUP** | deferred | App-driven IPv6 membership not yet exposed; MLDv2 listener emits Reports for SLAAC-driven groups but applications can't request a join. Lift the IPv4 IGMP setsockopt pattern (~80 lines in `socket/__init__.py`) to a parallel IPv6 surface + MLDv2 Report on join. |
+| **H4 IPv6 IPV6_JOIN_GROUP** | shipped (any-source join) 2026-05-28 | `IPV6_JOIN_GROUP` (= 20) and `IPV6_LEAVE_GROUP` (= 21) wired through `_ipproto_ipv6_membership(mreq)`; ifindex=0 picks the first IPv6-capable interface; EADDRINUSE on duplicate join, EADDRNOTAVAIL on stale leave, EINVAL on non-multicast or truncated mreq. The existing handler `_assign_ip6_multicast` emits the MLDv2 Report automatically. 8 integration tests. Per-socket source-filter parity (IPV6_ADD/DROP_SOURCE_MEMBERSHIP) is a follow-up that lifts the IPv4 source-filter machinery to IPv6. |
 | **H5 SO_BROADCAST** | partially shipped | `705a4617` stored the flag; full broadcast-send gate enforcement (refuse with EACCES when flag is False, matching Linux) deferred — would break existing PyTCP callers that don't set the flag, needs a coordinated stack-internal audit first. |
 | **H2 SO_REUSEPORT** | (see Phase 2)    |  |
 | **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | partial | (see Phase 2 row above) |
@@ -889,9 +889,10 @@ If resuming this work, prioritise (rough order):
   3. ~~**H3 IPV6_V6ONLY + IPv4-mapped IPv6**~~ — SHIPPED 2026-05-28. (Originally: high-value (most
      servers expect dual-stack); substantial refactor in
      `net_addr.Ip6Address` + dual-stack listener pivot.
-  4. **H4 IPv6 IPV6_JOIN_GROUP** — IPv4 half SHIPPED (IGMP track);
-     IPv6 half remains. Lift the IPv4 setsockopt pattern to a
-     parallel IPv6 surface + MLDv2 Report on join.
+  4. ~~**H4 IPv6 IPV6_JOIN_GROUP**~~ — SHIPPED 2026-05-28 (any-source
+     join). Per-socket source filters (IPV6_ADD/DROP_SOURCE_MEMBERSHIP)
+     remain — lift the IPv4 source-filter machinery if a real consumer
+     needs it.
   5. **H2 SO_REUSEPORT** — `stack.sockets` multi-listener refactor.
   6. **M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE** — control-message
      layer; one focused work block.

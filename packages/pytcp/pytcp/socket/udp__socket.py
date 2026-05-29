@@ -173,7 +173,7 @@ class UdpSocket(socket):
             return
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):
             return
-        if isinstance(value, int) and level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
+        if level == IPPROTO_IPV6 and self._ipproto_ipv6_setsockopt(optname, value):
             return
         if isinstance(value, int) and level == SOL_UDP and self._sol_udp_setsockopt(optname, value):
             return
