@@ -144,6 +144,15 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
     Dhcp4OptionUnknown,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
+from net_proto.protocols.dhcp6.dhcp6__enums import Dhcp6MessageType
+from net_proto.protocols.dhcp6.dhcp6__errors import (
+    Dhcp6IntegrityError,
+    Dhcp6SanityError,
+)
+from net_proto.protocols.dhcp6.dhcp6__header import (
+    DHCP6__HEADER__LEN,
+    Dhcp6Header,
+)
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ethernet.ethernet__base import EthernetPayload
 from net_proto.protocols.ethernet.ethernet__errors import (
@@ -604,6 +613,7 @@ __all__ = [
     "DHCP4__OPTION__END__LEN",
     "DHCP4__OPTION__LEN",
     "DHCP4__OPTION__PAD__LEN",
+    "DHCP6__HEADER__LEN",
     "Dhcp4Header",
     "Dhcp4IntegrityError",
     "Dhcp4MessageType",
@@ -629,6 +639,10 @@ __all__ = [
     "Dhcp4Options",
     "Dhcp4Parser",
     "Dhcp4SanityError",
+    "Dhcp6Header",
+    "Dhcp6IntegrityError",
+    "Dhcp6MessageType",
+    "Dhcp6SanityError",
     "ETHERNET_802_3__HEADER__LEN",
     "ETHERNET_802_3__PACKET__MAX_LEN",
     "ETHERNET_802_3__PAYLOAD__MAX_LEN",
