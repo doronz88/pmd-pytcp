@@ -98,6 +98,7 @@ class Ip4TxHandler:
         ip4__src: Ip4Address,
         ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
+        ip4__dscp: int = 0,
         ip4__flag_df: bool = False,
         ip4__options: Ip4Options = Ip4Options(),
         ip4__payload: Ip4Payload = RawAssembler(),
@@ -197,6 +198,7 @@ class Ip4TxHandler:
             ip4__dst=ip4__dst,
             ip4__ttl=ip4__ttl,
             ip4__ecn=ip4__ecn,
+            ip4__dscp=ip4__dscp,
             ip4__flag_df=ip4__flag_df,
             ip4__options=ip4__options,
             ip4__payload=ip4__payload,
@@ -518,6 +520,7 @@ class Ip4TxHandler:
         ip4__payload: bytes = bytes(),
         ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
+        ip4__dscp: int = 0,
     ) -> None:
         """
         Interface method for RAW Socket -> Packet Assembler
@@ -534,6 +537,7 @@ class Ip4TxHandler:
                 ip_proto=ip4__proto,
             ),
             "ip4__ecn": ip4__ecn,
+            "ip4__dscp": ip4__dscp,
         }
         if ip4__ttl is not None:
             kwargs["ip4__ttl"] = ip4__ttl

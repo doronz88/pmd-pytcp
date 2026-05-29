@@ -79,6 +79,7 @@ class TcpTxHandler:
         ip__dst: Ip6Address | Ip4Address,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         tcp__sport: int,
         tcp__dport: int,
         tcp__seq: int = 0,
@@ -229,6 +230,7 @@ class TcpTxHandler:
                     ip6__dst=cast(Ip6Address, ip__dst),
                     ip6__hop=ip__ttl,
                     ip6__ecn=ip__ecn,
+                    ip6__dscp=ip__dscp,
                     ip6__payload=tcp_packet_tx,
                 )
             case False, False, True, True:
@@ -242,6 +244,7 @@ class TcpTxHandler:
                     ip4__dst=cast(Ip4Address, ip__dst),
                     ip4__ttl=ip__ttl,
                     ip4__ecn=ip__ecn,
+                    ip4__dscp=ip__dscp,
                     ip4__flag_df=True,
                     ip4__payload=tcp_packet_tx,
                 )
@@ -255,6 +258,7 @@ class TcpTxHandler:
         ip__remote_address: Ip6Address | Ip4Address,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         tcp__local_port: int,
         tcp__remote_port: int,
         tcp__flag_syn: bool = False,
@@ -291,6 +295,7 @@ class TcpTxHandler:
                 ip__src=ip__local_address,
                 ip__ttl=ip__ttl,
                 ip__ecn=ip__ecn,
+                ip__dscp=ip__dscp,
                 tcp__flag_ns=tcp__flag_ns,
                 ip__dst=ip__remote_address,
                 tcp__sport=tcp__local_port,

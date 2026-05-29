@@ -80,6 +80,7 @@ class Ip6TxHandler:
         ip6__src: Ip6Address,
         ip6__hop: int | None = None,
         ip6__ecn: int = 0,
+        ip6__dscp: int = 0,
         ip6__payload: Ip6Payload = RawAssembler(),
     ) -> TxStatus:
         """
@@ -146,6 +147,7 @@ class Ip6TxHandler:
             ip6__dst=ip6__dst,
             ip6__hop=ip6__hop,
             ip6__ecn=ip6__ecn,
+            ip6__dscp=ip6__dscp,
             ip6__flow=ip6__flow,
             ip6__payload=ip6__payload,
         )
@@ -451,6 +453,7 @@ class Ip6TxHandler:
         ip6__payload: bytes = bytes(),
         ip6__hop: int | None = None,
         ip6__ecn: int = 0,
+        ip6__dscp: int = 0,
     ) -> None:
         """
         Interface method for RAW Socket -> Packet Assembler
@@ -467,6 +470,7 @@ class Ip6TxHandler:
                 ip_proto=ip6__next,
             ),
             "ip6__ecn": ip6__ecn,
+            "ip6__dscp": ip6__dscp,
         }
         if ip6__hop is not None:
             kwargs["ip6__hop"] = ip6__hop

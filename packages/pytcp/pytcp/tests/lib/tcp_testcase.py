@@ -105,6 +105,9 @@ class TcpProbe:
     ip_dst: Ip6Address | Ip4Address
     # RFC 3168 §5: IP ECN field - 0=Not-ECT, 1=ECT(1), 2=ECT(0), 3=CE.
     ip_ecn: int
+    # RFC 2474 §3: DS field DSCP (high 6 bits of the TOS / Traffic
+    # Class byte), marked from the socket's IP_TOS / IPV6_TCLASS.
+    ip_dscp: int
     sport: int
     dport: int
     seq: int
@@ -487,6 +490,7 @@ class TcpTestCase(NetworkTestCase):
             ip_src=packet_rx.ip.src,
             ip_dst=packet_rx.ip.dst,
             ip_ecn=packet_rx.ip.ecn,
+            ip_dscp=packet_rx.ip.dscp,
             sport=packet_rx.tcp.sport,
             dport=packet_rx.tcp.dport,
             seq=packet_rx.tcp.seq,

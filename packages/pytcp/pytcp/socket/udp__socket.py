@@ -478,6 +478,7 @@ class UdpSocket(socket):
             udp__no_cksum=self._udp_no_check6_tx,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
+            ip__dscp=self._effective_ip_dscp(),
             ip4__options=self._effective_ip4_options(),
         )
 
@@ -550,6 +551,7 @@ class UdpSocket(socket):
             udp__no_cksum=self._udp_no_check6_tx,
             ip__ttl=self._effective_ip_ttl(),
             ip__ecn=self._effective_ip_ecn(),
+            ip__dscp=self._effective_ip_dscp(),
             ip4__options=self._effective_ip4_options(),
         )
 

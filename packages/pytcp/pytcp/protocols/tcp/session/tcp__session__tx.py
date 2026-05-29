@@ -253,6 +253,12 @@ class TcpTxEngine:
             # Hop-Limit field.
             ip__ttl=session._socket._effective_ip_ttl(),
             ip__ecn=ip__ecn,
+            # Linux IP_TOS / IPV6_TCLASS DSCP marking (M4 of
+            # socket_linux_parity_audit.md): the high 6 bits of the
+            # socket's TOS / Traffic-Class byte mark every outbound
+            # segment. ECN (low 2 bits) stays RFC-3168 stack-driven
+            # above; DSCP is orthogonal and applies to TCP too.
+            ip__dscp=session._socket._effective_ip_dscp(),
             tcp__local_port=session._local_port,
             tcp__remote_port=session._remote_port,
             tcp__flag_syn=flag_syn,

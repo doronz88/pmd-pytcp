@@ -1799,6 +1799,7 @@ class PacketHandler(Subsystem, ABC):
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         ip4__options: Ip4Options | None = None,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
@@ -1815,6 +1816,7 @@ class PacketHandler(Subsystem, ABC):
             udp__no_cksum=udp__no_cksum,
             ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
+            ip__dscp=ip__dscp,
             ip4__options=ip4__options,
             echo_tracker=echo_tracker,
         )
@@ -1830,6 +1832,7 @@ class PacketHandler(Subsystem, ABC):
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         ip4__options: Ip4Options | None = None,
     ) -> None:
         """
@@ -1845,6 +1848,7 @@ class PacketHandler(Subsystem, ABC):
             udp__no_cksum=udp__no_cksum,
             ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
+            ip__dscp=ip__dscp,
             ip4__options=ip4__options,
         )
 
@@ -1866,6 +1870,7 @@ class PacketHandler(Subsystem, ABC):
         ip__src: Ip6Address | Ip4Address,
         ip__dst: Ip6Address | Ip4Address,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         tcp__sport: int,
         tcp__dport: int,
         tcp__seq: int = 0,
@@ -1901,6 +1906,7 @@ class PacketHandler(Subsystem, ABC):
             ip__src=ip__src,
             ip__dst=ip__dst,
             ip__ecn=ip__ecn,
+            ip__dscp=ip__dscp,
             tcp__sport=tcp__sport,
             tcp__dport=tcp__dport,
             tcp__seq=tcp__seq,
@@ -1936,6 +1942,7 @@ class PacketHandler(Subsystem, ABC):
         ip__remote_address: Ip6Address | Ip4Address,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         tcp__local_port: int,
         tcp__remote_port: int,
         tcp__flag_syn: bool = False,
@@ -1969,6 +1976,7 @@ class PacketHandler(Subsystem, ABC):
             ip__remote_address=ip__remote_address,
             ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
+            ip__dscp=ip__dscp,
             tcp__local_port=tcp__local_port,
             tcp__remote_port=tcp__remote_port,
             tcp__flag_syn=tcp__flag_syn,
@@ -2267,6 +2275,7 @@ class PacketHandler(Subsystem, ABC):
         ip4__src: Ip4Address,
         ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
+        ip4__dscp: int = 0,
         ip4__flag_df: bool = False,
         ip4__options: Ip4Options = Ip4Options(),
         ip4__payload: Ip4Payload = RawAssembler(),
@@ -2280,6 +2289,7 @@ class PacketHandler(Subsystem, ABC):
             ip4__src=ip4__src,
             ip4__ttl=ip4__ttl,
             ip4__ecn=ip4__ecn,
+            ip4__dscp=ip4__dscp,
             ip4__flag_df=ip4__flag_df,
             ip4__options=ip4__options,
             ip4__payload=ip4__payload,
@@ -2294,6 +2304,7 @@ class PacketHandler(Subsystem, ABC):
         ip4__payload: bytes = bytes(),
         ip4__ttl: int | None = None,
         ip4__ecn: int = 0,
+        ip4__dscp: int = 0,
     ) -> None:
         """
         Enqueue an outbound IPv4 RAW datagram (delegates to the IPv4 TX sub-handler).
@@ -2306,6 +2317,7 @@ class PacketHandler(Subsystem, ABC):
             ip4__payload=ip4__payload,
             ip4__ttl=ip4__ttl,
             ip4__ecn=ip4__ecn,
+            ip4__dscp=ip4__dscp,
         )
 
     ###
@@ -2347,6 +2359,7 @@ class PacketHandler(Subsystem, ABC):
         ip6__src: Ip6Address,
         ip6__hop: int | None = None,
         ip6__ecn: int = 0,
+        ip6__dscp: int = 0,
         ip6__payload: Ip6Payload = RawAssembler(),
     ) -> TxStatus:
         """
@@ -2358,6 +2371,7 @@ class PacketHandler(Subsystem, ABC):
             ip6__src=ip6__src,
             ip6__hop=ip6__hop,
             ip6__ecn=ip6__ecn,
+            ip6__dscp=ip6__dscp,
             ip6__payload=ip6__payload,
         )
 
@@ -2370,6 +2384,7 @@ class PacketHandler(Subsystem, ABC):
         ip6__payload: bytes = bytes(),
         ip6__hop: int | None = None,
         ip6__ecn: int = 0,
+        ip6__dscp: int = 0,
     ) -> None:
         """
         Enqueue an outbound IPv6 RAW datagram (delegates to the IPv6 TX sub-handler).
@@ -2382,6 +2397,7 @@ class PacketHandler(Subsystem, ABC):
             ip6__payload=ip6__payload,
             ip6__hop=ip6__hop,
             ip6__ecn=ip6__ecn,
+            ip6__dscp=ip6__dscp,
         )
 
 

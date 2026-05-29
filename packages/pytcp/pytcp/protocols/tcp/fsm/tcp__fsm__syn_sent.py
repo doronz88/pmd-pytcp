@@ -207,6 +207,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
             stack.egress_packet_handler(session._remote_ip_address).send_tcp_packet(
                 ip__local_address=session._local_ip_address,
                 ip__remote_address=session._remote_ip_address,
+                ip__dscp=session._socket._effective_ip_dscp(),
                 tcp__local_port=session._local_port,
                 tcp__remote_port=session._remote_port,
                 tcp__flag_rst=True,

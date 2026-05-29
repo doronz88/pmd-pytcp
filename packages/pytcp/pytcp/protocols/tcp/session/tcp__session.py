@@ -1412,6 +1412,7 @@ class TcpSession:
         stack.egress_packet_handler(self._remote_ip_address).send_tcp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
+            ip__dscp=self._socket._effective_ip_dscp(),
             tcp__local_port=self._local_port,
             tcp__remote_port=self._remote_port,
             tcp__flag_ack=True,

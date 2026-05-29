@@ -56,13 +56,18 @@ from net_proto import (
 )
 from pytcp.socket import (
     IP_MTU,
+    IP_TOS,
     IP_TTL,
     IPPROTO_IP,
+    IPPROTO_IPV6,
+    IPV6_TCLASS,
     AddressFamily,
 )
 from pytcp.tests.lib.udp_testcase import (
     HOST_A__IP4_ADDRESS,
+    HOST_A__IP6_ADDRESS,
     STACK__IP4_HOST,
+    STACK__IP6_HOST,
     UdpTestCase,
 )
 
@@ -404,6 +409,76 @@ class TestUdpSocketApiIpTtlOnWire(UdpTestCase):
             probe.ip_ttl,
             7,
             msg="setsockopt(IP_TTL, 7) must thread through to the outbound IPv4 TTL field.",
+        )
+
+
+class TestUdpSocketApiIpDscpOnWire(UdpTestCase):
+    """
+    A per-socket IP_TOS / IPV6_TCLASS DSCP marking appears on the
+    outbound IP header. Pins the DSCP (high 6 bits) threading from
+    setsockopt → the wire, alongside the already-shipped ECN (low 2).
+    """
+
+    def test__udp_socket_api__ip_tos_dscp__appears_on_outbound_ipv4_wire(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_IP, IP_TOS, dscp<<2 | ecn)' makes
+        every outbound IPv4 UDP datagram carry the DSCP value in the
+        high 6 bits of the TOS byte and the ECN in the low 2.
+
+        Reference: RFC 2474 §3 (DS field — DSCP high 6 / ECN low 2).
+        """
+
+        sock = self._bind_udp_socket(
+            family=AddressFamily.INET4,
+            local_ip=STACK__IP4_HOST.address,
+            local_port=_LOCAL_PORT,
+        )
+        # DSCP 46 (EF) with ECN ECT(0) = (46 << 2) | 2 = 0xBA.
+        sock.setsockopt(IPPROTO_IP, IP_TOS, (46 << 2) | 2)
+
+        sock.sendto(b"x", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+
+        probe = self._parse_tx(self._frames_tx[0])
+        self.assertEqual(
+            probe.ip_dscp,
+            46,
+            msg="setsockopt(IP_TOS) DSCP bits must thread through to the outbound IPv4 'dscp' field.",
+        )
+        self.assertEqual(
+            probe.ip_ecn,
+            2,
+            msg="The IP_TOS ECN bits must still appear on the outbound IPv4 'ecn' field.",
+        )
+
+    def test__udp_socket_api__ipv6_tclass_dscp__appears_on_outbound_ipv6_wire(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_IPV6, IPV6_TCLASS, dscp<<2 | ecn)'
+        makes every outbound IPv6 UDP datagram carry the DSCP value in
+        the high 6 bits of the Traffic Class field and the ECN in the
+        low 2.
+
+        Reference: RFC 2474 §3 (DS field — DSCP high 6 / ECN low 2).
+        """
+
+        sock = self._bind_udp_socket(
+            family=AddressFamily.INET6,
+            local_ip=STACK__IP6_HOST.address,
+            local_port=_LOCAL_PORT,
+        )
+        sock.setsockopt(IPPROTO_IPV6, IPV6_TCLASS, (46 << 2) | 2)
+
+        sock.sendto(b"x", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+
+        probe = self._parse_tx(self._frames_tx[0])
+        self.assertEqual(
+            probe.ip_dscp,
+            46,
+            msg="setsockopt(IPV6_TCLASS) DSCP bits must thread through to the outbound IPv6 'dscp' field.",
+        )
+        self.assertEqual(
+            probe.ip_ecn,
+            2,
+            msg="The IPV6_TCLASS ECN bits must still appear on the outbound IPv6 'ecn' field.",
         )
 
 

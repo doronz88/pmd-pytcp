@@ -1137,6 +1137,18 @@ class socket(ABC):
             return self._ipv6_tclass & 0x03
         return self._ip_tos & 0x03
 
+    def _effective_ip_dscp(self) -> int:
+        """
+        Get the effective DSCP value (high 6 bits of IP_TOS /
+        IPV6_TCLASS) based on the socket's address family (RFC 2474
+        §3). Apps that set the full TOS / Traffic-Class byte get the
+        DSCP portion marked on every outbound packet automatically.
+        """
+
+        if self._address_family is AddressFamily.INET6:
+            return (self._ipv6_tclass >> 2) & 0x3F
+        return (self._ip_tos >> 2) & 0x3F
+
     def _effective_pmtu(self) -> int:
         """
         Get the effective Path-MTU for this socket's connected

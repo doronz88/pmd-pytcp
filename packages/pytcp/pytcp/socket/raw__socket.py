@@ -278,6 +278,7 @@ class RawSocket(socket):
                     ip6__payload=data,
                     ip6__hop=self._effective_ip_ttl(),
                     ip6__ecn=self._effective_ip_ecn(),
+                    ip6__dscp=self._effective_ip_dscp(),
                 )
             case AddressFamily.INET4:
                 stack.egress_packet_handler(cast(Ip4Address, self._remote_ip_address)).send_ip4_packet(
@@ -287,6 +288,7 @@ class RawSocket(socket):
                     ip4__payload=data,
                     ip4__ttl=self._effective_ip_ttl(),
                     ip4__ecn=self._effective_ip_ecn(),
+                    ip4__dscp=self._effective_ip_dscp(),
                 )
 
         # Phase 4b fire-and-forget: the packet is accepted into the
@@ -326,6 +328,7 @@ class RawSocket(socket):
                     ip6__payload=data,
                     ip6__hop=self._effective_ip_ttl(),
                     ip6__ecn=self._effective_ip_ecn(),
+                    ip6__dscp=self._effective_ip_dscp(),
                 )
             case AddressFamily.INET4:
                 stack.egress_packet_handler(cast(Ip4Address, remote_ip_address)).send_ip4_packet(
@@ -335,6 +338,7 @@ class RawSocket(socket):
                     ip4__payload=data,
                     ip4__ttl=self._effective_ip_ttl(),
                     ip4__ecn=self._effective_ip_ecn(),
+                    ip4__dscp=self._effective_ip_dscp(),
                 )
 
         # Phase 4b fire-and-forget — see 'send' above.

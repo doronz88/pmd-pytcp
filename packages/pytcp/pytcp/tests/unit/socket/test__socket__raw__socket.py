@@ -651,6 +651,67 @@ class TestRawSocketSendmsg(_RawSocketTestCase):
         )
 
 
+class TestRawSocketDscp(_RawSocketTestCase):
+    """
+    The per-socket DSCP marking (IP_TOS / IPV6_TCLASS high 6 bits)
+    threading from 'RawSocket.send' / 'sendto' into the IP TX path.
+    """
+
+    def test__raw_socket__effective_ip_dscp__extracts_high_six_bits_ipv4(self) -> None:
+        """
+        Ensure '_effective_ip_dscp()' returns the high 6 bits of the
+        IPv4 socket's IP_TOS byte and '_effective_ip_ecn()' the low 2.
+
+        Reference: RFC 2474 §3 (DS field — DSCP high 6 / ECN low 2).
+        """
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        s._ip_tos = (46 << 2) | 2
+
+        self.assertEqual(s._effective_ip_dscp(), 46, msg="DSCP must be the high 6 bits of IP_TOS.")
+        self.assertEqual(s._effective_ip_ecn(), 2, msg="ECN must be the low 2 bits of IP_TOS.")
+
+    def test__raw_socket__effective_ip_dscp__extracts_high_six_bits_ipv6(self) -> None:
+        """
+        Ensure '_effective_ip_dscp()' returns the high 6 bits of the
+        IPv6 socket's IPV6_TCLASS byte.
+
+        Reference: RFC 2474 §3 (DS field — DSCP high 6 / ECN low 2).
+        """
+
+        s = RawSocket(family=AddressFamily.INET6, protocol=IpProto.ICMP6)
+        s._ipv6_tclass = (46 << 2) | 2
+
+        self.assertEqual(s._effective_ip_dscp(), 46, msg="DSCP must be the high 6 bits of IPV6_TCLASS.")
+        self.assertEqual(s._effective_ip_ecn(), 2, msg="ECN must be the low 2 bits of IPV6_TCLASS.")
+
+    def test__raw_socket__send_threads_ipv4_dscp_to_ip_layer(self) -> None:
+        """
+        Ensure send() passes the socket's effective DSCP through to
+        'send_ip4_packet' as 'ip4__dscp'.
+
+        Reference: RFC 2474 §3 (DS field — DSCP marking on transmit).
+        """
+
+        captured: dict[str, Any] = {}
+        self._handler.send_ip4_packet = lambda **kwargs: captured.update(kwargs)
+
+        s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
+        s._ip_tos = 46 << 2
+        with patch(
+            "pytcp.socket.raw__socket.pick_local_ip_address",
+            return_value=Ip4Address("10.0.0.1"),
+        ):
+            s.connect(("10.0.0.5", 7))
+        s.send(b"data")
+
+        self.assertEqual(
+            captured.get("ip4__dscp"),
+            46,
+            msg="send() must thread the socket's effective DSCP into send_ip4_packet(ip4__dscp=).",
+        )
+
+
 class TestRawSocketReceive(_RawSocketTestCase):
     """
     The 'RawSocket.recv' / 'RawSocket.recvfrom' / 'process_raw_packet'

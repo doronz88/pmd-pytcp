@@ -68,6 +68,7 @@ class UdpTxHandler:
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         ip4__options: Ip4Options | None = None,
         echo_tracker: Tracker | None = None,
     ) -> TxStatus:
@@ -98,6 +99,7 @@ class UdpTxHandler:
                     "ip6__dst": cast(Ip6Address, ip__dst),
                     "ip6__payload": udp_packet_tx,
                     "ip6__ecn": ip__ecn,
+                    "ip6__dscp": ip__dscp,
                 }
                 if ip__ttl is not None:
                     ip6_kwargs["ip6__hop"] = ip__ttl
@@ -117,6 +119,7 @@ class UdpTxHandler:
                     "ip4__flag_df": False,
                     "ip4__payload": udp_packet_tx,
                     "ip4__ecn": ip__ecn,
+                    "ip4__dscp": ip__dscp,
                 }
                 if ip__ttl is not None:
                     ip4_kwargs["ip4__ttl"] = ip__ttl
@@ -140,6 +143,7 @@ class UdpTxHandler:
         udp__no_cksum: bool = False,
         ip__ttl: int | None = None,
         ip__ecn: int = 0,
+        ip__dscp: int = 0,
         ip4__options: Ip4Options | None = None,
     ) -> None:
         """
@@ -166,6 +170,7 @@ class UdpTxHandler:
                 udp__no_cksum=udp__no_cksum,
                 ip__ttl=ip__ttl,
                 ip__ecn=ip__ecn,
+                ip__dscp=ip__dscp,
                 ip4__options=ip4__options,
             )
         )
