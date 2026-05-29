@@ -139,6 +139,7 @@ class SolSocketOption(IntEnum):
     SO_SNDBUF = 7  # int: send-buffer cap (storage only)
     SO_RCVBUF = 8  # int: recv-buffer cap (storage only)
     SO_OOBINLINE = 10  # bool: deliver TCP urgent in-band (PyTCP universally 1; RFC 6093 §6)
+    SO_REUSEPORT = 15  # bool: allow multiple sockets to bind the same (ip, port); load-balanced demux
     SO_RCVTIMEO = 20  # float seconds: persistent recv timeout
     SO_SNDTIMEO = 21  # float seconds: persistent send timeout
     SO_BINDTODEVICE = 25  # bytes: pin socket egress / RX to an interface by name
@@ -149,6 +150,7 @@ SO_BROADCAST = SolSocketOption.SO_BROADCAST
 SO_SNDBUF = SolSocketOption.SO_SNDBUF
 SO_RCVBUF = SolSocketOption.SO_RCVBUF
 SO_OOBINLINE = SolSocketOption.SO_OOBINLINE
+SO_REUSEPORT = SolSocketOption.SO_REUSEPORT
 SO_RCVTIMEO = SolSocketOption.SO_RCVTIMEO
 SO_SNDTIMEO = SolSocketOption.SO_SNDTIMEO
 SO_BINDTODEVICE = SolSocketOption.SO_BINDTODEVICE
@@ -475,6 +477,7 @@ class socket(ABC):
     _read_event_fd: int
     _blocking: bool
     _so_reuseaddr: bool
+    _so_reuseport: bool
     _so_broadcast: bool
     _so_sndbuf: int | None
     _so_rcvbuf: int | None
@@ -540,6 +543,7 @@ class socket(ABC):
         self._lock__io = threading.Lock()
         self._blocking = True
         self._so_reuseaddr = False
+        self._so_reuseport = False
         self._so_broadcast = False
         self._so_sndbuf = None
         self._so_rcvbuf = None
@@ -635,6 +639,9 @@ class socket(ABC):
         match optname:
             case _ if optname == SO_REUSEADDR:
                 self._so_reuseaddr = bool(value)
+                return True
+            case _ if optname == SO_REUSEPORT:
+                self._so_reuseport = bool(value)
                 return True
             case _ if optname == SO_BROADCAST:
                 self._so_broadcast = bool(value)
@@ -1148,6 +1155,8 @@ class socket(ABC):
         match optname:
             case _ if optname == SO_REUSEADDR:
                 return int(self._so_reuseaddr)
+            case _ if optname == SO_REUSEPORT:
+                return int(self._so_reuseport)
             case _ if optname == SO_BROADCAST:
                 return int(self._so_broadcast)
             case _ if optname == SO_SNDBUF:

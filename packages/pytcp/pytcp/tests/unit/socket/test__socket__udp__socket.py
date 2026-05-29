@@ -47,6 +47,7 @@ from pytcp.socket import (
     SO_RCVBUF,
     SO_RCVTIMEO,
     SO_REUSEADDR,
+    SO_REUSEPORT,
     SO_SNDBUF,
     SO_SNDTIMEO,
     SOL_SOCKET,
@@ -1712,6 +1713,31 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             s.getsockopt(SOL_SOCKET, SO_REUSEADDR),
             1,
             msg="SO_REUSEADDR must round-trip via setsockopt/getsockopt.",
+        )
+
+    def test__udp_socket__so_reuseport_round_trip(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_REUSEPORT, 1) + getsockopt
+        round-trips as 1, and the default reads as 0.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        s = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(s.close)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_REUSEPORT),
+            0,
+            msg="SO_REUSEPORT must default to 0.",
+        )
+
+        s.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_REUSEPORT),
+            1,
+            msg="SO_REUSEPORT must round-trip via setsockopt/getsockopt.",
         )
 
     def test__udp_socket__so_reuseaddr_bypasses_address_in_use_check(self) -> None:
