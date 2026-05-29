@@ -23,8 +23,9 @@ Bounded items shipped this sweep (commit hashes on
 | H4 IPv6 IPV6_JOIN_GROUP | `b4ddb185` | `IPV6_JOIN_GROUP=20` / `IPV6_LEAVE_GROUP=21`; per-socket membership tracking; existing `_assign_ip6_multicast` auto-emits MLDv2 Report. |
 | M3 MSG_OOB / SO_OOBINLINE | `d75d5d90` | Linux constants exposed; SO_OOBINLINE guard documents the RFC 6093 §6 universal-inline design. Doc-realignment commit, not a feature gap. |
 | H5 SO_BROADCAST EACCES gate | `5311a1b1` | UDP `send`/`sendto` to `255.255.255.255` requires SO_BROADCAST=1; DHCPv4 client `_open_client_socket` now sets the flag. |
+| H2 SO_REUSEPORT | `af536889` / `c41aa96b` / `c76fa4f5` / `fe619b78` | 4-phase track (2026-05-29). `SocketTable` cohort storage + transparent round-robin `get`; SolSocketOption optname 15 setsockopt/getsockopt; `is_address_in_use` group-rule gate; TCP/UDP cohort RX-demux integration pins. Round-robin demux (Phase-1 simplification of Linux's 4-tuple hash; retransmit-safe). See §2.1. |
 
-11927 tests passing.
+11948 tests passing.
 
 ---
 
@@ -34,7 +35,19 @@ Each below is multi-day work and a deliberate scope-expansion
 decision past v3.0.6 host-stack closure. Pick one when you want
 to push the parity surface further.
 
-### 2.1 H2 SO_REUSEPORT
+### 2.1 H2 SO_REUSEPORT — SHIPPED 2026-05-29
+
+**Status.** Done across four commits (`af536889`, `c41aa96b`,
+`c76fa4f5`, `fe619b78`). The on-the-ground surgery was smaller
+than the estimate below: `SocketTable` already existed as a
+lock-guarded wrapper, so the risky "introduce a wrapper behind
+the dict API" migration was already done and the ~30 mocked-dict
+test fixtures needed zero churn (the dict-compat shims were
+preserved). Storage became `dict[SocketId, list[socket]]` (a
+cohort per id), `get` round-robins multi-member cohorts
+transparently (so the RX handlers were unchanged), and
+`is_address_in_use` enforces Linux's all-or-nothing group rule.
+The plan-as-written below is retained for historical context.
 
 **Goal.** Allow multiple sockets to bind the same `(local_ip,
 local_port)` 4-tuple with `setsockopt(SO_REUSEPORT, 1)` and

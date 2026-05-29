@@ -7,11 +7,12 @@
 > `f837d017` initial + `8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/
 > `e9abe066` R3-R6 refinements + `c98e409c`/`9cc7dfdc` §9 source
 > filters + `752d2bfd` finalizer); the H4 IPv6 half (IPV6_JOIN_GROUP)
-> remains deferred. Other substantial items (H3 IPV6_V6ONLY, H2
-> SO_REUSEPORT, M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8 SO_LINGER)
-> are deliberately deferred with rationale below — they each need
-> a meaningful refactor that earns its own focused work block. See
-> §100 "Shipping status" for the full ledger.
+> remains deferred. **H2 SO_REUSEPORT shipped 2026-05-29** (4-phase
+> track `af536889`/`c41aa96b`/`c76fa4f5`/`fe619b78`). Other
+> substantial items (M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8
+> SO_LINGER) are deliberately deferred with rationale below — they
+> each need a meaningful refactor that earns its own focused work
+> block. See §100 "Shipping status" for the full ledger.
 
 
 
