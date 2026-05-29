@@ -32,9 +32,11 @@ ver 3.0.6
 
 from typing import TYPE_CHECKING, cast
 
+from net_addr import IpVersion
 from net_proto import PacketRx, PacketValidationError, TcpParser
 from pytcp import stack
 from pytcp.lib.logger import log
+from pytcp.socket import AddressFamily
 from pytcp.socket.tcp__metadata import TcpMetadata
 from pytcp.socket.tcp__socket import TcpSocket
 
@@ -143,6 +145,22 @@ class TcpRxHandler:
                     TcpSocket,
                     stack.sockets.get(tcp_listening_socket_pattern, None),
                 ):
+                    # H3 Phase 3b cross-family dual-stack filter: an
+                    # IPv4 inbound matching an AF_INET6 listener (via
+                    # the wildcard '::' pattern emitted by
+                    # 'listening_socket_ids') requires that listener
+                    # to have 'IPV6_V6ONLY = 0'. A 'V6ONLY = 1'
+                    # listener keeps its strict-IPv6 namespace —
+                    # skip the match so the IPv4 inbound either
+                    # finds a same-family AF_INET listener earlier
+                    # in the patterns list or falls through to the
+                    # no-listener drop path.
+                    if (
+                        tcp_socket._address_family is AddressFamily.INET6
+                        and packet_rx_md.ip__local_address.version is IpVersion.IP4
+                        and tcp_socket._ipv6_v6only
+                    ):
+                        continue
                     self._if._packet_stats_rx.tcp__socket_match_listening__forward_to_socket += 1
                     __debug__ and log(
                         "tcp",

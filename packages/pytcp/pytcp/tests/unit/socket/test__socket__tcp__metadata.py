@@ -157,12 +157,15 @@ class TestTcpMetadataSocketIdIp4(TestCase):
 
     def test__tcp_metadata__listening_socket_ids_ip4(self) -> None:
         """
-        Ensure 'listening_socket_ids' for an IPv4 envelope produces the
-        two listener-match candidates: local-address-specific and
-        local-address-unspecified. Both use the unspecified remote
-        address and port-0.
+        Ensure 'listening_socket_ids' for an IPv4 envelope produces
+        THREE candidates in order: AF_INET local-specific,
+        AF_INET local-unspecified, AND the AF_INET6 wildcard
+        ('::') dual-stack pattern that matches a 'V6ONLY = 0'
+        IPv6 listener. The AF_INET candidates come first so a
+        family-specific listener wins over a dual-stack one
+        when both exist on the same port.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: socket_linux_parity_audit.md §H3 Phase 3b (dual-stack lookup).
         """
 
         md = _make_ip4_metadata()
@@ -183,11 +186,22 @@ class TestTcpMetadataSocketIdIp4(TestCase):
                 remote_address=Ip4Address(),
                 remote_port=0,
             ),
+            SocketId(
+                address_family=AddressFamily.INET6,
+                socket_type=SocketType.STREAM,
+                local_address=Ip6Address(),
+                local_port=8080,
+                remote_address=Ip6Address(),
+                remote_port=0,
+            ),
         ]
         self.assertEqual(
             md.listening_socket_ids,
             expected,
-            msg="TcpMetadata.listening_socket_ids must produce the specific-IP + unspecified-IP listener candidates.",
+            msg=(
+                "IPv4 listening_socket_ids must include the AF_INET6 wildcard "
+                "dual-stack pattern as the third candidate."
+            ),
         )
 
 

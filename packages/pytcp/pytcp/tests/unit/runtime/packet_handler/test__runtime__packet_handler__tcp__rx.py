@@ -330,3 +330,88 @@ class TestPacketHandlerTcpRxDispatch(_TcpRxTestBase):
             msg="RFC 9293 §3.10.7.1 ACK-bearing form: '<SEQ=SEG.ACK>' echoes the offending segment's ACK number.",
         )
         self.assertEqual(call["tcp__ack"], 0, msg="Bare RST carries no ACK number.")
+
+
+class TestPacketHandlerTcpRxDualStack(_TcpRxTestBase):
+    """
+    H3 Phase 3b dual-stack listener dispatch tests — an IPv4 SYN
+    must find an AF_INET6 'V6ONLY = 0' listener bound to '::' but
+    skip a 'V6ONLY = 1' listener on the same key.
+    """
+
+    def _install_dual_stack_listener(self, *, v6only: bool) -> MagicMock:
+        """
+        Stage a mock socket at the AF_INET6 wildcard listening
+        key — the 3rd entry in 'listening_socket_ids' for an
+        IPv4 inbound on STACK port 80.
+        """
+
+        from net_addr import Ip6Address
+        from pytcp.socket import AddressFamily, SocketType
+        from pytcp.socket.socket_id import SocketId
+
+        key = SocketId(
+            address_family=AddressFamily.INET6,
+            socket_type=SocketType.STREAM,
+            local_address=Ip6Address(),
+            local_port=80,
+            remote_address=Ip6Address(),
+            remote_port=0,
+        )
+        socket = MagicMock()
+        socket._address_family = AddressFamily.INET6
+        socket._ipv6_v6only = v6only
+        cast(dict[object, object], stack.sockets)[key] = socket
+        return socket
+
+    def test__tcp_rx__ipv4_syn_dispatches_to_af_inet6_v6only_off_listener(self) -> None:
+        """
+        Ensure an IPv4 inbound SYN with no matching AF_INET
+        listener finds an AF_INET6 'V6ONLY = 0' listener via the
+        wildcard pattern and dispatches to it — the canonical
+        Linux dual-stack accept flow.
+
+        Reference: Linux IPV6_V6ONLY = 0 (dual-stack accept).
+        """
+
+        socket = self._install_dual_stack_listener(v6only=False)
+        packet_rx = _packet_rx_from_ip4_tcp(flag_syn=True)
+        self._tcp_rx._phrx_tcp(packet_rx)
+
+        socket.process_tcp_packet.assert_called_once()
+        self.assertEqual(
+            self._if._packet_stats_rx.tcp__socket_match_listening__forward_to_socket,
+            1,
+            msg="Dual-stack match must increment tcp__socket_match_listening__forward_to_socket.",
+        )
+
+    def test__tcp_rx__ipv4_syn_skips_af_inet6_v6only_on_listener(self) -> None:
+        """
+        Ensure an IPv4 inbound SYN whose only candidate match is
+        an AF_INET6 'V6ONLY = 1' listener is NOT dispatched —
+        the strict-IPv6 listener keeps its single-family
+        namespace and the unmatched SYN falls through to the
+        no-listener drop path (no-socket-match RST-ACK).
+
+        Reference: Linux IPV6_V6ONLY = 1 (strict-IPv6 namespace).
+        """
+
+        socket = self._install_dual_stack_listener(v6only=True)
+        packet_rx = _packet_rx_from_ip4_tcp(flag_syn=True)
+        self._tcp_rx._phrx_tcp(packet_rx)
+
+        socket.process_tcp_packet.assert_not_called()
+        self.assertEqual(
+            self._if._packet_stats_rx.tcp__socket_match_listening__forward_to_socket,
+            0,
+            msg="V6ONLY=1 listener must NOT match an IPv4 SYN.",
+        )
+        # The SYN with no listener match elicits a SYN-RST-ACK reply
+        # via the canonical no-socket-match path — confirm via the
+        # 'tcp__no_socket_match__respond_rst' stat to pin the
+        # fall-through behaviour.
+        self.assertEqual(
+            self._if._packet_stats_rx.tcp__no_socket_match__respond_rst,
+            1,
+            msg="A SYN with no listener match must fall through to the no-match RST path.",
+        )

@@ -35,12 +35,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from net_addr import Ip4Address, Ip6Address, IpVersion
 from pytcp.protocols.tcp.tcp__seq import Seq32
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
 
 if TYPE_CHECKING:
-    from net_addr import Ip4Address, Ip6Address, IpVersion
     from net_proto import Tracker
 
 
@@ -107,9 +107,24 @@ class TcpMetadata:
     def listening_socket_ids(self) -> list[SocketId]:
         """
         Get list of the listening socket IDs that match the metadata.
+
+        Two same-family candidates first (specific-local then
+        unspecified-local), so a family-specific listener wins over a
+        dual-stack one when both are bound on the same port. For an
+        IPv4 envelope a THIRD candidate is appended — the AF_INET6
+        wildcard ('::') pattern — so an IPv6 listener with
+        'IPV6_V6ONLY = 0' (the Linux dual-stack mode) can also accept
+        the inbound IPv4 connection. The RX-side dispatcher in
+        'packet_handler__tcp__rx.py' filters cross-family matches
+        against the listener's '_ipv6_v6only' flag before delivering
+        — a V6ONLY=1 listener that happened to bind '::' is skipped.
+
+        The symmetric "IPv6 inbound accepted by AF_INET listener" path
+        is not added — Linux has no such mode (IPv4 sockets are always
+        single-family).
         """
 
-        return [
+        candidates: list[SocketId] = [
             SocketId(
                 address_family=AddressFamily.from_ver(self.ip__ver),
                 socket_type=SocketType.STREAM,
@@ -127,3 +142,15 @@ class TcpMetadata:
                 remote_port=0,
             ),
         ]
+        if self.ip__ver is IpVersion.IP4:
+            candidates.append(
+                SocketId(
+                    address_family=AddressFamily.INET6,
+                    socket_type=SocketType.STREAM,
+                    local_address=Ip6Address(),
+                    local_port=self.tcp__local_port,
+                    remote_address=Ip6Address(),
+                    remote_port=0,
+                )
+            )
+        return candidates

@@ -233,23 +233,51 @@ structure for ports that opted into REUSEPORT. Inbound
 connection demux picks one listener (round-robin or hash).
 This is a larger refactor.
 
-### H3. No `IPV6_V6ONLY`
+### H3. `IPV6_V6ONLY` — SHIPPED 2026-05-28 (Phases 1, 2, 3a, 3b)
 
 **Linux:** Default for Python is `IPV6_V6ONLY=1` (IPv6
 sockets accept only IPv6 peers). Setting it to 0 makes the
 socket accept IPv4-mapped peers (`::ffff:1.2.3.4`) — dual-
 stack mode.
 
-**PyTCP:** No dual-stack at all. AF_INET6 sockets only
-accept IPv6 peers. Apps that bind one socket to `[::]:80`
-expecting to serve both IPv4 and IPv6 clients (very common)
-get only IPv6.
+**PyTCP:** Dual-stack support shipped across four phases.
 
-**Sketch:** Two pieces. (a) Implement IPv4-mapped IPv6
-addresses (`::ffff:0:0/96`) in `Ip6Address`. (b) When an
-AF_INET6 socket has V6ONLY=0, register both IPv4 and IPv6
-listeners under the hood and translate inbound IPv4
-connections into IPv4-mapped peer addresses on accept().
+  * **Phase 1 (`6edab2be`):** `Ip6Address.is_ipv4_mapped`
+    predicate + `Ip6Address.from_ipv4_mapped(ip4)`
+    classmethod — the value-type prerequisites consumers
+    can already use (Linux `IN6_IS_ADDR_V4MAPPED` parallel).
+  * **Phase 2 (`72479a5f`):** `IPV6_V6ONLY` setsockopt
+    storage + getsockopt — operator-facing knob with
+    Python-default `V6ONLY = 1`. No behaviour change yet.
+  * **Phase 3a (`3389d546`):** Bind-time cross-family
+    conflict detection — `is_address_in_use` understands
+    that an AF_INET6 V6ONLY=0 listener bound to `::`
+    reserves both IPv4 and IPv6 namespaces on its port.
+    `TcpSocket.bind` / `UdpSocket.bind` pass `dual_stack=...`.
+  * **Phase 3b:** TCP RX listener-table extension —
+    `TcpMetadata.listening_socket_ids` on an IPv4 envelope
+    now appends an AF_INET6 wildcard pattern as the third
+    candidate so an IPv6 V6ONLY=0 listener bound to `::`
+    can accept the inbound IPv4 SYN. The dispatch loop in
+    `packet_handler__tcp__rx.py` filters cross-family
+    matches against the listener's `_ipv6_v6only` flag — a
+    V6ONLY=1 listener that happened to bind `::` is skipped
+    so the IPv4 inbound falls through to the no-listener
+    drop path.
+
+**Residual — Phase 3c (deferred-with-rationale):** When an
+IPv4 SYN reaches an AF_INET6 V6ONLY=0 listener via the
+Phase 3b path, the listener-fork pivot in
+`tcp__fsm__listen.py` currently constructs an AF_INET4 child
+session (since the peer's address is IPv4). Linux's
+canonical behaviour is to surface that child as an AF_INET6
+socket with IPv4-mapped peer/local addresses so `accept()`
+returns family `AF_INET6`. The Phase 3c work — wrapping
+IPv4 addresses into IPv4-mapped IPv6 at the listener-fork +
+keeping the wire transport as IPv4 — is bounded but
+non-trivial and is deferred to a focused follow-up commit.
+The current AF_INET4-child path is still functionally
+correct for apps that don't gate on `getpeername()` family.
 
 ### H4. Multicast group membership — IPv4 SHIPPED, IPv6 deferred
 
