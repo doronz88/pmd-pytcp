@@ -90,6 +90,7 @@ pattern is visible.
 | per-socket rx queue / accept queue / error queue | `_lock__io` + `threading.Semaphore` + atomic `deque` | `socket/*.py` |
 | TcpSession `_rx_buffer` / `_tx_buffer` / `_state` | `_lock__rx_buffer` / `_lock__tx_buffer` / `_lock__fsm` | `protocols/tcp/tcp__session.py` |
 | TcpSession logical-timer deadline map + coalesced service handle | `TcpTimerService._lock` (Lock; `_reschedule_locked` helper assumes held) (T2) | `protocols/tcp/session/tcp__session__timers.py` |
+| TcpSession close-complete signal (`_event__closed`) | `threading.Event` (self-synchronizing; set on the CLOSED transition by the RX/timer thread, awaited by a lingering `close()` on the app thread) | `protocols/tcp/session/tcp__session.py` |
 
 ---
 
@@ -456,3 +457,40 @@ multicast / IGMP-query / PMTU cross-thread state; the full
 stack-wide no-GIL backlog is tracked in
 `no_gil_thread_safety_audit.md`." This document is the
 authoritative no-GIL ledger going forward.
+
+---
+
+## 5. Post-close additions — standing-invariant reviews
+
+The backlog closed 2026-05-27; the standing invariant is that
+**any new cross-thread state added afterward is reviewed here
+at landing time** (lock-per-structure, a documented lock-free
+design, or a `# Phase: no-GIL — <why safe>` justification).
+Reviews of subsequent work:
+
+- **Socket Track B — `sendmsg` + `SO_LINGER` (2026-05-29).**
+  Two new cross-thread touchpoints, both no-GIL-safe by
+  construction, no new lock required:
+  - **`TcpSession._event__closed`** — a `threading.Event`,
+    set on the CLOSED transition in `_change_state` (RX/timer
+    thread, under `_lock__fsm`) and awaited by a lingering
+    `close()` (`SO_LINGER {l_onoff=1, l_linger>0}`) on the app
+    thread. `threading.Event` is self-synchronizing (its
+    internal `Condition`/`Lock` is the memory barrier on a
+    free-threaded build too), exactly the pattern the session's
+    existing `_event__rx_buffer` / `_event__connect` and the
+    `Subsystem` stop event already use. The event is set on the
+    terminal CLOSED state and never cleared (sessions are not
+    reused), so there is no lost- or stale-wakeup window. Listed
+    in §1 GUARDED.
+  - **`TcpSocket._so_linger`** (`tuple[int, int] | None`) —
+    written by `setsockopt(SO_LINGER)` and read by `close()`,
+    both on the **app thread**; no stack thread reads it. A
+    single atomic load/store of an immutable-tuple reference
+    (you observe either the old or new reference, never a torn
+    value). Concurrent app-thread `setsockopt`-vs-`close()` is
+    the same benign single-reference class as the other
+    per-socket `_so_*` scalar options (documented-LOW). No
+    lock; no shared-structure exposure. `sendmsg` itself adds
+    no state — it reuses the existing `send` / `sendto`
+    paths.

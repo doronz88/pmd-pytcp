@@ -510,6 +510,11 @@ class TcpSession:
         # full linger timeout. Set from '_change_state'; in a running
         # stack the RX / timer threads drive the transition while the
         # application thread waits in 'TcpSocket.close'.
+        # Phase: no-GIL — 'threading.Event' is self-synchronizing
+        # (its internal Condition/Lock is the cross-thread barrier);
+        # set on the terminal CLOSED state and never cleared, so no
+        # lock and no lost/stale-wakeup window. See
+        # no_gil_thread_safety_audit.md §5.
         self._event__closed: Event = threading.Event()
 
         # Used to ensure that only single event can run FSM at given time.
