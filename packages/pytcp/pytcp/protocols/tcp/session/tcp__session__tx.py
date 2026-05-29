@@ -246,6 +246,12 @@ class TcpTxEngine:
         stack.egress_packet_handler(session._remote_ip_address).send_tcp_packet(
             ip__local_address=session._local_ip_address,
             ip__remote_address=session._remote_ip_address,
+            # Linux IP_TTL / IPV6_UNICAST_HOPS per-socket override
+            # (H6 of socket_linux_parity_audit.md). 'None' lets the
+            # IP TX handler apply the stack default; a positive int
+            # threads through to the outbound IP header's TTL /
+            # Hop-Limit field.
+            ip__ttl=session._socket._effective_ip_ttl(),
             ip__ecn=ip__ecn,
             tcp__local_port=session._local_port,
             tcp__remote_port=session._remote_port,

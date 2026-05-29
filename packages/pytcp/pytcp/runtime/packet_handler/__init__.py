@@ -1934,6 +1934,7 @@ class PacketHandler(Subsystem, ABC):
         *,
         ip__local_address: Ip6Address | Ip4Address,
         ip__remote_address: Ip6Address | Ip4Address,
+        ip__ttl: int | None = None,
         ip__ecn: int = 0,
         tcp__local_port: int,
         tcp__remote_port: int,
@@ -1966,6 +1967,7 @@ class PacketHandler(Subsystem, ABC):
         return self._tcp_tx.send_tcp_packet(
             ip__local_address=ip__local_address,
             ip__remote_address=ip__remote_address,
+            ip__ttl=ip__ttl,
             ip__ecn=ip__ecn,
             tcp__local_port=tcp__local_port,
             tcp__remote_port=tcp__remote_port,

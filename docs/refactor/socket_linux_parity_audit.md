@@ -835,7 +835,7 @@ that's intentional.
 |-----|--------|---------------------|
 | H1 SO_REUSEADDR     | shipped | `705a4617` — bypasses "address already in use" gate when set. |
 | H7 SO_SNDBUF/RCVBUF | shipped (storage) | `705a4617` — round-trip via setsockopt; full tx/rx buffer cap enforcement deferred to a focused commit (RCVBUF would also need to drive RCV.WND advertisement). |
-| H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded; TCP storage-only (FSM segment-emit propagation deferred). |
+| H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded. TCP propagation completed 2026-05-28: `TcpSession._transmit_packet` reads `session._socket._effective_ip_ttl()` and passes `ip__ttl` through `send_tcp_packet` → `_phtx_tcp` → `_phtx_ip4`/`_phtx_ip6`. 5 integration tests pin the SYN + data-segment paths for both IPv4 and IPv6. |
 | M1 SO_RCVTIMEO/SO_SNDTIMEO | shipped (RCVTIMEO) | `705a4617` — RCVTIMEO supplies recv-default timeout; SNDTIMEO storage-only (UDP/RAW sends today don't block on tx buffer space). |
 | M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
 | **H3 IPV6_V6ONLY**  | shipped | Five-phase delivery: Phase 1 (`Ip6Address.is_ipv4_mapped` + `from_ipv4_mapped`) + Phase 2 (`IPV6_V6ONLY` setsockopt) + Phase 3a (bind cross-family conflict) + Phase 3b (IPv4 SYN finds AF_INET6 V6ONLY=0 listener via `listening_socket_ids` extension + RX-loop V6ONLY filter) + Phase 3c (accepted children carry `_dual_stack` presentation flag; family / addresses / getsockname / getpeername / accept return wrap to IPv4-mapped IPv6). |

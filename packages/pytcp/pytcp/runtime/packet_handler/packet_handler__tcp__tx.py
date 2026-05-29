@@ -77,6 +77,7 @@ class TcpTxHandler:
         *,
         ip__src: Ip6Address | Ip4Address,
         ip__dst: Ip6Address | Ip4Address,
+        ip__ttl: int | None = None,
         ip__ecn: int = 0,
         tcp__sport: int,
         tcp__dport: int,
@@ -226,6 +227,7 @@ class TcpTxHandler:
                 return self._if._phtx_ip6(
                     ip6__src=cast(Ip6Address, ip__src),
                     ip6__dst=cast(Ip6Address, ip__dst),
+                    ip6__hop=ip__ttl,
                     ip6__ecn=ip__ecn,
                     ip6__payload=tcp_packet_tx,
                 )
@@ -238,6 +240,7 @@ class TcpTxHandler:
                 return self._if._phtx_ip4(
                     ip4__src=cast(Ip4Address, ip__src),
                     ip4__dst=cast(Ip4Address, ip__dst),
+                    ip4__ttl=ip__ttl,
                     ip4__ecn=ip__ecn,
                     ip4__flag_df=True,
                     ip4__payload=tcp_packet_tx,
@@ -250,6 +253,7 @@ class TcpTxHandler:
         *,
         ip__local_address: Ip6Address | Ip4Address,
         ip__remote_address: Ip6Address | Ip4Address,
+        ip__ttl: int | None = None,
         ip__ecn: int = 0,
         tcp__local_port: int,
         tcp__remote_port: int,
@@ -285,6 +289,7 @@ class TcpTxHandler:
         return self._if._marshal_tx(
             lambda: self._phtx_tcp(
                 ip__src=ip__local_address,
+                ip__ttl=ip__ttl,
                 ip__ecn=ip__ecn,
                 tcp__flag_ns=tcp__flag_ns,
                 ip__dst=ip__remote_address,
