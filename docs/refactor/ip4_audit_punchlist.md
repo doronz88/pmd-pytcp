@@ -68,7 +68,7 @@ inventory.
 |---|------|-----|--------|-------|
 | ~~D~~ | ~~**IPv4 link-local autoconfig**~~ | ~~3927~~ | ~~2-4 days~~ | **SHIPPED** — phases 0 / 0.5 / 1 / 2 / 3 / 4 / 5 of the RFC 3927 track. Sanctioned ACD API on `Ip4AddressApi`; subsystem skeleton + MAC-seeded RNG; claim + retry + rate-limit; §2.5 defend / abandon; §1.9 / §2.11 DHCP coordination; stack-side wiring. Plan doc: `docs/refactor/rfc3927_link_local_autoconfig.md`. Adherence record: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md` (every §-section met). |
 | E | Multicast group membership API + IGMPv2/v3 | 1112 / 2236 / 3376 | Multi-day | All-hosts (224.0.0.1) preconfigured today; runtime JOIN/LEAVE / Reports / Queries deferred. |
-| F | IPv6 audit set parity sweep | — | 1-2 days | This session wrote 16 IPv4 audits but didn't refresh IPv6 audits in parallel. Symmetric topics (RFC 8200, RFC 8504) likely have similar Phase-1 sharpenings worth surfacing. |
+| ~~F~~ | ~~IPv6 audit set parity sweep~~ | ~~—~~ | ~~1-2 days~~ | **SHIPPED 2026-05-29.** Comparative IPv4↔IPv6 audit-set diff found the IPv6 data plane already well-implemented; the asymmetry was in the audit records, not the code. 1 code fix + 4 doc items: RFC 8200 §4.2 action-11 multicast suppression + RFC 4443 §2.4(e.3) code-2 exception (`5727911e`); new ip6 RFC 3168 (ECN) + RFC 2474 (DSCP) records + rfc8504 §5.12 flip (`c8effda6`); new ip6 RFC 2711 (Router Alert) record (`4c816c38`). Plan + findings: `docs/refactor/ipv6_audit_parity.md`. |
 
 ### Phase-2 items (project north-star — deferred until forwarding plane)
 
