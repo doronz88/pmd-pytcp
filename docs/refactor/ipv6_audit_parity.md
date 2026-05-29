@@ -5,6 +5,19 @@ item F of `ip4_audit_punchlist.md`: *"This session wrote 16 IPv4
 audits but didn't refresh IPv6 audits in parallel. Symmetric topics
 likely have similar Phase-1 sharpenings worth surfacing."*
 
+> **STATUS 2026-05-29: SHIPPED.** All five items landed:
+> `5727911e` (code — the §4.2 / §4443 §2.4 fix), `c8effda6` (IPv6 ECN
+> + DSCP records + rfc8504 §5.12 flip), and the Router Alert record.
+> One correction to the §3 plan below: implementation found the code
+> gap was **larger and two-sided** than scoped. The §4.2 action-11
+> multicast suppression was achieved only *accidentally* by an
+> RFC 4443 §2.4 **over**-suppression — the option-emit site never set
+> `is_param_problem_code_2=True`, so action-10 Parameter Problem to a
+> multicast dst was *wrongly dropped* (§2.4(e.3) exception 2 permits
+> it). The real fix was two-part: thread the multicast bit for §4.2
+> action-11 **and** honour the §2.4 code-2 exception so action-10
+> emits to multicast. See `5727911e`.
+
 ## 0. Headline — this is mostly a documentation-parity pass
 
 A comparative IPv4↔IPv6 audit-topic diff plus a code investigation of
