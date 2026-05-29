@@ -239,6 +239,7 @@ def is_address_in_use(
     address_family: AddressFamily,
     socket_type: SocketType,
     dual_stack: bool = False,
+    reuseport: bool = False,
 ) -> bool:
     """
     Check if the (family, type, IP, port) combination is already in use.
@@ -261,6 +262,14 @@ def is_address_in_use(
     (the Python / Linux default). A 'V6ONLY = 0' listener bound to a
     specific (non-wildcard) IPv6 address does not cross-block — the
     dual-stack reservation only triggers when bound to '::'.
+
+    'reuseport=True' (the binding socket carries SO_REUSEPORT) makes an
+    otherwise-conflicting overlap permissible — but only when the
+    overlapping open socket ALSO carries SO_REUSEPORT. This is Linux's
+    all-or-nothing group rule (net/core/sock_reuseport.c): every socket
+    bound to the same (ip, port) must opt into SO_REUSEPORT, so an
+    overlap with even one non-REUSEPORT socket still reports the
+    address in use.
     """
 
     for opened_socket in stack.sockets.values():
@@ -271,27 +280,35 @@ def is_address_in_use(
 
         # Same-family conflict — canonical BSD overlap rules.
         if opened_socket.family is address_family:
-            if (
+            overlaps = (
                 opened_socket.local_ip_address.is_unspecified
                 or opened_socket.local_ip_address == local_ip_address
                 or local_ip_address.is_unspecified
-            ):
-                return True
+            )
+        else:
+            # Cross-family conflict — only when one side is the IPv6
+            # '::' wildcard with V6ONLY=0 (Linux dual-stack reservation).
+            opened_is_dual_stack_ipv6_wildcard = (
+                opened_socket.family is AddressFamily.INET6
+                and not getattr(opened_socket, "_ipv6_v6only", True)
+                and opened_socket.local_ip_address.is_unspecified
+            )
+            new_is_dual_stack_ipv6_wildcard = (
+                address_family is AddressFamily.INET6 and dual_stack and local_ip_address.is_unspecified
+            )
+            overlaps = (address_family is AddressFamily.INET4 and opened_is_dual_stack_ipv6_wildcard) or (
+                new_is_dual_stack_ipv6_wildcard and opened_socket.family is AddressFamily.INET4
+            )
+
+        if not overlaps:
             continue
 
-        # Cross-family conflict — only when one side is the IPv6 '::'
-        # wildcard with V6ONLY=0 (Linux dual-stack reservation).
-        opened_is_dual_stack_ipv6_wildcard = (
-            opened_socket.family is AddressFamily.INET6
-            and not getattr(opened_socket, "_ipv6_v6only", True)
-            and opened_socket.local_ip_address.is_unspecified
-        )
-        new_is_dual_stack_ipv6_wildcard = (
-            address_family is AddressFamily.INET6 and dual_stack and local_ip_address.is_unspecified
-        )
-        if address_family is AddressFamily.INET4 and opened_is_dual_stack_ipv6_wildcard:
-            return True
-        if new_is_dual_stack_ipv6_wildcard and opened_socket.family is AddressFamily.INET4:
-            return True
+        # SO_REUSEPORT cohort: an overlap is permitted only when BOTH
+        # the binding socket and this open socket opted in. Any overlap
+        # with a non-REUSEPORT socket remains a conflict.
+        if reuseport and getattr(opened_socket, "_so_reuseport", False):
+            continue
+
+        return True
 
     return False

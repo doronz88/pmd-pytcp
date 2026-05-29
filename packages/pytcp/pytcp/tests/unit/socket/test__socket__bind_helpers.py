@@ -661,6 +661,7 @@ class TestIsAddressInUse(TestCase):
         type: SocketType,
         local_ip_address: Ip4Address | Ip6Address,
         local_port: int,
+        reuseport: bool = False,
     ) -> SimpleNamespace:
         """
         Build a namespace stub whose attribute surface matches the small
@@ -672,6 +673,7 @@ class TestIsAddressInUse(TestCase):
             type=type,
             local_ip_address=local_ip_address,
             local_port=local_port,
+            _so_reuseport=reuseport,
         )
 
     def test__ip_helper__is_address_in_use__exact_match_returns_true(self) -> None:
@@ -1079,4 +1081,97 @@ class TestIsAddressInUse(TestCase):
                 "A V6ONLY=0 listener bound to a SPECIFIC IPv6 address must NOT cross-block "
                 "IPv4 — dual-stack reservation triggers only on '::'."
             ),
+        )
+
+    def test__ip_helper__is_address_in_use__reuseport_both_set_returns_false(self) -> None:
+        """
+        Ensure an otherwise-conflicting overlap is permitted when both
+        the binding socket and the open socket carry SO_REUSEPORT —
+        the cohort case.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        opened = self._make_socket(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            local_ip_address=Ip4Address("10.0.0.1"),
+            local_port=8080,
+            reuseport=True,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+                reuseport=True,
+            )
+
+        self.assertFalse(
+            result,
+            msg="An exact overlap must NOT be in use when both sockets set SO_REUSEPORT.",
+        )
+
+    def test__ip_helper__is_address_in_use__reuseport_only_new_returns_true(self) -> None:
+        """
+        Ensure a new SO_REUSEPORT bind still conflicts when the open
+        socket on the same tuple lacks SO_REUSEPORT — the group rule
+        requires every member to set the flag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        opened = self._make_socket(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            local_ip_address=Ip4Address("10.0.0.1"),
+            local_port=8080,
+            reuseport=False,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+                reuseport=True,
+            )
+
+        self.assertTrue(
+            result,
+            msg="SO_REUSEPORT must not join a group with a non-REUSEPORT open socket.",
+        )
+
+    def test__ip_helper__is_address_in_use__reuseport_only_opened_returns_true(self) -> None:
+        """
+        Ensure a plain (non-SO_REUSEPORT) bind still conflicts with an
+        open SO_REUSEPORT socket on the same tuple — the new socket
+        cannot join the existing cohort without the flag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        opened = self._make_socket(
+            family=AddressFamily.INET4,
+            type=SocketType.STREAM,
+            local_ip_address=Ip4Address("10.0.0.1"),
+            local_port=8080,
+            reuseport=True,
+        )
+
+        with patch("pytcp.socket.socket__bind_helpers.stack.sockets", {"s1": opened}):
+            result = is_address_in_use(
+                local_ip_address=Ip4Address("10.0.0.1"),
+                local_port=8080,
+                address_family=AddressFamily.INET4,
+                socket_type=SocketType.STREAM,
+                reuseport=False,
+            )
+
+        self.assertTrue(
+            result,
+            msg="A plain bind must conflict with an existing SO_REUSEPORT socket.",
         )

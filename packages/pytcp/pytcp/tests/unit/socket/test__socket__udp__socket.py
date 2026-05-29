@@ -1759,6 +1759,57 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
 
         second.bind(("10.0.0.1", 8080))  # must not raise.
 
+    def test__udp_socket__so_reuseport_allows_duplicate_bind_into_cohort(self) -> None:
+        """
+        Ensure two SO_REUSEPORT sockets bind the identical (ip, port)
+        and both land in the registry cohort (neither clobbers the
+        other).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(first.close)
+        first.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        first.bind(("10.0.0.1", 8080))
+
+        second = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(second.close)
+        second.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        second.bind(("10.0.0.1", 8080))  # must not raise.
+
+        self.assertCountEqual(
+            self._sockets.values(),
+            [first, second],
+            msg="both SO_REUSEPORT sockets must coexist in the registry cohort.",
+        )
+
+    def test__udp_socket__so_reuseport_mixed_with_plain_raises(self) -> None:
+        """
+        Ensure a SO_REUSEPORT bind conflicts with a plain socket
+        already bound to the same (ip, port) — the group rule requires
+        every member to set the flag.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        first = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(first.close)
+        first.bind(("10.0.0.1", 8080))  # plain, no SO_REUSEPORT.
+
+        second = UdpSocket(family=AddressFamily.INET4)
+        self.addCleanup(second.close)
+        second.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+
+        with self.assertRaises(OSError) as ctx:
+            second.bind(("10.0.0.1", 8080))
+
+        self.assertEqual(
+            ctx.exception.errno,
+            errno.EADDRINUSE,
+            msg="SO_REUSEPORT must not join a cohort with a non-REUSEPORT socket.",
+        )
+
     def test__udp_socket__so_rcvtimeo_supplies_recv_default_timeout(self) -> None:
         """
         Ensure setsockopt(SOL_SOCKET, SO_RCVTIMEO, N) makes a

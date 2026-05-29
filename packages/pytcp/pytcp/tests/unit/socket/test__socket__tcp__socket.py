@@ -47,6 +47,7 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
+    SO_REUSEPORT,
     SOL_SOCKET,
     TCP_FASTOPEN,
     TCP_KEEPCNT,
@@ -357,6 +358,51 @@ class TestTcpSocketBind(_TcpSocketTestCase):
             "[Errno 98]",
             str(context.exception),
             msg="bind() must raise Errno 98 when the (IP, port) is already in use.",
+        )
+
+    def test__tcp_socket__so_reuseport_allows_duplicate_bind_into_cohort(self) -> None:
+        """
+        Ensure two SO_REUSEPORT listening sockets bind the identical
+        (ip, port) and both land in the registry cohort.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
+        first = TcpSocket(family=AddressFamily.INET4)
+        first.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        first.bind(("10.0.0.1", 8080))
+
+        second = TcpSocket(family=AddressFamily.INET4)
+        second.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        second.bind(("10.0.0.1", 8080))  # must not raise.
+
+        self.assertCountEqual(
+            self._sockets.values(),
+            [first, second],
+            msg="both SO_REUSEPORT sockets must coexist in the registry cohort.",
+        )
+
+    def test__tcp_socket__so_reuseport_mixed_with_plain_raises(self) -> None:
+        """
+        Ensure a SO_REUSEPORT bind conflicts with a plain socket
+        already bound to the same (ip, port) — every cohort member
+        must set the flag.
+
+        Reference: RFC 9293 §3.9 (User/TCP interface).
+        """
+
+        first = TcpSocket(family=AddressFamily.INET4)
+        first.bind(("10.0.0.1", 8080))  # plain, no SO_REUSEPORT.
+
+        second = TcpSocket(family=AddressFamily.INET4)
+        second.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+
+        with self.assertRaises(OSError) as context:
+            second.bind(("10.0.0.1", 8080))
+        self.assertEqual(
+            context.exception.errno,
+            errno.EADDRINUSE,
+            msg="SO_REUSEPORT must not join a cohort with a non-REUSEPORT socket.",
         )
 
     def test__tcp_socket__bind_ip6_rejects_malformed(self) -> None:
