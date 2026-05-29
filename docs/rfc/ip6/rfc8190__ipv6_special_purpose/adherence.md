@@ -54,7 +54,7 @@ consumers.
 |---------------------|------------------------------------|-------------------------------------|--------|
 | `::/128`            | Unspecified — RFC 4291             | `is_unspecified`                    | met    |
 | `::1/128`           | Loopback — RFC 4291                | `is_loopback`                       | met    |
-| `::ffff:0:0/96`     | IPv4-mapped — RFC 4291 §2.5.5.2    | `is_reserved`                       | met    |
+| `::ffff:0:0/96`     | IPv4-mapped — RFC 4291 §2.5.5.2    | `is_reserved` + `is_ipv4_mapped` + `ipv4_mapped` + `from_ipv4_mapped` | met    |
 | `64:ff9b::/96`      | NAT64 well-known — RFC 6052        | `is_reserved`                       | met    |
 | `64:ff9b:1::/48`    | NAT64 local-use — RFC 8215         | `is_reserved`                       | met    |
 | `100::/64`          | Discard-Only — RFC 6666           | `is_reserved`                       | met    |
@@ -158,10 +158,27 @@ adjacent `100:0:0:1::/64` and is matched by its own mask.
 > "Used to represent IPv4 addresses inside an IPv6 socket
 >  API. Such addresses MUST NOT appear on the wire."
 
-**Adherence:** met (`is_reserved` returns True). PyTCP does
-not emit IPv4-mapped addresses on the wire; an IPv4-mapped
-destination on a TX path would be classified as reserved and
-could be rejected by future strict-policy code.
+**Adherence:** met. Four surfaces cover the prefix:
+
+  * `is_reserved` returns True (classification umbrella).
+  * `is_ipv4_mapped` boolean predicate — the parallel to
+    Linux's `IN6_IS_ADDR_V4MAPPED` macro that dual-stack
+    socket code keys off.
+  * `ipv4_mapped: Ip4Address | None` property unwraps the
+    embedded low-32 bits into an `Ip4Address`.
+  * `Ip6Address.from_ipv4_mapped(ip4)` classmethod is the
+    explicit IPv4 → IPv6 conversion — wraps an `Ip4Address`
+    into the canonical `::ffff:0:0/96` form. Used by the
+    dual-stack listener-fork (H3 of
+    `socket_linux_parity_audit.md`) when surfacing an
+    inbound IPv4 peer to an AF_INET6 application on a
+    `V6ONLY=0` listener.
+
+PyTCP does not emit IPv4-mapped addresses on the wire; the
+RFC's "MUST NOT appear on the wire" is upheld by routing the
+socket API explicitly through the conversion classmethod (and
+by `is_reserved` flagging the prefix for strict-policy
+rejection on TX paths that ever need to gate it).
 
 ### 64:ff9b::/96 (RFC 6052) and 64:ff9b:1::/48 (RFC 8215) NAT64
 

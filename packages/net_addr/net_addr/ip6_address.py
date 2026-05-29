@@ -417,6 +417,33 @@ class Ip6Address(IpAddress):
         return None
 
     @property
+    def is_ipv4_mapped(self) -> bool:
+        """
+        Return True when this address is in the ::ffff:0:0/96
+        IPv4-mapped IPv6 prefix — the predicate dual-stack
+        socket code keys off to detect "this peer is actually
+        IPv4 wearing an IPv6 mask" before unwrapping via
+        'ipv4_mapped'. Parallel to 'is_loopback' / 'is_global'
+        and to Linux's 'IN6_IS_ADDR_V4MAPPED' macro.
+        """
+
+        return self._address & IP6__IPV4_MAPPED_PREFIX_MASK == IP6__IPV4_MAPPED_PREFIX
+
+    @classmethod
+    def from_ipv4_mapped(cls, ip4_address: Ip4Address, /) -> Self:
+        """
+        Build the canonical ::ffff:0:0/96 IPv4-mapped IPv6
+        address embedding 'ip4_address' as the low 32 bits.
+        The explicit IPv4 → IPv6 conversion the dual-stack
+        listener-fork uses on 'accept()' so an inbound IPv4
+        peer surfaces as an IPv4-mapped IPv6 address to an
+        AF_INET6 application — matching Linux's behaviour on
+        a V6ONLY=0 listener.
+        """
+
+        return cls(IP6__IPV4_MAPPED_PREFIX | int(ip4_address))
+
+    @property
     def sixtofour(self) -> Ip4Address | None:
         """
         Get the embedded IPv4 address of a 6to4 IPv6 address

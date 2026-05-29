@@ -2154,6 +2154,90 @@ class TestNetAddrIp6AddressTransitional(TestCase):
             msg="ipv4_mapped must be None for a non-mapped address.",
         )
 
+    def test__net_addr__ip6_address__is_ipv4_mapped_true_for_prefix(self) -> None:
+        """
+        Ensure 'is_ipv4_mapped' returns True for any address
+        inside the ::ffff:0:0/96 prefix — the predicate the
+        dual-stack code paths key off.
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped IPv6 prefix).
+        """
+
+        self.assertTrue(
+            Ip6Address("::ffff:192.0.2.1").is_ipv4_mapped,
+            msg="is_ipv4_mapped must be True for an ::ffff:0:0/96 address.",
+        )
+        self.assertTrue(
+            Ip6Address("::ffff:0.0.0.0").is_ipv4_mapped,
+            msg="is_ipv4_mapped must be True for the prefix's all-zeros embedded IPv4.",
+        )
+        self.assertTrue(
+            Ip6Address("::ffff:255.255.255.255").is_ipv4_mapped,
+            msg="is_ipv4_mapped must be True for the prefix's all-ones embedded IPv4.",
+        )
+
+    def test__net_addr__ip6_address__is_ipv4_mapped_false_for_non_mapped(self) -> None:
+        """
+        Ensure 'is_ipv4_mapped' returns False for canonical
+        non-mapped IPv6 addresses (loopback, ULA, link-local,
+        global), the ::0 unspecified address, and ::1.
+
+        Reference: RFC 4291 §2.5.5.2 (predicate scope).
+        """
+
+        for address in (
+            Ip6Address("::"),
+            Ip6Address("::1"),
+            Ip6Address("2001:db8::1"),
+            Ip6Address("fe80::1"),
+            Ip6Address("fc00::1"),
+            Ip6Address("ff02::1"),
+        ):
+            with self.subTest(address=str(address)):
+                self.assertFalse(
+                    address.is_ipv4_mapped,
+                    msg=f"is_ipv4_mapped must be False for {address}.",
+                )
+
+    def test__net_addr__ip6_address__from_ipv4_mapped_constructs_mapped(self) -> None:
+        """
+        Ensure 'Ip6Address.from_ipv4_mapped(ip4)' produces the
+        canonical ::ffff:0:0/96 mapped form embedding 'ip4' as
+        the low 32 bits — the explicit IPv4 → IPv6 conversion
+        the dual-stack listener-fork uses on accept().
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped construction).
+        """
+
+        mapped = Ip6Address.from_ipv4_mapped(Ip4Address("192.0.2.1"))
+        self.assertEqual(
+            mapped,
+            Ip6Address("::ffff:192.0.2.1"),
+            msg="from_ipv4_mapped must produce the ::ffff:0:0/96 form.",
+        )
+        self.assertTrue(
+            mapped.is_ipv4_mapped,
+            msg="The constructed address must satisfy is_ipv4_mapped.",
+        )
+
+    def test__net_addr__ip6_address__from_ipv4_mapped_round_trip(self) -> None:
+        """
+        Ensure 'from_ipv4_mapped' and 'ipv4_mapped' round-trip:
+        the embedded IPv4 of a freshly-mapped address equals
+        the original — invariant that pins the conversion's
+        bit-layout exactness.
+
+        Reference: RFC 4291 §2.5.5.2 (IPv4-mapped bit layout).
+        """
+
+        original = Ip4Address("10.20.30.40")
+        round_tripped = Ip6Address.from_ipv4_mapped(original).ipv4_mapped
+        self.assertEqual(
+            round_tripped,
+            original,
+            msg="from_ipv4_mapped → ipv4_mapped must round-trip the original IPv4.",
+        )
+
     def test__net_addr__ip6_address__sixtofour(self) -> None:
         """
         Ensure 'sixtofour' extracts the embedded IPv4 address
