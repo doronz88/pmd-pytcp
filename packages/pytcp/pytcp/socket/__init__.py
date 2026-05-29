@@ -138,6 +138,7 @@ class SolSocketOption(IntEnum):
     SO_BROADCAST = 6  # bool: allow UDP broadcast send
     SO_SNDBUF = 7  # int: send-buffer cap (storage only)
     SO_RCVBUF = 8  # int: recv-buffer cap (storage only)
+    SO_OOBINLINE = 10  # bool: deliver TCP urgent in-band (PyTCP universally 1; RFC 6093 §6)
     SO_RCVTIMEO = 20  # float seconds: persistent recv timeout
     SO_SNDTIMEO = 21  # float seconds: persistent send timeout
     SO_BINDTODEVICE = 25  # bytes: pin socket egress / RX to an interface by name
@@ -147,6 +148,7 @@ SO_REUSEADDR = SolSocketOption.SO_REUSEADDR
 SO_BROADCAST = SolSocketOption.SO_BROADCAST
 SO_SNDBUF = SolSocketOption.SO_SNDBUF
 SO_RCVBUF = SolSocketOption.SO_RCVBUF
+SO_OOBINLINE = SolSocketOption.SO_OOBINLINE
 SO_RCVTIMEO = SolSocketOption.SO_RCVTIMEO
 SO_SNDTIMEO = SolSocketOption.SO_SNDTIMEO
 SO_BINDTODEVICE = SolSocketOption.SO_BINDTODEVICE
@@ -250,9 +252,11 @@ class MsgFlag(IntEnum):
     reserved for future surface.
     """
 
+    MSG_OOB = 0x0001  # Read 'out-of-band' urgent data. PyTCP universally inlines per RFC 6093 §6.
     MSG_ERRQUEUE = 0x2000
 
 
+MSG_OOB = MsgFlag.MSG_OOB
 MSG_ERRQUEUE = MsgFlag.MSG_ERRQUEUE
 
 # 'struct sock_extended_err.ee_origin' values (Linux
@@ -646,6 +650,24 @@ class socket(ABC):
                 return True
             case _ if optname == SO_SNDTIMEO:
                 self._so_sndtimeo = float(value) if value else None
+                return True
+            case _ if optname == SO_OOBINLINE:
+                # RFC 6093 §6 recommends universal inline delivery
+                # of TCP urgent data; PyTCP's RFC 6093 adherence
+                # record documents that the stack delivers ALL
+                # inbound data inline regardless of URG. The
+                # SO_OOBINLINE setsockopt accepts '1' as a no-op
+                # confirming the universal-inline posture and
+                # rejects '0' (which would opt INTO the
+                # out-of-band delivery RFC 6093 §6 advises
+                # against) — apps that try to disable it see
+                # actionable feedback rather than a silent failure.
+                if not value:
+                    raise OSError(
+                        errno.EINVAL,
+                        "SO_OOBINLINE cannot be disabled — PyTCP universally inlines "
+                        "TCP urgent data per RFC 6093 §6.",
+                    )
                 return True
         return False
 
@@ -1136,6 +1158,10 @@ class socket(ABC):
                 return int(self._so_rcvtimeo) if self._so_rcvtimeo else 0
             case _ if optname == SO_SNDTIMEO:
                 return int(self._so_sndtimeo) if self._so_sndtimeo else 0
+            case _ if optname == SO_OOBINLINE:
+                # Always 1 — PyTCP's RFC 6093 §6 universal-inline
+                # design (see the setsockopt comment above).
+                return 1
         return None
 
     def __new__(
