@@ -40,6 +40,13 @@ from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 
+# RFC 9293 §3.1 — TCP option TLV fixed prefix (single-byte EOL / NOP
+# options carry no Length / Data octets):
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |      Kind     |     Length    |  Option Data...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 TCP__OPTION__STRUCT = "! BB"
 TCP__OPTION__LEN = 2
 

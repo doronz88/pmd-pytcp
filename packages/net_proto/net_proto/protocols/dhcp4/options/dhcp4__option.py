@@ -41,6 +41,14 @@ from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 
+# RFC 2132 §2 — DHCPv4 option TLV fixed prefix (the single-byte Pad
+# (0) and End (255) options carry no Len / Data octets):
+#
+#  Code  Len   Option Data...
+# +-----+-----+-----+-----+--
+# | Code| Len | d1  | d2  | ...
+# +-----+-----+-----+-----+--
+
 DHCP4__OPTION__STRUCT = "! BB"
 DHCP4__OPTION__LEN = 2
 

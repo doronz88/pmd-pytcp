@@ -55,6 +55,21 @@ from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import 
     ICMP6__MLD1__MESSAGE__STRUCT,
 )
 
+# The ICMPv6 MLDv1 Multicast Listener Done message (132/0) [RFC 2710 §3].
+# Shares the fixed 24-octet MLDv1 message layout (the field constants
+# live in the Report module). Maximum Response Delay is set to zero by
+# the sender and ignored by receivers in a Done message.
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |      Type     |      Code     |           Checksum            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Maximum Response Delay     |          Reserved            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                                                               |
+# *                       Multicast Address                       *
+# |                                                               |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 
 class Icmp6Mld1DoneCode(Icmp6Code):
     """

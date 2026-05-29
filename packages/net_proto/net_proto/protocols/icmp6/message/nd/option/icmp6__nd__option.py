@@ -41,6 +41,15 @@ from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 
+# RFC 4861 §4.6 — ND option TLV fixed prefix common to all ND options
+# (RS / RA / NS / NA / Redirect). Length is in units of 8 octets and
+# includes the Type + Length octets (so the whole option is a multiple
+# of 8 octets):
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |      Type     |     Length    |  Option Data...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 ICMP6__ND__OPTION__STRUCT = "! BB"
 ICMP6__ND__OPTION__LEN = 2
 

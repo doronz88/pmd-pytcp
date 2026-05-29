@@ -34,6 +34,14 @@ from dataclasses import dataclass
 
 from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 
+# RFC 791 §3.1 — IPv4 option TLV fixed prefix (single-byte EOL / NOP
+# options carry no Length / Data octets). The Type octet itself
+# decomposes as copied-flag(1) | class(2) | number(5):
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |      Type     |     Length    |  Option Data...
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 IP4__OPTION__STRUCT = "! BB"
 IP4__OPTION__LEN = 2
 

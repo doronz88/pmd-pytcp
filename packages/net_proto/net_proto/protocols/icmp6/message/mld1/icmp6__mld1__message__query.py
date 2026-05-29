@@ -54,6 +54,24 @@ from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import 
     ICMP6__MLD1__MESSAGE__STRUCT,
 )
 
+# The ICMPv6 MLDv1 Multicast Listener Query message (130/0) [RFC 2710
+# §3]. Shares the fixed 24-octet MLDv1 message layout (the field
+# constants live in the Report module). The Multicast Address is the
+# unspecified address (::) for a General Query, or the queried group
+# for a Multicast-Address-Specific Query; Maximum Response Delay is the
+# host's response-window bound in milliseconds. A 24-octet Query is the
+# MLDv1 form — an MLDv2 Query is >= 28 octets (RFC 3810 §8.1).
+#
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |      Type     |      Code     |           Checksum            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Maximum Response Delay     |          Reserved            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                                                               |
+# *                       Multicast Address                       *
+# |                                                               |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 
 class Icmp6Mld1QueryCode(Icmp6Code):
     """
