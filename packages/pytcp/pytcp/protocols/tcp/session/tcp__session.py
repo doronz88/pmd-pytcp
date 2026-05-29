@@ -504,6 +504,14 @@ class TcpSession:
         # to be picked up.
         self._event__rx_buffer: Event = threading.Event()
 
+        # Set when the FSM reaches CLOSED so a blocking lingering
+        # close() (SO_LINGER {l_onoff=1, l_linger>0}) wakes as soon as
+        # the connection is fully torn down rather than sleeping the
+        # full linger timeout. Set from '_change_state'; in a running
+        # stack the RX / timer threads drive the transition while the
+        # application thread waits in 'TcpSocket.close'.
+        self._event__closed: Event = threading.Event()
+
         # Used to ensure that only single event can run FSM at given time.
         self._lock__fsm: RLock = threading.RLock()
 
@@ -1185,6 +1193,10 @@ class TcpSession:
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
+            # Wake any lingering close() blocked on the
+            # close-complete event (SO_LINGER {l_onoff=1,
+            # l_linger>0}).
+            self._event__closed.set()
             stack.sockets.unregister(self._socket)
             # Cancel every per-session logical timer and release
             # the coalesced service handle so nothing fires

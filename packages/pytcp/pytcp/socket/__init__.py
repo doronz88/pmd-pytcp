@@ -33,6 +33,7 @@ ver 3.0.6
 import errno
 import os
 import socket as _stdlib_socket
+import struct
 import sys
 import threading
 from abc import ABC
@@ -140,6 +141,7 @@ class SolSocketOption(IntEnum):
     SO_SNDBUF = 7  # int: send-buffer cap (storage only)
     SO_RCVBUF = 8  # int: recv-buffer cap (storage only)
     SO_OOBINLINE = 10  # bool: deliver TCP urgent in-band (PyTCP universally 1; RFC 6093 §6)
+    SO_LINGER = 13  # struct linger {l_onoff, l_linger}: graceful / lingering / abortive close
     SO_REUSEPORT = 15  # bool: allow multiple sockets to bind the same (ip, port); load-balanced demux
     SO_RCVTIMEO = 20  # float seconds: persistent recv timeout
     SO_SNDTIMEO = 21  # float seconds: persistent send timeout
@@ -151,6 +153,7 @@ SO_BROADCAST = SolSocketOption.SO_BROADCAST
 SO_SNDBUF = SolSocketOption.SO_SNDBUF
 SO_RCVBUF = SolSocketOption.SO_RCVBUF
 SO_OOBINLINE = SolSocketOption.SO_OOBINLINE
+SO_LINGER = SolSocketOption.SO_LINGER
 SO_REUSEPORT = SolSocketOption.SO_REUSEPORT
 SO_RCVTIMEO = SolSocketOption.SO_RCVTIMEO
 SO_SNDTIMEO = SolSocketOption.SO_SNDTIMEO
@@ -480,6 +483,7 @@ class socket(ABC):
     _so_reuseaddr: bool
     _so_reuseport: bool
     _so_broadcast: bool
+    _so_linger: tuple[int, int] | None
     _so_sndbuf: int | None
     _so_rcvbuf: int | None
     _so_rcvtimeo: float | None
@@ -546,6 +550,7 @@ class socket(ABC):
         self._so_reuseaddr = False
         self._so_reuseport = False
         self._so_broadcast = False
+        self._so_linger = None
         self._so_sndbuf = None
         self._so_rcvbuf = None
         self._so_rcvtimeo = None
@@ -629,6 +634,39 @@ class socket(ABC):
                 return
 
         raise OSError(errno.ENODEV, f"SO_BINDTODEVICE: no such interface {name!r}")
+
+    def _so_linger_set(self, value: int | bytes, /) -> None:
+        """
+        Apply SO_LINGER (SOL_SOCKET): decode the 'struct linger'
+        {int l_onoff; int l_linger} pair from the bytes buffer and
+        store it. The close-path behaviour it selects is TCP-only
+        (see 'TcpSocket.close'); UDP / RAW store the value as a
+        harmless no-op, matching Linux where linger is meaningless
+        for a connectionless socket. A wrong-length buffer raises
+        'OSError(EINVAL)' per 'setsockopt(2)'
+        (optlen != sizeof(struct linger)).
+        """
+
+        if not isinstance(value, (bytes, bytearray, memoryview)):
+            raise OSError(errno.EINVAL, "SO_LINGER value must be a 'struct linger' bytes buffer")
+        buffer = bytes(value)
+        if len(buffer) != struct.calcsize("@ii"):
+            raise OSError(
+                errno.EINVAL,
+                f"SO_LINGER value must be {struct.calcsize('@ii')} bytes (struct linger), got {len(buffer)}",
+            )
+        l_onoff, l_linger = struct.unpack("@ii", buffer)
+        self._so_linger = (l_onoff, l_linger)
+
+    def _so_linger_get(self) -> bytes:
+        """
+        Read SO_LINGER back as the packed 'struct linger' bytes; an
+        unset option reads as '(l_onoff=0, l_linger=0)', matching the
+        Linux default-disabled state.
+        """
+
+        l_onoff, l_linger = self._so_linger or (0, 0)
+        return struct.pack("@ii", l_onoff, l_linger)
 
     def _sol_socket_setsockopt(self, optname: int, value: int, /) -> bool:
         """
@@ -1147,10 +1185,11 @@ class socket(ABC):
             return None
         return Ip4Options.from_buffer(self._ip_options)
 
-    def _sol_socket_getsockopt(self, optname: int, /) -> int | None:
+    def _sol_socket_getsockopt(self, optname: int, /) -> int | bytes | None:
         """
         Get a SOL_SOCKET-level option's stored value, or 'None' if
-        the option is not a base-class option.
+        the option is not a base-class option. Most options return an
+        'int'; SO_LINGER returns the packed 'struct linger' bytes.
         """
 
         match optname:
@@ -1158,6 +1197,8 @@ class socket(ABC):
                 return int(self._so_reuseaddr)
             case _ if optname == SO_REUSEPORT:
                 return int(self._so_reuseport)
+            case _ if optname == SO_LINGER:
+                return self._so_linger_get()
             case _ if optname == SO_BROADCAST:
                 return int(self._so_broadcast)
             case _ if optname == SO_SNDBUF:

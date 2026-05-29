@@ -50,6 +50,7 @@ from pytcp.lib.logger import log
 from pytcp.socket import (
     IPPROTO_IP,
     IPPROTO_IPV6,
+    SO_LINGER,
     SOL_SOCKET,
     AddressFamily,
     SocketType,
@@ -144,6 +145,11 @@ class RawSocket(socket):
         for scalar options and 'bytes' for IP_OPTIONS.
         """
 
+        if level == SOL_SOCKET and optname == SO_LINGER:
+            # Stored on the base; no close-path effect for a
+            # connectionless raw socket (matches Linux's no-op).
+            self._so_linger_set(value)
+            return
         if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
         if level == IPPROTO_IP and self._ipproto_ip_setsockopt(optname, value):

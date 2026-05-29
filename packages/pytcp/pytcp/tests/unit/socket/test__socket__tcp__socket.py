@@ -35,6 +35,7 @@ ver 3.0.6
 import errno
 import fcntl
 import select
+import struct
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase
@@ -47,6 +48,7 @@ from pytcp.protocols.tcp.tcp__errors import TcpSessionError
 from pytcp.socket import (
     IPPROTO_TCP,
     SO_KEEPALIVE,
+    SO_LINGER,
     SO_REUSEPORT,
     SOL_SOCKET,
     TCP_FASTOPEN,
@@ -846,6 +848,66 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
         bad_ancdata: list[Any] = [(1, 2)]
         with self.assertRaises(TypeError):
             s.sendmsg([b"x"], bad_ancdata)
+
+
+class TestTcpSocketSoLinger(_TcpSocketTestCase):
+    """
+    The 'SO_LINGER' setsockopt / getsockopt option-storage tests.
+    """
+
+    def test__tcp_socket__so_linger__round_trips_struct_linger_bytes(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_LINGER, struct linger) stores
+        the (l_onoff, l_linger) pair and getsockopt returns the same
+        packed 'struct linger' bytes.
+
+        Reference: socket(7) SO_LINGER (struct linger {l_onoff, l_linger}).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+        s.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("@ii", 1, 30))
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_LINGER),
+            struct.pack("@ii", 1, 30),
+            msg="getsockopt(SO_LINGER) must round-trip the packed struct linger bytes.",
+        )
+
+    def test__tcp_socket__so_linger__defaults_to_zero_pair(self) -> None:
+        """
+        Ensure a fresh socket reads SO_LINGER as a zeroed 'struct
+        linger' (l_onoff=0, l_linger=0) — linger disabled by default,
+        matching Linux.
+
+        Reference: socket(7) SO_LINGER (default disabled).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        self.assertEqual(
+            s.getsockopt(SOL_SOCKET, SO_LINGER),
+            struct.pack("@ii", 0, 0),
+            msg="Default SO_LINGER must read as a zeroed struct linger.",
+        )
+
+    def test__tcp_socket__so_linger__wrong_length_raises_einval(self) -> None:
+        """
+        Ensure setsockopt(SOL_SOCKET, SO_LINGER, value) rejects a
+        buffer that is not exactly 'struct linger' sized with
+        OSError(EINVAL).
+
+        Reference: socket(7) SO_LINGER (optlen == sizeof(struct linger)).
+        """
+
+        s = TcpSocket(family=AddressFamily.INET4)
+
+        with self.assertRaises(OSError) as context:
+            s.setsockopt(SOL_SOCKET, SO_LINGER, b"\x00\x00\x00")
+        self.assertEqual(
+            context.exception.errno,
+            errno.EINVAL,
+            msg="A wrong-length SO_LINGER buffer must raise OSError(EINVAL).",
+        )
 
 
 class TestTcpSocketStateProperty(_TcpSocketTestCase):

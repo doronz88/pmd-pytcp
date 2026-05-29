@@ -35,6 +35,7 @@ from __future__ import annotations
 import errno
 import os
 import threading
+import time
 from collections import deque
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, cast, override
@@ -60,6 +61,7 @@ from pytcp.socket import (
     IPV6_RECVERR,
     MSG_ERRQUEUE,
     SO_KEEPALIVE,
+    SO_LINGER,
     SOL_SOCKET,
     TCP_CONGESTION,
     TCP_FASTOPEN,
@@ -361,6 +363,11 @@ class TcpSocket(socket):
 
         if isinstance(value, int) and level == SOL_SOCKET and optname == SO_KEEPALIVE:
             self._so_keepalive = bool(value)
+            return
+        if level == SOL_SOCKET and optname == SO_LINGER:
+            # Drives the 3-way close-path branch in 'close()'
+            # (graceful FIN / lingering wait / abortive RST).
+            self._so_linger_set(value)
             return
         if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
@@ -948,7 +955,33 @@ class TcpSocket(socket):
 
         assert self._tcp_session is not None
 
+        linger = self._so_linger
+
+        # SO_LINGER {l_onoff=1, l_linger=0}: abortive close — emit a
+        # RST and discard queued data instead of the graceful FIN
+        # exchange (the well-known "SO_LINGER zero -> RST" idiom; RFC
+        # 9293 §3.10.7.4 abort semantics).
+        if linger is not None and linger[0] != 0 and linger[1] == 0:
+            self._tcp_session.abort()
+            self._mark_closed()
+            __debug__ and log("socket", f"<g>[{self}]</> - Closed socket (SO_LINGER 0 -> abort)")
+            return
+
+        # Graceful close: initiate the FIN exchange.
         self._tcp_session.close()
+
+        # SO_LINGER {l_onoff=1, l_linger>0}: block until the session
+        # reaches CLOSED or 'l_linger' seconds elapse, whichever comes
+        # first. In a running stack the RX / timer threads advance the
+        # FSM (and set '_event__closed') while this call waits; the
+        # deadline is computed at close() entry per Linux's lingering
+        # close semantics (tcp(7) / socket(7) SO_LINGER).
+        if linger is not None and linger[0] != 0:
+            deadline = time.monotonic() + linger[1]
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                self._tcp_session._event__closed.wait(timeout=remaining)
+
         # '_mark_closed' sets '_closed' for consistency; TCP delivery
         # ('process_tcp_packet') is drained by 'TcpSession._lock__fsm'
         # (close() routes through the same FSM lock), not by the

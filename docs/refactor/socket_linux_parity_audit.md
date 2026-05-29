@@ -8,11 +8,11 @@
 > `e9abe066` R3-R6 refinements + `c98e409c`/`9cc7dfdc` §9 source
 > filters + `752d2bfd` finalizer); the H4 IPv6 half (IPV6_JOIN_GROUP)
 > remains deferred. **H2 SO_REUSEPORT shipped 2026-05-29** (4-phase
-> track `af536889`/`c41aa96b`/`c76fa4f5`/`fe619b78`). Other
-> substantial items (M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8
-> SO_LINGER) are deliberately deferred with rationale below — they
-> each need a meaningful refactor that earns its own focused work
-> block. See §100 "Shipping status" for the full ledger.
+> track `af536889`/`c41aa96b`/`c76fa4f5`/`fe619b78`). **The former
+> deferred bundle — M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8
+> SO_LINGER — is now fully shipped** (M8 + recvmsg landed with the
+> IP_RECVERR work; `sendmsg` + `SO_LINGER` shipped 2026-05-29). See
+> §100 "Shipping status" for the full ledger.
 
 
 
@@ -862,7 +862,7 @@ that's intentional.
 | M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
 | **H3 IPV6_V6ONLY**  | shipped | Five-phase delivery: Phase 1 (`Ip6Address.is_ipv4_mapped` + `from_ipv4_mapped`) + Phase 2 (`IPV6_V6ONLY` setsockopt) + Phase 3a (bind cross-family conflict) + Phase 3b (IPv4 SYN finds AF_INET6 V6ONLY=0 listener via `listening_socket_ids` extension + RX-loop V6ONLY filter) + Phase 3c (accepted children carry `_dual_stack` presentation flag; family / addresses / getsockname / getpeername / accept return wrap to IPv4-mapped IPv6). |
 | **H2 SO_REUSEPORT** | **shipped** | `af536889` (Phase 1 — `SocketTable` cohort storage `dict[SocketId, list[socket]]` + register/unregister + transparent round-robin `get` + writer migration) + `c41aa96b` (Phase 2 — SolSocketOption optname 15 + setsockopt/getsockopt) + `c76fa4f5` (Phase 3 — `is_address_in_use` reuseport group-rule gate) + Phase 4 (TCP/UDP cohort RX-demux integration tests). Demux is round-robin (deliberate Phase-1 simplification of Linux's 4-tuple hash; retransmit-safe via the exact-match-first path). |
-| **H8 SO_LINGER**    | **deferred** | Needs a bytes-encoded `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", onoff, linger))` API; PyTCP's setsockopt currently takes `value: int`, so a kwarg-shape change is required first. Bundle with M2 sendmsg/recvmsg work. |
+| **H8 SO_LINGER**    | **shipped** | 2026-05-29 — `SolSocketOption.SO_LINGER = 13` + bare alias; bytes-valued `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("@ii", l_onoff, l_linger))` decoded via base `_so_linger_set` (EINVAL on wrong length), `getsockopt` returns the packed `struct linger`. The close-path branch lives in `TcpSocket.close`: `{l_onoff=1, l_linger=0}` → abortive RST via `TcpSession.abort()` (RFC 9293 §3.10.7.4); `{l_onoff=1, l_linger>0}` → graceful FIN then block on the new `TcpSession._event__closed` until CLOSED or the deadline elapses (RX/timer threads advance the FSM in a live stack); linger-off / unset → unchanged graceful close. UDP / RAW store the option as a no-op (Linux parity — linger is meaningless for a connectionless socket). 3 unit + 4 integration tests. |
 
 ### Phase 3 — multicast / advanced — all deferred (5/5)
 
@@ -883,7 +883,7 @@ that's intentional.
 | **M3 MSG_OOB / SO_OOBINLINE** | shipped (design-aligned 2026-05-28). PyTCP's RFC 6093 adherence record (`docs/rfc/tcp/rfc6093__urgent_mechanism/adherence.md` §6) documents the universal-inline design choice: PyTCP delivers ALL inbound data inline regardless of the URG flag — the `SO_OOBINLINE=1` posture RFC 6093 §6 recommends. This commit reconciles the audit-side wording (which previously described M3 as "FSM URG handling exists but isn't surfaced"; that framing was misleading) and adds the Linux constants applications look for: `MSG_OOB = 1` on `MsgFlag`, `SO_OOBINLINE = 10` on `SolSocketOption`. `setsockopt(SOL_SOCKET, SO_OOBINLINE, 1)` is accepted as a no-op (confirms the universal-inline posture); `setsockopt(..., 0)` raises `OSError(EINVAL)` with a message naming RFC 6093 §6 since opting INTO out-of-band delivery is not supported. `getsockopt(SOL_SOCKET, SO_OOBINLINE)` always returns 1. 5 tests. |
 | **M6 TCP_USER_TIMEOUT**   | shipped — `TcpSession._user_timeout_ms` propagated from `TcpSocket._tcp_user_timeout`; R2-abort site computes `max(1, _user_timeout_ms // current_rto_ms)` as the approximated count budget. 5 unit + 2 integration tests. |
 | **M7 TCP_MAXSEG**         | shipped — `TcpSession._maxseg_override` propagated from `TcpSocket._tcp_maxseg`; SYN-options assembly in `session/tcp__session__tx.py` clamps to `min(rcv_mss, 0xFFFF, _maxseg_override)`. Validator rejects below Linux `TCP_MIN_MSS=88`. 6 unit + 3 integration tests. |
-| **M8 MSG_ERRQUEUE / IP_RECVERR** | Substantial — needs per-socket error queue, `notify_*` paths refactored to enqueue rather than inline-raise. |
+| **M8 MSG_ERRQUEUE / IP_RECVERR** | **shipped.** Per-socket error queue (`pytcp/socket/error_queue.py`) + `notify_*` paths refactored to enqueue rather than inline-raise; `recvmsg(MSG_ERRQUEUE)` on UDP / TCP dequeues an `IP_RECVERR` / `IPV6_RECVERR` cmsg via `pack_sock_extended_err`. Integration tests: `test__tcp__session__ip_recverr.py`, `test__udp__socket_api.py`, `test__udp__ip_options.py`. |
 
 ### Phase 5 — polish (1/4 shipped + 3 deferred)
 

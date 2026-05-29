@@ -24,8 +24,11 @@ Bounded items shipped this sweep (commit hashes on
 | M3 MSG_OOB / SO_OOBINLINE | `d75d5d90` | Linux constants exposed; SO_OOBINLINE guard documents the RFC 6093 §6 universal-inline design. Doc-realignment commit, not a feature gap. |
 | H5 SO_BROADCAST EACCES gate | `5311a1b1` | UDP `send`/`sendto` to `255.255.255.255` requires SO_BROADCAST=1; DHCPv4 client `_open_client_socket` now sets the flag. |
 | H2 SO_REUSEPORT | `af536889` / `c41aa96b` / `c76fa4f5` / `fe619b78` | 4-phase track (2026-05-29). `SocketTable` cohort storage + transparent round-robin `get`; SolSocketOption optname 15 setsockopt/getsockopt; `is_address_in_use` group-rule gate; TCP/UDP cohort RX-demux integration pins. Round-robin demux (Phase-1 simplification of Linux's 4-tuple hash; retransmit-safe). See §2.1. |
+| M2 sendmsg / recvmsg | `7527caa3` (sendmsg) + earlier IP_RECVERR work (recvmsg) | `recvmsg` (+ MSG_ERRQUEUE cmsg) landed with the error-queue work; `sendmsg` shipped 2026-05-29 across base stub + UDP / TCP / RAW (+ `RawSocket.recvmsg`). Scatter-gather concatenation reusing send/sendto; `ancdata` validated-then-ignored Phase-1; TCP rejects an address with EISCONN. See §2.2. |
+| M8 MSG_ERRQUEUE / IP_RECVERR | earlier IP_RECVERR work | Per-socket error queue + `recvmsg(MSG_ERRQUEUE)` → IP_RECVERR / IPV6_RECVERR cmsg. See §2.2. |
+| H8 SO_LINGER | (this commit) | `SO_LINGER=13` + struct-linger setsockopt/getsockopt; `TcpSocket.close` 3-way branch (graceful FIN / lingering wait on `TcpSession._event__closed` / zero-linger abortive RST). UDP/RAW store as no-op. See §2.2. |
 
-11948 tests passing.
+11960+ tests passing.
 
 ---
 
@@ -95,19 +98,20 @@ then flip the storage shape.
 **Effort estimate.** 2-3 days for the storage refactor + tests;
 the migration sweep is mechanical but slow.
 
-### 2.2 H8 + M2 + M8 bundle — control-message layer
+### 2.2 H8 + M2 + M8 bundle — control-message layer — SHIPPED 2026-05-29
 
-> **SCOPE CORRECTED 2026-05-29 — most of this bundle already
-> shipped.** A code survey found `recvmsg` (M2 recv-side) and
-> `MSG_ERRQUEUE` → `IP_RECVERR` cmsg (M8) are already implemented on
-> `UdpSocket` / `TcpSocket` with tests, and `error_queue.py` exists;
-> the cmsg form is already the stdlib `list[(level, type, data)]`
-> tuple (no byte-level CMSG codec needed). What actually remains is
-> `sendmsg` (the send-side of M2), the base/Raw msg-surface, and
-> `SO_LINGER` (H8) from scratch — ~1–2 days, not 3–4. The detailed,
-> corrected plan + resume prompt is in
-> **`docs/refactor/socket_sendmsg_so_linger.md`**. The prose below is
-> the original (stale) framing, retained for context.
+> **DONE 2026-05-29 — the whole bundle is shipped.** A code survey
+> found `recvmsg` (M2 recv-side) and `MSG_ERRQUEUE` → `IP_RECVERR`
+> cmsg (M8) were already implemented on `UdpSocket` / `TcpSocket`
+> with tests, and the cmsg form is already the stdlib
+> `list[(level, type, data)]` tuple (no byte-level CMSG codec
+> needed). The remaining work — `sendmsg` (send-side of M2) + the
+> base/Raw msg-surface, and `SO_LINGER` (H8) — shipped in two
+> commits: `7527caa3` (sendmsg + recvmsg/sendmsg surface across
+> base/UDP/TCP/RAW) and the SO_LINGER commit (option plumbing +
+> `TcpSocket.close` 3-way branch + `TcpSession._event__closed`). The
+> detailed plan is `docs/refactor/socket_sendmsg_so_linger.md`. The
+> prose below is the original (stale) framing, retained for context.
 
 H8 (SO_LINGER), M2 (sendmsg/recvmsg), M8 (MSG_ERRQUEUE) are
 coupled because all three require an extended setsockopt /

@@ -61,6 +61,7 @@ from pytcp.socket import (
     IPV6_TCLASS,
     MSG_ERRQUEUE,
     SO_BINDTODEVICE,
+    SO_LINGER,
     SOL_SOCKET,
     SOL_UDP,
     UDP_NO_CHECK6_RX,
@@ -169,6 +170,11 @@ class UdpSocket(socket):
 
         if level == SOL_SOCKET and optname == SO_BINDTODEVICE:
             self._so_bindtodevice(value)
+            return
+        if level == SOL_SOCKET and optname == SO_LINGER:
+            # Stored on the base; no close-path effect for
+            # connectionless UDP (matches Linux's no-op).
+            self._so_linger_set(value)
             return
         if isinstance(value, int) and level == SOL_SOCKET and self._sol_socket_setsockopt(optname, value):
             return
