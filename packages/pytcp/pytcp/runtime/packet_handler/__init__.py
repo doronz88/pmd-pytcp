@@ -69,6 +69,9 @@ from net_proto import (
     Tracker,
 )
 from net_proto.lib.buffer import Buffer
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import (
+    MldVersion,
+)
 from net_proto.protocols.ip4.options.ip4__options import Ip4Options
 from pytcp import stack
 from pytcp.lib.dad_slot_registry import DadSlotRegistry
@@ -342,6 +345,7 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_ra__event: Semaphore
     _mld2_query__pending_response_at_ms: int | None
     _mld2_query__handle: TimerHandle | None
+    _mld__v1_querier_present_until_ms: int | None
 
     @override
     def __init__(
@@ -2182,6 +2186,21 @@ class PacketHandler(Subsystem, ABC):
             return IgmpVersion.V2
         return IgmpVersion.V3
 
+    def _mld_host_compatibility_mode(self) -> MldVersion:
+        """
+        Return the RFC 3810 §8.2.1 MLD Host Compatibility Mode for this
+        interface: MLDv1 while the Older Version Querier Present timer
+        runs (an MLDv1 Query was heard within the timeout), else MLDv2.
+        The scalar is written under '_lock__multicast' by the RX Query
+        handler; this read is lock-free (a benign-stale read at worst
+        picks the previous mode), mirroring '_igmp_host_compatibility_mode'.
+        """
+
+        now_ms = stack.timer.now_ms
+        if self._mld__v1_querier_present_until_ms is not None and now_ms < self._mld__v1_querier_present_until_ms:
+            return MldVersion.V1
+        return MldVersion.V2
+
     def _send_icmp6_nd_router_solicitation(self) -> None:
         """
         Send an ICMPv6 ND Router Solicitation (delegates to the ICMPv6 TX sub-handler).
@@ -2531,6 +2550,13 @@ class PacketHandlerL2(
         # absorbed without rescheduling.
         self._mld2_query__pending_response_at_ms: int | None = None
         self._mld2_query__handle: TimerHandle | None = None
+
+        # RFC 3810 §8.2.1 MLDv1 Older Version Querier Present timer.
+        # Armed (under '_lock__multicast') when an MLDv1 Query is
+        # heard; while it runs the interface is in MLDv1 Host
+        # Compatibility Mode and emits MLDv1 Reports instead of the
+        # MLDv2 Report. 'None' = no MLDv1 querier seen (MLDv2 mode).
+        self._mld__v1_querier_present_until_ms: int | None = None
 
         # RFC 4861 §6.3.4 default-router list — entries learned
         # from inbound RAs, indexed implicitly by RA source link-

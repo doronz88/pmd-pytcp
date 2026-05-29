@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | **Phase 1 SHIPPED** (`e3bd1a2f` — net_proto MLDv1 wire codec). **Phase 2 PLANNED** (this doc). |
+| Status | **SHIPPED** — Phase 1 (`e3bd1a2f`, net_proto MLDv1 wire codec) + Phase 2 (the RFC 3810 §8 compat-mode state machine). Adherence: `docs/rfc/icmp6/rfc2710__mld_v1/adherence.md`. Deferred-with-rationale: MLDv1 Done-on-leave (SHOULD; no MLDv2 leave counterpart), Report suppression (optimization), the `mld.version` force knob (Linux extension, needs the sysctl_knob workflow). |
 | Target RFC | RFC 3810 §8 (Interoperation With MLDv1), with RFC 2710 host behaviours |
 | Mirror of | `docs/refactor/igmp_version_fallback.md` (the shipped IGMP RFC 3376 §7 fallback) — the IGMP↔MLD analogue |
 | North Star | Phase 1 (host-stack parity). Closes the MLDv2-host MLDv1-interop `MUST`. |

@@ -55,6 +55,9 @@ from net_proto import (
     PacketRx,
     PacketValidationError,
 )
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__query import (
+    Icmp6Mld1MessageQuery,
+)
 from net_proto.protocols.icmp6.message.mld2.icmp6__mld2__message__query import (
     Icmp6Mld2MessageQuery,
 )
@@ -76,6 +79,14 @@ from pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pytcp.runtime.packet_handler import PacketHandler
+
+
+# RFC 3810 §9.1 / §9.2 — MLD Robustness Variable and Query Interval
+# defaults, used to compute the §9.12 Older Version Querier Present
+# Timeout = [Robustness Variable] x [Query Interval] + [Query Response
+# Interval] when an MLDv1 Query arms the compatibility timer.
+MLD__ROBUSTNESS_VARIABLE = 2
+MLD__QUERY_INTERVAL__MS = 125_000
 
 
 def _mld2_mrc_to_mrd_ms(mrc: int) -> int:
@@ -186,7 +197,7 @@ class Icmp6RxHandler:
             case Icmp6Type.MLD2__REPORT:
                 self.__phrx_icmp6__mld2_report(packet_rx)
             case Icmp6Type.MULTICAST_LISTENER_QUERY:
-                self.__phrx_icmp6__mld2_query(packet_rx)
+                self.__phrx_icmp6__mld_query(packet_rx)
             case _:
                 self.__phrx_icmp6__unknown(packet_rx)
 
@@ -1142,46 +1153,73 @@ class Icmp6RxHandler:
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet " f"from {packet_rx.ip6.src}",
         )
 
-    def __phrx_icmp6__mld2_query(self, packet_rx: PacketRx) -> None:
+    def __phrx_icmp6__mld_query(self, packet_rx: PacketRx) -> None:
         """
-        Handle inbound ICMPv6 MLDv2 Query packets.
+        Handle an inbound ICMPv6 Multicast Listener Query (type
+        130) — MLDv1 (24 octets) or MLDv2 (>= 28).
 
         Reference: RFC 3810 §5.1.10 (listener-side Query
-        processing).
+        processing); RFC 3810 §8.2.1 (MLDv1 compatibility).
 
-        Host-stack scope (Phase 1): a listener receiving any
-        MLDv2 Query (General / Group-Specific / Group-and-
-        Source-Specific) responds with a Report reflecting its
-        current per-interface multicast membership. The
-        response is delayed by a uniformly-random value in
-        [0, Maximum Response Delay] per §5.1.10 so a link
-        with many listeners spreads Report bursts across the
-        delay window rather than synchronizing them.
+        Host-stack scope (Phase 1): a listener responds with a
+        Report reflecting its current per-interface multicast
+        membership. The response is delayed by a uniformly-random
+        value in [0, Maximum Response Delay] per §5.1.10 so a
+        link with many listeners spreads Report bursts across the
+        delay window. The coalescing rule (§5.1.10) absorbs a
+        Query whose computed response time is later than an
+        already-pending Report, and supersedes a pending Report
+        when a new Query would fire sooner.
 
-        Coalescing rule: a Query whose computed response time
-        is later than an already-pending Report is absorbed
-        without rescheduling; a Query whose computed response
-        time is earlier supersedes the pending Report by
-        cancelling its timer and registering a new one.
-
-        On Query receipt we re-emit the same
-        'CHANGE_TO_EXCLUDE' Report we send on group-membership
-        changes (via '_send_icmp6_multicast_listener_report') —
-        the wire form is identical and the querier merges the
-        on-Query Report with any spontaneous Reports from the
-        listener.
+        An MLDv1 Query additionally arms the §8.2.1 Older Version
+        Querier Present timer, putting the interface into MLDv1
+        Host Compatibility Mode so the response — and subsequent
+        membership Reports — take the MLDv1 Report form (§8.3.1).
+        The report form is selected at emit time by
+        '_send_icmp6_multicast_listener_report', so the scheduling
+        here is version-agnostic.
         """
 
         self._if._packet_stats_rx.icmp6__mld2_query += 1
         __debug__ and log(
             "icmp6",
-            f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Query packet " f"from {packet_rx.ip6.src}",
+            f"{packet_rx.tracker} - Received ICMPv6 MLD Query packet from {packet_rx.ip6.src}",
         )
 
         message = packet_rx.icmp6.message
-        assert isinstance(message, Icmp6Mld2MessageQuery)
+        if isinstance(message, Icmp6Mld1MessageQuery):
+            self._mld_arm_v1_compatibility(message.maximum_response_delay)
+            mrd_ms = message.maximum_response_delay
+        else:
+            assert isinstance(message, Icmp6Mld2MessageQuery)
+            mrd_ms = _mld2_mrc_to_mrd_ms(message.maximum_response_code)
 
-        mrd_ms = _mld2_mrc_to_mrd_ms(message.maximum_response_code)
+        self._mld_query__schedule_response(mrd_ms)
+
+    def _mld_arm_v1_compatibility(self, max_response_delay_ms: int, /) -> None:
+        """
+        Arm the RFC 3810 §8.2.1 MLDv1 Older Version Querier Present
+        timer in response to an MLDv1 Query, holding the interface
+        in MLDv1 Host Compatibility Mode. The §9.12 timeout is
+        [Robustness Variable] x [Query Interval] + [Query Response
+        Interval]; the Query's Maximum Response Delay supplies the
+        last term. Written under '_lock__multicast' (the no-GIL
+        standing invariant), mirroring the IGMP querier-present
+        arming.
+        """
+
+        timeout_ms = MLD__ROBUSTNESS_VARIABLE * MLD__QUERY_INTERVAL__MS + max_response_delay_ms
+        with self._if._lock__multicast:
+            self._if._mld__v1_querier_present_until_ms = stack.timer.now_ms + timeout_ms
+
+    def _mld_query__schedule_response(self, mrd_ms: int, /) -> None:
+        """
+        Schedule the listener-side Report response to an MLD Query
+        with the §5.1.10 random delay + coalescing rules. The
+        report form (MLDv1 vs MLDv2) is selected at emit time by
+        the Host Compatibility Mode, so this is version-agnostic.
+        """
+
         delay_ms = self._mld2_query__pick_response_delay_ms(mrd_ms)
 
         # Delay 0 is the special "send right now" case. Bypass

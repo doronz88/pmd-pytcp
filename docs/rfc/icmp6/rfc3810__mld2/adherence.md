@@ -147,10 +147,14 @@ permanent group that does not need to be reported per
 >  ... it MUST transition by sending a Version 2 Report
 >  ..."
 
-**Adherence:** met (PyTCP is MLDv2-only; no version
-switching). PyTCP never emits MLDv1 Reports; all Reports
-are MLDv2 (type 143). A future MLDv1-compatibility mode
-would be a separate feature.
+**Adherence:** met. PyTCP runs MLDv2 by default but now
+implements the RFC 3810 §8 MLDv1 Host Compatibility Mode:
+on hearing a 24-octet MLDv1 Query the interface enters
+MLDv1 mode and emits MLDv1 Reports (type 131) instead of
+the MLDv2 Report (type 143) for the Older Version Querier
+Present timeout, then reverts. See
+`docs/rfc/icmp6/rfc2710__mld_v1/adherence.md` for the full
+MLDv1 + §8 audit.
 
 ### §5.2 Multicast Listener Query Message Format
 

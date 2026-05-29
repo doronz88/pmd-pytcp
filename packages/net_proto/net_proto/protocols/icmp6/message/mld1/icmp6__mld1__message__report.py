@@ -35,6 +35,7 @@ ver 3.0.6
 
 import struct
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import Self, override
 
 from net_addr import Ip6Address
@@ -67,6 +68,19 @@ from net_proto.protocols.icmp6.message.icmp6__message import (
 
 ICMP6__MLD1__MESSAGE__LEN = 24
 ICMP6__MLD1__MESSAGE__STRUCT = "! BBH HH 16s"
+
+
+class MldVersion(IntEnum):
+    """
+    The MLD protocol version, used for the RFC 3810 §8 per-interface
+    Host Compatibility Mode (the MLD analogue of 'IgmpVersion'). MLD
+    has only two versions; an interface runs in V2 mode unless an
+    MLDv1 Query has been heard within the Older Version Querier
+    Present timeout.
+    """
+
+    V1 = 1  # RFC 2710.
+    V2 = 2  # RFC 3810.
 
 
 class Icmp6Mld1ReportCode(Icmp6Code):
@@ -211,6 +225,12 @@ class Icmp6Mld1MessageReport(Icmp6Message):
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
         Assemble the ICMPv6 MLDv1 Report message into the buffer list.
+
+        Appends the 24-octet message plus an empty trailing buffer so
+        the enclosing 'Icmp6Assembler' can inject the checksum over the
+        last two buffers (the same two-buffer contract the MLDv2 Report
+        follows with its records buffer).
         """
 
         buffers.append(self._pack_header())
+        buffers.append(bytearray())

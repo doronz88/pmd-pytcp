@@ -54,6 +54,10 @@ from net_proto import (
     Tracker,
 )
 from net_proto.lib.buffer import Buffer
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import (
+    Icmp6Mld1MessageReport,
+    MldVersion,
+)
 from net_proto.protocols.ip6_hbh.ip6_hbh__assembler import Ip6HbhAssembler
 from net_proto.protocols.ip6_hbh.options.ip6_hbh__option__padn import (
     Ip6HbhOptionPadN,
@@ -204,38 +208,78 @@ class Icmp6TxHandler:
         are link-local).
         """
 
-        # Need to use set here to avoid reusing duplicate multicast entries
-        # from stack_ip6_multicast list, also All Multicast Nodes address is
-        # not being advertised as this is not necessary.
-        icmp6_mlr2_multicast_address_record = {
-            Icmp6Mld2MulticastAddressRecord(
-                type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
-                multicast_address=multicast_address,
-            )
-            for multicast_address in self._if._ip6_multicast
-            if multicast_address not in {Ip6Address("ff02::1")}
-        }
-
-        if not icmp6_mlr2_multicast_address_record:
+        # All-Multicast-Nodes (ff02::1) is never advertised (RFC 3810
+        # §6); a 'set' deduplicates the membership list.
+        groups = {group for group in self._if._ip6_multicast if group != Ip6Address("ff02::1")}
+        if not groups:
             return
 
-        ip6__src = self._if.ip6_unicast[0] if self._if.ip6_unicast else Ip6Address()
-        ip6__dst = Ip6Address("ff02::16")
+        # RFC 3810 §8.3.1 report-form selection: while the interface
+        # is in MLDv1 Host Compatibility Mode (an MLDv1 Query was heard
+        # within the §8.2.1 Older Version Querier Present timeout),
+        # emit one MLDv1 Report (type 131) per group instead of the
+        # single aggregated MLDv2 Report (type 143). The querier that
+        # speaks only MLDv1 cannot parse a type-143 Report.
+        if self._if._mld_host_compatibility_mode() is MldVersion.V1:
+            for group in groups:
+                self._send_icmp6_mld1_report(group)
+            return
 
-        # Build the ICMPv6 MLDv2 Report packet.
+        # MLDv2: one aggregated Report (CHANGE_TO_EXCLUDE per group) to
+        # the all-MLDv2-routers address.
         icmp6_packet_tx = Icmp6Assembler(
-            icmp6__message=Icmp6Mld2MessageReport(records=list(icmp6_mlr2_multicast_address_record)),
+            icmp6__message=Icmp6Mld2MessageReport(
+                records=[
+                    Icmp6Mld2MulticastAddressRecord(
+                        type=Icmp6Mld2MulticastAddressRecordType.CHANGE_TO_EXCLUDE,
+                        multicast_address=group,
+                    )
+                    for group in groups
+                ],
+            ),
         )
+        self._if._packet_stats_tx.icmp6__mld2__report__send += 1
+        self.__send_icmp6_mld_via_hbh_ra(icmp6_packet_tx, ip6__dst=Ip6Address("ff02::16"))
 
-        # Pre-compute the ICMPv6 pseudo-header sum that will be used
-        # to finalise the ICMPv6 checksum. RFC 4443 §2.3: the
-        # pseudo-header carries 'src + dst + Upper-Layer Packet
-        # Length + Next Header = 58' regardless of any extension
-        # headers between IPv6 and ICMPv6, so the value can be
-        # computed here without help from 'Ip6Assembler' (which
-        # only auto-injects pshdr_sum on TCP/UDP/Icmp6/Raw payloads
-        # — not when the immediate IPv6 payload is a Hop-by-Hop
-        # extension header).
+    def _send_icmp6_mld1_report(self, group: Ip6Address, /) -> None:
+        """
+        Send an MLDv1 Multicast Listener Report (type 131) for 'group'.
+
+        Reference: RFC 2710 §3 / RFC 3810 §8.3.1.
+
+        Per RFC 2710 §3 an MLDv1 Report is sent to the multicast
+        address being reported (so the destination is 'group' itself),
+        wrapped in the same Hop-by-Hop Router Alert carrier as the
+        MLDv2 Report, with Hop Limit 1.
+        """
+
+        icmp6_packet_tx = Icmp6Assembler(
+            icmp6__message=Icmp6Mld1MessageReport(multicast_address=group),
+        )
+        self._if._packet_stats_tx.icmp6__mld1__report__send += 1
+        self.__send_icmp6_mld_via_hbh_ra(icmp6_packet_tx, ip6__dst=group)
+
+    def __send_icmp6_mld_via_hbh_ra(self, icmp6_packet_tx: Icmp6Assembler, /, *, ip6__dst: Ip6Address) -> None:
+        """
+        Emit an MLD ICMPv6 message ('icmp6_packet_tx') wrapped in a
+        Hop-by-Hop Options header carrying the Router Alert option
+        (value=MLD, RFC 2711) so MLD-aware routers intercept it
+        (RFC 3810 §5 / RFC 2710 §3), with Hop Limit 1 (link-local).
+
+        Shared by the MLDv2 aggregate Report and the per-group MLDv1
+        Reports — the only differences are the ICMPv6 message and the
+        destination.
+        """
+
+        ip6__src = self._if.ip6_unicast[0] if self._if.ip6_unicast else Ip6Address()
+
+        # Pre-compute the ICMPv6 pseudo-header sum used to finalise the
+        # ICMPv6 checksum. RFC 4443 §2.3: the pseudo-header carries
+        # 'src + dst + Upper-Layer Packet Length + Next Header = 58'
+        # regardless of the extension headers between IPv6 and ICMPv6,
+        # so it is computed here — 'Ip6Assembler' only auto-injects
+        # pshdr_sum when the immediate IPv6 payload is the transport
+        # message, not when it is a Hop-by-Hop extension header.
         pseudo_header = struct.pack(
             "! 16s 16s L BBBB",
             bytes(ip6__src),
@@ -248,21 +292,15 @@ class Icmp6TxHandler:
         )
         icmp6_packet_tx.pshdr_sum = sum(struct.unpack("! 5Q", pseudo_header))
 
-        # Serialise the (now-checksummed) ICMPv6 packet to bytes for
-        # carriage as the HBH payload.
         icmp6_buffers: list[Buffer] = []
         icmp6_packet_tx.assemble(icmp6_buffers)
         icmp6_bytes = b"".join(bytes(buf) for buf in icmp6_buffers)
 
-        # Wrap in HBH carrying Router Alert (value=MLD per RFC 2711)
-        # plus a PadN(0) to align the HBH header to 8 octets:
-        #   2-byte HBH prefix + 4-byte RA + 2-byte PadN(0) = 8 bytes.
+        # HBH = 2-byte prefix + 4-byte Router Alert + 2-byte PadN(0) = 8 octets.
         hbh_packet_tx = Ip6HbhAssembler(
             ip6_hbh__next=IpProto.ICMP6,
             ip6_hbh__options=Ip6HbhOptions(
-                Ip6HbhOptionRouterAlert(
-                    value=IP6_HBH__OPTION__ROUTER_ALERT__VALUE__MLD,
-                ),
+                Ip6HbhOptionRouterAlert(value=IP6_HBH__OPTION__ROUTER_ALERT__VALUE__MLD),
                 Ip6HbhOptionPadN(b""),
             ),
             ip6_hbh__payload=icmp6_bytes,
@@ -270,7 +308,6 @@ class Icmp6TxHandler:
         )
 
         self._if._packet_stats_tx.icmp6__pre_assemble += 1
-        self._if._packet_stats_tx.icmp6__mld2__report__send += 1
 
         tx_status = self._if._marshal_tx(
             lambda: self._if._phtx_ip6(
@@ -281,21 +318,12 @@ class Icmp6TxHandler:
             )
         )
 
-        if tx_status in {
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            TxStatus.PASSED__IP6__TO_TX_RING,
-        }:
-            __debug__ and log(
-                "stack",
-                "Sent out ICMPv6 Multicast Listener Report (HBH+RA) for "
-                f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}",
-            )
+        if tx_status in {TxStatus.PASSED__ETHERNET__TO_TX_RING, TxStatus.PASSED__IP6__TO_TX_RING}:
+            __debug__ and log("stack", f"Sent out ICMPv6 Multicast Listener Report (HBH+RA) to {ip6__dst}")
         else:
             __debug__ and log(
                 "stack",
-                "Failed to send out ICMPv6 Multicast Listener Report (HBH+RA) for "
-                f"{[_.multicast_address for _ in icmp6_mlr2_multicast_address_record]}, "
-                f"tx_status: {tx_status}",
+                f"Failed to send out ICMPv6 Multicast Listener Report (HBH+RA) to {ip6__dst}, tx_status: {tx_status}",
             )
 
     def _send_icmp6_nd_router_solicitation(self) -> None:

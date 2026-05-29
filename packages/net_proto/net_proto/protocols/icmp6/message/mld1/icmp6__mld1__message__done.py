@@ -217,6 +217,11 @@ class Icmp6Mld1MessageDone(Icmp6Message):
     def assemble(self, buffers: list[Buffer], /) -> None:
         """
         Assemble the ICMPv6 MLDv1 Done message into the buffer list.
+
+        Appends the 24-octet message plus an empty trailing buffer so
+        the enclosing 'Icmp6Assembler' can inject the checksum over the
+        last two buffers.
         """
 
         buffers.append(self._pack_header())
+        buffers.append(bytearray())

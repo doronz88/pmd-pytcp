@@ -43,6 +43,9 @@ from net_proto import (
     Icmp6MessageEchoRequest,
     Icmp6Mld2MessageReport,
 )
+from net_proto.protocols.icmp6.message.mld1.icmp6__mld1__message__report import (
+    MldVersion,
+)
 from pytcp import stack
 from pytcp.lib.packet_stats import PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -112,6 +115,12 @@ class _StubInterface:
     @property
     def ip6_unicast(self) -> list[Ip6Address]:
         return [STACK__IP6_ADDRESS]
+
+    def _mld_host_compatibility_mode(self) -> MldVersion:
+        # Default MLDv2 mode (no MLDv1 querier heard); the MLDv1
+        # compatibility-fallback path is exercised by the dedicated
+        # 'test__icmp6__mld1_compat' integration suite.
+        return MldVersion.V2
 
     def _phtx_ip6(self, **kwargs: object) -> TxStatus:
         self.ip6_tx_calls.append(kwargs)
