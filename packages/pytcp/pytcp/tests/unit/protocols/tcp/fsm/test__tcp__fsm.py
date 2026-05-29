@@ -33,13 +33,14 @@ ver 3.0.6
 """
 
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, IpVersion
 from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pytcp.socket.socket_table import SocketTable
 from pytcp.socket.tcp__metadata import TcpMetadata
 
 
@@ -74,7 +75,7 @@ class _TcpSessionFsmFixture(TestCase):
         )
         self._mtu_patch.start()
 
-        self._sockets: dict[Any, Any] = {}
+        self._sockets = SocketTable()
         self._sockets_patch = patch(
             "pytcp.protocols.tcp.session.tcp__session.stack.sockets",
             self._sockets,

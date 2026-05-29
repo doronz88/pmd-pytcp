@@ -54,6 +54,7 @@ from pytcp.socket import (
     SocketType,
     gaierror,
 )
+from pytcp.socket.socket_table import SocketTable
 from pytcp.socket.udp__metadata import UdpMetadata
 from pytcp.socket.udp__socket import UdpSocket
 
@@ -100,7 +101,7 @@ class _UdpSocketTestCase(TestCase):
         self._log_patch.start()
         self.addCleanup(self._log_patch.stop)
 
-        self._sockets: dict[Any, Any] = {}
+        self._sockets = SocketTable()
         self._sockets_patch = patch(
             "pytcp.socket.udp__socket.stack.sockets",
             self._sockets,

@@ -210,9 +210,9 @@ class RawSocket(socket):
                 except Ip4AddressFormatError as error:
                     raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
-        stack.sockets.pop(self.socket_id, None)
+        stack.sockets.unregister(self)
         self._local_ip_address = local_ip_address
-        stack.sockets[self.socket_id] = self
+        stack.sockets.register(self)
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
 
@@ -236,11 +236,11 @@ class RawSocket(socket):
         )
 
         # Re-register socket with new socket id
-        stack.sockets.pop(self.socket_id, None)
+        stack.sockets.unregister(self)
         self._local_ip_address = local_ip_address
         self._remote_ip_address = remote_ip_address
         self._remote_port = remote_port
-        stack.sockets[self.socket_id] = self
+        stack.sockets.register(self)
 
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
@@ -417,7 +417,7 @@ class RawSocket(socket):
         Close socket.
         """
 
-        stack.sockets.pop(self.socket_id, None)
+        stack.sockets.unregister(self)
         self._mark_closed()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")

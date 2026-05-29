@@ -35,7 +35,6 @@ import errno
 import fcntl
 import select
 from types import SimpleNamespace
-from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -45,6 +44,7 @@ from pytcp.lib.tx_status import TxStatus
 from pytcp.socket import AddressFamily, SocketType, gaierror
 from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.raw__socket import RawSocket
+from pytcp.socket.socket_table import SocketTable
 
 
 def _make_packet_handler(
@@ -89,7 +89,7 @@ class _RawSocketTestCase(TestCase):
         self._log_patch.start()
         self.addCleanup(self._log_patch.stop)
 
-        self._sockets: dict[Any, Any] = {}
+        self._sockets = SocketTable()
         self._sockets_patch = patch(
             "pytcp.socket.raw__socket.stack.sockets",
             self._sockets,

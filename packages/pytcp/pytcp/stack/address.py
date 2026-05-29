@@ -263,9 +263,12 @@ class AddressApi:
         from pytcp import stack
         from pytcp.protocols.tcp.tcp__enums import SysCall
 
-        for socket_id in list(stack.sockets):
+        # 'items()' flattens every cohort member (so each socket of a
+        # SO_REUSEPORT cohort bound to 'address' is visited, not just
+        # the first) and returns a detached snapshot, safe to iterate
+        # while the ABORT-driven teardown unregisters sockets.
+        for socket_id, sock in stack.sockets.items():
             if socket_id.local_address == address:
-                sock = stack.sockets[socket_id]
                 session = getattr(sock, "_tcp_session", None)
                 if session is not None:
                     session.tcp_fsm(syscall=SysCall.ABORT)

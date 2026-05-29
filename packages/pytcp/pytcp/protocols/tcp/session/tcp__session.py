@@ -1185,7 +1185,7 @@ class TcpSession:
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
-            stack.sockets.pop(self._socket.socket_id)
+            stack.sockets.unregister(self._socket)
             # Cancel every per-session logical timer and release
             # the coalesced service handle so nothing fires
             # against a dead session and it is GC-eligible (the

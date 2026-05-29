@@ -243,7 +243,7 @@ class TcpSocket(socket):
             self._local_port = tcp_session.local_port
             self._remote_port = tcp_session.remote_port
             self._parent_socket = tcp_session.socket
-            stack.sockets[self.socket_id] = self
+            stack.sockets.register(self)
 
         # Fresh socket initialization.
         else:
@@ -604,10 +604,10 @@ class TcpSocket(socket):
             local_port = pick_local_port()
 
         # Assigning local port makes socket "bound".
-        stack.sockets.pop(self.socket_id, None)
+        stack.sockets.unregister(self)
         self._local_ip_address = local_ip_address
         self._local_port = local_port
-        stack.sockets[self.socket_id] = self
+        stack.sockets.register(self)
 
         __debug__ and log("socket", f"<g>[{self}]</> - Bound socket")
 
@@ -656,12 +656,12 @@ class TcpSocket(socket):
             )
 
         # Re-register socket with new socket id.
-        stack.sockets.pop(self.socket_id, None)
+        stack.sockets.unregister(self)
         self._local_ip_address = local_ip_address
         self._local_port = local_port
         self._remote_ip_address = remote_ip_address
         self._remote_port = remote_port
-        stack.sockets[self.socket_id] = self
+        stack.sockets.register(self)
 
         self._tcp_session = TcpSession(
             local_ip_address=self._local_ip_address,
@@ -795,7 +795,7 @@ class TcpSocket(socket):
             f"<g>[{self}]</> - Socket starting to listen for inbound connections " f"(backlog={backlog})",
         )
 
-        stack.sockets[self.socket_id] = self
+        stack.sockets.register(self)
         self._tcp_session.listen()
 
     @override

@@ -33,7 +33,7 @@ ver 3.0.6
 import threading
 from typing import cast
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import create_autospec
 
 from pytcp.socket import socket
 from pytcp.socket.socket_id import SocketId
@@ -48,12 +48,19 @@ def _make_socket_id(token: str) -> SocketId:
     return cast(SocketId, token)
 
 
-def _make_socket() -> socket:
+def _make_socket(socket_id: SocketId | None = None) -> socket:
     """
     Build a spec'd stand-in socket for table-storage tests.
+
+    When 'socket_id' is supplied it is stamped onto the mock's
+    'socket_id' attribute so the 'register' / 'unregister' cohort
+    API (which keys off 'sock.socket_id') can be exercised.
     """
 
-    return cast(socket, MagicMock(spec=socket))
+    sock = create_autospec(socket, spec_set=True, instance=True)
+    if socket_id is not None:
+        sock.socket_id = socket_id
+    return cast(socket, sock)
 
 
 class TestSocketTableBasic(TestCase):
@@ -190,6 +197,187 @@ class TestSocketTableBasic(TestCase):
         restored = {_make_socket_id("b"): _make_socket()}
         table.update(restored)
         self.assertEqual(len(table), 1, msg="update must bulk-install the mapping.")
+
+
+class TestSocketTableReusePortCohort(TestCase):
+    """
+    The 'SocketTable' SO_REUSEPORT cohort tests — multiple sockets
+    registered under one listening 'SocketId' form a cohort that
+    'get' load-balances across with round-robin selection.
+    """
+
+    def test__socket_table__register_two_under_one_id_forms_cohort(self) -> None:
+        """
+        Ensure two distinct sockets registered under the same id both
+        remain reachable — neither overwrites the other, as a bare
+        dict assignment would.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock_a = _make_socket(sid)
+        sock_b = _make_socket(sid)
+
+        table.register(sock_a)
+        table.register(sock_b)
+
+        delivered = {table.get(sid), table.get(sid)}
+        self.assertEqual(
+            delivered,
+            {sock_a, sock_b},
+            msg="both cohort members must be reachable via get.",
+        )
+
+    def test__socket_table__get_round_robins_across_cohort(self) -> None:
+        """
+        Ensure successive 'get' calls on a multi-member cohort rotate
+        through the members in registration order, then wrap — the
+        load-balancing pin for the REUSEPORT demux.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock_a = _make_socket(sid)
+        sock_b = _make_socket(sid)
+        sock_c = _make_socket(sid)
+        table.register(sock_a)
+        table.register(sock_b)
+        table.register(sock_c)
+
+        picks = [table.get(sid) for _ in range(4)]
+
+        self.assertEqual(
+            picks,
+            [sock_a, sock_b, sock_c, sock_a],
+            msg="get must round-robin the cohort in registration order and wrap.",
+        )
+
+    def test__socket_table__register_is_identity_idempotent(self) -> None:
+        """
+        Ensure registering the same socket object twice does not add a
+        duplicate cohort entry.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock = _make_socket(sid)
+
+        table.register(sock)
+        table.register(sock)
+
+        self.assertEqual(
+            table.values(),
+            [sock],
+            msg="re-registering the same socket must not duplicate it.",
+        )
+
+    def test__socket_table__unregister_removes_one_cohort_member(self) -> None:
+        """
+        Ensure 'unregister' removes only the given socket from a
+        cohort; the surviving member is then the sole 'get' result.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock_a = _make_socket(sid)
+        sock_b = _make_socket(sid)
+        table.register(sock_a)
+        table.register(sock_b)
+
+        table.unregister(sock_a)
+
+        self.assertEqual(
+            {table.get(sid), table.get(sid)},
+            {sock_b},
+            msg="after unregistering one member, get must only return the survivor.",
+        )
+
+    def test__socket_table__unregister_last_member_drops_id(self) -> None:
+        """
+        Ensure unregistering the final cohort member removes the id
+        from the table entirely.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock = _make_socket(sid)
+        table.register(sock)
+
+        table.unregister(sock)
+
+        self.assertNotIn(
+            sid,
+            table,
+            msg="an emptied cohort must drop its id from the table.",
+        )
+        self.assertIsNone(
+            table.get(sid),
+            msg="get on the dropped id must return None.",
+        )
+
+    def test__socket_table__unregister_unknown_socket_is_noop(self) -> None:
+        """
+        Ensure 'unregister' of a socket that was never registered is a
+        silent no-op (no raise), matching the tolerant 'pop' default.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+
+        # Must not raise.
+        table.unregister(_make_socket(sid))
+
+    def test__socket_table__single_member_cohort_get_is_stable(self) -> None:
+        """
+        Ensure a single-member cohort always returns that member from
+        'get' (the common non-REUSEPORT case — no rotation).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("conn")
+        sock = _make_socket(sid)
+        table.register(sock)
+
+        self.assertEqual(
+            [table.get(sid) for _ in range(3)],
+            [sock, sock, sock],
+            msg="a single-member cohort must return its member on every get.",
+        )
+
+    def test__socket_table__values_flatten_cohort_members(self) -> None:
+        """
+        Ensure 'values' returns every cohort member across all ids, so
+        bind-conflict and ephemeral-port scans see all open sockets.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        table = SocketTable()
+        sid = _make_socket_id("listener")
+        sock_a = _make_socket(sid)
+        sock_b = _make_socket(sid)
+        table.register(sock_a)
+        table.register(sock_b)
+
+        self.assertCountEqual(
+            table.values(),
+            [sock_a, sock_b],
+            msg="values must flatten every cohort member.",
+        )
 
 
 class TestSocketTableConcurrency(TestCase):

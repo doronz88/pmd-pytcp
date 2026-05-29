@@ -32,7 +32,6 @@ ver 3.0.6
 """
 
 from types import SimpleNamespace
-from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -40,6 +39,7 @@ from net_addr import Ip4Address
 from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pytcp.protocols.tcp.tcp__errors import TcpSessionError
+from pytcp.socket.socket_table import SocketTable
 
 
 class _TcpSessionSyscallFixture(TestCase):
@@ -72,7 +72,7 @@ class _TcpSessionSyscallFixture(TestCase):
         )
         self._mtu_patch.start()
 
-        self._sockets: dict[Any, Any] = {}
+        self._sockets = SocketTable()
         self._sockets_patch = patch(
             "pytcp.protocols.tcp.session.tcp__session.stack.sockets",
             self._sockets,
