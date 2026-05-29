@@ -448,6 +448,19 @@ class UdpSocket(socket):
         if not stack.has_route_to(self._remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
+        # H5 SO_BROADCAST gate (Linux 'udp_sendmsg'): sending to the
+        # IPv4 limited broadcast '255.255.255.255' on a connected
+        # socket requires 'SO_BROADCAST = 1'.
+        if (
+            isinstance(self._remote_ip_address, Ip4Address)
+            and self._remote_ip_address.is_limited_broadcast
+            and not self._so_broadcast
+        ):
+            raise OSError(
+                errno.EACCES,
+                "Permission denied - [SO_BROADCAST must be enabled for broadcast send]",
+            )
+
         self._egress_handler(self._remote_ip_address).send_udp_packet(
             ip__local_address=self._local_ip_address,
             ip__remote_address=self._remote_ip_address,
@@ -504,6 +517,21 @@ class UdpSocket(socket):
         # synchronous EHOSTUNREACH at send time.
         if not stack.has_route_to(remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
+
+        # H5 SO_BROADCAST gate (Linux 'udp_sendmsg'): sending to the
+        # IPv4 limited broadcast '255.255.255.255' requires the socket
+        # to have 'SO_BROADCAST = 1'. Without the flag we surface
+        # EACCES synchronously so apps see actionable feedback at the
+        # send call.
+        if (
+            isinstance(remote_ip_address, Ip4Address)
+            and remote_ip_address.is_limited_broadcast
+            and not self._so_broadcast
+        ):
+            raise OSError(
+                errno.EACCES,
+                "Permission denied - [SO_BROADCAST must be enabled for broadcast send]",
+            )
 
         self._egress_handler(remote_ip_address).send_udp_packet(
             ip__local_address=local_ip_address,

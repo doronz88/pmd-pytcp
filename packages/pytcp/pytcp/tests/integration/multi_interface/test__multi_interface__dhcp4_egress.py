@@ -47,7 +47,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
     Dhcp4OptionMessageType,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
-from pytcp.socket import AF_INET4, SO_BINDTODEVICE, SOCK_DGRAM, SOL_SOCKET, socket
+from pytcp.socket import AF_INET4, SO_BINDTODEVICE, SO_BROADCAST, SOCK_DGRAM, SOL_SOCKET, socket
 from pytcp.tests.lib.icmp_testcase import IcmpTestCase
 
 # Second interface — a distinct subnet from the harness boot interface
@@ -136,6 +136,8 @@ class TestMultiInterfaceDhcp4BroadcastEgress(IcmpTestCase, TestCase):
         self.addCleanup(client_socket.close)
         client_socket.bind(("0.0.0.0", DHCP4__CLIENT_PORT))
         client_socket.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, IFACE2__NAME.encode())
+        # H5 SO_BROADCAST gate: limited-broadcast sends require the flag.
+        client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         client_socket.connect((DHCP4__LIMITED_BROADCAST, DHCP4__SERVER_PORT))
 
         boot_tx_before = len(self._frames_tx)

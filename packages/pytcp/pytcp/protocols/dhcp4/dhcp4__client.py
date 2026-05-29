@@ -99,6 +99,7 @@ from pytcp.runtime.subsystem import Subsystem
 from pytcp.socket import (
     AF_INET4,
     SO_BINDTODEVICE,
+    SO_BROADCAST,
     SOCK_DGRAM,
     SOL_SOCKET,
     AddressFamily,
@@ -1732,6 +1733,13 @@ class Dhcp4Client(Subsystem):
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         if self._interface_name is not None:
             client_socket.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, self._interface_name.encode())
+        # The DHCPv4 INIT / REBINDING / REBOOT egress targets the
+        # IPv4 limited broadcast '255.255.255.255' (RFC 2131 §4.1).
+        # The H5 SO_BROADCAST gate in 'UdpSocket.send' / 'sendto'
+        # refuses unflagged broadcasts with EACCES; mark the client
+        # socket as broadcast-permitted at construction so every
+        # pre-lease send path is gate-clean.
+        client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         return client_socket
 
     def _send_discover(self, client_socket: socket, *, xid: int) -> None:
