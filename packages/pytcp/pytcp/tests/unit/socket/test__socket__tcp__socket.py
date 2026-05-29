@@ -1514,6 +1514,93 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="connect() must propagate '_tcp_maxseg' to TcpSession._maxseg_override.",
         )
 
+    def test__tcp_socket__getsockopt__ipv6_v6only_default_one(self) -> None:
+        """
+        Ensure a freshly-constructed AF_INET6 'TcpSocket'
+        reports 'IPV6_V6ONLY = 1' from 'getsockopt' — the
+        default-on invariant matching Python's stdlib socket
+        behaviour and the Linux 'net.ipv6.bindv6only' kernel
+        default.
+
+        Reference: Linux net.ipv6.bindv6only (default 1).
+        Reference: Python socket.has_dualstack_ipv6 (default off).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_V6ONLY
+
+        s = TcpSocket(family=AddressFamily.INET6)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_V6ONLY),
+            1,
+            msg="IPV6_V6ONLY must default to 1 on a freshly-constructed AF_INET6 socket.",
+        )
+
+    def test__tcp_socket__setsockopt__ipv6_v6only_zero_enables_dual_stack(self) -> None:
+        """
+        Ensure 'setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 0)'
+        stores the flag and 'getsockopt' round-trips it — the
+        Phase 3 dual-stack listener-fork will key off this
+        flag to decide whether to accept inbound IPv4 peers.
+
+        Reference: Linux IPV6_V6ONLY (0 = dual-stack mode).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_V6ONLY
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 0)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_V6ONLY),
+            0,
+            msg="IPV6_V6ONLY=0 setsockopt → getsockopt must round-trip as 0.",
+        )
+
+    def test__tcp_socket__setsockopt__ipv6_v6only_one_re_enables_strict_ipv6(self) -> None:
+        """
+        Ensure 'setsockopt(IPV6_V6ONLY, 1)' after an earlier
+        '..., 0)' re-enables strict-IPv6 mode — the application
+        must be able to switch the flag both directions before
+        bind() commits the socket's family scope.
+
+        Reference: Linux IPV6_V6ONLY (1 = strict IPv6 only).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_V6ONLY
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 0)
+        s.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 1)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_V6ONLY),
+            1,
+            msg="setsockopt(IPV6_V6ONLY, 1) after a prior 0 must re-enable strict mode.",
+        )
+
+    def test__tcp_socket__setsockopt__ipv6_v6only_nonzero_normalises_to_one(self) -> None:
+        """
+        Ensure boolean-shaped 'IPV6_V6ONLY' setsockopt
+        collapses any non-zero integer to 1 on storage,
+        matching Linux's behaviour where the kernel reads
+        the value via 'sockptr_t' and stores
+        '!!val' (boolean coercion).
+
+        Reference: Linux IPV6_V6ONLY (boolean storage).
+        """
+
+        from pytcp.socket import IPPROTO_IPV6, IPV6_V6ONLY
+
+        s = TcpSocket(family=AddressFamily.INET6)
+        s.setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, 42)
+
+        self.assertEqual(
+            s.getsockopt(IPPROTO_IPV6, IPV6_V6ONLY),
+            1,
+            msg="Boolean IPV6_V6ONLY must normalise any non-zero value to 1.",
+        )
+
     def test__tcp_socket__listen_propagates_tcp_maxseg_to_session(self) -> None:
         """
         Ensure 'setsockopt(TCP_MAXSEG, 1200)' followed by

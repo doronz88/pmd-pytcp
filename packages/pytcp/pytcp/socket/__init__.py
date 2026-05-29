@@ -201,6 +201,7 @@ class IpV6Option(IntEnum):
     IPV6_UNICAST_HOPS = 16  # int 1-255: per-socket Hop-Limit override
     IPV6_MTU = 24  # int (getsockopt only): effective PMTU for connected peer
     IPV6_RECVERR = 25  # int 0/1: enable IPv6 error queue (recvmsg MSG_ERRQUEUE — Linux ipv6(7))
+    IPV6_V6ONLY = 26  # int 0/1: AF_INET6 socket accepts IPv4-mapped peers when 0 (dual-stack)
     IPV6_RECVTCLASS = 66  # int 0/1: enable IPV6_TCLASS cmsg on recvmsg (RFC 3542 §6.5)
     IPV6_TCLASS = 67  # int: 8-bit Traffic Class (DSCP+ECN, RFC 2474)
 
@@ -208,6 +209,7 @@ class IpV6Option(IntEnum):
 IPV6_UNICAST_HOPS = IpV6Option.IPV6_UNICAST_HOPS
 IPV6_MTU = IpV6Option.IPV6_MTU
 IPV6_RECVERR = IpV6Option.IPV6_RECVERR
+IPV6_V6ONLY = IpV6Option.IPV6_V6ONLY
 IPV6_RECVTCLASS = IpV6Option.IPV6_RECVTCLASS
 IPV6_TCLASS = IpV6Option.IPV6_TCLASS
 
@@ -474,6 +476,7 @@ class socket(ABC):
     _ipv6_tclass: int
     _ipv6_recvtclass: bool
     _ipv6_recverr: bool
+    _ipv6_v6only: bool
     # The source filter (RFC 3376 §3.1) this socket holds per joined
     # (ifindex, group). 'IP_ADD_MEMBERSHIP' records an EXCLUDE{}
     # any-source filter; the source options build INCLUDE / EXCLUDE
@@ -529,6 +532,14 @@ class socket(ABC):
         self._ipv6_tclass = 0
         self._ipv6_recvtclass = False
         self._ipv6_recverr = False
+        # Linux 'IPV6_V6ONLY' — defaults to True (1) matching
+        # Python 'socket.has_ipv6'-shaped behaviour and the
+        # 'net.ipv6.bindv6only' kernel default. When False (0)
+        # an AF_INET6 socket bound to '::' also accepts inbound
+        # IPv4 peers; the dual-stack listener-fork (H3 Phase 3
+        # of socket_linux_parity_audit.md) surfaces those peers
+        # as IPv4-mapped IPv6 addresses on accept().
+        self._ipv6_v6only = True
         # Per-socket IPv4 multicast holds (ifindex, group) for the
         # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
         self._ip4_source_filters = {}
@@ -884,6 +895,9 @@ class socket(ABC):
             case _ if optname == IPV6_RECVERR:
                 self._ipv6_recverr = bool(value)
                 return True
+            case _ if optname == IPV6_V6ONLY:
+                self._ipv6_v6only = bool(value)
+                return True
         return False
 
     def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
@@ -901,6 +915,8 @@ class socket(ABC):
                 return int(self._ipv6_recvtclass)
             case _ if optname == IPV6_RECVERR:
                 return int(self._ipv6_recverr)
+            case _ if optname == IPV6_V6ONLY:
+                return int(self._ipv6_v6only)
             case _ if optname == IPV6_MTU:
                 return self._effective_pmtu()
         return None
