@@ -26,9 +26,11 @@ roles and mechanisms are **out of scope** and their normative sections
 are omitted wholesale rather than listed as "not met":
 
 - Server behaviour (§18.3), relay-agent behaviour (§19, §20), the
-  Relay-forward / Relay-reply messages (§16.13–§16.14, §9).
+  Relay-forward / Relay-reply messages (§16.13–§16.14, §9). The relay
+  agent is a Phase-2 router follow-up — see "Phase-2 follow-ups" below.
 - Prefix delegation — IA_PD / IA Prefix (§6.3, §18.2.x prefix arms,
-  §21.21–§21.22). PyTCP is a host, not a requesting router.
+  §21.21–§21.22). PyTCP is a host, not a requesting router; IA_PD is a
+  Phase-2 router follow-up — see "Phase-2 follow-ups" below.
 - Temporary addresses — IA_TA (§21.5). PyTCP requests only IA_NA.
 - The Confirm message and its receipt (§18.2.3, §16.5), the Reconfigure
   message and Reconfigure Accept / Reconfigure Key (§18.2.11, §16.11,
@@ -636,3 +638,41 @@ multicasts never needs: the SOL_MAX_RT / INF_MAX_RT override (§21.24 /
 §21.25) and the Server Unicast option (§21.12). Rapid Commit is on-by-knob
 (default off, a client MAY). The Confirm message, Reconfigure, IA_TA, and
 IA_PD are out of scope for a host client and intentionally absent.
+
+---
+
+## Phase-2 follow-ups (the router track)
+
+Two RFC 8415 mechanisms are deliberately out of scope for the host client
+above but become relevant once PyTCP grows the Phase-2 router forwarding
+plane (multi-interface, IP forwarding, RA generation). Both are **gated on
+that plane** — implementing them earlier would ship a component with no
+consumer — so they are tracked here, not built. The natural ordering is
+forwarding-plane first, then these land on top with real consumers.
+
+- **DHCPv6 relay agent (§19, §20; Relay-forward / Relay-reply
+  §16.13–§16.14, §9).** A router on a client-facing link with no local
+  server wraps inbound client messages in a Relay-forward and unwraps the
+  Relay-reply back toward an upstream server / relay. *Depends on:* the
+  downstream/upstream multi-interface forwarding plane the relay sits
+  between. *New work:* the net_proto Relay-forward (12) / Relay-reply (13)
+  message structure (hop-count, link-address, peer-address — the
+  `RELAY_FORW` / `RELAY_REPL` message-type enum members already exist),
+  plus the Relay Message (option 9) and Interface-ID (option 18) option
+  codecs, and the relay RX/TX path. *No client-code change:* the relay
+  forwards verbatim; the server still originates Server Unicast /
+  SOL_MAX_RT.
+
+- **Prefix delegation — IA_PD (§6.3; IA_PD option 25, IA Prefix option
+  26).** A requesting router acquires a delegated prefix from an upstream
+  delegating router and sub-delegates it to its downstream links.
+  *Acquisition half:* a moderate extension of `Dhcp6Client` — add an IA_PD
+  to the SOLICIT / REQUEST / RENEW / REBIND alongside (or instead of) the
+  IA_NA, and extract the delegated prefix — plus the IA_PD / IA Prefix
+  option codecs. *Consuming half:* assigning sub-prefixes to interfaces
+  and advertising them via generated RAs, which needs the router plane.
+  *Reuses:* the BOUND lease lifecycle and the now-faithful (retransmitting)
+  RELEASE path apply unchanged to a delegated prefix — and RELEASE-on-
+  shutdown gains real value here (the ISP reclaims the prefix promptly
+  instead of waiting for valid-lifetime expiry), which is the one place
+  the §18.2.7 retransmission earns its keep beyond the host IA_NA case.
