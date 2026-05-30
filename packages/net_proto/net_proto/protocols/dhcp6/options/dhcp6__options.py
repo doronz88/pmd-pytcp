@@ -61,6 +61,9 @@ from net_proto.protocols.dhcp6.options.dhcp6__option__ia_na import (
 from net_proto.protocols.dhcp6.options.dhcp6__option__oro import (
     Dhcp6OptionOro,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option__preference import (
+    Dhcp6OptionPreference,
+)
 from net_proto.protocols.dhcp6.options.dhcp6__option__rapid_commit import (
     Dhcp6OptionRapidCommit,
 )
@@ -149,6 +152,18 @@ class Dhcp6Options(ProtoOptions):
         for option in self._options:
             if isinstance(option, Dhcp6OptionElapsedTime):
                 return option.elapsed_time
+
+        return None
+
+    @property
+    def preference(self) -> int | None:
+        """
+        Get the DHCPv6 'preference' option value.
+        """
+
+        for option in self._options:
+            if isinstance(option, Dhcp6OptionPreference):
+                return option.preference
 
         return None
 
@@ -244,6 +259,8 @@ class Dhcp6Options(ProtoOptions):
                     options.append(Dhcp6OptionIaAddr.from_buffer(buffer[offset:]))
                 case Dhcp6OptionType.ORO:
                     options.append(Dhcp6OptionOro.from_buffer(buffer[offset:]))
+                case Dhcp6OptionType.PREFERENCE:
+                    options.append(Dhcp6OptionPreference.from_buffer(buffer[offset:]))
                 case Dhcp6OptionType.ELAPSED_TIME:
                     options.append(Dhcp6OptionElapsedTime.from_buffer(buffer[offset:]))
                 case Dhcp6OptionType.STATUS_CODE:
@@ -314,6 +331,14 @@ class Dhcp6OptionsProperties(ABC):
         """
 
         return self._options.elapsed_time
+
+    @property
+    def preference(self) -> int | None:
+        """
+        Get the DHCPv6 'preference' option value.
+        """
+
+        return self._options.preference
 
     @property
     def status_code(self) -> Dhcp6OptionStatusCode | None:

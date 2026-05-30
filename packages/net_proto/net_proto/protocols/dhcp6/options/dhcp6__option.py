@@ -71,6 +71,7 @@ class Dhcp6OptionType(ProtoOptionType):
     IA_NA = 3  # Identity Association for Non-temporary Addresses (RFC 8415 §21.4).
     IA_ADDR = 5  # IA Address (RFC 8415 §21.6).
     ORO = 6  # Option Request (RFC 8415 §21.7).
+    PREFERENCE = 7  # Preference (RFC 8415 §21.8).
     ELAPSED_TIME = 8  # Elapsed Time (RFC 8415 §21.9).
     STATUS_CODE = 13  # Status Code (RFC 8415 §21.13).
     RAPID_COMMIT = 14  # Rapid Commit (RFC 8415 §21.14).

@@ -180,6 +180,9 @@ from net_proto.protocols.dhcp6.options.dhcp6__option__ia_na import (
 from net_proto.protocols.dhcp6.options.dhcp6__option__oro import (
     Dhcp6OptionOro,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option__preference import (
+    Dhcp6OptionPreference,
+)
 from net_proto.protocols.dhcp6.options.dhcp6__option__rapid_commit import (
     Dhcp6OptionRapidCommit,
 )
@@ -690,6 +693,7 @@ __all__ = [
     "Dhcp6OptionIaAddr",
     "Dhcp6OptionIaNa",
     "Dhcp6OptionOro",
+    "Dhcp6OptionPreference",
     "Dhcp6OptionRapidCommit",
     "Dhcp6OptionServerId",
     "Dhcp6OptionStatusCode",
