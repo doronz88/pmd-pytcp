@@ -44,9 +44,13 @@ from net_proto import (
     Dhcp6MessageType,
     Dhcp6OptionClientId,
     Dhcp6OptionDnsServers,
+    Dhcp6OptionIaAddr,
+    Dhcp6OptionIaNa,
     Dhcp6Options,
     Dhcp6OptionServerId,
+    Dhcp6OptionStatusCode,
     Dhcp6Parser,
+    Dhcp6StatusCode,
 )
 from net_proto.protocols.dhcp6.options.dhcp6__option import Dhcp6Option
 
@@ -111,6 +115,66 @@ class Dhcp6MockServer:
             lambda: self._build_reply(
                 xid=xid,
                 dns_servers=dns_servers,
+                client_id_echo=client_id_echo,
+                server_id=server_id,
+            )
+        )
+
+    def enqueue_advertise(
+        self,
+        *,
+        xid: int | object = _UNSET,
+        client_id_echo: bytes | None | object = _UNSET,
+        server_id: bytes | None | object = _UNSET,
+    ) -> None:
+        """
+        Plan a DHCPv6 ADVERTISE built lazily from the next client TX —
+        carries the Server Identifier and the echoed Client Identifier
+        so the client can select this server and address its REQUEST.
+        """
+
+        self._reply_queue.append(
+            lambda: self._build_advertise(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+        )
+
+    def enqueue_lease_reply(
+        self,
+        *,
+        address: Ip6Address,
+        preferred_lifetime: int = 3600,
+        valid_lifetime: int = 7200,
+        t1: int = 1800,
+        t2: int = 2880,
+        iaid: int = 0,
+        ia_status: Dhcp6StatusCode | None = None,
+        omit_ia_address: bool = False,
+        ia_na_options_override: bytes | None = None,
+        xid: int | object = _UNSET,
+        client_id_echo: bytes | None | object = _UNSET,
+        server_id: bytes | None | object = _UNSET,
+    ) -> None:
+        """
+        Plan a DHCPv6 REPLY granting an IA_NA lease — carries the
+        Server Identifier, the echoed Client Identifier, and an IA_NA
+        whose sub-option block holds the IA Address (and, when
+        'ia_status' is set, a Status Code). Set 'omit_ia_address' to
+        emit an IA_NA with no address (e.g. a NoAddrsAvail reply), or
+        'ia_na_options_override' to stuff the IA_NA with raw (possibly
+        malformed) sub-option bytes.
+        """
+
+        self._reply_queue.append(
+            lambda: self._build_lease_reply(
+                address=address,
+                preferred_lifetime=preferred_lifetime,
+                valid_lifetime=valid_lifetime,
+                t1=t1,
+                t2=t2,
+                iaid=iaid,
+                ia_status=ia_status,
+                omit_ia_address=omit_ia_address,
+                ia_na_options_override=ia_na_options_override,
+                xid=xid,
                 client_id_echo=client_id_echo,
                 server_id=server_id,
             )
@@ -213,6 +277,103 @@ class Dhcp6MockServer:
             dhcp6__options=Dhcp6Options(*options),
         )
         return bytes(reply)
+
+    def _identity_options(
+        self,
+        *,
+        xid: int | object,
+        client_id_echo: bytes | None | object,
+        server_id: bytes | None | object,
+    ) -> tuple[int, list[Dhcp6Option]]:
+        """
+        Resolve the echoed transaction-id and build the Server
+        Identifier + echoed Client Identifier options common to every
+        ADVERTISE / REPLY.
+        """
+
+        resolved_xid = self._resolved_echo(explicit=xid, default_extractor=lambda tx: tx.xid)
+        resolved_cid = self._resolved_echo(explicit=client_id_echo, default_extractor=lambda tx: tx.client_id)
+        resolved_sid = self._server_duid if server_id is _UNSET else server_id
+
+        assert isinstance(resolved_xid, int)
+
+        options: list[Dhcp6Option] = []
+        if resolved_sid is not None:
+            assert isinstance(resolved_sid, (bytes, bytearray))
+            options.append(Dhcp6OptionServerId(bytes(resolved_sid)))
+        if resolved_cid is not None:
+            assert isinstance(resolved_cid, (bytes, bytearray))
+            options.append(Dhcp6OptionClientId(bytes(resolved_cid)))
+        return resolved_xid, options
+
+    def _build_advertise(
+        self,
+        *,
+        xid: int | object,
+        client_id_echo: bytes | None | object,
+        server_id: bytes | None | object,
+    ) -> bytes:
+        """
+        Build the canned ADVERTISE frame bytes (Server Identifier +
+        echoed Client Identifier).
+        """
+
+        resolved_xid, options = self._identity_options(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+        return bytes(
+            Dhcp6Assembler(
+                dhcp6__msg_type=Dhcp6MessageType.ADVERTISE,
+                dhcp6__xid=resolved_xid,
+                dhcp6__options=Dhcp6Options(*options),
+            )
+        )
+
+    def _build_lease_reply(
+        self,
+        *,
+        address: Ip6Address,
+        preferred_lifetime: int,
+        valid_lifetime: int,
+        t1: int,
+        t2: int,
+        iaid: int,
+        ia_status: Dhcp6StatusCode | None,
+        omit_ia_address: bool,
+        ia_na_options_override: bytes | None,
+        xid: int | object,
+        client_id_echo: bytes | None | object,
+        server_id: bytes | None | object,
+    ) -> bytes:
+        """
+        Build the canned lease-granting REPLY frame bytes (Server
+        Identifier + echoed Client Identifier + IA_NA with a nested IA
+        Address and/or Status Code).
+        """
+
+        resolved_xid, options = self._identity_options(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+
+        if ia_na_options_override is not None:
+            ia_na_blob = ia_na_options_override
+        else:
+            sub_options: list[Dhcp6Option] = []
+            if not omit_ia_address:
+                sub_options.append(
+                    Dhcp6OptionIaAddr(
+                        address=address, preferred_lifetime=preferred_lifetime, valid_lifetime=valid_lifetime
+                    )
+                )
+            if ia_status is not None:
+                sub_options.append(Dhcp6OptionStatusCode(ia_status, ""))
+            ia_na_blob = bytes(Dhcp6Options(*sub_options))
+
+        options.append(Dhcp6OptionIaNa(iaid=iaid, t1=t1, t2=t2, options=ia_na_blob))
+
+        return bytes(
+            Dhcp6Assembler(
+                dhcp6__msg_type=Dhcp6MessageType.REPLY,
+                dhcp6__xid=resolved_xid,
+                dhcp6__options=Dhcp6Options(*options),
+            )
+        )
 
 
 def autospec_dhcp6_socket() -> MagicMock:

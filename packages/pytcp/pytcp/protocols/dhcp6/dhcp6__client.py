@@ -23,12 +23,12 @@
 
 
 """
-This module contains the DHCPv6 (RFC 8415) stateless client — the
-INFORMATION-REQUEST / REPLY exchange that fetches "other
-configuration" (DNS servers, etc.) without taking an address lease.
-It is the de-risking first cut of the DHCPv6 client: it exercises the
-full UDP transport + wire codec + DUID stack before the stateful
-SOLICIT/REQUEST/REPLY address FSM lands.
+This module contains the DHCPv6 (RFC 8415) client — the stateless
+INFORMATION-REQUEST exchange (other-config: DNS, etc.) and the
+stateful SOLICIT / ADVERTISE / REQUEST / REPLY exchange that leases a
+non-temporary address (IA_NA). The leased address is handed to the
+caller as a 'Dhcp6Lease'; the Address-API assignment + lease lifecycle
+land in a later phase.
 
 pytcp/protocols/dhcp6/dhcp6__client.py
 
@@ -47,15 +47,18 @@ from net_proto import (
     Dhcp6MessageType,
     Dhcp6OptionClientId,
     Dhcp6OptionElapsedTime,
+    Dhcp6OptionIaNa,
     Dhcp6OptionOro,
     Dhcp6Options,
+    Dhcp6OptionServerId,
     Dhcp6OptionType,
     Dhcp6Parser,
     Dhcp6SanityError,
+    Dhcp6StatusCode,
 )
 from pytcp.lib.logger import log
 from pytcp.protocols.dhcp6 import dhcp6__constants
-from pytcp.protocols.dhcp6.dhcp6__uid import get_client_duid
+from pytcp.protocols.dhcp6.dhcp6__uid import get_client_duid, get_iaid
 from pytcp.socket import (
     AF_INET6,
     SO_BINDTODEVICE,
@@ -80,25 +83,59 @@ class Dhcp6StatelessConfig:
     dns_servers: list[Ip6Address] = field(default_factory=list)
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Dhcp6Lease:
+    """
+    A negotiated DHCPv6 non-temporary-address (IA_NA) lease — the
+    assigned address + its preferred / valid lifetimes, plus the
+    IA_NA T1 / T2 renewal timers, the IAID, and the issuing server's
+    DUID. DHCPv6 carries no prefix length in the IA Address option;
+    the on-link prefix is learned from Router Advertisements, so the
+    Address-API assignment installs the leased address as a /128 host.
+    """
+
+    address: Ip6Address
+    preferred_lifetime: int
+    valid_lifetime: int
+    t1: int
+    t2: int
+    iaid: int
+    server_duid: bytes
+
+
 class Dhcp6Client:
     """
-    DHCPv6 stateless client (RFC 8415 §18.2.6).
+    DHCPv6 client (RFC 8415).
 
-    Synchronous: 'fetch_other_config()' runs one INFORMATION-REQUEST
-    / REPLY exchange inline in the caller's thread and returns the
-    other-configuration bundle (or None when no server answers within
-    the retransmission budget). No background thread is spawned — the
-    daemon lifecycle and the RA Other-config (O flag) trigger land in
-    a later phase.
+    Two synchronous exchanges, each running inline in the caller's
+    thread (no daemon thread yet — the daemon lifecycle and the RA
+    Managed/Other-config trigger land in a later phase):
+
+      - 'fetch_other_config()' — the stateless INFORMATION-REQUEST /
+        REPLY exchange (§18.2.6); returns a 'Dhcp6StatelessConfig'.
+      - 'acquire_lease()' — the stateful SOLICIT / ADVERTISE / REQUEST
+        / REPLY exchange (§18.2.1-§18.2.2); returns a 'Dhcp6Lease'.
+
+    Both share the §15 retransmission backoff and the inbound-frame
+    validation in '_run_exchange' / '_recv_within_window'.
     """
 
     def __init__(self, *, mac_address: MacAddress, interface_name: str | None = None) -> None:
         """
-        Initialize the DHCPv6 stateless client.
+        Initialize the DHCPv6 client.
         """
 
         self._mac_address = mac_address
         self._interface_name = interface_name
+
+    # --- message builders ---
+
+    def _client_id_option(self) -> Dhcp6OptionClientId:
+        """
+        Build the Client Identifier option carrying the host DUID.
+        """
+
+        return Dhcp6OptionClientId(get_client_duid(self._mac_address))
 
     def _build_information_request(self, *, xid: int) -> Dhcp6Assembler:
         """
@@ -108,13 +145,56 @@ class Dhcp6Client:
         """
 
         options = Dhcp6Options(
-            Dhcp6OptionClientId(get_client_duid(self._mac_address)),
+            self._client_id_option(),
             Dhcp6OptionElapsedTime(0),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
         return Dhcp6Assembler(
             dhcp6__msg_type=Dhcp6MessageType.INFORMATION_REQUEST,
+            dhcp6__xid=xid,
+            dhcp6__options=options,
+        )
+
+    def _build_solicit(self, *, xid: int) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.1 SOLICIT carrying the Client
+        Identifier, an IA_NA (the client's IAID; T1 / T2 = 0 to let
+        the server choose), a zero Elapsed Time, and an Option Request
+        for DNS servers.
+        """
+
+        options = Dhcp6Options(
+            self._client_id_option(),
+            Dhcp6OptionIaNa(iaid=get_iaid(), t1=0, t2=0),
+            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
+        )
+
+        return Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.SOLICIT,
+            dhcp6__xid=xid,
+            dhcp6__options=options,
+        )
+
+    def _build_request(self, *, xid: int, server_duid: bytes) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.2 REQUEST addressed to the selected
+        server (its DUID in the Server Identifier option), carrying the
+        Client Identifier, the IA_NA, a zero Elapsed Time, and an
+        Option Request for DNS servers.
+        """
+
+        options = Dhcp6Options(
+            self._client_id_option(),
+            Dhcp6OptionServerId(server_duid),
+            Dhcp6OptionIaNa(iaid=get_iaid(), t1=0, t2=0),
+            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
+        )
+
+        return Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.REQUEST,
             dhcp6__xid=xid,
             dhcp6__options=options,
         )
@@ -132,6 +212,19 @@ class Dhcp6Client:
             client_socket.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, self._interface_name.encode())
         return client_socket
 
+    def _multicast_target(self) -> tuple[str, int]:
+        """
+        Get the All_DHCP_Relay_Agents_and_Servers (address, port) the
+        client transmits to.
+        """
+
+        return (
+            str(dhcp6__constants.DHCP6__ALL_DHCP_RELAY_AGENTS_AND_SERVERS),
+            dhcp6__constants.DHCP6__SERVER_PORT,
+        )
+
+    # --- stateless exchange ---
+
     def fetch_other_config(self) -> Dhcp6StatelessConfig | None:
         """
         Run one stateless INFORMATION-REQUEST / REPLY exchange and
@@ -143,10 +236,7 @@ class Dhcp6Client:
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
-            target = (
-                str(dhcp6__constants.DHCP6__ALL_DHCP_RELAY_AGENTS_AND_SERVERS),
-                dhcp6__constants.DHCP6__SERVER_PORT,
-            )
+            target = self._multicast_target()
 
             def _send() -> None:
                 client_socket.sendto(bytes(self._build_information_request(xid=xid)), target)
@@ -154,7 +244,15 @@ class Dhcp6Client:
             __debug__ and log("dhcp6", f"Sending INFORMATION-REQUEST (xid={xid:#08x}) to {target[0]}")
             _send()
 
-            reply = self._recv_reply(client_socket, xid=xid, resend=_send)
+            reply = self._run_exchange(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.REPLY,
+                resend=_send,
+                irt_ms=dhcp6__constants.DHCP6__INF_TIMEOUT_MS,
+                mrt_ms=dhcp6__constants.DHCP6__INF_MAX_RT_MS,
+                max_attempts=dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS,
+            )
             if reply is None:
                 __debug__ and log("dhcp6", "INFORMATION-REQUEST unanswered; no other configuration obtained")
                 return None
@@ -165,20 +263,143 @@ class Dhcp6Client:
         finally:
             client_socket.close()
 
-    def _recv_reply(self, client_socket: socket, *, xid: int, resend: Callable[[], None]) -> Dhcp6Parser | None:
+    # --- stateful exchange ---
+
+    def acquire_lease(self) -> Dhcp6Lease | None:
         """
-        Wait for the matching REPLY using the RFC 8415 §15
-        retransmission backoff seeded with the §7.6 INFORMATION-REQUEST
-        timers (IRT = INF_TIMEOUT, MRT = INF_MAX_RT). On each
-        per-attempt timeout the caller's 'resend' retransmits the
-        INFORMATION-REQUEST and the timeout grows (doubled, capped at
-        MRT, each value randomized by RAND). Returns the parsed REPLY,
-        or None once the attempt budget is exhausted.
+        Run the RFC 8415 §18.2.1-§18.2.2 four-message stateful exchange
+        (SOLICIT → ADVERTISE → REQUEST → REPLY) and return the leased
+        IA_NA address, or None when no usable lease is obtained (no
+        server answered, the selected server returned no address, or
+        the binding carried a non-Success Status Code).
+
+        The first valid ADVERTISE is selected (RFC 8415 §18.2.9
+        Preference-based selection is a deferred refinement).
         """
 
-        irt_ms = dhcp6__constants.DHCP6__INF_TIMEOUT_MS
-        mrt_ms = dhcp6__constants.DHCP6__INF_MAX_RT_MS
-        max_attempts = dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS
+        client_socket = self._open_client_socket()
+        try:
+            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
+            target = self._multicast_target()
+
+            sol_xid = random.randint(0, _DHCP6__XID_MAX)
+
+            def _send_solicit() -> None:
+                client_socket.sendto(bytes(self._build_solicit(xid=sol_xid)), target)
+
+            __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
+            _send_solicit()
+
+            advertise = self._run_exchange(
+                client_socket,
+                xid=sol_xid,
+                expected_type=Dhcp6MessageType.ADVERTISE,
+                resend=_send_solicit,
+                irt_ms=dhcp6__constants.DHCP6__SOL_TIMEOUT_MS,
+                mrt_ms=dhcp6__constants.DHCP6__SOL_MAX_RT_MS,
+                max_attempts=dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS,
+            )
+            if advertise is None:
+                __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
+                return None
+
+            server_duid = advertise.server_id
+            if server_duid is None:
+                __debug__ and log("dhcp6", "<WARN>ADVERTISE missing Server Identifier; no lease obtained")
+                return None
+
+            req_xid = random.randint(0, _DHCP6__XID_MAX)
+
+            def _send_request() -> None:
+                client_socket.sendto(bytes(self._build_request(xid=req_xid, server_duid=server_duid)), target)
+
+            __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
+            _send_request()
+
+            reply = self._run_exchange(
+                client_socket,
+                xid=req_xid,
+                expected_type=Dhcp6MessageType.REPLY,
+                resend=_send_request,
+                irt_ms=dhcp6__constants.DHCP6__REQ_TIMEOUT_MS,
+                mrt_ms=dhcp6__constants.DHCP6__REQ_MAX_RT_MS,
+                max_attempts=dhcp6__constants.DHCP6__REQ_MAX_RC,
+            )
+            if reply is None:
+                __debug__ and log("dhcp6", "REQUEST unanswered; no lease obtained")
+                return None
+
+            return self._extract_lease(reply, server_duid=server_duid)
+        finally:
+            client_socket.close()
+
+    def _extract_lease(self, reply: Dhcp6Parser, *, server_duid: bytes) -> Dhcp6Lease | None:
+        """
+        Extract the leased IA_NA address from a REPLY. Parses the IA_NA
+        sub-option block (preserved as opaque bytes by the codec) for
+        the IA Address and any Status Code, returning None when the
+        binding carries no address or a non-Success Status Code.
+        """
+
+        ia_na = reply.ia_na
+        if ia_na is None:
+            __debug__ and log("dhcp6", "<WARN>REPLY carries no IA_NA option; no lease obtained")
+            return None
+
+        try:
+            Dhcp6Options.validate_integrity(frame=ia_na.options, hlen=len(ia_na.options), offset=0)
+            ia_options = Dhcp6Options.from_buffer(memoryview(ia_na.options))
+        except Dhcp6IntegrityError, Dhcp6SanityError:
+            __debug__ and log("dhcp6", "<WARN>REPLY IA_NA sub-options malformed; no lease obtained")
+            return None
+
+        status = ia_options.status_code
+        if status is not None and status.status_code != Dhcp6StatusCode.SUCCESS:
+            __debug__ and log("dhcp6", f"<WARN>REPLY IA_NA Status Code {status.status_code}; no lease obtained")
+            return None
+
+        ia_addr = ia_options.ia_addr
+        if ia_addr is None:
+            __debug__ and log("dhcp6", "<WARN>REPLY IA_NA carries no IA Address; no lease obtained")
+            return None
+
+        lease = Dhcp6Lease(
+            address=ia_addr.address,
+            preferred_lifetime=ia_addr.preferred_lifetime,
+            valid_lifetime=ia_addr.valid_lifetime,
+            t1=ia_na.t1,
+            t2=ia_na.t2,
+            iaid=ia_na.iaid,
+            server_duid=server_duid,
+        )
+        __debug__ and log(
+            "dhcp6",
+            f"Lease acquired: {lease.address} (preferred {lease.preferred_lifetime}s, valid {lease.valid_lifetime}s)",
+        )
+        return lease
+
+    # --- shared retransmission / recv machinery ---
+
+    def _run_exchange(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        expected_type: Dhcp6MessageType,
+        resend: Callable[[], None],
+        irt_ms: int,
+        mrt_ms: int,
+        max_attempts: int,
+    ) -> Dhcp6Parser | None:
+        """
+        Wait for the matching reply ('expected_type', 'xid') using the
+        RFC 8415 §15 retransmission backoff seeded with the per-message
+        IRT / MRT. On each per-attempt timeout the caller's 'resend'
+        retransmits the request and the timeout grows (doubled, capped
+        at MRT, each value randomized by RAND). Returns the parsed
+        reply, or None once the attempt budget is exhausted.
+        """
+
         rand_factor = dhcp6__constants.DHCP6__RAND_FACTOR
 
         rt_ms = 0.0
@@ -195,7 +416,7 @@ class Dhcp6Client:
                     rt_ms = mrt_ms + rand * mrt_ms
             timeout_s = max(0.001, rt_ms / 1000.0)
 
-            result = self._recv_within_window(client_socket, xid=xid, timeout_s=timeout_s)
+            result = self._recv_within_window(client_socket, xid=xid, expected_type=expected_type, timeout_s=timeout_s)
             if result is not None:
                 return result
 
@@ -209,13 +430,20 @@ class Dhcp6Client:
 
         return None
 
-    def _recv_within_window(self, client_socket: socket, *, xid: int, timeout_s: float) -> Dhcp6Parser | None:
+    def _recv_within_window(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        expected_type: Dhcp6MessageType,
+        timeout_s: float,
+    ) -> Dhcp6Parser | None:
         """
-        Wait up to 'timeout_s' seconds for a valid REPLY, silently
-        dropping bogus packets (malformed, wrong msg-type, mismatched
-        xid) without consuming the entire window. Returns the parsed
-        REPLY on success, or None if the deadline elapses with no
-        valid response.
+        Wait up to 'timeout_s' seconds for a valid message of
+        'expected_type' with a matching 'xid', silently dropping bogus
+        packets (malformed, wrong msg-type, mismatched xid) without
+        consuming the entire window. Returns the parsed message on
+        success, or None if the deadline elapses with no valid response.
         """
 
         deadline = time.monotonic() + timeout_s
@@ -238,10 +466,11 @@ class Dhcp6Client:
 
             __debug__ and log("dhcp6", f"<lg>RX</> - {packet}")
 
-            if packet.msg_type != Dhcp6MessageType.REPLY:
+            if packet.msg_type != expected_type:
                 __debug__ and log(
                     "dhcp6",
-                    f"<WARN>Dropping DHCPv6 frame with unexpected msg-type {packet.msg_type!r}; expected REPLY</>",
+                    f"<WARN>Dropping DHCPv6 frame with unexpected msg-type {packet.msg_type!r}; "
+                    f"expected {expected_type!r}</>",
                 )
                 continue
             if packet.xid != xid:

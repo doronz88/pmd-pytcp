@@ -36,8 +36,12 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from net_addr import Ip6Address, MacAddress
-from net_proto import Dhcp6MessageType, Dhcp6OptionType
-from pytcp.protocols.dhcp6.dhcp6__client import Dhcp6Client, Dhcp6StatelessConfig
+from net_proto import Dhcp6MessageType, Dhcp6OptionType, Dhcp6StatusCode
+from pytcp.protocols.dhcp6.dhcp6__client import (
+    Dhcp6Client,
+    Dhcp6Lease,
+    Dhcp6StatelessConfig,
+)
 from pytcp.protocols.dhcp6.dhcp6__uid import get_client_duid
 from pytcp.socket import SO_BINDTODEVICE, SOL_SOCKET
 from pytcp.stack import sysctl
@@ -45,6 +49,9 @@ from pytcp.tests.lib.dhcp6_mock_server import Dhcp6MockServer, autospec_dhcp6_so
 
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:07")
 _PINNED_XID = 0xABCDEF
+_SOL_XID = 0xAAAAAA
+_REQ_XID = 0xBBBBBB
+_SERVER_DUID = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xfe"
 
 
 class TestDhcp6ClientInit(TestCase):
@@ -319,3 +326,203 @@ class TestDhcp6ClientFetch(TestCase):
         config = self._client.fetch_other_config()
 
         self.assertIsNone(config, msg="An exhausted recv-window deadline must yield None.")
+
+
+class TestDhcp6ClientAcquireLease(TestCase):
+    """
+    The 'Dhcp6Client.acquire_lease' stateful-exchange tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock DHCPv6 server into an autospec'd socket and pin the
+        SOLICIT / REQUEST transaction-ids and jitter so the four-message
+        exchange is deterministic.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID]
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__acquire_lease_returns_lease(self) -> None:
+        """
+        Ensure a full SOLICIT/ADVERTISE/REQUEST/REPLY exchange returns the
+        leased IA_NA address with its lifetimes, timers, and server DUID.
+
+        Reference: RFC 8415 §18.2.1 (four-message exchange).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            preferred_lifetime=3600,
+            valid_lifetime=7200,
+            t1=1800,
+            t2=2880,
+        )
+
+        lease = self._client.acquire_lease()
+
+        self.assertEqual(
+            lease,
+            Dhcp6Lease(
+                address=Ip6Address("2001:db8::100"),
+                preferred_lifetime=3600,
+                valid_lifetime=7200,
+                t1=1800,
+                t2=2880,
+                iaid=0,
+                server_duid=_SERVER_DUID,
+            ),
+            msg="acquire_lease must return the leased IA_NA address bundle.",
+        )
+
+    def test__dhcp6_client__acquire_lease_solicit_contents(self) -> None:
+        """
+        Ensure the SOLICIT carries the Client Identifier, an IA_NA, and an
+        Option Request.
+
+        Reference: RFC 8415 §18.2.1 (Solicit message contents).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        solicit = self._server.tx_log[0]
+        self.assertIs(solicit.msg_type, Dhcp6MessageType.SOLICIT, msg="The first message must be SOLICIT.")
+        self.assertEqual(solicit.xid, _SOL_XID, msg="The SOLICIT must carry the pinned SOLICIT xid.")
+        self.assertEqual(solicit.client_id, get_client_duid(_DEFAULT_MAC), msg="The SOLICIT must carry the DUID.")
+        self.assertIsNotNone(solicit.ia_na, msg="The SOLICIT must carry an IA_NA.")
+        self.assertEqual(solicit.oro, [Dhcp6OptionType.DNS_SERVERS], msg="The SOLICIT must ORO the DNS option.")
+
+    def test__dhcp6_client__acquire_lease_request_addresses_advertised_server(self) -> None:
+        """
+        Ensure the REQUEST is addressed to the server that ADVERTISEd, by
+        echoing its DUID in the Server Identifier option.
+
+        Reference: RFC 8415 §18.2.2 (Request carries the selected Server Identifier).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        request = self._server.tx_log[1]
+        self.assertIs(request.msg_type, Dhcp6MessageType.REQUEST, msg="The second message must be REQUEST.")
+        self.assertEqual(request.xid, _REQ_XID, msg="The REQUEST must carry the pinned REQUEST xid.")
+        self.assertEqual(request.server_id, _SERVER_DUID, msg="The REQUEST must echo the advertised Server DUID.")
+
+    def test__dhcp6_client__acquire_lease_silent_server_returns_none(self) -> None:
+        """
+        Ensure an unanswered SOLICIT returns None after exhausting the
+        retransmission budget.
+
+        Reference: RFC 8415 §15 (retransmission until the budget is exhausted).
+        """
+
+        lease = self._client.acquire_lease()
+
+        self.assertIsNone(lease, msg="A silent server must yield no lease.")
+        self.assertEqual(self._sock.sendto.call_count, 5, msg="The SOLICIT must be retransmitted to budget.")
+
+    def test__dhcp6_client__acquire_lease_advertise_without_server_id(self) -> None:
+        """
+        Ensure an ADVERTISE lacking a Server Identifier yields no lease.
+
+        Reference: RFC 8415 §18.2.9 (a usable Advertise carries a Server Identifier).
+        """
+
+        self._server.enqueue_advertise(server_id=None)
+
+        self.assertIsNone(self._client.acquire_lease(), msg="An ADVERTISE without a Server ID must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_request_unanswered(self) -> None:
+        """
+        Ensure a silent server on the REQUEST leg (after a valid ADVERTISE)
+        yields no lease.
+
+        Reference: RFC 8415 §18.2.2 (Request/Reply; no Reply -> no lease).
+        """
+
+        self._server.enqueue_advertise()
+
+        self.assertIsNone(self._client.acquire_lease(), msg="An unanswered REQUEST must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_reply_without_ia_na(self) -> None:
+        """
+        Ensure a REPLY with no IA_NA option yields no lease.
+
+        Reference: RFC 8415 §18.2.10.1 (a successful Reply carries the IA_NA binding).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_reply()  # a REPLY with Server/Client IDs but no IA_NA
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A REPLY without IA_NA must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_reply_without_ia_address(self) -> None:
+        """
+        Ensure a REPLY whose IA_NA carries no IA Address yields no lease.
+
+        Reference: RFC 8415 §18.2.10.1 (IA_NA binding carries the IA Address).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), omit_ia_address=True)
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A REPLY IA_NA with no address must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_reply_ia_na_status_failure(self) -> None:
+        """
+        Ensure a REPLY whose IA_NA carries a non-Success Status Code yields
+        no lease.
+
+        Reference: RFC 8415 §18.2.10.1 (NoAddrsAvail in the IA_NA Status Code).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            omit_ia_address=True,
+            ia_status=Dhcp6StatusCode.NO_ADDRS_AVAIL,
+        )
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A NoAddrsAvail IA_NA must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_reply_ia_na_malformed_suboptions(self) -> None:
+        """
+        Ensure a REPLY whose IA_NA sub-option block is malformed is dropped
+        without crashing the exchange.
+
+        Reference: RFC 8415 §16 (a client discards malformed message content).
+        """
+
+        self._server.enqueue_advertise()
+        # A 3-byte IA_NA sub-block — shorter than the 4-byte option header.
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), ia_na_options_override=b"\x00\x05\x00")
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
