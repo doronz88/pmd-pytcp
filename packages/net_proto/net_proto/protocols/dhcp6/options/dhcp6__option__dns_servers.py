@@ -46,15 +46,13 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
 
 # The DHCPv6 DNS Recursive Name Server option [RFC 3646 §3].
 #
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |      OPTION_DNS_SERVERS = 23   |          option-len           |
+# |    OPTION_DNS_SERVERS = 23    |           option-len          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |            DNS-recursive-name-server (IPv6 address)           |
 # |                          (16 octets)                          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |                              ...                              |
+# .                              ...                              .
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 

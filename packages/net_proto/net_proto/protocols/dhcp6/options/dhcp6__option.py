@@ -45,8 +45,6 @@ from net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 # option-len counts the option-data octets only (excluding the
 # 4-byte code+len header):
 #
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |          option-code          |           option-len          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

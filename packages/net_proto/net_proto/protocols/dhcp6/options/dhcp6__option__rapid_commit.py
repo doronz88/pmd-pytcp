@@ -45,10 +45,8 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
 
 # The DHCPv6 Rapid Commit option [RFC 8415 §21.14].
 #
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |     OPTION_RAPID_COMMIT = 14   |          option-len = 0       |
+# |    OPTION_RAPID_COMMIT = 14   |         option-len = 0        |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 

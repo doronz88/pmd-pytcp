@@ -42,15 +42,11 @@ from net_proto.protocols.dhcp6.dhcp6__enums import Dhcp6MessageType
 
 # The DHCPv6 client/server message header [RFC 8415 §8].
 
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |    msg-type   |               transaction-id                  |
+# |    msg-type   |                 transaction-id                |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# .                                                               .
 # .                            options                            .
 # .                           (variable)                          .
-# .                                                               .
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 

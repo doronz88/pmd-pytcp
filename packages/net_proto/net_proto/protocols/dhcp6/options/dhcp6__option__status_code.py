@@ -45,15 +45,13 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
 
 # The DHCPv6 Status Code option [RFC 8415 §21.13].
 #
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |       OPTION_STATUS_CODE = 13  |          option-len           |
+# |    OPTION_STATUS_CODE = 13    |           option-len          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # |          status-code          |                               |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
-# .                        status-message                        .
-# .                       (UTF-8, variable)                      .
+# .                         status-message                        .
+# .                       (UTF-8, variable)                       .
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 

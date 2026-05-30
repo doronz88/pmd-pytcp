@@ -45,13 +45,11 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
 
 # The DHCPv6 Client Identifier option [RFC 8415 §21.2].
 #
-#  0                   1                   2                   3
-#  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-# |        OPTION_CLIENTID = 1     |          option-len           |
+# |      OPTION_CLIENTID = 1      |           option-len          |
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 # .                              DUID                             .
-# .                        (variable length)                     .
+# .                       (variable length)                       .
 # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 # RFC 8415 §11.1 — a DUID is a 2-octet type code followed by no more
