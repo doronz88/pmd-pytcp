@@ -907,6 +907,120 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._address_api.replace.assert_not_called()
 
 
+class TestDhcp6ClientRelease(TestCase):
+    """
+    The 'Dhcp6Client' RELEASE-on-shutdown tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server + Address API into the client and pin the
+        RELEASE transaction-id.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.return_value = _REN_XID
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._address_api = create_autospec(AddressApi, spec_set=True, instance=True)
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
+
+    def test__dhcp6_client__release_message_contents(self) -> None:
+        """
+        Ensure RELEASE carries the granting server's DUID, the Client
+        Identifier, and an IA_NA echoing the released address.
+
+        Reference: RFC 8415 §18.2.7 (Release message contents).
+        """
+
+        self._client.release(_LEASE)
+
+        release = self._server.tx_log[0]
+        self.assertIs(release.msg_type, Dhcp6MessageType.RELEASE, msg="The shutdown message must be RELEASE.")
+        self.assertEqual(release.server_id, _SERVER_DUID, msg="RELEASE must address the granting server.")
+        self.assertEqual(release.client_id, get_client_duid(_DEFAULT_MAC), msg="RELEASE must carry the client DUID.")
+        assert release.ia_na is not None
+        ia_options = Dhcp6Options.from_buffer(memoryview(release.ia_na.options))
+        assert ia_options.ia_addr is not None
+        self.assertEqual(
+            ia_options.ia_addr.address,
+            Ip6Address("2001:db8::100"),
+            msg="RELEASE IA_NA must echo the released address.",
+        )
+
+    def test__dhcp6_client__release_is_fire_and_forget(self) -> None:
+        """
+        Ensure RELEASE is transmitted once and does not wait for a REPLY
+        so it cannot wedge stack teardown.
+
+        Reference: RFC 8415 §18.2.7 (Release is best-effort on shutdown).
+        """
+
+        self._client.release(_LEASE)
+
+        self.assertEqual(self._sock.sendto.call_count, 1, msg="RELEASE must be sent exactly once.")
+        self._sock.recv__mv.assert_not_called()
+
+    def test__dhcp6_client__stop_releases_held_lease(self) -> None:
+        """
+        Ensure stopping the worker while a lease is held emits a RELEASE,
+        removes the leased address, and clears the lease.
+
+        Reference: RFC 8415 §18.2.7 (Release the binding on shutdown).
+        """
+
+        self._client._lease = _LEASE
+
+        self._client._stop()
+
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.RELEASE, msg="Stop must emit a RELEASE.")
+        self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
+        self.assertIsNone(self._client._lease, msg="The lease must be cleared on shutdown.")
+
+    def test__dhcp6_client__stop_without_lease_sends_nothing(self) -> None:
+        """
+        Ensure stopping the worker with no held lease emits no RELEASE and
+        still wakes the trigger event for prompt teardown.
+
+        Reference: RFC 8415 §18.2.7 (no Release without a binding).
+        """
+
+        self._client._stop()
+
+        self.assertEqual(self._server.tx_log, [], msg="No RELEASE must be sent without a held lease.")
+        self._address_api.remove.assert_not_called()
+        self.assertTrue(self._client._event__trigger.is_set(), msg="_stop() must still wake the trigger event.")
+
+    def test__dhcp6_client__stop_release_socket_error_does_not_propagate(self) -> None:
+        """
+        Ensure a socket error while emitting the shutdown RELEASE is
+        swallowed so it cannot abort the rest of stack teardown, with the
+        address still removed and the lease cleared.
+
+        Reference: RFC 8415 §18.2.7 (Release is best-effort on shutdown).
+        """
+
+        self._sock.sendto.side_effect = OSError("network down")
+        self._client._lease = _LEASE
+
+        self._client._stop()
+
+        self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
+        self.assertIsNone(self._client._lease, msg="The lease must be cleared even when RELEASE fails.")
+
+
 class TestDhcp6ClientLeaseAssignment(TestCase):
     """
     The 'Dhcp6Client.acquire_lease' Address-API assignment tests.

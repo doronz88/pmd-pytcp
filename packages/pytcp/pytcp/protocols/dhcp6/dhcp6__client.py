@@ -247,11 +247,27 @@ class Dhcp6Client(Subsystem):
     @override
     def _stop(self) -> None:
         """
-        Wake the worker out of its trigger wait so 'stop()' does not
-        block for the full poll interval during teardown.
+        Subsystem post-stop hook (runs after the worker thread has
+        joined). Wake the trigger event for prompt teardown, then — if a
+        lease is held — emit a graceful RELEASE for it and remove the
+        leased address through the Address API (RFC 8415 §18.2.7). A
+        socket error in the best-effort RELEASE is swallowed so it cannot
+        abort the rest of the stack-stop sequence.
         """
 
         self._event__trigger.set()
+
+        lease = self._lease
+        if lease is None:
+            return
+
+        try:
+            self.release(lease)
+        except OSError as error:
+            __debug__ and log("dhcp6", f"<WARN>RELEASE on shutdown raised {type(error).__name__}: {error}</>")
+        if self._address_api is not None:
+            self._address_api.remove(address=lease.address)
+        self._lease = None
 
     # --- message builders ---
 
@@ -385,6 +401,27 @@ class Dhcp6Client(Subsystem):
 
         return Dhcp6Assembler(
             dhcp6__msg_type=Dhcp6MessageType.REBIND,
+            dhcp6__xid=xid,
+            dhcp6__options=options,
+        )
+
+    def _build_release(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.7 RELEASE addressed to the server that
+        granted the lease (Server Identifier), carrying the Client
+        Identifier, the IA_NA being released (with the leased address),
+        and a zero Elapsed Time.
+        """
+
+        options = Dhcp6Options(
+            self._client_id_option(),
+            Dhcp6OptionServerId(lease.server_duid),
+            self._ia_na_for_lease(lease),
+            Dhcp6OptionElapsedTime(0),
+        )
+
+        return Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.RELEASE,
             dhcp6__xid=xid,
             dhcp6__options=options,
         )
@@ -607,6 +644,25 @@ class Dhcp6Client(Subsystem):
                 return None
 
             return self._extract_lease(reply, server_duid=server_duid)
+        finally:
+            client_socket.close()
+
+    def release(self, lease: Dhcp6Lease, /) -> None:
+        """
+        Fire-and-forget RFC 8415 §18.2.7 RELEASE — emit a single Release
+        to the granting server and tear down the socket without waiting
+        for the REPLY. Single-shot rather than the §18.2.7 REL_MAX_RC
+        retransmission so a graceful shutdown is never wedged by a silent
+        server; the binding ages out server-side regardless. This
+        matches the DHCPv4 client's fire-and-forget DHCPRELEASE.
+        """
+
+        xid = random.randint(0, _DHCP6__XID_MAX)
+        client_socket = self._open_client_socket()
+        try:
+            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
+            __debug__ and log("dhcp6", f"Sending RELEASE (xid={xid:#08x}) for {lease.address}")
+            client_socket.sendto(bytes(self._build_release(xid=xid, lease=lease)), self._multicast_target())
         finally:
             client_socket.close()
 
