@@ -326,16 +326,28 @@ class Dhcp6Client(Subsystem):
 
         return Dhcp6OptionClientId(get_client_duid(self._mac_address))
 
-    def _build_information_request(self, *, xid: int) -> Dhcp6Assembler:
+    @staticmethod
+    def _elapsed_centisecs(start: float) -> int:
+        """
+        Compute the RFC 8415 §21.9 Elapsed Time value — the time since
+        'start' (the exchange's first transmission) in hundredths of a
+        second, clamped to the 16-bit field maximum (0xFFFF, which the
+        RFC defines as "any elapsed-time value greater than" the field
+        can hold).
+        """
+
+        return min(0xFFFF, max(0, round((time.monotonic() - start) * 100)))
+
+    def _build_information_request(self, *, xid: int, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.6 INFORMATION-REQUEST carrying the
-        Client Identifier (DUID), a zero Elapsed Time, and an Option
+        Client Identifier (DUID), the Elapsed Time, and an Option
         Request listing the other-config options the client wants.
         """
 
         options = Dhcp6Options(
             self._client_id_option(),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
@@ -345,18 +357,18 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_solicit(self, *, xid: int) -> Dhcp6Assembler:
+    def _build_solicit(self, *, xid: int, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.1 SOLICIT carrying the Client
         Identifier, an IA_NA (the client's IAID; T1 / T2 = 0 to let
-        the server choose), a zero Elapsed Time, and an Option Request
+        the server choose), the Elapsed Time, and an Option Request
         for DNS servers.
         """
 
         options = Dhcp6Options(
             self._client_id_option(),
             Dhcp6OptionIaNa(iaid=get_iaid(), t1=0, t2=0),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
@@ -366,11 +378,11 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_request(self, *, xid: int, server_duid: bytes) -> Dhcp6Assembler:
+    def _build_request(self, *, xid: int, server_duid: bytes, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.2 REQUEST addressed to the selected
         server (its DUID in the Server Identifier option), carrying the
-        Client Identifier, the IA_NA, a zero Elapsed Time, and an
+        Client Identifier, the IA_NA, the Elapsed Time, and an
         Option Request for DNS servers.
         """
 
@@ -378,7 +390,7 @@ class Dhcp6Client(Subsystem):
             self._client_id_option(),
             Dhcp6OptionServerId(server_duid),
             Dhcp6OptionIaNa(iaid=get_iaid(), t1=0, t2=0),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
@@ -409,19 +421,19 @@ class Dhcp6Client(Subsystem):
             options=bytes(Dhcp6Options(ia_addr)),
         )
 
-    def _build_renew(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_renew(self, *, xid: int, lease: Dhcp6Lease, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.4 RENEW addressed to the server that
         granted the lease (its DUID in the Server Identifier option),
         carrying the Client Identifier, the IA_NA being renewed (with
-        the leased address), a zero Elapsed Time, and an Option Request.
+        the leased address), the Elapsed Time, and an Option Request.
         """
 
         options = Dhcp6Options(
             self._client_id_option(),
             Dhcp6OptionServerId(lease.server_duid),
             self._ia_na_for_lease(lease),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
@@ -431,19 +443,19 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_rebind(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_rebind(self, *, xid: int, lease: Dhcp6Lease, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.5 REBIND — like RENEW but without a
         Server Identifier so any server on the link may extend the
         binding — carrying the Client Identifier, the IA_NA being
-        rebound (with the leased address), a zero Elapsed Time, and an
+        rebound (with the leased address), the Elapsed Time, and an
         Option Request.
         """
 
         options = Dhcp6Options(
             self._client_id_option(),
             self._ia_na_for_lease(lease),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
         )
 
@@ -527,9 +539,11 @@ class Dhcp6Client(Subsystem):
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             target = self._multicast_target()
+            started = time.monotonic()
 
             def _send() -> None:
-                client_socket.sendto(bytes(self._build_information_request(xid=xid)), target)
+                elapsed = self._elapsed_centisecs(started)
+                client_socket.sendto(bytes(self._build_information_request(xid=xid, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending INFORMATION-REQUEST (xid={xid:#08x}) to {target[0]}")
             _send()
@@ -573,9 +587,11 @@ class Dhcp6Client(Subsystem):
             target = self._multicast_target()
 
             sol_xid = random.randint(0, _DHCP6__XID_MAX)
+            sol_started = time.monotonic()
 
             def _send_solicit() -> None:
-                client_socket.sendto(bytes(self._build_solicit(xid=sol_xid)), target)
+                elapsed = self._elapsed_centisecs(sol_started)
+                client_socket.sendto(bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
             _send_solicit()
@@ -599,9 +615,13 @@ class Dhcp6Client(Subsystem):
                 return None
 
             req_xid = random.randint(0, _DHCP6__XID_MAX)
+            req_started = time.monotonic()
 
             def _send_request() -> None:
-                client_socket.sendto(bytes(self._build_request(xid=req_xid, server_duid=server_duid)), target)
+                elapsed = self._elapsed_centisecs(req_started)
+                client_socket.sendto(
+                    bytes(self._build_request(xid=req_xid, server_duid=server_duid, elapsed=elapsed)), target
+                )
 
             __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
             _send_request()
@@ -642,9 +662,11 @@ class Dhcp6Client(Subsystem):
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             target = self._multicast_target()
+            started = time.monotonic()
 
             def _send() -> None:
-                client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease)), target)
+                elapsed = self._elapsed_centisecs(started)
+                client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending RENEW (xid={xid:#08x}) for {lease.address}")
             _send()
@@ -681,9 +703,11 @@ class Dhcp6Client(Subsystem):
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             target = self._multicast_target()
+            started = time.monotonic()
 
             def _send() -> None:
-                client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease)), target)
+                elapsed = self._elapsed_centisecs(started)
+                client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending REBIND (xid={xid:#08x}) for {lease.address}")
             _send()

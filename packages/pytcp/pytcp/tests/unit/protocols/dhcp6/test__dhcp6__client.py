@@ -328,9 +328,11 @@ class TestDhcp6ClientFetch(TestCase):
 
         sysctl.set("dhcp6.retrans_max_attempts", 1)
         mock_time = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.time"))
-        # First call seeds the window deadline; the second (after the
-        # bogus drop) jumps far past it so 'remaining <= 0' fires.
-        mock_time.monotonic.side_effect = [1000.0, 1.0e9]
+        # Reads, in order: the exchange start time, the elapsed-time
+        # stamp on the first send, the recv-window deadline seed, then
+        # (after the bogus drop) a value far past the deadline so
+        # 'remaining <= 0' fires.
+        mock_time.monotonic.side_effect = [1000.0, 1000.0, 1000.0, 1.0e9]
 
         self._server.enqueue_reply(xid=0x111111)  # mismatched xid -> dropped
 
@@ -728,6 +730,126 @@ class TestDhcp6ClientRenewRebind(TestCase):
 
         self.assertIsNone(result, msg="RENEW must give up once the MRD deadline has elapsed.")
         self.assertEqual(self._sock.sendto.call_count, 1, msg="An expired RENEW must not retransmit past its deadline.")
+
+
+class TestDhcp6ClientElapsedTime(TestCase):
+    """
+    The 'Dhcp6Client' Elapsed Time option tests — the value is 0 in the
+    first message of an exchange and advances on each retransmission.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server into an autospec'd socket, pin the
+        transaction-ids / jitter, and install a controllable monotonic
+        clock so the elapsed-time advance can be measured deterministically.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.return_value = _SOL_XID
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._clock = {"t": 1000.0}
+        mock_time = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.time"))
+        mock_time.monotonic.side_effect = lambda: self._clock["t"]
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def _advance_clock_on_timeout(self, delta: float) -> None:
+        """
+        Wrap the wired recv so the controllable clock jumps 'delta'
+        seconds whenever a recv window times out — i.e. between a
+        message and its retransmission.
+        """
+
+        base = self._sock.recv__mv.side_effect
+
+        def _wrapped(*args: object, **kwargs: object) -> object:
+            try:
+                return base(*args, **kwargs)
+            except TimeoutError:
+                self._clock["t"] += delta
+                raise
+
+        self._sock.recv__mv.side_effect = _wrapped
+
+    def test__dhcp6_client__elapsed_time_first_message_is_zero(self) -> None:
+        """
+        Ensure the first message of an exchange carries an Elapsed Time
+        of 0.
+
+        Reference: RFC 8415 §21.9 (Elapsed Time is 0 in the first message).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertEqual(self._server.tx_log[0].elapsed_time, 0, msg="The first SOLICIT must carry elapsed_time 0.")
+
+    def test__dhcp6_client__elapsed_time_advances_on_retransmit(self) -> None:
+        """
+        Ensure a retransmitted message carries an Elapsed Time measured
+        from the first transmission of the exchange.
+
+        Reference: RFC 8415 §15 (update the elapsed-time value on retransmission).
+        """
+
+        self._advance_clock_on_timeout(0.5)
+        self._server.enqueue_timeout()
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertEqual(self._server.tx_log[0].elapsed_time, 0, msg="The first SOLICIT must carry elapsed_time 0.")
+        self.assertEqual(
+            self._server.tx_log[1].elapsed_time,
+            50,
+            msg="The retransmitted SOLICIT must carry elapsed_time of 50 (0.5 s in hundredths).",
+        )
+
+    def test__dhcp6_client__elapsed_time_caps_at_uint16_max(self) -> None:
+        """
+        Ensure an elapsed time larger than the 16-bit field is clamped to
+        0xFFFF rather than overflowing.
+
+        Reference: RFC 8415 §21.9 (0xFFFF represents any larger elapsed time).
+        """
+
+        self._advance_clock_on_timeout(700.0)
+        self._server.enqueue_timeout()
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertEqual(
+            self._server.tx_log[1].elapsed_time,
+            0xFFFF,
+            msg="An over-large elapsed time must clamp to 0xFFFF.",
+        )
 
 
 class TestDhcp6ClientLifecycle(TestCase):

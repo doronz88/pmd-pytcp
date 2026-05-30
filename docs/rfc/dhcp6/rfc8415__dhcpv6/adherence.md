@@ -113,13 +113,16 @@ bound (time to T2 / valid-lifetime expiry).
 > "The client MUST update an 'elapsed-time' value within an Elapsed Time
 > option in the retransmitted message."
 
-**Adherence:** partial. Every client message carries an Elapsed Time
-option, but its value is hard-coded to 0 and is not advanced across
-retransmissions (`Dhcp6OptionElapsedTime(0)` at the build sites
-`dhcp6__client.py:338,359,381,424,446,468`). The option is present and
-well-formed; the elapsed counter is not maintained. A server uses
-elapsed-time only for relay/anycast prioritisation, so a constant 0 is
-interoperable but not strictly conformant.
+**Adherence:** met. Each exchange captures a `time.monotonic` start
+timestamp before its first transmission; every `_send` closure
+recomputes the Elapsed Time via `_elapsed_centisecs(start)`
+(`dhcp6__client.py`) — the hundredths-of-a-second delta since that
+start, clamped to the 16-bit field maximum (0xFFFF) per §21.9 — and
+passes it to the message builder. The first message of an exchange
+therefore carries 0 and each retransmission carries the (non-decreasing)
+elapsed value. SOLICIT and REQUEST are separate exchanges with
+independent start timestamps. The single-shot RELEASE / DECLINE keep a
+constant 0 (they are never retransmitted by design).
 
 ---
 
@@ -380,8 +383,18 @@ implicit on-link prefix is assumed, matching the MUST.
   and `::..._renew_gives_up_at_deadline` assert the MRD-bounded backoff
   retransmits and then stops at the deadline.
 
-**Status:** locked in. (The §15 elapsed-time-update MUST is a known gap
-— no test, since the value is constant 0.)
+**Status:** locked in.
+
+### §15 / §21.9 Elapsed Time advances on retransmit
+
+- **Unit:**
+  `::TestDhcp6ClientElapsedTime::test__dhcp6_client__elapsed_time_first_message_is_zero`,
+  `..._advances_on_retransmit`, and `..._caps_at_uint16_max` drive a
+  controllable clock and assert the first message carries 0, a
+  retransmission carries the elapsed hundredths-of-a-second, and an
+  over-large value clamps to 0xFFFF.
+
+**Status:** locked in.
 
 ### §16.1 transaction-id / msg-type validation
 
@@ -487,7 +500,7 @@ status handling are **n/a (not implemented)**.
 |------------------------------------------|-------------------------------------------|
 | §7.6 / §15 parameters + validators       | locked in                                 |
 | §15 backoff (MRC + MRD bounds)           | locked in                                 |
-| §15 elapsed-time update                  | n/a (gap not closed; constant 0)          |
+| §15 / §21.9 elapsed-time update          | locked in                                 |
 | §16.1 transaction-id validation          | locked in                                 |
 | §18.2.1 SOLICIT contents                 | locked in                                 |
 | §18.2.1 SOL_MAX_DELAY jitter             | n/a (not implemented)                     |
@@ -508,7 +521,7 @@ status handling are **n/a (not implemented)**.
 |------------------------------------------|-------------------------------------------|
 | DUID identity (§11)                       | met                                       |
 | §15 retransmission algorithm             | met                                       |
-| §15 elapsed-time update on retransmit    | partial (constant 0)                      |
+| §15 / §21.9 elapsed-time update          | met                                       |
 | Transaction-id / msg-type validation     | met                                       |
 | SOLICIT / REQUEST (§18.2.1–2)            | met (no Rapid Commit, no SOL_MAX_DELAY)   |
 | RENEW / REBIND lifecycle (§18.2.4–5)     | met                                       |
@@ -528,19 +541,12 @@ all address mutation routed through the Address API and the ND DAD engine.
 
 The principal remaining gaps are refinements rather than lifecycle holes:
 
-1. **Elapsed Time is constant 0** (§15). Fix: track the first-transmit
-   monotonic timestamp per exchange and write
-   `min(0xFFFF, round((now - t0) * 100))` (hundredths of a second) into
-   the Elapsed Time option on each (re)build. The natural test asserts a
-   non-zero, monotonically non-decreasing elapsed value across the
-   retransmits of a silent-server exchange.
-
-2. **ADVERTISE Preference selection** (§18.2.9). Fix: collect ADVERTISEs
+1. **ADVERTISE Preference selection** (§18.2.9). Fix: collect ADVERTISEs
    for the first RT window, prefer the highest Preference option (short-
    circuit on 255), then REQUEST the winner. Test: two ADVERTISEs with
    different Preference values → the REQUEST addresses the higher one.
 
-3. **Top-level Reply status handling** (§18.2.10: UseMulticast,
+2. **Top-level Reply status handling** (§18.2.10: UseMulticast,
    UnspecFail, NotOnLink). Fix: branch on the REPLY's top-level Status
    Code before extracting the IA. Test: a NotOnLink REPLY restarts
    discovery; a UseMulticast REPLY re-sends to the server.
