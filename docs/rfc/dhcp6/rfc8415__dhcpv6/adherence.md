@@ -326,21 +326,23 @@ first Decline regardless.
 > considered to have a preference value of 0. [...] The client MUST ignore
 > any Advertise message that contains no addresses [...]"
 
-**Adherence:** met (selection) / partial (rest). `_solicit_for_advertise`
-(`dhcp6__client.py`) implements the §18.2.1 collection modification:
-after the SOLICIT it collects every valid ADVERTISE (matching xid, with a
-Server Identifier) for the first retransmission window via
-`_collect_advertises`, returning early the instant a preference-255
-ADVERTISE arrives, and `_select_best_advertise` picks the highest
-Preference value (an absent Preference option counts as 0, per the
-net_proto `preference` lookup returning None → 0). If no ADVERTISE
-arrives in the first window it falls back to the §15 retransmission and
-acts on the first ADVERTISE received. The Preference codec is the
-net_proto `Dhcp6OptionPreference` (§21.8). Still partial: the alternate-
-server fallback (re-selecting the next-best server when the chosen one
-does not answer the REQUEST) is not implemented, and the SOL_MAX_RT /
-INF_MAX_RT wire override is not consumed; the "ignore no-address
-Advertise" sub-rule is enforced only as the REPLY-side IA_NA validation.
+**Adherence:** met (selection + alternate-server) / partial (rest).
+`_solicit_for_advertise` (`dhcp6__client.py`) implements the §18.2.1
+collection modification: after the SOLICIT it collects every valid
+ADVERTISE (matching xid, with a Server Identifier) for the first
+retransmission window via `_collect_advertises`, returning early the
+instant a preference-255 ADVERTISE arrives, and `_sort_advertises` orders
+them highest-Preference first (an absent Preference option counts as 0,
+per the net_proto `preference` lookup returning None → 0). `acquire_lease`
+then walks that ordered list — `_request_from_server` REQUESTs the head
+server, and on no REPLY (REQ_MAX_RC exhausted) or an unusable REPLY it
+falls back to the next-best ADVERTISE (§18.2.9 alternate-server /
+§18.2.10.1). If no ADVERTISE arrives in the first window it falls back to
+the §15 retransmission and acts on the first ADVERTISE received. The
+Preference codec is the net_proto `Dhcp6OptionPreference` (§21.8). Still
+partial: the SOL_MAX_RT / INF_MAX_RT wire override is not consumed, and
+the "ignore no-address Advertise" sub-rule is enforced only as the
+REPLY-side IA_NA validation.
 
 ---
 
@@ -543,12 +545,15 @@ behaviour).
 - **Unit:**
   `::TestDhcp6ClientAcquireLease::test__dhcp6_client__acquire_lease_advertise_without_server_id`
   pins that an ADVERTISE without a Server Identifier is ignored.
+- **Unit:**
+  `::TestDhcp6ClientAdvertiseSelection::test__dhcp6_client__advertise_selection_falls_back_to_next_server`
+  asserts that when the highest-preference server ignores the REQUEST the
+  client REQUESTs the next-best advertised server.
 - **Unit (net_proto):**
   `packages/net_proto/net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__preference.py`
   pins the Preference option wire codec.
 
-**Status:** locked in (selection). The alternate-server fallback is
-**n/a (not implemented)**.
+**Status:** locked in (selection + alternate-server fallback).
 
 ### §18.2.10 top-level Reply Status Code handling
 
@@ -604,26 +609,25 @@ behaviour).
 | INFORMATION-REQUEST (§18.2.6)            | met                                       |
 | RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |
 | DECLINE + DAD-before-use (§18.2.8/10.1)  | met (fire-and-forget DECLINE, by design)  |
-| ADVERTISE Preference selection (§18.2.9) | met (no alternate-server fallback)        |
+| ADVERTISE Preference selection (§18.2.9) | met (incl. alternate-server fallback)     |
 | Reply top-level status handling (§18.2.10)| met (UnspecFail/UseMulticast/NotOnLink)  |
 | Address installed as /128 (§18.2.10.1)   | met                                       |
 
 The client implements the full RFC 8415 host lease lifecycle —
-SOLICIT/ADVERTISE/REQUEST/REPLY acquisition, INFORMATION-REQUEST stateless
-config, T1 RENEW, T2 REBIND, valid-lifetime expiry restart, graceful
-RELEASE on shutdown, and DECLINE on a DAD-detected duplicate with
-re-solicitation — all driven by the RA Managed / Other-config flags and
-all address mutation routed through the Address API and the ND DAD engine.
+SOLICIT/ADVERTISE/REQUEST/REPLY acquisition (with Preference-based and
+alternate-server selection and the optional Rapid Commit two-message
+exchange), INFORMATION-REQUEST stateless config, T1 RENEW, T2 REBIND,
+valid-lifetime expiry restart, graceful RELEASE on shutdown, and DECLINE
+on a DAD-detected duplicate with re-solicitation — all driven by the RA
+Managed / Other-config flags and all address mutation routed through the
+Address API and the ND DAD engine.
 
-The principal remaining gap is a refinement rather than a lifecycle hole:
-
-1. **Top-level Reply status handling** (§18.2.10: UseMulticast,
-   UnspecFail, NotOnLink). Fix: branch on the REPLY's top-level Status
-   Code before extracting the IA. Test: a NotOnLink REPLY restarts
-   discovery; a UseMulticast REPLY re-sends to the server. (The related
-   ADVERTISE alternate-server fallback — re-selecting the next-best
-   server when the chosen one does not answer the REQUEST — would land
-   alongside this.)
-
-Rapid Commit, the Confirm message, Reconfigure, IA_TA, and IA_PD are out
-of scope for a host client and intentionally absent.
+Every in-scope host-client requirement is met. The only paragraphs not
+marked "met" are the deliberate-by-design deviations noted inline — the
+fire-and-forget RELEASE / DECLINE (single-shot rather than the §18.2.7 /
+§18.2.8 retransmission, so shutdown / conflict handling is never wedged)
+— and two never-reached wire signals a host that only ever multicasts
+does not consume: the SOL_MAX_RT / INF_MAX_RT override (§21.24 / §21.25)
+and the Server Unicast option (§21.12). Rapid Commit is on-by-knob
+(default off, a client MAY). The Confirm message, Reconfigure, IA_TA, and
+IA_PD are out of scope for a host client and intentionally absent.

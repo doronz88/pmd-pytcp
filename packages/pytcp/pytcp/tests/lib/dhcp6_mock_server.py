@@ -66,10 +66,16 @@ class _GatedLeaseReply:
     not a SOLICIT) — modelling that a server sends the address-granting
     REPLY in response to a REQUEST / RENEW / REBIND, never during the
     client's first-RT ADVERTISE-collection window (RFC 8415 §18.2.1).
+
+    When 'for_server' is set, the REPLY is additionally withheld until the
+    client's most recent transmission carries that Server Identifier — so
+    a REPLY meant for one server is not handed to another server's
+    REQUEST (used to exercise the §18.2.9 alternate-server fallback).
     """
 
-    def __init__(self, builder: Callable[[], bytes], /) -> None:
+    def __init__(self, builder: Callable[[], bytes], /, *, for_server: bytes | None = None) -> None:
         self.builder = builder
+        self.for_server = for_server
 
 
 # Sentinel: "derive this field from the last captured client TX
@@ -172,6 +178,7 @@ class Dhcp6MockServer:
         top_status: Dhcp6StatusCode | None = None,
         omit_ia_address: bool = False,
         ia_na_options_override: bytes | None = None,
+        for_server: bytes | None = None,
         xid: int | object = _UNSET,
         client_id_echo: bytes | None | object = _UNSET,
         server_id: bytes | None | object = _UNSET,
@@ -185,7 +192,9 @@ class Dhcp6MockServer:
         UseMulticast / UnspecFail). Set 'omit_ia_address' to emit an IA_NA
         with no address (e.g. a NoAddrsAvail reply), or
         'ia_na_options_override' to stuff the IA_NA with raw (possibly
-        malformed) sub-option bytes.
+        malformed) sub-option bytes. Set 'for_server' to withhold the
+        REPLY until the client's REQUEST targets that Server Identifier
+        (exercises the alternate-server fallback).
         """
 
         self._reply_queue.append(
@@ -205,7 +214,8 @@ class Dhcp6MockServer:
                     xid=xid,
                     client_id_echo=client_id_echo,
                     server_id=server_id,
-                )
+                ),
+                for_server=for_server,
             )
         )
 
@@ -291,7 +301,12 @@ class Dhcp6MockServer:
                 # Defer a lease-granting REPLY while the client is still
                 # in its SOLICIT collection window (last TX is a SOLICIT);
                 # leave it queued for after the REQUEST / RENEW / REBIND.
-                if self._tx_log and self._tx_log[-1].msg_type is Dhcp6MessageType.SOLICIT:
+                last_tx = self._tx_log[-1] if self._tx_log else None
+                if last_tx is None or last_tx.msg_type is Dhcp6MessageType.SOLICIT:
+                    raise TimeoutError
+                # Withhold a server-targeted REPLY until the client's most
+                # recent message is addressed to that server.
+                if front.for_server is not None and last_tx.server_id != front.for_server:
                     raise TimeoutError
                 self._reply_queue.popleft()
                 return memoryview(front.builder())

@@ -664,6 +664,33 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
             msg="A positive preference must beat an absent (zero) preference.",
         )
 
+    def test__dhcp6_client__advertise_selection_falls_back_to_next_server(self) -> None:
+        """
+        Ensure that when the highest-preference server does not answer the
+        REQUEST, the client falls back to the next-best advertised server.
+
+        Reference: RFC 8415 §18.2.9 (select an alternate server when the chosen one does not respond).
+        """
+
+        sysctl.set("dhcp6.req_max_rc", 1)  # one REQUEST attempt per server
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID, _REQ_XID]
+
+        self._server.enqueue_advertise(preference=200, server_id=_SERVER_DUID_A)
+        self._server.enqueue_advertise(preference=10, server_id=_SERVER_DUID_B)
+        # Only server B answers the REQUEST; A (the preferred server) is silent.
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), for_server=_SERVER_DUID_B)
+
+        lease = self._client.acquire_lease()
+
+        assert lease is not None
+        self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The fallback server's lease must be used.")
+        self.assertEqual(
+            self._server.tx_log[1].server_id, _SERVER_DUID_A, msg="The first REQUEST must address server A."
+        )
+        self.assertEqual(
+            self._server.tx_log[2].server_id, _SERVER_DUID_B, msg="The fallback REQUEST must address server B."
+        )
+
     def test__dhcp6_client__advertise_selection_preference_255_selected(self) -> None:
         """
         Ensure an ADVERTISE carrying a preference of 255 is selected.

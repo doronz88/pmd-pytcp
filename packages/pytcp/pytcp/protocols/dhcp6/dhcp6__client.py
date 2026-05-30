@@ -588,14 +588,14 @@ class Dhcp6Client(Subsystem):
 
     def acquire_lease(self) -> Dhcp6Lease | None:
         """
-        Run the RFC 8415 §18.2.1-§18.2.2 four-message stateful exchange
-        (SOLICIT → ADVERTISE → REQUEST → REPLY) and return the leased
-        IA_NA address, or None when no usable lease is obtained (no
-        server answered, the selected server returned no address, or
-        the binding carried a non-Success Status Code).
+        Run the RFC 8415 §18.2.1-§18.2.2 stateful exchange and return the
+        leased IA_NA address, or None when no usable lease is obtained.
 
-        The first valid ADVERTISE is selected (RFC 8415 §18.2.9
-        Preference-based selection is a deferred refinement).
+        SOLICIT collects ADVERTISEs (or, with Rapid Commit, a two-message
+        REPLY); the ADVERTISEs are tried highest-preference first
+        (§18.2.9), and if the chosen server does not answer the REQUEST or
+        returns no usable lease the client falls back to the next-best
+        server (§18.2.9 alternate-server selection / §18.2.10.1).
         """
 
         client_socket = self._open_client_socket()
@@ -617,58 +617,78 @@ class Dhcp6Client(Subsystem):
 
             __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
 
-            advertise = self._solicit_for_advertise(
+            rapid_reply, advertises = self._solicit_for_advertise(
                 client_socket, xid=sol_xid, send=_send_solicit, rapid_commit=rapid_commit
             )
-            if advertise is None:
-                __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
-                return None
-
-            server_duid = advertise.server_id
-            if server_duid is None:
-                __debug__ and log("dhcp6", "<WARN>ADVERTISE missing Server Identifier; no lease obtained")
-                return None
 
             # RFC 8415 §18.2.1 — a Rapid Commit REPLY answers the SOLICIT
             # directly; lease from it without the REQUEST/REPLY round-trip.
-            if advertise.msg_type is Dhcp6MessageType.REPLY:
+            if rapid_reply is not None and rapid_reply.server_id is not None:
                 __debug__ and log("dhcp6", "Rapid Commit REPLY received; leasing from the two-message exchange")
-                lease = self._extract_lease(advertise, server_duid=server_duid)
+                lease = self._extract_lease(rapid_reply, server_duid=rapid_reply.server_id)
                 if lease is not None:
                     self._assign_lease(lease)
                 return lease
 
-            req_xid = random.randint(0, _DHCP6__XID_MAX)
-            req_started = time.monotonic()
-
-            def _send_request() -> None:
-                elapsed = self._elapsed_centisecs(req_started)
-                client_socket.sendto(
-                    bytes(self._build_request(xid=req_xid, server_duid=server_duid, elapsed=elapsed)), target
-                )
-
-            __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
-            _send_request()
-
-            reply = self._run_exchange(
-                client_socket,
-                xid=req_xid,
-                expected_type=Dhcp6MessageType.REPLY,
-                resend=_send_request,
-                irt_ms=dhcp6__constants.DHCP6__REQ_TIMEOUT_MS,
-                mrt_ms=dhcp6__constants.DHCP6__REQ_MAX_RT_MS,
-                max_attempts=dhcp6__constants.DHCP6__REQ_MAX_RC,
-            )
-            if reply is None:
-                __debug__ and log("dhcp6", "REQUEST unanswered; no lease obtained")
+            if not advertises:
+                __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
                 return None
 
-            lease = self._extract_lease(reply, server_duid=server_duid)
-            if lease is not None:
-                self._assign_lease(lease)
-            return lease
+            # RFC 8415 §18.2.9 — try servers highest-preference first; on a
+            # non-responding server or an unusable REPLY (§18.2.10.1) fall
+            # back to the next-best ADVERTISE.
+            for advertise in advertises:
+                server_duid = advertise.server_id
+                assert server_duid is not None  # collection filters Server-Identifier-less ADVERTISEs
+                reply = self._request_from_server(client_socket, target=target, server_duid=server_duid)
+                if reply is None:
+                    __debug__ and log("dhcp6", "REQUEST unanswered; trying the next advertised server")
+                    continue
+                lease = self._extract_lease(reply, server_duid=server_duid)
+                if lease is not None:
+                    self._assign_lease(lease)
+                    return lease
+                __debug__ and log("dhcp6", "REQUEST REPLY unusable; trying the next advertised server")
+
+            return None
         finally:
             client_socket.close()
+
+    def _request_from_server(
+        self,
+        client_socket: socket,
+        *,
+        target: tuple[str, int],
+        server_duid: bytes,
+    ) -> Dhcp6Parser | None:
+        """
+        Run one RFC 8415 §18.2.2 REQUEST / REPLY exchange to the server
+        identified by 'server_duid' (REQ_TIMEOUT / REQ_MAX_RT / REQ_MAX_RC
+        backoff). Returns the REPLY, or None when the server does not
+        answer within the retransmission budget.
+        """
+
+        req_xid = random.randint(0, _DHCP6__XID_MAX)
+        req_started = time.monotonic()
+
+        def _send_request() -> None:
+            elapsed = self._elapsed_centisecs(req_started)
+            client_socket.sendto(
+                bytes(self._build_request(xid=req_xid, server_duid=server_duid, elapsed=elapsed)), target
+            )
+
+        __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
+        _send_request()
+
+        return self._run_exchange(
+            client_socket,
+            xid=req_xid,
+            expected_type=Dhcp6MessageType.REPLY,
+            resend=_send_request,
+            irt_ms=dhcp6__constants.DHCP6__REQ_TIMEOUT_MS,
+            mrt_ms=dhcp6__constants.DHCP6__REQ_MAX_RT_MS,
+            max_attempts=dhcp6__constants.DHCP6__REQ_MAX_RC,
+        )
 
     # --- SOLICIT / ADVERTISE collection + selection (RFC 8415 §18.2.1 / §18.2.9) ---
 
@@ -679,23 +699,23 @@ class Dhcp6Client(Subsystem):
         xid: int,
         send: Callable[[], None],
         rapid_commit: bool = False,
-    ) -> Dhcp6Parser | None:
+    ) -> tuple[Dhcp6Parser | None, list[Dhcp6Parser]]:
         """
         Run the SOLICIT phase with the RFC 8415 §18.2.1 ADVERTISE
         collection modification: transmit the SOLICIT, collect valid
         ADVERTISEs for the whole first retransmission window (or
-        short-circuit on a preference-255 ADVERTISE), and return the
-        highest-preference one (§18.2.9). If no ADVERTISE arrives during
-        the first window, fall back to the §15 retransmission and return
-        the first ADVERTISE received — the client acts on it without
-        waiting for further ADVERTISEs.
+        short-circuit on a preference-255 ADVERTISE). Returns
+        '(rapid_reply, advertises)' where 'advertises' is the collected
+        set sorted highest-preference first (§18.2.9) for the caller's
+        alternate-server fallback. If no ADVERTISE arrives during the
+        first window, fall back to the §15 retransmission and return the
+        first ADVERTISE received — the client acts on it without waiting
+        for further ADVERTISEs.
 
         When 'rapid_commit' is set the window additionally accepts a valid
         REPLY carrying the Rapid Commit option; such a REPLY is returned
-        immediately (the two-message exchange) and the caller leases from
-        it directly. A REPLY without the Rapid Commit option is discarded.
-        The returned message's 'msg_type' (ADVERTISE vs REPLY) tells the
-        caller which path was taken.
+        as 'rapid_reply' (the two-message exchange) and 'advertises' is
+        empty. A REPLY without the Rapid Commit option is discarded.
         """
 
         rand_factor = dhcp6__constants.DHCP6__RAND_FACTOR
@@ -717,9 +737,9 @@ class Dhcp6Client(Subsystem):
             client_socket, xid=xid, deadline=deadline, accept_types=accept_types
         )
         if rapid_reply is not None:
-            return rapid_reply
+            return rapid_reply, []
         if collected:
-            return self._select_best_advertise(collected)
+            return None, self._sort_advertises(collected)
 
         # No response in the first window — apply the §15 retransmission,
         # terminating on the first valid ADVERTISE (or Rapid Commit REPLY).
@@ -739,12 +759,12 @@ class Dhcp6Client(Subsystem):
                 continue
             if packet.msg_type is Dhcp6MessageType.REPLY:
                 if packet.rapid_commit:
-                    return packet
+                    return packet, []
                 continue
             if packet.server_id is not None:
-                return packet
+                return None, [packet]
 
-        return None
+        return None, []
 
     def _collect_advertises(
         self,
@@ -793,14 +813,17 @@ class Dhcp6Client(Subsystem):
                 return None, collected
 
     @staticmethod
-    def _select_best_advertise(advertises: list[Dhcp6Parser]) -> Dhcp6Parser:
+    def _sort_advertises(advertises: list[Dhcp6Parser]) -> list[Dhcp6Parser]:
         """
-        Select the ADVERTISE with the highest preference value (an
-        absent Preference option counts as 0), keeping the first-received
-        among equal preferences (RFC 8415 §18.2.9).
+        Order ADVERTISEs highest-preference first (an absent Preference
+        option counts as 0), keeping the first-received order among equal
+        preferences (RFC 8415 §18.2.9). The caller requests the head and
+        falls back down the list when a server does not answer.
         """
 
-        return max(advertises, key=lambda advertise: advertise.preference or 0)
+        # Negated key (ascending sort) keeps Python's stable order for
+        # equal-preference ADVERTISEs — first-received is tried first.
+        return sorted(advertises, key=lambda advertise: -(advertise.preference or 0))
 
     # --- lease maintenance (RENEW / REBIND) ---
 
