@@ -179,6 +179,7 @@ class Dhcp6Client(Subsystem):
         self._lock__trigger = threading.Lock()
         self._pending_managed = False
         self._pending_other = False
+        self._pending_decline_address: Ip6Address | None = None
         self._lease: Dhcp6Lease | None = None
         self._other_acquired = False
 
@@ -200,6 +201,19 @@ class Dhcp6Client(Subsystem):
         with self._lock__trigger:
             self._pending_managed = self._pending_managed or managed
             self._pending_other = self._pending_other or other
+        self._event__trigger.set()
+
+    def notify_dad_conflict(self, address: Ip6Address) -> None:
+        """
+        Record that Duplicate Address Detection found 'address' to be a
+        duplicate on the link and wake the worker. Called from the
+        DAD / RX thread; non-blocking. The worker DECLINEs the address
+        (RFC 8415 §18.2.8) only if it matches the currently held lease,
+        so a stale or unrelated conflict is harmless.
+        """
+
+        with self._lock__trigger:
+            self._pending_decline_address = address
         self._event__trigger.set()
 
     @override
@@ -232,8 +246,17 @@ class Dhcp6Client(Subsystem):
         with self._lock__trigger:
             managed = self._pending_managed
             other = self._pending_other
+            decline_address = self._pending_decline_address
             self._pending_managed = False
             self._pending_other = False
+            self._pending_decline_address = None
+
+        # A DAD conflict on the held address supersedes a same-tick
+        # acquire/fetch — the address is unusable and must be declined
+        # and replaced before anything else.
+        if decline_address is not None:
+            self._handle_dad_conflict(decline_address)
+            return
 
         if managed and self._lease is None:
             lease = self.acquire_lease()
@@ -243,6 +266,31 @@ class Dhcp6Client(Subsystem):
         elif other and not self._other_acquired:
             if self.fetch_other_config() is not None:
                 self._other_acquired = True
+
+    def _handle_dad_conflict(self, address: Ip6Address) -> None:
+        """
+        Handle a DAD conflict reported for 'address': if it is the
+        currently leased address, DECLINE it to the server (RFC 8415
+        §18.2.8), remove it from the interface, and restart the stateful
+        exchange to obtain a fresh address. A conflict for any other
+        address (stale notification, a lease already replaced) is ignored.
+        """
+
+        lease = self._lease
+        if lease is None or lease.address != address:
+            return
+
+        __debug__ and log("dhcp6", f"DAD conflict on leased {address}; declining and re-soliciting")
+        self.decline(lease)
+        if self._address_api is not None:
+            self._address_api.remove(address=address)
+        self._lease = None
+        self._t1_deadline = self._t2_deadline = self._valid_deadline = math.inf
+
+        new_lease = self.acquire_lease()
+        if new_lease is not None:
+            self._lease = new_lease
+            self._arm_timers(new_lease)
 
     @override
     def _stop(self) -> None:
@@ -405,12 +453,12 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_release(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_teardown(self, *, msg_type: Dhcp6MessageType, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
         """
-        Build an RFC 8415 §18.2.7 RELEASE addressed to the server that
-        granted the lease (Server Identifier), carrying the Client
-        Identifier, the IA_NA being released (with the leased address),
-        and a zero Elapsed Time.
+        Build a server-directed teardown message (RELEASE or DECLINE)
+        for the held lease: the granting server's DUID (Server
+        Identifier), the Client Identifier, the IA_NA carrying the
+        affected address, and a zero Elapsed Time.
         """
 
         options = Dhcp6Options(
@@ -421,10 +469,25 @@ class Dhcp6Client(Subsystem):
         )
 
         return Dhcp6Assembler(
-            dhcp6__msg_type=Dhcp6MessageType.RELEASE,
+            dhcp6__msg_type=msg_type,
             dhcp6__xid=xid,
             dhcp6__options=options,
         )
+
+    def _build_release(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.7 RELEASE for the held lease.
+        """
+
+        return self._build_teardown(msg_type=Dhcp6MessageType.RELEASE, xid=xid, lease=lease)
+
+    def _build_decline(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.8 DECLINE for the held lease (sent when
+        its address has been found to be a duplicate on the link).
+        """
+
+        return self._build_teardown(msg_type=Dhcp6MessageType.DECLINE, xid=xid, lease=lease)
 
     def _open_client_socket(self) -> socket:
         """
@@ -663,6 +726,25 @@ class Dhcp6Client(Subsystem):
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             __debug__ and log("dhcp6", f"Sending RELEASE (xid={xid:#08x}) for {lease.address}")
             client_socket.sendto(bytes(self._build_release(xid=xid, lease=lease)), self._multicast_target())
+        finally:
+            client_socket.close()
+
+    def decline(self, lease: Dhcp6Lease, /) -> None:
+        """
+        Fire-and-forget RFC 8415 §18.2.8 DECLINE — emit a single Decline
+        for an address that failed Duplicate Address Detection and tear
+        down the socket without waiting for the REPLY. Single-shot rather
+        than the §18.2.8 DEC_MAX_RC retransmission so the conflict handler
+        can proceed straight to re-soliciting a fresh address; the server
+        marks the address declined on the first Decline regardless.
+        """
+
+        xid = random.randint(0, _DHCP6__XID_MAX)
+        client_socket = self._open_client_socket()
+        try:
+            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
+            __debug__ and log("dhcp6", f"Sending DECLINE (xid={xid:#08x}) for {lease.address}")
+            client_socket.sendto(bytes(self._build_decline(xid=xid, lease=lease)), self._multicast_target())
         finally:
             client_socket.close()
 

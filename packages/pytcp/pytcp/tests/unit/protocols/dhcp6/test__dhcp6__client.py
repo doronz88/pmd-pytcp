@@ -1021,6 +1021,134 @@ class TestDhcp6ClientRelease(TestCase):
         self.assertIsNone(self._client._lease, msg="The lease must be cleared even when RELEASE fails.")
 
 
+class TestDhcp6ClientDecline(TestCase):
+    """
+    The 'Dhcp6Client' DECLINE-on-DAD-conflict tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server + Address API into the client, pin the
+        transaction-id / jitter, and shorten the worker poll interval so
+        the loop runs inline.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.return_value = _REN_XID
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.SUBSYSTEM_SLEEP_TIME__SEC", 0.0))
+
+        self._address_api = create_autospec(AddressApi, spec_set=True, instance=True)
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__decline_message_contents(self) -> None:
+        """
+        Ensure DECLINE carries the granting server's DUID, the Client
+        Identifier, and an IA_NA echoing the declined address.
+
+        Reference: RFC 8415 §18.2.8 (Decline message contents).
+        """
+
+        self._client.decline(_LEASE)
+
+        decline = self._server.tx_log[0]
+        self.assertIs(decline.msg_type, Dhcp6MessageType.DECLINE, msg="The conflict message must be DECLINE.")
+        self.assertEqual(decline.server_id, _SERVER_DUID, msg="DECLINE must address the granting server.")
+        self.assertEqual(decline.client_id, get_client_duid(_DEFAULT_MAC), msg="DECLINE must carry the client DUID.")
+        assert decline.ia_na is not None
+        ia_options = Dhcp6Options.from_buffer(memoryview(decline.ia_na.options))
+        assert ia_options.ia_addr is not None
+        self.assertEqual(
+            ia_options.ia_addr.address,
+            Ip6Address("2001:db8::100"),
+            msg="DECLINE IA_NA must echo the declined address.",
+        )
+
+    def test__dhcp6_client__decline_is_fire_and_forget(self) -> None:
+        """
+        Ensure DECLINE is transmitted once without waiting for a REPLY.
+
+        Reference: RFC 8415 §18.2.8 (Decline is sent on conflict).
+        """
+
+        self._client.decline(_LEASE)
+
+        self.assertEqual(self._sock.sendto.call_count, 1, msg="DECLINE must be sent exactly once.")
+        self._sock.recv__mv.assert_not_called()
+
+    def test__dhcp6_client__dad_conflict_declines_and_resolicits(self) -> None:
+        """
+        Ensure a DAD conflict on the leased address declines it, removes
+        it, and restarts the stateful exchange to obtain a fresh address.
+
+        Reference: RFC 8415 §18.2.8 (Decline then re-solicit on a duplicate address).
+        """
+
+        self._client._lease = _LEASE
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::200"))
+
+        self._client.notify_dad_conflict(Ip6Address("2001:db8::100"))
+        self._client._subsystem_loop()
+
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.DECLINE, msg="A conflict must send a DECLINE.")
+        self.assertIs(self._server.tx_log[1].msg_type, Dhcp6MessageType.SOLICIT, msg="DECLINE must restart at SOLICIT.")
+        self._address_api.remove.assert_any_call(address=Ip6Address("2001:db8::100"))
+        assert self._client._lease is not None
+        self.assertEqual(
+            self._client._lease.address, Ip6Address("2001:db8::200"), msg="A fresh address must be acquired."
+        )
+
+    def test__dhcp6_client__dad_conflict_nonmatching_address_ignored(self) -> None:
+        """
+        Ensure a DAD conflict for an address the client does not hold is
+        ignored — no DECLINE, lease intact.
+
+        Reference: RFC 8415 §18.2.8 (Decline only the client's own conflicting address).
+        """
+
+        self._client._lease = _LEASE
+
+        self._client.notify_dad_conflict(Ip6Address("2001:db8::999"))
+        self._client._subsystem_loop()
+
+        self.assertEqual(self._server.tx_log, [], msg="A non-matching conflict must send nothing.")
+        self.assertEqual(self._client._lease, _LEASE, msg="A non-matching conflict must keep the lease.")
+
+    def test__dhcp6_client__dad_conflict_without_lease_ignored(self) -> None:
+        """
+        Ensure a DAD conflict reported with no held lease is a no-op.
+
+        Reference: RFC 8415 §18.2.8 (no Decline without a binding).
+        """
+
+        self._client.notify_dad_conflict(Ip6Address("2001:db8::100"))
+        self._client._subsystem_loop()
+
+        self.assertEqual(self._server.tx_log, [], msg="A conflict without a lease must send nothing.")
+
+
 class TestDhcp6ClientLeaseAssignment(TestCase):
     """
     The 'Dhcp6Client.acquire_lease' Address-API assignment tests.
