@@ -33,9 +33,9 @@ ver 3.0.6
 
 from typing import override
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import create_autospec, patch
 
-from net_addr import Ip6Address, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import Dhcp6MessageType, Dhcp6OptionType, Dhcp6StatusCode
 from pytcp.protocols.dhcp6.dhcp6__client import (
     Dhcp6Client,
@@ -45,6 +45,7 @@ from pytcp.protocols.dhcp6.dhcp6__client import (
 from pytcp.protocols.dhcp6.dhcp6__uid import get_client_duid
 from pytcp.socket import SO_BINDTODEVICE, SOL_SOCKET
 from pytcp.stack import sysctl
+from pytcp.stack.address import AddressApi
 from pytcp.tests.lib.dhcp6_mock_server import Dhcp6MockServer, autospec_dhcp6_socket
 
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:07")
@@ -526,3 +527,65 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), ia_na_options_override=b"\x00\x05\x00")
 
         self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
+
+
+class TestDhcp6ClientLeaseAssignment(TestCase):
+    """
+    The 'Dhcp6Client.acquire_lease' Address-API assignment tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock DHCPv6 server into an autospec'd socket and an
+        autospec'd Address API into the client.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID]
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._address_api = create_autospec(AddressApi, spec_set=True)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
+
+    def test__dhcp6_client__acquire_lease_assigns_address_as_128(self) -> None:
+        """
+        Ensure a successful lease installs the leased address as a /128
+        host through the Address API.
+
+        Reference: RFC 8415 §18.2.10.1 (the client configures the assigned address).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self._address_api.add.assert_called_once_with(ifaddr=Ip6IfAddr("2001:db8::100/128"))
+
+    def test__dhcp6_client__acquire_lease_failure_does_not_assign(self) -> None:
+        """
+        Ensure a failed lease (NoAddrsAvail) installs no address.
+
+        Reference: RFC 8415 §18.2.10.1 (no address on a NoAddrsAvail Reply).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            omit_ia_address=True,
+            ia_status=Dhcp6StatusCode.NO_ADDRS_AVAIL,
+        )
+
+        self._client.acquire_lease()
+
+        self._address_api.add.assert_not_called()

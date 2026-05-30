@@ -39,8 +39,9 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from net_addr import Ip6Address, MacAddress
+from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import (
     Dhcp6Assembler,
     Dhcp6IntegrityError,
@@ -67,8 +68,17 @@ from pytcp.socket import (
     socket,
 )
 
+if TYPE_CHECKING:
+    from pytcp.stack.address import AddressApi
+
 # RFC 8415 §8 — the transaction-id is a 24-bit field.
 _DHCP6__XID_MAX = 0xFFFFFF
+
+# RFC 8415 carries no prefix length in the IA Address option; the
+# on-link prefix is learned from Router Advertisements, so a leased
+# address is installed as a /128 host (matching Linux dhclient -6 and
+# systemd-networkd, which assign DHCPv6 addresses as /128).
+_DHCP6__LEASE_PREFIX_LEN = 128
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -120,13 +130,25 @@ class Dhcp6Client:
     validation in '_run_exchange' / '_recv_within_window'.
     """
 
-    def __init__(self, *, mac_address: MacAddress, interface_name: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        mac_address: MacAddress,
+        interface_name: str | None = None,
+        address_api: "AddressApi | None" = None,
+    ) -> None:
         """
         Initialize the DHCPv6 client.
+
+        The optional 'address_api' is the kernel/userspace Address-API
+        boundary used to install a leased address. When None (the
+        sync / test default) 'acquire_lease()' returns the lease
+        without touching the interface's address set.
         """
 
         self._mac_address = mac_address
         self._interface_name = interface_name
+        self._address_api = address_api
 
     # --- message builders ---
 
@@ -329,9 +351,32 @@ class Dhcp6Client:
                 __debug__ and log("dhcp6", "REQUEST unanswered; no lease obtained")
                 return None
 
-            return self._extract_lease(reply, server_duid=server_duid)
+            lease = self._extract_lease(reply, server_duid=server_duid)
+            if lease is not None:
+                self._assign_lease(lease)
+            return lease
         finally:
             client_socket.close()
+
+    @staticmethod
+    def _lease_ifaddr(lease: Dhcp6Lease) -> Ip6IfAddr:
+        """
+        Build the /128 interface address for a leased IA_NA address.
+        """
+
+        return Ip6IfAddr(f"{lease.address}/{_DHCP6__LEASE_PREFIX_LEN}")
+
+    def _assign_lease(self, lease: Dhcp6Lease) -> None:
+        """
+        Install the leased address on the interface through the Address
+        API (a no-op when no Address API was configured).
+        """
+
+        if self._address_api is None:
+            return
+        ifaddr = self._lease_ifaddr(lease)
+        __debug__ and log("dhcp6", f"Assigning leased address {ifaddr} via the Address API")
+        self._address_api.add(ifaddr=ifaddr)
 
     def _extract_lease(self, reply: Dhcp6Parser, *, server_duid: bytes) -> Dhcp6Lease | None:
         """
