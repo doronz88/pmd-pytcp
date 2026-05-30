@@ -32,6 +32,7 @@ ver 3.0.6
 """
 
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast, override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -69,12 +70,23 @@ class _FakePacketHandler:
         # leaves so the v6 tests can assert on SNM management.
         self.joined_snm: list[Ip6Address] = []
         self.left_snm: list[Ip6Address] = []
+        # Record DAD-checked claims the API delegates here so the
+        # 'dad_conflict_callback' delegation can be asserted.
+        self.dad_claims: list[tuple[Ip6IfAddr, Callable[[Ip6Address], None] | None]] = []
 
     def _assign_ip6_multicast(self, ip6_multicast: Ip6Address, /) -> None:
         self.joined_snm.append(ip6_multicast)
 
     def _remove_ip6_multicast(self, ip6_multicast: Ip6Address, /) -> None:
         self.left_snm.append(ip6_multicast)
+
+    def _claim_ip6_address_async(
+        self,
+        *,
+        ip6_host: Ip6IfAddr,
+        on_conflict: Callable[[Ip6Address], None] | None = None,
+    ) -> None:
+        self.dad_claims.append((ip6_host, on_conflict))
 
 
 class TestAddressApiAddHost(TestCase):
@@ -433,6 +445,11 @@ class TestAddressApiIp6(TestCase):
             msg="add(Ip6IfAddr) must append the host to '_ip6_ifaddr'.",
         )
         self.assertEqual(
+            self._packet_handler.dad_claims,
+            [],
+            msg="add(Ip6IfAddr) without a callback must not run DAD.",
+        )
+        self.assertEqual(
             self._packet_handler.joined_snm,
             [host.address.solicited_node_multicast],
             msg="add(Ip6IfAddr) must join the host's solicited-node multicast group.",
@@ -441,6 +458,33 @@ class TestAddressApiIp6(TestCase):
             self._packet_handler._ip4_ifaddr,
             [],
             msg="add(Ip6IfAddr) must not touch the IPv4 address list.",
+        )
+
+    def test__address_api__add_ip6_with_dad_callback_delegates_to_dad_claim(self) -> None:
+        """
+        Ensure 'add' with a 'dad_conflict_callback' runs DAD via the
+        packet handler's claim engine (passing the callback through as
+        'on_conflict') instead of installing the address directly.
+
+        Reference: RFC 8415 §18.2.8 (DHCPv6 address must pass DAD before use).
+        """
+
+        host = Ip6IfAddr("2001:db8::5/128")
+
+        def _on_conflict(_: Ip6Address) -> None:
+            pass
+
+        self._api.add(ifaddr=host, dad_conflict_callback=_on_conflict)
+
+        self.assertEqual(
+            self._packet_handler.dad_claims,
+            [(host, _on_conflict)],
+            msg="add with a DAD callback must delegate to the claim engine with the callback as on_conflict.",
+        )
+        self.assertEqual(
+            self._packet_handler._ip6_ifaddr,
+            [],
+            msg="A DAD-checked add must not install the address directly (the claim worker does on success).",
         )
 
     def test__address_api__add_ip6_atomically_rebinds_list(self) -> None:

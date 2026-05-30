@@ -1191,7 +1191,10 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
 
         self._client.acquire_lease()
 
-        self._address_api.add.assert_called_once_with(ifaddr=Ip6IfAddr("2001:db8::100/128"))
+        self._address_api.add.assert_called_once_with(
+            ifaddr=Ip6IfAddr("2001:db8::100/128"),
+            dad_conflict_callback=self._client.notify_dad_conflict,
+        )
 
     def test__dhcp6_client__acquire_lease_failure_does_not_assign(self) -> None:
         """

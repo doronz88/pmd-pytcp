@@ -774,6 +774,7 @@ class PacketHandler(Subsystem, ABC):
         *,
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
+        on_conflict: Callable[[Ip6Address], None] | None = None,
     ) -> threading.Thread:
         """
         Claim 'ip6_host' on a daemon worker thread (DAD on L2,
@@ -785,6 +786,11 @@ class PacketHandler(Subsystem, ABC):
         get a fresh candidate (RFC 7217 §6 / RFC 8981 §3.3.3).
         Each retry runs a full DAD cycle; the worker installs
         the first candidate that passes.
+
+        When 'on_conflict' is supplied, it is invoked with the
+        conflicting address if DAD ultimately fails (after any
+        'regenerate' retries) — the hook the DHCPv6 client uses
+        to DECLINE a leased duplicate (RFC 8415 §18.2.8).
         """
 
         raise NotImplementedError
@@ -3028,6 +3034,7 @@ class PacketHandlerL2(
         *,
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
+        on_conflict: Callable[[Ip6Address], None] | None = None,
     ) -> threading.Thread:
         """
         Spawn a daemon worker thread that runs the DAD claim for
@@ -3087,6 +3094,13 @@ class PacketHandlerL2(
                 "stack",
                 f"<WARN>Unable to claim IPv6 address {current}; gave up " f"after {max_retries} retries</>",
             )
+            # Notify the per-protocol engine that requested this claim
+            # (the DHCPv6 client) that the address is a duplicate, so it
+            # can DECLINE it (RFC 8415 §18.2.8). Fired before the
+            # accept_dad=2 fail-hard so the engine learns of the conflict
+            # even when that policy then disables IPv6 stack-wide.
+            if on_conflict is not None:
+                on_conflict(current.address)
             # 'icmp6.accept_dad=2' fail-hard: any DAD failure
             # (after retries are exhausted) disables IPv6 on
             # the interface entirely. Linux 'accept_dad=2'
@@ -3420,17 +3434,18 @@ class PacketHandlerL3(
         *,
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
+        on_conflict: Callable[[Ip6Address], None] | None = None,
     ) -> threading.Thread:
         """
         L3 has no DAD — claims complete synchronously via
-        '_assign_ip6_host'. The 'regenerate' callback is
-        accepted for signature parity with L2 but never
-        invoked (no DAD failure to retry). The returned
-        Thread is a no-op helper that has already finished,
-        so callers '.join()'ing it return immediately.
+        '_assign_ip6_host'. The 'regenerate' and 'on_conflict'
+        callbacks are accepted for signature parity with L2 but
+        never invoked (no DAD, so no failure to retry or report).
+        The returned Thread is a no-op helper that has already
+        finished, so callers '.join()'ing it return immediately.
         """
 
-        del regenerate  # unused on L3 — no DAD, no retry
+        del regenerate, on_conflict  # unused on L3 — no DAD, no retry, no conflict
         self._assign_ip6_host(ip6_host=ip6_host)
         thread = threading.Thread(target=lambda: None, daemon=True, name=f"DAD-{ip6_host.address}")
         thread.start()

@@ -870,8 +870,12 @@ class Dhcp6Client(Subsystem):
         if self._address_api is None:
             return
         ifaddr = self._lease_ifaddr(lease)
-        __debug__ and log("dhcp6", f"Assigning leased address {ifaddr} via the Address API")
-        self._address_api.add(ifaddr=ifaddr)
+        __debug__ and log("dhcp6", f"Assigning leased address {ifaddr} via the Address API (DAD-checked)")
+        # DAD-checked install (RFC 8415 §18.2.8): the address is claimed
+        # through the ND DAD engine and only used once it passes; a
+        # duplicate calls back into 'notify_dad_conflict' so the worker
+        # DECLINEs it and re-solicits.
+        self._address_api.add(ifaddr=ifaddr, dad_conflict_callback=self.notify_dad_conflict)
 
     def _extract_lease(self, reply: Dhcp6Parser, *, server_duid: bytes) -> Dhcp6Lease | None:
         """

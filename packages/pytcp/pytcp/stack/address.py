@@ -36,6 +36,7 @@ pytcp/stack/address.py
 ver 3.0.6
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
@@ -118,7 +119,12 @@ class AddressApi:
 
         return AddressApi(packet_handler=stack.interfaces[ifindex])
 
-    def add(self, *, ifaddr: Ip4IfAddr | Ip6IfAddr) -> None:
+    def add(
+        self,
+        *,
+        ifaddr: Ip4IfAddr | Ip6IfAddr,
+        dad_conflict_callback: Callable[[Ip6Address], None] | None = None,
+    ) -> None:
         """
         Install 'ifaddr' on the stack's address list — Linux
         'RTM_NEWADDR' / 'ip addr add' equivalent. The family is
@@ -128,10 +134,19 @@ class AddressApi:
 
         An IPv6 host additionally joins its solicited-node multicast
         group (RFC 4291 §2.7.1; on L2 that also adds the derived
-        multicast MAC + an MLD report). This verb installs the
-        address directly — it does NOT run DAD; DAD is the SLAAC /
+        multicast MAC + an MLD report). By default this verb installs
+        the address directly — it does NOT run DAD; DAD is the SLAAC /
         boot path's concern, the same way ARP ACD is the per-protocol
         engine's concern, not an address-plane verb.
+
+        A per-protocol engine that DOES want its IPv6 address vetted
+        by Duplicate Address Detection — the DHCPv6 client, mirroring
+        the kernel's tentative install of a DHCPv6-leased address —
+        passes a 'dad_conflict_callback'. The address is then claimed
+        through the ND DAD engine (installed by the claim worker only
+        once DAD passes); on a duplicate the callback is invoked with
+        the conflicting address so the engine can react (the DHCPv6
+        client DECLINEs it). Ignored for an IPv4 'ifaddr'.
         """
 
         handler = self._resolve_handler()
@@ -143,6 +158,15 @@ class AddressApi:
         # mid-append state) while the lock serializes this writer
         # against the RX / SLAAC / DAD writers. Mirrors 'remove' below.
         if isinstance(ifaddr, Ip6IfAddr):
+            if dad_conflict_callback is not None:
+                # DAD-checked install: the claim worker runs DAD and,
+                # on success, performs the '_ip6_ifaddr' + solicited-node
+                # multicast assignment itself; on a duplicate it invokes
+                # the callback. Reuses the canonical ND DAD engine rather
+                # than duplicating DAD in the address plane.
+                handler._claim_ip6_address_async(ip6_host=ifaddr, on_conflict=dad_conflict_callback)
+                __debug__ and log("stack", f"<lg>Address API</>: claiming IPv6 host {ifaddr} via DAD")
+                return
             with handler._lock__addr_config:
                 handler._ip6_ifaddr = [*handler._ip6_ifaddr, ifaddr]
             handler._assign_ip6_multicast(ifaddr.address.solicited_node_multicast)
