@@ -569,6 +569,20 @@ class Dhcp6Client(Subsystem):
 
     # --- stateful exchange ---
 
+    @staticmethod
+    def _delay_first_solicit() -> None:
+        """
+        Delay the first SOLICIT by a random interval drawn uniformly from
+        [0, SOL_MAX_DELAY] (RFC 8415 §18.2.1) to desynchronise a fleet of
+        hosts that boot — or observe the Managed RA flag — at the same
+        instant. A drawn delay of 0 (the 'dhcp6.sol_max_delay_ms = 0'
+        operator override, or simply the random draw) transmits immediately.
+        """
+
+        delay_s = random.uniform(0.0, dhcp6__constants.DHCP6__SOL_MAX_DELAY_MS) / 1000.0
+        if delay_s > 0:
+            time.sleep(delay_s)
+
     def acquire_lease(self) -> Dhcp6Lease | None:
         """
         Run the RFC 8415 §18.2.1-§18.2.2 four-message stateful exchange
@@ -585,6 +599,8 @@ class Dhcp6Client(Subsystem):
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             target = self._multicast_target()
+
+            self._delay_first_solicit()
 
             sol_xid = random.randint(0, _DHCP6__XID_MAX)
             sol_started = time.monotonic()

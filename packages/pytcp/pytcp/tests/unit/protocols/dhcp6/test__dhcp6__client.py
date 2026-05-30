@@ -994,6 +994,80 @@ class TestDhcp6ClientElapsedTime(TestCase):
         )
 
 
+class TestDhcp6ClientSolicitDelay(TestCase):
+    """
+    The 'Dhcp6Client' RFC 8415 §18.2.1 first-SOLICIT random-delay tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server into an autospec'd socket, pin the
+        transaction-ids, and install a controllable clock whose 'sleep'
+        is an assertable mock.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID]
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._clock = {"t": 1000.0}
+        self._mock_time = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.time"))
+        self._mock_time.monotonic.side_effect = lambda: self._clock["t"]
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__solicit_delay_sleeps_random_interval(self) -> None:
+        """
+        Ensure the first SOLICIT is preceded by a random delay drawn from
+        [0, SOL_MAX_DELAY] before transmission.
+
+        Reference: RFC 8415 §18.2.1 (delay the first Solicit by 0..SOL_MAX_DELAY).
+        """
+
+        self._random.uniform.return_value = 250.0  # ms within [0, SOL_MAX_DELAY]
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self._mock_time.sleep.assert_called_once_with(0.25)
+
+    def test__dhcp6_client__solicit_delay_zero_does_not_sleep(self) -> None:
+        """
+        Ensure a drawn delay of 0 transmits the first SOLICIT immediately
+        without sleeping.
+
+        Reference: RFC 8415 §18.2.1 (a 0 delay transmits immediately).
+        """
+
+        self._random.uniform.return_value = 0.0
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self._mock_time.sleep.assert_not_called()
+
+
 class TestDhcp6ClientLifecycle(TestCase):
     """
     The 'Dhcp6Client' BOUND lease-lifecycle tests — T1 RENEW, T2 REBIND,

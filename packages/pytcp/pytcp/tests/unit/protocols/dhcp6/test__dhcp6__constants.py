@@ -153,6 +153,15 @@ class TestDhcp6ConstantsDefaults(TestCase):
         self.assertEqual(sysctl.get("dhcp6.sol_timeout_ms"), 1000, msg="dhcp6.sol_timeout_ms must default to 1000.")
         self.assertEqual(sysctl.get("dhcp6.sol_max_rt_ms"), 3600000, msg="dhcp6.sol_max_rt_ms must default to 3600000.")
 
+    def test__dhcp6_constants__sol_max_delay_ms_default(self) -> None:
+        """
+        Ensure 'dhcp6.sol_max_delay_ms' defaults to 1000 ms (SOL_MAX_DELAY).
+
+        Reference: RFC 8415 §7.6 (SOL_MAX_DELAY = 1 second).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.sol_max_delay_ms"), 1000, msg="dhcp6.sol_max_delay_ms must default to 1000.")
+
     def test__dhcp6_constants__req_timers_default(self) -> None:
         """
         Ensure the REQUEST timers default to REQ_TIMEOUT=1000 / REQ_MAX_RT=30000
@@ -264,6 +273,20 @@ class TestDhcp6ConstantsValidators(TestCase):
         sysctl.set("dhcp6.inf_max_delay_ms", 0)  # must not raise
 
         self.assertEqual(sysctl.get("dhcp6.inf_max_delay_ms"), 0, msg="dhcp6.inf_max_delay_ms must accept 0.")
+
+    def test__dhcp6_constants__sol_max_delay_ms_rejects_negative(self) -> None:
+        """
+        Ensure 'dhcp6.sol_max_delay_ms' rejects a negative value but accepts 0.
+
+        Reference: RFC 8415 §18.2.1 (SOL_MAX_DELAY ≥ 0; 0 transmits immediately).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp6.sol_max_delay_ms", -1)
+
+        sysctl.set("dhcp6.sol_max_delay_ms", 0)  # must not raise
+
+        self.assertEqual(sysctl.get("dhcp6.sol_max_delay_ms"), 0, msg="dhcp6.sol_max_delay_ms must accept 0.")
 
     def test__dhcp6_constants__rel_max_rc_rejects_zero(self) -> None:
         """

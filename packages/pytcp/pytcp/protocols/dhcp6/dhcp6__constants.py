@@ -89,6 +89,13 @@ DHCP6__RETRANS_MAX_ATTEMPTS = 5
 DHCP6__SOL_TIMEOUT_MS = 1000
 DHCP6__SOL_MAX_RT_MS = 3600000
 
+# RFC 8415 §7.6 / §18.2.1 — SOL_MAX_DELAY, the upper bound of the random
+# delay before the very first SOLICIT so a fleet of hosts powered on
+# simultaneously (or seeing the Managed RA flag at the same instant) does
+# not all solicit at once. Drawn uniformly from [0, SOL_MAX_DELAY]; set 0
+# to transmit immediately (useful for tests and short-lived containers).
+DHCP6__SOL_MAX_DELAY_MS = 1000
+
 # RFC 8415 §7.6 — REQ_TIMEOUT / REQ_MAX_RT / REQ_MAX_RC, the initial
 # (IRT) and maximum (MRT) Request retransmit timeouts and the Request
 # max retransmission count. Unlike Solicit, a Request is bounded by
@@ -197,6 +204,17 @@ register(
     default=DHCP6__SOL_MAX_RT_MS,
     validator=is_positive_int("dhcp6.sol_max_rt_ms"),
     description="RFC 8415 §7.6 — SOL_MAX_RT, maximum SOLICIT retransmit timeout (MRT), ms.",
+)
+register(
+    key="dhcp6.sol_max_delay_ms",
+    module_name=__name__,
+    attr="DHCP6__SOL_MAX_DELAY_MS",
+    default=DHCP6__SOL_MAX_DELAY_MS,
+    validator=is_non_negative_int("dhcp6.sol_max_delay_ms"),
+    description=(
+        "RFC 8415 §18.2.1 — SOL_MAX_DELAY, upper bound of the random delay before the first "
+        "SOLICIT in milliseconds (set 0 to transmit immediately)."
+    ),
 )
 register(
     key="dhcp6.req_timeout_ms",

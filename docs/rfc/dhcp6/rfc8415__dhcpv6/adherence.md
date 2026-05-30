@@ -62,8 +62,8 @@ audit and treats the parse/assemble correctness as established there.
 `packages/pytcp/pytcp/protocols/dhcp6/dhcp6__constants.py` — INF/SOL/REQ
 (milliseconds) plus the REN/REB/REL/DEC timers and the T1/T2 derivation
 factors. Cross-knob finalize validators enforce IRT ≤ MRT for each
-backoff pair. SOL_MAX_DELAY / the SOL_MAX_RT-from-the-wire override
-(§21.24) are not modelled (see §18.2.1 and §18.2.9).
+backoff pair. SOL_MAX_DELAY is modelled (`dhcp6.sol_max_delay_ms`, see
+§18.2.1); the SOL_MAX_RT-from-the-wire override (§21.24) is not.
 
 ---
 
@@ -158,10 +158,11 @@ with IRT = SOL_TIMEOUT, MRT = SOL_MAX_RT.
 > "The first Solicit message [...] SHOULD be delayed by a random amount
 > of time between 0 and SOL_MAX_DELAY."
 
-**Adherence:** not met. The client transmits the first SOLICIT
-immediately. (An INF_MAX_DELAY knob exists for the stateless path but is
-not consumed; no SOL_MAX_DELAY jitter is applied.) Harmless for a single
-host; relevant only to de-synchronising a fleet.
+**Adherence:** met. `_delay_first_solicit` (`dhcp6__client.py`) sleeps a
+random interval drawn uniformly from [0, SOL_MAX_DELAY] before the first
+SOLICIT (the `dhcp6.sol_max_delay_ms` knob, default 1000 ms per §7.6; a
+drawn or configured 0 transmits immediately). The jitter is one-shot —
+retransmissions are not delayed.
 
 > "A client that wishes to use the Rapid Commit two-message exchange
 > includes a Rapid Commit option [...]"
@@ -432,6 +433,19 @@ implicit on-link prefix is assumed, matching the MUST.
 
 **Status:** locked in.
 
+### §18.2.1 SOL_MAX_DELAY first-SOLICIT jitter
+
+- **Unit:**
+  `::TestDhcp6ClientSolicitDelay::test__dhcp6_client__solicit_delay_sleeps_random_interval`
+  and `..._solicit_delay_zero_does_not_sleep` assert the first SOLICIT is
+  preceded by a [0, SOL_MAX_DELAY] sleep (and that a drawn 0 transmits
+  immediately).
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp6/test__dhcp6__constants.py::TestDhcp6ConstantsDefaults::test__dhcp6_constants__sol_max_delay_ms_default`
+  pins the `dhcp6.sol_max_delay_ms` default and validator.
+
+**Status:** locked in.
+
 ### §18.2.2 REQUEST addresses the selected server
 
 - **Unit:**
@@ -540,7 +554,7 @@ behaviour).
 | §15 / §21.9 elapsed-time update          | locked in                                 |
 | §16.1 transaction-id validation          | locked in                                 |
 | §18.2.1 SOLICIT contents                 | locked in                                 |
-| §18.2.1 SOL_MAX_DELAY jitter             | n/a (not implemented)                     |
+| §18.2.1 SOL_MAX_DELAY jitter             | locked in                                 |
 | §18.2.2 REQUEST contents                 | locked in                                 |
 | §18.2.4 / §18.2.5 RENEW / REBIND         | locked in                                 |
 | §18.2.6 INFORMATION-REQUEST              | locked in                                 |
@@ -560,7 +574,7 @@ behaviour).
 | §15 retransmission algorithm             | met                                       |
 | §15 / §21.9 elapsed-time update          | met                                       |
 | Transaction-id / msg-type validation     | met                                       |
-| SOLICIT / REQUEST (§18.2.1–2)            | met (no Rapid Commit, no SOL_MAX_DELAY)   |
+| SOLICIT / REQUEST (§18.2.1–2)            | met (no Rapid Commit)                     |
 | RENEW / REBIND lifecycle (§18.2.4–5)     | met                                       |
 | INFORMATION-REQUEST (§18.2.6)            | met                                       |
 | RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |
