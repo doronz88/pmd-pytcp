@@ -60,6 +60,15 @@ class TestDhcp6ClientInit(TestCase):
     The 'Dhcp6Client' constructor tests.
     """
 
+    @override
+    def setUp(self) -> None:
+        """
+        Silence the Subsystem base-class init log line so the
+        constructor tests do not leak 'Initializing DHCP6 Client'.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
     def test__dhcp6_client__init_stores_mac_address(self) -> None:
         """
         Ensure the constructor stores the supplied MAC address.
@@ -104,6 +113,7 @@ class TestDhcp6ClientFetch(TestCase):
         self._random.uniform.return_value = 0.0
 
         self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
         self._server = Dhcp6MockServer()
         self._server.wire(self._sock)
@@ -352,6 +362,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._random.uniform.return_value = 0.0
 
         self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
         self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
         self._server.wire(self._sock)
@@ -551,6 +562,7 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
         self._random.uniform.return_value = 0.0
 
         self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
 
         self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
         self._server.wire(self._sock)
@@ -589,3 +601,165 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
         self._client.acquire_lease()
 
         self._address_api.add.assert_not_called()
+
+
+_SAMPLE_LEASE = Dhcp6Lease(
+    address=Ip6Address("2001:db8::100"),
+    preferred_lifetime=3600,
+    valid_lifetime=7200,
+    t1=1800,
+    t2=2880,
+    iaid=0,
+    server_duid=_SERVER_DUID,
+)
+
+
+class TestDhcp6ClientTrigger(TestCase):
+    """
+    The 'Dhcp6Client' RA-driven trigger / Subsystem-loop tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Build a client with the SOLICIT/INFORMATION exchanges mocked and the
+        trigger poll interval shortened so the worker loop runs inline.
+        """
+
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.SUBSYSTEM_SLEEP_TIME__SEC", 0.0))
+
+        self._acquire = self.enterContext(patch.object(Dhcp6Client, "acquire_lease", autospec=True))
+        self._fetch = self.enterContext(patch.object(Dhcp6Client, "fetch_other_config", autospec=True))
+        self._acquire.return_value = _SAMPLE_LEASE
+        self._fetch.return_value = Dhcp6StatelessConfig(dns_servers=[Ip6Address("2001:db8::53")])
+
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    def test__dhcp6_client__trigger_managed_acquires_lease(self) -> None:
+        """
+        Ensure a Managed trigger runs the stateful lease exchange.
+
+        Reference: RFC 8415 §4 (Managed flag drives stateful address configuration).
+        """
+
+        self._client.trigger(managed=True, other=False)
+        self._client._subsystem_loop()
+
+        self._acquire.assert_called_once_with(self._client)
+        self._fetch.assert_not_called()
+
+    def test__dhcp6_client__trigger_other_fetches_config(self) -> None:
+        """
+        Ensure an Other-config trigger runs the stateless exchange.
+
+        Reference: RFC 8415 §4 (Other-config flag drives stateless configuration).
+        """
+
+        self._client.trigger(managed=False, other=True)
+        self._client._subsystem_loop()
+
+        self._fetch.assert_called_once_with(self._client)
+        self._acquire.assert_not_called()
+
+    def test__dhcp6_client__trigger_managed_takes_precedence(self) -> None:
+        """
+        Ensure a trigger with both flags runs only the stateful exchange.
+
+        Reference: RFC 8415 §4 (Managed configuration subsumes Other configuration).
+        """
+
+        self._client.trigger(managed=True, other=True)
+        self._client._subsystem_loop()
+
+        self._acquire.assert_called_once_with(self._client)
+        self._fetch.assert_not_called()
+
+    def test__dhcp6_client__trigger_managed_debounced_once_bound(self) -> None:
+        """
+        Ensure a second Managed trigger after a successful lease does not
+        re-solicit.
+
+        Reference: RFC 8415 §18.2.1 (no re-solicitation once an IA is bound).
+        """
+
+        self._client.trigger(managed=True, other=False)
+        self._client._subsystem_loop()
+        self._client.trigger(managed=True, other=False)
+        self._client._subsystem_loop()
+
+        self._acquire.assert_called_once_with(self._client)
+
+    def test__dhcp6_client__trigger_other_debounced_once_acquired(self) -> None:
+        """
+        Ensure a second Other-config trigger after a successful fetch does
+        not re-fetch.
+
+        Reference: RFC 8415 §18.2.6 (other configuration fetched once per attachment).
+        """
+
+        self._client.trigger(managed=False, other=True)
+        self._client._subsystem_loop()
+        self._client.trigger(managed=False, other=True)
+        self._client._subsystem_loop()
+
+        self._fetch.assert_called_once_with(self._client)
+
+    def test__dhcp6_client__trigger_managed_failure_allows_retry(self) -> None:
+        """
+        Ensure a failed lease leaves the client unbound so a later trigger
+        retries.
+
+        Reference: RFC 8415 §18.2.1 (retry on a failed exchange).
+        """
+
+        self._acquire.return_value = None
+
+        self._client.trigger(managed=True, other=False)
+        self._client._subsystem_loop()
+        self._client.trigger(managed=True, other=False)
+        self._client._subsystem_loop()
+
+        self.assertEqual(self._acquire.call_count, 2, msg="A failed lease must allow a later retry.")
+
+    def test__dhcp6_client__trigger_other_failure_allows_retry(self) -> None:
+        """
+        Ensure a failed stateless fetch leaves the client unconfigured so a
+        later trigger retries.
+
+        Reference: RFC 8415 §18.2.6 (retry on a failed exchange).
+        """
+
+        self._fetch.return_value = None
+
+        self._client.trigger(managed=False, other=True)
+        self._client._subsystem_loop()
+        self._client.trigger(managed=False, other=True)
+        self._client._subsystem_loop()
+
+        self.assertEqual(self._fetch.call_count, 2, msg="A failed fetch must allow a later retry.")
+
+    def test__dhcp6_client__loop_without_trigger_is_idle(self) -> None:
+        """
+        Ensure the worker loop runs no exchange when no trigger is pending.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._client._subsystem_loop()
+
+        self._acquire.assert_not_called()
+        self._fetch.assert_not_called()
+
+    def test__dhcp6_client__stop_wakes_the_trigger(self) -> None:
+        """
+        Ensure '_stop()' wakes the worker out of its trigger wait so
+        teardown does not block.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._client._stop()
+
+        self.assertTrue(self._client._event__trigger.is_set(), msg="_stop() must set the trigger event.")

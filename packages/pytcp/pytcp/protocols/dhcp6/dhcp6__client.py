@@ -36,10 +36,11 @@ ver 3.0.6
 """
 
 import random
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from net_proto import (
@@ -60,6 +61,7 @@ from net_proto import (
 from pytcp.lib.logger import log
 from pytcp.protocols.dhcp6 import dhcp6__constants
 from pytcp.protocols.dhcp6.dhcp6__uid import get_client_duid, get_iaid
+from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 from pytcp.socket import (
     AF_INET6,
     SO_BINDTODEVICE,
@@ -113,22 +115,28 @@ class Dhcp6Lease:
     server_duid: bytes
 
 
-class Dhcp6Client:
+class Dhcp6Client(Subsystem):
     """
     DHCPv6 client (RFC 8415).
 
-    Two synchronous exchanges, each running inline in the caller's
-    thread (no daemon thread yet — the daemon lifecycle and the RA
-    Managed/Other-config trigger land in a later phase):
+    Two invocation modes:
 
-      - 'fetch_other_config()' — the stateless INFORMATION-REQUEST /
-        REPLY exchange (§18.2.6); returns a 'Dhcp6StatelessConfig'.
-      - 'acquire_lease()' — the stateful SOLICIT / ADVERTISE / REQUEST
-        / REPLY exchange (§18.2.1-§18.2.2); returns a 'Dhcp6Lease'.
+      - Sync: 'fetch_other_config()' / 'acquire_lease()' run one
+        exchange inline in the caller's thread and return the result.
+        The 'Subsystem' machinery is not engaged. Used by tests and
+        operator CLI tools.
+      - Daemon: 'start()' spawns the 'Subsystem' worker thread which
+        blocks on a trigger 'Event'; the RA RX handler calls
+        'trigger(managed=..., other=...)' on receipt of a Router
+        Advertisement with the Managed / Other-config flags set, and
+        the worker runs the stateful ('managed') or stateless
+        ('other') exchange. Used by 'stack.start()' in production.
 
-    Both share the §15 retransmission backoff and the inbound-frame
-    validation in '_run_exchange' / '_recv_within_window'.
+    Both exchanges share the §15 retransmission backoff and the
+    inbound-frame validation in '_run_exchange' / '_recv_within_window'.
     """
+
+    _subsystem_name = "DHCP6 Client"
 
     def __init__(
         self,
@@ -146,9 +154,75 @@ class Dhcp6Client:
         without touching the interface's address set.
         """
 
+        super().__init__()
+
         self._mac_address = mac_address
         self._interface_name = interface_name
         self._address_api = address_api
+
+        # Trigger state. 'trigger()' (RX thread) sets the pending
+        # config-mode flags under '_lock__trigger' and wakes the worker
+        # via '_event__trigger'; the worker reads + clears them. The
+        # debounce state ('_lease' / '_other_acquired') is worker-only
+        # so a periodic RA does not re-solicit once the host is
+        # configured (lease renewal is a later phase).
+        self._event__trigger = threading.Event()
+        self._lock__trigger = threading.Lock()
+        self._pending_managed = False
+        self._pending_other = False
+        self._lease: Dhcp6Lease | None = None
+        self._other_acquired = False
+
+    def trigger(self, *, managed: bool, other: bool) -> None:
+        """
+        Record a config-mode request from an inbound Router
+        Advertisement and wake the worker thread. Called from the RX
+        thread; non-blocking and idempotent — the worker debounces so a
+        periodic RA does not re-run a completed exchange.
+        """
+
+        with self._lock__trigger:
+            self._pending_managed = self._pending_managed or managed
+            self._pending_other = self._pending_other or other
+        self._event__trigger.set()
+
+    @override
+    def _subsystem_loop(self) -> None:
+        """
+        Wait for an RA-driven trigger and run the matching exchange.
+
+        'managed' takes precedence over 'other' (a Managed RA drives the
+        full stateful address lease, which itself fetches other config
+        via its Option Request); each is run at most once until the host
+        is configured, so a periodic RA does not re-solicit.
+        """
+
+        if not self._event__trigger.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
+            return
+        self._event__trigger.clear()
+
+        with self._lock__trigger:
+            managed = self._pending_managed
+            other = self._pending_other
+            self._pending_managed = False
+            self._pending_other = False
+
+        if managed and self._lease is None:
+            lease = self.acquire_lease()
+            if lease is not None:
+                self._lease = lease
+        elif other and not self._other_acquired:
+            if self.fetch_other_config() is not None:
+                self._other_acquired = True
+
+    @override
+    def _stop(self) -> None:
+        """
+        Wake the worker out of its trigger wait so 'stop()' does not
+        block for the full poll interval during teardown.
+        """
+
+        self._event__trigger.set()
 
     # --- message builders ---
 
