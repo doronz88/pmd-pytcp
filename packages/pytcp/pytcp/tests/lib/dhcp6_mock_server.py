@@ -1,0 +1,235 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the 'Dhcp6MockServer' test helper — a stub
+DHCPv6 server that captures outbound client frames via real
+'Dhcp6Parser' and serves canned REPLY frames built via real
+'Dhcp6Assembler', so unit tests exercise the actual wire-format
+path rather than 'SimpleNamespace' stand-ins.
+
+pytcp/tests/lib/dhcp6_mock_server.py
+
+ver 3.0.6
+"""
+
+from collections import deque
+from typing import Callable, cast
+from unittest.mock import MagicMock, create_autospec
+
+from net_addr import Ip6Address
+from net_proto import (
+    Dhcp6Assembler,
+    Dhcp6MessageType,
+    Dhcp6OptionClientId,
+    Dhcp6OptionDnsServers,
+    Dhcp6Options,
+    Dhcp6OptionServerId,
+    Dhcp6Parser,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option import Dhcp6Option
+
+_UNSET: object = object()
+
+# Sentinel: "derive this field from the last captured client TX
+# (xid echo, client_id echo)". Distinct from None, which means
+# "deliberately omit this option from the reply".
+
+_DEFAULT_SERVER_DUID = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xfe"
+
+
+class Dhcp6MockServer:
+    """
+    Stub DHCPv6 server for unit tests.
+
+    Wire the server into a 'create_autospec'-d socket via 'wire()':
+    'sock.sendto(...)' calls flow through 'Dhcp6Parser' into 'tx_log',
+    and 'sock.recv__mv(...)' calls dequeue canned REPLY frames built
+    via 'Dhcp6Assembler' at recv time so 'xid' / Client Identifier
+    echo derive from the most recently captured client TX.
+    """
+
+    def __init__(self, *, server_duid: bytes = _DEFAULT_SERVER_DUID) -> None:
+        """
+        Build an empty mock server. Use 'enqueue_reply' /
+        'enqueue_timeout' / 'enqueue_raw' to plan the responses before
+        the test calls 'Dhcp6Client.fetch_other_config()'.
+        """
+
+        self._server_duid = server_duid
+        self._tx_log: list[Dhcp6Parser] = []
+        self._reply_queue: deque[Callable[[], bytes] | BaseException] = deque()
+
+    @property
+    def tx_log(self) -> list[Dhcp6Parser]:
+        """
+        Return a snapshot of every client TX captured so far, parsed
+        back through the real 'Dhcp6Parser' so callers can assert on
+        any field or option.
+        """
+
+        return list(self._tx_log)
+
+    def enqueue_reply(
+        self,
+        *,
+        xid: int | object = _UNSET,
+        dns_servers: list[Ip6Address] | None = None,
+        client_id_echo: bytes | None | object = _UNSET,
+        server_id: bytes | None | object = _UNSET,
+    ) -> None:
+        """
+        Plan a DHCPv6 REPLY built lazily from the next client TX —
+        unspecified fields ('xid', 'client_id_echo') are copied from
+        the last captured TX at recv time. Pass an explicit value
+        (including None) to override an echo or to deliberately omit
+        an option from the reply.
+        """
+
+        self._reply_queue.append(
+            lambda: self._build_reply(
+                xid=xid,
+                dns_servers=dns_servers,
+                client_id_echo=client_id_echo,
+                server_id=server_id,
+            )
+        )
+
+    def enqueue_timeout(self) -> None:
+        """
+        Plan a 'recv__mv' that raises 'TimeoutError' — the canonical
+        signal that the test wants the client to observe a silent
+        server for one recv window.
+        """
+
+        self._reply_queue.append(TimeoutError())
+
+    def enqueue_raw(self, frame: bytes, /) -> None:
+        """
+        Plan a raw byte frame returned verbatim from 'recv__mv' — for
+        tests that need to inject malformed or otherwise hand-rolled
+        replies.
+        """
+
+        self._reply_queue.append(lambda: frame)
+
+    def wire(self, mock_socket: MagicMock, /) -> None:
+        """
+        Plug the mock server into a 'create_autospec'-d socket. The
+        socket's 'sendto' captures the outbound frame into 'tx_log';
+        'recv__mv' dequeues the next planned reply (raising
+        'TimeoutError' if the queue is empty).
+        """
+
+        def on_sendto(data: bytes, address: tuple[str, int]) -> int:
+            del address
+            self._tx_log.append(Dhcp6Parser(memoryview(bytes(data))))
+            return len(data)
+
+        def on_recv(bufsize: int | None = None, timeout: float | None = None) -> memoryview:
+            del bufsize, timeout
+            if not self._reply_queue:
+                raise TimeoutError
+            item = self._reply_queue.popleft()
+            if isinstance(item, BaseException):
+                raise item
+            return memoryview(item())
+
+        mock_socket.sendto.side_effect = on_sendto
+        mock_socket.recv__mv.side_effect = on_recv
+
+    def _resolved_echo(self, *, explicit: object, default_extractor: Callable[[Dhcp6Parser], object]) -> object:
+        """
+        Resolve a maybe-explicit field — if 'explicit' is the '_UNSET'
+        sentinel, derive from the most recent client TX via the
+        supplied extractor; otherwise return 'explicit' verbatim
+        (including 'None' to mean "omit").
+        """
+
+        if explicit is not _UNSET:
+            return explicit
+        if not self._tx_log:
+            raise RuntimeError(
+                "Dhcp6MockServer cannot derive an echo field without a prior client TX in "
+                "tx_log; pass the field explicitly or send a frame first.",
+            )
+        return default_extractor(self._tx_log[-1])
+
+    def _build_reply(
+        self,
+        *,
+        xid: int | object,
+        dns_servers: list[Ip6Address] | None,
+        client_id_echo: bytes | None | object,
+        server_id: bytes | None | object,
+    ) -> bytes:
+        """
+        Build the canned REPLY frame bytes. A REPLY to an
+        INFORMATION-REQUEST carries the Server Identifier, the echoed
+        Client Identifier, and the requested other-config options
+        (RFC 8415 §18.3.6 / §18.3.7).
+        """
+
+        resolved_xid = self._resolved_echo(explicit=xid, default_extractor=lambda tx: tx.xid)
+        resolved_cid = self._resolved_echo(explicit=client_id_echo, default_extractor=lambda tx: tx.client_id)
+        resolved_sid = self._server_duid if server_id is _UNSET else server_id
+
+        assert isinstance(resolved_xid, int)
+
+        options: list[Dhcp6Option] = []
+        if resolved_sid is not None:
+            assert isinstance(resolved_sid, (bytes, bytearray))
+            options.append(Dhcp6OptionServerId(bytes(resolved_sid)))
+        if resolved_cid is not None:
+            assert isinstance(resolved_cid, (bytes, bytearray))
+            options.append(Dhcp6OptionClientId(bytes(resolved_cid)))
+        if dns_servers:
+            options.append(Dhcp6OptionDnsServers(dns_servers))
+
+        reply = Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.REPLY,
+            dhcp6__xid=resolved_xid,
+            dhcp6__options=Dhcp6Options(*options),
+        )
+        return bytes(reply)
+
+
+def autospec_dhcp6_socket() -> MagicMock:
+    """
+    Build a 'create_autospec'-d, 'spec_set'-locked stand-in for
+    'pytcp.socket.socket'. The returned mock is callable (mirroring
+    the socket factory) and yields an instance-shape autospec on each
+    call. Wire 'Dhcp6MockServer.wire(mock_socket)' into the
+    returned-value instance.
+
+    Defined here rather than inline in test modules so every
+    DHCP6-client test uses the same locked-down mock surface.
+    """
+
+    from pytcp.socket import socket as _pytcp_socket
+
+    factory: MagicMock = cast(MagicMock, create_autospec(_pytcp_socket, spec_set=True))
+    instance: MagicMock = cast(MagicMock, create_autospec(_pytcp_socket, spec_set=True, instance=True))
+    factory.return_value = instance
+    return factory

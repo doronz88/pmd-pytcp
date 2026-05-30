@@ -385,6 +385,7 @@ LOG__CHANNEL = {
     "socket",
     "tcp-ss",
     "dhcp4",
+    "dhcp6",
     "service",
     "client",
 }
