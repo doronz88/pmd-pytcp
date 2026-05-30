@@ -143,6 +143,28 @@ class TestDhcp6ConstantsDefaults(TestCase):
             sysctl.get("dhcp6.retrans_max_attempts"), 5, msg="dhcp6.retrans_max_attempts must default to 5."
         )
 
+    def test__dhcp6_constants__sol_timers_default(self) -> None:
+        """
+        Ensure the SOLICIT timers default to SOL_TIMEOUT=1000 / SOL_MAX_RT=3600000.
+
+        Reference: RFC 8415 §7.6 (SOL_TIMEOUT = 1 s, SOL_MAX_RT = 3600 s).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.sol_timeout_ms"), 1000, msg="dhcp6.sol_timeout_ms must default to 1000.")
+        self.assertEqual(sysctl.get("dhcp6.sol_max_rt_ms"), 3600000, msg="dhcp6.sol_max_rt_ms must default to 3600000.")
+
+    def test__dhcp6_constants__req_timers_default(self) -> None:
+        """
+        Ensure the REQUEST timers default to REQ_TIMEOUT=1000 / REQ_MAX_RT=30000
+        / REQ_MAX_RC=10.
+
+        Reference: RFC 8415 §7.6 (REQ_TIMEOUT = 1 s, REQ_MAX_RT = 30 s, REQ_MAX_RC = 10).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.req_timeout_ms"), 1000, msg="dhcp6.req_timeout_ms must default to 1000.")
+        self.assertEqual(sysctl.get("dhcp6.req_max_rt_ms"), 30000, msg="dhcp6.req_max_rt_ms must default to 30000.")
+        self.assertEqual(sysctl.get("dhcp6.req_max_rc"), 10, msg="dhcp6.req_max_rc must default to 10.")
+
 
 class TestDhcp6ConstantsValidators(TestCase):
     """
@@ -233,3 +255,31 @@ class TestDhcp6ConstantsFinalize(TestCase):
         sysctl.set("dhcp6.inf_timeout_ms", 1000)
 
         sysctl.finalize_validators()  # must not raise
+
+    def test__dhcp6_constants__finalize_rejects_sol_timeout_greater_than_max_rt(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'dhcp6.sol_timeout_ms'
+        exceeds 'dhcp6.sol_max_rt_ms'.
+
+        Reference: RFC 8415 §15 (doubled-and-capped retransmission backoff).
+        """
+
+        sysctl.set("dhcp6.sol_max_rt_ms", 500)
+        sysctl.set("dhcp6.sol_timeout_ms", 1000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp6_constants__finalize_rejects_req_timeout_greater_than_max_rt(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'dhcp6.req_timeout_ms'
+        exceeds 'dhcp6.req_max_rt_ms'.
+
+        Reference: RFC 8415 §15 (doubled-and-capped retransmission backoff).
+        """
+
+        sysctl.set("dhcp6.req_max_rt_ms", 500)
+        sysctl.set("dhcp6.req_timeout_ms", 1000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
