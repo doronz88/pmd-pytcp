@@ -138,6 +138,7 @@ if TYPE_CHECKING:
 
     from pytcp.protocols.arp.arp__cache import ArpCache
     from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
+    from pytcp.protocols.dhcp6.dhcp6__client import Dhcp6Client
     from pytcp.protocols.icmp6.nd.nd__cache import NdCache
     from pytcp.stack.route import RouteApi
 
@@ -233,6 +234,14 @@ class PacketHandler(Subsystem, ABC):
     _ethertype_registry: DispatchRegistry[EtherType]
     _ip4_proto_registry: DispatchRegistry[IpProto]
     _ip6_proto_registry: DispatchRegistry[IpProto]
+
+    # Per-interface DHCPv6 client (RFC 8415), triggered by the RA RX
+    # handler when an inbound Router Advertisement carries the Managed /
+    # Other-config flags. Declared on the base (default 'None') so the
+    # shared ICMPv6 RX handler can reach it through 'self._if:
+    # PacketHandler'; the lifecycle installs a real client only on an
+    # L2 interface. 'None' = the RA M/O flags are parsed but not acted on.
+    _dhcp6_client: "Dhcp6Client | None" = None
 
     if TYPE_CHECKING:
         # '_phtx_ethernet' is provided by the L2-only

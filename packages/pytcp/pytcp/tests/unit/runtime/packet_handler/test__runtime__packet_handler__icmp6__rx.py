@@ -112,6 +112,9 @@ class _StubInterface:
         self._icmp6_ra__event = threading.Semaphore(0)
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
         self._nd_cache: NdCache | None = None
+        # The RA RX handler consults '_dhcp6_client' to trigger the
+        # DHCPv6 client on the RA Managed/Other flags; the stub has none.
+        self._dhcp6_client = None
 
         self.icmp6_tx_calls: list[dict[str, object]] = []
 

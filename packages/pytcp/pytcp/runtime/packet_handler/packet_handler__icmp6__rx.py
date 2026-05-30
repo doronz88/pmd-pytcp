@@ -913,6 +913,27 @@ class Icmp6RxHandler:
             retrans_timer_ms=packet_rx.icmp6.message.retrans_timer,
         )
 
+        # RFC 8415 §4 / RFC 4861 §4.2 — the Managed (M) and
+        # Other-config (O) flags drive DHCPv6: M=1 requests stateful
+        # address configuration, O=1 requests stateless other
+        # configuration (DNS, etc.). When a DHCPv6 client is installed
+        # on this interface, hand it the flags; the client's worker
+        # debounces so a periodic RA does not re-run a completed
+        # exchange. When no client is present the flags are parsed but
+        # not acted on.
+        dhcp6_client = self._if._dhcp6_client
+        if dhcp6_client is not None and (packet_rx.icmp6.message.flag_m or packet_rx.icmp6.message.flag_o):
+            __debug__ and log(
+                "icmp6",
+                f"{packet_rx.tracker} - RA Managed/Other flags "
+                f"{'M' if packet_rx.icmp6.message.flag_m else '-'}"
+                f"{'O' if packet_rx.icmp6.message.flag_o else '-'}; triggering DHCPv6 client",
+            )
+            dhcp6_client.trigger(
+                managed=packet_rx.icmp6.message.flag_m,
+                other=packet_rx.icmp6.message.flag_o,
+            )
+
     def __phrx_icmp6__nd_neighbor_solicitation(self, packet_rx: PacketRx) -> None:
         """
         Handle inbound ICMPv6 ND Neighbor Solicitation packets.
