@@ -190,6 +190,7 @@ from net_proto.protocols.dhcp6.options.dhcp6__option__status_code import (
 from net_proto.protocols.dhcp6.options.dhcp6__option__unknown import (
     Dhcp6OptionUnknown,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__options import Dhcp6Options
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ethernet.ethernet__base import EthernetPayload
 from net_proto.protocols.ethernet.ethernet__errors import (
@@ -691,6 +692,7 @@ __all__ = [
     "Dhcp6OptionStatusCode",
     "Dhcp6OptionType",
     "Dhcp6OptionUnknown",
+    "Dhcp6Options",
     "Dhcp6SanityError",
     "Dhcp6StatusCode",
     "ETHERNET_802_3__HEADER__LEN",
