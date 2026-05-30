@@ -36,7 +36,7 @@ from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
 from net_addr import Ip6Address, Ip6IfAddr, MacAddress
-from net_proto import Dhcp6MessageType, Dhcp6OptionType, Dhcp6StatusCode
+from net_proto import Dhcp6MessageType, Dhcp6Options, Dhcp6OptionType, Dhcp6StatusCode
 from pytcp.protocols.dhcp6.dhcp6__client import (
     Dhcp6Client,
     Dhcp6Lease,
@@ -538,6 +538,196 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), ia_na_options_override=b"\x00\x05\x00")
 
         self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
+
+
+_REN_XID = 0xCCCCCC
+_LEASE = Dhcp6Lease(
+    address=Ip6Address("2001:db8::100"),
+    preferred_lifetime=3600,
+    valid_lifetime=7200,
+    t1=1800,
+    t2=2880,
+    iaid=0,
+    server_duid=_SERVER_DUID,
+)
+
+
+class TestDhcp6ClientRenewRebind(TestCase):
+    """
+    The 'Dhcp6Client' RENEW / REBIND lease-maintenance exchange tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock DHCPv6 server into an autospec'd socket and pin the
+        RENEW / REBIND transaction-id and jitter so each exchange is
+        deterministic.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.return_value = _REN_XID
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__renew_returns_updated_lease(self) -> None:
+        """
+        Ensure a RENEW answered with a REPLY returns the lease bundle
+        carrying the server's refreshed lifetimes and timers.
+
+        Reference: RFC 8415 §18.2.4 (Renew message and Reply processing).
+        """
+
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            preferred_lifetime=7200,
+            valid_lifetime=14400,
+            t1=3600,
+            t2=5760,
+        )
+
+        renewed = self._client._renew(_LEASE, deadline=1e18)
+
+        self.assertEqual(
+            renewed,
+            Dhcp6Lease(
+                address=Ip6Address("2001:db8::100"),
+                preferred_lifetime=7200,
+                valid_lifetime=14400,
+                t1=3600,
+                t2=5760,
+                iaid=0,
+                server_duid=_SERVER_DUID,
+            ),
+            msg="RENEW must return the refreshed lease bundle.",
+        )
+
+    def test__dhcp6_client__renew_message_contents(self) -> None:
+        """
+        Ensure the RENEW carries the granting server's DUID, the Client
+        Identifier, and an IA_NA echoing the currently leased address.
+
+        Reference: RFC 8415 §18.2.4 (Renew carries the Server Identifier and the IA being renewed).
+        """
+
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client._renew(_LEASE, deadline=1e18)
+
+        renew = self._server.tx_log[0]
+        self.assertIs(renew.msg_type, Dhcp6MessageType.RENEW, msg="The maintenance message must be RENEW.")
+        self.assertEqual(renew.server_id, _SERVER_DUID, msg="RENEW must address the granting server by DUID.")
+        self.assertEqual(renew.client_id, get_client_duid(_DEFAULT_MAC), msg="RENEW must carry the client DUID.")
+        self.assertIsNotNone(renew.ia_na, msg="RENEW must carry an IA_NA.")
+        assert renew.ia_na is not None
+        ia_options = Dhcp6Options.from_buffer(memoryview(renew.ia_na.options))
+        assert ia_options.ia_addr is not None
+        self.assertEqual(
+            ia_options.ia_addr.address,
+            Ip6Address("2001:db8::100"),
+            msg="RENEW IA_NA must echo the currently leased address.",
+        )
+
+    def test__dhcp6_client__rebind_returns_updated_lease(self) -> None:
+        """
+        Ensure a REBIND answered with a REPLY returns the lease bundle
+        with the responding server's DUID and refreshed lifetimes.
+
+        Reference: RFC 8415 §18.2.5 (Rebind message and Reply processing).
+        """
+
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            preferred_lifetime=7200,
+            valid_lifetime=14400,
+            t1=3600,
+            t2=5760,
+        )
+
+        rebound = self._client._rebind(_LEASE, deadline=1e18)
+
+        self.assertEqual(
+            rebound,
+            Dhcp6Lease(
+                address=Ip6Address("2001:db8::100"),
+                preferred_lifetime=7200,
+                valid_lifetime=14400,
+                t1=3600,
+                t2=5760,
+                iaid=0,
+                server_duid=_SERVER_DUID,
+            ),
+            msg="REBIND must return the refreshed lease with the responding server's DUID.",
+        )
+
+    def test__dhcp6_client__rebind_omits_server_id(self) -> None:
+        """
+        Ensure the REBIND is sent without a Server Identifier so any
+        server on the link may answer.
+
+        Reference: RFC 8415 §18.2.5 (Rebind carries no Server Identifier).
+        """
+
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client._rebind(_LEASE, deadline=1e18)
+
+        rebind = self._server.tx_log[0]
+        self.assertIs(rebind.msg_type, Dhcp6MessageType.REBIND, msg="The maintenance message must be REBIND.")
+        self.assertIsNone(rebind.server_id, msg="REBIND must omit the Server Identifier.")
+        self.assertIsNotNone(rebind.ia_na, msg="REBIND must carry an IA_NA.")
+
+    def test__dhcp6_client__renew_retransmits_then_succeeds(self) -> None:
+        """
+        Ensure a RENEW whose first recv window times out is retransmitted
+        and succeeds on the server's eventual REPLY before the deadline.
+
+        Reference: RFC 8415 §15 (retransmission until a Reply or the MRD bound).
+        """
+
+        self._server.enqueue_timeout()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        renewed = self._client._renew(_LEASE, deadline=1e18)
+
+        self.assertIsNotNone(renewed, msg="RENEW must succeed after one retransmission.")
+        self.assertEqual(self._sock.sendto.call_count, 2, msg="RENEW must be retransmitted once before the REPLY.")
+
+    def test__dhcp6_client__renew_gives_up_at_deadline(self) -> None:
+        """
+        Ensure a RENEW whose max retransmission duration (the time to T2)
+        has elapsed stops retransmitting and returns None.
+
+        Reference: RFC 8415 §18.2.4 (Renew is bounded by the time remaining until T2).
+        """
+
+        mock_time = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.time"))
+        mock_time.monotonic.return_value = 100.0
+
+        result = self._client._renew(_LEASE, deadline=100.0)
+
+        self.assertIsNone(result, msg="RENEW must give up once the MRD deadline has elapsed.")
+        self.assertEqual(self._sock.sendto.call_count, 1, msg="An expired RENEW must not retransmit past its deadline.")
 
 
 class TestDhcp6ClientLeaseAssignment(TestCase):

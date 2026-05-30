@@ -49,6 +49,7 @@ from net_proto import (
     Dhcp6MessageType,
     Dhcp6OptionClientId,
     Dhcp6OptionElapsedTime,
+    Dhcp6OptionIaAddr,
     Dhcp6OptionIaNa,
     Dhcp6OptionOro,
     Dhcp6Options,
@@ -295,6 +296,71 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
+    @staticmethod
+    def _ia_na_for_lease(lease: Dhcp6Lease) -> Dhcp6OptionIaNa:
+        """
+        Build the IA_NA option that echoes a currently held lease — its
+        IAID and T1 / T2, with the leased address nested as an IA
+        Address sub-option — for inclusion in a RENEW / REBIND so the
+        server knows which binding to extend (RFC 8415 §18.2.4).
+        """
+
+        ia_addr = Dhcp6OptionIaAddr(
+            address=lease.address,
+            preferred_lifetime=lease.preferred_lifetime,
+            valid_lifetime=lease.valid_lifetime,
+        )
+        return Dhcp6OptionIaNa(
+            iaid=lease.iaid,
+            t1=lease.t1,
+            t2=lease.t2,
+            options=bytes(Dhcp6Options(ia_addr)),
+        )
+
+    def _build_renew(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.4 RENEW addressed to the server that
+        granted the lease (its DUID in the Server Identifier option),
+        carrying the Client Identifier, the IA_NA being renewed (with
+        the leased address), a zero Elapsed Time, and an Option Request.
+        """
+
+        options = Dhcp6Options(
+            self._client_id_option(),
+            Dhcp6OptionServerId(lease.server_duid),
+            self._ia_na_for_lease(lease),
+            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
+        )
+
+        return Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.RENEW,
+            dhcp6__xid=xid,
+            dhcp6__options=options,
+        )
+
+    def _build_rebind(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+        """
+        Build an RFC 8415 §18.2.5 REBIND — like RENEW but without a
+        Server Identifier so any server on the link may extend the
+        binding — carrying the Client Identifier, the IA_NA being
+        rebound (with the leased address), a zero Elapsed Time, and an
+        Option Request.
+        """
+
+        options = Dhcp6Options(
+            self._client_id_option(),
+            self._ia_na_for_lease(lease),
+            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
+        )
+
+        return Dhcp6Assembler(
+            dhcp6__msg_type=Dhcp6MessageType.REBIND,
+            dhcp6__xid=xid,
+            dhcp6__options=options,
+        )
+
     def _open_client_socket(self) -> socket:
         """
         Open the UDP/IPv6 socket used for the exchange, pinned to this
@@ -432,6 +498,90 @@ class Dhcp6Client(Subsystem):
         finally:
             client_socket.close()
 
+    # --- lease maintenance (RENEW / REBIND) ---
+
+    def _renew(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
+        """
+        Run an RFC 8415 §18.2.4 RENEW exchange for the held 'lease',
+        retransmitting (REN_TIMEOUT / REN_MAX_RT backoff) until the
+        granting server answers with a REPLY or the 'deadline'
+        ('time.monotonic', the moment T2 is reached) elapses. Returns
+        the refreshed lease, or None when no usable REPLY arrives in time.
+        """
+
+        xid = random.randint(0, _DHCP6__XID_MAX)
+        client_socket = self._open_client_socket()
+        try:
+            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
+            target = self._multicast_target()
+
+            def _send() -> None:
+                client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease)), target)
+
+            __debug__ and log("dhcp6", f"Sending RENEW (xid={xid:#08x}) for {lease.address}")
+            _send()
+
+            reply = self._run_exchange(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.REPLY,
+                resend=_send,
+                irt_ms=dhcp6__constants.DHCP6__REN_TIMEOUT_MS,
+                mrt_ms=dhcp6__constants.DHCP6__REN_MAX_RT_MS,
+                mrd_deadline=deadline,
+            )
+            if reply is None:
+                __debug__ and log("dhcp6", "RENEW unanswered before T2; escalating to REBIND")
+                return None
+
+            return self._extract_lease(reply, server_duid=lease.server_duid)
+        finally:
+            client_socket.close()
+
+    def _rebind(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
+        """
+        Run an RFC 8415 §18.2.5 REBIND exchange for the held 'lease',
+        retransmitting (REB_TIMEOUT / REB_MAX_RT backoff) until any
+        server answers with a REPLY or the 'deadline' ('time.monotonic',
+        the moment the valid lifetime expires) elapses. The responding
+        server's DUID is taken from the REPLY. Returns the refreshed
+        lease, or None when no usable REPLY arrives in time.
+        """
+
+        xid = random.randint(0, _DHCP6__XID_MAX)
+        client_socket = self._open_client_socket()
+        try:
+            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
+            target = self._multicast_target()
+
+            def _send() -> None:
+                client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease)), target)
+
+            __debug__ and log("dhcp6", f"Sending REBIND (xid={xid:#08x}) for {lease.address}")
+            _send()
+
+            reply = self._run_exchange(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.REPLY,
+                resend=_send,
+                irt_ms=dhcp6__constants.DHCP6__REB_TIMEOUT_MS,
+                mrt_ms=dhcp6__constants.DHCP6__REB_MAX_RT_MS,
+                mrd_deadline=deadline,
+            )
+            if reply is None:
+                __debug__ and log("dhcp6", "REBIND unanswered before valid-lifetime expiry; lease lost")
+                return None
+
+            server_duid = reply.server_id
+            if server_duid is None:
+                __debug__ and log("dhcp6", "<WARN>REBIND REPLY missing Server Identifier; lease not refreshed")
+                return None
+
+            return self._extract_lease(reply, server_duid=server_duid)
+        finally:
+            client_socket.close()
+
     @staticmethod
     def _lease_ifaddr(lease: Dhcp6Lease) -> Ip6IfAddr:
         """
@@ -508,7 +658,8 @@ class Dhcp6Client(Subsystem):
         resend: Callable[[], None],
         irt_ms: int,
         mrt_ms: int,
-        max_attempts: int,
+        max_attempts: int | None = None,
+        mrd_deadline: float | None = None,
     ) -> Dhcp6Parser | None:
         """
         Wait for the matching reply ('expected_type', 'xid') using the
@@ -516,13 +667,29 @@ class Dhcp6Client(Subsystem):
         IRT / MRT. On each per-attempt timeout the caller's 'resend'
         retransmits the request and the timeout grows (doubled, capped
         at MRT, each value randomized by RAND). Returns the parsed
-        reply, or None once the attempt budget is exhausted.
+        reply, or None once the bound is reached.
+
+        Exactly one bound governs termination: 'max_attempts' caps the
+        total recv attempts (the INF / SOL / REQ / REL / DEC max
+        retransmission count), while 'mrd_deadline' is a 'time.monotonic'
+        deadline expressing the max retransmission duration (the RENEW /
+        REBIND MRD — the time remaining until T2 / valid-lifetime
+        expiry). When 'mrd_deadline' is set the per-attempt recv window
+        is clamped so a retransmit never overshoots the deadline.
         """
+
+        assert (
+            max_attempts is not None or mrd_deadline is not None
+        ), "_run_exchange requires either a max-attempt count or an MRD deadline to terminate."
 
         rand_factor = dhcp6__constants.DHCP6__RAND_FACTOR
 
         rt_ms = 0.0
-        for attempt in range(max_attempts):
+        attempt = 0
+        while True:
+            if mrd_deadline is not None and time.monotonic() >= mrd_deadline:
+                return None
+
             # RFC 8415 §15 — RT = IRT + RAND*IRT on the first attempt,
             # then RT = 2*RTprev + RAND*RTprev capped at MRT, where
             # RAND is drawn uniformly from [-0.1, +0.1].
@@ -533,21 +700,24 @@ class Dhcp6Client(Subsystem):
                 rt_ms = 2 * rt_ms + rand * rt_ms
                 if rt_ms > mrt_ms:
                     rt_ms = mrt_ms + rand * mrt_ms
-            timeout_s = max(0.001, rt_ms / 1000.0)
+            timeout_s = rt_ms / 1000.0
+            if mrd_deadline is not None:
+                timeout_s = min(timeout_s, mrd_deadline - time.monotonic())
+            timeout_s = max(0.001, timeout_s)
 
             result = self._recv_within_window(client_socket, xid=xid, expected_type=expected_type, timeout_s=timeout_s)
             if result is not None:
                 return result
 
-            if attempt < max_attempts - 1:
-                __debug__ and log(
-                    "dhcp6",
-                    f"recv window expired ({timeout_s:.2f}s); retransmitting "
-                    f"(attempt {attempt + 2} of {max_attempts})",
-                )
-                resend()
+            attempt += 1
+            if max_attempts is not None and attempt >= max_attempts:
+                return None
 
-        return None
+            __debug__ and log(
+                "dhcp6",
+                f"recv window expired ({timeout_s:.2f}s); retransmitting (attempt {attempt + 1})",
+            )
+            resend()
 
     def _recv_within_window(
         self,
