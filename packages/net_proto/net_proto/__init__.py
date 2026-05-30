@@ -169,6 +169,12 @@ from net_proto.protocols.dhcp6.options.dhcp6__option__dns_servers import (
 from net_proto.protocols.dhcp6.options.dhcp6__option__elapsed_time import (
     Dhcp6OptionElapsedTime,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option__ia_addr import (
+    Dhcp6OptionIaAddr,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__ia_na import (
+    Dhcp6OptionIaNa,
+)
 from net_proto.protocols.dhcp6.options.dhcp6__option__oro import (
     Dhcp6OptionOro,
 )
@@ -677,6 +683,8 @@ __all__ = [
     "Dhcp6OptionClientId",
     "Dhcp6OptionDnsServers",
     "Dhcp6OptionElapsedTime",
+    "Dhcp6OptionIaAddr",
+    "Dhcp6OptionIaNa",
     "Dhcp6OptionOro",
     "Dhcp6OptionRapidCommit",
     "Dhcp6OptionServerId",
