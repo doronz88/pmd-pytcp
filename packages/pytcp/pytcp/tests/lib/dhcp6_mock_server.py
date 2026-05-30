@@ -46,6 +46,7 @@ from net_proto import (
     Dhcp6OptionDnsServers,
     Dhcp6OptionIaAddr,
     Dhcp6OptionIaNa,
+    Dhcp6OptionPreference,
     Dhcp6Options,
     Dhcp6OptionServerId,
     Dhcp6OptionStatusCode,
@@ -55,6 +56,20 @@ from net_proto import (
 from net_proto.protocols.dhcp6.options.dhcp6__option import Dhcp6Option
 
 _UNSET: object = object()
+
+
+class _GatedLeaseReply:
+    """
+    A lease-granting REPLY that the server only dispenses once the
+    client has left the SOLICIT phase (its most recent transmission is
+    not a SOLICIT) — modelling that a server sends the address-granting
+    REPLY in response to a REQUEST / RENEW / REBIND, never during the
+    client's first-RT ADVERTISE-collection window (RFC 8415 §18.2.1).
+    """
+
+    def __init__(self, builder: Callable[[], bytes], /) -> None:
+        self.builder = builder
+
 
 # Sentinel: "derive this field from the last captured client TX
 # (xid echo, client_id echo)". Distinct from None, which means
@@ -83,7 +98,7 @@ class Dhcp6MockServer:
 
         self._server_duid = server_duid
         self._tx_log: list[Dhcp6Parser] = []
-        self._reply_queue: deque[Callable[[], bytes] | BaseException] = deque()
+        self._reply_queue: deque[Callable[[], bytes] | _GatedLeaseReply | BaseException] = deque()
 
     @property
     def tx_log(self) -> list[Dhcp6Parser]:
@@ -123,6 +138,7 @@ class Dhcp6MockServer:
     def enqueue_advertise(
         self,
         *,
+        preference: int | None = None,
         xid: int | object = _UNSET,
         client_id_echo: bytes | None | object = _UNSET,
         server_id: bytes | None | object = _UNSET,
@@ -131,10 +147,15 @@ class Dhcp6MockServer:
         Plan a DHCPv6 ADVERTISE built lazily from the next client TX —
         carries the Server Identifier and the echoed Client Identifier
         so the client can select this server and address its REQUEST.
+        Pass 'preference' to include a Preference option (RFC 8415
+        §21.8); omit it (None) for an ADVERTISE with no Preference
+        option (treated as preference 0 by the client).
         """
 
         self._reply_queue.append(
-            lambda: self._build_advertise(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+            lambda: self._build_advertise(
+                preference=preference, xid=xid, client_id_echo=client_id_echo, server_id=server_id
+            )
         )
 
     def enqueue_lease_reply(
@@ -164,19 +185,21 @@ class Dhcp6MockServer:
         """
 
         self._reply_queue.append(
-            lambda: self._build_lease_reply(
-                address=address,
-                preferred_lifetime=preferred_lifetime,
-                valid_lifetime=valid_lifetime,
-                t1=t1,
-                t2=t2,
-                iaid=iaid,
-                ia_status=ia_status,
-                omit_ia_address=omit_ia_address,
-                ia_na_options_override=ia_na_options_override,
-                xid=xid,
-                client_id_echo=client_id_echo,
-                server_id=server_id,
+            _GatedLeaseReply(
+                lambda: self._build_lease_reply(
+                    address=address,
+                    preferred_lifetime=preferred_lifetime,
+                    valid_lifetime=valid_lifetime,
+                    t1=t1,
+                    t2=t2,
+                    iaid=iaid,
+                    ia_status=ia_status,
+                    omit_ia_address=omit_ia_address,
+                    ia_na_options_override=ia_na_options_override,
+                    xid=xid,
+                    client_id_echo=client_id_echo,
+                    server_id=server_id,
+                )
             )
         )
 
@@ -215,10 +238,19 @@ class Dhcp6MockServer:
             del bufsize, timeout
             if not self._reply_queue:
                 raise TimeoutError
-            item = self._reply_queue.popleft()
-            if isinstance(item, BaseException):
-                raise item
-            return memoryview(item())
+            front = self._reply_queue[0]
+            if isinstance(front, _GatedLeaseReply):
+                # Defer a lease-granting REPLY while the client is still
+                # in its SOLICIT collection window (last TX is a SOLICIT);
+                # leave it queued for after the REQUEST / RENEW / REBIND.
+                if self._tx_log and self._tx_log[-1].msg_type is Dhcp6MessageType.SOLICIT:
+                    raise TimeoutError
+                self._reply_queue.popleft()
+                return memoryview(front.builder())
+            self._reply_queue.popleft()
+            if isinstance(front, BaseException):
+                raise front
+            return memoryview(front())
 
         mock_socket.sendto.side_effect = on_sendto
         mock_socket.recv__mv.side_effect = on_recv
@@ -309,16 +341,19 @@ class Dhcp6MockServer:
     def _build_advertise(
         self,
         *,
+        preference: int | None,
         xid: int | object,
         client_id_echo: bytes | None | object,
         server_id: bytes | None | object,
     ) -> bytes:
         """
         Build the canned ADVERTISE frame bytes (Server Identifier +
-        echoed Client Identifier).
+        echoed Client Identifier, plus an optional Preference option).
         """
 
         resolved_xid, options = self._identity_options(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+        if preference is not None:
+            options.append(Dhcp6OptionPreference(preference))
         return bytes(
             Dhcp6Assembler(
                 dhcp6__msg_type=Dhcp6MessageType.ADVERTISE,

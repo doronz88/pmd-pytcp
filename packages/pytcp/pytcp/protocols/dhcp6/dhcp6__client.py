@@ -594,17 +594,8 @@ class Dhcp6Client(Subsystem):
                 client_socket.sendto(bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
-            _send_solicit()
 
-            advertise = self._run_exchange(
-                client_socket,
-                xid=sol_xid,
-                expected_type=Dhcp6MessageType.ADVERTISE,
-                resend=_send_solicit,
-                irt_ms=dhcp6__constants.DHCP6__SOL_TIMEOUT_MS,
-                mrt_ms=dhcp6__constants.DHCP6__SOL_MAX_RT_MS,
-                max_attempts=dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS,
-            )
+            advertise = self._solicit_for_advertise(client_socket, xid=sol_xid, send=_send_solicit)
             if advertise is None:
                 __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
                 return None
@@ -645,6 +636,106 @@ class Dhcp6Client(Subsystem):
             return lease
         finally:
             client_socket.close()
+
+    # --- SOLICIT / ADVERTISE collection + selection (RFC 8415 §18.2.1 / §18.2.9) ---
+
+    def _solicit_for_advertise(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        send: Callable[[], None],
+    ) -> Dhcp6Parser | None:
+        """
+        Run the SOLICIT phase with the RFC 8415 §18.2.1 ADVERTISE
+        collection modification: transmit the SOLICIT, collect valid
+        ADVERTISEs for the whole first retransmission window (or
+        short-circuit on a preference-255 ADVERTISE), and return the
+        highest-preference one (§18.2.9). If no ADVERTISE arrives during
+        the first window, fall back to the §15 retransmission and return
+        the first ADVERTISE received — the client acts on it without
+        waiting for further ADVERTISEs.
+        """
+
+        rand_factor = dhcp6__constants.DHCP6__RAND_FACTOR
+        irt_ms = dhcp6__constants.DHCP6__SOL_TIMEOUT_MS
+        mrt_ms = dhcp6__constants.DHCP6__SOL_MAX_RT_MS
+        max_attempts = dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS
+
+        send()
+
+        # RFC 8415 §18.2.1 — the first RT MUST be strictly greater than
+        # IRT (RAND chosen strictly greater than 0).
+        rt_ms = irt_ms + random.uniform(0.0, rand_factor) * irt_ms
+        deadline = time.monotonic() + max(0.001, rt_ms / 1000.0)
+
+        collected = self._collect_advertises(client_socket, xid=xid, deadline=deadline)
+        if collected:
+            return self._select_best_advertise(collected)
+
+        # No ADVERTISE in the first window — apply the §15 retransmission,
+        # terminating on the first valid ADVERTISE.
+        for _ in range(1, max_attempts):
+            rand = random.uniform(-rand_factor, rand_factor)
+            rt_ms = 2 * rt_ms + rand * rt_ms
+            if rt_ms > mrt_ms:
+                rt_ms = mrt_ms + rand * mrt_ms
+            send()
+            advertise = self._recv_within_window(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.ADVERTISE,
+                timeout_s=max(0.001, rt_ms / 1000.0),
+            )
+            if advertise is not None and advertise.server_id is not None:
+                return advertise
+
+        return None
+
+    def _collect_advertises(
+        self,
+        client_socket: socket,
+        *,
+        xid: int,
+        deadline: float,
+    ) -> list[Dhcp6Parser]:
+        """
+        Collect every valid ADVERTISE (matching 'xid', carrying a Server
+        Identifier) until 'deadline' ('time.monotonic'); return early
+        with the collected set the moment an ADVERTISE with a preference
+        value of 255 arrives (RFC 8415 §18.2.1).
+        """
+
+        collected: list[Dhcp6Parser] = []
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return collected
+            advertise = self._recv_within_window(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.ADVERTISE,
+                timeout_s=remaining,
+            )
+            if advertise is None:
+                return collected
+            if advertise.server_id is None:
+                # RFC 8415 §16.3 — an Advertise without a Server
+                # Identifier is not valid; ignore it.
+                continue
+            collected.append(advertise)
+            if (advertise.preference or 0) == 255:
+                return collected
+
+    @staticmethod
+    def _select_best_advertise(advertises: list[Dhcp6Parser]) -> Dhcp6Parser:
+        """
+        Select the ADVERTISE with the highest preference value (an
+        absent Preference option counts as 0), keeping the first-received
+        among equal preferences (RFC 8415 §18.2.9).
+        """
+
+        return max(advertises, key=lambda advertise: advertise.preference or 0)
 
     # --- lease maintenance (RENEW / REBIND) ---
 

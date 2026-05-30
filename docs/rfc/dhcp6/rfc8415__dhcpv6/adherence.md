@@ -311,17 +311,28 @@ first Decline regardless.
 ## §18.2.9. Receipt of Advertise Messages
 
 > "Those Advertise messages with the highest server preference value
-> SHOULD be preferred over all other Advertise messages. [...] The client
-> MUST ignore any Advertise message that contains no addresses [...]"
+> SHOULD be preferred over all other Advertise messages. [...] A client
+> MUST collect valid Advertise messages for the first RT seconds, unless
+> it receives a valid Advertise message with a preference value of 255.
+> [...] Any valid Advertise that does not include a Preference option is
+> considered to have a preference value of 0. [...] The client MUST ignore
+> any Advertise message that contains no addresses [...]"
 
-**Adherence:** partial. `acquire_lease` (`dhcp6__client.py:558`) selects
-the first valid ADVERTISE that carries a Server Identifier and proceeds to
-REQUEST it. The §18.2.9 Preference-option-based selection (and the
-collection-window / alternate-server fallback) is not implemented — a
-deferred refinement that matters only on a multi-server link. The
-"ignore an Advertise with no addresses / no SOL_MAX_RT update" sub-rule is
-not enforced at the ADVERTISE stage (the client validates the IA_NA only
-on the REPLY); the SOL_MAX_RT / INF_MAX_RT wire override is not consumed.
+**Adherence:** met (selection) / partial (rest). `_solicit_for_advertise`
+(`dhcp6__client.py`) implements the §18.2.1 collection modification:
+after the SOLICIT it collects every valid ADVERTISE (matching xid, with a
+Server Identifier) for the first retransmission window via
+`_collect_advertises`, returning early the instant a preference-255
+ADVERTISE arrives, and `_select_best_advertise` picks the highest
+Preference value (an absent Preference option counts as 0, per the
+net_proto `preference` lookup returning None → 0). If no ADVERTISE
+arrives in the first window it falls back to the §15 retransmission and
+acts on the first ADVERTISE received. The Preference codec is the
+net_proto `Dhcp6OptionPreference` (§21.8). Still partial: the alternate-
+server fallback (re-selecting the next-best server when the chosen one
+does not answer the REQUEST) is not implemented, and the SOL_MAX_RT /
+INF_MAX_RT wire override is not consumed; the "ignore no-address
+Advertise" sub-rule is enforced only as the REPLY-side IA_NA validation.
 
 ---
 
@@ -474,16 +485,24 @@ behaviour).
 
 **Status:** locked in end-to-end.
 
-### §18.2.9 ADVERTISE selection / §18.2.10 status handling
+### §18.2.9 ADVERTISE Preference selection
 
 - **Unit:**
+  `::TestDhcp6ClientAdvertiseSelection::test__dhcp6_client__advertise_selection_prefers_highest_preference`,
+  `..._absent_preference_is_zero`, and `..._preference_255_selected`
+  assert the client collects multiple ADVERTISEs and addresses its
+  REQUEST to the highest-preference server (absent option = 0; 255
+  selected).
+- **Unit:**
   `::TestDhcp6ClientAcquireLease::test__dhcp6_client__acquire_lease_advertise_without_server_id`
-  and the IA_NA Status-Code / no-address rejection cases pin the
-  first-valid selection and the failure rejections.
+  pins that an ADVERTISE without a Server Identifier is ignored.
+- **Unit (net_proto):**
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__preference.py`
+  pins the Preference option wire codec.
 
-**Status:** locked in for the implemented subset; the Preference-based
-selection, collection window, and UseMulticast / UnspecFail / NotOnLink
-status handling are **n/a (not implemented)**.
+**Status:** locked in (selection). UseMulticast / UnspecFail / NotOnLink
+top-level status handling (§18.2.10) and the alternate-server fallback
+are **n/a (not implemented)**.
 
 ### RA M/O trigger (the §4 entry point)
 
@@ -509,7 +528,7 @@ status handling are **n/a (not implemented)**.
 | §18.2.6 INFORMATION-REQUEST              | locked in                                 |
 | §18.2.7 RELEASE                          | locked in (fire-and-forget deviation)     |
 | §18.2.8 DECLINE + DAD-before-use         | locked in end-to-end                      |
-| §18.2.9 Preference selection             | n/a (not implemented)                     |
+| §18.2.9 Preference selection             | locked in                                 |
 | §18.2.10 top-level status handling       | n/a (not implemented)                     |
 | RA M/O trigger                           | locked in                                 |
 
@@ -528,7 +547,7 @@ status handling are **n/a (not implemented)**.
 | INFORMATION-REQUEST (§18.2.6)            | met                                       |
 | RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |
 | DECLINE + DAD-before-use (§18.2.8/10.1)  | met (fire-and-forget DECLINE, by design)  |
-| ADVERTISE Preference selection (§18.2.9) | not implemented                           |
+| ADVERTISE Preference selection (§18.2.9) | met (no alternate-server fallback)        |
 | Reply top-level status handling (§18.2.10)| not implemented                          |
 | Address installed as /128 (§18.2.10.1)   | met                                       |
 
@@ -539,17 +558,15 @@ RELEASE on shutdown, and DECLINE on a DAD-detected duplicate with
 re-solicitation — all driven by the RA Managed / Other-config flags and
 all address mutation routed through the Address API and the ND DAD engine.
 
-The principal remaining gaps are refinements rather than lifecycle holes:
+The principal remaining gap is a refinement rather than a lifecycle hole:
 
-1. **ADVERTISE Preference selection** (§18.2.9). Fix: collect ADVERTISEs
-   for the first RT window, prefer the highest Preference option (short-
-   circuit on 255), then REQUEST the winner. Test: two ADVERTISEs with
-   different Preference values → the REQUEST addresses the higher one.
-
-2. **Top-level Reply status handling** (§18.2.10: UseMulticast,
+1. **Top-level Reply status handling** (§18.2.10: UseMulticast,
    UnspecFail, NotOnLink). Fix: branch on the REPLY's top-level Status
    Code before extracting the IA. Test: a NotOnLink REPLY restarts
-   discovery; a UseMulticast REPLY re-sends to the server.
+   discovery; a UseMulticast REPLY re-sends to the server. (The related
+   ADVERTISE alternate-server fallback — re-selecting the next-best
+   server when the chosen one does not answer the REQUEST — would land
+   alongside this.)
 
 Rapid Commit, the Confirm message, Reconfigure, IA_TA, and IA_PD are out
 of scope for a host client and intentionally absent.

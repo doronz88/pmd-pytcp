@@ -542,6 +542,109 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
 
 
+_SERVER_DUID_A = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xaa"
+_SERVER_DUID_B = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xbb"
+
+
+class TestDhcp6ClientAdvertiseSelection(TestCase):
+    """
+    The 'Dhcp6Client' RFC 8415 §18.2.9 ADVERTISE preference-selection
+    tests — the client collects ADVERTISEs for the first window and
+    requests the highest-preference server.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server into an autospec'd socket and pin the
+        SOLICIT / REQUEST transaction-ids and jitter.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID]
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__advertise_selection_prefers_highest_preference(self) -> None:
+        """
+        Ensure the client collects multiple ADVERTISEs and addresses its
+        REQUEST to the server that advertised the highest preference.
+
+        Reference: RFC 8415 §18.2.9 (prefer the highest server preference value).
+        """
+
+        self._server.enqueue_advertise(preference=10, server_id=_SERVER_DUID_A)
+        self._server.enqueue_advertise(preference=200, server_id=_SERVER_DUID_B)
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        request = self._server.tx_log[1]
+        self.assertIs(request.msg_type, Dhcp6MessageType.REQUEST, msg="The second message must be REQUEST.")
+        self.assertEqual(
+            request.server_id, _SERVER_DUID_B, msg="The REQUEST must address the highest-preference server."
+        )
+
+    def test__dhcp6_client__advertise_selection_absent_preference_is_zero(self) -> None:
+        """
+        Ensure an ADVERTISE with no Preference option is treated as
+        preference 0 and loses to one that carries a positive preference.
+
+        Reference: RFC 8415 §18.2.1 (an Advertise with no Preference option has preference 0).
+        """
+
+        self._server.enqueue_advertise(server_id=_SERVER_DUID_A)  # no Preference option -> 0
+        self._server.enqueue_advertise(preference=5, server_id=_SERVER_DUID_B)
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertEqual(
+            self._server.tx_log[1].server_id,
+            _SERVER_DUID_B,
+            msg="A positive preference must beat an absent (zero) preference.",
+        )
+
+    def test__dhcp6_client__advertise_selection_preference_255_selected(self) -> None:
+        """
+        Ensure an ADVERTISE carrying a preference of 255 is selected.
+
+        Reference: RFC 8415 §18.2.1 (a preference of 255 ends the collection immediately).
+        """
+
+        self._server.enqueue_advertise(preference=255, server_id=_SERVER_DUID_B)
+        self._server.enqueue_advertise(preference=10, server_id=_SERVER_DUID_A)
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertEqual(
+            self._server.tx_log[1].server_id,
+            _SERVER_DUID_B,
+            msg="A preference-255 ADVERTISE must be selected.",
+        )
+
+
 _REN_XID = 0xCCCCCC
 _LEASE = Dhcp6Lease(
     address=Ip6Address("2001:db8::100"),
