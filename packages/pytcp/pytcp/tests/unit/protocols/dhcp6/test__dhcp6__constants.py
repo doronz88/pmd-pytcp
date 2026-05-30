@@ -165,6 +165,57 @@ class TestDhcp6ConstantsDefaults(TestCase):
         self.assertEqual(sysctl.get("dhcp6.req_max_rt_ms"), 30000, msg="dhcp6.req_max_rt_ms must default to 30000.")
         self.assertEqual(sysctl.get("dhcp6.req_max_rc"), 10, msg="dhcp6.req_max_rc must default to 10.")
 
+    def test__dhcp6_constants__ren_timers_default(self) -> None:
+        """
+        Ensure the RENEW timers default to REN_TIMEOUT=10000 / REN_MAX_RT=600000.
+
+        Reference: RFC 8415 §7.6 (REN_TIMEOUT = 10 s, REN_MAX_RT = 600 s).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.ren_timeout_ms"), 10000, msg="dhcp6.ren_timeout_ms must default to 10000.")
+        self.assertEqual(sysctl.get("dhcp6.ren_max_rt_ms"), 600000, msg="dhcp6.ren_max_rt_ms must default to 600000.")
+
+    def test__dhcp6_constants__reb_timers_default(self) -> None:
+        """
+        Ensure the REBIND timers default to REB_TIMEOUT=10000 / REB_MAX_RT=600000.
+
+        Reference: RFC 8415 §7.6 (REB_TIMEOUT = 10 s, REB_MAX_RT = 600 s).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.reb_timeout_ms"), 10000, msg="dhcp6.reb_timeout_ms must default to 10000.")
+        self.assertEqual(sysctl.get("dhcp6.reb_max_rt_ms"), 600000, msg="dhcp6.reb_max_rt_ms must default to 600000.")
+
+    def test__dhcp6_constants__rel_timers_default(self) -> None:
+        """
+        Ensure the RELEASE timers default to REL_TIMEOUT=1000 / REL_MAX_RC=5.
+
+        Reference: RFC 8415 §7.6 (REL_TIMEOUT = 1 s, REL_MAX_RC = 5).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.rel_timeout_ms"), 1000, msg="dhcp6.rel_timeout_ms must default to 1000.")
+        self.assertEqual(sysctl.get("dhcp6.rel_max_rc"), 5, msg="dhcp6.rel_max_rc must default to 5.")
+
+    def test__dhcp6_constants__dec_timers_default(self) -> None:
+        """
+        Ensure the DECLINE timers default to DEC_TIMEOUT=1000 / DEC_MAX_RC=5.
+
+        Reference: RFC 8415 §7.6 (DEC_TIMEOUT = 1 s, DEC_MAX_RC = 5).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.dec_timeout_ms"), 1000, msg="dhcp6.dec_timeout_ms must default to 1000.")
+        self.assertEqual(sysctl.get("dhcp6.dec_max_rc"), 5, msg="dhcp6.dec_max_rc must default to 5.")
+
+    def test__dhcp6_constants__t1_t2_factor_default(self) -> None:
+        """
+        Ensure the renewal-timer factors default to T1=0.5 / T2=0.8 of the
+        shortest preferred lifetime.
+
+        Reference: RFC 8415 §14.2 (T1/T2 derivation when the server sends 0).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.t1_factor"), 0.5, msg="dhcp6.t1_factor must default to 0.5.")
+        self.assertEqual(sysctl.get("dhcp6.t2_factor"), 0.8, msg="dhcp6.t2_factor must default to 0.8.")
+
 
 class TestDhcp6ConstantsValidators(TestCase):
     """
@@ -213,6 +264,26 @@ class TestDhcp6ConstantsValidators(TestCase):
         sysctl.set("dhcp6.inf_max_delay_ms", 0)  # must not raise
 
         self.assertEqual(sysctl.get("dhcp6.inf_max_delay_ms"), 0, msg="dhcp6.inf_max_delay_ms must accept 0.")
+
+    def test__dhcp6_constants__rel_max_rc_rejects_zero(self) -> None:
+        """
+        Ensure 'dhcp6.rel_max_rc' rejects a non-positive value.
+
+        Reference: RFC 8415 §7.6 (REL_MAX_RC must be a positive count).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp6.rel_max_rc", 0)
+
+    def test__dhcp6_constants__t1_factor_rejects_out_of_range(self) -> None:
+        """
+        Ensure 'dhcp6.t1_factor' rejects a value outside the [0, 1] range.
+
+        Reference: RFC 8415 §14.2 (T1 is a fraction of the preferred lifetime).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp6.t1_factor", 1.5)
 
 
 class TestDhcp6ConstantsFinalize(TestCase):
@@ -280,6 +351,48 @@ class TestDhcp6ConstantsFinalize(TestCase):
 
         sysctl.set("dhcp6.req_max_rt_ms", 500)
         sysctl.set("dhcp6.req_timeout_ms", 1000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp6_constants__finalize_rejects_ren_timeout_greater_than_max_rt(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'dhcp6.ren_timeout_ms'
+        exceeds 'dhcp6.ren_max_rt_ms'.
+
+        Reference: RFC 8415 §15 (doubled-and-capped retransmission backoff).
+        """
+
+        sysctl.set("dhcp6.ren_max_rt_ms", 500)
+        sysctl.set("dhcp6.ren_timeout_ms", 1000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp6_constants__finalize_rejects_reb_timeout_greater_than_max_rt(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'dhcp6.reb_timeout_ms'
+        exceeds 'dhcp6.reb_max_rt_ms'.
+
+        Reference: RFC 8415 §15 (doubled-and-capped retransmission backoff).
+        """
+
+        sysctl.set("dhcp6.reb_max_rt_ms", 500)
+        sysctl.set("dhcp6.reb_timeout_ms", 1000)
+
+        with self.assertRaises(ValueError):
+            sysctl.finalize_validators()
+
+    def test__dhcp6_constants__finalize_rejects_t1_factor_greater_than_t2_factor(self) -> None:
+        """
+        Ensure 'finalize_validators()' raises when 'dhcp6.t1_factor'
+        exceeds 'dhcp6.t2_factor' (RENEW must precede REBIND).
+
+        Reference: RFC 8415 §18.2.4 (RENEW at T1 precedes REBIND at T2).
+        """
+
+        sysctl.set("dhcp6.t1_factor", 0.9)
+        sysctl.set("dhcp6.t2_factor", 0.8)
 
         with self.assertRaises(ValueError):
             sysctl.finalize_validators()
