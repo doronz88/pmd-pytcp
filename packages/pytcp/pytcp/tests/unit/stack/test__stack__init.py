@@ -1767,6 +1767,7 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
                 "ip4_fib",
                 "ip6_fib",
                 "dhcp4_client",
+                "dhcp6_client",
                 "link_local",
                 "stack_initialized",
                 "stack_running",
@@ -1863,6 +1864,65 @@ class TestAddInterfacePerInterfaceSubsystems(TestCase):
             stack.link_local,
             ll_cls.return_value,
             msg="add_interface(ip4_link_local=True) must build and install a link-local client.",
+        )
+
+    def test__add_interface__builds_dhcp6_client_on_l2_ipv6(self) -> None:
+        """
+        Ensure 'add_interface' on an L2 interface with IPv6 enabled
+        constructs a DHCPv6 client and installs it as the stack's client
+        — DHCPv6 is RA-driven, so the client is built whenever IPv6 is
+        enabled (no opt-in flag).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch.object(stack.lifecycle, "Dhcp6Client") as dhcp6_cls:
+            add_interface(
+                fd=-1,
+                layer=InterfaceLayer.L2,
+                mac_address=MacAddress("02:00:00:00:00:01"),
+                ip6_support=True,
+            )
+
+        self.assertIs(
+            stack.dhcp6_client,
+            dhcp6_cls.return_value,
+            msg="add_interface on an L2 IPv6 interface must build and install a DHCPv6 client.",
+        )
+
+    def test__add_interface__no_dhcp6_client_when_ip6_disabled(self) -> None:
+        """
+        Ensure 'add_interface' with 'ip6_support=False' builds no DHCPv6
+        client — the slot stays None.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        add_interface(
+            fd=-1,
+            layer=InterfaceLayer.L2,
+            mac_address=MacAddress("02:00:00:00:00:01"),
+            ip6_support=False,
+        )
+
+        self.assertIsNone(
+            stack.dhcp6_client,
+            msg="add_interface(ip6_support=False) must not build a DHCPv6 client.",
+        )
+
+    def test__add_interface__no_dhcp6_client_on_l3(self) -> None:
+        """
+        Ensure 'add_interface' on an L3 (TUN) interface builds no DHCPv6
+        client — DHCPv6 needs link-scoped multicast, which is L2-only.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        add_interface(fd=-1, layer=InterfaceLayer.L3)
+
+        self.assertIsNone(
+            stack.dhcp6_client,
+            msg="add_interface on an L3 interface must not build a DHCPv6 client.",
         )
 
 

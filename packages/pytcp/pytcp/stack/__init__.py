@@ -45,6 +45,7 @@ from net_addr import Ip4Address, Ip6Address, MacAddress
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.logger import log
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
+from pytcp.protocols.dhcp6.dhcp6__client import Dhcp6Client
 from pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pytcp.protocols.tcp.tcp__stack import TcpStack
 from pytcp.runtime.fib import Route, RouteProtocol, RouteScope
@@ -457,6 +458,12 @@ route: RouteApi
 # background thread by 'start()'; joined by 'stop()'. None on L3
 # (TUN, no MAC) or when DHCP is disabled.
 dhcp4_client: Dhcp4Client | None = None
+# DHCPv6 client subsystem (RFC 8415). Constructed by 'init()' on an
+# L2 interface with IPv6 enabled; spawned as a background thread by
+# 'start()' and joined by 'stop()'. The worker idles until the RA RX
+# handler triggers it on an inbound RA's Managed / Other-config flags.
+# None on L3 (TUN, no link-scoped multicast) or when IPv6 is disabled.
+dhcp6_client: Dhcp6Client | None = None
 # RFC 3927 §2 IPv4 Link-Local autoconfig client subsystem. Phase
 # 1 lands the slot only — the subsystem is not yet instantiated
 # by 'init()'. The DHCP-fallback wiring lands in Phase 4 of the

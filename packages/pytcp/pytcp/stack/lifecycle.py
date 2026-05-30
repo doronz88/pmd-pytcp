@@ -58,6 +58,7 @@ from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pytcp.protocols.arp.arp__cache import ArpCache
 from pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
+from pytcp.protocols.dhcp6.dhcp6__client import Dhcp6Client
 from pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pytcp.runtime.fib import RouteTable
@@ -86,6 +87,7 @@ def mock__init(
     mock__link: LinkApi | None = None,
     mock__route: RouteApi | None = None,
     mock__dhcp4_client: Dhcp4Client | None = None,
+    mock__dhcp6_client: Dhcp6Client | None = None,
 ) -> None:
     """
     Initialize stack components for unit testing.
@@ -198,6 +200,10 @@ def mock__init(
     # the harness explicitly opts in; existing tests (NetworkTestCase
     # et al.) don't exercise the lifecycle and don't need a fake.
     _stack.dhcp4_client = mock__dhcp4_client
+    # DHCPv6 lifecycle (RFC 8415). Default None — the harness opts in
+    # via 'mock__dhcp6_client'; the RA-trigger integration tests inject
+    # a client directly on the packet handler instead.
+    _stack.dhcp6_client = mock__dhcp6_client
 
     # RFC 3927 Phase 1 — link-local autoconfig client slot. Default
     # None for unit tests; the link-local subsystem is exercised
@@ -359,6 +365,37 @@ def add_interface(
         if _stack.dhcp4_client is None:
             _stack.dhcp4_client = packet_handler._dhcp4_client
 
+    # Per-interface DHCPv6 client (RFC 8415; L2-only — needs link-scoped
+    # multicast). Unlike DHCPv4 there is no opt-in flag: DHCPv6 is
+    # RA-driven, so the client is installed whenever IPv6 is enabled and
+    # the RA RX handler triggers it on an inbound RA's Managed /
+    # Other-config flags. The leased address installs through the public
+    # Address tool (bound to this interface), never a packet-handler
+    # reach-through.
+    #
+    # The 'isinstance(_stack.address, AddressApi)' guard makes the client
+    # contingent on the Address control plane being up — always the case
+    # in production ('init()' builds the control tools before delegating
+    # here), and the signal that a narrow unit test exercising
+    # 'add_interface' in isolation has not stood the tools up (in which
+    # case there is nothing to bind the client to and it is skipped).
+    # 'No isinstance(packet_handler, PacketHandlerL2)' narrowing is
+    # needed (unlike the DHCPv4 block): '_dhcp6_client' is declared on
+    # the base 'PacketHandler', so the assignment type-checks on the
+    # 'PacketHandlerL2 | PacketHandlerL3' union directly.
+    if layer is InterfaceLayer.L2 and ip6_support and isinstance(_stack.address, AddressApi):
+        dhcp6_address_view = _stack.address.interface(ifindex)
+        dhcp6_mac = _stack.link.interface(ifindex).mac_address
+        assert dhcp6_mac is not None, "L2 interface must expose a unicast MAC via the link tool."
+        packet_handler._dhcp6_client = Dhcp6Client(
+            mac_address=dhcp6_mac,
+            interface_name=interface_name,
+            address_api=dhcp6_address_view,
+        )
+        # N=1 back-compat alias, parallel to 'stack.dhcp4_client'.
+        if _stack.dhcp6_client is None:
+            _stack.dhcp6_client = packet_handler._dhcp6_client
+
     if layer is InterfaceLayer.L2 and ip4_link_local:
         assert isinstance(packet_handler, PacketHandlerL2)
         ll_handler = packet_handler
@@ -433,6 +470,8 @@ def _purge_interface_state(iface: PacketHandlerL2 | PacketHandlerL3, /) -> None:
 
     if isinstance(iface, PacketHandlerL2) and iface._dhcp4_client is not None:
         iface._dhcp4_client.stop()
+    if isinstance(iface, PacketHandlerL2) and iface._dhcp6_client is not None:
+        iface._dhcp6_client.stop()
 
 
 def remove_interface(ifindex: int, /) -> PacketHandlerL2 | PacketHandlerL3 | None:
@@ -587,6 +626,7 @@ def init(
     # populates them (boot shims) when it builds a DHCP / link-local
     # client for an L2 interface. With zero interfaces they stay None.
     _stack.dhcp4_client = None
+    _stack.dhcp6_client = None
     _stack.link_local = None
 
     # Boot interface (interim back-compat convenience): when 'fd' /
@@ -707,6 +747,15 @@ def start() -> None:
                     f"continues in background)</>",
                 )
 
+    # DHCPv6 lifecycle (RFC 8415). Start the worker threads AFTER the
+    # packet handler so the TX/RX/socket plumbing is live. No boot wait —
+    # DHCPv6 is RA-triggered (not boot-blocking); each worker idles until
+    # the RA RX handler triggers it on an inbound RA's Managed /
+    # Other-config flags.
+    for handler in _stack.interfaces.values():
+        if isinstance(handler, PacketHandlerL2) and handler._dhcp6_client is not None:
+            handler._dhcp6_client.start()
+
 
 def stop() -> None:
     """
@@ -741,6 +790,8 @@ def stop() -> None:
     for handler in _stack.interfaces.values():
         if isinstance(handler, PacketHandlerL2) and handler._dhcp4_client is not None:
             handler._dhcp4_client.stop()
+        if isinstance(handler, PacketHandlerL2) and handler._dhcp6_client is not None:
+            handler._dhcp6_client.stop()
     if _stack.link_local is not None:
         _stack.link_local.stop()
     # Per-interface handlers first (stop application-side TX
