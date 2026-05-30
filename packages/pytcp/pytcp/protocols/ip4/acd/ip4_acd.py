@@ -93,6 +93,11 @@ class Ip4Acd:
     socket is a parallel tap, exactly as Linux's ACD library reads ARP
     independently of the kernel's ARP processing).
 
+    The same raw-link-socket machinery serves the DHCPv4 client's
+    RFC 4436 DNAv4 reachability probe ('probe_reachable') — a unicast
+    ARP to the cached gateway on INIT-REBOOT — so the client never has
+    to reach into the stack's ARP cache or ARP-TX path for it.
+
     The RFC 5227 timing constants are the live 'arp.*' sysctls, read
     through 'arp__constants' qualified access so an operator override
     takes effect on the next run.
@@ -181,6 +186,58 @@ class Ip4Acd:
         self._run_announce(sock, address)
         self._sock = sock
         self._claimed = address
+
+    def probe_reachable(
+        self,
+        *,
+        target: Ip4Address,
+        target_mac: MacAddress,
+        sender: Ip4Address,
+        timeout: float,
+    ) -> bool:
+        """
+        RFC 4436 DNAv4 unicast reachability probe over the same raw link
+        socket the ACD probe uses. Sends a unicast ARP Request for
+        'target' (the previously-cached default gateway, addressed to
+        'target_mac') with 'sender' as the candidate sender protocol
+        address (RFC 4436 §4.3), then watches the socket for up to
+        'timeout' seconds and returns True the moment 'target' answers
+        with an ARP Reply from the same IPv4 + MAC — proving the host is
+        back on the same L2 segment behind the same gateway, so the
+        cached lease can be adopted without a DHCP exchange. Returns
+        False on timeout. The stack's ARP RX path is uninvolved.
+        """
+
+        sock = self._open_socket()
+        try:
+            self._send(sock, oper=ArpOperation.REQUEST, spa=sender, tpa=target, dst_mac=target_mac)
+            __debug__ and log("stack", f"<lg>DNAv4</>: unicast ARP probe to {target} @ {target_mac}")
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    frame, _ = sock.recvfrom()
+                except BlockingIOError, TimeoutError:
+                    if time.monotonic() >= deadline:
+                        return False
+                    time.sleep(_CONFLICT_POLL_TICK__SEC)
+                    continue
+                arp = self._parse_arp(frame)
+                if arp is not None and self._is_gateway_reply(arp, target, target_mac):
+                    __debug__ and log("stack", f"<lg>DNAv4</>: gateway {target} answered; on-link")
+                    return True
+        finally:
+            sock.close()
+
+    @staticmethod
+    def _is_gateway_reply(arp: ArpParser, target: Ip4Address, target_mac: MacAddress, /) -> bool:
+        """
+        Decide whether an inbound ARP frame is the cached gateway's
+        answer to a DNAv4 probe: an ARP Reply whose sender is the gateway
+        on both the IPv4 (sender protocol address) and MAC (sender
+        hardware address) — confirming the same physical device.
+        """
+
+        return arp.oper is ArpOperation.REPLY and arp.spa == target and arp.sha == target_mac
 
     def poll_conflict(self) -> MacAddress | None:
         """
@@ -279,17 +336,28 @@ class Ip4Acd:
             self._send(sock, oper=ArpOperation.REQUEST, spa=address, tpa=address)
             __debug__ and log("stack", f"<lg>ACD</>: sent ARP Announcement for {address}")
 
-    def _send(self, sock: socket, /, *, oper: ArpOperation, spa: Ip4Address, tpa: Ip4Address) -> None:
+    def _send(
+        self,
+        sock: socket,
+        /,
+        *,
+        oper: ArpOperation,
+        spa: Ip4Address,
+        tpa: Ip4Address,
+        dst_mac: MacAddress | None = None,
+    ) -> None:
         """
-        Build and transmit one broadcast ARP frame (Probe / Announcement
-        / defensive) out the ACD socket. Probe: oper=REQUEST, spa=0.0.0.0.
-        Announcement: oper=REQUEST, spa=tpa=address.
+        Build and transmit one ARP frame out the socket. Probe /
+        Announcement / defensive frames broadcast (the default); a DNAv4
+        reachability probe passes 'dst_mac' to unicast directly to the
+        cached gateway. Probe: oper=REQUEST, spa=0.0.0.0. Announcement:
+        oper=REQUEST, spa=tpa=address.
         """
 
         frame = bytes(
             EthernetAssembler(
                 ethernet__src=self._mac,
-                ethernet__dst=_BROADCAST_MAC,
+                ethernet__dst=dst_mac if dst_mac is not None else _BROADCAST_MAC,
                 ethernet__payload=ArpAssembler(
                     arp__oper=oper,
                     arp__sha=self._mac,

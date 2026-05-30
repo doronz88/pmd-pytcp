@@ -1125,86 +1125,43 @@ class Dhcp4Client(Subsystem):
             return False
         if lease.gateway is None or lease.gateway_mac is None:
             return False
+        # The ACD engine is the client's raw-link ARP surface (the same
+        # AF_PACKET socket the §2.1.1 Probe uses). It is None in sync-mode
+        # 'fetch()' (no interface engine wired) or on an L3 (TUN) egress
+        # with no ARP — DNAv4 is moot in both, so fall through.
+        if self._acd is None:
+            return False
 
-        # Lazy import — 'pytcp.stack' is only populated after
-        # 'stack.init()'; the sync-mode 'fetch()' path may
-        # run before that and DNAv4 is moot then.
-        from pytcp import stack as _stack  # noqa: PLC0415 — late stack access
-
-        # Resolve the interface that egresses toward the gateway and use
-        # its own ARP cache + ARP-TX (the per-interface successor to the
-        # retired 'stack.arp_cache' / 'stack.packet_handler' singletons).
-        # 'egress_packet_handler' raises when no interface is registered
-        # (sync-mode 'fetch()' before 'stack.init()') — DNAv4 is moot then.
-        from pytcp.runtime.packet_handler import PacketHandlerL2  # noqa: PLC0415
-
+        timeout_s = dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS / 1000.0
         try:
-            packet_handler = _stack.egress_packet_handler(lease.gateway)
-        except RuntimeError:
-            return False
-        # DNAv4 is an ARP (L2) operation; an L3 (TUN) egress has no ARP
-        # cache and cannot run it. The ARP cache being present implies L2.
-        if not isinstance(packet_handler, PacketHandlerL2):
-            return False
-        arp_cache = packet_handler._arp_cache
-        if arp_cache is None:
-            return False
-
-        # Snapshot the gateway entry's 'state_changed_at' so we
-        # can detect a fresh Reply: ARP RX touches the field
-        # whenever a Reply lands on the matching IP.
-        entry = arp_cache._entries.get(lease.gateway)  # pylint: disable=protected-access
-        before_changed_at = entry.state_changed_at if entry is not None else 0.0
-
-        __debug__ and log(
-            "dhcp4",
-            f"DNAv4: unicast ARP probe to " f"{lease.gateway} @ {lease.gateway_mac}",
-        )
-
-        try:
-            # RFC 4436 §4.3 — "the sender protocol address field
-            # (ar$spa) [MUST be set] to its own candidate IPv4
-            # address". Pass the cached lease's host IP explicitly
-            # because at INIT-REBOOT time the candidate is not
-            # yet assigned to the interface and the ARP TX
-            # handler's '_select_arp_spa' fallback would return
-            # 0.0.0.0 — which RFC 5227 §1.1 designates as an
-            # ACD Probe, not a DNAv4 reachability probe.
-            packet_handler.send_arp_unicast_request(
-                arp__tpa=lease.gateway,
-                arp__spa=lease.ip4_host.address,
-                ethernet__dst=lease.gateway_mac,
+            # RFC 4436 §4.3 — the sender protocol address (ar$spa) MUST be
+            # the candidate IPv4 address. Pass the cached lease's host IP
+            # explicitly; at INIT-REBOOT it is not yet assigned to the
+            # interface, and an spa of 0.0.0.0 would be an RFC 5227 §1.1
+            # ACD Probe, not a DNAv4 reachability probe. The reply is read
+            # off the ACD socket, so the stack's ARP cache / ARP-TX path
+            # is uninvolved.
+            reachable = self._acd.probe_reachable(
+                target=lease.gateway,
+                target_mac=lease.gateway_mac,
+                sender=lease.ip4_host.address,
+                timeout=timeout_s,
             )
-        except Exception as error:  # noqa: BLE001 — defensive against stack-not-ready
+        except OSError as error:  # defensive against a raw-socket failure
             __debug__ and log(
                 "dhcp4",
                 f"<WARN>DNAv4 unicast ARP probe failed: {error}; falling through to INIT-REBOOT</>",
             )
             return False
 
-        timeout_s = dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS / 1000.0
-        deadline = time.monotonic() + timeout_s
-        # Poll the entry's 'state_changed_at'; a Reply hits
-        # ARP RX which calls 'add_entry' → bumps state →
-        # advances 'state_changed_at'. Polling at ~10 ms
-        # cadence converges in well under the 1-second budget.
-        while time.monotonic() < deadline:
-            entry = arp_cache._entries.get(lease.gateway)  # pylint: disable=protected-access
-            if (
-                entry is not None
-                and entry.mac_address == lease.gateway_mac
-                and entry.state_changed_at > before_changed_at
-            ):
-                return True
-            time.sleep(0.010)
-
-        __debug__ and log(
-            "dhcp4",
-            f"<WARN>DNAv4: cached gateway {lease.gateway} "
-            f"did not answer within {dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS} ms; "
-            f"falling through to INIT-REBOOT</>",
-        )
-        return False
+        if not reachable:
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>DNAv4: cached gateway {lease.gateway} "
+                f"did not answer within {dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS} ms; "
+                f"falling through to INIT-REBOOT</>",
+            )
+        return reachable
 
     def _send_request_renew(
         self,

@@ -2975,53 +2975,17 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             gateway_mac=self._GATEWAY_MAC,
         )
 
-    def _wire_arp_cache_with_reply(
-        self,
-        *,
-        reply_delay_s: float = 0.0,
-    ) -> MagicMock:
+    def _client_with_acd(self) -> tuple[Dhcp4Client, MagicMock]:
         """
-        Patch 'stack.egress_packet_handler' to return a mocked packet
-        handler whose own '_arp_cache' has a gateway entry with a
-        pre-probe 'state_changed_at' that ages by 'reply_delay_s' after
-        the probe is sent. Returns the mocked packet handler so the test
-        can assert the unicast ARP Request was emitted.
+        Build a client wired with an autospec'd 'Ip4Acd' — the raw-link
+        ARP engine DNAv4 now runs its reachability probe over — and
+        return both the client and the mock so a test can program
+        'probe_reachable' and assert on its call.
         """
 
-        from pytcp import stack
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
-        # Stage: pre-probe entry timestamp = 100.0; post-probe
-        # update timestamp = 100.0 + reply_delay_s. The mocked
-        # cache returns the "before" entry on the first lookup
-        # (snapshot inside '_dnav4_probe') and the "after" entry
-        # on subsequent polling.
-        before_entry = MagicMock(name="before")
-        before_entry.mac_address = self._GATEWAY_MAC
-        before_entry.state_changed_at = 100.0
-
-        after_entry = MagicMock(name="after")
-        after_entry.mac_address = self._GATEWAY_MAC
-        after_entry.state_changed_at = 100.0 + max(reply_delay_s, 0.001)
-
-        mock_arp_cache = MagicMock(name="ArpCache")
-        mock_arp_cache._entries = {self._GATEWAY_IP: before_entry}
-
-        def _advance_after_send(*_args: object, **_kwargs: object) -> None:
-            mock_arp_cache._entries[self._GATEWAY_IP] = after_entry
-
-        # The handler must satisfy 'isinstance(handler, PacketHandlerL2)'
-        # in '_dnav4_probe' — DNAv4 is L2-only — so spec the mock to L2 and
-        # bind the mocked ARP cache to its own '_arp_cache'.
-        mock_packet_handler = MagicMock(name="PacketHandlerL2", spec=PacketHandlerL2)
-        mock_packet_handler._arp_cache = mock_arp_cache
-        mock_packet_handler.send_arp_unicast_request.side_effect = _advance_after_send
-
-        self.enterContext(
-            patch.object(stack, "egress_packet_handler", return_value=mock_packet_handler),
-        )
-
-        return mock_packet_handler
+        acd = cast(MagicMock, create_autospec(Ip4Acd, spec_set=True))
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
+        return client, acd
 
     def test__dhcp4_client__dnav4_disabled_by_default_for_lease_without_mac(self) -> None:
         """
@@ -3060,8 +3024,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         """
 
         self.enterContext(sysctl.override("dhcp.dnav4", 0))
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        mock_packet_handler = self._wire_arp_cache_with_reply()
+        client, acd = self._client_with_acd()
 
         result = client._dnav4_probe(self._cached_lease_with_mac())
 
@@ -3069,70 +3032,50 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             result,
             msg="dhcp.dnav4=0 must force _dnav4_probe to return False.",
         )
-        mock_packet_handler.send_arp_unicast_request.assert_not_called()
+        acd.probe_reachable.assert_not_called()
 
     def test__dhcp4_client__dnav4_returns_true_when_gateway_answers(self) -> None:
         """
-        Ensure '_dnav4_probe' returns True when the cached
-        gateway answers the unicast ARP Request within the
-        configured window. The ARP cache mock advances
-        'state_changed_at' as soon as 'send_arp_unicast_request'
-        fires — simulating a fast Reply. The probe MUST carry
-        the cached candidate IPv4 address as the sender protocol
-        address (ar$spa); without that field the probe degenerates
-        into an ACD-style Probe (spa=0.0.0.0) and the cached
-        gateway's normal forwarding behaviour is undefined.
+        Ensure '_dnav4_probe' returns True when the ACD engine's
+        reachability probe reports the cached gateway answered. The probe
+        MUST carry the cached candidate IPv4 address as the sender
+        protocol address (ar$spa) and the cached gateway IP + MAC as the
+        target; without the candidate spa the probe degenerates into an
+        ACD-style Probe (spa=0.0.0.0).
 
         Reference: RFC 4436 §4 (cached gateway reply confirms attachment).
         Reference: RFC 4436 §4.3 (ar$spa = candidate IPv4 address).
         """
 
         self.enterContext(sysctl.override("dhcp.dnav4_timeout_ms", 1000))
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        mock_packet_handler = self._wire_arp_cache_with_reply()
+        client, acd = self._client_with_acd()
+        acd.probe_reachable.return_value = True
         cached = self._cached_lease_with_mac()
 
         result = client._dnav4_probe(cached)
 
         self.assertTrue(
             result,
-            msg="DNAv4 probe must return True when the gateway answers within the window.",
+            msg="DNAv4 probe must return True when the ACD engine reports the gateway answered.",
         )
-        mock_packet_handler.send_arp_unicast_request.assert_called_once_with(
-            arp__tpa=self._GATEWAY_IP,
-            arp__spa=cached.ip4_host.address,
-            ethernet__dst=self._GATEWAY_MAC,
+        acd.probe_reachable.assert_called_once_with(
+            target=self._GATEWAY_IP,
+            target_mac=self._GATEWAY_MAC,
+            sender=cached.ip4_host.address,
+            timeout=1.0,
         )
 
     def test__dhcp4_client__dnav4_returns_false_on_silent_gateway(self) -> None:
         """
-        Ensure '_dnav4_probe' returns False when no ARP Reply
-        arrives within the configured window. The caller falls
-        through to the standard INIT-REBOOT REQUEST path.
+        Ensure '_dnav4_probe' returns False when the ACD engine's
+        reachability probe times out (no Reply). The caller falls through
+        to the standard INIT-REBOOT REQUEST path.
 
         Reference: RFC 4436 §4 (timeout → standard DHCP fallback).
         """
 
-        from pytcp import stack
-        from pytcp.runtime.packet_handler import PacketHandlerL2
-
-        # Use a short window so the test does not actually wait
-        # 1 second; pin the cache so 'state_changed_at' never
-        # advances (no Reply).
-        self.enterContext(sysctl.override("dhcp.dnav4_timeout_ms", 50))
-        stale_entry = MagicMock(name="stale")
-        stale_entry.mac_address = self._GATEWAY_MAC
-        stale_entry.state_changed_at = 100.0
-        mock_arp_cache = MagicMock(name="ArpCache")
-        mock_arp_cache._entries = {self._GATEWAY_IP: stale_entry}
-        # L2-spec'd so '_dnav4_probe' isinstance-narrows; ARP cache bound
-        # to its own '_arp_cache'. send_arp_unicast_request is a no-op; the
-        # entry never updates (silent gateway).
-        mock_packet_handler = MagicMock(name="PacketHandlerL2", spec=PacketHandlerL2)
-        mock_packet_handler._arp_cache = mock_arp_cache
-        self.enterContext(patch.object(stack, "egress_packet_handler", return_value=mock_packet_handler))
-
-        client = Dhcp4Client(mac_address=_DEFAULT_MAC)
+        client, acd = self._client_with_acd()
+        acd.probe_reachable.return_value = False
 
         result = client._dnav4_probe(self._cached_lease_with_mac())
 
@@ -3140,7 +3083,23 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             result,
             msg="Silent gateway must yield a False DNAv4 result.",
         )
-        mock_packet_handler.send_arp_unicast_request.assert_called_once()
+        acd.probe_reachable.assert_called_once()
+
+    def test__dhcp4_client__dnav4_returns_false_without_acd_engine(self) -> None:
+        """
+        Ensure '_dnav4_probe' returns False (and falls through to
+        INIT-REBOOT) when no ACD engine is wired — the sync-mode 'fetch()'
+        path before an interface engine exists.
+
+        Reference: RFC 4436 §4 (DNAv4 requires a link to probe over).
+        """
+
+        client = Dhcp4Client(mac_address=_DEFAULT_MAC)  # no acd
+
+        self.assertFalse(
+            client._dnav4_probe(self._cached_lease_with_mac()),
+            msg="DNAv4 must not engage without a raw-link ACD engine.",
+        )
 
     def test__dhcp4_client__init_reboot_short_circuits_on_dnav4_success(self) -> None:
         """
