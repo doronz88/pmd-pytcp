@@ -157,6 +157,18 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
     DHCP6__OPTION__LEN,
     Dhcp6OptionType,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option__client_id import (
+    Dhcp6OptionClientId,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__elapsed_time import (
+    Dhcp6OptionElapsedTime,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__rapid_commit import (
+    Dhcp6OptionRapidCommit,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__server_id import (
+    Dhcp6OptionServerId,
+)
 from net_proto.protocols.dhcp6.options.dhcp6__option__unknown import (
     Dhcp6OptionUnknown,
 )
@@ -650,6 +662,10 @@ __all__ = [
     "Dhcp6Header",
     "Dhcp6IntegrityError",
     "Dhcp6MessageType",
+    "Dhcp6OptionClientId",
+    "Dhcp6OptionElapsedTime",
+    "Dhcp6OptionRapidCommit",
+    "Dhcp6OptionServerId",
     "Dhcp6OptionType",
     "Dhcp6OptionUnknown",
     "Dhcp6SanityError",
