@@ -1453,18 +1453,31 @@ class TestDhcp6ClientRelease(TestCase):
             msg="RELEASE IA_NA must echo the released address.",
         )
 
-    def test__dhcp6_client__release_is_fire_and_forget(self) -> None:
+    def test__dhcp6_client__release_stops_on_reply(self) -> None:
         """
-        Ensure RELEASE is transmitted once and does not wait for a REPLY
-        so it cannot wedge stack teardown.
+        Ensure RELEASE stops retransmitting as soon as the server's REPLY
+        arrives (a single transmission in the common case).
 
-        Reference: RFC 8415 §18.2.7 (Release is best-effort on shutdown).
+        Reference: RFC 8415 §18.2.7 (retransmit until the Reply).
+        """
+
+        self._server.enqueue_reply()
+
+        self._client.release(_LEASE)
+
+        self.assertEqual(self._sock.sendto.call_count, 1, msg="RELEASE must stop on the server's REPLY.")
+
+    def test__dhcp6_client__release_retransmits_to_budget(self) -> None:
+        """
+        Ensure a silent server makes RELEASE retransmit up to REL_MAX_RC
+        times and then give up (bounded, never wedged).
+
+        Reference: RFC 8415 §18.2.7 (REL_TIMEOUT / REL_MAX_RC retransmission).
         """
 
         self._client.release(_LEASE)
 
-        self.assertEqual(self._sock.sendto.call_count, 1, msg="RELEASE must be sent exactly once.")
-        self._sock.recv__mv.assert_not_called()
+        self.assertEqual(self._sock.sendto.call_count, 5, msg="RELEASE must retransmit to the REL_MAX_RC budget.")
 
     def test__dhcp6_client__stop_releases_held_lease(self) -> None:
         """
@@ -1578,17 +1591,19 @@ class TestDhcp6ClientDecline(TestCase):
             msg="DECLINE IA_NA must echo the declined address.",
         )
 
-    def test__dhcp6_client__decline_is_fire_and_forget(self) -> None:
+    def test__dhcp6_client__decline_stops_on_reply(self) -> None:
         """
-        Ensure DECLINE is transmitted once without waiting for a REPLY.
+        Ensure DECLINE stops retransmitting as soon as the server's REPLY
+        arrives.
 
-        Reference: RFC 8415 §18.2.8 (Decline is sent on conflict).
+        Reference: RFC 8415 §18.2.8 (retransmit until the Reply).
         """
+
+        self._server.enqueue_reply()
 
         self._client.decline(_LEASE)
 
-        self.assertEqual(self._sock.sendto.call_count, 1, msg="DECLINE must be sent exactly once.")
-        self._sock.recv__mv.assert_not_called()
+        self.assertEqual(self._sock.sendto.call_count, 1, msg="DECLINE must stop on the server's REPLY.")
 
     def test__dhcp6_client__dad_conflict_declines_and_resolicits(self) -> None:
         """
@@ -1599,6 +1614,7 @@ class TestDhcp6ClientDecline(TestCase):
         """
 
         self._client._lease = _LEASE
+        self._server.enqueue_reply()  # DECLINE acknowledgement
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::200"))
 

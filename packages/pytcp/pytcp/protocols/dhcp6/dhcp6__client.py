@@ -468,19 +468,21 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_teardown(self, *, msg_type: Dhcp6MessageType, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_teardown(
+        self, *, msg_type: Dhcp6MessageType, xid: int, lease: Dhcp6Lease, elapsed: int = 0
+    ) -> Dhcp6Assembler:
         """
         Build a server-directed teardown message (RELEASE or DECLINE)
         for the held lease: the granting server's DUID (Server
         Identifier), the Client Identifier, the IA_NA carrying the
-        affected address, and a zero Elapsed Time.
+        affected address, and the Elapsed Time.
         """
 
         options = Dhcp6Options(
             self._client_id_option(),
             Dhcp6OptionServerId(lease.server_duid),
             self._ia_na_for_lease(lease),
-            Dhcp6OptionElapsedTime(0),
+            Dhcp6OptionElapsedTime(elapsed),
         )
 
         return Dhcp6Assembler(
@@ -489,20 +491,20 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_release(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_release(self, *, xid: int, lease: Dhcp6Lease, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.7 RELEASE for the held lease.
         """
 
-        return self._build_teardown(msg_type=Dhcp6MessageType.RELEASE, xid=xid, lease=lease)
+        return self._build_teardown(msg_type=Dhcp6MessageType.RELEASE, xid=xid, lease=lease, elapsed=elapsed)
 
-    def _build_decline(self, *, xid: int, lease: Dhcp6Lease) -> Dhcp6Assembler:
+    def _build_decline(self, *, xid: int, lease: Dhcp6Lease, elapsed: int = 0) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.8 DECLINE for the held lease (sent when
         its address has been found to be a duplicate on the link).
         """
 
-        return self._build_teardown(msg_type=Dhcp6MessageType.DECLINE, xid=xid, lease=lease)
+        return self._build_teardown(msg_type=Dhcp6MessageType.DECLINE, xid=xid, lease=lease, elapsed=elapsed)
 
     def _open_client_socket(self) -> socket:
         """
@@ -915,39 +917,72 @@ class Dhcp6Client(Subsystem):
 
     def release(self, lease: Dhcp6Lease, /) -> None:
         """
-        Fire-and-forget RFC 8415 §18.2.7 RELEASE — emit a single Release
-        to the granting server and tear down the socket without waiting
-        for the REPLY. Single-shot rather than the §18.2.7 REL_MAX_RC
-        retransmission so a graceful shutdown is never wedged by a silent
-        server; the binding ages out server-side regardless. This
-        matches the DHCPv4 client's fire-and-forget DHCPRELEASE.
+        Run an RFC 8415 §18.2.7 RELEASE exchange — retransmit the Release
+        to the granting server up to REL_MAX_RC times at REL_TIMEOUT
+        spacing, stopping on the server's REPLY. The MRT is capped at
+        REL_TIMEOUT so the silent-server worst case is bounded to roughly
+        REL_MAX_RC * REL_TIMEOUT (no unbounded §15 doubling) — a graceful
+        shutdown is therefore never wedged. The REPLY is advisory and its
+        content is discarded; the binding ages out server-side regardless.
         """
 
-        xid = random.randint(0, _DHCP6__XID_MAX)
-        client_socket = self._open_client_socket()
-        try:
-            client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
-            __debug__ and log("dhcp6", f"Sending RELEASE (xid={xid:#08x}) for {lease.address}")
-            client_socket.sendto(bytes(self._build_release(xid=xid, lease=lease)), self._multicast_target())
-        finally:
-            client_socket.close()
+        self._teardown_exchange(
+            msg_type=Dhcp6MessageType.RELEASE,
+            lease=lease,
+            irt_ms=dhcp6__constants.DHCP6__REL_TIMEOUT_MS,
+            max_rc=dhcp6__constants.DHCP6__REL_MAX_RC,
+        )
 
     def decline(self, lease: Dhcp6Lease, /) -> None:
         """
-        Fire-and-forget RFC 8415 §18.2.8 DECLINE — emit a single Decline
-        for an address that failed Duplicate Address Detection and tear
-        down the socket without waiting for the REPLY. Single-shot rather
-        than the §18.2.8 DEC_MAX_RC retransmission so the conflict handler
-        can proceed straight to re-soliciting a fresh address; the server
-        marks the address declined on the first Decline regardless.
+        Run an RFC 8415 §18.2.8 DECLINE exchange for an address that
+        failed Duplicate Address Detection — retransmit up to DEC_MAX_RC
+        times at DEC_TIMEOUT spacing (MRT capped at DEC_TIMEOUT to bound
+        the silent-server worst case), stopping on the server's REPLY so
+        the conflict handler can proceed to re-soliciting a fresh address.
+        """
+
+        self._teardown_exchange(
+            msg_type=Dhcp6MessageType.DECLINE,
+            lease=lease,
+            irt_ms=dhcp6__constants.DHCP6__DEC_TIMEOUT_MS,
+            max_rc=dhcp6__constants.DHCP6__DEC_MAX_RC,
+        )
+
+    def _teardown_exchange(self, *, msg_type: Dhcp6MessageType, lease: Dhcp6Lease, irt_ms: int, max_rc: int) -> None:
+        """
+        Send a RELEASE / DECLINE and await the server's REPLY, retransmit-
+        ting up to 'max_rc' times at 'irt_ms' spacing (the MRT is set to
+        'irt_ms' so the backoff stays flat and the silent-server worst
+        case is bounded). The REPLY is acknowledgement only — its content
+        is discarded.
         """
 
         xid = random.randint(0, _DHCP6__XID_MAX)
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
-            __debug__ and log("dhcp6", f"Sending DECLINE (xid={xid:#08x}) for {lease.address}")
-            client_socket.sendto(bytes(self._build_decline(xid=xid, lease=lease)), self._multicast_target())
+            target = self._multicast_target()
+            started = time.monotonic()
+
+            def _send() -> None:
+                elapsed = self._elapsed_centisecs(started)
+                client_socket.sendto(
+                    bytes(self._build_teardown(msg_type=msg_type, xid=xid, lease=lease, elapsed=elapsed)), target
+                )
+
+            __debug__ and log("dhcp6", f"Sending {msg_type!s} (xid={xid:#08x}) for {lease.address}")
+            _send()
+
+            self._run_exchange(
+                client_socket,
+                xid=xid,
+                expected_type=Dhcp6MessageType.REPLY,
+                resend=_send,
+                irt_ms=irt_ms,
+                mrt_ms=irt_ms,
+                max_attempts=max_rc,
+            )
         finally:
             client_socket.close()
 

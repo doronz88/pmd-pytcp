@@ -119,8 +119,9 @@ start, clamped to the 16-bit field maximum (0xFFFF) per §21.9 — and
 passes it to the message builder. The first message of an exchange
 therefore carries 0 and each retransmission carries the (non-decreasing)
 elapsed value. SOLICIT and REQUEST are separate exchanges with
-independent start timestamps. The single-shot RELEASE / DECLINE keep a
-constant 0 (they are never retransmitted by design).
+independent start timestamps. RELEASE / DECLINE likewise advance the
+Elapsed Time across their retransmissions (each captures its own start
+timestamp).
 
 ---
 
@@ -277,15 +278,16 @@ not pin the worker forever.
 > [...] include[s] the IA options [...] for the leases it is releasing
 > [...] IRT REL_TIMEOUT, MRC REL_MAX_RC."
 
-**Adherence:** partial (deliberate). `_build_release` /
-`_build_teardown` (`dhcp6__client.py:484,456`) build a RELEASE with the
-Server Identifier, Client Identifier, and the IA_NA carrying the released
-address — fully conformant message contents. `release` (`:713`) and the
-`_stop` shutdown hook emit it **fire-and-forget**: a single transmission
-without the REL_TIMEOUT / REL_MAX_RC retransmission and without awaiting
-the REPLY. This is a deliberate deviation so a graceful shutdown is never
-wedged by a silent server (the binding ages out server-side regardless);
-it matches the PyTCP DHCPv4 client's fire-and-forget DHCPRELEASE. The
+**Adherence:** met. `_build_release` / `_build_teardown`
+(`dhcp6__client.py`) build a RELEASE with the Server Identifier, Client
+Identifier, and the IA_NA carrying the released address. `release` (via
+`_teardown_exchange`, called from the `_stop` shutdown hook) retransmits
+it up to REL_MAX_RC times at REL_TIMEOUT spacing and stops on the
+server's REPLY — so the common case is a single send + a quick
+acknowledgement. The §15 MRT is pinned to REL_TIMEOUT (flat spacing
+rather than unbounded doubling) so the silent-server worst case is
+bounded to roughly REL_MAX_RC × REL_TIMEOUT and a graceful shutdown is
+never wedged; the REPLY is advisory and its content is discarded. The
 client also stops using the address (removes it via the Address API).
 
 ---
@@ -309,10 +311,10 @@ DAD collision the engine calls `notify_dad_conflict`
 then DECLINEs the address, removes it, and restarts the exchange for a
 fresh one. `_build_decline` (`:484`) carries the Server Identifier,
 Client Identifier, and the IA_NA with the declined address. Like RELEASE,
-`decline` (`:732`) is fire-and-forget (single transmission, no
-DEC_TIMEOUT / DEC_MAX_RC retransmission) so the conflict handler proceeds
-straight to re-soliciting; the server marks the address declined on the
-first Decline regardless.
+`decline` (via `_teardown_exchange`) retransmits up to DEC_MAX_RC times at
+DEC_TIMEOUT spacing and stops on the server's REPLY (MRT pinned to
+DEC_TIMEOUT to bound the silent-server worst case) before the conflict
+handler re-solicits.
 
 ---
 
@@ -507,18 +509,20 @@ implicit on-link prefix is assumed, matching the MUST.
 ### §18.2.7 RELEASE on shutdown
 
 - **Unit:**
-  `::TestDhcp6ClientRelease` asserts RELEASE contents, fire-and-forget
-  (one send, no recv), and that `_stop` releases + removes the address.
+  `::TestDhcp6ClientRelease` asserts RELEASE contents, that it stops on
+  the server's REPLY (one send) and retransmits to the REL_MAX_RC budget
+  against a silent server, and that `_stop` releases + removes the
+  address.
 
-**Status:** locked in (fire-and-forget deviation is the pinned
-behaviour).
+**Status:** locked in.
 
 ### §18.2.8 / §18.2.10.1 DECLINE on DAD failure + DAD-before-use
 
 - **Unit:**
-  `::TestDhcp6ClientDecline` asserts DECLINE contents, fire-and-forget,
-  and that a DAD-conflict notification declines + removes + re-solicits
-  (and is ignored for a non-held / no-lease address).
+  `::TestDhcp6ClientDecline` asserts DECLINE contents, that it stops on
+  the server's REPLY, and that a DAD-conflict notification declines +
+  removes + re-solicits (and is ignored for a non-held / no-lease
+  address).
 - **Unit:**
   `::TestDhcp6ClientLeaseAssignment::test__dhcp6_client__acquire_lease_assigns_address_as_128`
   asserts the leased address is installed as a /128 through the Address
@@ -588,7 +592,7 @@ behaviour).
 | §18.2.2 REQUEST contents                 | locked in                                 |
 | §18.2.4 / §18.2.5 RENEW / REBIND         | locked in                                 |
 | §18.2.6 INFORMATION-REQUEST              | locked in                                 |
-| §18.2.7 RELEASE                          | locked in (fire-and-forget deviation)     |
+| §18.2.7 RELEASE                          | locked in                                 |
 | §18.2.8 DECLINE + DAD-before-use         | locked in end-to-end                      |
 | §18.2.9 Preference selection             | locked in                                 |
 | §18.2.10 top-level status handling       | locked in                                 |
@@ -607,8 +611,8 @@ behaviour).
 | SOLICIT / REQUEST (§18.2.1–2)            | met (Rapid Commit opt-in)                 |
 | RENEW / REBIND lifecycle (§18.2.4–5)     | met                                       |
 | INFORMATION-REQUEST (§18.2.6)            | met                                       |
-| RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |
-| DECLINE + DAD-before-use (§18.2.8/10.1)  | met (fire-and-forget DECLINE, by design)  |
+| RELEASE (§18.2.7)                        | met                                       |
+| DECLINE + DAD-before-use (§18.2.8/10.1)  | met                                       |
 | ADVERTISE Preference selection (§18.2.9) | met (incl. alternate-server fallback)     |
 | Reply top-level status handling (§18.2.10)| met (UnspecFail/UseMulticast/NotOnLink)  |
 | Address installed as /128 (§18.2.10.1)   | met                                       |
@@ -622,12 +626,13 @@ on a DAD-detected duplicate with re-solicitation — all driven by the RA
 Managed / Other-config flags and all address mutation routed through the
 Address API and the ND DAD engine.
 
-Every in-scope host-client requirement is met. The only paragraphs not
-marked "met" are the deliberate-by-design deviations noted inline — the
-fire-and-forget RELEASE / DECLINE (single-shot rather than the §18.2.7 /
-§18.2.8 retransmission, so shutdown / conflict handling is never wedged)
-— and two never-reached wire signals a host that only ever multicasts
-does not consume: the SOL_MAX_RT / INF_MAX_RT override (§21.24 / §21.25)
-and the Server Unicast option (§21.12). Rapid Commit is on-by-knob
+Every in-scope host-client requirement is met. The only liberties taken
+are two bounded, documented choices: RELEASE / DECLINE pin their §15 MRT
+to the per-message TIMEOUT (flat spacing rather than unbounded doubling)
+so a silent server cannot wedge shutdown or delay re-acquisition — they
+still retransmit to REL_MAX_RC / DEC_MAX_RC and stop on the server's
+REPLY. The only wire signals not consumed are two a host that always
+multicasts never needs: the SOL_MAX_RT / INF_MAX_RT override (§21.24 /
+§21.25) and the Server Unicast option (§21.12). Rapid Commit is on-by-knob
 (default off, a client MAY). The Confirm message, Reconfigure, IA_TA, and
 IA_PD are out of scope for a host client and intentionally absent.
