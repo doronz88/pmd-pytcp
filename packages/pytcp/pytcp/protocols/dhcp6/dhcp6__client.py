@@ -53,6 +53,7 @@ from net_proto import (
     Dhcp6OptionIaAddr,
     Dhcp6OptionIaNa,
     Dhcp6OptionOro,
+    Dhcp6OptionRapidCommit,
     Dhcp6Options,
     Dhcp6OptionServerId,
     Dhcp6OptionType,
@@ -357,12 +358,13 @@ class Dhcp6Client(Subsystem):
             dhcp6__options=options,
         )
 
-    def _build_solicit(self, *, xid: int, elapsed: int = 0) -> Dhcp6Assembler:
+    def _build_solicit(self, *, xid: int, elapsed: int = 0, rapid_commit: bool = False) -> Dhcp6Assembler:
         """
         Build an RFC 8415 §18.2.1 SOLICIT carrying the Client
         Identifier, an IA_NA (the client's IAID; T1 / T2 = 0 to let
-        the server choose), the Elapsed Time, and an Option Request
-        for DNS servers.
+        the server choose), the Elapsed Time, an Option Request for DNS
+        servers, and — when 'rapid_commit' is set — a Rapid Commit option
+        requesting the two-message exchange.
         """
 
         options = Dhcp6Options(
@@ -370,6 +372,7 @@ class Dhcp6Client(Subsystem):
             Dhcp6OptionIaNa(iaid=get_iaid(), t1=0, t2=0),
             Dhcp6OptionElapsedTime(elapsed),
             Dhcp6OptionOro([Dhcp6OptionType.DNS_SERVERS]),
+            *((Dhcp6OptionRapidCommit(),) if rapid_commit else ()),
         )
 
         return Dhcp6Assembler(
@@ -602,16 +605,21 @@ class Dhcp6Client(Subsystem):
 
             self._delay_first_solicit()
 
+            rapid_commit = bool(dhcp6__constants.DHCP6__RAPID_COMMIT)
             sol_xid = random.randint(0, _DHCP6__XID_MAX)
             sol_started = time.monotonic()
 
             def _send_solicit() -> None:
                 elapsed = self._elapsed_centisecs(sol_started)
-                client_socket.sendto(bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed)), target)
+                client_socket.sendto(
+                    bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed, rapid_commit=rapid_commit)), target
+                )
 
             __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
 
-            advertise = self._solicit_for_advertise(client_socket, xid=sol_xid, send=_send_solicit)
+            advertise = self._solicit_for_advertise(
+                client_socket, xid=sol_xid, send=_send_solicit, rapid_commit=rapid_commit
+            )
             if advertise is None:
                 __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
                 return None
@@ -620,6 +628,15 @@ class Dhcp6Client(Subsystem):
             if server_duid is None:
                 __debug__ and log("dhcp6", "<WARN>ADVERTISE missing Server Identifier; no lease obtained")
                 return None
+
+            # RFC 8415 §18.2.1 — a Rapid Commit REPLY answers the SOLICIT
+            # directly; lease from it without the REQUEST/REPLY round-trip.
+            if advertise.msg_type is Dhcp6MessageType.REPLY:
+                __debug__ and log("dhcp6", "Rapid Commit REPLY received; leasing from the two-message exchange")
+                lease = self._extract_lease(advertise, server_duid=server_duid)
+                if lease is not None:
+                    self._assign_lease(lease)
+                return lease
 
             req_xid = random.randint(0, _DHCP6__XID_MAX)
             req_started = time.monotonic()
@@ -661,6 +678,7 @@ class Dhcp6Client(Subsystem):
         *,
         xid: int,
         send: Callable[[], None],
+        rapid_commit: bool = False,
     ) -> Dhcp6Parser | None:
         """
         Run the SOLICIT phase with the RFC 8415 §18.2.1 ADVERTISE
@@ -671,12 +689,22 @@ class Dhcp6Client(Subsystem):
         the first window, fall back to the §15 retransmission and return
         the first ADVERTISE received — the client acts on it without
         waiting for further ADVERTISEs.
+
+        When 'rapid_commit' is set the window additionally accepts a valid
+        REPLY carrying the Rapid Commit option; such a REPLY is returned
+        immediately (the two-message exchange) and the caller leases from
+        it directly. A REPLY without the Rapid Commit option is discarded.
+        The returned message's 'msg_type' (ADVERTISE vs REPLY) tells the
+        caller which path was taken.
         """
 
         rand_factor = dhcp6__constants.DHCP6__RAND_FACTOR
         irt_ms = dhcp6__constants.DHCP6__SOL_TIMEOUT_MS
         mrt_ms = dhcp6__constants.DHCP6__SOL_MAX_RT_MS
         max_attempts = dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS
+        accept_types = (
+            (Dhcp6MessageType.ADVERTISE, Dhcp6MessageType.REPLY) if rapid_commit else (Dhcp6MessageType.ADVERTISE,)
+        )
 
         send()
 
@@ -685,26 +713,36 @@ class Dhcp6Client(Subsystem):
         rt_ms = irt_ms + random.uniform(0.0, rand_factor) * irt_ms
         deadline = time.monotonic() + max(0.001, rt_ms / 1000.0)
 
-        collected = self._collect_advertises(client_socket, xid=xid, deadline=deadline)
+        rapid_reply, collected = self._collect_advertises(
+            client_socket, xid=xid, deadline=deadline, accept_types=accept_types
+        )
+        if rapid_reply is not None:
+            return rapid_reply
         if collected:
             return self._select_best_advertise(collected)
 
-        # No ADVERTISE in the first window — apply the §15 retransmission,
-        # terminating on the first valid ADVERTISE.
+        # No response in the first window — apply the §15 retransmission,
+        # terminating on the first valid ADVERTISE (or Rapid Commit REPLY).
         for _ in range(1, max_attempts):
             rand = random.uniform(-rand_factor, rand_factor)
             rt_ms = 2 * rt_ms + rand * rt_ms
             if rt_ms > mrt_ms:
                 rt_ms = mrt_ms + rand * mrt_ms
             send()
-            advertise = self._recv_within_window(
+            packet = self._recv_within_window(
                 client_socket,
                 xid=xid,
-                expected_type=Dhcp6MessageType.ADVERTISE,
+                expected_types=accept_types,
                 timeout_s=max(0.001, rt_ms / 1000.0),
             )
-            if advertise is not None and advertise.server_id is not None:
-                return advertise
+            if packet is None:
+                continue
+            if packet.msg_type is Dhcp6MessageType.REPLY:
+                if packet.rapid_commit:
+                    return packet
+                continue
+            if packet.server_id is not None:
+                return packet
 
         return None
 
@@ -714,34 +752,45 @@ class Dhcp6Client(Subsystem):
         *,
         xid: int,
         deadline: float,
-    ) -> list[Dhcp6Parser]:
+        accept_types: tuple[Dhcp6MessageType, ...],
+    ) -> tuple[Dhcp6Parser | None, list[Dhcp6Parser]]:
         """
         Collect every valid ADVERTISE (matching 'xid', carrying a Server
-        Identifier) until 'deadline' ('time.monotonic'); return early
-        with the collected set the moment an ADVERTISE with a preference
-        value of 255 arrives (RFC 8415 §18.2.1).
+        Identifier) until 'deadline' ('time.monotonic'), returning
+        '(None, advertises)'. Returns early with '(None, advertises)' the
+        moment an ADVERTISE with a preference value of 255 arrives
+        (RFC 8415 §18.2.1). If 'accept_types' includes REPLY (Rapid
+        Commit), a valid REPLY carrying the Rapid Commit option is
+        returned immediately as '(reply, advertises)'; a REPLY without it
+        is discarded.
         """
 
         collected: list[Dhcp6Parser] = []
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return collected
-            advertise = self._recv_within_window(
+                return None, collected
+            packet = self._recv_within_window(
                 client_socket,
                 xid=xid,
-                expected_type=Dhcp6MessageType.ADVERTISE,
+                expected_types=accept_types,
                 timeout_s=remaining,
             )
-            if advertise is None:
-                return collected
-            if advertise.server_id is None:
+            if packet is None:
+                return None, collected
+            if packet.msg_type is Dhcp6MessageType.REPLY:
+                # RFC 8415 §18.2.1 — accept a Rapid Commit REPLY, discard a
+                # REPLY that does not carry the Rapid Commit option.
+                if packet.rapid_commit:
+                    return packet, collected
+                continue
+            if packet.server_id is None:
                 # RFC 8415 §16.3 — an Advertise without a Server
                 # Identifier is not valid; ignore it.
                 continue
-            collected.append(advertise)
-            if (advertise.preference or 0) == 255:
-                return collected
+            collected.append(packet)
+            if (packet.preference or 0) == 255:
+                return None, collected
 
     @staticmethod
     def _select_best_advertise(advertises: list[Dhcp6Parser]) -> Dhcp6Parser:
@@ -1133,7 +1182,9 @@ class Dhcp6Client(Subsystem):
                 timeout_s = min(timeout_s, mrd_deadline - time.monotonic())
             timeout_s = max(0.001, timeout_s)
 
-            result = self._recv_within_window(client_socket, xid=xid, expected_type=expected_type, timeout_s=timeout_s)
+            result = self._recv_within_window(
+                client_socket, xid=xid, expected_types=(expected_type,), timeout_s=timeout_s
+            )
             if result is not None:
                 return result
 
@@ -1152,14 +1203,14 @@ class Dhcp6Client(Subsystem):
         client_socket: socket,
         *,
         xid: int,
-        expected_type: Dhcp6MessageType,
+        expected_types: tuple[Dhcp6MessageType, ...],
         timeout_s: float,
     ) -> Dhcp6Parser | None:
         """
-        Wait up to 'timeout_s' seconds for a valid message of
-        'expected_type' with a matching 'xid', silently dropping bogus
-        packets (malformed, wrong msg-type, mismatched xid) without
-        consuming the entire window. Returns the parsed message on
+        Wait up to 'timeout_s' seconds for a valid message whose msg-type
+        is one of 'expected_types' and whose 'xid' matches, silently
+        dropping bogus packets (malformed, wrong msg-type, mismatched xid)
+        without consuming the entire window. Returns the parsed message on
         success, or None if the deadline elapses with no valid response.
         """
 
@@ -1183,11 +1234,11 @@ class Dhcp6Client(Subsystem):
 
             __debug__ and log("dhcp6", f"<lg>RX</> - {packet}")
 
-            if packet.msg_type != expected_type:
+            if packet.msg_type not in expected_types:
                 __debug__ and log(
                     "dhcp6",
                     f"<WARN>Dropping DHCPv6 frame with unexpected msg-type {packet.msg_type!r}; "
-                    f"expected {expected_type!r}</>",
+                    f"expected one of {expected_types!r}</>",
                 )
                 continue
             if packet.xid != xid:

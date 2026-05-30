@@ -684,6 +684,134 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         )
 
 
+class TestDhcp6ClientRapidCommit(TestCase):
+    """
+    The 'Dhcp6Client' RFC 8415 §18.2.1 Rapid Commit two-message exchange
+    tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server into an autospec'd socket and pin the
+        transaction-ids / jitter.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.side_effect = [_SOL_XID, _REQ_XID]
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__dhcp6_client__solicit_omits_rapid_commit_by_default(self) -> None:
+        """
+        Ensure the SOLICIT carries no Rapid Commit option when the knob is
+        off (the default).
+
+        Reference: RFC 8415 §18.2.1 (Rapid Commit is included only when the client opts in).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertFalse(self._server.tx_log[0].rapid_commit, msg="Default SOLICIT must omit the Rapid Commit option.")
+
+    def test__dhcp6_client__solicit_includes_rapid_commit_when_enabled(self) -> None:
+        """
+        Ensure the SOLICIT carries the Rapid Commit option when the knob is
+        enabled.
+
+        Reference: RFC 8415 §18.2.1 (a Rapid-Commit client includes the option in Solicit).
+        """
+
+        sysctl.set("dhcp6.rapid_commit", 1)
+        self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::100"))
+
+        self._client.acquire_lease()
+
+        self.assertTrue(self._server.tx_log[0].rapid_commit, msg="An opted-in SOLICIT must carry Rapid Commit.")
+
+    def test__dhcp6_client__rapid_commit_two_message_lease(self) -> None:
+        """
+        Ensure a Rapid Commit REPLY answering the SOLICIT directly yields a
+        lease without sending a REQUEST (the two-message exchange).
+
+        Reference: RFC 8415 §18.2.1 (a valid Reply with Rapid Commit completes the exchange).
+        """
+
+        sysctl.set("dhcp6.rapid_commit", 1)
+        self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::100"))
+
+        lease = self._client.acquire_lease()
+
+        assert lease is not None
+        self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="Rapid Commit must yield the leased address.")
+        self.assertEqual(len(self._server.tx_log), 1, msg="Rapid Commit must send only the SOLICIT (no REQUEST).")
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.SOLICIT, msg="The only TX must be the SOLICIT.")
+
+    def test__dhcp6_client__rapid_commit_reply_without_option_discarded(self) -> None:
+        """
+        Ensure a REPLY lacking the Rapid Commit option is discarded and the
+        client falls back to the four-message exchange.
+
+        Reference: RFC 8415 §18.2.1 (discard a Reply that does not contain the Rapid Commit option).
+        """
+
+        sysctl.set("dhcp6.rapid_commit", 1)
+        self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::1"), with_rapid_commit=False)
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        lease = self._client.acquire_lease()
+
+        assert lease is not None
+        self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The four-message lease must be used.")
+        self.assertIs(
+            self._server.tx_log[1].msg_type, Dhcp6MessageType.REQUEST, msg="A REQUEST must follow the SOLICIT."
+        )
+
+    def test__dhcp6_client__rapid_commit_disabled_ignores_rapid_reply(self) -> None:
+        """
+        Ensure that with Rapid Commit off the client ignores a Rapid Commit
+        REPLY and completes the four-message exchange.
+
+        Reference: RFC 8415 §18.2.1 (a non-Rapid-Commit client runs the four-message exchange).
+        """
+
+        self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::1"))
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+
+        lease = self._client.acquire_lease()
+
+        assert lease is not None
+        self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The four-message lease must be used.")
+        self.assertIs(
+            self._server.tx_log[1].msg_type, Dhcp6MessageType.REQUEST, msg="A REQUEST must follow the SOLICIT."
+        )
+
+
 _REN_XID = 0xCCCCCC
 _LEASE = Dhcp6Lease(
     address=Ip6Address("2001:db8::100"),

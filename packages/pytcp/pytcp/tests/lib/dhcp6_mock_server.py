@@ -47,6 +47,7 @@ from net_proto import (
     Dhcp6OptionIaAddr,
     Dhcp6OptionIaNa,
     Dhcp6OptionPreference,
+    Dhcp6OptionRapidCommit,
     Dhcp6Options,
     Dhcp6OptionServerId,
     Dhcp6OptionStatusCode,
@@ -200,10 +201,53 @@ class Dhcp6MockServer:
                     top_status=top_status,
                     omit_ia_address=omit_ia_address,
                     ia_na_options_override=ia_na_options_override,
+                    rapid_commit=False,
                     xid=xid,
                     client_id_echo=client_id_echo,
                     server_id=server_id,
                 )
+            )
+        )
+
+    def enqueue_rapid_reply(
+        self,
+        *,
+        address: Ip6Address,
+        with_rapid_commit: bool = True,
+        preferred_lifetime: int = 3600,
+        valid_lifetime: int = 7200,
+        t1: int = 1800,
+        t2: int = 2880,
+        iaid: int = 0,
+        xid: int | object = _UNSET,
+        client_id_echo: bytes | None | object = _UNSET,
+        server_id: bytes | None | object = _UNSET,
+    ) -> None:
+        """
+        Plan a DHCPv6 REPLY answering a SOLICIT directly (RFC 8415 §18.2.1
+        Rapid Commit two-message exchange). Unlike 'enqueue_lease_reply'
+        this is NOT gated — it is dispensed during the client's SOLICIT
+        collection window, mirroring a server that committed the lease on
+        the SOLICIT. Set 'with_rapid_commit=False' to emit a REPLY that
+        omits the Rapid Commit option (which a client must discard).
+        """
+
+        self._reply_queue.append(
+            lambda: self._build_lease_reply(
+                address=address,
+                preferred_lifetime=preferred_lifetime,
+                valid_lifetime=valid_lifetime,
+                t1=t1,
+                t2=t2,
+                iaid=iaid,
+                ia_status=None,
+                top_status=None,
+                omit_ia_address=False,
+                ia_na_options_override=None,
+                rapid_commit=with_rapid_commit,
+                xid=xid,
+                client_id_echo=client_id_echo,
+                server_id=server_id,
             )
         )
 
@@ -379,6 +423,7 @@ class Dhcp6MockServer:
         top_status: Dhcp6StatusCode | None,
         omit_ia_address: bool,
         ia_na_options_override: bytes | None,
+        rapid_commit: bool,
         xid: int | object,
         client_id_echo: bytes | None | object,
         server_id: bytes | None | object,
@@ -386,13 +431,16 @@ class Dhcp6MockServer:
         """
         Build the canned lease-granting REPLY frame bytes (Server
         Identifier + echoed Client Identifier + an optional top-level
-        Status Code + IA_NA with a nested IA Address and/or Status Code).
+        Status Code + an optional Rapid Commit option + IA_NA with a
+        nested IA Address and/or Status Code).
         """
 
         resolved_xid, options = self._identity_options(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
 
         if top_status is not None:
             options.append(Dhcp6OptionStatusCode(top_status, ""))
+        if rapid_commit:
+            options.append(Dhcp6OptionRapidCommit())
 
         if ia_na_options_override is not None:
             ia_na_blob = ia_na_options_override

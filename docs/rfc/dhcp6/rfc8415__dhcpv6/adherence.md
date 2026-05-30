@@ -33,8 +33,6 @@ are omitted wholesale rather than listed as "not met":
 - The Confirm message and its receipt (§18.2.3, §16.5), the Reconfigure
   message and Reconfigure Accept / Reconfigure Key (§18.2.11, §16.11,
   §21.19–§21.20), and authentication (§20, the Auth option §21.11).
-- Rapid Commit (§21.14) — the option codec exists but the client does
-  not set it in SOLICIT (see §18.2.1 below).
 
 Also omitted, per the audit methodology, are non-normative sections:
 the Abstract, §1 Introduction, §2 Terminology, §3–§5 narrative, §22
@@ -165,12 +163,21 @@ drawn or configured 0 transmits immediately). The jitter is one-shot —
 retransmissions are not delayed.
 
 > "A client that wishes to use the Rapid Commit two-message exchange
-> includes a Rapid Commit option [...]"
+> includes a Rapid Commit option [...] The client will discard any Reply
+> messages that do not contain the Rapid Commit option. [...] At the end
+> of the first RT period, if no suitable Reply messages are received but
+> the client has valid Advertise messages, then the client processes the
+> Advertise [...]"
 
-**Adherence:** not implemented (by choice). The SOLICIT does not carry a
-Rapid Commit option, so the client always runs the four-message
-exchange. The option's wire codec exists in `net_proto` but is unused by
-the client.
+**Adherence:** met (opt-in). When `dhcp6.rapid_commit` is enabled (a
+client MAY, so off by default) `_build_solicit` adds a Rapid Commit
+option to the SOLICIT and `_solicit_for_advertise` widens its first-RT
+collection window to also accept a valid REPLY: a REPLY carrying the
+Rapid Commit option is returned immediately and `acquire_lease` leases
+from it directly (the two-message exchange, no REQUEST), while a REPLY
+without the option is discarded; if only ADVERTISEs arrive the client
+falls back to the four-message exchange. With the knob off the SOLICIT
+omits the option and the collection accepts ADVERTISEs only.
 
 ---
 
@@ -446,6 +453,24 @@ implicit on-link prefix is assumed, matching the MUST.
 
 **Status:** locked in.
 
+### §18.2.1 Rapid Commit two-message exchange
+
+- **Unit:**
+  `::TestDhcp6ClientRapidCommit::test__dhcp6_client__solicit_omits_rapid_commit_by_default`,
+  `..._solicit_includes_rapid_commit_when_enabled`,
+  `..._rapid_commit_two_message_lease` (lease without a REQUEST),
+  `..._rapid_commit_reply_without_option_discarded`, and
+  `..._rapid_commit_disabled_ignores_rapid_reply`.
+- **Unit:**
+  `test__dhcp6__constants.py::...::test__dhcp6_constants__rapid_commit_default_off`
+  and `..._rapid_commit_rejects_out_of_range` pin the knob default /
+  validator.
+- **Unit (net_proto):**
+  `packages/net_proto/net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__rapid_commit.py`
+  pins the Rapid Commit option wire codec.
+
+**Status:** locked in.
+
 ### §18.2.2 REQUEST addresses the selected server
 
 - **Unit:**
@@ -574,7 +599,7 @@ behaviour).
 | §15 retransmission algorithm             | met                                       |
 | §15 / §21.9 elapsed-time update          | met                                       |
 | Transaction-id / msg-type validation     | met                                       |
-| SOLICIT / REQUEST (§18.2.1–2)            | met (no Rapid Commit)                     |
+| SOLICIT / REQUEST (§18.2.1–2)            | met (Rapid Commit opt-in)                 |
 | RENEW / REBIND lifecycle (§18.2.4–5)     | met                                       |
 | INFORMATION-REQUEST (§18.2.6)            | met                                       |
 | RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |

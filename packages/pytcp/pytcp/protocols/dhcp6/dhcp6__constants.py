@@ -133,6 +133,12 @@ DHCP6__REL_MAX_RC = 5
 DHCP6__DEC_TIMEOUT_MS = 1000
 DHCP6__DEC_MAX_RC = 5
 
+# RFC 8415 §18.2.1 / §21.14 — Rapid Commit opt-in. When set the client
+# adds a Rapid Commit option to its SOLICIT and accepts a two-message
+# SOLICIT / REPLY exchange (skipping ADVERTISE / REQUEST). It is a client
+# MAY, so PyTCP defaults it off (0); set 1 to enable.
+DHCP6__RAPID_COMMIT = 0
+
 # RFC 8415 §14.2 / §18.2.4 — when the server returns T1 / T2 = 0 it
 # leaves the renewal timers to the client's discretion. PyTCP derives
 # them as fractions of the shortest IA_NA preferred lifetime: T1 (when
@@ -145,6 +151,7 @@ DHCP6__T2_FACTOR: float = 0.8
 from pytcp.stack.sysctl import (  # noqa: E402
     get,
     is_float_in_range,
+    is_int_in_range,
     is_non_negative_int,
     is_positive_int,
     register,
@@ -204,6 +211,17 @@ register(
     default=DHCP6__SOL_MAX_RT_MS,
     validator=is_positive_int("dhcp6.sol_max_rt_ms"),
     description="RFC 8415 §7.6 — SOL_MAX_RT, maximum SOLICIT retransmit timeout (MRT), ms.",
+)
+register(
+    key="dhcp6.rapid_commit",
+    module_name=__name__,
+    attr="DHCP6__RAPID_COMMIT",
+    default=DHCP6__RAPID_COMMIT,
+    validator=is_int_in_range("dhcp6.rapid_commit", low=0, high=1),
+    description=(
+        "RFC 8415 §18.2.1 / §21.14 — request the Rapid Commit two-message SOLICIT/REPLY "
+        "exchange (1 = on, 0 = off / four-message)."
+    ),
 )
 register(
     key="dhcp6.sol_max_delay_ms",

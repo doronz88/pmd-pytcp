@@ -162,6 +162,16 @@ class TestDhcp6ConstantsDefaults(TestCase):
 
         self.assertEqual(sysctl.get("dhcp6.sol_max_delay_ms"), 1000, msg="dhcp6.sol_max_delay_ms must default to 1000.")
 
+    def test__dhcp6_constants__rapid_commit_default_off(self) -> None:
+        """
+        Ensure 'dhcp6.rapid_commit' defaults to 0 (off) — the four-message
+        exchange is the default; Rapid Commit is an operator opt-in.
+
+        Reference: RFC 8415 §21.14 (Rapid Commit is a client MAY).
+        """
+
+        self.assertEqual(sysctl.get("dhcp6.rapid_commit"), 0, msg="dhcp6.rapid_commit must default to 0 (off).")
+
     def test__dhcp6_constants__req_timers_default(self) -> None:
         """
         Ensure the REQUEST timers default to REQ_TIMEOUT=1000 / REQ_MAX_RT=30000
@@ -287,6 +297,16 @@ class TestDhcp6ConstantsValidators(TestCase):
         sysctl.set("dhcp6.sol_max_delay_ms", 0)  # must not raise
 
         self.assertEqual(sysctl.get("dhcp6.sol_max_delay_ms"), 0, msg="dhcp6.sol_max_delay_ms must accept 0.")
+
+    def test__dhcp6_constants__rapid_commit_rejects_out_of_range(self) -> None:
+        """
+        Ensure 'dhcp6.rapid_commit' rejects a value outside {0, 1}.
+
+        Reference: RFC 8415 §21.14 (Rapid Commit is an on/off client opt-in).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("dhcp6.rapid_commit", 2)
 
     def test__dhcp6_constants__rel_max_rc_rejects_zero(self) -> None:
         """
