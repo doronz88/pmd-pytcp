@@ -344,16 +344,24 @@ Advertise" sub-rule is enforced only as the REPLY-side IA_NA validation.
 > [...] Update lifetimes [...] Discard any leases [...] that have a valid
 > lifetime of 0 [...]"
 
-**Adherence:** partial. `_extract_lease` (`dhcp6__client.py:880`) parses
-the REPLY's IA_NA sub-option block for the IA Address and any Status Code,
+**Adherence:** met (top-level status + IA extraction) / partial (the
+rest). `_extract_lease` (`dhcp6__client.py`) first inspects the REPLY's
+top-level (message-level) Status Code: an UnspecFail, UseMulticast, or
+NotOnLink (`_TOP_LEVEL_REJECT_STATUS`) discards the REPLY outright and
+yields no lease, so the client re-solicits later via the RA trigger /
+lease-lifecycle timers (UseMulticast is moot — PyTCP only ever multicasts;
+NotOnLink restarting discovery and UnspecFail's rate-limited retry both
+collapse to "this REPLY grants nothing, retry on the next trigger" given
+the client never unicasts and re-solicits on a coarse schedule). Any
+other top-level code (or none) proceeds to the IA. It then parses the
+IA_NA sub-option block for the IA Address and any nested Status Code,
 returning a `Dhcp6Lease` carrying the address, preferred / valid
-lifetimes, T1, T2, IAID, and server DUID; the worker then arms the timers
-from those values (§18.2.4/5 above). A non-Success IA_NA Status Code, a
+lifetimes, T1, T2, IAID, and server DUID; the worker arms the timers from
+those values (§18.2.4/5 above). A non-Success IA_NA Status Code, a
 missing IA_NA, or a missing IA Address all yield no lease. The
-single-address model means the per-lease "leave unchanged leases not
-included / discard valid-lifetime-0" set algebra is trivial; the explicit
-valid-lifetime-0 discard and the UseMulticast / UnspecFail / NotOnLink
-top-level status handling (§18.2.10) are not implemented.
+single-address model makes the per-lease "leave unchanged / discard
+valid-lifetime-0" set algebra trivial; the explicit valid-lifetime-0
+discard is not separately modelled.
 
 > "The client MUST perform duplicate address detection [...] on each of
 > the received addresses [...] before using the received addresses for
@@ -500,9 +508,19 @@ behaviour).
   `packages/net_proto/net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__preference.py`
   pins the Preference option wire codec.
 
-**Status:** locked in (selection). UseMulticast / UnspecFail / NotOnLink
-top-level status handling (§18.2.10) and the alternate-server fallback
-are **n/a (not implemented)**.
+**Status:** locked in (selection). The alternate-server fallback is
+**n/a (not implemented)**.
+
+### §18.2.10 top-level Reply Status Code handling
+
+- **Unit:**
+  `::TestDhcp6ClientAcquireLease::test__dhcp6_client__acquire_lease_top_level_not_on_link_yields_no_lease`,
+  `..._top_level_use_multicast_yields_no_lease`, and
+  `..._top_level_unspec_fail_yields_no_lease` assert a REPLY carrying a
+  top-level NotOnLink / UseMulticast / UnspecFail Status Code yields no
+  lease even when it also carries a usable IA_NA address.
+
+**Status:** locked in.
 
 ### RA M/O trigger (the §4 entry point)
 
@@ -529,7 +547,7 @@ are **n/a (not implemented)**.
 | §18.2.7 RELEASE                          | locked in (fire-and-forget deviation)     |
 | §18.2.8 DECLINE + DAD-before-use         | locked in end-to-end                      |
 | §18.2.9 Preference selection             | locked in                                 |
-| §18.2.10 top-level status handling       | n/a (not implemented)                     |
+| §18.2.10 top-level status handling       | locked in                                 |
 | RA M/O trigger                           | locked in                                 |
 
 ---
@@ -548,7 +566,7 @@ are **n/a (not implemented)**.
 | RELEASE (§18.2.7)                        | partial (fire-and-forget, by design)      |
 | DECLINE + DAD-before-use (§18.2.8/10.1)  | met (fire-and-forget DECLINE, by design)  |
 | ADVERTISE Preference selection (§18.2.9) | met (no alternate-server fallback)        |
-| Reply top-level status handling (§18.2.10)| not implemented                          |
+| Reply top-level status handling (§18.2.10)| met (UnspecFail/UseMulticast/NotOnLink)  |
 | Address installed as /128 (§18.2.10.1)   | met                                       |
 
 The client implements the full RFC 8415 host lease lifecycle —

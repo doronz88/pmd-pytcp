@@ -992,13 +992,35 @@ class Dhcp6Client(Subsystem):
         # DECLINEs it and re-solicits.
         self._address_api.add(ifaddr=ifaddr, dad_conflict_callback=self.notify_dad_conflict)
 
+    # RFC 8415 §18.2.10 / §18.2.10.1 — top-level (message-level) Status
+    # Codes that mean "this REPLY grants no usable lease": UnspecFail
+    # (server could not process the message), UseMulticast (the client
+    # must multicast — already PyTCP's only transmit mode), and NotOnLink
+    # (the requested address is not valid on this link → restart
+    # discovery). On any of these the client discards the REPLY and
+    # re-solicits later via the RA trigger / lease-lifecycle timers.
+    _TOP_LEVEL_REJECT_STATUS = frozenset(
+        {
+            Dhcp6StatusCode.UNSPEC_FAIL,
+            Dhcp6StatusCode.USE_MULTICAST,
+            Dhcp6StatusCode.NOT_ON_LINK,
+        }
+    )
+
     def _extract_lease(self, reply: Dhcp6Parser, *, server_duid: bytes) -> Dhcp6Lease | None:
         """
-        Extract the leased IA_NA address from a REPLY. Parses the IA_NA
-        sub-option block (preserved as opaque bytes by the codec) for
-        the IA Address and any Status Code, returning None when the
-        binding carries no address or a non-Success Status Code.
+        Extract the leased IA_NA address from a REPLY. Rejects the REPLY
+        outright on a top-level UnspecFail / UseMulticast / NotOnLink
+        Status Code (RFC 8415 §18.2.10 / §18.2.10.1); otherwise parses the
+        IA_NA sub-option block (preserved as opaque bytes by the codec)
+        for the IA Address and any nested Status Code, returning None when
+        the binding carries no address or a non-Success Status Code.
         """
+
+        top_status = reply.status_code
+        if top_status is not None and top_status.status_code in self._TOP_LEVEL_REJECT_STATUS:
+            __debug__ and log("dhcp6", f"<WARN>REPLY top-level Status Code {top_status.status_code}; no lease obtained")
+            return None
 
         ia_na = reply.ia_na
         if ia_na is None:

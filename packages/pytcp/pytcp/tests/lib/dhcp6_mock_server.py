@@ -168,6 +168,7 @@ class Dhcp6MockServer:
         t2: int = 2880,
         iaid: int = 0,
         ia_status: Dhcp6StatusCode | None = None,
+        top_status: Dhcp6StatusCode | None = None,
         omit_ia_address: bool = False,
         ia_na_options_override: bytes | None = None,
         xid: int | object = _UNSET,
@@ -178,8 +179,10 @@ class Dhcp6MockServer:
         Plan a DHCPv6 REPLY granting an IA_NA lease — carries the
         Server Identifier, the echoed Client Identifier, and an IA_NA
         whose sub-option block holds the IA Address (and, when
-        'ia_status' is set, a Status Code). Set 'omit_ia_address' to
-        emit an IA_NA with no address (e.g. a NoAddrsAvail reply), or
+        'ia_status' is set, a nested Status Code). Set 'top_status' to add
+        a top-level (message-level) Status Code (e.g. NotOnLink /
+        UseMulticast / UnspecFail). Set 'omit_ia_address' to emit an IA_NA
+        with no address (e.g. a NoAddrsAvail reply), or
         'ia_na_options_override' to stuff the IA_NA with raw (possibly
         malformed) sub-option bytes.
         """
@@ -194,6 +197,7 @@ class Dhcp6MockServer:
                     t2=t2,
                     iaid=iaid,
                     ia_status=ia_status,
+                    top_status=top_status,
                     omit_ia_address=omit_ia_address,
                     ia_na_options_override=ia_na_options_override,
                     xid=xid,
@@ -372,6 +376,7 @@ class Dhcp6MockServer:
         t2: int,
         iaid: int,
         ia_status: Dhcp6StatusCode | None,
+        top_status: Dhcp6StatusCode | None,
         omit_ia_address: bool,
         ia_na_options_override: bytes | None,
         xid: int | object,
@@ -380,11 +385,14 @@ class Dhcp6MockServer:
     ) -> bytes:
         """
         Build the canned lease-granting REPLY frame bytes (Server
-        Identifier + echoed Client Identifier + IA_NA with a nested IA
-        Address and/or Status Code).
+        Identifier + echoed Client Identifier + an optional top-level
+        Status Code + IA_NA with a nested IA Address and/or Status Code).
         """
 
         resolved_xid, options = self._identity_options(xid=xid, client_id_echo=client_id_echo, server_id=server_id)
+
+        if top_status is not None:
+            options.append(Dhcp6OptionStatusCode(top_status, ""))
 
         if ia_na_options_override is not None:
             ia_na_blob = ia_na_options_override

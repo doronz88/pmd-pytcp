@@ -541,6 +541,45 @@ class TestDhcp6ClientAcquireLease(TestCase):
 
         self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
 
+    def test__dhcp6_client__acquire_lease_top_level_not_on_link_yields_no_lease(self) -> None:
+        """
+        Ensure a REPLY carrying a top-level NotOnLink Status Code yields no
+        lease even when it also carries a usable IA_NA address.
+
+        Reference: RFC 8415 §18.2.10.1 (NotOnLink restarts discovery; no lease).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.NOT_ON_LINK)
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A top-level NotOnLink REPLY must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_top_level_use_multicast_yields_no_lease(self) -> None:
+        """
+        Ensure a REPLY carrying a top-level UseMulticast Status Code yields
+        no lease.
+
+        Reference: RFC 8415 §18.2.10 (UseMulticast; the client resends, no lease from this REPLY).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.USE_MULTICAST)
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A top-level UseMulticast REPLY must yield no lease.")
+
+    def test__dhcp6_client__acquire_lease_top_level_unspec_fail_yields_no_lease(self) -> None:
+        """
+        Ensure a REPLY carrying a top-level UnspecFail Status Code yields no
+        lease.
+
+        Reference: RFC 8415 §18.2.10 (UnspecFail; the server could not process the message).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.UNSPEC_FAIL)
+
+        self.assertIsNone(self._client.acquire_lease(), msg="A top-level UnspecFail REPLY must yield no lease.")
+
 
 _SERVER_DUID_A = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xaa"
 _SERVER_DUID_B = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xbb"
