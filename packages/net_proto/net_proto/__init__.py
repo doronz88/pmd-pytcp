@@ -144,6 +144,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
     Dhcp4OptionUnknown,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
+from net_proto.protocols.dhcp6.dhcp6__assembler import Dhcp6Assembler
 from net_proto.protocols.dhcp6.dhcp6__enums import (
     Dhcp6MessageType,
     Dhcp6StatusCode,
@@ -156,6 +157,7 @@ from net_proto.protocols.dhcp6.dhcp6__header import (
     DHCP6__HEADER__LEN,
     Dhcp6Header,
 )
+from net_proto.protocols.dhcp6.dhcp6__parser import Dhcp6Parser
 from net_proto.protocols.dhcp6.options.dhcp6__option import (
     DHCP6__OPTION__LEN,
     Dhcp6OptionType,
@@ -653,6 +655,7 @@ __all__ = [
     "DHCP4__OPTION__PAD__LEN",
     "DHCP6__HEADER__LEN",
     "DHCP6__OPTION__LEN",
+    "Dhcp6Assembler",
     "Dhcp4Header",
     "Dhcp4IntegrityError",
     "Dhcp4MessageType",
@@ -693,6 +696,7 @@ __all__ = [
     "Dhcp6OptionType",
     "Dhcp6OptionUnknown",
     "Dhcp6Options",
+    "Dhcp6Parser",
     "Dhcp6SanityError",
     "Dhcp6StatusCode",
     "ETHERNET_802_3__HEADER__LEN",
