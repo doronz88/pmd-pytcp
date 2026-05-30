@@ -32,7 +32,7 @@ ver 3.0.6
 
 from unittest import TestCase
 
-from net_proto import Dhcp6MessageType
+from net_proto import Dhcp6MessageType, Dhcp6StatusCode
 
 
 class TestDhcp6MessageType(TestCase):
@@ -82,4 +82,48 @@ class TestDhcp6MessageType(TestCase):
             str(unknown),
             "254",
             msg="An unknown DHCPv6 message type must render its numeric value.",
+        )
+
+
+class TestDhcp6StatusCode(TestCase):
+    """
+    The DHCPv6 Status Code enum string-rendering tests.
+    """
+
+    def test__dhcp6__status_code__str__known(self) -> None:
+        """
+        Ensure each known DHCPv6 status code renders its canonical name.
+
+        Reference: RFC 8415 §21.13 (Status Code option values).
+        """
+
+        for member, expected in [
+            (Dhcp6StatusCode.SUCCESS, "Success"),
+            (Dhcp6StatusCode.UNSPEC_FAIL, "UnspecFail"),
+            (Dhcp6StatusCode.NO_ADDRS_AVAIL, "NoAddrsAvail"),
+            (Dhcp6StatusCode.NO_BINDING, "NoBinding"),
+            (Dhcp6StatusCode.NOT_ON_LINK, "NotOnLink"),
+            (Dhcp6StatusCode.USE_MULTICAST, "UseMulticast"),
+            (Dhcp6StatusCode.NO_PREFIX_AVAIL, "NoPrefixAvail"),
+        ]:
+            with self.subTest(member=member):
+                self.assertEqual(
+                    str(member),
+                    expected,
+                    msg=f"Unexpected string rendering for {member!r}.",
+                )
+
+    def test__dhcp6__status_code__str__unknown(self) -> None:
+        """
+        Ensure an unknown DHCPv6 status code renders its numeric wire value.
+
+        Reference: RFC 8415 §21.13 (Status Code option values; unknown handling).
+        """
+
+        unknown = Dhcp6StatusCode.from_int(99)
+
+        self.assertEqual(
+            str(unknown),
+            "99",
+            msg="An unknown DHCPv6 status code must render its numeric value.",
         )

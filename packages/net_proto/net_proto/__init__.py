@@ -144,7 +144,10 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
     Dhcp4OptionUnknown,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
-from net_proto.protocols.dhcp6.dhcp6__enums import Dhcp6MessageType
+from net_proto.protocols.dhcp6.dhcp6__enums import (
+    Dhcp6MessageType,
+    Dhcp6StatusCode,
+)
 from net_proto.protocols.dhcp6.dhcp6__errors import (
     Dhcp6IntegrityError,
     Dhcp6SanityError,
@@ -160,14 +163,23 @@ from net_proto.protocols.dhcp6.options.dhcp6__option import (
 from net_proto.protocols.dhcp6.options.dhcp6__option__client_id import (
     Dhcp6OptionClientId,
 )
+from net_proto.protocols.dhcp6.options.dhcp6__option__dns_servers import (
+    Dhcp6OptionDnsServers,
+)
 from net_proto.protocols.dhcp6.options.dhcp6__option__elapsed_time import (
     Dhcp6OptionElapsedTime,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__oro import (
+    Dhcp6OptionOro,
 )
 from net_proto.protocols.dhcp6.options.dhcp6__option__rapid_commit import (
     Dhcp6OptionRapidCommit,
 )
 from net_proto.protocols.dhcp6.options.dhcp6__option__server_id import (
     Dhcp6OptionServerId,
+)
+from net_proto.protocols.dhcp6.options.dhcp6__option__status_code import (
+    Dhcp6OptionStatusCode,
 )
 from net_proto.protocols.dhcp6.options.dhcp6__option__unknown import (
     Dhcp6OptionUnknown,
@@ -663,12 +675,16 @@ __all__ = [
     "Dhcp6IntegrityError",
     "Dhcp6MessageType",
     "Dhcp6OptionClientId",
+    "Dhcp6OptionDnsServers",
     "Dhcp6OptionElapsedTime",
+    "Dhcp6OptionOro",
     "Dhcp6OptionRapidCommit",
     "Dhcp6OptionServerId",
+    "Dhcp6OptionStatusCode",
     "Dhcp6OptionType",
     "Dhcp6OptionUnknown",
     "Dhcp6SanityError",
+    "Dhcp6StatusCode",
     "ETHERNET_802_3__HEADER__LEN",
     "ETHERNET_802_3__PACKET__MAX_LEN",
     "ETHERNET_802_3__PAYLOAD__MAX_LEN",

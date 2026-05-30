@@ -32,7 +32,7 @@ ver 3.0.6
 
 from typing import override
 
-from net_proto.lib.proto_enum import ProtoEnumByte
+from net_proto.lib.proto_enum import ProtoEnumByte, ProtoEnumWord
 
 
 class Dhcp6MessageType(ProtoEnumByte):
@@ -87,5 +87,43 @@ class Dhcp6MessageType(ProtoEnumByte):
                 name = "Relay-Forward"
             case Dhcp6MessageType.RELAY_REPL:
                 name = "Relay-Reply"
+
+        return f"{self.value}" if self.is_unknown else name
+
+
+class Dhcp6StatusCode(ProtoEnumWord):
+    """
+    The DHCPv6 Status Code option 'status-code' field values.
+    """
+
+    SUCCESS = 0  # RFC 8415 §21.13: Success.
+    UNSPEC_FAIL = 1  # RFC 8415 §21.13: Failure, reason unspecified.
+    NO_ADDRS_AVAIL = 2  # RFC 8415 §21.13: No addresses available for the IA(s).
+    NO_BINDING = 3  # RFC 8415 §21.13: Client record (binding) unavailable.
+    NOT_ON_LINK = 4  # RFC 8415 §21.13: Prefix not appropriate for the link.
+    USE_MULTICAST = 5  # RFC 8415 §21.13: Client must use the All_DHCP multicast address.
+    NO_PREFIX_AVAIL = 6  # RFC 8415 §21.13: No prefix available for the IA_PD(s).
+
+    @override
+    def __str__(self) -> str:
+        """
+        Get the value as a string.
+        """
+
+        match self:
+            case Dhcp6StatusCode.SUCCESS:
+                name = "Success"
+            case Dhcp6StatusCode.UNSPEC_FAIL:
+                name = "UnspecFail"
+            case Dhcp6StatusCode.NO_ADDRS_AVAIL:
+                name = "NoAddrsAvail"
+            case Dhcp6StatusCode.NO_BINDING:
+                name = "NoBinding"
+            case Dhcp6StatusCode.NOT_ON_LINK:
+                name = "NotOnLink"
+            case Dhcp6StatusCode.USE_MULTICAST:
+                name = "UseMulticast"
+            case Dhcp6StatusCode.NO_PREFIX_AVAIL:
+                name = "NoPrefixAvail"
 
         return f"{self.value}" if self.is_unknown else name
