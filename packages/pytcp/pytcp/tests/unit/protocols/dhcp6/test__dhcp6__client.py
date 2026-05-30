@@ -730,6 +730,183 @@ class TestDhcp6ClientRenewRebind(TestCase):
         self.assertEqual(self._sock.sendto.call_count, 1, msg="An expired RENEW must not retransmit past its deadline.")
 
 
+class TestDhcp6ClientLifecycle(TestCase):
+    """
+    The 'Dhcp6Client' BOUND lease-lifecycle tests — T1 RENEW, T2 REBIND,
+    valid-lifetime expiry, and the Address-API reconciliation each drives.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a mock server + Address API into the client and install a
+        controllable monotonic clock so the T1 / T2 / valid deadlines can
+        be crossed deterministically.
+        """
+
+        self._socket_factory = self.enterContext(
+            patch("pytcp.protocols.dhcp6.dhcp6__client.socket", new=autospec_dhcp6_socket()),
+        )
+        self._sock = self._socket_factory.return_value
+
+        self._random = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.random"))
+        self._random.randint.return_value = _REN_XID
+        self._random.uniform.return_value = 0.0
+
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.log"))
+        self.enterContext(patch("pytcp.runtime.subsystem.log"))
+        self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.SUBSYSTEM_SLEEP_TIME__SEC", 0.0))
+
+        self._clock = {"t": 1000.0}
+        mock_time = self.enterContext(patch("pytcp.protocols.dhcp6.dhcp6__client.time"))
+        mock_time.monotonic.side_effect = lambda: self._clock["t"]
+
+        self._address_api = create_autospec(AddressApi, spec_set=True, instance=True)
+
+        self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
+        self._server.wire(self._sock)
+        self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Restore every sysctl knob mutated by a test to its default.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def _bind_lease(self) -> None:
+        """
+        Install '_LEASE' as the client's current lease and arm its
+        timers at clock t=1000 (T1=2800, T2=3880, valid=8200).
+        """
+
+        self._client._lease = _LEASE
+        self._client._arm_timers(_LEASE)
+
+    def test__dhcp6_client__lifecycle_idle_before_t1(self) -> None:
+        """
+        Ensure a serviced lease whose T1 has not yet been reached emits no
+        maintenance message and does not touch the Address API.
+
+        Reference: RFC 8415 §18.2.4 (RENEW does not begin before T1).
+        """
+
+        self._bind_lease()
+        self._clock["t"] = 2000.0
+
+        self._client._service_lease()
+
+        self.assertEqual(self._server.tx_log, [], msg="No maintenance message must be sent before T1.")
+        self._address_api.replace.assert_not_called()
+
+    def test__dhcp6_client__lifecycle_renew_at_t1(self) -> None:
+        """
+        Ensure crossing T1 sends a RENEW and adopts the refreshed lease
+        with re-armed timers.
+
+        Reference: RFC 8415 §18.2.4 (RENEW begins at T1).
+        """
+
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"),
+            preferred_lifetime=3600,
+            valid_lifetime=7200,
+            t1=1800,
+            t2=2880,
+        )
+        self._bind_lease()
+        self._clock["t"] = 2801.0
+
+        self._client._service_lease()
+
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.RENEW, msg="Crossing T1 must send a RENEW.")
+        assert self._client._lease is not None
+        self.assertEqual(self._client._lease.t1, 1800, msg="The refreshed lease must replace the held one.")
+        self.assertEqual(self._client._t1_deadline, 2801.0 + 1800, msg="The timers must be re-armed from the RENEW.")
+        self._address_api.replace.assert_not_called()
+
+    def test__dhcp6_client__lifecycle_rebind_at_t2(self) -> None:
+        """
+        Ensure crossing T2 sends a REBIND and adopts the refreshed lease.
+
+        Reference: RFC 8415 §18.2.5 (REBIND begins at T2).
+        """
+
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
+        self._bind_lease()
+        self._clock["t"] = 3881.0
+
+        self._client._service_lease()
+
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.REBIND, msg="Crossing T2 must send a REBIND.")
+
+    def test__dhcp6_client__lifecycle_expiry_releases_and_resolicits(self) -> None:
+        """
+        Ensure crossing the valid lifetime removes the leased address and
+        restarts the stateful exchange from SOLICIT.
+
+        Reference: RFC 8415 §18.2.5 (lease expiry discards the address and restarts configuration).
+        """
+
+        self._server.enqueue_advertise()
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::200"))
+        self._bind_lease()
+        self._clock["t"] = 8201.0
+
+        self._client._service_lease()
+
+        self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
+        self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.SOLICIT, msg="Expiry must restart at SOLICIT.")
+        assert self._client._lease is not None
+        self.assertEqual(
+            self._client._lease.address, Ip6Address("2001:db8::200"), msg="A fresh lease must be acquired on expiry."
+        )
+
+    def test__dhcp6_client__lifecycle_renew_address_change_replaces(self) -> None:
+        """
+        Ensure a RENEW that returns a different address swaps it on the
+        interface through the Address API.
+
+        Reference: RFC 8415 §18.2.10.1 (server may return a new address in the IA).
+        """
+
+        self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::200"))
+        self._bind_lease()
+        self._clock["t"] = 2801.0
+
+        self._client._service_lease()
+
+        self._address_api.replace.assert_called_once_with(
+            old_address=Ip6Address("2001:db8::100"),
+            new_ifaddr=Ip6IfAddr("2001:db8::200/128"),
+        )
+
+    def test__dhcp6_client__lifecycle_renew_failure_defers_to_rebind(self) -> None:
+        """
+        Ensure a RENEW that yields no usable lease keeps the current lease
+        and advances T1 to T2 so the next service rebinds rather than
+        re-renewing every tick.
+
+        Reference: RFC 8415 §18.2.4 (RENEW failure escalates to REBIND at T2).
+        """
+
+        self._server.enqueue_lease_reply(
+            address=Ip6Address("2001:db8::100"), omit_ia_address=True, ia_status=Dhcp6StatusCode.NO_ADDRS_AVAIL
+        )
+        self._bind_lease()
+        self._clock["t"] = 2801.0
+
+        self._client._service_lease()
+
+        self.assertEqual(self._client._lease, _LEASE, msg="A failed RENEW must keep the current lease.")
+        self.assertEqual(
+            self._client._t1_deadline, self._client._t2_deadline, msg="A failed RENEW must not re-fire before T2."
+        )
+        self._address_api.replace.assert_not_called()
+
+
 class TestDhcp6ClientLeaseAssignment(TestCase):
     """
     The 'Dhcp6Client.acquire_lease' Address-API assignment tests.

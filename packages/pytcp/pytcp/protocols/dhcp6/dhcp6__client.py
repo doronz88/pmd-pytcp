@@ -35,6 +35,7 @@ pytcp/protocols/dhcp6/dhcp6__client.py
 ver 3.0.6
 """
 
+import math
 import random
 import threading
 import time
@@ -76,6 +77,12 @@ if TYPE_CHECKING:
 
 # RFC 8415 §8 — the transaction-id is a 24-bit field.
 _DHCP6__XID_MAX = 0xFFFFFF
+
+# RFC 8415 §7.5 / §21.6 — a lifetime / timer field of 0xFFFFFFFF means
+# "infinity": the address never expires and the corresponding timer
+# never fires. T1 / T2 = 0 instead means "the server defers the choice
+# to the client" (derived from the preferred lifetime via the factors).
+_DHCP6__LIFETIME_INFINITY = 0xFFFFFFFF
 
 # RFC 8415 carries no prefix length in the IA Address option; the
 # on-link prefix is learned from Router Advertisements, so a leased
@@ -164,15 +171,23 @@ class Dhcp6Client(Subsystem):
         # Trigger state. 'trigger()' (RX thread) sets the pending
         # config-mode flags under '_lock__trigger' and wakes the worker
         # via '_event__trigger'; the worker reads + clears them. The
-        # debounce state ('_lease' / '_other_acquired') is worker-only
-        # so a periodic RA does not re-solicit once the host is
-        # configured (lease renewal is a later phase).
+        # lease + debounce state ('_lease' / '_other_acquired') and the
+        # T1 / T2 / valid deadlines are worker-only — read and written
+        # solely from the '_subsystem_loop' thread (sync-mode callers do
+        # not engage the loop) so they need no lock.
         self._event__trigger = threading.Event()
         self._lock__trigger = threading.Lock()
         self._pending_managed = False
         self._pending_other = False
         self._lease: Dhcp6Lease | None = None
         self._other_acquired = False
+
+        # Monotonic deadlines for the BOUND lease lifecycle, armed by
+        # '_arm_timers' whenever a lease is adopted: RENEW at T1, REBIND
+        # at T2, discard-and-restart at the valid-lifetime expiry.
+        self._t1_deadline = math.inf
+        self._t2_deadline = math.inf
+        self._valid_deadline = math.inf
 
     def trigger(self, *, managed: bool, other: bool) -> None:
         """
@@ -190,17 +205,29 @@ class Dhcp6Client(Subsystem):
     @override
     def _subsystem_loop(self) -> None:
         """
-        Wait for an RA-driven trigger and run the matching exchange.
+        Run one worker iteration: handle a pending RA-driven trigger
+        (acquire a lease / fetch other config), then service the held
+        lease's renewal timers. The trigger wait doubles as the poll
+        interval for the timer servicing, so a bound client wakes at
+        least once per 'SUBSYSTEM_SLEEP_TIME__SEC' to check its
+        deadlines even when no RA arrives.
+        """
+
+        if self._event__trigger.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
+            self._event__trigger.clear()
+            self._handle_trigger()
+        self._service_lease()
+
+    def _handle_trigger(self) -> None:
+        """
+        Run the exchange a pending RA-driven trigger requests.
 
         'managed' takes precedence over 'other' (a Managed RA drives the
         full stateful address lease, which itself fetches other config
         via its Option Request); each is run at most once until the host
-        is configured, so a periodic RA does not re-solicit.
+        is configured, so a periodic RA does not re-solicit. A fresh
+        lease arms the renewal timers.
         """
-
-        if not self._event__trigger.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
-            return
-        self._event__trigger.clear()
 
         with self._lock__trigger:
             managed = self._pending_managed
@@ -212,6 +239,7 @@ class Dhcp6Client(Subsystem):
             lease = self.acquire_lease()
             if lease is not None:
                 self._lease = lease
+                self._arm_timers(lease)
         elif other and not self._other_acquired:
             if self.fetch_other_config() is not None:
                 self._other_acquired = True
@@ -581,6 +609,111 @@ class Dhcp6Client(Subsystem):
             return self._extract_lease(reply, server_duid=server_duid)
         finally:
             client_socket.close()
+
+    # --- BOUND lifecycle (timer servicing) ---
+
+    @staticmethod
+    def _effective_timers(lease: Dhcp6Lease) -> tuple[float, float, float]:
+        """
+        Resolve a lease's (T1, T2, valid-lifetime) into seconds-from-now
+        durations. A server T1 / T2 of 0 means "client's choice" and is
+        derived as a fraction of the preferred lifetime (RFC 8415 §14.2);
+        a field of 0xFFFFFFFF means infinity (the timer never fires).
+        """
+
+        preferred = lease.preferred_lifetime
+        t1_factor = dhcp6__constants.DHCP6__T1_FACTOR
+        t2_factor = dhcp6__constants.DHCP6__T2_FACTOR
+
+        if lease.t1 == 0:
+            t1 = math.inf if preferred == _DHCP6__LIFETIME_INFINITY else t1_factor * preferred
+        else:
+            t1 = math.inf if lease.t1 == _DHCP6__LIFETIME_INFINITY else float(lease.t1)
+
+        if lease.t2 == 0:
+            t2 = math.inf if preferred == _DHCP6__LIFETIME_INFINITY else t2_factor * preferred
+        else:
+            t2 = math.inf if lease.t2 == _DHCP6__LIFETIME_INFINITY else float(lease.t2)
+
+        valid = math.inf if lease.valid_lifetime == _DHCP6__LIFETIME_INFINITY else float(lease.valid_lifetime)
+        return t1, t2, valid
+
+    def _arm_timers(self, lease: Dhcp6Lease) -> None:
+        """
+        Compute and store the monotonic T1 / T2 / valid-lifetime
+        deadlines for 'lease' relative to the current time.
+        """
+
+        now = time.monotonic()
+        t1, t2, valid = self._effective_timers(lease)
+        self._t1_deadline = now + t1
+        self._t2_deadline = now + t2
+        self._valid_deadline = now + valid
+
+    def _service_lease(self) -> None:
+        """
+        Advance the held lease's renewal state machine by one tick:
+        RENEW once T1 is reached, REBIND once T2 is reached, and
+        discard-and-restart once the valid lifetime expires. A no-op
+        when the client holds no lease.
+        """
+
+        lease = self._lease
+        if lease is None:
+            return
+
+        now = time.monotonic()
+        if now >= self._valid_deadline:
+            self._expire_lease(lease)
+        elif now >= self._t2_deadline:
+            refreshed = self._rebind(lease, deadline=self._valid_deadline)
+            if refreshed is not None:
+                self._adopt_refreshed(refreshed, previous=lease)
+            else:
+                # Do not re-rebind every tick — wait for the valid
+                # lifetime to expire and restart from SOLICIT.
+                self._t2_deadline = self._valid_deadline
+        elif now >= self._t1_deadline:
+            refreshed = self._renew(lease, deadline=self._t2_deadline)
+            if refreshed is not None:
+                self._adopt_refreshed(refreshed, previous=lease)
+            else:
+                # Do not re-renew every tick — defer to REBIND at T2.
+                self._t1_deadline = self._t2_deadline
+
+    def _adopt_refreshed(self, refreshed: Dhcp6Lease, *, previous: Dhcp6Lease) -> None:
+        """
+        Adopt a RENEW / REBIND result: reconcile the interface address
+        (a no-op unless the server returned a different one), replace the
+        held lease, and re-arm the renewal timers.
+        """
+
+        if self._address_api is not None and previous.address != refreshed.address:
+            __debug__ and log("dhcp6", f"Lease address changed {previous.address} -> {refreshed.address}; swapping")
+            self._address_api.replace(
+                old_address=previous.address,
+                new_ifaddr=self._lease_ifaddr(refreshed),
+            )
+        self._lease = refreshed
+        self._arm_timers(refreshed)
+
+    def _expire_lease(self, lease: Dhcp6Lease) -> None:
+        """
+        Handle valid-lifetime expiry: remove the leased address from the
+        interface (RFC 8415 §18.2.5 — the client must stop using it) and
+        restart the stateful exchange from SOLICIT, adopting any fresh
+        lease that results.
+        """
+
+        __debug__ and log("dhcp6", f"Lease {lease.address} valid lifetime expired; releasing and re-soliciting")
+        if self._address_api is not None:
+            self._address_api.remove(address=lease.address)
+        self._lease = None
+
+        new_lease = self.acquire_lease()
+        if new_lease is not None:
+            self._lease = new_lease
+            self._arm_timers(new_lease)
 
     @staticmethod
     def _lease_ifaddr(lease: Dhcp6Lease) -> Ip6IfAddr:
