@@ -14,7 +14,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6528. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` and `pytcp/stack/`
+under `packages/pytcp/pytcp/protocols/tcp/` and `packages/pytcp/pytcp/stack/`
 directly; no prior memory or rule-file content was
 reused. Sections that contain no normative content
 (Abstract, Introduction narrative, §2 motivation /
@@ -37,7 +37,7 @@ omitted.
 > pseudorandom function (PRF) of the connection-id."
 
 **Adherence:** met. The implementation lives at
-`pytcp/protocols/tcp/tcp__iss.py:89-131` and computes
+`packages/pytcp/pytcp/protocols/tcp/tcp__iss.py:89-131` and computes
 exactly the §3 expression:
 
 ```python
@@ -58,7 +58,7 @@ RFC's "4 microsecond timer". `M` advances at the
 canonical RFC 6528 cadence, and `F` is keyed by all
 four address/port components plus the secret. The
 function is invoked from
-`pytcp/protocols/tcp/tcp__session.py:621` (active
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:621` (active
 session construction) and `:1900` (session re-init for
 RFC 6191 4-tuple reuse).
 
@@ -69,7 +69,7 @@ RFC 6191 4-tuple reuse).
 > the ISN used for some other connection."
 
 **Adherence:** met. `F` is keyed by `secret`
-(`pytcp/stack/__init__.py:82`), a 16-byte (128-bit)
+(`packages/pytcp/pytcp/stack/__init__.py:82`), a 16-byte (128-bit)
 value generated at module-import time via
 `secrets.token_bytes(16)`. The secret never leaves the
 process and is fresh on every PyTCP startup. Without
@@ -139,7 +139,7 @@ the example list is connected by "whenever ONE OF the
 following events occur" — implementing any one of the
 three triggers satisfies the suggested mechanism. PyTCP
 regenerates the secret on every process bootstrap via
-`secrets.token_bytes(16)` at `pytcp/stack/__init__.py:82`,
+`secrets.token_bytes(16)` at `packages/pytcp/pytcp/stack/__init__.py:82`,
 which is exactly the RFC's first listed example trigger
 ("the system is being bootstrapped"). The mid-process
 "predefined time" and "used sufficiently often" triggers
@@ -222,7 +222,7 @@ attacker".
 ### §3 Core formula
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__iss.py::TestComputeIss`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__iss.py::TestComputeIss`
   contains 12 dedicated tests covering every input
   parameter of `compute_iss`:
   - `test__compute_iss__same_args_same_iss` —
@@ -269,7 +269,7 @@ PRF strength is an axiom of the chosen hash function.
 ### §3 Secret length = 128 bits
 
 - **Indirect:** the secret is constructed at
-  `pytcp/stack/__init__.py:82` via
+  `packages/pytcp/pytcp/stack/__init__.py:82` via
   `secrets.token_bytes(16)`. There is no test that
   asserts `len(TCP__ISS_SECRET) == 16`, but the
   module-level construction makes any deviation
@@ -293,7 +293,7 @@ rather than runtime assertion.
 
 - **Locked in by construction:** the secret is built
   with `secrets.token_bytes(16)` at
-  `pytcp/stack/__init__.py:82`, executed once per
+  `packages/pytcp/pytcp/stack/__init__.py:82`, executed once per
   process at module-import time. Each process bootstrap
   produces a fresh secret, satisfying RFC 6528 §3
   bullet 1 ("the system is being bootstrapped"). No

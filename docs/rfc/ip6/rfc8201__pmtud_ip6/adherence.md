@@ -45,7 +45,7 @@ What still **does not happen**:
 
 **Adherence:** **shipped** (Phases 4 + 6). The
 ICMPv6 RX handler at
-`pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py`
 includes `__phrx_icmp6__packet_too_big` which
 parses the embedded IPv6+L4 4-tuple via the shared
 `parse_embedded_l4` helper, demuxes to UDP via
@@ -91,8 +91,8 @@ follow-up.
 
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
-| §4 ICMPv6 Packet Too Big MTU update for UDP         | shipped — `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` |
-| §4 ICMPv6 Packet Too Big MTU update for TCP         | shipped (substrate) — TCP path goes through the same `TcpSession._apply_pmtu_update` covered by `pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` (the v4 Frag-Needed test exercises the shared callback) |
+| §4 ICMPv6 Packet Too Big MTU update for UDP         | shipped — `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py` |
+| §4 ICMPv6 Packet Too Big MTU update for TCP         | shipped (substrate) — TCP path goes through the same `TcpSession._apply_pmtu_update` covered by `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__pmtu.py` (the v4 Frag-Needed test exercises the shared callback) |
 | §4 1280-byte minimum MTU floor                      | shipped — `TcpSession._apply_pmtu_update` floor logic |
 | §4 PMTU only shrinks                                | shipped — `test__tcp__session__icmp__pmtu.py::test__icmp4__frag_needed__never_grows_snd_mss` |
 | §4 Path MTU Aging                                   | n/a (gap) |

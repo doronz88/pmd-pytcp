@@ -1,0 +1,287 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+This module contains the ICMPv6 ND Neighbor Advertisement message support class.
+
+net_proto/protocols/icmp6/message/nd/icmp6__nd__message__neighbor_advertisement.py
+
+ver 3.0.6
+"""
+
+import struct
+from dataclasses import dataclass, field
+from typing import Self, override
+
+from net_addr import Ip6Address
+from net_proto.lib.buffer import Buffer
+from net_proto.lib.int_checks import is_uint16
+from net_proto.protocols.icmp6.icmp6__errors import (
+    Icmp6IntegrityError,
+    Icmp6SanityError,
+)
+from net_proto.protocols.icmp6.message.icmp6__message import (
+    Icmp6Code,
+    Icmp6Type,
+)
+from net_proto.protocols.icmp6.message.nd.icmp6__nd__message import (
+    Icmp6NdMessage,
+)
+from net_proto.protocols.icmp6.message.nd.option.icmp6__nd__options import (
+    Icmp6NdOptions,
+)
+
+# The ICMPv6 ND Neighbor Advertisement message (136/0) [RFC 4861].
+
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |     Type      |     Code      |          Checksum             |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |R|S|O|                     Reserved                            |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# |                                                               >
+# +                                                               +
+# >                                                               >
+# +                       Target Address                          +
+# >                                                               >
+# +                                                               +
+# >                                                               |
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+# ~                                                               ~
+# ~                          Options                              ~
+# ~                                                               ~
+# +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN = 24
+ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT = "! BBH L 16s"
+
+
+class Icmp6NdNeighborAdvertisementCode(Icmp6Code):
+    """
+    The ICMPv6 ND Neighbor Advertisement 'code' field values.
+    """
+
+    DEFAULT = 0  # RFC 4861 §4.4: only code 0 defined.
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Icmp6NdMessageNeighborAdvertisement(Icmp6NdMessage):
+    """
+    The ICMPv6 ND Neighbor Advertisement message.
+    """
+
+    type: Icmp6Type = field(
+        repr=False,
+        init=False,
+        default=Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT,
+    )
+    code: Icmp6NdNeighborAdvertisementCode = Icmp6NdNeighborAdvertisementCode.DEFAULT
+    cksum: int = 0
+
+    flag_r: bool = False
+    flag_s: bool = False
+    flag_o: bool = False
+    target_address: Ip6Address
+    options: Icmp6NdOptions
+
+    @override
+    def __post_init__(self) -> None:
+        """
+        Ensure integrity of the ICMPv6 ND Neighbor Advertisement message fields.
+        """
+
+        assert isinstance(
+            self.code, Icmp6NdNeighborAdvertisementCode
+        ), f"The 'code' field must be an Icmp6NdNeighborAdvertisementCode. Got: {type(self.code)!r}"
+
+        assert is_uint16(self.cksum), f"The 'cksum' field must be a 16-bit unsigned integer. Got: {self.cksum!r}"
+
+        assert isinstance(self.flag_r, bool), f"The 'flag_r' field must be a boolean. Got: {type(self.flag_r)!r}"
+
+        assert isinstance(self.flag_s, bool), f"The 'flag_s' field must be a boolean. Got: {type(self.flag_s)!r}"
+
+        assert isinstance(self.flag_o, bool), f"The 'flag_o' field must be a boolean. Got: {type(self.flag_o)!r}"
+
+        assert isinstance(
+            self.target_address, Ip6Address
+        ), f"The 'target_address' field must be an Ip6Address. Got: {type(self.target_address)!r}"
+
+        assert isinstance(
+            self.options, Icmp6NdOptions
+        ), f"The 'options' field must be an Icmp6NdOptions. Got: {type(self.options)!r}"
+
+    @override
+    def __len__(self) -> int:
+        """
+        Get the ICMPv6 ND Neighbor Advertisement message length.
+        """
+
+        return ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN + len(self.options)
+
+    @override
+    def __str__(self) -> str:
+        """
+        Get the ICMPv6 ND Neighbor Advertisement message log string.
+        """
+
+        return (
+            "ICMPv6 ND Neighbor Advertisement, flags "
+            f"{'R' if self.flag_r else '-'}"
+            f"{'S' if self.flag_s else '-'}"
+            f"{'O' if self.flag_o else '-'}, "
+            f"target {self.target_address}, "
+            f"{f'opts [{self.options}], ' if self.options else ''}"
+            f"len {len(self)} ({ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN}+"
+            f"{len(self.options)})"
+        )
+
+    @override
+    def __buffer__(self, _: int) -> memoryview:
+        """
+        Get the ICMPv6 ND Neighbor Advertisement message as a memoryview.
+        """
+
+        buffer = self._pack_header(len(self))
+        buffer[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:] = bytearray(self.options)
+
+        return memoryview(buffer)
+
+    @override
+    def _pack_header(
+        self,
+        buffer_len: int = ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
+        /,
+    ) -> bytearray:
+        """
+        Get the ICMPv6 ND Neighbor Advertisement message as bytes.
+        """
+
+        struct.pack_into(
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
+            buffer := bytearray(buffer_len),
+            0,
+            int(self.type),
+            int(self.code),
+            0,
+            (self.flag_r << 31) | (self.flag_s << 30) | (self.flag_o << 29),
+            bytes(self.target_address),
+        )
+
+        return buffer
+
+    @override
+    def validate_sanity(self, *, ip6__hop: int, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> None:
+        """
+        Ensure sanity of the ICMPv6 ND Neighbor Advertisement message after parsing it.
+        """
+
+        # RFC 4861 §4.4 — the Neighbor Advertisement 'Code' field is 0.
+        if self.code.is_unknown:
+            raise Icmp6SanityError(
+                f"The 'code' field of the ICMPv6 ND Neighbor Advertisement message "
+                f"must be one of {Icmp6NdNeighborAdvertisementCode.get_known_values()}. "
+                f"Got: {int(self.code)}."
+            )
+
+        if ip6__hop != 255:
+            raise Icmp6SanityError(
+                f"ND Neighbor Advertisement - [RFC 4861] The 'ip6__hop' field must be 255. Got: {ip6__hop!r}",
+            )
+
+        if not ip6__src.is_unicast:
+            raise Icmp6SanityError(
+                f"ND Neighbor Advertisement - [RFC 4861] The 'ip6__src' address must be unicast. Got: {ip6__src!r}",
+            )
+
+        if self.flag_s is True:
+            if not (ip6__dst.is_unicast or ip6__dst.is_multicast__all_nodes):
+                raise Icmp6SanityError(
+                    "ND Neighbor Advertisement - [RFC 4861] If 'flag_s' flag is set then 'ip6__dst' address "
+                    f"must be either unicast or all-nodes multicast. Got: {ip6__dst!r}",
+                )
+
+        if self.flag_s is False:
+            if not ip6__dst.is_multicast__all_nodes:
+                raise Icmp6SanityError(
+                    "ND Neighbor Advertisement - [RFC 4861] If 'flag_s' flag is not set then 'ip6__dst' address "
+                    f"must be all-nodes multicast address. Got: {ip6__dst!r}",
+                )
+
+        # RFC 4861 §7.1.2: the only receiver-side option-presence MUST is
+        # that every included option has length > 0, enforced in
+        # 'Icmp6NdOptions.validate_integrity'. Options not specified for
+        # Neighbor Advertisement "MUST be ignored and the packet processed
+        # as normal", so no further presence check is added here.
+
+    @override
+    @staticmethod
+    def validate_integrity(*, frame: Buffer, ip6__dlen: int) -> None:
+        """
+        Ensure integrity of the ICMPv6 ND Neighbor Advertisement message before parsing it.
+        """
+
+        if not (ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)):
+            raise Icmp6IntegrityError(
+                "The condition 'ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN <= ip6__dlen <= len(frame)' must be met. "
+                f"Got: {ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN=}, {ip6__dlen=}, {len(frame)=}"
+            )
+
+        Icmp6NdOptions.validate_integrity(
+            frame=frame,
+            offset=ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN,
+        )
+
+    @override
+    @classmethod
+    def from_buffer(cls, buffer: Buffer, /) -> Self:
+        """
+        Initialize the ICMPv6 ND Neighbor Advertisement message from buffer.
+        """
+
+        type_, code, cksum, flags, target_address = struct.unpack(
+            ICMP6__ND__NEIGHBOR_ADVERTISEMENT__STRUCT,
+            buffer[:ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN],
+        )
+
+        assert (received_type := Icmp6Type.from_int(type_)) == (
+            valid_type := Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT
+        ), f"The 'type' field must be {valid_type!r}. Got: {received_type!r}"
+
+        return cls(
+            code=Icmp6NdNeighborAdvertisementCode.from_int(code),
+            cksum=cksum,
+            flag_r=bool(flags & 0b10000000_00000000_00000000_00000000),
+            flag_s=bool(flags & 0b01000000_00000000_00000000_00000000),
+            flag_o=bool(flags & 0b00100000_00000000_00000000_00000000),
+            target_address=Ip6Address(target_address),
+            options=Icmp6NdOptions.from_buffer(buffer[ICMP6__ND__NEIGHBOR_ADVERTISEMENT__LEN:]),
+        )
+
+    @override
+    def assemble(self, buffers: list[Buffer], /) -> None:
+        """
+        Assemble the ICMPv6 ND Neighbor Advertisement message into the buffer list.
+        """
+
+        buffers.append(self._pack_header())
+        buffers.append(bytearray(self.options))

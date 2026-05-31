@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 5961. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction
 narrative, §1.1–§1.3 attack description / probability,
@@ -47,7 +47,7 @@ References) are omitted.
 
 **Adherence:** met. The
 `_check_rst_acceptability` helper at
-`pytcp/protocols/tcp/tcp__session.py:1823-1864`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1823-1864`
 implements the three-case algorithm exactly:
 
 ```python
@@ -92,15 +92,15 @@ PyTCP's behaviour is conservative.
 Every FSM handler in synchronized state checks for
 the SYN flag and emits a challenge ACK:
 
-- `pytcp/protocols/tcp/tcp__fsm__established.py:83-94`
-- `pytcp/protocols/tcp/tcp__fsm__fin_wait_1.py:68-73`
-- `pytcp/protocols/tcp/tcp__fsm__fin_wait_2.py:62-64`
-- `pytcp/protocols/tcp/tcp__fsm__close_wait.py:70-72`
-- `pytcp/protocols/tcp/tcp__fsm__closing.py:62-64`
-- `pytcp/protocols/tcp/tcp__fsm__last_ack.py:66-68`
-- `pytcp/protocols/tcp/tcp__fsm__time_wait.py:161-167`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py:83-94`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__fin_wait_1.py:68-73`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__fin_wait_2.py:62-64`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__close_wait.py:70-72`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__closing.py:62-64`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__last_ack.py:66-68`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__time_wait.py:161-167`
   (covered also by RFC 1337 audit)
-- `pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:66`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_rcvd.py:66`
 
 Each handler invokes `session._emit_challenge_ack()`
 and returns without further processing of the
@@ -121,7 +121,7 @@ segment. The challenge-ACK content is
 
 **Adherence:** met. PyTCP implements the full §5
 ACK acceptability check at
-`pytcp/protocols/tcp/tcp__fsm__established.py:271-284`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__established.py:271-284`:
 
 ```python
 ack_lower_bound = sub32(session._snd_una, session._max_window)
@@ -131,7 +131,7 @@ if lt32(packet_rx_md.tcp__ack, ack_lower_bound):
 ```
 
 with `_max_window` tracked at
-`pytcp/protocols/tcp/tcp__session.py:685` (initial
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:685` (initial
 value `_snd_mss`) and updated at
 `tcp__session.py:3515-3516`:
 
@@ -166,7 +166,7 @@ implements it anyway.
 > mechanism to be conservative."
 
 **Adherence:** met. The `_emit_challenge_ack` helper
-at `pytcp/protocols/tcp/tcp__session.py:1989-2017`
+at `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1989-2017`
 implements per-session sliding-window throttling:
 
 ```python
@@ -178,7 +178,7 @@ stack.timer.register_timer(name=rate_limit_timer, timeout=tcp__constants.CHALLEN
 ```
 
 with `CHALLENGE_ACK_RATE_LIMIT_MS = 1000`
-(`pytcp/protocols/tcp/tcp__constants.py:52`) — at
+(`packages/pytcp/pytcp/protocols/tcp/tcp__constants.py:52`) — at
 most one challenge ACK per second per session. This
 is more conservative than RFC 5961 §7's example of
 "10 challenge ACKs in any 5 second window"; the §7
@@ -198,7 +198,7 @@ combined into a single boolean predicate).
 ### §3.2 RST mitigation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__close__rst.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__close__rst.py`
   contains comprehensive tests covering the three-case
   algorithm:
   - `test__close_rst__rst_at_rcv_nxt_resets_connection` —
@@ -216,7 +216,7 @@ combined into a single boolean predicate).
 ### §4.2 SYN mitigation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__robustness__blind_attacks.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__robustness__blind_attacks.py`
   pins the SYN-in-synchronized challenge-ACK across
   every synchronized state:
   - `test__robustness__syn_in_established_must_elicit_challenge_ack`

@@ -1,5 +1,19 @@
 # ARP → Linux-host Parity Audit & Punch List
 
+> **Reconciled 2026-05-30:** the in-RX ARP conflict-detection
+> model described below (`PacketHandler._handle_arp_conflict`,
+> `_abandon_ipv4_address`, the RX probe-conflict machinery in
+> `__phrx_arp__request`) was REMOVED in the sd-ipv4acd userspace
+> migration. IPv4 ACD now runs entirely in userspace over
+> per-address `Ip4Acd` AF_PACKET sockets
+> (`protocols/ip4/acd/ip4_acd.py`:
+> `probe`/`announce`/`claim`/`start_defense`/`poll_conflict`/`defend`/`release`);
+> ARP RX (`packet_handler__arp__rx.py`) does NO conflict
+> detection — it only answers Requests for owned IPs, learns the
+> cache, and notes gratuitous ARPs. See `raw_link_socket.md` §10
+> and `rfc3927_link_local_autoconfig.md`. The §1/§2/§13 in-RX
+> designs below are archaeology.
+
 This document captures the ARP-related work needed to bring
 PyTCP's host-stack ARP behaviour to default-Linux parity. It
 records what shipped, what's still open, and the implementation
@@ -37,7 +51,7 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 | 17 | `arp.announce` (0/1/2), `arp.filter` (0/1), `arp.ignore` mode 8 | (this commit) | Linux parity |
 | — | Six RFC adherence audits (826/1027/1122/3927/5227/5494) | `03c0b678` | — |
 | — | `ArpTestCase` harness + smoke / DAD / DEFEND_INTERVAL / resolution-flow integration tests | various | — |
-| — | Code relocated from `pytcp/stack/` → `pytcp/protocols/arp/` | `e29e6b1e` | — |
+| — | Code relocated from `packages/pytcp/pytcp/stack/` → `packages/pytcp/pytcp/protocols/arp/` | `e29e6b1e` | — |
 | — | `test__arp__cache.py` import fixups (follow-up to relocation) | `24eaa44d` | — |
 | — | `_ArpRxTestBase.setUp` `create=True` fix (unblock unit tests) | `f8cf5136` | — |
 
@@ -50,6 +64,12 @@ router-grade work. Items below are marked Tier 1 (blocker), Tier 2
 ---
 
 ## §1 — Tier 2 #8: simultaneous-probe detection (RFC 5227 §2.1.1)
+
+> **SHIPPED (commit `3f051584`; reconciled 2026-05-25).** This section
+> is delivered — the §0 status table records it. Simultaneous-probe
+> detection (a peer's ARP Probe with SPA = 0 and TPA = our candidate)
+> is detected during the ACD probe window and treated as a conflict.
+> The prose below is the original gap analysis, kept as archaeology.
 
 ### What's missing
 
@@ -69,12 +89,12 @@ at the same time as us. The peer's frame has:
 
 PyTCP's existing probe-conflict detection branches at
 `packet_handler__arp__rx.py:202,292,320` only fire when
-`arp.spa in self._ip4_host_candidate` — that condition is FALSE
+`arp.spa in self._ip4_ifaddr_candidate` — that condition is FALSE
 when SPA = 0. So the simultaneous-probe case is silently missed.
 
 ### Where to add the branch
 
-`pytcp/runtime/packet_handler/packet_handler__arp__rx.py` —
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py` —
 inside `__phrx_arp__request`, after the existing loop-drop and
 conflict-defend checks but before the gratuitous-Request
 branch. Pseudocode:
@@ -84,7 +104,7 @@ branch. Pseudocode:
 # (their SPA = 0, TPA = our candidate, SHA != our MAC).
 if (
     packet_rx.arp.spa.is_unspecified
-    and packet_rx.arp.tpa in {c.address for c in self._ip4_host_candidate}
+    and packet_rx.arp.tpa in {c.address for c in self._ip4_ifaddr_candidate}
     and packet_rx.arp.sha != self._mac_unicast
 ):
     self._packet_stats_rx.arp__op_request__simultaneous_probe += 1
@@ -101,13 +121,13 @@ if (
 ### Stats counter
 
 Add `arp__op_request__simultaneous_probe: int = 0` to
-`pytcp/lib/packet_stats.py::PacketStatsRx`. Field count goes
+`packages/pytcp/pytcp/lib/packet_stats.py::PacketStatsRx`. Field count goes
 from current N → N+1.
 
 ### Tests-first
 
 **Unit** — extend
-`pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest`
+`packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest`
 with `test__stack__packet_handler__arp__rx__simultaneous_probe_conflict`:
 
 ```python
@@ -141,7 +161,7 @@ def test__stack__packet_handler__arp__rx__simultaneous_probe_conflict(self):
 ```
 
 **Integration** — extend
-`pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad`
+`packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad`
 with `test__arp__dad__simultaneous_probe_aborts_claim`. Inject
 the simultaneous-probe at idx 1 (during the first inter-probe
 sleep) using the existing `_drive_dad(on_sleep=...)` harness.
@@ -166,7 +186,7 @@ last-conflict timestamps; a second conflict within
 `DEFEND_INTERVAL` of the previous triggers
 `_abandon_ipv4_address` which (a) ABORTs every TcpSession
 bound to the address (`RFC 5227 §2.4-final` SHOULD), (b)
-removes the address from `_ip4_host`, and (c) increments the
+removes the address from `_ip4_ifaddr`, and (c) increments the
 new `arp__conflict__abandon` PacketStatsRx counter.
 
 Adherence reference: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`
@@ -233,7 +253,7 @@ Summary for the punch list:
 - **#11 NUD FSM** — six states (`INCOMPLETE` / `REACHABLE` /
   `STALE` / `DELAY` / `PROBE` / `FAILED`) per RFC 4861 §7.3.2,
   shared between ARP (IPv4) and ND (IPv6). The generic
-  `NeighborCache[A]` lives at `pytcp/lib/neighbor.py`
+  `NeighborCache[A]` lives at `packages/pytcp/pytcp/lib/neighbor.py`
   (Linux's `net/core/neighbour.c` factoring); per-protocol
   adapters supply the wire-level solicit hook. NUD timing
   constants register through the sysctl framework
@@ -314,7 +334,7 @@ Tiny (~5 lines + 1 test). Standalone — doesn't require #11.
 
 Today the ARP cache timeouts (`ARP__CACHE__ENTRY_MAX_AGE`,
 `ARP__CACHE__ENTRY_REFRESH_TIME`) are compile-time constants in
-`pytcp/protocols/arp/arp__constants.py`.
+`packages/pytcp/pytcp/protocols/arp/arp__constants.py`.
 
 ### Possible approaches
 
@@ -347,12 +367,12 @@ Default Linux exposes:
   source-routing-filter check); the knob exists for parity
   and forward-compat with the eventual multi-interface work.
 
-All four sysctls live in `pytcp/protocols/arp/arp__constants.py`
+All four sysctls live in `packages/pytcp/pytcp/protocols/arp/arp__constants.py`
 under the `arp.*` registry namespace and are operator-tunable
 at boot via `stack.init(sysctls={...})` or at runtime via
 `pytcp.stack.sysctl["arp.<knob>"] = N`. The runtime branches
 that consume each knob are in
-`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`.
 
 ### Effort
 
@@ -383,16 +403,16 @@ classification.
 ## §12 — Key file inventory
 
 ```
-pytcp/protocols/arp/
+packages/pytcp/pytcp/protocols/arp/
 ├── arp__cache.py        # ArpCache subsystem; CacheEntry, _PendingResolution
 └── arp__constants.py    # ARP__CACHE/DEFEND/REQUEST/PROBE/ANNOUNCE constants
 
-pytcp/runtime/packet_handler/
+packages/pytcp/pytcp/runtime/packet_handler/
 ├── __init__.py                          # PacketHandlerL2._create_stack_ip4_addressing (DAD flow)
 ├── packet_handler__arp__rx.py           # __phrx_arp__request, __phrx_arp__reply, _maybe_send_arp_defense
 └── packet_handler__arp__tx.py           # _phtx_arp + helpers (_send_arp_probe, _send_arp_announcement, etc.)
 
-net_proto/protocols/arp/
+packages/net_proto/net_proto/protocols/arp/
 ├── arp__assembler.py
 ├── arp__base.py
 ├── arp__enums.py        # ArpHardwareType, ArpOperation
@@ -400,9 +420,9 @@ net_proto/protocols/arp/
 ├── arp__header.py       # ArpHeader dataclass
 └── arp__parser.py
 
-pytcp/tests/lib/arp_testcase.py          # ArpTestCase harness
+packages/pytcp/pytcp/tests/lib/arp_testcase.py          # ArpTestCase harness
 
-pytcp/tests/integration/protocols/arp/
+packages/pytcp/pytcp/tests/integration/protocols/arp/
 ├── test__arp__dad.py                    # DAD-flow integration
 ├── test__arp__defend_interval.py        # Conflict-defense rate-limit
 ├── test__arp__harness_smoke.py          # ArpTestCase smoke tests
@@ -410,11 +430,11 @@ pytcp/tests/integration/protocols/arp/
 ├── test__arp__rx.py                     # Migrated RX wire-format matrix
 └── test__arp__tx.py                     # Migrated TX wire-format matrix
 
-pytcp/tests/unit/protocols/arp/
+packages/pytcp/pytcp/tests/unit/protocols/arp/
 ├── test__arp__cache.py                  # ArpCache unit tests (rate-limit, queue, aging)
 └── test__arp__constants.py              # Constants pinned to RFC values
 
-pytcp/tests/unit/stack/packet_handler/
+packages/pytcp/pytcp/tests/unit/stack/packet_handler/
 ├── test__stack__packet_handler__arp__rx.py
 └── test__stack__packet_handler__arp__tx.py
 
@@ -427,7 +447,7 @@ docs/rfc/arp/
 └── rfc5494__arp_iana/                   # IANA registry audit
 ```
 
-### Constants currently in `pytcp/protocols/arp/arp__constants.py`
+### Constants currently in `packages/pytcp/pytcp/protocols/arp/arp__constants.py`
 
 | Constant | Value | RFC clause |
 |---|---|---|
@@ -502,7 +522,7 @@ before any code:
   7. docs/refactor/nud_state_machine.md — IF the next item
      is the NUD work (#11/#12/#13/#9). The dedicated doc
      has its own §12 resume prompt.
-  8. The current state of pytcp/protocols/arp/ + the
+  8. The current state of packages/pytcp/pytcp/protocols/arp/ + the
      packet_handler__arp__{rx,tx}.py files — these are the
      ARP runtime today.
 
@@ -532,11 +552,11 @@ After reading, confirm you understand:
 Suggested resume order:
 
   1. NUD Phase 1 — generic 'NeighborCache[A]' module at
-     'pytcp/lib/neighbor.py' + unit tests. ~80–120k tokens
+     'packages/pytcp/pytcp/lib/neighbor.py' + unit tests. ~80–120k tokens
      of work; one session.
   2. NUD Phase 2 — ArpCache adapter on top of NeighborCache.
   3. NUD Phase 3 — NdCache adapter + ND cache relocation
-     ('pytcp/stack/nd_cache.py' → 'pytcp/protocols/icmp6/
+     ('packages/pytcp/pytcp/stack/nd_cache.py' → 'packages/pytcp/pytcp/protocols/icmp6/
      nd__cache.py').
   4. NUD Phase 4 — reachability hook from TCP (#12).
   5. NUD Phase 5 — bounded cache + GC (#13).

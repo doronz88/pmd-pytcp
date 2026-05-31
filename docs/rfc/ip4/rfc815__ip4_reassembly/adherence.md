@@ -21,7 +21,7 @@ implementation diverges from the specific 8-step hole-descriptor
 algorithm.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `pytcp/protocols/ip/ip_frag.py`, `ip_frag_table.py`,
+inspecting `packages/pytcp/pytcp/protocols/ip/ip_frag.py`, `ip_frag_table.py`,
 and the RX-side hook in `packet_handler__ip4__rx.py` directly;
 no prior memory or rule-file content was reused.
 
@@ -73,7 +73,7 @@ upstream — but through a different state representation:
 - Instead of an explicit "hole descriptor list", PyTCP stores
   the **arrived fragments** keyed by offset
   (`IpFragData.payload: dict[int, Buffer]` at
-  `pytcp/protocols/ip/ip_frag.py`).
+  `packages/pytcp/pytcp/protocols/ip/ip_frag.py`).
 - Completion is tested by walking the sorted offsets and
   verifying a contiguous chain from 0 covers every byte up to
   the last fragment's end
@@ -226,7 +226,7 @@ self._flows = {
 ```
 
 The timeout is configured via the `IP4__FRAG_FLOW_TIMEOUT = 5`
-constant in `pytcp/stack/__init__.py:155` (5 seconds, matching
+constant in `packages/pytcp/pytcp/stack/__init__.py:155` (5 seconds, matching
 Linux `net.ipv4.ipfrag_time = 30` order-of-magnitude — PyTCP's
 shorter value reduces memory pressure under fragment floods).
 The lazy-sweep model matches Linux's `inet_frag_evictor`
@@ -274,7 +274,7 @@ cross-references back here.
 ### §2 / §3 Reassembly happy path
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   contains a fragmentation receive matrix: two-fragment, three-
   fragment, out-of-order arrival, last-fragment-first arrival,
   full-coverage no-overlap.
@@ -284,7 +284,7 @@ cross-references back here.
 ### §6 Options preserved on reassembly
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc791OptionPreservedOnReassembly`
   Two-fragment reassembly with first fragment carrying
   [Router Alert + RR + NOP] and second carrying only the
   copy_flag=1 subset → reassembled packet preserves the
@@ -298,7 +298,7 @@ cross-references back here.
 ### §7 Flow keying by (src, dst, proto, id)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
   asserts that fragments with different tuple values populate
   different flow entries.
 
@@ -307,7 +307,7 @@ cross-references back here.
 ### §7 Timer-based reaper
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
   backdates a flow's timestamp via the `flows` live-view
   accessor and verifies the next admission sweeps it out.
 
@@ -316,11 +316,11 @@ cross-references back here.
 ### RFC 5722 — overlap rejection
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
   Overlap matrix: exact-duplicate-offset, partial-overlap on
   either edge, full-containment.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Verifies the `ip4__frag__overlap__drop` counter increments.
 
 **Status:** locked in.
@@ -328,7 +328,7 @@ cross-references back here.
 ### Atomic-fragment fast-path (RFC 791 / RFC 6864)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
   asserts that an `offset=0, flag_mf=False` admission returns
   `COMPLETE` without flow-store mutation.
 
@@ -337,7 +337,7 @@ cross-references back here.
 ### Discarded-flow drop-through (RFC 5722 §3 subsequent fragments)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip_frag_table.py`
   Two-step: trigger overlap, then admit another non-overlapping
   fragment for the same flow → outcome must be `DISCARDED`.
 

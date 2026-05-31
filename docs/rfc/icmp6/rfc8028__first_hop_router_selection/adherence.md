@@ -28,7 +28,7 @@ with first-hop router selection — when the host picks
 source `A::1`, it must route through `R_A`; when it picks
 `B::1`, route through `R_B`.
 
-PyTCP holds a single default gateway per `Ip6Host`,
+PyTCP holds a single default gateway per `Ip6IfAddr`,
 not a per-source-address gateway map. RFC 8028 requires
 per-prefix gateway state plus a Rule 5.5 update to RFC
 6724 source selection. Both pre-requisites are deferred.

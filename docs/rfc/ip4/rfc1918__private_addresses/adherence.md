@@ -17,7 +17,7 @@ no host-stack wire-format normative content. PyTCP's only
 RFC 1918 surface is the `Ip4Address.is_private` predicate.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py` directly. Non-normative
+inspecting `packages/net_addr/net_addr/ip4_address.py` directly. Non-normative
 content (§1 Introduction, §2 Motivation, §4 Advantages, §5
 Operational, §6/§7/§8/§9/§10) is omitted.
 
@@ -51,7 +51,7 @@ guidance is out of scope for a stack-level audit.
 > 192.168.0.0 - 192.168.255.255 (192.168/16 prefix)"
 
 **Adherence:** met. `Ip4Address.is_private` predicate at
-`net_addr/ip4_address.py:173-185`:
+`packages/net_addr/net_addr/ip4_address.py:173-185`:
 
 ```python
 @property
@@ -95,7 +95,7 @@ concern.
 ### Ip4Address.is_private predicate
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Parametric matrix covering at least one address inside each
   of the three blocks plus boundary addresses just outside
   each (e.g., 11.0.0.0, 172.32.0.0, 192.169.0.0) to verify

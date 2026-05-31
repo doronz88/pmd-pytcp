@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6675. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction
 narrative, §2 Definitions boilerplate, §6 Managing the
@@ -31,10 +31,10 @@ log, References) are omitted.
 > structure is commonly called the 'scoreboard'."
 
 **Adherence:** met. The scoreboard is implemented at
-`pytcp/protocols/tcp/tcp__sack.py` as the
+`packages/pytcp/pytcp/protocols/tcp/tcp__sack.py` as the
 `SackScoreboard` class, with per-session instances
 on `TcpSession._sack_scoreboard`
-(`pytcp/protocols/tcp/tcp__session.py:267`). The
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:267`). The
 scoreboard supports `add_block(left, right)`,
 `prune_below(snd_una)`, `is_sacked(seq)`,
 `first_gap(seq)`, `blocks()`, and
@@ -48,7 +48,7 @@ scoreboard supports `add_block(left, right)`,
 
 **Adherence:** met. PyTCP's scoreboard stores ranges,
 not per-octet flags. The 49+ unit tests in
-`pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
+`packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
 cover range-merge, range-prune, range-overlap, and
 modular-wrap correctness.
 
@@ -66,7 +66,7 @@ modular-wrap correctness.
 
 **Adherence:** met. The session's
 `_ingest_sack_info` path
-(`pytcp/protocols/tcp/tcp__session.py:2194-2202`)
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2194-2202`)
 calls `self._sack_scoreboard.add_block(left, right)`
 for each SACK block in the inbound ACK, then computes
 the delta of `total_sacked_bytes()` for the PRR
@@ -91,7 +91,7 @@ cause buffer drops.
 > SACKed."
 
 **Adherence:** met. The `is_lost` function at
-`pytcp/protocols/tcp/tcp__loss_recovery.py:45-93`
+`packages/pytcp/pytcp/protocols/tcp/tcp__loss_recovery.py:45-93`
 implements both conditions exactly:
 
 ```python
@@ -123,7 +123,7 @@ independently; either trigger is sufficient.
 > mechanism."
 
 **Adherence:** met (via PRR-superset). The `pipe` function at
-`pytcp/protocols/tcp/tcp__loss_recovery.py:124-157`
+`packages/pytcp/pytcp/protocols/tcp/tcp__loss_recovery.py:124-157`
 implements a simplified pipe estimator:
 
 ```python
@@ -171,7 +171,7 @@ regardless of pipe accuracy).
 > be returned."
 
 **Adherence:** met. The `next_seg` function at
-`pytcp/protocols/tcp/tcp__loss_recovery.py:96-121`
+`packages/pytcp/pytcp/protocols/tcp/tcp__loss_recovery.py:96-121`
 implements rule (1) exactly — finds the first gap
 above SND.UNA and returns it iff `is_lost` confirms
 loss:
@@ -228,7 +228,7 @@ retransmit is a SHOULD addressing end-of-window stall;
 RFC 8985 RACK-TLP's tail-loss-probe addresses the
 identical scenario with stronger semantics (time-
 based detection regardless of dup-ACK count). The
-TLP probe at `pytcp/protocols/tcp/tcp__rack.py`
+TLP probe at `packages/pytcp/pytcp/protocols/tcp/tcp__rack.py`
 provides equivalent end-of-window recovery.
 
 ### NextSeg() rule (5)
@@ -258,7 +258,7 @@ fallback is "transmit nothing", which matches rule
 explicitly; instead it tracks per-`ack` dup-ACK
 counters
 (`_tx_retransmit_request_counter[ack]` at
-`pytcp/protocols/tcp/tcp__session.py:2782`). When the
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2782`). When the
 cum-ACK advances, the entries below the new SND.UNA
 are pruned (line 3540 area). The effect is
 equivalent to "DupAcks reset on cum-ACK".
@@ -268,7 +268,7 @@ equivalent to "DupAcks reset on cum-ACK".
 > "If DupAcks >= DupThresh, go to step (4)."
 
 **Adherence:** met. The fast-retransmit count trigger
-at `pytcp/protocols/tcp/tcp__session.py:2782-2784`:
+at `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2782-2784`:
 
 ```python
 count_trigger = self._tx_retransmit_request_counter[packet_rx_md.tcp__ack] == 3
@@ -283,7 +283,7 @@ default).
 > returns true... go to step (4)."
 
 **Adherence:** met. The SACK byte-rule trigger at
-`pytcp/protocols/tcp/tcp__session.py:2785-2788`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2785-2788`:
 
 ```python
 sack_trigger = self._send_sack and is_lost(
@@ -328,7 +328,7 @@ SMSS` budget. This is a partial deviation from RFC
 **Adherence:** met for steps (4.1) and (4.2):
 
 - (4.1): `_recovery_point = SND.MAX` at
-  `pytcp/protocols/tcp/tcp__session.py:2852` (or
+  `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2852` (or
   2880-area).
 - (4.2): `_ssthresh = compute_loss_event_ssthresh(...)`
   and `_cwnd = flight_size` (RFC 6937 PRR-style)
@@ -352,7 +352,7 @@ inside the PRR formula. Step (4.5) is the broader
 > terminated."
 
 **Adherence:** met. The recovery-exit branch at
-`pytcp/protocols/tcp/tcp__session.py:3382-3390`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3382-3390`:
 
 ```python
 if self._recovery_point != 0 and le32(self._recovery_point, self._snd_una):
@@ -447,7 +447,7 @@ RFC 6675 §5.1 and is the modern interpretation.
 ### §3 Scoreboard data structure
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__sack.py`
   (49+ tests) covers `SackScoreboard.add_block`,
   `prune_below`, `is_sacked`, `first_gap`,
   `blocks()`, `total_sacked_bytes` across the
@@ -458,7 +458,7 @@ RFC 6675 §5.1 and is the modern interpretation.
 ### §4 IsLost
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/tcp/test__tcp__loss_recovery.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__loss_recovery.py`
   contains ~6 tests for `is_lost` covering the count
   rule, the byte rule, below-threshold, at-threshold,
   and the empty-scoreboard fallthrough.
@@ -492,7 +492,7 @@ are either implemented via different mechanisms
 ### §5 Step 1 / 2 fast-retransmit triggers
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::three_dup_sacks_above_gap_trigger_fast_retransmit`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__sack.py::three_dup_sacks_above_gap_trigger_fast_retransmit`
   pins the count-rule trigger.
 - **Integration:**
   `test__tcp__session__sack.py::byte_rule_triggers_fast_retransmit_on_first_dup_sack`

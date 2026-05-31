@@ -25,8 +25,8 @@ annotation style, signature shape, generic syntax, or where
 - **Target.** Python 3.14+. Every typing feature from
   PEP 484 through PEP 750 is unconditionally available;
   there is no fallback for older interpreters.
-- **Coverage.** Every PyTCP source file under `net_addr/`,
-  `net_proto/`, `pytcp/` (excluding generated and vendored
+- **Coverage.** Every PyTCP source file under `packages/net_addr/net_addr/`,
+  `packages/net_proto/net_proto/`, `packages/pytcp/pytcp/` (excluding generated and vendored
   code, of which PyTCP has none today) MUST be fully typed.
   Test files under `*/tests/` MUST also pass mypy strict.
 - **Authority over runtime cost.** Type annotations are
@@ -234,7 +234,7 @@ class PacketHandlerIp6Tx(ABC):
     if TYPE_CHECKING:
         _interface_layer: InterfaceLayer
         _packet_stats_tx: PacketStatsTx
-        _ip6_host: list[Ip6Host]
+        _ip6_ifaddr: list[Ip6IfAddr]
         _ip6_multicast: list[Ip6Address]
         _ip6_support: bool
         _interface_mtu: int
@@ -501,7 +501,7 @@ class Ip6Header(ProtoStruct):
         fields = struct.unpack(IP6__HEADER__STRUCT, buffer)
         return cls(**dict(zip(_FIELD_NAMES, fields)))
 
-class Ip6Host:
+class Ip6IfAddr:
     def with_gateway(self, gateway: Ip6Address) -> Self:
         return type(self)(self._network, self._address, gateway=gateway)
 ```
@@ -863,19 +863,19 @@ narrow from, declare its return type as `TypeGuard[T]`
 from typing import TypeGuard, TypeIs
 
 # TypeGuard — narrows the positive branch only
-def is_ipv4_host(host: object) -> TypeGuard[Ip4Host]:
-    return isinstance(host, Ip4Host)
+def is_ipv4_host(host: object) -> TypeGuard[Ip4IfAddr]:
+    return isinstance(host, Ip4IfAddr)
 
 # TypeIs — narrows BOTH branches (3.13+ preferred)
-def is_ipv4_host_v2(host: object) -> TypeIs[Ip4Host]:
-    return isinstance(host, Ip4Host)
+def is_ipv4_host_v2(host: object) -> TypeIs[Ip4IfAddr]:
+    return isinstance(host, Ip4IfAddr)
 
-def process(host: Ip4Host | Ip6Host) -> None:
+def process(host: Ip4IfAddr | Ip6IfAddr) -> None:
     if is_ipv4_host_v2(host):
-        # mypy: host is Ip4Host
+        # mypy: host is Ip4IfAddr
         ...
     else:
-        # mypy: host is Ip6Host (TypeIs narrows the else branch too)
+        # mypy: host is Ip6IfAddr (TypeIs narrows the else branch too)
         ...
 ```
 
@@ -1057,7 +1057,7 @@ file an issue and reference it in the ignore comment.
 `bytes`, `bytearray`, or `memoryview`:
 
 ```python
-# Defined in net_proto/lib/buffer.py
+# Defined in packages/net_proto/net_proto/lib/buffer.py
 type Buffer = bytes | bytearray | memoryview
 ```
 
@@ -1150,6 +1150,66 @@ class ArpHeader(ProtoStruct):
 mypy infers correct types for the generated `__init__` /
 `__repr__` from the field annotations.
 
+### 22.5 `NoReturn` for non-returning functions
+
+A function that **never returns normally** — it always
+raises, `sys.exit()`s, or loops forever — is annotated
+`-> NoReturn` (`typing.NoReturn`, PEP 484). The annotation is
+load-bearing, not decorative: mypy strict verifies the body
+has no reachable normal exit (a `-> NoReturn` function with
+an implicit `return None` path is a type error), and the
+caller's flow analysis treats every statement after the call
+as unreachable.
+
+The canonical use is a small helper that centralises an
+error-raising tail so the surrounding code stays honest about
+control flow. `packages/net_addr/net_addr/click_types.py` is the reference: a
+`_fail(...) -> NoReturn` wrapper calls `ParamType.fail()`
+(itself typed `-> NoReturn` by Click) and ends in
+`raise AssertionError("unreachable: ...")`, which makes the
+no-return contract provable to **every** linter — so the
+`convert()` methods need no trailing `return None` and the
+file carries no blanket `# pylint: disable=
+inconsistent-return-statements`:
+
+```python
+from typing import NoReturn
+
+def _fail[T](
+    param_type: ParamType[T],
+    /,
+    *,
+    message: str,
+    param: Parameter | None,
+    ctx: Context | None,
+) -> NoReturn:
+    param_type.fail(message=message, param=param, ctx=ctx)
+    raise AssertionError("unreachable: ParamType.fail() does not return")
+```
+
+The trailing `raise` after a call that is *already*
+`NoReturn` is intentional: it is the idiom that makes the
+contract provable to flow analysers (notably pylint) that do
+not propagate a third-party `NoReturn`, and mypy strict
+still accepts the unreachable `raise`.
+
+**`NoReturn` vs `Never`.** `typing.Never` (PEP 484, the
+3.11 spelling of the bottom type) is *identical* to
+`NoReturn` to the type checker — they are interchangeable.
+PyTCP fixes the convention to remove the choice:
+
+- **`NoReturn`** — the **return annotation of a function
+  that never returns** (`_fail`, an `_abort` helper, a
+  `_raise_*` tail). Reads "calling this does not come back."
+- **`Never`** — every **other** bottom-type position: an
+  `assert_never(x)` exhaustiveness guard, a parameter that
+  can never receive a value, an explicitly-empty type. Reads
+  "no value can ever be here."
+
+Never use `Never` as a function's return annotation, and
+never use `NoReturn` in a non-return position; mypy accepts
+both but the split keeps intent greppable.
+
 ## 23. Forbidden patterns roundup
 
 A single index of the typing anti-patterns this rule
@@ -1181,6 +1241,9 @@ same commit:
 | `def fn() -> Any:` returning a known callable shape | `Callable[[X], Y]` | §22.2 |
 | Re-spelling `bytes \| bytearray \| memoryview` | `Buffer` alias | §22.1 |
 | `queued_packet: object` requiring runtime `isinstance` narrowing | parameterise the generic `[..., P = ...]` | §22.3 |
+| Blanket `# pylint: disable=inconsistent-return-statements` over a fall-through-into-`fail()` method | `NoReturn` helper ending in `raise` | §22.5 |
+| `Never` as a function's return annotation | `NoReturn` | §22.5 |
+| `NoReturn` in a non-return position (param / `assert_never`) | `Never` | §22.5 |
 
 ## 24. Cross-references
 
@@ -1199,7 +1262,7 @@ same commit:
 - [`source_files.md`](source_files.md) — general PyTCP
   source-file conventions (file skeleton, imports, naming).
 - [`net_addr.md`](net_addr.md) — value-type ABC chain and
-  PEP 695 generics on `IpNetwork[A, M]` / `IpHost[A, N, O]`;
+  PEP 695 generics on `IpNetwork[A, M]` / `IfAddr[A, N, O]`;
   `typing.Self` for self-returning factory methods.
 - [`net_proto.md`](net_proto.md) —
   the dataclass shape (`frozen=True, kw_only=True,

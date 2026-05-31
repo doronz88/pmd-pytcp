@@ -4,19 +4,19 @@
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Status            | **Shipped** 2026-05-14 — Phases 0-5 complete on `PyTCP_3_0__pre_release`; commits 2ed1b058 (Phase 0 plan), 0a99cca8 (Phase 1 runtime/), 111343f3 (Phase 2 lifecycle), bbe8f662 (Phase 3 APIs), 77b0be41 (Phase 5 docs sweep). Phase 4 (lib/ audit) was a zero-move no-op. |
 | Plan author       | Session-internal audit follow-up                                                                                                                                     |
-| Source motivation | `pytcp/stack/__init__.py` is 751 lines and conflates Phase-3 public APIs with internal RX/TX rings, packet-handler dispatch, and timer machinery                     |
+| Source motivation | `packages/pytcp/pytcp/stack/__init__.py` is 751 lines and conflates Phase-3 public APIs with internal RX/TX rings, packet-handler dispatch, and timer machinery                     |
 | Target branch     | `PyTCP_3_0__pre_release`                                                                                                                                             |
 | Touch points      | ~30 production-source moves + ~25 unit-test file relocations + ~136 test-file import updates + ~77 doc/rule references + `CLAUDE.md` + 8 `.claude/rules/*.md` mentions of current paths |
 | Risk              | **Medium** — wide blast radius (~208 import sites total) but each step is mechanical; tests act as the regression net                                                |
 | Phases            | 0 (decisions) → 1 (extract `runtime/`) → 2 (split `stack/__init__.py`) → 3 (relocate Phase-3 APIs) → 4 (`lib/` cleanup) → 5 (docs + rules) → 6 (close-out)            |
 
 This document is the implementation plan for a one-shot
-directory restructure of the `pytcp/` package. The intent is
+directory restructure of the `packages/pytcp/pytcp/` package. The intent is
 to make the Phase-3 design implications from CLAUDE.md
 structurally visible: `pytcp.stack.*` becomes the namespace
 for kernel-equivalent control-plane APIs **only**, and the
 implementation guts (packet-handler dispatch, RX/TX rings,
-timer subsystem) move to a new `pytcp/runtime/` sibling that
+timer subsystem) move to a new `packages/pytcp/pytcp/runtime/` sibling that
 is visually private.
 
 The user-observable public surface — `stack.init/start/stop`,
@@ -28,16 +28,16 @@ Only internal modules get new paths.
 
 ## 1. Goal
 
-After this track lands, the `pytcp/` tree reads as three
+After this track lands, the `packages/pytcp/pytcp/` tree reads as three
 visually distinct concerns:
 
 | Directory              | Visibility | Contents                                                                                       |
 |------------------------|------------|------------------------------------------------------------------------------------------------|
-| `pytcp/stack/`         | **public** | Phase-3 control-plane APIs only — one file per API; no implementation guts                     |
-| `pytcp/socket/`        | **public** | BSD socket factory (data plane) — unchanged                                                    |
-| `pytcp/protocols/`     | private    | Per-protocol runtime (FSMs, caches, parsers) — unchanged                                       |
-| `pytcp/runtime/`       | **private**| NEW — packet-handler dispatch, RX/TX rings, timer subsystem, `Subsystem` base, singleton wiring|
-| `pytcp/lib/`           | private    | Generic helpers — everything that isn't a public API and isn't runtime machinery               |
+| `packages/pytcp/pytcp/stack/`         | **public** | Phase-3 control-plane APIs only — one file per API; no implementation guts                     |
+| `packages/pytcp/pytcp/socket/`        | **public** | BSD socket factory (data plane) — unchanged                                                    |
+| `packages/pytcp/pytcp/protocols/`     | private    | Per-protocol runtime (FSMs, caches, parsers) — unchanged                                       |
+| `packages/pytcp/pytcp/runtime/`       | **private**| NEW — packet-handler dispatch, RX/TX rings, timer subsystem, `Subsystem` base, singleton wiring|
+| `packages/pytcp/pytcp/lib/`           | private    | Generic helpers — everything that isn't a public API and isn't runtime machinery               |
 
 Anything a Phase-3 consumer imports (`stack.init`, `stack.X.*`,
 `socket.socket(...)`) keeps working with the **same import
@@ -55,7 +55,7 @@ internals will visibly require a `pytcp.runtime.*` or
   placeholders only if their landing track is already
   in-flight; otherwise they wait for their own track.
 - **No legacy-file deletions.** The 8 legacy flat-directory
-  tests under `pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`
+  tests under `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`
   stay in place. Their fate is a separate policy call (see
   `docs/refactor/socket_linux_parity_audit.md` Phase 3).
 - **No new tests written.** Existing test coverage stays.
@@ -63,19 +63,19 @@ internals will visibly require a `pytcp.runtime.*` or
   because `unit_testing.md §3` ties test paths to source
   paths — that's a `git mv`, not new test authoring.
   Integration tests under
-  `pytcp/tests/integration/protocols/<proto>/` are
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/` are
   unaffected.
 - **No CLAUDE.md re-architecting.** The North-Star Phase-3 table
   already names `pytcp.stack.sysctl` etc.; this plan honours
   it. The only edits to `CLAUDE.md` are path strings (e.g.
-  `pytcp/stack/__init__.py` → `pytcp/stack/lifecycle.py`).
+  `packages/pytcp/pytcp/stack/__init__.py` → `packages/pytcp/pytcp/stack/lifecycle.py`).
 
 ## 3. Current state
 
-### 3.1 `pytcp/` layout today
+### 3.1 `packages/pytcp/pytcp/` layout today
 
 ```
-pytcp/
+packages/pytcp/pytcp/
 ├── __init__.py              (38 lines — minimal re-exports)
 ├── lib/                     (21 modules — generic helpers + Phase-3 APIs + Subsystem base)
 │   ├── address_api.py       ← Phase-3 API
@@ -138,7 +138,7 @@ detail. This plan extracts each concern into a dedicated file.
 ## 4. Target structure
 
 ```
-pytcp/
+packages/pytcp/pytcp/
 ├── __init__.py
 ├── stack/                       PUBLIC NAMESPACE (Phase-3 control plane)
 │   ├── __init__.py              ~50 lines — re-exports + lifecycle facade only
@@ -194,9 +194,9 @@ pytcp/
 
 | Old                          | New                          | Public symbol path        |
 |------------------------------|------------------------------|---------------------------|
-| `pytcp/lib/sysctl.py`        | `pytcp/stack/sysctl.py`      | `pytcp.stack.sysctl`      |
-| `pytcp/lib/link_api.py`      | `pytcp/stack/link.py`        | `pytcp.stack.link`        |
-| `pytcp/lib/address_api.py`   | `pytcp/stack/address.py`     | `pytcp.stack.address`     |
+| `packages/pytcp/pytcp/lib/sysctl.py`        | `packages/pytcp/pytcp/stack/sysctl.py`      | `pytcp.stack.sysctl`      |
+| `packages/pytcp/pytcp/lib/link_api.py`      | `packages/pytcp/pytcp/stack/link.py`        | `pytcp.stack.link`        |
+| `packages/pytcp/pytcp/lib/address_api.py`   | `packages/pytcp/pytcp/stack/address.py`     | `pytcp.stack.address`     |
 
 Public symbol path stays identical — `pytcp.stack.sysctl` is
 already the name `lib/sysctl.py` is imported under in source
@@ -210,17 +210,17 @@ but **all sites migrate to the new path in the same commit**.
 
 | Old                                | New                                | Notes                                                  |
 |------------------------------------|------------------------------------|--------------------------------------------------------|
-| `pytcp/stack/packet_handler/`      | `pytcp/runtime/packet_handler/`    | 22 files in directory; bulk `git mv` of the folder    |
-| `pytcp/stack/rx_ring.py`           | `pytcp/runtime/rx_ring.py`         |                                                        |
-| `pytcp/stack/tx_ring.py`           | `pytcp/runtime/tx_ring.py`         |                                                        |
-| `pytcp/stack/timer.py`             | `pytcp/runtime/timer.py`           |                                                        |
-| `pytcp/lib/subsystem.py`           | `pytcp/runtime/subsystem.py`       | `Subsystem` is a runtime base, not a generic helper    |
+| `packages/pytcp/pytcp/stack/packet_handler/`      | `packages/pytcp/pytcp/runtime/packet_handler/`    | 22 files in directory; bulk `git mv` of the folder    |
+| `packages/pytcp/pytcp/stack/rx_ring.py`           | `packages/pytcp/pytcp/runtime/rx_ring.py`         |                                                        |
+| `packages/pytcp/pytcp/stack/tx_ring.py`           | `packages/pytcp/pytcp/runtime/tx_ring.py`         |                                                        |
+| `packages/pytcp/pytcp/stack/timer.py`             | `packages/pytcp/pytcp/runtime/timer.py`           |                                                        |
+| `packages/pytcp/pytcp/lib/subsystem.py`           | `packages/pytcp/pytcp/runtime/subsystem.py`       | `Subsystem` is a runtime base, not a generic helper    |
 
 ### 5.3 `stack/__init__.py` split
 
-**Revised approach** — singletons stay in `pytcp/stack/`. The
+**Revised approach** — singletons stay in `packages/pytcp/pytcp/stack/`. The
 test harness writes `stack.X = Y` directly (verified in
-`pytcp/tests/lib/{icmp,udp,tcp_session}_testcase.py`); moving
+`packages/pytcp/pytcp/tests/lib/{icmp,udp,tcp_session}_testcase.py`); moving
 singletons to a sibling module would break those writes
 because `import pytcp.stack as stack; stack.X = Y` writes to
 the `pytcp.stack` module, not to whatever module hosts the
@@ -231,12 +231,12 @@ Split (752 lines → 2 files):
 
 | Concern                                                | Lines (est) | New home                       |
 |--------------------------------------------------------|-------------|--------------------------------|
-| Constants (secrets, MTU, address defaults, `LOG__*`, port range, `IP*__SUPPORT`, etc.) | ~150 | stays in `pytcp/stack/__init__.py` |
-| `TunTapFlag` enum + `IFF_*` bare-alias exports + `TUNSETIFF` constant | ~30 | stays in `pytcp/stack/__init__.py` |
-| Singleton attribute declarations (`tx_ring: TxRing`, `arp_cache: ArpCache`, `nd_cache: NdCache`, `tcp_stack: TcpStack`, `pmtu_cache: dict[...]`, `sockets: dict[...]`, `icmp{4,6}_error_rate_limiter`, `packet_handler`, `timer`, `address: Ip4AddressApi`, `link: LinkApi`, `dhcp4_client`, `link_local`, `stack_initialized: bool`, `stack_running: bool`, `interface_mtu`) + `current_pmtu()` helper | ~90 | stays in `pytcp/stack/__init__.py` |
-| `initialize_interface__tap()` / `initialize_interface__tun()` (TUN/TAP fd setup helpers) | ~60 | stays in `pytcp/stack/__init__.py` |
-| `init(...)`, `start()`, `stop()`, `mock__init(...)` lifecycle functions | ~360 | **new** `pytcp/stack/lifecycle.py` |
-| Re-exports — `from pytcp.stack.lifecycle import init, start, stop, mock__init` | ~5 | added to `pytcp/stack/__init__.py` |
+| Constants (secrets, MTU, address defaults, `LOG__*`, port range, `IP*__SUPPORT`, etc.) | ~150 | stays in `packages/pytcp/pytcp/stack/__init__.py` |
+| `TunTapFlag` enum + `IFF_*` bare-alias exports + `TUNSETIFF` constant | ~30 | stays in `packages/pytcp/pytcp/stack/__init__.py` |
+| Singleton attribute declarations (`tx_ring: TxRing`, `arp_cache: ArpCache`, `nd_cache: NdCache`, `tcp_stack: TcpStack`, `pmtu_cache: dict[...]`, `sockets: dict[...]`, `icmp{4,6}_error_rate_limiter`, `packet_handler`, `timer`, `address: Ip4AddressApi`, `link: LinkApi`, `dhcp4_client`, `link_local`, `stack_initialized: bool`, `stack_running: bool`, `interface_mtu`) + `current_pmtu()` helper | ~90 | stays in `packages/pytcp/pytcp/stack/__init__.py` |
+| `initialize_interface__tap()` / `initialize_interface__tun()` (TUN/TAP fd setup helpers) | ~60 | stays in `packages/pytcp/pytcp/stack/__init__.py` |
+| `init(...)`, `start()`, `stop()`, `mock__init(...)` lifecycle functions | ~360 | **new** `packages/pytcp/pytcp/stack/lifecycle.py` |
+| Re-exports — `from pytcp.stack.lifecycle import init, start, stop, mock__init` | ~5 | added to `packages/pytcp/pytcp/stack/__init__.py` |
 
 The lifecycle functions in `lifecycle.py` read and write the
 singletons via `import pytcp.stack as stack; stack.X = Y` —
@@ -244,7 +244,7 @@ the same pattern the test harness uses, so a single canonical
 "writeable" module for stack state (the `pytcp.stack`
 namespace). `runtime/` does NOT get a `singletons.py`.
 
-Result: `pytcp/stack/__init__.py` shrinks from ~752 lines to
+Result: `packages/pytcp/pytcp/stack/__init__.py` shrinks from ~752 lines to
 ~415 lines (45% reduction); the gnarly 360-line lifecycle code
 moves to a dedicated file. The Phase-3 north-star table stays
 honoured — `pytcp.stack.*` is still the public namespace; the
@@ -263,9 +263,9 @@ source moves, the corresponding unit-test file moves too:
 
 | Old test path                                          | New test path                                   |
 |--------------------------------------------------------|-------------------------------------------------|
-| `pytcp/tests/unit/lib/test__lib__sysctl.py`            | `pytcp/tests/unit/stack/test__stack__sysctl.py` |
-| `pytcp/tests/unit/lib/test__lib__link_api.py`          | `pytcp/tests/unit/stack/test__stack__link.py`   |
-| `pytcp/tests/unit/lib/test__lib__address_api.py`       | `pytcp/tests/unit/stack/test__stack__address.py`|
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__sysctl.py`            | `packages/pytcp/pytcp/tests/unit/stack/test__stack__sysctl.py` |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__link_api.py`          | `packages/pytcp/pytcp/tests/unit/stack/test__stack__link.py`   |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py`       | `packages/pytcp/pytcp/tests/unit/stack/test__stack__address.py`|
 
 Note: the source rename `link_api.py` → `link.py` collapses
 the redundant `_api` suffix. Test name follows suit:
@@ -276,19 +276,19 @@ the redundant `_api` suffix. Test name follows suit:
 
 | Old test path                                       | New test path                                          |
 |-----------------------------------------------------|--------------------------------------------------------|
-| `pytcp/tests/unit/lib/test__lib__subsystem.py`      | `pytcp/tests/unit/runtime/test__runtime__subsystem.py` |
+| `packages/pytcp/pytcp/tests/unit/lib/test__lib__subsystem.py`      | `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__subsystem.py` |
 
 **Tests for moved `stack/` → `runtime/` modules (3 files):**
 
 | Old test path                                  | New test path                                          |
 |------------------------------------------------|--------------------------------------------------------|
-| `pytcp/tests/unit/stack/test__stack__rx_ring.py` | `pytcp/tests/unit/runtime/test__runtime__rx_ring.py` |
-| `pytcp/tests/unit/stack/test__stack__tx_ring.py` | `pytcp/tests/unit/runtime/test__runtime__tx_ring.py` |
-| `pytcp/tests/unit/stack/test__stack__timer.py`   | `pytcp/tests/unit/runtime/test__runtime__timer.py`   |
+| `packages/pytcp/pytcp/tests/unit/stack/test__stack__rx_ring.py` | `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__rx_ring.py` |
+| `packages/pytcp/pytcp/tests/unit/stack/test__stack__tx_ring.py` | `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__tx_ring.py` |
+| `packages/pytcp/pytcp/tests/unit/stack/test__stack__timer.py`   | `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py`   |
 
 **Tests for moved `stack/packet_handler/` → `runtime/packet_handler/` (17 files):**
 
-`pytcp/tests/unit/stack/packet_handler/` → `pytcp/tests/unit/runtime/packet_handler/`
+`packages/pytcp/pytcp/tests/unit/stack/packet_handler/` → `packages/pytcp/pytcp/tests/unit/runtime/packet_handler/`
 
 Files within the directory rename from `test__stack__packet_handler__*` to
 `test__runtime__packet_handler__*` (15 files). Two outliers don't carry the
@@ -305,9 +305,9 @@ Files within the directory rename from `test__stack__packet_handler__*` to
 
 | Old test path                                  | New test paths                                              |
 |------------------------------------------------|-------------------------------------------------------------|
-| `pytcp/tests/unit/stack/test__stack__init.py`  | `pytcp/tests/unit/stack/test__stack__init.py` *(slim re-export tests)* |
-|                                                | `pytcp/tests/unit/stack/test__stack__lifecycle.py` *(init/start/stop/mock__init tests)* |
-|                                                | `pytcp/tests/unit/runtime/test__runtime__singletons.py` *(if any singleton-attr-only tests exist)* |
+| `packages/pytcp/pytcp/tests/unit/stack/test__stack__init.py`  | `packages/pytcp/pytcp/tests/unit/stack/test__stack__init.py` *(slim re-export tests)* |
+|                                                | `packages/pytcp/pytcp/tests/unit/stack/test__stack__lifecycle.py` *(init/start/stop/mock__init tests)* |
+|                                                | `packages/pytcp/pytcp/tests/unit/runtime/test__runtime__singletons.py` *(if any singleton-attr-only tests exist)* |
 
 The split mirrors the `stack/__init__.py` split in §5.3. Most
 of `test__stack__init.py`'s coverage today exercises `init()` /
@@ -321,8 +321,8 @@ asserts the public re-export surface (which names appear on
 #### 5.4.2 Integration tests — no file relocations
 
 Integration tests under
-`pytcp/tests/integration/protocols/<proto>/` (and the legacy
-flat `pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`)
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/` (and the legacy
+flat `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`)
 test wire-level behaviour, not source-file paths. They stay
 where they are; only their `from pytcp.X import Y` lines
 update.
@@ -350,8 +350,8 @@ Every relocated test file's module docstring (per
 `source_files.md §4`) has a path string that must update:
 
 ```python
-# Old: pytcp/tests/unit/lib/test__lib__sysctl.py
-# New: pytcp/tests/unit/stack/test__stack__sysctl.py
+# Old: packages/pytcp/pytcp/tests/unit/lib/test__lib__sysctl.py
+# New: packages/pytcp/pytcp/tests/unit/stack/test__stack__sysctl.py
 ```
 
 ~25 module-docstring path lines to edit alongside the
@@ -391,25 +391,25 @@ must independently land green.
 
 ### Phase 1 — Extract `runtime/` (mechanical bulk moves)
 
-**Goal:** Create `pytcp/runtime/` with packet_handler / RX
+**Goal:** Create `packages/pytcp/pytcp/runtime/` with packet_handler / RX
 ring / TX ring / timer / subsystem. All public APIs still
 work at their current import paths.
 
 Steps (one commit):
 
-1. `git mv pytcp/stack/packet_handler pytcp/runtime/packet_handler`
-2. `git mv pytcp/runtime/rx_ring.py pytcp/runtime/rx_ring.py`
-3. `git mv pytcp/runtime/tx_ring.py pytcp/runtime/tx_ring.py`
-4. `git mv pytcp/runtime/timer.py pytcp/runtime/timer.py`
-5. `git mv pytcp/runtime/subsystem.py pytcp/runtime/subsystem.py`
-6. Create `pytcp/runtime/__init__.py` (project-standard
+1. `git mv packages/pytcp/pytcp/stack/packet_handler packages/pytcp/pytcp/runtime/packet_handler`
+2. `git mv packages/pytcp/pytcp/runtime/rx_ring.py packages/pytcp/pytcp/runtime/rx_ring.py`
+3. `git mv packages/pytcp/pytcp/runtime/tx_ring.py packages/pytcp/pytcp/runtime/tx_ring.py`
+4. `git mv packages/pytcp/pytcp/runtime/timer.py packages/pytcp/pytcp/runtime/timer.py`
+5. `git mv packages/pytcp/pytcp/runtime/subsystem.py packages/pytcp/pytcp/runtime/subsystem.py`
+6. Create `packages/pytcp/pytcp/runtime/__init__.py` (project-standard
    skeleton from `source_files.md` §2.1).
 7. **Relocate unit tests for moved modules** (§5.4.1):
-   - `git mv pytcp/tests/unit/lib/test__lib__subsystem.py pytcp/tests/unit/runtime/test__runtime__subsystem.py`
-   - `git mv pytcp/tests/unit/stack/test__stack__rx_ring.py pytcp/tests/unit/runtime/test__runtime__rx_ring.py`
-   - `git mv pytcp/tests/unit/stack/test__stack__tx_ring.py pytcp/tests/unit/runtime/test__runtime__tx_ring.py`
-   - `git mv pytcp/tests/unit/stack/test__stack__timer.py pytcp/tests/unit/runtime/test__runtime__timer.py`
-   - `git mv pytcp/tests/unit/stack/packet_handler pytcp/tests/unit/runtime/packet_handler` (whole dir, 17 files)
+   - `git mv packages/pytcp/pytcp/tests/unit/lib/test__lib__subsystem.py packages/pytcp/pytcp/tests/unit/runtime/test__runtime__subsystem.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/stack/test__stack__rx_ring.py packages/pytcp/pytcp/tests/unit/runtime/test__runtime__rx_ring.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/stack/test__stack__tx_ring.py packages/pytcp/pytcp/tests/unit/runtime/test__runtime__tx_ring.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/stack/test__stack__timer.py packages/pytcp/pytcp/tests/unit/runtime/test__runtime__timer.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/stack/packet_handler packages/pytcp/pytcp/tests/unit/runtime/packet_handler` (whole dir, 17 files)
    - Inside the relocated `packet_handler/` dir, rename
      each file from `test__stack__packet_handler__*.py` to
      `test__runtime__packet_handler__*.py` (15 files; two
@@ -439,7 +439,7 @@ files renamed + ~140 import lines + ~50 docstring-path lines
 pytcp.runtime: extract internal RX/TX/timer/packet-handler/subsystem
 
 Moves stack/packet_handler/, stack/{rx,tx}_ring, stack/timer, and
-lib/subsystem under a new pytcp/runtime/ namespace. These are
+lib/subsystem under a new packages/pytcp/pytcp/runtime/ namespace. These are
 implementation guts — no Phase-3 consumer should import them. The
 move is mechanical: file paths change, content unchanged; ~140
 import-line updates across source + tests follow.
@@ -455,19 +455,19 @@ make lint clean; make test 10955 passing, 4 skipped, 0 failures.
 
 **Goal:** Move the singleton attribute declarations + fixture
 topology constants out of `stack/__init__.py` into
-`pytcp/runtime/singletons.py`. Move `init/start/stop/mock__init`
-into `pytcp/stack/lifecycle.py`. Shrink
-`pytcp/stack/__init__.py` to a pure re-export module.
+`packages/pytcp/pytcp/runtime/singletons.py`. Move `init/start/stop/mock__init`
+into `packages/pytcp/pytcp/stack/lifecycle.py`. Shrink
+`packages/pytcp/pytcp/stack/__init__.py` to a pure re-export module.
 
 Steps (one commit):
 
-1. Create `pytcp/stack/lifecycle.py` containing `init()`,
+1. Create `packages/pytcp/pytcp/stack/lifecycle.py` containing `init()`,
    `start()`, `stop()`, `mock__init()` — copied verbatim from
    the current `stack/__init__.py`. The functions still use
    the `global timer, tx_ring, ...` pattern, but rewritten as
    `import pytcp.stack as _stack; _stack.timer = Timer(...)`
    because the symbols now live in a sibling module.
-2. Update `pytcp/stack/__init__.py`:
+2. Update `packages/pytcp/pytcp/stack/__init__.py`:
    - Delete the four lifecycle functions (~360 lines).
    - Add `from pytcp.stack.lifecycle import init, start, stop, mock__init`
      at the bottom of the file so `pytcp.stack.init` /
@@ -477,7 +477,7 @@ Steps (one commit):
      `initialize_interface__{tap,tun}()` helpers stay.
 3. **Split the existing `test__stack__init.py`** (§5.4.1):
    - Lifecycle tests (`init/start/stop/mock__init`) → new
-     `pytcp/tests/unit/stack/test__stack__lifecycle.py`.
+     `packages/pytcp/pytcp/tests/unit/stack/test__stack__lifecycle.py`.
    - Re-export surface assertions + constant tests stay in
      the slimmed-down `test__stack__init.py`.
 4. `make lint && make test` — must be green.
@@ -493,19 +493,19 @@ the canonical idiom.
 ### Phase 3 — Relocate Phase-3 public APIs
 
 **Goal:** Move `lib/sysctl.py`, `lib/link_api.py`,
-`lib/address_api.py` to `pytcp/stack/sysctl.py`,
-`pytcp/stack/link.py`, `pytcp/stack/address.py` respectively.
+`lib/address_api.py` to `packages/pytcp/pytcp/stack/sysctl.py`,
+`packages/pytcp/pytcp/stack/link.py`, `packages/pytcp/pytcp/stack/address.py` respectively.
 Update every import site.
 
 Steps (one commit):
 
-1. `git mv pytcp/stack/sysctl.py pytcp/stack/sysctl.py`
-2. `git mv pytcp/stack/link.py pytcp/stack/link.py`
-3. `git mv pytcp/stack/address.py pytcp/stack/address.py`
+1. `git mv packages/pytcp/pytcp/stack/sysctl.py packages/pytcp/pytcp/stack/sysctl.py`
+2. `git mv packages/pytcp/pytcp/stack/link.py packages/pytcp/pytcp/stack/link.py`
+3. `git mv packages/pytcp/pytcp/stack/address.py packages/pytcp/pytcp/stack/address.py`
 4. **Relocate unit tests for these modules** (§5.4.1):
-   - `git mv pytcp/tests/unit/lib/test__lib__sysctl.py pytcp/tests/unit/stack/test__stack__sysctl.py`
-   - `git mv pytcp/tests/unit/lib/test__lib__link_api.py pytcp/tests/unit/stack/test__stack__link.py`
-   - `git mv pytcp/tests/unit/lib/test__lib__address_api.py pytcp/tests/unit/stack/test__stack__address.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/lib/test__lib__sysctl.py packages/pytcp/pytcp/tests/unit/stack/test__stack__sysctl.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/lib/test__lib__link_api.py packages/pytcp/pytcp/tests/unit/stack/test__stack__link.py`
+   - `git mv packages/pytcp/pytcp/tests/unit/lib/test__lib__address_api.py packages/pytcp/pytcp/tests/unit/stack/test__stack__address.py`
 5. Bulk-rewrite imports (source + tests):
    ```
    pytcp.stack.sysctl       → pytcp.stack.sysctl
@@ -525,7 +525,7 @@ genuine Phase-3 public API and nothing else.
 
 ### Phase 4 — `lib/` cleanup audit
 
-**Goal:** Confirm the remaining files in `pytcp/lib/` are
+**Goal:** Confirm the remaining files in `packages/pytcp/pytcp/lib/` are
 genuine generic helpers, not stragglers that should have moved
 to `runtime/` or `stack/`.
 
@@ -577,10 +577,10 @@ Steps (one commit):
    constants" pointer + the Phase-3 API table cell that says
    `pytcp.stack.sysctl registry`.
 2. `.claude/rules/pytcp.md` — every reference to
-   `pytcp/stack/sysctl.py` → `pytcp/stack/sysctl.py`,
-   `pytcp/runtime/subsystem.py` → `pytcp/runtime/subsystem.py`,
-   `pytcp/runtime/packet_handler/` →
-   `pytcp/runtime/packet_handler/`, etc. ~8 line-level
+   `packages/pytcp/pytcp/stack/sysctl.py` → `packages/pytcp/pytcp/stack/sysctl.py`,
+   `packages/pytcp/pytcp/runtime/subsystem.py` → `packages/pytcp/pytcp/runtime/subsystem.py`,
+   `packages/pytcp/pytcp/runtime/packet_handler/` →
+   `packages/pytcp/pytcp/runtime/packet_handler/`, etc. ~8 line-level
    edits.
 3. `.claude/rules/unit_testing.md` and
    `.claude/rules/integration_testing.md` — same path
@@ -727,13 +727,13 @@ the codebase is still in a known-good state.
 ## 12. Out-of-scope follow-ups
 
 - **Legacy flat-directory test deletion** — eight
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*.py`
   files are still siblings of `protocols/`. See
   earlier audit; not addressed by this plan.
 - **Phase-3 future surfaces** (`stack/route.py`,
   `stack/neighbor.py`, `stack/introspection.py`) —
   each gets its own track per CLAUDE.md North Star.
-- **`pytcp/lib/` second-pass audit** — Phase 4 here is
+- **`packages/pytcp/pytcp/lib/` second-pass audit** — Phase 4 here is
   a quick triage. A deeper "is this really a helper or
   is it cross-cutting infrastructure" audit may surface
   candidates for further moves; defer to a follow-up
@@ -764,7 +764,7 @@ risk addition over the original estimate is small, but
 - `CLAUDE.md` — Project North Star (the seven Phase-3
   consumer surfaces this plan honours).
 - `.claude/rules/pytcp.md` — the canonical rule for
-  `pytcp/` authoring; describes `Subsystem`,
+  `packages/pytcp/pytcp/` authoring; describes `Subsystem`,
   packet-handler mixin composition, BSD socket facade,
   sysctl registry, stack configuration. Phase 5 updates
   the path strings.

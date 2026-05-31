@@ -17,15 +17,20 @@ clause by clause. RFC 1112 defines three conformance levels:
 - **Level 2:** full multicast support (send + receive + IGMP
   group membership).
 
-PyTCP today is **Level 1+**: it can send and receive multicast
-IP datagrams for the configured groups, but does not implement
-IGMP group management (RFC 2236 / RFC 3376). The all-hosts
-group (224.0.0.1) is preconfigured at boot. Group join / leave
-beyond the all-hosts default is Phase 2.
+PyTCP today is **Level 2**: it can send and receive multicast
+IP datagrams and implements IGMP group management (IGMPv3,
+RFC 3376, with the legacy v2/v1 report forms). The all-hosts
+group (224.0.0.1) is joined permanently at interface bring-up;
+applications join/leave further groups through the membership
+API (`stack.membership` / the `IP_ADD_MEMBERSHIP` /
+`IP_DROP_MEMBERSHIP` socket options), each change emitting the
+corresponding IGMPv3 state-change Report. The detailed IGMP
+audit lives in the RFC 3376 / RFC 2236 adherence records
+alongside this one.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py`,
-`pytcp/stack/__init__.py`, and the IPv4 packet handlers
+inspecting `packages/net_addr/net_addr/ip4_address.py`,
+`packages/pytcp/pytcp/stack/__init__.py`, and the IPv4 packet handlers
 directly. Non-normative content (§1 Status, §2 Introduction,
 §9 ICMP, §10 IANA / Appendices) is omitted.
 
@@ -35,12 +40,12 @@ directly. Non-normative content (§1 Status, §2 Introduction,
 
 | Section | Topic                                                    | Status |
 |---------|----------------------------------------------------------|--------|
-| §3      | Conformance Level 0/1/2                                  | Level 1+ (send + receive, no IGMP) |
+| §3      | Conformance Level 0/1/2                                  | Level 2 (send + receive + IGMP) |
 | §4      | Class D host-group addresses (224.0.0.0 - 239.255.255.255) | met |
-| §4      | 224.0.0.1 = all hosts (permanent)                        | met (preconfigured) |
+| §4      | 224.0.0.1 = all hosts (permanent)                        | met (joined at bring-up) |
 | §6      | Sending multicast datagrams                              | met    |
 | §7      | Receiving multicast datagrams                            | met (for joined groups) |
-| §7      | IGMP group management                                    | not implemented (Phase 2) |
+| §7      | IGMP group management                                    | met (IGMPv3; see RFC 3376 record) |
 | §6.4    | Ethernet mapping (high-23-bits)                          | met    |
 
 ---
@@ -51,7 +56,7 @@ directly. Non-normative content (§1 Status, §2 Introduction,
 > those with '1110' as their high-order four bits."
 
 **Adherence:** met. `Ip4Address.is_multicast` recognises 224/4
-(`net_addr/ip4_address.py:164-169`):
+(`packages/net_addr/net_addr/ip4_address.py:164-169`):
 
 ```python
 return self._address & 0xF0_00_00_00 == 0xE0_00_00_00
@@ -62,7 +67,7 @@ return self._address & 0xF0_00_00_00 == 0xE0_00_00_00
 
 **Adherence:** met. The all-hosts group is preconfigured in
 the stack's `_ip4_multicast` list at boot
-(`pytcp/runtime/packet_handler/__init__.py`).
+(`packages/pytcp/pytcp/runtime/packet_handler/__init__.py`).
 
 ## §6.1 Sending — IP Service Interface
 
@@ -106,7 +111,7 @@ network" half of the §6.1 contract is also honoured.
 
 **Adherence:** met. `Ip4Address.multicast_mac` maps the
 high-23-bits of the IPv4 multicast address into the
-`01:00:5E:` MAC prefix (`net_addr/ip4_address.py:108-126`). The
+`01:00:5E:` MAC prefix (`packages/net_addr/net_addr/ip4_address.py:108-126`). The
 Ethernet TX path consumes this when resolving the destination
 MAC for multicast frames
 (`packet_handler__ethernet__tx.py`).
@@ -119,7 +124,7 @@ MAC for multicast frames
 > 01-00-5E-00-00-00 (hex)."
 
 **Adherence:** met. `Ip4Address.multicast_mac`
-(`net_addr/ip4_address.py:108-125`) returns
+(`packages/net_addr/net_addr/ip4_address.py:108-125`) returns
 `MacAddress(MAC__IP4_MULTICAST_PREFIX | self._address & 0x0000_007F_FFFF)`
 which is exactly the high-23-bits mapping.
 
@@ -128,26 +133,26 @@ which is exactly the high-23-bits mapping.
 > "[Level 2] In order to receive multicast datagrams sent to a
 > particular host group, the host must JOIN the group."
 
-**Adherence:** partial. PyTCP's `_ip4_multicast` list is
-populated at boot with the all-hosts group; the RX path
-(`packet_handler__ip4__rx.py:149-153`) accepts any inbound
-datagram whose destination is in this list. There is **no
-runtime API** to JOIN or LEAVE a group; the list is fixed at
-boot.
-
-For Phase 1 host-stack scope (where the only multicast group
-of practical interest is 224.0.0.1) this is sufficient.
-Application-level multicast subscription (e.g. multicast UDP
-sockets, MDNS / SSDP receivers) is Phase 2.
+**Adherence:** met. The all-hosts group is joined at interface
+bring-up and applications JOIN / LEAVE further groups through
+the membership API (`stack.membership.join` / `.leave`, or the
+`IP_ADD_MEMBERSHIP` / `IP_DROP_MEMBERSHIP` socket options),
+which add / remove the group on the per-interface
+`_ip4_multicast` list. The RX path
+(`packet_handler__ip4__rx.py`) accepts any inbound datagram
+whose destination is in that list.
 
 > "Level 2 ... requires implementation of the Internet Group
 > Management Protocol (IGMP)."
 
-**Adherence:** not implemented (Phase 2). IGMP would
-publish group memberships upstream so multicast routers learn
-to forward the relevant groups to PyTCP's subnet. Out of scope
-for the current Phase-1 host posture (which is reachable on
-the local subnet without router cooperation).
+**Adherence:** met. PyTCP implements IGMPv3 (RFC 3376) with the
+legacy v2/v1 report forms: a membership change emits an
+unsolicited state-change Report (retransmitted per the
+Robustness Variable), and inbound Membership Queries elicit a
+current-state Report after the §5.2 random delay. The detailed
+audit is in the RFC 3376 and RFC 2236 records. The
+querier-version (v1/v2) fallback state machine (RFC 3376 §7)
+is the one deferred host-side piece.
 
 ## §9 ICMP
 
@@ -157,7 +162,7 @@ RFC 1122 §3.2.2 and the ICMP audit
 (`docs/rfc/icmp4/rfc1122__host_requirements_icmp/adherence.md`)
 cover the canonical "do not emit ICMP error to a multicast
 source / multicast destination" rules. PyTCP's
-`pytcp/protocols/icmp/icmp__inbound_classifier.py` enforces
+`packages/pytcp/pytcp/protocols/icmp/icmp__inbound_classifier.py` enforces
 these gates.
 
 ---
@@ -167,7 +172,7 @@ these gates.
 ### §4 Class D multicast predicate
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Parametric matrix verifying `is_multicast` for addresses
   inside and outside 224/4.
 
@@ -176,7 +181,7 @@ these gates.
 ### §6.4 IP-to-Ethernet multicast MAC mapping
 
 - **Unit:**
-  `net_addr/tests/unit/test__ip4_address.py`
+  `packages/net_addr/net_addr/tests/unit/test__ip4_address.py`
   Multicast MAC mapping cases (e.g., 224.0.0.1 →
   01:00:5e:00:00:01).
 
@@ -185,7 +190,7 @@ these gates.
 ### §7 RX admission of joined multicast groups
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   All-hosts (224.0.0.1) admission path.
 
 **Status:** locked in.
@@ -193,40 +198,46 @@ these gates.
 ### §6.1 Multicast outbound TTL default = 1
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc1112MulticastTtl`
   Three cases: multicast dst + no caller TTL → TTL=1;
   multicast dst + caller-supplied TTL → caller value
   preserved; unicast dst + no caller TTL → TTL=64
   regression net.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
   `Ethernet/IPv4 - dst multicast address` case pins the
   full TX frame including TTL=1 in the IPv4 header byte 8.
 
 **Status:** locked in.
 
-### Phase-2 gaps
+### §7 IGMP group management (membership + reports)
 
-**No test surface — Phase 2 (IGMP, runtime JOIN/LEAVE):**
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__membership_api.py`
+  and `test__igmp__socket_membership_opts.py` — JOIN / LEAVE
+  via `stack.membership` and the `IP_ADD_MEMBERSHIP` /
+  `IP_DROP_MEMBERSHIP` socket options.
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/igmp/test__igmp__membership_change.py`,
+  `test__igmp__query_response.py`,
+  `test__igmp__robustness_retransmit.py` — state-change
+  Reports on join/leave, query-elicited Reports, robustness
+  retransmits. Full per-clause detail is in the RFC 3376
+  record's test audit.
 
-1. Adding a non-default group to `_ip4_multicast` via a
-   socket-level `IP_ADD_MEMBERSHIP` (BSD socket option).
-2. Emitting IGMPv2 Membership Reports per RFC 2236.
-3. Honouring General Query / Group-Specific Query.
-
-When IGMP lands, the natural test surface is at the integration
-level using the `IcmpTestCase` (or a new `IgmpTestCase`)
-harness.
+**Status:** locked in (IGMPv3). The §7 querier-version (v1/v2)
+fallback is the deferred host-side piece — see the RFC 3376
+record.
 
 ### Test coverage summary
 
 | Aspect                                              | Coverage |
 |-----------------------------------------------------|----------|
 | §4 Multicast (224/4) predicate                      | locked in |
-| §4 All-hosts (224.0.0.1) preconfigured              | locked in indirectly (RX integration) |
+| §4 All-hosts (224.0.0.1) joined at bring-up         | locked in (RX + membership integration) |
 | §6.4 Ethernet MAC mapping                           | locked in |
 | §7 RX admission of joined groups                    | locked in |
-| §7 IGMP group management                            | n/a (Phase 2) |
+| §7 IGMP group management                            | locked in (IGMPv3; RFC 3376 record) |
 | §6.1 Multicast-default TTL=1                        | locked in |
 
 ---
@@ -235,15 +246,15 @@ harness.
 
 | Aspect                                              | Status |
 |-----------------------------------------------------|--------|
-| §3 Conformance level                                | Level 1+ (send + receive, no IGMP) |
+| §3 Conformance level                                | Level 2 (send + receive + IGMP) |
 | §4 Class D multicast addressing                     | met    |
-| §4 All-hosts (224.0.0.1) preconfigured             | met    |
-| §6.1 Multicast-default TTL=1                       | met (shipped) |
+| §4 All-hosts (224.0.0.1) joined at bring-up        | met    |
+| §6.1 Multicast-default TTL=1                       | met    |
 | §6.2 / §6.4 IP-to-Ethernet MAC mapping             | met    |
 | §7 RX admission for joined groups                  | met    |
-| §7 IGMP group management                            | not implemented (Phase 2) |
+| §7 IGMP group management                            | met (IGMPv3; RFC 3376 record) |
 
-The Phase-1 §6.1 sharpening shipped. Remaining Phase-2 work
-(IGMP + runtime group JOIN/LEAVE + socket-level multicast
-membership API) is on the project north-star but not
-scheduled.
+PyTCP reaches RFC 1112 Level 2: multicast send + receive plus
+IGMP group management. The one deferred host-side gap is the
+RFC 3376 §7 querier-version (v1/v2) fallback, tracked in the
+RFC 3376 record.

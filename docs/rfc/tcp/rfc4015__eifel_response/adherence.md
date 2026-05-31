@@ -42,7 +42,7 @@ response algorithm.
 > RTTVAR_prev = RTTVAR."
 
 **Adherence:** partial. PyTCP's F-RTO snapshot at
-`pytcp/protocols/tcp/tcp__session.py:2619-2622`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2619-2622`
 captures `_frto_pre_cwnd`, `_frto_pre_ssthresh`, and
 `_frto_pre_snd_max` — analogous to pipe_prev. It does
 NOT snapshot SRTT_prev / RTTVAR_prev.
@@ -87,7 +87,7 @@ classification but reached via a different signal.
 
 No Eifel response tests exist. The cwnd / ssthresh
 restoration via F-RTO is tested at
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_timeout.py`.
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_timeout.py`.
 
 ### Test coverage summary
 

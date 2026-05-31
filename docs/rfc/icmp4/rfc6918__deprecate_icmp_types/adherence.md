@@ -79,7 +79,7 @@ posture:
   by DHCP (RFC 2131). PyTCP uses DHCP for host configuration;
   Information Request never arose as a need.
 - **§2.4/§2.5 Address Mask Req/Reply (Types 17/18)**: superseded
-  by DHCP. PyTCP receives subnet masks via the `Ip4Host`
+  by DHCP. PyTCP receives subnet masks via the `Ip4IfAddr`
   configuration mechanism and DHCP option 1, never via ICMPv4.
 - **§2.6 Traceroute (Type 30)**: relies on the Traceroute IPv4
   option (Type 82), which was itself obsoleted by RFC 6814.
@@ -104,14 +104,14 @@ posture:
 > corresponding registry."
 
 **Adherence:** **shipped (structural).** PyTCP's `Icmp4Type`
-enum (`net_proto/protocols/icmp4/message/icmp4__message.py`)
+enum (`packages/net_proto/net_proto/protocols/icmp4/message/icmp4__message.py`)
 contains exactly five members: `ECHO_REPLY` (0),
 `DESTINATION_UNREACHABLE` (3), `ECHO_REQUEST` (8),
 `TIME_EXCEEDED` (11), `PARAMETER_PROBLEM` (12). None of the 15
 deprecated types appears. A grep-level audit confirms no
 references to any deprecated type name (`grep -r "INFORMATION_R"
 "ADDRESS_MASK" "DOMAIN_NAME" "MOBILE_HOST" "ALTERNATE_HOST"
-"DATAGRAM_CONVERSION" "TRACEROUTE" "SKIP" net_proto/ pytcp/`
+"DATAGRAM_CONVERSION" "TRACEROUTE" "SKIP" packages/net_proto/net_proto/ packages/pytcp/pytcp/`
 returns no implementation hits).
 
 The note at the end of §3 ("The ICMPv4 Source Quench Message

@@ -31,7 +31,7 @@ the responses.
 
 examples/client__udp_echo.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import threading
@@ -179,6 +179,7 @@ class UdpEchoClient(Client):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     message_count: int,
     message_delay: int,

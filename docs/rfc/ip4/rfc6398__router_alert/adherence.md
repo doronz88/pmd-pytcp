@@ -19,8 +19,8 @@ receipt) are met and records the Phase-2 gaps so they are
 greppable.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_proto/protocols/ip4/options/ip4__option__router_alert.py`
-and `pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
+inspecting `packages/net_proto/net_proto/protocols/ip4/options/ip4__option__router_alert.py`
+and `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`
 directly. Non-normative sections (§1 Introduction, §2
 Terminology, §3 Security Concerns discussion, §6 Security
 Considerations boilerplate, §7-§9) are omitted.
@@ -113,7 +113,7 @@ forward. When forwarding lands the natural fix points are:
 ### Router Alert option wire codec
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/options/test__ip4__option__router_alert.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__option__router_alert.py`
   Round-trip identity matrix on the 4-byte option (type 148,
   length 4, value field).
 

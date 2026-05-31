@@ -140,7 +140,7 @@ protocol's `*__constants.py` module calls `sysctl.register`
 at import time:
 
 ```python
-# pytcp/protocols/arp/arp__constants.py
+# packages/pytcp/pytcp/protocols/arp/arp__constants.py
 from pytcp.lib import sysctl
 
 ARP__CACHE__ENTRY_MAX_AGE: int = 60
@@ -193,4 +193,4 @@ shape:
 
 - Framework design: `docs/refactor/sysctl_framework.md`.
 - Per-knob workflow: `.claude/skills/sysctl_knob/SKILL.md`.
-- Source: `pytcp/stack/sysctl.py`.
+- Source: `packages/pytcp/pytcp/stack/sysctl.py`.

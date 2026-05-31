@@ -1,12 +1,18 @@
 # Socket-Layer Linux Parity Audit
 
-> **STATUS UPDATE (post-`89da6654`):** Phase 1 is fully shipped (8
-> commits since audit creation `ccae024c`). Phase 2 server-compat
-> options are mostly shipped; substantial items (H3 IPV6_V6ONLY,
-> H2 SO_REUSEPORT, H4 multicast, M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE,
-> H8 SO_LINGER) are deliberately deferred with rationale below —
-> they each need a meaningful refactor that earns its own focused
-> work block. See §100 "Shipping status" for the full ledger.
+> **STATUS UPDATE (post-`89da6654`, refreshed 2026-05-28):** Phase 1
+> is fully shipped (8 commits since audit creation `ccae024c`).
+> Phase 2 server-compat options are mostly shipped. **H4 IPv4
+> IP_ADD_MEMBERSHIP shipped 2026-05-26 via the IGMP track** (commits
+> `f837d017` initial + `8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/
+> `e9abe066` R3-R6 refinements + `c98e409c`/`9cc7dfdc` §9 source
+> filters + `752d2bfd` finalizer); the H4 IPv6 half (IPV6_JOIN_GROUP)
+> remains deferred. **H2 SO_REUSEPORT shipped 2026-05-29** (4-phase
+> track `af536889`/`c41aa96b`/`c76fa4f5`/`fe619b78`). **The former
+> deferred bundle — M2 sendmsg/recvmsg, M8 MSG_ERRQUEUE, H8
+> SO_LINGER — is now fully shipped** (M8 + recvmsg landed with the
+> IP_RECVERR work; `sendmsg` + `SO_LINGER` shipped 2026-05-29). See
+> §100 "Shipping status" for the full ledger.
 
 
 
@@ -213,56 +219,122 @@ rejecting on existing TIME_WAIT entries. On UDP, the bind
 gate would allow the bind even if the (addr, port) tuple is
 in `stack.sockets`.
 
-### H2. No `SO_REUSEPORT`
+### H2. `SO_REUSEPORT` — SHIPPED 2026-05-29 (Phases 1–4)
 
 **Linux:** Multiple sockets on the same (addr, port) for
 load balancing across worker threads/processes. Linux's
 SO_REUSEPORT hashes incoming connections to one of the
-listening sockets.
+listening sockets (`net/core/sock_reuseport.c`); every
+socket in the group must opt into the flag.
 
-**PyTCP:** Single socket per (addr, port) tuple by
-construction (`stack.sockets` is a flat dict).
+**PyTCP:** Shipped. `SocketTable` (`pytcp/socket/socket_table.py`)
+now stores a *cohort* — `dict[SocketId, list[socket]]` — per
+id; only listening ids (remote unspecified, port 0) ever hold
+more than one member, so established-connection lookups stay
+size-1. `SocketTable.get` round-robins delivery across a
+multi-member cohort under the table lock (no new lock,
+no-GIL-safe), so the TCP / UDP RX handlers load-balance
+transparently with no RX-path change. `SO_REUSEPORT`
+(SolSocketOption optname 15) round-trips via
+setsockopt/getsockopt; `is_address_in_use` permits an overlap
+only when the binding socket **and** every overlapping open
+socket carry the flag (Linux's all-or-nothing group rule).
 
-**Sketch:** Convert `stack.sockets` to a multi-listener
-structure for ports that opted into REUSEPORT. Inbound
-connection demux picks one listener (round-robin or hash).
-This is a larger refactor.
+**Phase-1 simplification:** the demux is round-robin, not
+Linux's 4-tuple hash. Round-robin is retransmit-safe because a
+listener-fork child registers its full 5-tuple before any
+duplicate SYN arrives, so the exact-match path (not the cohort)
+wins on retransmits. eBPF / custom REUSEPORT hash selection and
+REUSEPORT × dual-stack mixed-`v6only` cohorts are out of scope
+(documented in `docs/refactor/socket_parity_followup.md`).
 
-### H3. No `IPV6_V6ONLY`
+**Tests:** `SocketTable` cohort/round-robin/register/unregister
+unit tests; `is_address_in_use` + TcpSocket/UdpSocket bind-gate
+unit tests; TCP + UDP cohort RX-demux integration tests
+(`test__tcp__session__reuseport_cohort.py`,
+`test__udp__reuseport_cohort.py`) covering one-per-listener
+distribution, cursor wrap, and retransmit stability.
+
+### H3. `IPV6_V6ONLY` — SHIPPED 2026-05-28 (Phases 1, 2, 3a, 3b, 3c)
 
 **Linux:** Default for Python is `IPV6_V6ONLY=1` (IPv6
 sockets accept only IPv6 peers). Setting it to 0 makes the
 socket accept IPv4-mapped peers (`::ffff:1.2.3.4`) — dual-
 stack mode.
 
-**PyTCP:** No dual-stack at all. AF_INET6 sockets only
-accept IPv6 peers. Apps that bind one socket to `[::]:80`
-expecting to serve both IPv4 and IPv6 clients (very common)
-get only IPv6.
+**PyTCP:** Dual-stack support shipped across four phases.
 
-**Sketch:** Two pieces. (a) Implement IPv4-mapped IPv6
-addresses (`::ffff:0:0/96`) in `Ip6Address`. (b) When an
-AF_INET6 socket has V6ONLY=0, register both IPv4 and IPv6
-listeners under the hood and translate inbound IPv4
-connections into IPv4-mapped peer addresses on accept().
+  * **Phase 1 (`6edab2be`):** `Ip6Address.is_ipv4_mapped`
+    predicate + `Ip6Address.from_ipv4_mapped(ip4)`
+    classmethod — the value-type prerequisites consumers
+    can already use (Linux `IN6_IS_ADDR_V4MAPPED` parallel).
+  * **Phase 2 (`72479a5f`):** `IPV6_V6ONLY` setsockopt
+    storage + getsockopt — operator-facing knob with
+    Python-default `V6ONLY = 1`. No behaviour change yet.
+  * **Phase 3a (`3389d546`):** Bind-time cross-family
+    conflict detection — `is_address_in_use` understands
+    that an AF_INET6 V6ONLY=0 listener bound to `::`
+    reserves both IPv4 and IPv6 namespaces on its port.
+    `TcpSocket.bind` / `UdpSocket.bind` pass `dual_stack=...`.
+  * **Phase 3b:** TCP RX listener-table extension —
+    `TcpMetadata.listening_socket_ids` on an IPv4 envelope
+    now appends an AF_INET6 wildcard pattern as the third
+    candidate so an IPv6 V6ONLY=0 listener bound to `::`
+    can accept the inbound IPv4 SYN. The dispatch loop in
+    `packet_handler__tcp__rx.py` filters cross-family
+    matches against the listener's `_ipv6_v6only` flag — a
+    V6ONLY=1 listener that happened to bind `::` is skipped
+    so the IPv4 inbound falls through to the no-listener
+    drop path.
 
-### H4. No multicast group membership (IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP)
+  * **Phase 3c:** Application-facing IPv4-mapped IPv6 surfacing.
+    Accepted children of an AF_INET6 V6ONLY=0 listener receiving an
+    IPv4 SYN now carry a `_dual_stack` presentation flag set by
+    the listener-fork. The app-facing accessors — `family` /
+    `local_ip_address` / `remote_ip_address` / `getsockname()` /
+    `getpeername()` / the `accept()` return tuple — wrap the wire
+    IPv4 addresses into the canonical `::ffff:0:0/96` form via
+    `Ip6Address.from_ipv4_mapped(ip4)` (the Phase 1 classmethod).
+    The wire attributes (`_address_family` = AF_INET4 /
+    `_local_ip_address` / `_remote_ip_address` / `socket_id`)
+    stay AF_INET4 so the RX-path active-socket lookup keeps
+    matching inbound IPv4 packets. Linux-parity end-to-end on the
+    common dual-stack use case.
+
+### H4. Multicast group membership — IPv4 SHIPPED, IPv6 deferred
 
 **Linux:** UDP multicast receivers MUST call
 `setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP, struct ip_mreq)`
 to instruct the kernel to listen on the multicast address.
 
-**PyTCP:** No setsockopt for these. Multicast receivers
-can't subscribe to groups via the normal socket API. (The
-stack does manage MLDv2 reports for some multicast
-addresses, but applications have no API to drive
-membership.)
+**IPv4 — SHIPPED 2026-05-26** via the IGMP track. Initial
+landing at commit `f837d017`
+(`feat(igmp): add IP_ADD/DROP_MEMBERSHIP socket options`); the
+post-review refinements R3-R6 (membership refcount + close
+release + EADDRINUSE/EADDRNOTAVAIL parity + ENOBUFS cap +
+`ip_mreqn` accepted form, commits `8aa1a257` /
+`0e5fff39` / `a4b95781` / `5ed73306` / `e9abe066`)
+hardened the surface. The RFC 3376 §9 source-filter
+controls (`IP_ADD/DROP_SOURCE_MEMBERSHIP`,
+`IP_BLOCK/UNBLOCK_SOURCE`) shipped under the same track
+(`c98e409c` + `9cc7dfdc`). The socket finalizer
+(`752d2bfd`) releases leaked memberships on GC. See
+`project_igmp_shipped` memory entry for the full
+inventory.
 
-**Sketch:** Map IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP to
-`stack.packet_handler._ip4/6_multicast` mutation + (for v6)
-trigger an outbound MLDv2 Report. Conversely
-IP_DROP_MEMBERSHIP / IPV6_LEAVE_GROUP removes from the list
-+ MLDv2 LEAVE.
+**IPv6 — deferred.** No app-driven `IPV6_JOIN_GROUP` /
+`IPV6_LEAVE_GROUP` setsockopt yet — the IPv6 multicast
+machinery exists (`_ip6_multicast` list on the packet
+handler, MLDv2 listener replies to queries) but is
+SLAAC-driven only (auto-join solicited-node multicast on
+address assignment); applications cannot drive a
+user-requested join. Lift the IPv4 IGMP socket-options
+pattern (`socket/__init__.py` lines ~638-720) to a
+parallel IPv6 surface + emit an MLDv2 Report on join,
+MLDv2 Done on leave. The MLDv2 report-emitter side is
+already in tree (`packet_handler__icmp6__tx.py`); this
+gap is purely the app-facing setsockopt + per-socket
+membership table.
 
 ### H5. No `SO_BROADCAST`
 
@@ -373,41 +445,72 @@ layer setsockopt to drive it from the application.
 **Sketch:** Map IP_TOS / IPV6_TCLASS to a per-socket
 DSCP+ECN override; thread to the emit path.
 
-### M5. No `TCP_INFO`
+### M5. `TCP_INFO` — SHIPPED 2026-05-28
 
 **Linux:** `getsockopt(IPPROTO_TCP, TCP_INFO, struct
 tcp_info)` returns ~50 fields of connection statistics —
 RTT, RTO, cwnd, ssthresh, retransmits, etc.
 
-**PyTCP:** A `status()` method returns a `TcpStatus`
-dataclass with similar info, but it's not the standard
-`TCP_INFO` getsockopt API.
+**PyTCP:** SHIPPED. `getsockopt(IPPROTO_TCP, TCP_INFO)`
+returns the canonical 240-byte Linux 5.5 struct layout
+packed from the underlying `TcpSession`. State byte maps
+PyTCP `FsmState` → Linux `enum tcp_states` via
+`_FSM_TO_TCP_INFO_STATE`; populated fields include
+`tcpi_snd_mss` / `tcpi_rcv_mss` from `WindowState`,
+`tcpi_snd_cwnd` / `tcpi_snd_ssthresh` from `CcState`
+(BYTES → SEGMENTS conversion per Linux units),
+`tcpi_rtt` / `tcpi_rttvar` from `RtoState` (ms → μs),
+`tcpi_options` flags from negotiated TS / SACK / WSCALE /
+ECN state, `tcpi_snd_wscale` / `tcpi_rcv_wscale` bit-
+packed nibbles, `tcpi_pmtu` from the PLPMTUD engine's
+current MTU. The pre-existing `TcpSocket.status()` →
+`TcpStatus` dataclass surface remains; TCP_INFO is the
+Linux-shaped wire surface bolted on top so applications
+written against the stdlib socket pattern see the bytes
+they expect. Counters PyTCP doesn't track per-session
+(pacing rate, busy time, bytes-acked counters, segs-out
+/-in) zero-fill with inline rationale. See
+`pytcp/socket/tcp__info.py` for the packer.
 
-**Sketch:** Wrap `status()` output into a serialized
-`tcp_info`-shaped struct; expose via `getsockopt(IPPROTO_TCP,
-TCP_INFO)` in addition to the current `status()` method.
-
-### M6. No `TCP_USER_TIMEOUT`
+### M6. `TCP_USER_TIMEOUT` — SHIPPED 2026-05-28
 
 **Linux:** Per-connection abort-after-no-ACK timeout
 (replaces the RFC 1122 default ~100 s).
 
-**PyTCP:** Stack-default RFC 6298 timeout applies; no
-per-socket override.
+**PyTCP:** SHIPPED. `setsockopt(IPPROTO_TCP,
+TCP_USER_TIMEOUT, ms)` stores a per-socket
+`_tcp_user_timeout`; `connect()` / `listen()` propagate
+it onto `TcpSession._user_timeout_ms`. The R2 abort
+site in `session/tcp__session__retransmit.py` consults
+the override and computes
+`budget = max(1, _user_timeout_ms // current_rto_ms)` so
+the abort fires after the user's wall-time budget elapses
+under the current RTO. PyTCP's count-based machinery
+approximates Linux's time-based
+`tcp_time_stamp - tp->retrans_stamp` check; an exact
+time-based implementation would need an additional
+`first_unacked_at_ms` tracker the cum-ACK path would
+have to maintain — documented inline as out-of-scope for
+the M6 surgery.
 
-**Sketch:** Per-session override on `TcpSession._rto_state`
-that the R2 abort path consults.
-
-### M7. No `TCP_MAXSEG`
+### M7. `TCP_MAXSEG` — SHIPPED 2026-05-28
 
 **Linux:** Clamp / read the negotiated MSS. Some apps need
 to verify the path MSS.
 
-**PyTCP:** MSS visible via `status().snd_mss` (read-only);
-no setsockopt to clamp.
-
-**Sketch:** Per-session MSS clamp consulted during
-SYN-options assembly.
+**PyTCP:** SHIPPED. `setsockopt(IPPROTO_TCP, TCP_MAXSEG,
+mss)` stores a per-socket `_tcp_maxseg`; `connect()` /
+`listen()` propagate it onto
+`TcpSession._maxseg_override`. The SYN-options assembly in
+`session/tcp__session__tx.py` clamps the emitted MSS
+option to `min(rcv_mss, 0xFFFF, _maxseg_override)` when
+the override is positive — so the peer learns no
+advertised MSS larger than the application wants.
+`getsockopt(IPPROTO_TCP, TCP_MAXSEG)` returns the live
+`session._win.snd_mss` post-connect (matching Linux's
+"current effective MSS") or the stored override
+pre-connect. Validator rejects values below
+Linux `TCP_MIN_MSS = 88`.
 
 ### M8. No `MSG_ERRQUEUE` / IP_RECVERR
 
@@ -454,14 +557,181 @@ expose the constant in `pytcp.socket`.
 
 ## Cross-cutting issues
 
-### X1. Stack thread separation
+### X1. Stack thread separation — AUDIT (2026-05-27)
 
-PyTCP's stack runs in its own thread; sockets are accessed
-from application threads. Thread-safety of the socket-layer
-data structures (rx buffers, accept queues) needs an
-explicit audit. Symptoms of a missing audit would be rare
-race conditions under concurrent recv + ICMP error
-delivery, or accept + concurrent close.
+PyTCP's stack runs across several threads — the rx-ring
+thread (PacketHandler RX methods), the tx-ring thread, the
+Timer subsystem thread, the ARP/ND cache aging threads — and
+application code calls into sockets / control APIs from its
+own thread(s). This section records the explicit cross-thread
+shared-state audit owed since the original write-up.
+
+**Threat model.** PyTCP ships and tests on standard CPython,
+so the GIL holds: every individual bytecode op (a `d[k]=v`
+key set, a `d.get(k)`, a `d.pop(k)`, a `deque.append`/
+`popleft`, a scalar field assignment) is atomic w.r.t. other
+Python threads, and a single C-level call such as
+`list(some_dict)` cannot be interleaved by another Python
+thread. Three hazard classes survive the GIL: **(H1)** a
+*Python-level* `for`/comprehension iterating a shared
+dict/set/list on one thread while another thread changes its
+size → hard `RuntimeError: ... changed size during iteration`;
+**(H2)** a compound check-then-act / read-modify-write spanning
+multiple bytecodes interleaved by another writer → lost update
+or stale read (no crash); **(H3)** a multi-statement invariant
+(container + derived counter) observed torn by a reader. A
+fourth class — raw container corruption / tearing on any
+unguarded write — appears on free-threaded CPython
+(3.13t/3.14t). **Running on no-GIL CPython is a PyTCP north-star
+goal**, so this fourth class is in scope: GIL atomicity is NOT
+an acceptable correctness crutch, and every cross-thread
+dict / list / set / scalar ultimately needs its own lock (the
+lock-per-structure pattern the SocketTable / RouteTable / Timer
+heap / NeighborCache already follow). The findings below are
+therefore tiered two ways: severity **on today's GIL build**
+(what can crash or misbehave now) and **on a no-GIL build**
+(what must be locked to reach the north star). "Benign under
+the GIL" means "not a 3.0.6-on-CPython bug" — it does **not**
+mean "done"; each such item is on the no-GIL backlog.
+
+**Already correctly guarded** (these predate and survive the
+audit — each has genuine multi-writer, iterate-while-mutate,
+or torn-invariant exposure and carries its own lock):
+
+| Structure | Lock | File |
+|---|---|---|
+| `stack.sockets` (SocketTable) | `_lock` — accessors return snapshots | `socket/socket_table.py` |
+| `stack.ip4_fib` / `ip6_fib` (RouteTable) | `_lock` (lookup snapshots under lock) | `runtime/fib.py` |
+| `Timer._heap` + `_seq` | `_lock` (RLock; released before callback) | `runtime/timer.py` |
+| `NeighborCache._entries` (ARP/ND) | `_lock` (callbacks fire outside lock) | `lib/neighbor.py` |
+| Per-interface IPv4 Identification | `_lock__ip4_id` | `runtime/packet_handler/__init__.py` |
+| Per-socket rx/tx buffers, accept signal | `_lock__io` / `_lock__rx_buffer` / `_lock__tx_buffer` / `_lock__fsm` + semaphores + eventfd | `socket/*.py`, `protocols/tcp/tcp__session.py` |
+
+**Findings — unguarded cross-thread state:**
+
+- **F1 (H1, real, low-probability crash — the one defect worth
+  fixing).** `_igmp_group_query__pending` (per-group GSSQ
+  response records) is iterated on the **rx-ring thread** in
+  `_igmp_cancel_pending_timers` (`for pending in …pending.
+  values(): …; .clear()`, `packet_handler__igmp__rx.py:374/376`)
+  while the **timer thread** can `pop(group)` the same dict from
+  `_igmp_group_query__deferred_send` (`:305`). If a
+  Group-(and-Source-)Specific Query response timer fires in the
+  exact instant a querier compatibility-mode change cancels the
+  pending set, the RX iteration raises `RuntimeError:
+  dictionary changed size during iteration` and kills the RX
+  subsystem loop. Window is narrow and both sides are internal
+  threads (no app involvement), but it is a genuine GIL-present
+  crash. **Fix:** snapshot before iterating —
+  `for pending in list(self._if._igmp_group_query__pending.
+  values()):` (the codebase already uses exactly this
+  snapshot-then-iterate idiom at `igmp__tx.py:310`
+  `groups = list(self._igmp_state_change__pending)` and at
+  `igmp__tx.py:143/163` `dict.fromkeys(self._if._ip4_multicast)`).
+
+- **F2 (H2, moderate, no crash).** The IPv4 multicast reception
+  state — `_ip4_multicast_filters` and `_ip4_multicast_refs` —
+  is written only by the **app thread** (membership join/leave,
+  `IP_*_SOURCE_MEMBERSHIP` setsockopt) and read by the **rx-ring
+  thread** *only through atomic snapshots*: the `_ip4_multicast`
+  property is `list(self._ip4_multicast_filters)` (one C-level
+  call, GIL-atomic) and every RX/TX/IGMP consumer iterates that
+  snapshot or `dict.fromkeys(...)` of it, never the live dict.
+  RX delivery is therefore safe under the GIL. The residual is
+  **app-vs-app**: two application threads doing concurrent
+  join/leave/setsockopt on the same interface race on the
+  compound `_mc_recompute` read-merge-assign and the
+  `_mc_ref_acquire`/`_mc_ref_release` refcount RMW, which can lose
+  an update or strand a refcount. Linux serialises these under the
+  socket/`mc_list` lock; PyTCP had no such lock.
+  **FIXED (2026-05-27):** a per-interface reentrant
+  `_lock__multicast` now guards every read and write of
+  `_ip4_multicast_filters` / `_ip4_multicast_refs` (the mutators
+  `_mc_ref_acquire` / `_mc_ref_release` / `_mc_set_socket_filter` /
+  `_mc_clear_socket_filter` / `_mc_recompute` /
+  `_assign_ip4_multicast` / `_remove_ip4_multicast`, and the
+  readers `_ip4_multicast` / `_mc_is_joined` /
+  `_ip4_multicast_filter_for` plus the IGMP-TX current-state
+  reads). Reentrant because the mutators nest. Pinned by the
+  lock-discipline test in
+  `test__igmp__thread_safety.py`.
+
+- **F3 (H2/benign under GIL; real under no-GIL).** `stack.pmtu_cache`
+  / `stack.pmtu_state` were bare dicts written from the rx-ring
+  thread (ICMPv4 Frag-Needed, ICMPv6 Packet-Too-Big) and from
+  app/tx paths (UDP, TCP), read via `.get(dst)` in `current_pmtu`.
+  Every access is an independent single-key set or get — no
+  iteration, no multi-key invariant — so all are GIL-atomic
+  (worst case a reader sees a slightly stale per-destination
+  MTU). On a free-threaded build, an unguarded dict write racing
+  another access tears the map. **FIXED (2026-05-27):** a shared
+  module `stack._pmtu_lock` now guards every access; the maps
+  stay plain dicts (so the test-harness snapshot/clear/restore
+  idioms keep working) but all reads/writes go through
+  `current_pmtu` / `record_classical_pmtu` / `record_pmtu_engine`,
+  each holding the lock. The four ICMP/UDP/TCP write sites were
+  migrated to the accessors. Pinned by `test__pmtu_cache.py`
+  (`TestPmtuCacheLocking`).
+
+- **F4 (H2/benign under GIL; real under no-GIL).** The IGMP
+  query-response state — the General-Query scalars
+  `_igmp_query__pending_response_at_ms` / `_igmp_query__handle`,
+  the `_igmp_query__suppressed_groups` set, and the
+  `_igmp_group_query__pending` per-group map — is written by the
+  rx-ring thread (query arrival, `__phrx_igmp__membership_query` /
+  `__phrx_igmp__report`) and the timer thread (deferred send,
+  `_igmp_query__deferred_send` / `_igmp_group_query__deferred_send`).
+  On the GIL build scalar/dict ops are atomic (worst case a
+  logical race — a response double-scheduled or a just-fired
+  schedule cleared); on a no-GIL build the unguarded set/dict
+  writes tear. **FIXED (2026-05-27):** the four query-state
+  thread-entry methods (the two `__phrx_igmp__*` RX handlers and
+  the two timer-fired deferred-send callbacks) now run under the
+  per-interface `_lock__multicast` (reentrant, so the
+  transitively-called schedulers, `_igmp_cancel_pending_timers`,
+  and the report emitters that re-acquire it nest cleanly). This
+  also completes the no-GIL hardening of the `_igmp_group_query__
+  pending` map that F1 only crash-fixed: its mutations and the
+  cancel-loop snapshot now hold the lock. Pinned by
+  `test__igmp__thread_safety.py::TestIgmpQueryResponseStateLocking`.
+
+**Conclusion.** The structures with real multi-writer /
+iterate-while-mutate / torn-invariant exposure are all already
+lock-guarded; the locking design (snapshot-under-lock for
+tables, snapshot-before-iterate for the multicast/IGMP derived
+views, callbacks-outside-lock for the timer and neighbor cache)
+is sound and is the template for the rest.
+
+- **On today's GIL build:** exactly **one** genuine defect was
+  found — **F1**, a one-line snapshot fix (shipped). F2 was a
+  latent app-vs-app serialisation gap (matches a Linux lock PyTCP
+  lacked); F3/F4 did not crash or corrupt.
+- **For the no-GIL north star:** F2, F3, and F4 were all real
+  correctness bugs and are **all now fixed** — the per-interface
+  `_lock__multicast` (F2; it also guards the IGMP query-response
+  state for F4) and the shared module `_pmtu_lock` (F3), see the
+  findings above. **Scope caveat (corrected 2026-05-27):** F1–F4
+  closed only the **IPv4 multicast / IGMP-query / PMTU**
+  cross-thread state this IGMP-triggered audit reached. A later
+  full stack-wide sweep found the no-GIL backlog was **NOT**
+  empty. All of `TcpStack` Fast-Open state (T1), MLDv2 query-
+  response timer state (M1), IGMP state-change retransmit-timer
+  compat-mode read/RMW (M2), ICMP error rate-limiter token bucket
+  (I1), per-socket IPv4 source-filter map (U1), per-interface
+  address-config + IPv6-multicast lists (N1, copy-on-write +
+  write lock), `PacketStats` counters (P1, per-thread shards
+  summed on read), **and `TcpSession` timer state (T2, the
+  deadline map + coalesced service handle moved onto
+  `TcpTimerService` with its own `Lock` as Phase 1 of the TCP
+  god-class decomposition)** SHIPPED 2026-05-27. **The no-GIL
+  backlog is fully closed.** The authoritative no-GIL ledger +
+  correction plan is **`no_gil_thread_safety_audit.md`**. The
+  lock-per-structure pattern (SocketTable, RouteTable, Timer
+  heap, NeighborCache, per-interface IPv4-ID, the multicast/IGMP
+  state, the PMTU maps, the per-socket buffers, the TCP timer
+  service) — augmented by copy-on-write (N1) and per-thread
+  shards (P1) where the access shape demands them — is the
+  standing invariant for any new cross-thread state.
 
 ### X2. `accept()` returns blocking sockets
 
@@ -587,32 +857,33 @@ that's intentional.
 |-----|--------|---------------------|
 | H1 SO_REUSEADDR     | shipped | `705a4617` — bypasses "address already in use" gate when set. |
 | H7 SO_SNDBUF/RCVBUF | shipped (storage) | `705a4617` — round-trip via setsockopt; full tx/rx buffer cap enforcement deferred to a focused commit (RCVBUF would also need to drive RCV.WND advertisement). |
-| H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded; TCP storage-only (FSM segment-emit propagation deferred). |
+| H6 IP_TTL / IPV6_UNICAST_HOPS | shipped | `89da6654` — UDP/RAW threaded. TCP propagation completed 2026-05-28: `TcpSession._transmit_packet` reads `session._socket._effective_ip_ttl()` and passes `ip__ttl` through `send_tcp_packet` → `_phtx_tcp` → `_phtx_ip4`/`_phtx_ip6`. 5 integration tests pin the SYN + data-segment paths for both IPv4 and IPv6. |
 | M1 SO_RCVTIMEO/SO_SNDTIMEO | shipped (RCVTIMEO) | `705a4617` — RCVTIMEO supplies recv-default timeout; SNDTIMEO storage-only (UDP/RAW sends today don't block on tx buffer space). |
 | M4 IP_TOS / IPV6_TCLASS | shipped (ECN portion) | `89da6654` — full 8-bit DSCP+ECN stored; ECN low-2-bits threaded into outbound packets; full DSCP marking deferred (needs `ip__dscp` kwarg through packet handlers). |
-| **H3 IPV6_V6ONLY**  | **deferred** | Substantial — needs IPv4-mapped IPv6 (`::ffff:0:0/96`) support in `Ip6Address`, plus dual-stack listener-fork that translates inbound IPv4 connections into IPv4-mapped peer addresses on `accept()`. Ship as a focused work block. |
-| **H2 SO_REUSEPORT** | **deferred** | Substantial — needs `stack.sockets` refactor from `dict[SocketId, socket]` to a multi-listener-aware structure, plus inbound-connection demux (round-robin or hash) across the REUSEPORT cohort. |
-| **H8 SO_LINGER**    | **deferred** | Needs a bytes-encoded `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("ii", onoff, linger))` API; PyTCP's setsockopt currently takes `value: int`, so a kwarg-shape change is required first. Bundle with M2 sendmsg/recvmsg work. |
+| **H3 IPV6_V6ONLY**  | shipped | Five-phase delivery: Phase 1 (`Ip6Address.is_ipv4_mapped` + `from_ipv4_mapped`) + Phase 2 (`IPV6_V6ONLY` setsockopt) + Phase 3a (bind cross-family conflict) + Phase 3b (IPv4 SYN finds AF_INET6 V6ONLY=0 listener via `listening_socket_ids` extension + RX-loop V6ONLY filter) + Phase 3c (accepted children carry `_dual_stack` presentation flag; family / addresses / getsockname / getpeername / accept return wrap to IPv4-mapped IPv6). |
+| **H2 SO_REUSEPORT** | **shipped** | `af536889` (Phase 1 — `SocketTable` cohort storage `dict[SocketId, list[socket]]` + register/unregister + transparent round-robin `get` + writer migration) + `c41aa96b` (Phase 2 — SolSocketOption optname 15 + setsockopt/getsockopt) + `c76fa4f5` (Phase 3 — `is_address_in_use` reuseport group-rule gate) + Phase 4 (TCP/UDP cohort RX-demux integration tests). Demux is round-robin (deliberate Phase-1 simplification of Linux's 4-tuple hash; retransmit-safe via the exact-match-first path). |
+| **H8 SO_LINGER**    | **shipped** | 2026-05-29 — `SolSocketOption.SO_LINGER = 13` + bare alias; bytes-valued `setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("@ii", l_onoff, l_linger))` decoded via base `_so_linger_set` (EINVAL on wrong length), `getsockopt` returns the packed `struct linger`. The close-path branch lives in `TcpSocket.close`: `{l_onoff=1, l_linger=0}` → abortive RST via `TcpSession.abort()` (RFC 9293 §3.10.7.4); `{l_onoff=1, l_linger>0}` → graceful FIN then block on the new `TcpSession._event__closed` until CLOSED or the deadline elapses (RX/timer threads advance the FSM in a live stack); linger-off / unset → unchanged graceful close. UDP / RAW store the option as a no-op (Linux parity — linger is meaningless for a connectionless socket). 3 unit + 4 integration tests. |
 
 ### Phase 3 — multicast / advanced — all deferred (5/5)
 
 | Gap | Status | Rationale |
 |-----|--------|-----------|
-| **H4 IP_ADD_MEMBERSHIP / IPV6_JOIN_GROUP** | deferred | Substantial — needs MLDv2 querier role / group-membership table refactor in the packet handler. Crosses into Phase-2 (router) North Star territory. |
-| **H5 SO_BROADCAST** | partially shipped | `705a4617` stored the flag; full broadcast-send gate enforcement (refuse with EACCES when flag is False, matching Linux) deferred — would break existing PyTCP callers that don't set the flag, needs a coordinated stack-internal audit first. |
+| **H4 IPv4 IP_ADD_MEMBERSHIP** | shipped | `f837d017` initial + R3-R6 refinements (`8aa1a257`/`0e5fff39`/`a4b95781`/`5ed73306`/`e9abe066`) + `c98e409c`/`9cc7dfdc` §9 source filters + `752d2bfd` finalizer. Full IGMP host stack (RFC 3376 §7 v1/v2 fallback + §9 SSM). |
+| **H4 IPv6 IPV6_JOIN_GROUP** | shipped (any-source join) 2026-05-28 | `IPV6_JOIN_GROUP` (= 20) and `IPV6_LEAVE_GROUP` (= 21) wired through `_ipproto_ipv6_membership(mreq)`; ifindex=0 picks the first IPv6-capable interface; EADDRINUSE on duplicate join, EADDRNOTAVAIL on stale leave, EINVAL on non-multicast or truncated mreq. The existing handler `_assign_ip6_multicast` emits the MLDv2 Report automatically. 8 integration tests. Per-socket source-filter parity (IPV6_ADD/DROP_SOURCE_MEMBERSHIP) is a follow-up that lifts the IPv4 source-filter machinery to IPv6. |
+| **H5 SO_BROADCAST** | shipped 2026-05-28 | Storage shipped `705a4617`; EACCES gate added 2026-05-28 across `UdpSocket.send` and `UdpSocket.sendto` when the destination is the IPv4 limited broadcast `255.255.255.255` and `_so_broadcast` is False. Stack-internal audit identified one consumer (DHCPv4 client `_open_client_socket`) which now sets the flag explicitly at construction so the lease acquisition path stays clean. 4 integration tests (with-flag, without-flag, unicast not gated, connected-send broadcast). |
 | **H2 SO_REUSEPORT** | (see Phase 2)    |  |
-| **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | partial | (see Phase 2 row above) |
-| **M5 TCP_INFO**     | deferred | Needs to pack `TcpStatus` (already exposed via `socket.status()`) into the Linux `tcp_info` struct (~50 fields, ~232 bytes). Mostly mechanical; one commit. |
+| **M4 IP_TOS / IPV6_TCLASS** (DSCP portion) | shipped 2026-05-29 | DSCP (high 6 bits) now marked on every socket-originated packet. New `socket._effective_ip_dscp()` (mirror of `_effective_ip_ecn`); an `ip__dscp` / `ip4__dscp` / `ip6__dscp` kwarg (default 0) threads through the TX handler chain (facade + per-proto sub-handler) into the IPv4 / IPv6 assemblers (which already carried a `dscp` field). Wired from UDP `send`/`sendto`, RAW `send`/`sendto`, and the TCP transmit path (SYN/data/ACK/FIN + keepalive + SYN-SENT reject RST). TCP ECN stays RFC-3168 stack-driven; DSCP is orthogonal. UDP/TCP wire integration tests v4+v6; RAW + accessor unit tests. Fragmentation now preserves DSCP+ECN on every fragment (the IPv4 `Ip4FragAssembler` and the IPv6 per-fragment `_phtx_ip6` re-entry previously zeroed both — fixed alongside, with v4+v6 frag integration tests). |
+| **M5 TCP_INFO**     | shipped  | 240-byte Linux 5.5 layout packed by `pytcp/socket/tcp__info.py::pack_tcp_info` from `TcpSession`; surfaced via `getsockopt(IPPROTO_TCP, TCP_INFO)`. 9 integration tests. |
 
 ### Phase 4 — specialised — all deferred (5/5)
 
 | Gap | Rationale |
 |-----|-----------|
-| **M2 sendmsg / recvmsg**  | Substantial — needs a control-message decoder/encoder layer (cmsg). Many apps don't use this; stubbing as `NotImplementedError` until a concrete consumer arrives is acceptable. |
-| **M3 MSG_OOB**            | Needs TCP-FSM URG-flag pivot to expose urgent-byte split through `recv(MSG_OOB)`; the FSM RX-side URG handling exists but isn't surfaced to the application. |
-| **M6 TCP_USER_TIMEOUT**   | Needs `TcpSession._rto_state` to consult a per-connection override on the R2 abort path. ~15-line change. |
-| **M7 TCP_MAXSEG**         | Needs `TcpSession` to clamp the SYN MSS option to the configured value during SYN options assembly. ~10-line change. |
-| **M8 MSG_ERRQUEUE / IP_RECVERR** | Substantial — needs per-socket error queue, `notify_*` paths refactored to enqueue rather than inline-raise. |
+| **M2 sendmsg / recvmsg**  | **shipped.** `recvmsg` landed with the IP_RECVERR / cmsg work (UDP/TCP, `MSG_ERRQUEUE` + IP_OPTIONS / IP_TOS / IPV6_TCLASS cmsgs); `sendmsg` shipped 2026-05-29 across the base stub + `UdpSocket` / `TcpSocket` / `RawSocket` (+ `RawSocket.recvmsg`). No byte-level CMSG codec is needed — stdlib `recvmsg`/`sendmsg` exchange ancillary data as parsed `(level, type, data)` tuples, which PyTCP already uses. `sendmsg` concatenates the scatter-gather `buffers` into one payload and reuses the existing `send` / `sendto` paths; `ancdata` is structurally validated then ignored Phase-1 (Linux silently ignores unhandled cmsgs; per-send IP_TOS / IP_TTL / IP_PKTINFO honouring is a marked `# Phase 2:` follow-up). TCP `sendmsg` rejects a non-None `address` with `EISCONN`. 11 unit + 1 integration test. |
+| **M3 MSG_OOB / SO_OOBINLINE** | shipped (design-aligned 2026-05-28). PyTCP's RFC 6093 adherence record (`docs/rfc/tcp/rfc6093__urgent_mechanism/adherence.md` §6) documents the universal-inline design choice: PyTCP delivers ALL inbound data inline regardless of the URG flag — the `SO_OOBINLINE=1` posture RFC 6093 §6 recommends. This commit reconciles the audit-side wording (which previously described M3 as "FSM URG handling exists but isn't surfaced"; that framing was misleading) and adds the Linux constants applications look for: `MSG_OOB = 1` on `MsgFlag`, `SO_OOBINLINE = 10` on `SolSocketOption`. `setsockopt(SOL_SOCKET, SO_OOBINLINE, 1)` is accepted as a no-op (confirms the universal-inline posture); `setsockopt(..., 0)` raises `OSError(EINVAL)` with a message naming RFC 6093 §6 since opting INTO out-of-band delivery is not supported. `getsockopt(SOL_SOCKET, SO_OOBINLINE)` always returns 1. 5 tests. |
+| **M6 TCP_USER_TIMEOUT**   | shipped — `TcpSession._user_timeout_ms` propagated from `TcpSocket._tcp_user_timeout`; R2-abort site computes `max(1, _user_timeout_ms // current_rto_ms)` as the approximated count budget. 5 unit + 2 integration tests. |
+| **M7 TCP_MAXSEG**         | shipped — `TcpSession._maxseg_override` propagated from `TcpSocket._tcp_maxseg`; SYN-options assembly in `session/tcp__session__tx.py` clamps to `min(rcv_mss, 0xFFFF, _maxseg_override)`. Validator rejects below Linux `TCP_MIN_MSS=88`. 6 unit + 3 integration tests. |
+| **M8 MSG_ERRQUEUE / IP_RECVERR** | **shipped.** Per-socket error queue (`pytcp/socket/error_queue.py`) + `notify_*` paths refactored to enqueue rather than inline-raise; `recvmsg(MSG_ERRQUEUE)` on UDP / TCP dequeues an `IP_RECVERR` / `IPV6_RECVERR` cmsg via `pack_sock_extended_err`. Integration tests: `test__tcp__session__ip_recverr.py`, `test__udp__socket_api.py`, `test__udp__ip_options.py`. |
 
 ### Phase 5 — polish (1/4 shipped + 3 deferred)
 
@@ -627,7 +898,7 @@ that's intentional.
 
 | Item | Status | Note |
 |------|--------|------|
-| **X1 stack-thread safety audit** | not yet performed | The producer (stack thread) and consumer (app thread) coordination paths are GIL-correct under the C1+C2 invariants, but a full race analysis is owed. |
+| **X1 stack-thread safety audit** | performed + closed (2026-05-27); **no-GIL backlog fully closed (2026-05-27)** | See §X1. All findings fixed. **F1**: rx-thread iteration of `_igmp_group_query__pending` racing the timer-thread `pop` (snapshot fix). **F2**: app-vs-app multicast-membership RMW (per-interface `_lock__multicast`). **F3**: `pmtu_cache`/`pmtu_state` (shared module `_pmtu_lock` + guarded accessors). **F4**: IGMP query-response state — scalars + suppressed set + per-group pending map (folded under `_lock__multicast`). **Full stack-wide no-GIL backlog (tracked in `no_gil_thread_safety_audit.md`) fully closed: T1 TCP-TFO + M1 MLDv2-query + M2 IGMP-retransmit + I1 ICMP-rate-limiter + U1 per-socket-source-filter + N1 address-config-COW + P1 PacketStats-per-thread-shards + T2 TcpSession-timer-service (TCP decomposition Phase 1) — all SHIPPED 2026-05-27.** Lock-per-structure (or copy-on-write / per-thread shards) is the standing invariant. **Post-close reviews** of new cross-thread state land in `no_gil_thread_safety_audit.md` §5: the socket Track B additions (2026-05-29) — `TcpSession._event__closed` (self-synchronizing `threading.Event`) and `TcpSocket._so_linger` (app-thread-only single-reference) — were reviewed and need no new lock. |
 | **X2 accept() inheritance**       | shipped | `31983483` — accepted children inherit the listener's `_blocking` flag both at the listener-fork pivot and at `accept()` pop time. |
 | **X3 listen() implicit bind**     | unchanged | `listen()` on an unbound socket still picks an ephemeral port instead of returning EINVAL; tightening would break existing PyTCP examples that don't bind first. Punt to a hygiene commit. |
 
@@ -635,14 +906,15 @@ that's intentional.
 
 If resuming this work, prioritise (rough order):
 
-  1. **M5 TCP_INFO** — small, high-value (debugging / monitoring).
-  2. **M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG** — small, per-connection
-     TCP options that round out application-level control.
-  3. **H3 IPV6_V6ONLY + IPv4-mapped IPv6** — high-value (most
+  1. ~~**M5 TCP_INFO**~~ — SHIPPED 2026-05-28.
+  2. ~~**M6 TCP_USER_TIMEOUT + M7 TCP_MAXSEG**~~ — SHIPPED 2026-05-28.
+  3. ~~**H3 IPV6_V6ONLY + IPv4-mapped IPv6**~~ — SHIPPED 2026-05-28. (Originally: high-value (most
      servers expect dual-stack); substantial refactor in
      `net_addr.Ip6Address` + dual-stack listener pivot.
-  4. **H4 multicast** — needs MLDv2 querier role; pair with the
-     Phase-2 (router) North Star work.
+  4. ~~**H4 IPv6 IPV6_JOIN_GROUP**~~ — SHIPPED 2026-05-28 (any-source
+     join). Per-socket source filters (IPV6_ADD/DROP_SOURCE_MEMBERSHIP)
+     remain — lift the IPv4 source-filter machinery if a real consumer
+     needs it.
   5. **H2 SO_REUSEPORT** — `stack.sockets` multi-listener refactor.
   6. **M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE** — control-message
      layer; one focused work block.
@@ -765,7 +1037,7 @@ Read these in order before any code:
   4. .claude/rules/unit_testing.md (test-authoring rule;
      §7.2 self-audit script blocks every commit)
   5. `.claude/rules/source_files.md` / `net_proto.md` / `pytcp.md` (source-authoring rule)
-  6. The current pytcp/socket/ tree
+  6. The current packages/pytcp/pytcp/socket/ tree
 
 After reading, confirm you understand:
 
@@ -774,13 +1046,14 @@ After reading, confirm you understand:
     H8 SO_LINGER (substantial refactors deferred per §100).
   - Suggested resume order (per §100 "Suggested resume
     points"): M5 TCP_INFO → M6 TCP_USER_TIMEOUT + M7
-    TCP_MAXSEG → H3 IPV6_V6ONLY → H4 multicast → H2
-    SO_REUSEPORT → M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE.
+    TCP_MAXSEG → H3 IPV6_V6ONLY → H4 IPv6 IPV6_JOIN_GROUP
+    (IPv4 half SHIPPED via IGMP track) → H2 SO_REUSEPORT
+    → M2 sendmsg/recvmsg + M8 MSG_ERRQUEUE.
   - Out-of-scope per North Star: AF_UNIX, TCP_MD5SIG,
     IPsec socket options, SCM_RIGHTS, socketpair (Unix
     domain). Don't add these even if asked.
 
-Branch: PyTCP_3_0__pre_release
+Branch: PyTCP_3_0_6
 
 Then ask the user which item to start with (default to
 M5 TCP_INFO if they say "go" or "next"). Tests-first per

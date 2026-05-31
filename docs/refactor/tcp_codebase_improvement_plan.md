@@ -24,7 +24,7 @@ not functional.
 
 ### Concern #1 — `tcp__session.py` is a 4000+-line god class
 
-`pytcp/protocols/tcp/tcp__session.py` carries every aspect of a
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py` carries every aspect of a
 TCP session: connection identity, send-side state, receive-side
 state, timers, ~7 congestion-control snapshot/restore state
 groups, ~30 socket-API knobs, plus the FSM dispatcher itself.
@@ -61,7 +61,7 @@ explicit.
 
 ### Concern #4 — Module-level stack state is creeping
 
-`pytcp/stack/__init__.py` accumulates: `tcp__fastopen_cookies`,
+`packages/pytcp/pytcp/stack/__init__.py` accumulates: `tcp__fastopen_cookies`,
 `tcp__fastopen_negative`, `tcp__fastopen_pending_count`, plus
 secrets, cache caps, etc. The TFO test-isolation bug (commit
 `943698f2`) was the canary — adding module-level state without
@@ -71,10 +71,22 @@ grows.
 
 **Severity:** Medium. **Effort:** Small (one-time refactor).
 
-### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing)
+### Concern #5 — ICMP error demux is partial (TCP missing, PMTUD missing) — RESOLVED
+
+> **RESOLVED (reconciled 2026-05-25).** This concern is stale: the
+> "Missing" cells and the `# TODO` line references below no longer
+> hold. The ICMP→TCP demux shipped (`icmp_into_tcp_fsm_plan.md` =
+> "✅ COMPLETED — all four phases") and PMTUD shipped
+> (`icmp_demux_pmtud_plan.md` + `plpmtud_unified_engine.md` SHIPPED;
+> the `pmtu_cache` is live; ICMPv4 Frag-Needed / ICMPv6 Packet-Too-Big
+> feed it). There are **zero `# TODO` markers** left in the cited
+> files. The only remaining sliver is the RFC 4821/8899 *active*
+> probe-segment emit (`v3_0_6_remaining_work.md` §2.1), a separate
+> enhancement on top of the shipped passive PMTUD. The original
+> snapshot table is kept below as archaeology.
 
 The ICMP RX handlers
-(`pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:147` and
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py:147` and
 `packet_handler__icmp6__rx.py:142`) **already** demux Destination-
 Unreachable to UDP: they parse the embedded IP+UDP header out of
 the ICMP error payload, build a `UdpMetadata`, look up the
@@ -130,7 +142,7 @@ dataclass with one place to flip defaults would be cleaner.
 **Effort:** 3–4 commits. **Risk:** Low. **Closes:** Concern #1 (partial).
 
 Extract a `CcState` dataclass under
-`pytcp/protocols/tcp/tcp__state__cc.py` carrying:
+`packages/pytcp/pytcp/protocols/tcp/tcp__state__cc.py` carrying:
 
 - `cwnd, ssthresh, snd_ewn` — primary CC variables
 - `recovery_point, recover_seq` — RFC 6582 step 4 + RFC 6675 §5.1
@@ -194,7 +206,7 @@ it possible to run two PyTCP "instances" in one process
 Migration is mechanical: `stack.tcp__fastopen_cookies[k]` becomes
 `stack.tcp_stack.fastopen_cookies[k]` at every call site. Replace
 the per-RFC-7413-§4.1.3.1 / §4.2 setUp/tearDown snapshot+clear
-in `TcpSessionTestCase` with a single `stack.tcp_stack =
+in `TcpTestCase` with a single `stack.tcp_stack =
 TcpStack()` reset.
 
 ### Refactor #4 — Generalise ICMP error demux + per-destination MTU cache
@@ -215,7 +227,7 @@ Steps:
    parsing logic currently inlined in
    `__phrx_icmp4__destination_unreachable` (lines 163-181) and
    its v6 counterpart moves to
-   `pytcp/runtime/packet_handler/_icmp_error_demux.py` returning
+   `packages/pytcp/pytcp/runtime/packet_handler/_icmp_error_demux.py` returning
    `(IpProto.UDP | IpProto.TCP, four_tuple)` or `None`. Reused
    by all four error handlers (v4/v6 × Dest-Unreachable/PTB).
 

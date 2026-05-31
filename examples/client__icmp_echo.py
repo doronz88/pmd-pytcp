@@ -32,7 +32,7 @@ operation of the UNIX 'ping' utility.
 
 examples/client__icmp_echo.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import os
@@ -51,6 +51,7 @@ from net_addr import (
     Ip6Address,
     IpVersion,
 )
+from net_proto.lib.inet_cksum import inet_cksum
 
 ICMP4__ECHO_REQUEST__TYPE = 8
 ICMP4__ECHO_REQUEST__CODE = 0
@@ -121,16 +122,36 @@ class IcmpEchoClient(Client):
                 icmp_type = ICMP4__ECHO_REQUEST__TYPE
                 icmp_code = ICMP4__ECHO_REQUEST__CODE
 
+        data = payload(length=message_size)
+
+        # For a SOCK_RAW socket the application owns the
+        # transport checksum — the stack carries the payload
+        # opaquely (matching Linux, where IPPROTO_ICMP raw does
+        # not auto-compute it). ICMPv4 has no pseudo-header, so
+        # compute the Internet Checksum over the (zero-cksum)
+        # header + payload here. ICMPv6's checksum additionally
+        # covers the IPv6 pseudo-header (src/dst/len/next-hdr),
+        # which is not known at this layer; that needs
+        # stack-side computation (IPV6_CHECKSUM semantics) and
+        # is left as 0 pending that separate work.
+        if ip_version is IpVersion.IP4:
+            cksum = inet_cksum(
+                struct.pack("!BBHHH", icmp_type, icmp_code, 0, identifier, sequence),
+                data,
+            )
+        else:
+            cksum = 0
+
         header = struct.pack(
             "!BBHHH",
             icmp_type,
             icmp_code,
-            0,  # Checksum will be calculated later by stack.
+            cksum,
             identifier,
             sequence,
         )
 
-        return header + payload(length=message_size)
+        return header + data
 
     @override
     def _thread__sender(self) -> None:
@@ -241,6 +262,7 @@ class IcmpEchoClient(Client):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     message_count: int,
     message_delay: int,

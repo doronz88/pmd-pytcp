@@ -6,7 +6,7 @@ copyright block, module docstring, imports, naming,
 formatting, inline comments, source docstrings.
 
 It is the **general** rule that applies across all three
-subpackages (`net_addr/`, `net_proto/`, `pytcp/`). Two
+subpackages (`packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, `packages/pytcp/pytcp/`). Two
 companion rules layer protocol- and runtime-specific
 conventions on top:
 
@@ -15,7 +15,7 @@ conventions on top:
   `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` /
   `*Errors`) plus options, enums, dataclass shape, validation
   helpers, error templates, buffer/struct conventions.
-- [`pytcp.md`](pytcp.md) — the `pytcp/`
+- [`pytcp.md`](pytcp.md) — the `packages/pytcp/pytcp/`
   runtime: `Subsystem`, packet-handler mixins, BSD socket
   facade, sysctl registry, stack configuration.
 
@@ -36,12 +36,16 @@ Test files are governed by
 ## 1. Runtime dependencies
 
 The stack itself has **zero runtime dependencies outside the
-standard library**. The only permitted non-stdlib imports in
-non-test source are:
+standard library**. The only permitted non-stdlib import in
+non-test source is:
 
-- `aenum` — used by `net_proto/lib/proto_enum.py` to
-  dynamically extend enums with unknown values.
-- `click` — used by `net_addr` CLI helpers only.
+- `click` — used by `net_addr` CLI helpers only, and gated
+  behind the optional `PyTCP-net_addr[cli]` extra (lazily
+  imported, so importing `net_addr` stays stdlib-only).
+
+(`aenum` was removed: `ProtoEnum` extends unknown wire
+codepoints natively via a stdlib `enum.Enum._missing_` hook —
+see [`net_proto.md`](net_proto.md) §11.)
 
 If you need anything else at runtime, stop and justify it
 before adding it.
@@ -60,8 +64,8 @@ scripts only — per standard Python convention, library modules
 carry neither.
 
 Known scripts in this repo: `tests_runner.py` and every file
-in `examples/`. Everything under `net_addr/`, `net_proto/`, or
-`pytcp/` is a library module.
+in `examples/`. Everything under `packages/net_addr/net_addr/`, `packages/net_proto/net_proto/`, or
+`packages/pytcp/pytcp/` is a library module.
 
 ### 2.1 Library module layout (no shebang)
 
@@ -98,8 +102,113 @@ The file must be marked executable (`chmod +x`).
 
 No code, comments, or `__all__` between the docstring and the
 first import. `__all__` lives **only in package `__init__.py`
-files** (see `net_proto/__init__.py`); source modules never
+files** (see `packages/net_proto/net_proto/__init__.py`); source modules never
 declare it.
+
+### 2.4 `__init__.py` is mandatory in every package directory
+
+Every directory that contains `.py` files OR contains a
+subdirectory that is part of the package tree MUST carry an
+`__init__.py`. **PyTCP uses regular packages everywhere.**
+PEP 420 namespace packages are forbidden in the project's
+source / test trees.
+
+The top-level package `__init__.py` files
+(`packages/net_addr/net_addr/__init__.py`,
+`packages/net_proto/net_proto/__init__.py`,
+`packages/pytcp/pytcp/__init__.py`) carry the public-API
+`__all__` re-exports. **Every other** `__init__.py` is empty
+— a zero-byte file whose only role is to make the directory
+a regular Python package.
+
+**Why:** PyTCP doesn't use PEP 420's actual feature
+(submodules contributed by separate distributions); each
+package is monolithic. Namespace packages cost tool-
+compatibility friction (notably pyright's PEP 561 `py.typed`
+propagation), so the project pays the trivial cost of empty
+marker files in exchange for universal tool support and the
+convention every major Python project (numpy / pandas /
+Django / mypy / pyright / the stdlib) follows.
+
+Anti-pattern — adding a new directory without
+`__init__.py`:
+
+```
+packages/net_proto/net_proto/protocols/foo/  # NO __init__.py — FORBIDDEN
+packages/net_proto/net_proto/protocols/foo/foo__header.py
+```
+
+Correct — every directory carries the marker:
+
+```
+packages/net_proto/net_proto/protocols/foo/__init__.py  # empty file
+packages/net_proto/net_proto/protocols/foo/foo__header.py
+```
+
+### 2.4.1 Encapsulated subpackages — narrow carve-out
+
+A subpackage MAY carry a non-empty `__init__.py` when the
+subpackage is deliberately encapsulated: it has a single
+public symbol (or small symbol set) and every other module
+inside it is private implementation that outside code MUST
+NOT import directly. In that case `__init__.py` is a tiny
+re-export shim, never a code-bearing module:
+
+```python
+# packages/pytcp/pytcp/protocols/tcp/session/__init__.py
+"""... encapsulation contract docstring ..."""
+
+from pytcp.protocols.tcp.session.tcp__session import TcpSession
+
+__all__ = ["TcpSession"]
+```
+
+Rules for this exception:
+
+1. The shim contains **only** the docstring, the canonical
+   copyright block, and the re-export(s) + `__all__`. No
+   class definitions, no helper functions, no side-effecting
+   statements.
+2. The subpackage `__init__.py` docstring **MUST** spell out
+   the encapsulation contract: which symbol(s) are public,
+   that every other module inside the subpackage is private,
+   and what test-side reach-throughs (if any) are explicitly
+   tolerated.
+3. The contract is enforced socially (rule + reviewer
+   attention) and by convention; PyTCP does not yet run a
+   mechanical "no deep imports from outside the subpackage"
+   check.
+4. The carve-out is granted **only** when an encapsulation
+   payoff exists: outside code already treats the subpackage
+   as a black box, the internal layout is genuinely volatile
+   (refactor likely), and a search shows no current deep
+   imports from outside production code.
+
+Canonical examples (both at
+`packages/pytcp/pytcp/protocols/tcp/`):
+
+- **`session/`** — the TcpSession + five collaborator
+  subpackage that emerged from the Phase-1..5 god-class
+  decomposition (see
+  `docs/refactor/tcp_session_decomposition.md`). Outside
+  code sees only `TcpSession`; the five collaborator files
+  are free to be split / merged / renamed without touching
+  any import outside `session/`. Deep-path consumers are
+  limited to the collaborator-seam parity tests in
+  `tests/integration/protocols/tcp/test__tcp__session__<collab>.py`,
+  which exist specifically to test the collaborator
+  classes and are tolerated as test-side reach-throughs.
+- **`fsm/`** — the per-state TCP finite-state-machine
+  handlers and the four event-kind dispatchers. Outside
+  code sees only the four dispatch functions
+  (`dispatch_packet` / `dispatch_syscall` / `dispatch_timer`
+  / `dispatch_icmp`); the dispatch-table module
+  (`tcp__fsm`) and the eleven per-state handler modules
+  (`tcp__fsm__<state>`) are private to the subpackage. The
+  only deep-path consumer is the FSM unit test at
+  `tests/unit/protocols/tcp/fsm/test__tcp__fsm.py`, which
+  reaches for the `FSM_*_HANDLERS` dispatch dicts to
+  exercise the table contents directly.
 
 ## 3. Copyright / license block (MANDATORY, verbatim)
 
@@ -158,7 +267,7 @@ ver 3.0.x
   `This package contains ...` (for `__init__.py` files).
 - The relative path uses `/` separators and matches the
   file's real location (e.g.
-  `net_proto/protocols/udp/udp__header.py`).
+  `packages/net_proto/net_proto/protocols/udp/udp__header.py`).
 - The version string tracks the package version and is
   bumped in lockstep with `pyproject.toml`. Use the current
   value (e.g. `ver 3.0.4`); do not leave `3.0.x` literal.
@@ -172,8 +281,7 @@ Order (each group separated by one blank line):
    [`typing.md`](typing.md) §20 for the audit rule).
 2. Standard library: plain `import …` lines first, then
    `from … import …` lines.
-3. `aenum` / `click` (on the rare occasions they are allowed
-   per §1).
+3. `click` (only in `net_addr`'s CLI helpers, per §1).
 4. Local packages in dependency order: `net_addr` →
    `net_proto` → `pytcp`.
 
@@ -264,6 +372,33 @@ rule is named in parentheses.
     paraphrase. See
     [`net_proto.md`](net_proto.md)
     §6 for the full property-mixin pattern.
+  - **Property accessors on `*OptionsProperties` mixins and
+    on `*Options` container classes** (the lookup
+    properties that return a specific option from the
+    container — both surfaces serve the same role, so the
+    same canonical phrasing applies): two forms based on
+    what the property returns.
+    - **Returns the option object itself** (return type
+      `<Proto>Option<Name> | None`): use exactly
+      `Get the <PROTO> '<option-name>' option.` The
+      trailing `| None` in the return type carries the
+      "if present" signal; don't restate it in the
+      docstring.
+      Example: for `def lsrr(self) -> Ip4OptionLsrr | None`,
+      the docstring is `Get the IPv4 'lsrr' option.`
+    - **Returns the option's extracted value** (return type
+      `Buffer | None`, `int`, `Ip4Mask | None`, etc.): use
+      exactly `Get the <PROTO> '<option-name>' option
+      value.` Same rule — don't restate the return-type
+      semantics in the docstring.
+      Example: for
+      `def client_id(self) -> Buffer | None`, the
+      docstring is `Get the DHCPv4 'client_id' option
+      value.`
+    Additional context (RFC citation, default-fallback
+    note, behavioural caveat) is acceptable on subsequent
+    docstring lines; the canonical first line stays
+    uniform across the family.
 - Module docstrings follow §4 exactly (description + path +
   `ver`).
 
@@ -361,6 +496,12 @@ typing anti-patterns live in
 - **Relative imports** (`from ..lib import foo`). Always
   absolute.
 - **`__all__` in a non-`__init__.py` source module.**
+- **PEP 420 namespace package directory** — adding a new
+  source directory under `packages/<x>/<x>/` (or
+  `examples/`) without an `__init__.py`. See §2.4. Every
+  package directory MUST carry an `__init__.py` (empty for
+  intermediate dirs; carrying `__all__` re-exports at the
+  top-level package).
 - **Trailing underscore on a public name** (`type_` is fine
   as a keyword-collision workaround in `socket.__new__`; no
   other uses).

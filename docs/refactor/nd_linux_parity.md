@@ -32,11 +32,11 @@ Companion documents:
 
 | Area | Detail | RFC clause |
 |---|---|---|
-| ND wire format — NS / NA / RS / RA messages | parser + assembler under `net_proto/protocols/icmp6/message/nd/` | 4861 §4.1-§4.4 |
+| ND wire format — NS / NA / RS / RA messages | parser + assembler under `packages/net_proto/net_proto/protocols/icmp6/message/nd/` | 4861 §4.1-§4.4 |
 | ND options — SLLA / TLLA / PI | parser + assembler under `.../message/nd/option/` | 4861 §4.6.1-§4.6.2 |
 | Generic NUD FSM (NeighborCache) | shared with IPv4 ARP; INCOMPLETE / REACHABLE / STALE / DELAY / PROBE / FAILED / PERMANENT | 4861 §7.3.2 |
-| `NdCache` adapter — `pytcp/protocols/icmp6/nd/nd__cache.py` | kw-only public surface; protected-hook delegation; multicast-vs-unicast NS dispatch | (PyTCP) |
-| **§1 wire format — Redirect message + Redirected Header option** | full parser/assembler under `net_proto/`, parser dispatch wired | RFC 4861 §4.5, §4.6.3 |
+| `NdCache` adapter — `packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` | kw-only public surface; protected-hook delegation; multicast-vs-unicast NS dispatch | (PyTCP) |
+| **§1 wire format — Redirect message + Redirected Header option** | full parser/assembler under `packages/net_proto/net_proto/`, parser dispatch wired | RFC 4861 §4.5, §4.6.3 |
 | **§1 RX handler — accept_redirects sysctl + §8.1/§8.3 host-side gates** | `__phrx_icmp6__nd_redirect` enforces accept_redirects sysctl, target acceptability, TLLA cache override; first-hop-router check deferred to §11 | RFC 4861 §8 |
 | **§2 wire format — MTU option (RA-side)** | `Icmp6NdOptionMtu`, parser dispatch wired; runtime consumer absorbed into Tier 3 §13 | RFC 4861 §4.6.4 |
 | **§4 wire format — Route Information option** | `Icmp6NdOptionRouteInfo` + `Icmp6NdRoutePreference` enum; variable 8/16/24-byte length per prefix; parser dispatch wired; runtime consumer absorbed into Tier 3 §11 | RFC 4191 §2.3 |
@@ -48,22 +48,22 @@ Companion documents:
 | **§9 partial — `icmp6.dad_transmits` + `icmp6.retrans_timer_ms` sysctls** | First two timing knobs in the `icmp6.*` namespace beyond `accept_redirects` and `gratuitous_na_count`; further RFC 4861 §10 knobs (`reachable_time_ms`, `max_rtr_solicitations`, `accept_ra_*`) land with their consumers per "no API surface without consumer" rule | RFC 4861 §10 |
 | **§11 default-router list with Router Lifetime** | `Icmp6DefaultRouter(address, lifetime, expires_at)` dataclass + per-RA `_update_icmp6_default_router` mutator + lazy-aged `get_icmp6_default_routers()` accessor; `icmp6.accept_ra_defrtr` sysctl gates the path; new RX counters `update_router` / `remove_router` / `defrtr__drop`. Prf field deferred to §14 | RFC 4861 §6.3.4 |
 | **§12a SLAAC per-address lifetime tracking** | `Icmp6SlaacAddress(address, prefix, preferred_until, valid_until)` dataclass + per-PI `_update_icmp6_slaac_address` mutator + lazy-aged `get_icmp6_slaac_addresses()` accessor; EUI-64 address derivation; `icmp6.accept_ra_pinfo` sysctl gates the path; new RX counters `pi__update_address` / `pi__remove_address` / `pi__pinfo_disabled__drop` | RFC 4862 §5.5.3 |
-| **§12a.runtime SLAAC stable-address runtime claim + sweep** | `_ip6_addressing_complete` flag flips True at the end of `_create_stack_ip6_addressing`; PI admission for a new prefix AFTER the boot window spawns `_claim_ip6_address_async` for the stable address (RFC 7217 regen wired); periodic `_icmp6_sweep_slaac_addresses` removes expired entries from both `_icmp6_slaac_addresses` and `_ip6_host`. Closes the asymmetry where temp addresses had full lifecycle but stable addresses were boot-only | RFC 4862 §5.5.3 (e)(4) + (e)(7) |
+| **§12a.runtime SLAAC stable-address runtime claim + sweep** | `_ip6_addressing_complete` flag flips True at the end of `_create_stack_ip6_addressing`; PI admission for a new prefix AFTER the boot window spawns `_claim_ip6_address_async` for the stable address (RFC 7217 regen wired); periodic `_icmp6_sweep_slaac_addresses` removes expired entries from both `_icmp6_slaac_addresses` and `_ip6_ifaddr`. Closes the asymmetry where temp addresses had full lifecycle but stable addresses were boot-only | RFC 4862 §5.5.3 (e)(4) + (e)(7) |
 | **§12b SLAAC per-address state machine + 2-hour rule** | `Icmp6SlaacAddressState` enum (`PREFERRED`/`DEPRECATED`) computed lazily from `time.monotonic()`; `get_icmp6_slaac_address_state(prefix=...)` accessor; (e)(6) 2-hour rule clamps refresh on existing entries (cases a/b/c); new RX counter `pi__2hour_rule_ignored__drop`. RFC 6724 source-address-selection consumer deferred to §12c | RFC 4862 §5.5.3 (e)(6), §5.5.4 |
 | **§13a RA host-parameter mirror** | `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)` snapshot harvested from every RA; field value 0 preserves prior per RFC 4861 §4.2; `icmp6.accept_ra_min_hop_limit` sysctl floors Cur-Hop-Limit (Linux parity); four new RX counters. TX / NUD / DAD consumer wiring deferred to §13b | RFC 4861 §6.3.4 |
 | **§13b RA host-parameter consumer wiring** | TX hop-limit fallback (`_phtx_ip6` defaults to None, looks up effective default), DAD pacing override, NUD reachable-time per-cache override (NdCache only) | RFC 4861 §6.3.4 |
 | **§14 Router Preference (Prf)** | `prf` field on `Icmp6NdMessageRouterAdvertisement` (parser + assembler bits 3-4 of flags byte); RESERVED→MEDIUM normalised per RFC 4191 §2.2; stored on `Icmp6DefaultRouter`; `get_icmp6_default_routers()` sorts by HIGH > MEDIUM > LOW | RFC 4191 §2.1, §2.2 |
-| **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
-| **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_host` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
+| **§15 RDNSS / DNSSL wire-format parse + assemble** | `Icmp6NdOptionRdnss(lifetime, addresses)` (type 25, length-units 1 + 2N) + `Icmp6NdOptionDnssl(lifetime, domains)` (type 31, RFC 1035 label-sequence encoding padded to 8-octet alignment); dispatch wired in `Icmp6NdOptions.from_buffer`. No in-stack consumer — DNS is L7 (`packages/pytcp/pytcp/socket/__init__.py:172` punts to stdlib `getaddrinfo`); the wire-format pin is Phase-2 forward-compat per the CLAUDE.md North Star "typed options not opaque blobs" rule | RFC 8106 §5.1, §5.2 |
+| **§20 Optimistic DAD** | `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` / `VALID`) + per-address state map `_icmp6_dad__states` on `PacketHandler`; `icmp6.optimistic_dad` sysctl (default 0, Linux parity) gates the optimistic path; `_claim_ip6_address_optimistic` pre-installs the address into `_ip6_ifaddr` as OPTIMISTIC before the DAD probes, transitions to VALID on success or removes on collision; `send_icmp6_neighbor_advertisement` clears the Override flag when the source is OPTIMISTIC per §3.3 step 5 | RFC 4429 §3.1, §3.3 |
 | **§20.1 async per-address DAD refactor** | Replaced the singleton `_icmp6_nd_dad__event` / `_ip6_unicast_candidate` / `_tlla` / `_nonces` model with per-address dicts; new `_claim_ip6_address_async(ip6_host, regenerate=)` spawns a daemon worker thread per claim. RX dispatches by inbound NS/NA `target_address`. Boot loop `.join()`s under `optimistic_dad=0`, fires-and-forgets under `=1`. Unblocks runtime PI claim and §18b/c | RFC 4861 §7.2.2; RFC 4862 §5.4.3 case (b) |
 | **§20.2 random initial probe delay** | `_perform_ip6_nd_dad` sleeps `random.uniform(0, max_delay_ms/1000.0)` before the first probe. Sysctl `icmp6.max_rtr_solicitation_delay_ms` default 1000 (RFC 4861 §10); 0 disables | RFC 4862 §5.4.2; RFC 4861 §10 |
-| **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6Host]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
+| **§20.3 DAD-failure retry with `dad_counter`** | `_claim_ip6_address_async` accepts `regenerate: Callable[[], Ip6IfAddr]`; on DAD failure retries up to `icmp6.idgen_retries` times. Boot loop wires RFC 7217 regen with `dad_counter++`; §18b mutator wires RFC 8981 random-IID regen | RFC 7217 §6; RFC 8981 §3.3.3 |
 | **§20.4 `accept_dad` modes 0/1/2** | Sysctl `icmp6.accept_dad` tristate. `=0` short-circuits DAD (state→VALID immediately); `=1` standard; `=2` fail-hard (DAD failure flips `_ip6_support = False`) | Linux `accept_dad` parity |
 | **§21 Enhanced DAD with Nonce option** | `Icmp6NdOptionNonce` (type 14) on outbound DAD probes per `icmp6.enhanced_dad`; loop-hairpin RX detection drops echoed probes silently; sysctl default 1 | RFC 7527 §4.1, §4.2 |
-| **§17 RFC 7217 stable opaque IID** | `Ip6Host.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
-| **§18a RFC 8981 random IID generator** | `Ip6Host.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
+| **§17 RFC 7217 stable opaque IID** | `Ip6IfAddr.from_rfc7217(prefix, mac, secret_key, dad_counter)`; `_derive_ip6_host` selects between RFC 7217 and EUI-64 via `icmp6.use_rfc7217` (default 1, Linux `addr_gen_mode=2` equivalent) | RFC 7217 §5 |
+| **§18a RFC 8981 random IID generator** | `Ip6IfAddr.from_rfc8981_temp(ip6_network)` mints fresh 64-bit random IID; reserved-IID avoidance per RFC 5453 / RFC 2526 §3 | RFC 8981 §3.3.2; RFC 5453 |
 | **§18b RFC 8981 SLAAC integration** | Per-prefix `_icmp6_temp_addresses` table + `_update_icmp6_temp_address` mutator + lifetime clamps to TEMP_*_LIFETIME; sysctl `icmp6.use_tempaddr` tristate; per-PI claim spawns DAD worker via §20.1 helper | RFC 8981 §3.3, §3.4, §3.8 |
-| **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_host`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
+| **§18c.1 temp-address cleanup sweep** | Periodic sweep removes entries past `valid_until` from both `_icmp6_temp_addresses` and `_ip6_ifaddr`; sysctl `icmp6.temp_addr_sweep_interval_s` default 60; hooked into `PacketHandlerL2._subsystem_loop` | RFC 8981 §3.4 |
 | **§18c.2 RFC 8981 regen-before-expiry** | Same sweep mints fresh random IID for each prefix whose newest entry crosses `preferred_until - REGEN_ADVANCE`; multiple temps per prefix coexist during overlap; sysctl `icmp6.regen_advance_s` default 5 (§3.8) | RFC 8981 §3.4, §3.8 |
 | **§19 RFC 4941 deferred (superseded by RFC 8981)** | Marked superseded; §18 ships the modern replacement | RFC 4941 (obsolete) |
 | **§22 RS exponential backoff** | `_send_icmp6_nd_router_solicitations_with_backoff` does RFC 7559 §2 truncated binary backoff with ±10% jitter; sysctls `icmp6.rtr_solicitation_interval_ms` (IRT default 4000), `icmp6.rtr_solicitation_max_rt_ms` (MRT default 3 600 000), `icmp6.max_rtr_solicitations` (default 3, 0=kill switch) | RFC 7559 §2 |
@@ -71,7 +71,7 @@ Companion documents:
 | **§24 host-to-router load sharing** | `get_icmp6_default_router_for_destination(destination)` per-destination deterministic hash across the highest-preference router equivalence class; preserves RFC 4191 preference precedence | RFC 4311 §3 |
 | **§25 RA Flags Extension option** | `Icmp6NdOptionRaFlags` (type 26) wire format with first-byte boolean fields (TBD by future RFCs); parser admits length ≥ 1 (RFC 5175 §4 forward-compat); assembler emits length=1 | RFC 5175 |
 | Basic single-probe DAD on address claim | `_send_icmp6_nd_dad_message` + 1-second blocking wait + NA-conflict detector | 4862 §5.1 (DupAddrDetectTransmits=1, partial) |
-| EUI-64 SLAAC IID derivation | `Ip6Host.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
+| EUI-64 SLAAC IID derivation | `Ip6IfAddr.from_eui64` in net_addr | 4862 §5.5.3 (legacy IID) |
 | Solicited-node multicast group join on address assignment | `_assign_ip6_multicast` / `_remove_ip6_multicast` | 4861 §7.2.1 |
 | MLDv2 listener role + Router-Alert-wrapped Reports | `_send_icmp6_multicast_listener_report` | 3810 §5 |
 | RA prefix harvesting for SLAAC | A-flag + link-local + lifetime checks; address derived via EUI-64 + DAD-claimed | 4862 §5.5.3 |
@@ -154,7 +154,7 @@ deferred. The wire-format work below is shared with Phase 1
 
 1. Add `Icmp6Type.ND_REDIRECT = 137` to the enum.
 2. New module
-   `net_proto/protocols/icmp6/message/nd/icmp6__nd__message__redirect.py`
+   `packages/net_proto/net_proto/protocols/icmp6/message/nd/icmp6__nd__message__redirect.py`
    following the existing NS/NA/RS/RA template — wire format
    per RFC 4861 §4.5 (Reserved field, Target Address, Destination
    Address, options).
@@ -189,7 +189,7 @@ discards unknown options including MTU.
 ### Implementation sketch
 
 1. New module
-   `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__mtu.py`
+   `packages/net_proto/net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__mtu.py`
    following the SLLA/TLLA template.
 2. Add `Icmp6NdOptionType.MTU = 5` and dispatch in
    `icmp6__nd__options.py`.
@@ -367,13 +367,13 @@ RFC 4862 §5.1, §5.4.
 
 ## §9 — Tier 2: ND constants module + sysctl namespace (RFC 4861 §10) ✗
 
-ARP has `pytcp/protocols/arp/arp__constants.py` with all
+ARP has `packages/pytcp/pytcp/protocols/arp/arp__constants.py` with all
 ARP/RFC 5227 timers exposed as `arp.*` sysctls. ND has no
 analogue today — every constant is hardcoded.
 
 ### Implementation sketch
 
-New `pytcp/protocols/icmp6/nd/nd__constants.py` registering:
+New `packages/pytcp/pytcp/protocols/icmp6/nd/nd__constants.py` registering:
 - `icmp6.dad_transmits` (RFC 4862 §5.1, default 1)
 - `icmp6.retrans_timer_ms` (RFC 4861 §10, default 1000)
 - `icmp6.reachable_time_ms` (RFC 4861 §10, default 30000)
@@ -431,7 +431,7 @@ RFC 4862 §5.4.3.
 ## §11 — Tier 3: Default router list with Router Lifetime (RFC 4861 §6.3.4) ✓
 
 **Shipped.** `Icmp6DefaultRouter(address, lifetime, expires_at)` frozen
-dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`; the host's
+dataclass at `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py`; the host's
 list lives on `PacketHandler._icmp6_default_routers` (init in
 `PacketHandlerL2.__init__`). RA RX (`__phrx_icmp6__nd_router_advertisement`)
 calls `_update_icmp6_default_router(address=ip6.src, router_lifetime=msg.router_lifetime)`:
@@ -460,7 +460,7 @@ and values outside {0, 1}.
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py`:
 - `nonzero_lifetime_adds_default_router` — entry shape + monotonic deadline.
 - `update_router_packet_stats` — RX counter pinned.
 - `second_ra_updates_lifetime_in_place` — refresh idempotent on (address).
@@ -484,7 +484,7 @@ Linux: `net/ipv6/ndisc.c::ndisc_router_discovery`,
 ### §12a (shipped) — Per-address lifetime tracking ✓
 
 `Icmp6SlaacAddress(address, prefix, preferred_until, valid_until)`
-frozen dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`;
+frozen dataclass at `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py`;
 the host's table lives on `PacketHandler._icmp6_slaac_addresses`
 (init in `PacketHandlerL2.__init__`). RA RX
 (`__phrx_icmp6__nd_router_advertisement`) iterates the message's PI
@@ -495,7 +495,7 @@ Non-zero `valid_lifetime` installs / refreshes the entry (deduping
 on `prefix`); zero `valid_lifetime` removes a matching entry — the
 `(e)(6)(a)` "advertised lifetime overwrites address valid lifetime"
 rule collapses to removal at value 0. Address derivation is EUI-64
-(`Ip6Host.from_eui64(mac, prefix)`); RFC 7217 / 8981 alternates
+(`Ip6IfAddr.from_eui64(mac, prefix)`); RFC 7217 / 8981 alternates
 land in Tier 4. Public lazy-aged accessor
 `get_icmp6_slaac_addresses()` filters out entries whose `valid_until`
 deadline has passed.
@@ -545,7 +545,7 @@ deployments where addresses come from DHCPv6).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_tracking.py` (§12a):
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_tracking.py` (§12a):
 - `nonzero_lifetimes_install_entry` — entry shape + monotonic deadlines.
 - `update_address_packet_stats` — RX counter pinned.
 - `second_pi_updates_lifetimes_in_place` — refresh idempotent on (prefix).
@@ -557,7 +557,7 @@ deployments where addresses come from DHCPv6).
 - `processed_when_router_lifetime_zero` — confirms PI consumption is
   independent from §11 default-router learning.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_state.py` (§12b):
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_state.py` (§12b):
 - `state_preferred_within_preferred_lifetime` — PREFERRED branch.
 - `state_deprecated_after_preferred_expires` — DEPRECATED branch.
 - `state_none_after_valid_expires` — REMOVED (None) branch.
@@ -587,7 +587,7 @@ Linux: `net/ipv6/addrconf.c::addrconf_prefix_rcv`,
 ### §13a (shipped) — Wire-state mirror ✓
 
 `Icmp6RaParameters(cur_hop_limit, reachable_time_ms, retrans_timer_ms)`
-frozen dataclass at `pytcp/protocols/icmp6/nd/nd__router_state.py`;
+frozen dataclass at `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py`;
 the host's snapshot lives on `PacketHandler._icmp6_ra_parameters`,
 initialised to all-None. RA RX
 (`__phrx_icmp6__nd_router_advertisement`) calls
@@ -642,7 +642,7 @@ host default; 0 accepts any advertised Hop Limit).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py` (§13a wire state):
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameters.py` (§13a wire state):
 - `initial_state_all_none` — fresh handler exposes None values.
 - `cur_hop_limit_nonzero_stored` — captured into mirror.
 - `cur_hop_limit_zero_does_not_overwrite` — RFC 4861 §4.2 unspecified.
@@ -654,7 +654,7 @@ host default; 0 accepts any advertised Hop Limit).
 - `retrans_timer_zero_does_not_overwrite` — unspecified.
 - `all_three_fields_bump_distinct_counters` — counters independent.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_consumers.py` (§13b wirings):
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_consumers.py` (§13b wirings):
 - `cur_hop_limit_consumed_by_tx` — TCP/UDP-style outbound IPv6 frame
   picks up RA Cur-Hop-Limit when caller omits `ip6__hop`.
 - `tx__without_ra_uses_default_hop_limit` — fallback to 64.
@@ -704,7 +704,7 @@ most-preferred router.
 
 ### Tests
 
-`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__prf.py`:
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advertisement__prf.py`:
 - Per-Prf-value flags-byte assembly (HIGH=0x08, MEDIUM=0x00,
   LOW=0x18, RESERVED=0x10).
 - `flag_m`/`flag_o` non-corruption when Prf packed alongside.
@@ -712,7 +712,7 @@ most-preferred router.
 - Default-MEDIUM and per-member constructor acceptance.
 - Non-enum rejection.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_preference.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_preference.py`:
 - HIGH / LOW / default-MEDIUM stored on the entry.
 - RESERVED → MEDIUM normalization at `_update_icmp6_default_router`.
 - `get_icmp6_default_routers()` returns entries sorted by
@@ -733,7 +733,7 @@ DNS resolution is L7 — not part of an L2-L4 stack. Linux's
 kernel has no DNS resolver; RDNSS / DNSSL on Linux are
 consumed by *userspace* daemons (`systemd-resolved`,
 NetworkManager, `rdisc6`) that watch RAs and rewrite
-`/etc/resolv.conf`. PyTCP's `pytcp/socket/__init__.py`
+`/etc/resolv.conf`. PyTCP's `packages/pytcp/pytcp/socket/__init__.py`
 explicitly punts hostname resolution to CPython's stdlib
 `socket.getaddrinfo` with the comment "DNS / hostname
 resolution lives outside the TCP/IP stack scope." So this
@@ -767,13 +767,13 @@ concrete payoffs:
 ### What shipped
 
 * `Icmp6NdOptionRdnss(lifetime, addresses)` at
-  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__rdnss.py`.
+  `packages/net_proto/net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__rdnss.py`.
   Type 25, length-units = 1 + 2N where N is the server count;
   on-wire byte length = 8 + 16N. The parser rejects an
   even-numbered length-field as malformed (it would imply a
   non-integer server count).
 * `Icmp6NdOptionDnssl(lifetime, domains)` at
-  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__dnssl.py`.
+  `packages/net_proto/net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__dnssl.py`.
   Type 31, RFC 1035 §3.1 label-sequence encoding terminated
   by zero-length label, padded to 8-octet alignment with zero
   bytes. Constructor enforces label ≤ 63 octets and ASCII-only
@@ -792,13 +792,13 @@ analogue in PyTCP's L2-L4 surface.
 
 ### Tests
 
-`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__rdnss.py`:
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__rdnss.py`:
 - Per-server-count assembly (N=1, N=2, lifetime=0).
 - Round-trip parse for the same fixtures.
 - Header-only (length=1, no addresses).
 - Even-length-field rejection (integrity error).
 
-`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__dnssl.py`:
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__dnssl.py`:
 - Per-domain-count assembly with 8-octet padding.
 - Round-trip parse.
 - Header-only (no domains).
@@ -844,9 +844,9 @@ cryptographic algorithm by default, mirroring Linux's modern
 
 ### Implementation
 
-* `Ip6Host.from_rfc7217(*, ip6_network, mac_address, secret_key,
+* `Ip6IfAddr.from_rfc7217(*, ip6_network, mac_address, secret_key,
   dad_counter=0, network_id=b"")` classmethod at
-  `net_addr/ip6_host.py`. PRF = SHA-256; IID = least-significant
+  `packages/net_addr/net_addr/ip6_ifaddr.py`. PRF = SHA-256; IID = least-significant
   64 bits of the digest. Constructor rejects `secret_key < 16
   bytes` per RFC 7217 §5's 128-bit minimum.
 * `_icmp6_slaac__secret_key: bytes` on `PacketHandler` —
@@ -861,13 +861,13 @@ cryptographic algorithm by default, mirroring Linux's modern
 
 ### Tests
 
-Wire-format tests at `net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc7217`
+Wire-format tests at `packages/net_addr/net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc7217`
 cover the algorithm (deterministic, prefix-varying, MAC-varying,
 secret-varying, DAD-counter-varying, /64-mask requirement,
 secret-key length floor).
 
 Integration tests at
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py`
 cover the SLAAC consumer wiring (default uses RFC 7217;
 `use_rfc7217=0` reverts to EUI-64; secret_key is 16 bytes).
 
@@ -892,8 +892,8 @@ Linux: `net.ipv6.conf.<iface>.addr_gen_mode = 2`.
 
 ### §18a (shipped) — Random IID generator ✓
 
-`Ip6Host.from_rfc8981_temp(*, ip6_network)` at
-`net_addr/ip6_host.py`. Each call produces a fresh 64-bit
+`Ip6IfAddr.from_rfc8981_temp(*, ip6_network)` at
+`packages/net_addr/net_addr/ip6_ifaddr.py`. Each call produces a fresh 64-bit
 random IID via `secrets.token_bytes(8)`, regenerates if the
 draw lands in the RFC 5453 reserved range (Subnet-Router
 Anycast IID==0 or 0xfdff_ffff_ffff_ff80..ffff Reserved
@@ -916,7 +916,7 @@ RA RX path immediately after the stable
 `_update_icmp6_slaac_address` call. Sysctl-gated by
 `icmp6.use_tempaddr` (default 0 — Linux parity). On a
 new prefix the mutator generates a random IID via
-`Ip6Host.from_rfc8981_temp`, spawns an async DAD claim
+`Ip6IfAddr.from_rfc8981_temp`, spawns an async DAD claim
 through the §20.1 `_claim_ip6_address_async` helper
 (non-blocking from the RX path), and tracks the entry.
 On an existing prefix it refreshes deadlines but
@@ -949,20 +949,20 @@ Four new knobs, Linux-parity defaults:
 
 The PacketHandler subsystem loop now runs a periodic
 sweep that removes temp addresses past their `valid_until`
-deadline from BOTH `_icmp6_temp_addresses` AND `_ip6_host`
+deadline from BOTH `_icmp6_temp_addresses` AND `_ip6_ifaddr`
 (the hot list the RX dispatch and TX source-address
 selection walk directly). Sweep cadence is gated by the
 new `icmp6.temp_addr_sweep_interval_s` sysctl (default 60
 seconds). The lazy accessor `get_icmp6_temp_addresses()`
 already filtered expired entries at read time, but
-`_ip6_host` was never pruned — leaving the host
+`_ip6_ifaddr` was never pruned — leaving the host
 sourcing/receiving on addresses past their valid lifetime.
 
 Implementation:
 
 * New `_icmp6_sweep_temp_addresses()` method on
   `PacketHandler` base. Best-effort removal: the address
-  may already be absent from `_ip6_host` (manual operator
+  may already be absent from `_ip6_ifaddr` (manual operator
   action) and the solicited-node multicast may already be
   unjoined; both are tolerated.
 * `_maybe_run_periodic_tasks()` helper rate-limits sweep
@@ -977,10 +977,10 @@ Tests
   negatives, booleans.
 - Sweep removes expired entries from
   `_icmp6_temp_addresses`.
-- Sweep removes expired entries from `_ip6_host`.
+- Sweep removes expired entries from `_ip6_ifaddr`.
 - Sweep preserves non-expired entries.
 - Sweep is no-op when no entries are expired.
-- Sweep does not touch non-temp `_ip6_host` entries
+- Sweep does not touch non-temp `_ip6_ifaddr` entries
   (e.g. stable SLAAC).
 
 ### §18c.2 (shipped) — Regeneration subsystem ✓
@@ -1020,7 +1020,7 @@ selection.
 
 ### Tests
 
-`net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc8981Temp`:
+`packages/net_addr/net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc8981Temp`:
 - Output keeps source /64 prefix.
 - Two consecutive calls yield different IIDs.
 - /64 mask required.
@@ -1064,7 +1064,7 @@ IID and retries up to `icmp6.idgen_retries` times before
 giving up — RFC 7217 §6 (stable opaque IIDs) and RFC
 8981 §3.3.3 (temporary addresses) both mandate this. The
 `_claim_ip6_address_async` helper grew an optional
-`regenerate: Callable[[], Ip6Host] | None` kwarg; on DAD
+`regenerate: Callable[[], Ip6IfAddr] | None` kwarg; on DAD
 failure the worker calls it to mint a fresh candidate and
 runs another full DAD cycle.
 
@@ -1084,7 +1084,7 @@ runs another full DAD cycle.
   failures.
 * New helper `_make_rfc7217_regenerator(*, ip6_network,
   gateway)` returns a closure that re-derives via
-  `Ip6Host.from_rfc7217(..., dad_counter=N)` with the
+  `Ip6IfAddr.from_rfc7217(..., dad_counter=N)` with the
   counter incremented per call; returns `None` when
   EUI-64 is active (deterministic, retry doesn't help).
 * Boot-loop callers (link-local autoconfig + RA-driven
@@ -1092,14 +1092,14 @@ runs another full DAD cycle.
   candidates pass `None` — the operator picked the
   exact address; we cannot substitute.
 * §18b temp-address mutator passes an RFC 8981
-  regenerator that calls `Ip6Host.from_rfc8981_temp`
+  regenerator that calls `Ip6IfAddr.from_rfc8981_temp`
   fresh on each retry (random IID, no counter needed).
 * L3 stub accepts the kwarg for signature parity but
   ignores it (no DAD on L3, no retry needed).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__idgen_retries.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__idgen_retries.py`:
 - Sysctl registered with default 3; validator accepts 0
   (kill switch); rejects negatives and booleans.
 - Worker retry loop: candidate sequence of three
@@ -1164,7 +1164,7 @@ failure, also bounded by IDGEN_RETRIES).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__accept_dad.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__accept_dad.py`:
 - Sysctl registered with default 1; validator accepts
   tristate {0,1,2}; rejects 3 and booleans.
 - `accept_dad=0` short-circuits: returns True, no TX
@@ -1222,7 +1222,7 @@ the synchronisation risk).
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_initial_delay.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_initial_delay.py`:
 - Sysctl registered with default 1000; validator accepts
   0 (kill switch); rejects negatives and booleans.
 - `_perform_ip6_nd_dad` calls `time.sleep` exactly once
@@ -1310,7 +1310,7 @@ block the RX subsystem thread.
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__async_dad.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__async_dad.py`:
 - `TestIcmp6Nd__AsyncDad__ConcurrentClaims` — two
   `_perform_ip6_nd_dad` calls running in different threads
   at the same time both succeed and both end up VALID.
@@ -1372,7 +1372,7 @@ RFC 4861 §7.2.2 (NS RX dispatch); RFC 4862 §5.4.3 case (b)
 **Shipped.** PyTCP supports RFC 4429 Optimistic DAD on the
 address-claim path, gated by the `icmp6.optimistic_dad`
 sysctl (default 0, Linux parity). When the sysctl is 1
-the candidate address is installed into `_ip6_host` as
+the candidate address is installed into `_ip6_ifaddr` as
 OPTIMISTIC *before* the DAD probe sequence begins; the
 address is usable as outbound source for the duration of
 the wait. NAs emitted while the address is OPTIMISTIC
@@ -1380,12 +1380,12 @@ clear the Override (O) flag per §3.3 step 5 so peers do
 not overwrite an existing cache entry on the basis of an
 unverified address. On DAD success the per-address state
 transitions to VALID; on collision the address is removed
-from `_ip6_host` and the per-address state cleared.
+from `_ip6_ifaddr` and the per-address state cleared.
 
 ### Implementation
 
 * New `Icmp6DadState` enum (`TENTATIVE` / `OPTIMISTIC` /
-  `VALID`) on `pytcp/protocols/icmp6/nd/nd__router_state.py`.
+  `VALID`) on `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py`.
   Failed DAD removes the entry — no `FAILED` member.
 * Per-address state map
   `_icmp6_dad__states: dict[Ip6Address, Icmp6DadState]` on
@@ -1403,7 +1403,7 @@ from `_ip6_host` and the per-address state cleared.
   the DAD function, avoiding a duplicate entry.
 * New `_claim_ip6_address_optimistic(ip6_host=)` helper:
   marks the address `OPTIMISTIC`, calls `_assign_ip6_host`
-  to install it into `_ip6_host`, then runs DAD; on
+  to install it into `_ip6_ifaddr`, then runs DAD; on
   collision rolls back via `_remove_ip6_host`.
 * `_create_stack_ip6_addressing` dispatches to the
   optimistic wrapper when `icmp6.optimistic_dad == 1`,
@@ -1424,14 +1424,14 @@ arguments.
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__optimistic_dad.py`:
 - Sysctl registration + validator (`default=0`, rejects
   `2`, rejects `True`).
 - `get_icmp6_dad_state` returns `None` for unknown
   addresses.
 - Synchronous-DAD state lifecycle: state goes
   `TENTATIVE → VALID` on success; cleared on collision.
-- Optimistic-DAD pre-claim: address is in `_ip6_host` and
+- Optimistic-DAD pre-claim: address is in `_ip6_ifaddr` and
   `OPTIMISTIC` *during* the DAD wait; transitions to
   `VALID` on success; removed on collision.
 - NA Override-flag clearing: differential test driving a
@@ -1517,12 +1517,12 @@ target match as a conflict regardless of nonce.
 
 ### Tests
 
-`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__nonce.py`:
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__nonce.py`:
 - Per-nonce assembly + parse round-trips.
 - Constructor rejects nonces shorter / longer than 6 bytes.
 - Parser rejects length=0.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`:
 - `matching_nonce_drops_ns` — loop-hairpin echo dropped, no
   conflict.
 - `non_matching_nonce_aborts_dad` — peer NS with foreign
@@ -1571,7 +1571,7 @@ Three new knobs in `nd__constants.py`:
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`:
 - `no_ra_sends_max_rtr_solicitations` — full loop count.
 - `ra_after_first_rs_stops_loop` — RA short-circuits.
 - `timeouts_double_each_round` — IRT, 2*IRT, 4*IRT (random factor mocked to 0).
@@ -1620,7 +1620,7 @@ accessor's value is observability + readiness for that wiring.
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__multi_prefix_router.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__multi_prefix_router.py`:
 - Source in router A's prefix → returns router A.
 - Source in router B's prefix → returns router B.
 - Unknown-prefix source with mixed Prf → returns highest-preference.
@@ -1648,7 +1648,7 @@ HIGH router is available.
 
 ### Tests
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_load_sharing.py`:
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_load_sharing.py`:
 - `same_dest_same_router` — deterministic per destination
   (10 calls, same destination, same router).
 - `distributes_across_routers` — 100 distinct destinations
@@ -1676,7 +1676,7 @@ host.
 
 * `Icmp6NdOptionType.RA_FLAGS_EXTENSION = 26` enum member.
 * `Icmp6NdOptionRaFlags(flags: int)` frozen dataclass at
-  `net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__ra_flags.py`.
+  `packages/net_proto/net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__ra_flags.py`.
   Length fixed at 1 (8 bytes total: type + length + 6 flag
   bytes). Constructor enforces `0 ≤ flags ≤ 2^48 - 1`.
 * Dispatch wired in `Icmp6NdOptions.from_buffer`.
@@ -1686,7 +1686,7 @@ host.
 
 ### Tests
 
-`net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__ra_flags.py`:
+`packages/net_proto/net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__ra_flags.py`:
 - All-zero / all-ones / single-bit MSB assembly + parse
   round-trips.
 - Constructor rejects negative or > 48-bit `flags`.
@@ -1723,7 +1723,7 @@ mobility support. **Do not implement.**
 ## §27 — Key file inventory
 
 ```
-net_proto/protocols/icmp6/
+packages/net_proto/net_proto/protocols/icmp6/
 ├── icmp6__assembler.py / parser.py / base.py / errors.py
 ├── message/
 │   ├── icmp6__message.py                     # base + Icmp6Type enum (Redirect MISSING)
@@ -1747,7 +1747,7 @@ net_proto/protocols/icmp6/
 │       ├── icmp6__mld2__message__report.py
 │       └── icmp6__mld2__multicast_address_record.py
 
-pytcp/protocols/icmp6/
+packages/pytcp/pytcp/protocols/icmp6/
 ├── icmp6__echo_gate.py
 └── nd/
     └── nd__cache.py                            # NeighborCache adapter (shipped)
@@ -1757,11 +1757,11 @@ pytcp/protocols/icmp6/
     └── (nd__router_state.py)                   # MISSING — Tier 3 §11–§14
     └── (nd__slaac.py)                          # MISSING — Tier 3 §12 / Tier 4 §17–§18
 
-pytcp/runtime/packet_handler/
+packages/pytcp/pytcp/runtime/packet_handler/
 ├── packet_handler__icmp6__rx.py                # RX dispatch
 └── packet_handler__icmp6__tx.py                # TX helpers
 
-pytcp/runtime/packet_handler/__init__.py
+packages/pytcp/pytcp/runtime/packet_handler/__init__.py
 └── _create_stack_ip6_addressing                # DAD + SLAAC entry point
 ```
 

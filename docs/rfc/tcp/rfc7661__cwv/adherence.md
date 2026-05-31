@@ -18,7 +18,7 @@ statement in RFC 7661.
 ## Top-line adherence
 
 PyTCP has **zero New CWV support**. A grep across
-`pytcp/`, `net_proto/`, and `net_addr/` returns no
+`packages/pytcp/pytcp/`, `packages/net_proto/net_proto/`, and `packages/net_addr/net_addr/` returns no
 references to CWV, pipeACK, NVP, validated capacity,
 or any RFC 7661 identifier.
 
@@ -119,7 +119,7 @@ correct; it does not benefit from the "preserve
 cwnd if validated" heuristic RFC 7661 introduces.
 
 The simpler RFC 5681 idle-reset behavior at
-`pytcp/protocols/tcp/tcp__session.py:_transmit_packet`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:_transmit_packet`
 guarded by `_last_send_time_ms` is what's
 implemented. RFC 7661 is a refinement that requires
 significant new state (pipeACK / NVP / NVP-aware

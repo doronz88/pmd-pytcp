@@ -29,7 +29,7 @@ This module contains the example 'user space' service UDP Echo (RFC 862).
 
 examples/service__udp_echo.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import threading
@@ -109,6 +109,7 @@ class UdpEchoService(UdpService):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     local_port: int,
     **kwargs: Any,

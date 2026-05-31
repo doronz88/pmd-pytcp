@@ -66,9 +66,9 @@ inventory.
 
 | # | Item | RFC | Effort | Notes |
 |---|------|-----|--------|-------|
-| ~~D~~ | ~~**IPv4 link-local autoconfig**~~ | ~~3927~~ | ~~2-4 days~~ | **SHIPPED** — phases 0 / 0.5 / 1 / 2 / 3 / 4 / 5 of the RFC 3927 track. Sanctioned ACD API on `Ip4AddressApi`; subsystem skeleton + MAC-seeded RNG; claim + retry + rate-limit; §2.5 defend / abandon; §1.9 / §2.11 DHCP coordination; stack-side wiring. Plan doc: `docs/refactor/rfc3927_link_local_autoconfig.md`. Adherence record: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md` (every §-section met). |
+| ~~D~~ | ~~**IPv4 link-local autoconfig**~~ | ~~3927~~ | ~~2-4 days~~ | **SHIPPED** — phases 0 / 0.5 / 1 / 2 / 3 / 4 / 5 of the RFC 3927 track. **Reconciled 2026-05-30:** the end-state ACD does NOT run through a sanctioned `Ip4AddressApi` claim/retry surface — it runs in userspace over per-address `Ip4Acd` AF_PACKET sockets (`protocols/ip4/acd/ip4_acd.py`); the link-local client calls `Ip4Acd.claim` / `Ip4Acd.poll_conflict` directly (cross-ref `rfc3927_link_local_autoconfig.md`, `raw_link_socket.md`). Otherwise: subsystem skeleton + MAC-seeded RNG; claim + retry + rate-limit; §2.5 defend / abandon; §1.9 / §2.11 DHCP coordination; stack-side wiring. Plan doc: `docs/refactor/rfc3927_link_local_autoconfig.md`. Adherence record: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md` (every §-section met). |
 | E | Multicast group membership API + IGMPv2/v3 | 1112 / 2236 / 3376 | Multi-day | All-hosts (224.0.0.1) preconfigured today; runtime JOIN/LEAVE / Reports / Queries deferred. |
-| F | IPv6 audit set parity sweep | — | 1-2 days | This session wrote 16 IPv4 audits but didn't refresh IPv6 audits in parallel. Symmetric topics (RFC 8200, RFC 8504) likely have similar Phase-1 sharpenings worth surfacing. |
+| ~~F~~ | ~~IPv6 audit set parity sweep~~ | ~~—~~ | ~~1-2 days~~ | **SHIPPED 2026-05-29.** Comparative IPv4↔IPv6 audit-set diff found the IPv6 data plane already well-implemented; the asymmetry was in the audit records, not the code. 1 code fix + 4 doc items: RFC 8200 §4.2 action-11 multicast suppression + RFC 4443 §2.4(e.3) code-2 exception (`5727911e`); new ip6 RFC 3168 (ECN) + RFC 2474 (DSCP) records + rfc8504 §5.12 flip (`c8effda6`); new ip6 RFC 2711 (Router Alert) record (`4c816c38`). Plan + findings: `docs/refactor/ipv6_audit_parity.md`. |
 
 ### Phase-2 items (project north-star — deferred until forwarding plane)
 
@@ -117,16 +117,19 @@ autoconfiguration mechanisms:
 ### Phase-3 sanctioned API surfaces
 
 The Phase-3 north-star (CLAUDE.md) lists seven sanctioned
-consumer-API surfaces. Status as of 2026-05-12:
+consumer-API surfaces. Status as of 2026-05-12 (**Reconciled
+2026-05-30:** Route API and Neighbor API have since shipped;
+the Address API is the family-agnostic `AddressApi`, not
+`Ip4AddressApi`):
 
 | Surface           | Status                                                                                       |
 |-------------------|----------------------------------------------------------------------------------------------|
 | Socket factory    | shipped (BSD-style `socket()` factory + methods)                                             |
 | Sysctl registry   | shipped (`pytcp.stack.sysctl`)                                                               |
 | **Link API**      | **shipped 2026-05-12** — read (mac/mtu/name/is_running/flags/stats) + mutation (set_mtu, set_mac_address). `up()`/`down()` deferred to Phase-2 multi-interface track. See `docs/refactor/link_api.md`. |
-| Address API       | shipped (RFC 3927 track) — `pytcp.stack.address` / `Ip4AddressApi`                            |
-| Route API         | not yet                                                                                      |
-| Neighbor API      | not yet                                                                                      |
+| Address API       | shipped — `pytcp.stack.address` / `AddressApi` (family-agnostic: `add`/`remove`/`replace`/`list_ifaddrs`) |
+| Route API         | **shipped** — host-mode FIB + `RouteApi` (`stack/route.py` + `runtime/fib.py`)               |
+| Neighbor API      | **shipped** — `NeighborApi` (`stack/neighbor.py`)                                            |
 | Introspection API | partially shipped — `LinkApi.stats` covers per-interface counters; route table / neighbor cache / socket list introspection deferred |
 
 ### IPv4 #5 scope gate (closed)

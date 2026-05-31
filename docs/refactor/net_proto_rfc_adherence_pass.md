@@ -1,0 +1,180 @@
+# `net_proto` per-protocol RFC integrity/sanity adherence pass
+
+**Status: CLOSED 2026-05-20** — the nine `net_proto` protocols in
+scope at the time were audited (ARP, DHCPv4, Ethernet, ICMPv4,
+ICMPv6, IPv4, IPv6 + 4 ext-headers, TCP, UDP). The recurring
+`__post_init__` AssertionError-on-wire-input defect class has been
+closed across every protocol that exhibited it. 11106 tests passing,
+lint clean, §7.2 audits clean.
+
+**Reconciled 2026-05-30** — this pass is closed for its scope. Two
+protocols were added afterward and were never part of it: `igmp/` and
+`dhcp6/`. They carry their own per-RFC adherence records under
+`docs/rfc/.../adherence.md` rather than being folded back into this
+pass.
+
+Per-protocol review of every parser's `_validate_integrity` and
+`_validate_sanity` blocks under
+`packages/net_proto/net_proto/protocols/`, alphabetically. For each
+protocol:
+
+1. Audit existing checks against the governing RFCs.
+2. Annotate each surviving check with a one-line `# RFC ...` citation.
+3. Fill clear gaps with RFC-backed new checks (tests-first per
+   `feature_implementation.md` §2).
+4. Update the corresponding `docs/rfc/<family>/.../adherence.md`.
+5. Run `make lint`, `make test`, and the §7.2 docstring audit on any
+   touched test file.
+6. Commit + push when the user explicitly asks ("commit and push").
+
+All work landed on branch `PyTCP_3_0_6` and was pushed.
+
+---
+
+## Done
+
+| Order | Protocol | Commit | Net change |
+|---|---|---|---|
+| 1 | **ARP** | `a7b809d7` | Annotated 5 integrity + 8 sanity checks; reorganised by field (SHA → SPA → TPA); added 3 new sanity rejections (`spa.is_loopback`, `tpa.is_multicast`, `tpa.is_limited_broadcast`); **dropped** the PyTCP-only `sha == ethernet.src` hardening (not RFC-normative, not Linux behaviour). |
+| 2 | **DHCPv4** | `54d8d5c6` | Annotated integrity checks; filled previously empty `_validate_sanity` with 15 RFC-backed rejections (operation unknown, 4 IP fields × 3 forbidden classes, 2 chaddr classes); switched `Dhcp4Header.from_buffer` from strict `Dhcp4Operation(value)` to tolerant `Dhcp4Operation.from_int(value)` so unknown opcodes route to sanity. |
+| 3 | **Ethernet II + 802.3** | `1a6aff7e` | Annotated 1 (II) / 3 (802.3) integrity checks + 1 (II) sanity; added 3 src-non-unicast sanity checks per parser; fixed existing fixture MACs `11:12:...` and `77:88:...` which were multicast (group bit set). Integration tests for ARP-via-Ethernet updated. |
+| 4 | **ICMPv4** | `e18903e8` | Annotated parser integrity; filled empty `validate_sanity` in 5 known message types with `code.is_unknown` rejection; **`Icmp4MessageUnknown.validate_sanity` raises** per RFC 1122 §3.2.2 "MUST silently discard unknown-type ICMP". Integration tests that pinned `icmp4__unknown` counter updated to `icmp4__failed_parse__drop`. The `__phrx_icmp4__unknown` path + counter are now dead but retained. |
+| 5 | **ICMPv6** | `4d03adf4` | Annotated parser integrity; filled 6 empty `validate_sanity` methods (DU, PTB, TE, PP, Echo Req, Echo Reply) with `code.is_unknown` rejection. ND messages + MLDv2 Report already had rich sanity; left intact. **Unknown-type NOT rejected** at parser sanity per RFC 4443 §2.4(b/c) split (unknown error messages MUST be passed to upper layer; only unknown informational MUST be discarded). |
+| 6 | **ICMPv6 RFC 7112 follow-up** | `25f906ed` | Added `Icmp6ParameterProblemCode.INCOMPLETE_HEADER_CHAIN = 3` per RFC 7112 §3. PyTCP now accepts PP code 3 inbound (matches Linux `ICMPV6_HDR_INCOMP`). Active emission deferred to Phase 2 — matches Linux which also doesn't actively emit, just silent-drops on reassembly failure. |
+| 7 | **IPv4** | `a4c0d639` | Annotated 5 integrity + 6 sanity branches with RFC citations. Added two new RFC 1122 §3.2.1.3 src rejections: `src.is_loopback` (127/8, clause (g)) and `src.is_invalid` (0.0.0.1–0.255.255.255, clause (a) minus the DHCPv4 0.0.0.0 carve-out). Closed the documented-but-not-enforced loopback gap (the RFC 791 adherence doc had wrongly claimed 127/8 was covered by `is_reserved`). Sanity checks reordered to ascending address-space order. Cascade: moved the "Loopback source 127.0.0.1" case in `test__icmp4__error_gates.py` from `__Suppressed` to `__DefenseInDepth`. |
+| 7a | **IPv4 per-option** | `3f8c18e8` | Annotated every per-option `_validate_integrity` (LSRR / SSRR / RR / Timestamp / Router Alert / CIPSO / Unknown) with RFC citations. Closed the hostile-wire `AssertionError` leak on LSRR/SSRR/RR (pointer ≥ 4, pointer 4-byte-aligned) and Timestamp (pointer ≥ 5, pointer entry-aligned by flag) — pre-existing `__post_init__` asserts were the only check; they raise `AssertionError` which is **not** a `PacketValidationError` and slips past the IP4 RX handler's catch. Same defect class DHCPv4 fixed in `54d8d5c6`. Added "Per-option parser integrity surface" subsection to RFC 791 adherence doc. |
+| 8 | **IPv6 + ext-headers + per-option** | `d99a1aaa` | One-shot pass covering: (a) base IPv6 header — annotated 3 integrity + 2 existing sanity + added `src.is_loopback` rejection (RFC 4291 §2.5.3, analog of IPv4 §3.2.1.3(g)); (b) all 4 extension-header parsers (Frag / HBH / DestOpts / Routing) annotated; (c) 5 per-option `_validate_integrity` gap fixes — HBH Router Alert (opt_data_len==2, RFC 2711 §2.1), HBH Jumbo Payload (opt_data_len==4 + value>65535, RFC 2675 §2/§3), HBH CALIPSO (opt_data_len consistency, RFC 5570 §4), DestOpts Tunnel Encap Limit (opt_data_len==1, RFC 2473 §4.1.1). Added "Parser integrity & sanity surface" section to RFC 8200 adherence doc. Removed 3 subsumed assertion-based tests. |
+| 9 | **TCP + per-option** | `bc847f07` | One-shot pass covering: (a) base TCP parser — annotated 4 integrity + 6 sanity branches with RFC 9293 §3.1/§3.2/§3.10.4 + RFC 1071 + RFC 6335 §6 + RFC 5961 §4 citations; (b) all 11 per-option `_validate_integrity` methods annotated (MSS, WSCALE, SACK, SACK-Permitted, Timestamps, FastOpen, AccECN0/1, NOP, EOL, Unknown) + TcpOptions container walker; (c) 1 per-option `AssertionError` leak fix — SACK `block_count ≤ 4` (RFC 2018 §3, mirroring the dataclass `__post_init__` assert into `_validate_integrity`). Drive-by fix: AccECN citation in adherence doc corrected from RFC 9341 (never published) to RFC 9768. Brought `test__tcp__option__sack.py` to §7.2 compliance (added Reference lines to all 11 test methods). |
+| 10 | **UDP** | `<commit-tbd>` | Annotation-only pass. 4 integrity + 1 sanity branches annotated with RFC 768 / RFC 8200 §8.1 / RFC 6935 §5 / RFC 6936 §4 / RFC 1071 / RFC 2460 §8.1 citations. UDP has **no per-option files** and **no `__post_init__` wire-AssertionError leak surface** (all header fields are wire-derived via `struct.unpack("! HH HH")` which guarantees uint16 by construction). Added "Parser integrity & sanity surface" tabular section to `docs/rfc/udp/rfc768__udp/adherence.md` mirroring the layout used for RFC 791 / 8200 / 9293. |
+
+Test count after the pass: **11106 passing** (no new tests — UDP was annotation-only; existing UDP test suite already exercised every integrity / sanity branch including the IPv6 zero-cksum default-discard and the sport=0 deliberate-accept).
+
+---
+
+## Remaining
+
+**None in scope.** The nine protocols in scope at closure were all
+audited; pass closed. The later-added `igmp/` and `dhcp6/` protocols
+were never in this pass's scope and carry their own per-RFC adherence
+records (see the 2026-05-30 reconciliation note above).
+
+---
+
+## Workflow / pattern
+
+For each protocol:
+
+1. Read parser, header, errors, message subdirs.
+2. Survey existing checks — categorise as integrity (structural, before
+   parse) or sanity (semantic, after parse).
+3. Grep for the corresponding `docs/rfc/<family>/.../adherence.md`
+   records.
+4. Present an analysis to the user laying out:
+   - Current state (table of checks vs RFC backing).
+   - RFC verdict (which checks are correct, which are stale).
+   - Gaps (what could be added at sanity).
+   - Nuances / divergence points (e.g. Linux differs here).
+5. **Use `AskUserQuestion`** to confirm direction. Options usually
+   include: "annotate only", "annotate + add the gaps", "full pass".
+6. Tests-first:
+   - Write failing test(s) for new rules in
+     `<pkg>/tests/unit/protocols/<proto>/test__<proto>__parser__sanity_checks.py`
+     (consolidated when multiple message types, or per-aspect when
+     pre-existing layout uses that).
+   - Run, confirm "X not raised" for the predicted reason.
+7. Implement annotations + new rules.
+8. Run `make lint`, `make test`, §7.2 docstring audit.
+9. Update the adherence doc with the new "Parser validation" section
+   (or refresh the existing one).
+10. Commit when the user says so. Use the existing convention:
+    ```
+    refactor(<proto>): RFC-align integrity/sanity ...
+
+    <body with bullet list of changes + RFC citations>
+
+    NNNN passing, lint clean, §7.2 audit clean.
+
+    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+    ```
+11. Push when commit lands.
+
+---
+
+## Lessons / gotchas
+
+- **Linux is the tiebreaker.** When a rule could be added but Linux
+  doesn't enforce it, default to NOT adding it; document the rationale
+  in the adherence doc. Examples: ARP's sha-vs-ethernet (Linux
+  doesn't enforce — removed); ICMPv6 PP code 3 emit (Linux doesn't
+  actively emit — deferred to Phase 2).
+- **Tests-first means tests-first.** Write the test, confirm it fails
+  for the predicted reason, THEN implement. The `Icmp4MessageUnknown`
+  sanity rejection followed this; so did every per-code unknown check.
+- **§7.2 docstring audit MANDATORY on touched test files.** The audit
+  script in `unit_testing.md` §7.2 must come back exit-0 before
+  commit. Scope it to genuinely-modified files; don't take on
+  pre-existing-violation sweeps unless the user asks.
+- **Fixture surprises.** During the Ethernet pass, the long-standing
+  fixture MACs `11:12:13:14:15:16` and `77:88:99:aa:bb:cc` turned
+  out to be multicast (LSB of first octet = 1 = I/G bit set). They'd
+  silently been used as src for years. Fix on touch but DON'T sed
+  globally across all integration tests — the byte sequence
+  `\x11\x12\x13\x14\x15\x16` legitimately appears in ICMP payloads
+  (ascending-byte test patterns). Limit byte substitutions to files
+  in `packages/net_proto/net_proto/tests/unit/protocols/ethernet*/`.
+- **Counter telemetry shifts.** When a sanity rule moves from
+  packet-handler to parser (e.g. ICMPv4 Unknown-type), integration
+  tests that pinned the old counter (e.g. `icmp4__unknown=1`) need
+  to be updated to the parser counter
+  (e.g. `icmp4__failed_parse__drop=1`).
+- **ICMPv4 vs ICMPv6 unknown-type handling diverges.** RFC 1122 §3.2.2
+  says "MUST silently discard" for ICMPv4 (so PyTCP rejects at parser
+  sanity). RFC 4443 §2.4(b/c) splits it for ICMPv6 — unknown error
+  messages (type 1..127) MUST be passed to upper layer; only unknown
+  informational (type >= 128) MUST be silently discarded. PyTCP
+  therefore does NOT reject ICMPv6 unknown types at parser sanity.
+- **`code.is_unknown` is the canonical pattern** when rejecting
+  out-of-IANA-range code/oper bytes. Available on every
+  `ProtoEnum`-derived enum via `_missing_` materialisation.
+- **Adherence docs decay fast.** When you change a parser-level
+  enforcement rule, the corresponding `adherence.md` MUST be updated
+  in the SAME commit (per `feedback_audit_in_lockstep_with_code.md`).
+- **`make lint` is autoformatting.** It will reformat files in
+  place. Run it before commits; don't be surprised when files
+  reformat.
+- **Per-option / per-extension-header pass is its own commit.**
+  The IPv4 pass initially landed only the header parser
+  (`a4c0d639`) and missed the per-option surface — the user
+  caught it ("did u also reveiw ip4 options ?"). Always survey
+  the protocol's sub-parsers (option files, extension-header
+  files, per-message classes) in the SAME analysis as the main
+  parser. The DHCPv4-style hostile-wire `AssertionError` leak
+  pattern is the canonical recurring defect: any `__post_init__`
+  assert on a parsed wire field that isn't mirrored in
+  `_validate_integrity` is a defect.
+- **`_validate_integrity` vs `__post_init__` duplication is
+  load-bearing.** The duplication is deliberate: `_validate_integrity`
+  is the parser-level / hostile-wire gate (raises `Ip4IntegrityError`
+  / `Ip6IntegrityError`); `__post_init__` is the construction-time
+  invariant for API consumers building objects programmatically
+  (raises `AssertionError`). The DHCPv4 alternative — wrap
+  `from_buffer` in `try/except (AssertionError, ...)` — is a
+  valid second pattern when the assert is computationally
+  expensive to mirror; otherwise prefer mirroring.
+
+---
+
+## Restart prompt
+
+To resume this work in a fresh session, paste:
+
+The pass is **closed**. There is nothing to resume.
+>
+> If a future regression introduces a new
+> `__post_init__`-asserted invariant on a parsed wire field that
+> isn't mirrored in `_validate_integrity`, the established fix
+> pattern is documented in this file (Lessons section) — mirror
+> the assert into `_validate_integrity` raising the appropriate
+> `*IntegrityError`, OR wrap the offending `from_buffer` call
+> in `try/except (AssertionError, ...) as error: raise *IntegrityError(str(error)) from error`
+> (the DHCPv4 pattern). Tests-first; cite the governing RFC.

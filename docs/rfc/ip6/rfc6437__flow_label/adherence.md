@@ -11,8 +11,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 6437. The audit was performed by reading the RFC
-text fresh and inspecting `pytcp/lib/ip6_flow_label.py`
-plus `pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
+text fresh and inspecting `packages/pytcp/pytcp/lib/ip6_flow_label.py`
+plus `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
 directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
@@ -54,7 +54,7 @@ the sysctl to exercise the auto-wire.
 >  in the network as a single flow."
 
 **Adherence:** met (wire format). The `Ip6Header`
-dataclass at `net_proto/protocols/ip6/ip6__header.py`
+dataclass at `packages/net_proto/net_proto/protocols/ip6/ip6__header.py`
 carries the 20-bit `flow` field; `Ip6Assembler` exposes
 `ip6__flow` as a kwarg. The wire codec packs the field
 into the version/TC/FL header word per RFC 8200 §3.
@@ -80,11 +80,11 @@ trivially met (PyTCP does not forward in Phase 1). The
 met by the TX-path auto-wire:
 
 - The **generator algorithm** is shipped at
-  `pytcp/lib/ip6_flow_label.py::compute_ip6_flow_label`:
+  `packages/pytcp/pytcp/lib/ip6_flow_label.py::compute_ip6_flow_label`:
   BLAKE2s-keyed hash of `(src, dst)` with the stack-wide
   16-byte `IP6__FLOW_SECRET`, folded to 20 bits.
 - The **TX path auto-wire** is shipped at
-  `pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
   when `ip6.flow_label_generation` sysctl is non-zero
   (default 1), `_phtx_ip6` calls
   `compute_ip6_flow_label(src=ip6__src, dst=ip6__dst)`
@@ -96,7 +96,7 @@ fixtures (which encode flow=0 in their IPv6 header word)
 continue to match because `NetworkTestCase.setUp` pins
 `ip6.flow_label_generation = 0` for the duration of each
 test. The dedicated
-`pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py`
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py`
 flips the sysctl back to 1 in its own setUp to exercise
 the auto-wire — three tests assert (a) non-zero Flow
 Label on outbound frames, (b) on-wire Flow Label matches
@@ -134,7 +134,7 @@ meantime.
 **Adherence:** met by the generator. The per-stack
 16-byte `IP6__FLOW_SECRET` (generated at module import
 via `secrets.token_bytes(16)` at
-`pytcp/stack/__init__.py`) ensures the per-(src, dst)
+`packages/pytcp/pytcp/stack/__init__.py`) ensures the per-(src, dst)
 flow label is unguessable to an off-path attacker.
 Pinned by
 `TestIp6FlowLabel::test__lib__ip6_flow_label__different_secret_different_label`.
@@ -171,7 +171,7 @@ operator concerns; a host stack's responsibility ends at
 ### §3 Generator algorithm
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__ip6_flow_label.py::TestIp6FlowLabel`
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip6_flow_label.py::TestIp6FlowLabel`
   — 5 tests: fits-in-20-bits, same-flow-same-label,
   different-flows-different-labels, different-secret-
   different-label, different-source-different-label.
@@ -181,7 +181,7 @@ operator concerns; a host stack's responsibility ends at
 ### §3 TX-path auto-wire
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py::TestIp6Rfc6437FlowLabelAutoWire`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py::TestIp6Rfc6437FlowLabelAutoWire`
   — 3 tests: outbound Echo Reply carries non-zero Flow
   Label when sysctl is enabled; on-wire Flow Label
   equals `compute_ip6_flow_label` output for the same
@@ -229,4 +229,4 @@ implementations.
   SHOULD): [`../rfc8504__ipv6_node_reqs/adherence.md`](../rfc8504__ipv6_node_reqs/adherence.md)
 - The `IP6__FLOW_SECRET` allocation pattern mirrors
   `TCP__ISS_SECRET` and `TCP__FASTOPEN_SECRET` at the top
-  of `pytcp/stack/__init__.py`.
+  of `packages/pytcp/pytcp/stack/__init__.py`.

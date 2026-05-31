@@ -13,8 +13,8 @@
 ## Top-line adherence
 
 PyTCP is **fully compliant** with RFC 5722. The shared
-`pytcp/lib/ip_frag_table.py::IpFragTable` (now relocated to
-`pytcp/protocols/ip/ip_frag_table.py`) detects any overlap
+`packages/pytcp/pytcp/lib/ip_frag_table.py::IpFragTable` (now relocated to
+`packages/pytcp/pytcp/protocols/ip/ip_frag_table.py`) detects any overlap
 between an arriving fragment and the per-flow store, marks
 the entire flow as discarded, clears the stored fragment
 payloads, and silently drops every subsequent fragment that
@@ -26,13 +26,13 @@ RFC 3128 fragmentation-attack mitigations.
 The implementation lives in commit `604eebbf` and the
 shared-table refactor it builds on (commit `6c1c8634`); the
 overlap test surface is mirrored at both the `IpFragTable`
-unit-test level (`pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py`)
+unit-test level (`packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py`)
 and the v4 / v6 packet-handler unit-test level
-(`pytcp/tests/unit/stack/packet_handler/`).
+(`packages/pytcp/pytcp/tests/unit/stack/packet_handler/`).
 
 PyTCP's TX path does not generate overlapping fragments —
 the fragment-emission machinery in
-`pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py`
 walks an IPv6 datagram in 8-octet chunks with monotonically-
 increasing offsets, so the §4 producer-side MUST holds by
 construction.
@@ -155,18 +155,18 @@ The §4 clauses above are pinned by:
 
 | Clause | Test file / class |
 |--------|-------------------|
-| Overlap detection (range overlap) | `pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py::TestIpFragTableOverlap::test__ip_frag_table__add_fragment__overlap_drops_flow` |
+| Overlap detection (range overlap) | `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py::TestIpFragTableOverlap::test__ip_frag_table__add_fragment__overlap_drops_flow` |
 | Strict-reading exact duplicate | Same class :: `test__ip_frag_table__add_fragment__exact_duplicate_treated_as_overlap` |
 | Discarded-flow gate (subsequent fragments dropped) | Same class :: `test__ip_frag_table__add_fragment__subsequent_after_discard_yields_discarded` |
 | Three-fragment regression-pin (no false positive) | Same class :: `test__ip_frag_table__add_fragment__three_fragments_no_overlap_still_reassembles` |
-| `mark_discarded()` flag flip | `pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py::TestIpFragDataMarkDiscarded::test__ip_frag_data__mark_discarded__sets_flag` |
+| `mark_discarded()` flag flip | `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py::TestIpFragDataMarkDiscarded::test__ip_frag_data__mark_discarded__sets_flag` |
 | `mark_discarded()` clears payload | Same class :: `test__ip_frag_data__mark_discarded__clears_payload` |
-| v4 handler counter wiring | `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxFragmentFlowState::test__stack__packet_handler__ip4__rx__overlapping_fragments_drop_flow` |
+| v4 handler counter wiring | `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip4__rx.py::TestPacketHandlerIp4RxFragmentFlowState::test__stack__packet_handler__ip4__rx__overlapping_fragments_drop_flow` |
 | v4 handler same-fragment-twice strict drop | Same class :: `test__stack__packet_handler__ip4__rx__same_fragment_twice_drops_flow` |
-| v6 handler counter wiring | `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__rx.py::TestPacketHandlerIp6FragRx::test__stack__packet_handler__ip6_frag__rx__overlapping_fragments_drop_flow` |
+| v6 handler counter wiring | `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__rx.py::TestPacketHandlerIp6FragRx::test__stack__packet_handler__ip6_frag__rx__overlapping_fragments_drop_flow` |
 | v6 handler same-fragment-twice strict drop | Same class :: `test__stack__packet_handler__ip6_frag__rx__same_fragment_twice_drops_flow` |
-| Integration: replay-fragment in flow A drops only that flow | `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py` (the "duplicate fragments in flow A drop flow A under RFC 5722 §3 strict reading" parametrized case) |
-| Integration v6 analog | `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6_frag__rx.py` (same case) |
+| Integration: replay-fragment in flow A drops only that flow | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py` (the "duplicate fragments in flow A drop flow A under RFC 5722 §3 strict reading" parametrized case) |
+| Integration v6 analog | `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6_frag__rx.py` (same case) |
 
 ---
 

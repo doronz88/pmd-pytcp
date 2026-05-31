@@ -12,8 +12,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 1042. The audit was performed by reading
-the RFC text fresh against the codebase under `net_proto/`
-and `pytcp/` directly. Sections that contain no normative
+the RFC text fresh against the codebase under `packages/net_proto/net_proto/`
+and `packages/pytcp/pytcp/` directly. Sections that contain no normative
 content (Status of this Memo, Introduction,
 Acknowledgments, 802.4 / 802.5 / FDDI / Token-Ring
 physical-layer specifics that aren't relevant to a
@@ -79,11 +79,11 @@ generate XID / TEST responses without explicit consumer).
 > EtherType code (as listed in Assigned Numbers)."
 
 **Adherence:** met (inbound). PyTCP's
-`net_proto/protocols/ethernet_802_3/` parses the 802.3
-MAC framing; `net_proto/protocols/llc/` parses the LLC
-header; `net_proto/protocols/snap/` parses the SNAP
+`packages/net_proto/net_proto/protocols/ethernet_802_3/` parses the 802.3
+MAC framing; `packages/net_proto/net_proto/protocols/llc/` parses the LLC
+header; `packages/net_proto/net_proto/protocols/snap/` parses the SNAP
 extension. The runtime dispatch at
-`pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py`
 chains the three: 802.3 → LLC → (SNAP when DSAP=0xAA).
 For OUI=0x000000 (RFC 1042 canonical), the PID is
 interpreted as a standard EtherType and the frame is
@@ -100,7 +100,7 @@ handler (`_phrx_ip4` / `_phrx_ip6` / `_phrx_arp`).
 > and must be supported by all implementations."
 
 **Adherence:** met (inbound). The LLC parser at
-`net_proto/protocols/llc/llc__parser.py` requires the
+`packages/net_proto/net_proto/protocols/llc/llc__parser.py` requires the
 Control field's low two bits to be `0b11` (U-frame /
 Type 1) and rejects I-frame and S-frame variants
 (Type 2 connection-oriented). For the canonical UI
@@ -122,6 +122,34 @@ Ring) is not supported. Aligns with Linux's universal
 
 ---
 
+## §"Description" — Source MAC Unicast Invariant
+
+> The IEEE 802.3 MAC sublayer specifies that a frame's
+> source address MUST be a unicast individual address
+> (I/G bit clear, not all-zeros, not all-ones).
+
+**Adherence:** met (parser sanity, added in the
+RFC-adherence pass). The 802.3 parser's `_validate_sanity`
+rejects any frame whose `src` MAC is unspecified
+(all-zeros), multicast (group bit set), or broadcast
+(all-ones) with `Ethernet8023SanityError`
+(`packages/net_proto/net_proto/protocols/ethernet_802_3/ethernet_802_3__parser.py::_validate_sanity`).
+`dst` is intentionally NOT subject to the same checks
+because a destination MAC may legitimately be multicast
+or broadcast.
+
+Linux's `net/ethernet/eth.c::eth_type_trans` does not
+enforce this — PyTCP's parser-level hardening is stricter
+than Linux. RX-side counter for malformed frames is
+`ethernet_802_3__failed_parse__drop`.
+
+The dlen integrity guards (`dlen != actual payload length`,
+`dlen > 1500`) are documented at the integrity layer and
+together with the unicast-`src` sanity check cover the
+"obviously malformed wire" surface for inbound 802.3 frames.
+
+---
+
 ## §"Header Format" — LLC+SNAP 8-octet Total
 
 > "The total length of the LLC Header and the SNAP
@@ -131,9 +159,9 @@ Ring) is not supported. Aligns with Linux's universal
 > is 3 (Unnumbered Information)."
 
 **Adherence:** met. The LLC header is 3 octets
-(`net_proto/protocols/llc/llc__header.py::LLC__HEADER__LEN
+(`packages/net_proto/net_proto/protocols/llc/llc__header.py::LLC__HEADER__LEN
 = 3`) and the SNAP header is 5 octets
-(`net_proto/protocols/snap/snap__header.py::SNAP__HEADER__LEN
+(`packages/net_proto/net_proto/protocols/snap/snap__header.py::SNAP__HEADER__LEN
 = 5`), totalling 8. K1 = `0xAA` = `LlcSap.SNAP`
 (`llc__enums.py`), K2 = `0x000000` =
 `SnapOui.ENCAP_ETHERTYPE` (`snap__enums.py`), control
@@ -191,7 +219,7 @@ length (4) match.
 **Adherence:** met (same mapping as RFC 894). The
 broadcast MAC `FF:FF:FF:FF:FF:FF` is shared between
 RFC 894 and RFC 1042; PyTCP's mapping
-(`net_addr/mac_address.py:42`) covers both.
+(`packages/net_addr/net_addr/mac_address.py:42`) covers both.
 
 ---
 
@@ -269,16 +297,20 @@ consumer today.
 
 ### IEEE 802.3 framing
 
-- **Unit:** `net_proto/tests/unit/protocols/ethernet_802_3/`
-  — pins MAC header parse / assemble.
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet_802_3/`
+  — pins MAC header parse / assemble. The
+  `test__ethernet_802_3__parser__sanity_checks.py` file
+  pins the three `src`-non-unicast rejections (unspecified,
+  multicast, broadcast) and a happy-path matrix that
+  confirms valid frames continue to parse cleanly.
 
 **Status:** locked in.
 
 ### LLC parsing + DSAP dispatch
 
-- **Unit:** `net_proto/tests/unit/protocols/llc/test__llc__header__asserts.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/llc/test__llc__header__asserts.py`
   (4 tests) — LlcSap / LlcControl constructor validation.
-- **Unit:** `net_proto/tests/unit/protocols/llc/test__llc__parser__operation.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/llc/test__llc__parser__operation.py`
   (6 tests) — STP BPDU, SNAP indicator, packet_rx slot,
   short-frame integrity, I/S-frame rejection, unknown
   DSAP accepted.
@@ -287,7 +319,7 @@ consumer today.
 
 ### SNAP parsing + OUI/PID dispatch
 
-- **Unit:** `net_proto/tests/unit/protocols/snap/test__snap__parser__operation.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/snap/test__snap__parser__operation.py`
   (5 tests) — RFC 1042 IP-over-SNAP, Cisco CDP frame,
   packet_rx slot, short-frame integrity,
   assembler/parser round-trip.
@@ -296,7 +328,7 @@ consumer today.
 
 ### 802.3 + LLC + SNAP runtime dispatch
 
-- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet_802_3__llc_snap.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet_802_3__llc_snap.py`
   (10 tests) — STP BPDU, Cisco CDP / VTP / DTP / PVST+
   / UDLD, Novell IPX over 802.2, RFC 1042 SNAP-IP4,
   RFC 1042 SNAP-ARP, Cisco-multicast-MAC filter
@@ -306,11 +338,11 @@ consumer today.
 
 ### Test harness coverage
 
-- **Harness:** `pytcp/tests/lib/ethernet_802_3_testcase.py`
+- **Harness:** `packages/pytcp/pytcp/tests/lib/ethernet_802_3_testcase.py`
   — `Ethernet8023TestCase` with frame builders for STP
   BPDU, Cisco SNAP (per protocol), RFC 1042 SNAP-EtherType,
   Novell IPX over 802.2, plus `_drive_802_3_rx` helper.
-- **Harness:** `pytcp/tests/lib/ethernet_testcase.py`
+- **Harness:** `packages/pytcp/pytcp/tests/lib/ethernet_testcase.py`
   — `EthernetTestCase` with Ethernet II frame builders
   (`_build_ethernet_frame` / `_build_broadcast_ethernet_frame`)
   + `_drive_ethernet_rx` helper.

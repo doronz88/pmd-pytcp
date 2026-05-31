@@ -8,10 +8,10 @@ INCOMPLETE / REACHABLE / STALE / DELAY / PROBE / FAILED
 states Linux's `net/core/neighbour.c` implements.
 
 The FSM is generic over address type from day one. Both the
-IPv4 ARP cache (`pytcp/protocols/arp/arp__cache.py`) and the
-IPv6 ND cache (currently at `pytcp/stack/nd_cache.py`,
-unrelocated) become thin adapters over a single
-`NeighborCache[A]` at `pytcp/lib/neighbor.py` — matching
+IPv4 ARP cache (`packages/pytcp/pytcp/protocols/arp/arp__cache.py`) and the
+IPv6 ND cache (now relocated to
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py`) become thin adapters over a single
+`NeighborCache[A]` at `packages/pytcp/pytcp/lib/neighbor.py` — matching
 Linux's factoring and avoiding the duplication that would
 result from putting the FSM under either protocol's package.
 
@@ -150,7 +150,7 @@ non-frozen makes transitions readable.
 
 ---
 
-## §3 Generic `NeighborCache[A]` at `pytcp/lib/neighbor.py`
+## §3 Generic `NeighborCache[A]` at `packages/pytcp/pytcp/lib/neighbor.py`
 
 ```python
 class NeighborCache[A: Ip4Address | Ip6Address](Subsystem):
@@ -196,7 +196,7 @@ type-specific bits via constructor kwargs.
 
 ## §4 ArpCache adapter
 
-`pytcp/protocols/arp/arp__cache.py` becomes:
+`packages/pytcp/pytcp/protocols/arp/arp__cache.py` becomes:
 
 ```python
 class ArpCache(NeighborCache[Ip4Address]):
@@ -232,8 +232,8 @@ preserved as the `INCOMPLETE`-state solicit path.
 
 ## §5 NdCache adapter
 
-`pytcp/stack/nd_cache.py` migrates to
-`pytcp/protocols/icmp6/nd__cache.py` (matching the ARP
+`packages/pytcp/pytcp/stack/nd_cache.py` migrates to
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` (matching the ARP
 relocation done in commit `e29e6b1e`) and becomes:
 
 ```python
@@ -256,8 +256,8 @@ class NdCache(NeighborCache[Ip6Address]):
 ```
 
 The migration also relocates the existing ND constants
-(currently at `pytcp/stack/__init__.py:103-107`) to a
-sibling `pytcp/protocols/icmp6/icmp6__nd__constants.py`
+(currently at `packages/pytcp/pytcp/stack/__init__.py:103-107`) to a
+sibling `packages/pytcp/pytcp/protocols/icmp6/icmp6__nd__constants.py`
 following the per-protocol layout convention.
 
 ---
@@ -281,7 +281,7 @@ def confirm_reachability(self, address: A) -> None:
     entry.probe_count = 0
 ```
 
-TCP integration: `pytcp/protocols/tcp/tcp__session.py` calls
+TCP integration: `packages/pytcp/pytcp/protocols/tcp/tcp__session.py` calls
 the hook from the in-window-ACK code path. The address is
 the peer's IPv4 or IPv6 — routes to ArpCache or NdCache by
 type dispatch (or by separate hooks). Effort: ~20 lines +
@@ -332,7 +332,7 @@ to NUD is procedural rather than structural:
      existing connections"). This is the substantial bit
      that gates #9 on having NUD's FAILED concept available
      as the "this address is dead" semantic.
-  2. Removes the address from `self._ip4_host`.
+  2. Removes the address from `self._ip4_ifaddr`.
   3. Logs an operator-visible warning.
 
 The TcpSession ABORT plumbing benefits from the FAILED
@@ -347,7 +347,7 @@ retries on FAILED.
 
 Per the framework at `docs/refactor/sysctl_framework.md`,
 NUD timing constants are policy knobs, not invariants. They
-register at module load time on `pytcp/lib/neighbor.py`'s
+register at module load time on `packages/pytcp/pytcp/lib/neighbor.py`'s
 sibling `neighbor__constants.py`:
 
 | Sysctl key | Default | Linux equivalent |
@@ -387,8 +387,8 @@ test suite, lint clean, and shippable state.
 
 ### Phase 1 — `NeighborCache[A]` module + unit tests ✅ shipped (this commit)
 
-`pytcp/lib/neighbor.py` plus unit tests at
-`pytcp/tests/unit/lib/test__lib__neighbor.py`. The cache is
+`packages/pytcp/pytcp/lib/neighbor.py` plus unit tests at
+`packages/pytcp/pytcp/tests/unit/lib/test__lib__neighbor.py`. The cache is
 fully functional but no protocol consumes it yet — ArpCache
 and NdCache continue to use their existing implementations.
 
@@ -424,11 +424,11 @@ to work.
 
 ### Phase 3 — NdCache adapter + ND cache relocation ✅ shipped (this commit)
 
-Relocate `pytcp/stack/nd_cache.py` →
-`pytcp/protocols/icmp6/nd__cache.py` (matching commit
+Relocate `packages/pytcp/pytcp/stack/nd_cache.py` →
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` (matching commit
 `e29e6b1e`'s ARP relocation). Refactor as
 `NdCache(NeighborCache[Ip6Address])`. ND constants migrate
-out of `pytcp/stack/__init__.py` to a sibling
+out of `packages/pytcp/pytcp/stack/__init__.py` to a sibling
 `icmp6__nd__constants.py`.
 
 ### Phase 4 — Reachability confirmation hook (#12) ✅ shipped (this commit)
@@ -455,7 +455,7 @@ warning-level log on abandon. Effort ~100 lines + tests.
 ## §11 Anti-patterns
 
 - **Skipping the generic step.** "Just put NUD under
-  `pytcp/protocols/arp/`" is what the original §4 of
+  `packages/pytcp/pytcp/protocols/arp/`" is what the original §4 of
   `arp_linux_parity.md` proposed; we rejected it because
   ND adoption later forces either duplication or a
   refactor. The Phase 1 generic module is load-bearing.
@@ -500,9 +500,9 @@ before any code:
      §6.1 sysctl pattern applies to NUD timing constants)
   5. .claude/skills/sysctl_knob/SKILL.md (NUD timing
      constants register through this workflow)
-  6. The current state of pytcp/lib/neighbor.py if it
-     exists, plus pytcp/protocols/arp/arp__cache.py and
-     pytcp/stack/nd_cache.py.
+  6. The current state of packages/pytcp/pytcp/lib/neighbor.py if it
+     exists, plus packages/pytcp/pytcp/protocols/arp/arp__cache.py and
+     packages/pytcp/pytcp/stack/nd_cache.py.
 
 After reading, confirm:
 

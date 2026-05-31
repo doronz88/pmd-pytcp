@@ -10,7 +10,7 @@
 
 This document records the PyTCP codebase's adherence to RFC 6814
 clause by clause. The audit was performed by reading the RFC
-text fresh and inspecting `net_proto/protocols/ip4/options/`
+text fresh and inspecting `packages/net_proto/net_proto/protocols/ip4/options/`
 directly; no prior memory or rule-file content was reused.
 Non-normative content (§1 Introduction, §3 IANA, §5/§6/§7) is
 omitted.
@@ -28,7 +28,7 @@ receive remains the host posture inherited from RFC 1122
 
 PyTCP **meets** RFC 6814 trivially: none of the deprecated
 options have a typed dataclass under
-`net_proto/protocols/ip4/options/`, so the stack cannot
+`packages/net_proto/net_proto/protocols/ip4/options/`, so the stack cannot
 originate any of them. On receive, unknown option kinds fall
 through to `Ip4OptionUnknown` which preserves the wire bytes
 but takes no action — satisfying the inherited RFC 1122
@@ -63,7 +63,7 @@ audit's §3.2.1.8(b) entry for the same conclusion.
 
 **Adherence:** met. No typed file. EIP was an experimental IPv7
 proposal superseded by IPv6 — PyTCP implements IPv6 separately
-under `net_proto/protocols/ip6/`, not via this option.
+under `packages/net_proto/net_proto/protocols/ip6/`, not via this option.
 
 ## §2.3 Traceroute (TR, 82)
 
@@ -126,12 +126,12 @@ or audit references these as governing specifications.
 ### Deprecated options fall through to Ip4OptionUnknown on receive
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/options/test__ip4__option__unknown.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__option__unknown.py`
   Verifies that any option type not matched by the typed
   dispatch chain in `Ip4Options.from_buffer` is parsed into an
   `Ip4OptionUnknown` with the original type byte preserved.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/options/test__ip4__options.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/options/test__ip4__options.py`
   Container composition tests include an `Ip4OptionUnknown` in
   the option stream and verify round-trip identity.
 

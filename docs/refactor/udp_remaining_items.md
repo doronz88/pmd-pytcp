@@ -70,9 +70,9 @@ setsockopt surface, `recvmsg()` ancillary-data API,
 `UdpMetadata.ip4__options` plumbing, and TX wiring
 through `_phtx_udp` → `_phtx_ip4(ip4__options=...)`.
 Pinned by unit tests at
-`pytcp/tests/unit/socket/test__socket__udp__socket.py`
+`packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py`
 (7 setsockopt + 10 recvmsg) and integration tests at
-`pytcp/tests/integration/protocols/udp/test__udp__ip_options.py`
+`packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__ip_options.py`
 (5 end-to-end). Audit ripple landed in
 `docs/rfc/udp/rfc1122__host_requirements_udp/adherence.md`
 §4.1.3.2: three "not implemented" rows flipped to "met";
@@ -112,9 +112,9 @@ option list isn't exposed via the UDP socket API.
 
 ### Implementation sketch
 
-1. Extend `pytcp/socket/udp__metadata.py::UdpMetadata` with
+1. Extend `packages/pytcp/pytcp/socket/udp__metadata.py::UdpMetadata` with
    an `ip_options: tuple[Ip4Option, ...] | None` field.
-2. Populate it in `pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
+2. Populate it in `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
    from `packet_rx.ip4.options` (IPv6 has no IP-options
    surface — leave `None`).
 3. Add a `recvmsg()` method to `UdpSocket` that returns
@@ -128,7 +128,7 @@ option list isn't exposed via the UDP socket API.
    `_phtx_udp(..., ip__options=...)`.
 5. The IPv4 TX path needs to accept and emit the operator-
    supplied options. Touches
-   `pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
+   `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
 6. Tests:
    - Unit: `setsockopt(IP_OPTIONS, bytes)` + `getsockopt`
      round-trip.
@@ -159,9 +159,9 @@ exists.
 
 **Status:** closed. Shipped as the directed-broadcast
 martian-source filter at
-`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
 Pinned by
-`pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py`
+`packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py`
 (three tests: local-subnet directed broadcast dropped,
 remote-subnet directed broadcast accepted, unicast source
 unaffected). Counter:
@@ -177,7 +177,7 @@ Original brief (kept for archaeology):
 ### What's filtered today
 
 The IPv4 parser sanity check at
-`net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`
+`packages/net_proto/net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`
 drops:
 
 - `src.is_multicast` (224.0.0.0/4)
@@ -196,8 +196,8 @@ property.
 Two design options:
 
 **Option A** — IP-layer filter in `packet_handler__ip4__rx.py`,
-walking the configured `_ip4_host[]` and checking
-`packet_rx.ip4.src` against each `Ip4Host.network.broadcast`.
+walking the configured `_ip4_ifaddr[]` and checking
+`packet_rx.ip4.src` against each `Ip4IfAddr.network.broadcast`.
 Cleanest; matches Linux's `ip_route_input_slow` placement.
 
 **Option B** — UDP-layer filter alongside `is_unspecified`.
@@ -210,7 +210,7 @@ concept; closes the gap for every transport in one place.
 ```python
 # packet_handler__ip4__rx.py — after the existing
 # dst-acceptance check
-if any(packet_rx.ip4.src == host.network.broadcast for host in self._ip4_host):
+if any(packet_rx.ip4.src == host.network.broadcast for host in self._ip4_ifaddr):
     self._packet_stats_rx.ip4__directed_broadcast_src__drop += 1
     __debug__ and log(...)
     return
@@ -285,7 +285,7 @@ getsockopt(sock, IPPROTO_IPV6, IPV6_PATHMTU, &mtuinfo, &len);
 ### Implementation sketch
 
 1. Add `IP_MTU = 14` and `IPV6_PATHMTU = 61` to
-   `pytcp/socket/__init__.py` constants (matching Linux's
+   `packages/pytcp/pytcp/socket/__init__.py` constants (matching Linux's
    numeric values).
 2. Wire them into the `getsockopt` dispatch — return the
    current `stack.pmtu_cache` entry for the socket's
@@ -320,7 +320,7 @@ this commit closes the punch list. Shipped surface:
   enables per-socket error-queue population.
 - `MSG_ERRQUEUE=0x2000` recvmsg flag; switches
   `recvmsg()` from data-queue to error-queue.
-- `pytcp/socket/error_queue.py`: `ErrorQueueEntry`
+- `packages/pytcp/pytcp/socket/error_queue.py`: `ErrorQueueEntry`
   dataclass; `SoEeOrigin` IntEnum for
   `sock_extended_err.ee_origin`; `icmp4_to_errno` /
   `icmp6_to_errno` POSIX-errno mapping mirroring Linux
@@ -546,8 +546,8 @@ own track.
 1. Add `docs/rfc/udp/rfc8899__plpmtud/adherence.md`
    audit first (per the rfc_adherence_audit skill).
 2. Identify the implementation surface — likely a new
-   subsystem under `pytcp/lib/` or
-   `pytcp/protocols/udp/` for probe scheduling, per-flow
+   subsystem under `packages/pytcp/pytcp/lib/` or
+   `packages/pytcp/pytcp/protocols/udp/` for probe scheduling, per-flow
    PMTU state.
 3. Expose a socket-side API for apps to opt in.
 
@@ -608,13 +608,13 @@ Items #2 and #3 each stand alone.
 
 - Per-RFC adherence records: `docs/rfc/udp/*/adherence.md`.
 - Socket-API parity audit: `docs/refactor/socket_linux_parity_audit.md`.
-- PMTU cache + notify_pmtu callback: `pytcp/stack/__init__.py::pmtu_cache`,
-  `pytcp/socket/udp__socket.py::notify_pmtu`.
+- PMTU cache + notify_pmtu callback: `packages/pytcp/pytcp/stack/__init__.py::pmtu_cache`,
+  `packages/pytcp/pytcp/socket/udp__socket.py::notify_pmtu`.
 - IPv4 parser sanity checks (the §4.1.3.6 ground-truth):
-  `net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`.
+  `packages/net_proto/net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`.
 - UDP RX dispatcher (where most items integrate):
-  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py::_phrx_udp`.
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py::_phrx_udp`.
 - Existing UdpMetadata surface (what #1 / #4 / #5 extend):
-  `pytcp/socket/udp__metadata.py`.
+  `packages/pytcp/pytcp/socket/udp__metadata.py`.
 - Linux socket-option numeric values reference:
   `/usr/include/linux/in.h` and `/usr/include/linux/in6.h`.

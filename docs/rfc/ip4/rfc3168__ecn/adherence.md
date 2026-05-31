@@ -18,9 +18,9 @@ sender / receiver reactions) are out of scope here and audited
 in the TCP RFC adherence records under `docs/rfc/tcp/`.
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_proto/protocols/ip4/ip4__header.py`,
-`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
-`pytcp/protocols/ip/ip_frag_table.py` directly. Non-normative
+inspecting `packages/net_proto/net_proto/protocols/ip4/ip4__header.py`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
+`packages/pytcp/pytcp/protocols/ip/ip_frag_table.py` directly. Non-normative
 content (§1 Introduction, §2 Conventions, §3 Assumptions, §4
 AQM background, §10-§22) is omitted.
 
@@ -55,7 +55,7 @@ yields a drop, matching Linux behaviour).
 
 **Adherence:** met. `Ip4Header.ecn: int` is the 2-bit field at
 the low-order end of the TOS byte
-(`net_proto/protocols/ip4/ip4__header.py:100,130`). Pack/unpack
+(`packages/net_proto/net_proto/protocols/ip4/ip4__header.py:100,130`). Pack/unpack
 preserve the bit positions
 (`ip4__header.py:183,219`).
 
@@ -66,7 +66,7 @@ preserve the bit positions
 — any of the four codepoints is accepted on receive and
 preserved on send. The TX entry point exposes
 `ip4__ecn: int = 0` as a kwarg
-(`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:101`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py:101`)
 so callers can set ECT(0) or ECT(1) on outbound packets; the
 RX parser surfaces the received value as
 `packet_rx.ip4.ecn`.
@@ -102,7 +102,7 @@ the AccECN / classic-ECN state machine. Cross-references:
 > * The packet is dropped, instead of being reassembled."
 
 **Adherence:** **met (shipped).** The shared reassembly
-machinery in `pytcp/protocols/ip/ip_frag.py` +
+machinery in `packages/pytcp/pytcp/protocols/ip/ip_frag.py` +
 `ip_frag_table.py` retains per-fragment ECN in
 `IpFragData.ecn: dict[int, int]` and aggregates at completion
 via `aggregate_ecn()`. The aggregation table follows Linux
@@ -168,13 +168,13 @@ full-functionality decapsulation) become relevant.
 ### §5 ECN field wire codec
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   Boundary assert on `ecn` field (uint2: 0-3).
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
   Round-trip matrix exercises all 4 ECN codepoints.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
   Assembler round-trip across ECN values.
 
 **Status:** locked in.
@@ -190,7 +190,7 @@ full-functionality decapsulation) become relevant.
 ### §5 Default ECN=00 (Not-ECT) on send
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Default cases ship with `ecn=0`. The TCP-side ECN
   negotiation tests override to ECT(0).
 
@@ -199,19 +199,19 @@ full-functionality decapsulation) become relevant.
 ### §5.3 Reassembly preserves CE
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py::TestAggregateEcn`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py::TestAggregateEcn`
   13 cases covering every Linux-table state — all-same
   preservation, CE propagation with each ECT variant,
   ECT(0)+ECT(1) → ECT(0), every Not-ECT mixed-with-other drop
   path, single-fragment passthrough.
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py::TestIpFragTableEcnAggregation`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py::TestIpFragTableEcnAggregation`
   7 cases end-to-end through `IpFragTable.add_fragment`:
   atomic-fragment pass-through, same-ECN preserved, CE
   propagation, ECT(0)+ECT(1)→ECT(0), CE+Not-ECT drop,
   ECT+Not-ECT drop, default ecn=0 backwards-compat.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py::TestPacketHandlerIp4RxRfc3168EcnAggregationOnReassembly`
   5 wire-level cases driving two-fragment flows into
   `_phrx_ethernet` and inspecting the reassembled datagram on
   the wire: same-ECN propagates the codepoint, CE+ECT(0)

@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how
 the current PyTCP codebase relates to each normative
 statement in RFC 5827. The audit was performed by
 reading the RFC text fresh and inspecting the
-codebase under `pytcp/protocols/tcp/` directly; no
+codebase under `packages/pytcp/pytcp/protocols/tcp/` directly; no
 prior memory or rule-file content was reused.
 Sections without normative content (Abstract, §1
 Introduction, §2 Terminology, §4 Discussion, §5
@@ -91,7 +91,7 @@ without sending fresh data on the 1st / 2nd duplicate.
 No Early Retransmit tests exist; the fast-retransmit
 path is tested via the canonical 3rd-dup-ACK trigger
 in
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`.
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_dupack.py`.
 
 ### Test coverage summary
 

@@ -15,10 +15,10 @@ already mirrored elsewhere (IPv4, ICMPv4, ARP families);
 this record narrows to §4.1 and is the natural extension of
 [RFC 768](../rfc768__udp/adherence.md). The audit was
 performed by reading §4.1 fresh and inspecting
-`net_proto/protocols/udp/`,
-`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`,
-`pytcp/runtime/packet_handler/packet_handler__udp__tx.py`,
-and `pytcp/socket/udp__socket.py` directly. Sections
+`packages/net_proto/net_proto/protocols/udp/`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__tx.py`,
+and `packages/pytcp/pytcp/socket/udp__socket.py` directly. Sections
 without normative content (§4.1.1 Introduction, §4.1.2
 Protocol Walk-Through — "There are no known errors in the
 specification of UDP", §4.1.5 Requirements Summary table)
@@ -71,7 +71,7 @@ partial:
 | §4.1.3.5 | Application can specify local IP / wildcard   | met (`bind()`)                             |
 | §4.1.3.5 | Application notified of local IP used         | met (`getsockname()`)                      |
 | §4.1.3.6 | Bad IP src addr silently discarded by UDP/IP  | met (limited-broadcast / multicast / reserved filtered at IP-layer parser; directed-broadcast filtered at IPv4 RX packet handler; unspecified filtered at UDP layer) |
-| §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_host` / `_ip6_host`) |
+| §4.1.3.6 | Only send valid IP source address             | met (TX source picked from host's `_ip4_ifaddr` / `_ip6_ifaddr`) |
 | §4.1.4   | Application MUST set TTL, TOS, IP options     | met for TTL + TOS; not implemented for IP options |
 | §4.1.4   | Pass received TOS up to application (MAY)     | met (recvmsg IP_TOS cmsg gated by IP_RECVTOS) |
 
@@ -84,7 +84,7 @@ partial:
 >  Port Unreachable message."
 
 **Adherence:** met. The RX dispatch at
-`pytcp/runtime/packet_handler/packet_handler__udp__rx.py:180-230`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py:180-230`
 walks the socket table; on no match the path emits ICMPv4
 or ICMPv6 Destination Unreachable (code = port) subject to
 the `try_emit_icmp_error` host-requirements gate and the
@@ -111,10 +111,10 @@ suppression).
 through the UDP socket API in both directions:
 
 - **RX pass-through.** `UdpMetadata.ip4__options`
-  (`pytcp/socket/udp__metadata.py`) carries the inbound
+  (`packages/pytcp/pytcp/socket/udp__metadata.py`) carries the inbound
   IPv4 options object; the UDP RX handler populates it
   from `packet_rx.ip4.options` at
-  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py`.
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py`.
   Applications retrieve the raw options block via
   `recvmsg(ancbufsize > 0)` on a socket that has
   `setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)` enabled; the
@@ -123,7 +123,7 @@ through the UDP socket API in both directions:
   for IP_OPTIONS.
 
 - **TX pass-through.** `setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)`
-  (`pytcp/socket/__init__.py::_ipproto_ip_setsockopt`)
+  (`packages/pytcp/pytcp/socket/__init__.py::_ipproto_ip_setsockopt`)
   validates the bytes block (≤ 40 bytes, 4-byte aligned,
   parseable as IPv4 options) and stores it on the socket
   as `_ip_options`. Subsequent `send()` / `sendto()` calls
@@ -155,7 +155,7 @@ off transport-layer-targeted errors to the socket via the
 `notify_*` callbacks:
 
 - `notify_unreachable()` at
-  `pytcp/socket/udp__socket.py:519`
+  `packages/pytcp/pytcp/socket/udp__socket.py:519`
 - `notify_time_exceeded(icmp_type, icmp_code)` at
   `udp__socket.py:526`
 - `notify_parameter_problem(icmp_type, icmp_code)` at
@@ -163,7 +163,7 @@ off transport-layer-targeted errors to the socket via the
 - `notify_pmtu(next_hop_mtu)` at `udp__socket.py:550`
 
 The classification happens in
-`pytcp/protocols/icmp/icmp__inbound_classifier.py` and
+`packages/pytcp/pytcp/protocols/icmp/icmp__inbound_classifier.py` and
 `icmp__error_demux.py`; the dispatch routes to the
 matching UDP socket via the embedded-datagram 4-tuple. The
 Linux MSG_ERRQUEUE surface is wired: `setsockopt(IP_RECVERR, 1)`
@@ -175,7 +175,7 @@ where the cmsg payload is the packed Linux
 `ee_type`, `ee_code`, `ee_info` carrying next-hop MTU on
 PMTU errors) followed by the offender's `sockaddr_in` /
 `sockaddr_in6`. The errno is mapped per Linux's
-`icmp_err_convert` table (`pytcp/socket/error_queue.py`).
+`icmp_err_convert` table (`packages/pytcp/pytcp/socket/error_queue.py`).
 
 The legacy BSD single-error surface
 (`ConnectionRefusedError` on next `recv()` after a
@@ -195,11 +195,11 @@ shape, so Python stdlib programs work unchanged).
 >  validate UDP checksums."
 
 **Adherence:** met. `inet_cksum` at
-`net_proto/lib/inet_cksum.py` is the canonical engine;
+`packages/net_proto/net_proto/lib/inet_cksum.py` is the canonical engine;
 assembler at
-`net_proto/protocols/udp/udp__assembler.py:79-83` computes
+`packages/net_proto/net_proto/protocols/udp/udp__assembler.py:79-83` computes
 on TX; parser at
-`net_proto/protocols/udp/udp__parser.py:91-94` verifies on
+`packages/net_proto/net_proto/protocols/udp/udp__parser.py:91-94` verifies on
 RX.
 
 > "An application MAY optionally be able to control
@@ -260,11 +260,11 @@ Fix is mechanical (one-line `or 0xFFFF`).
 >  layer."
 
 **Adherence:** met. `UdpMetadata`
-(`pytcp/socket/udp__metadata.py`) carries
+(`packages/pytcp/pytcp/socket/udp__metadata.py`) carries
 `ip__local_address` populated from `packet_rx.ip.dst`
 (`packet_handler__udp__rx.py:131`). `recvfrom()` at
 `udp__socket.py:448` and the BSD `getsockname()` at
-`pytcp/socket/__init__.py:640` expose the
+`packages/pytcp/pytcp/socket/__init__.py:640` expose the
 specific-destination address to the application.
 
 > "An application program MUST be able to specify the IP
@@ -277,7 +277,7 @@ specific-destination address to the application.
 address or the wildcard (`0.0.0.0` / `::`). When the
 local address is unspecified, `pick_local_ip_address`
 (imported at `udp__socket.py:49`) picks an appropriate
-source from the host's `_ip4_host` / `_ip6_host` list
+source from the host's `_ip4_ifaddr` / `_ip6_ifaddr` list
 using the matching destination-prefix rule (RFC 6724-
 inspired for v6; RFC 1122 §3.3.4.3 for v4).
 
@@ -305,13 +305,13 @@ discard between two layers:
 
 - **Broadcast and multicast sources** are rejected at
   the **IP-layer parser** sanity checks:
-  - `net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`
+  - `packages/net_proto/net_proto/protocols/ip4/ip4__parser.py::_validate_sanity`
     raises `Ip4SanityError` on
     `src.is_multicast`, `src.is_reserved`, and
     `src.is_limited_broadcast`. The packet handler
     catches the error, bumps `ip4__failed_parse__drop`,
     and silently discards.
-  - `net_proto/protocols/ip6/ip6__parser.py::_validate_sanity`
+  - `packages/net_proto/net_proto/protocols/ip6/ip6__parser.py::_validate_sanity`
     raises `Ip6SanityError` on `src.is_multicast`.
     Same drop path with `ip6__failed_parse__drop`.
 
@@ -336,7 +336,7 @@ discard between two layers:
   acceptance.
 
 **Verified by**
-`pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
 — parametric class with three cases (IPv4 limited
 broadcast, IPv4 multicast, IPv6 multicast) asserting:
 the UDP parser never runs (`udp__pre_parse == 0`), the
@@ -354,9 +354,9 @@ socket dispatch never fires, and the
       return
   ```
 
-  See `pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
+  See `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py:145-157`.
   The check uses the `_ip4_broadcast` property which
-  walks `_ip4_host[].network.broadcast` for every
+  walks `_ip4_ifaddr[].network.broadcast` for every
   configured subnet. Per-subnet awareness can't live
   in the parser (parsers are stateless) so the check
   lives in the handler.
@@ -385,7 +385,7 @@ invariant holds by construction.
 abstract RFC 1122 §3.4 routine to a concrete call:
 
 - **GET_SRCADDR** → `getsockname()` at
-  `pytcp/socket/__init__.py:640` returns the local
+  `packages/pytcp/pytcp/socket/__init__.py:640` returns the local
   address (after wildcard bind, the picked source).
 - **GET_MAXSIZES** → `getsockopt(IPPROTO_IP, IP_MTU)` and
   `getsockopt(IPPROTO_IPV6, IPV6_MTU)` return the effective
@@ -413,7 +413,7 @@ options.
 
 - **TTL** → `setsockopt(IPPROTO_IP, IP_TTL, value)` /
   `setsockopt(IPPROTO_IPV6, IPV6_UNICAST_HOPS, value)`
-  wired at `pytcp/socket/__init__.py:286-313`. The TX
+  wired at `packages/pytcp/pytcp/socket/__init__.py:286-313`. The TX
   path threads the per-socket override down to
   `_phtx_ip4(ip4__ttl=...)` / `_phtx_ip6(ip6__hop=...)`
   (`packet_handler__udp__tx.py:119-138`).
@@ -442,13 +442,13 @@ delivered as a 4-byte big-endian integer matching
 Linux's `ipv6(7)` wire shape.
 
 - TOS byte plumbing:
-  `pytcp/socket/udp__metadata.py::UdpMetadata.ip__tos`,
+  `packages/pytcp/pytcp/socket/udp__metadata.py::UdpMetadata.ip__tos`,
   populated in the UDP RX handler from
   `packet_rx.ip.dscp` and `packet_rx.ip.ecn`.
 - Socket flags: `_ip_recvtos` (IPv4),
   `_ipv6_recvtclass` (IPv6) on
-  `pytcp/socket/__init__.py::socket`.
-- Cmsg emission: `pytcp/socket/udp__socket.py::UdpSocket.recvmsg`
+  `packages/pytcp/pytcp/socket/__init__.py::socket`.
+- Cmsg emission: `packages/pytcp/pytcp/socket/udp__socket.py::UdpSocket.recvmsg`
   alongside the existing IP_OPTIONS branch.
 
 Linux socket-option numeric values are mirrored:
@@ -461,7 +461,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.1 ICMP Port Unreachable on no matching socket
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py`
   — exercises the no-socket-match path and asserts
   outbound ICMP Port Unreachable on both IPv4 and IPv6,
   including the rate-limiter suppression counters.
@@ -471,7 +471,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.3 ICMP error pass-up
 
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py`
   — pins the `notify_unreachable` / `notify_time_exceeded`
   / `notify_parameter_problem` / `notify_pmtu` callback
   surfaces; eight tests pin `IP_RECVERR` /
@@ -480,7 +480,7 @@ Linux socket-option numeric values are mirrored:
   errors, `recvmsg(MSG_ERRQUEUE)` 4-tuple shape, empty-
   queue raises, and the 32-entry FIFO bound.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpRecverr`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpRecverr`
   — drives end-to-end ICMPv4 Port Unreachable through
   the RX demux → error queue → `recvmsg(MSG_ERRQUEUE)`
   returns embedded datagram + Linux-shape cmsg
@@ -493,7 +493,7 @@ Linux socket-option numeric values are mirrored:
 
 ### §4.1.3.4 Checksum generate + validate + silent drop
 
-- **Unit:** `net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py`
   (compute) + `test__udp__parser__integrity_checks.py`
   (verify, silent-drop, cksum=0 RX bypass).
 
@@ -502,7 +502,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.4 Computed-zero → all-ones substitution
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`
+  `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`
   — four tests across both serialization paths
   (`assemble()` multi-buffer and `__buffer__` single-
   buffer) × both branches (zero compute → 0xFFFF on
@@ -513,7 +513,7 @@ Linux socket-option numeric values are mirrored:
 
 ### §4.1.3.5 Multihoming — specific-destination + getsockname
 
-- **Unit:** `pytcp/tests/unit/socket/test__socket__udp__socket.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py`
   — pins `bind()` with wildcard + `getsockname()` return
   of the picked local address.
 
@@ -522,7 +522,7 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.6 Invalid source address dropping
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxInvalidSourceAddress`
   — parametric class with three cases (IPv4 limited
   broadcast, IPv4 multicast, IPv6 multicast) asserting
   the UDP parser never runs and the IP-layer
@@ -531,7 +531,7 @@ Linux socket-option numeric values are mirrored:
   parametric case exercises the UDP-layer
   `udp__ip_source_unspecified` drop.
 - **Integration:**
-  `pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py::TestIp4MartianSourceDirectedBroadcast`
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__martian_source.py::TestIp4MartianSourceDirectedBroadcast`
   — three tests pin (a) directed broadcast of a locally
   configured subnet is dropped and bumps
   `ip4__src_directed_broadcast__drop`, (b) directed
@@ -544,7 +544,7 @@ Linux socket-option numeric values are mirrored:
 
 ### §4.1.4 TTL + TOS per-socket override
 
-- **Unit:** `pytcp/tests/unit/socket/test__socket__udp__socket.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py`
   (or the base socket tests) pin `setsockopt(IP_TTL)` /
   `setsockopt(IPV6_UNICAST_HOPS)` plumbing.
 - **Integration:** `test__packet_handler__udp__tx.py`
@@ -556,13 +556,13 @@ Linux socket-option numeric values are mirrored:
 ### §3.4 GET_MAXSIZES via IP_MTU / IPV6_MTU getsockopt
 
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
   — six tests pin `getsockopt(IP_MTU)` cache hit,
   `interface_mtu` fallback, `ENOTCONN` on unconnected
   socket, setsockopt rejection with `ENOPROTOOPT`, and
   the IPv6 mirror cases.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpMtuGetsockopt`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpMtuGetsockopt`
   — two tests drive end-to-end: bind+connect → empty cache
   returns `interface_mtu`; bind+connect + outbound UDP +
   inbound ICMPv4 Frag-Needed → cache populated →
@@ -574,23 +574,23 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.4 received TOS pass-through (IP_RECVTOS / IPV6_RECVTCLASS)
 
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
   — two tests pin `IP_RECVTOS` and `IPV6_RECVTCLASS`
   round-trip via setsockopt / getsockopt.
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
   — six tests pin recvmsg IP_TOS cmsg emission gated by
   `IP_RECVTOS` (one-byte value, both non-zero and zero
   TOS), IPV6_TCLASS cmsg emission gated by
   `IPV6_RECVTCLASS` (4-byte big-endian int), and the
   `ancbufsize=0` suppression invariant.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpRecvTos`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpRecvTos`
   — two tests drive end-to-end IPv4 RX with DSCP=48 /
   ECN=2: cmsg returned when `IP_RECVTOS=1`, suppressed
   when `IP_RECVTOS=0`.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpV6RecvTClass`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpV6RecvTClass`
   — two tests drive end-to-end IPv6 RX with the parallel
   IPV6_TCLASS cmsg shape.
 
@@ -599,25 +599,25 @@ Linux socket-option numeric values are mirrored:
 ### §4.1.3.2 IP options pass-through (RX + TX)
 
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketSolSocketOptions`
   — six tests pin
   `setsockopt(IPPROTO_IP, IP_OPTIONS, bytes)` round-trip
   (empty + Router Alert), EINVAL on unaligned / oversize /
   malformed blocks, and `IP_RECVOPTS` round-trip.
 - **Unit:**
-  `pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__udp__socket.py::TestUdpSocketReceive`
   — ten tests pin `recvmsg()` 4-tuple shape, AF_INET
   2-tuple address, AF_INET6 4-tuple address, ancdata
   emission gated by `IP_RECVOPTS`, `ancbufsize=0`
   suppresses cmsg, and the data is returned as bytes.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsRecvmsgPassThrough`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsRecvmsgPassThrough`
   — three tests drive end-to-end RX with Router Alert IPv4
   options: cmsg returned when `IP_RECVOPTS=1`, suppressed
   when `IP_RECVOPTS=0`, empty when the datagram has no
   options.
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsSendto`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__ip_options.py::TestUdpIpOptionsSendto`
   — two tests pin end-to-end TX: outbound wire frame
   carries the per-socket IP_OPTIONS block with the
   correct `hlen` bump; absence of `setsockopt(IP_OPTIONS)`

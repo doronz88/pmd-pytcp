@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 4436. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly.
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly.
 
 RFC 4436 specifies DNAv4 — a performance optimization
 that lets a DHCPv4 client with a previously-leased
@@ -25,7 +25,7 @@ re-activate the cached lease without DHCP traffic.
 **PyTCP implements DNAv4** as of Phase 6 (built on the
 Phase 5 cached-lease persistence layer):
 
-- Cached-lease state — `pytcp/protocols/dhcp4/dhcp4__lease_cache.py`
+- Cached-lease state — `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__lease_cache.py`
   persists every BOUND lease (including the gateway IP +
   gateway link-layer address) to a JSON file at
   `dhcp.lease_cache_path` for the next boot to consume.
@@ -34,12 +34,16 @@ Phase 5 cached-lease persistence layer):
   [`rfc2131__dhcp`](../rfc2131__dhcp/adherence.md)
   §4.4.2 audit).
 - Unicast-ARP probe to prior gateway —
-  `Dhcp4Client._dnav4_probe` emits a single
-  `send_arp_unicast_request` to the cached
-  `(gateway_ip, gateway_mac)` pair and polls the ARP
-  cache's `state_changed_at` for up to
+  `Dhcp4Client._dnav4_probe` delegates to the client's
+  `Ip4Acd` engine (`acd.probe_reachable`), which unicasts
+  an ARP Request to the cached `(gateway_ip, gateway_mac)`
+  pair over its AF_PACKET raw link socket and reads the
+  gateway's Reply back off that same socket for up to
   `dhcp.dnav4_timeout_ms` (default 1000 ms = the RFC's
-  recommended 1-second window).
+  recommended 1-second window). The client never touches
+  the stack's ARP cache or ARP-TX path — the probe runs
+  entirely on the userspace raw-link socket surface, the
+  way a Linux DHCP client / `arping` does it.
 - Operator switch — `dhcp.dnav4` (default 1; set 0 to
   force the standard INIT-REBOOT path).
 
@@ -117,7 +121,7 @@ constructor's cache-read path.
 >  operation."
 
 **Adherence:** met (Phase 6). The cache reader at
-`pytcp/protocols/dhcp4/dhcp4__lease_cache.py:read_cached_lease`
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__lease_cache.py:read_cached_lease`
 returns `None` when the cache file is missing, malformed,
 unknown-version, or the lease has expired by wall-clock
 time — every "discard and proceed with DHCP" failure
@@ -129,11 +133,40 @@ mode falls back cleanly to INIT.
 >  previously known link, addressed to the MAC
 >  address(es) of those router(s)."
 
-**Adherence:** met (Phase 6). `Dhcp4Client._dnav4_probe`
-calls
-`stack.packet_handler.send_arp_unicast_request(arp__tpa=gateway_ip, ethernet__dst=gateway_mac)` —
-a unicast ARP Request to the cached gateway IP at the
-cached gateway MAC.
+**Adherence:** met. `Dhcp4Client._dnav4_probe` calls
+`acd.probe_reachable(target=gateway_ip, target_mac=gateway_mac, sender=cached_ip, timeout=...)` —
+the `Ip4Acd` engine builds and unicasts an ARP Request to
+the cached gateway IP at the cached gateway MAC over its
+AF_PACKET raw link socket, carrying the cached candidate
+IPv4 address as the sender protocol address per §4.3 (see
+below). The client no longer reaches into the stack's
+ARP-TX path for this.
+
+> "The host MUST set the target protocol address (ar$tpa)
+>  to the IPv4 address of the node being tested, and the
+>  sender protocol address field (ar$spa) to its own
+>  candidate IPv4 address."
+
+**Adherence:** met. `Dhcp4Client._dnav4_probe` passes
+`sender=lease.ip4_host.address` to `acd.probe_reachable`,
+which builds the ARP Request's `ar$spa` directly from it.
+At INIT-REBOOT time the cached candidate has not yet been
+re-assigned to the interface; passing it explicitly is how
+§4.3 is satisfied (the raw-link probe builds the frame from
+the given sender, so there is no interface-address-selection
+fallback to `0.0.0.0` in this path).
+
+Without this override the probe would carry `spa=0.0.0.0`,
+which RFC 5227 §1.1 designates as the ACD-Probe sentinel —
+a different ARP role with different receiver semantics
+(an RFC 5227 defender would respond to defend its address,
+not to advertise reachability). The §4.3 spa=candidate
+requirement is therefore load-bearing for DNAv4's
+behavioural contract, not just a formatting nicety.
+
+Pinned by
+`test__dhcp4_client__dnav4_returns_true_when_gateway_answers`
+in `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py`.
 
 > "If the host's TCP/IP stack supports it, the host MAY
 >  send unicast ARP Requests to multiple routers in
@@ -149,12 +182,13 @@ Phase-1 host scope does not need.
 > "If a unicast ARP Reply is received from the expected
 >  router, then DNAv4 has succeeded. ..."
 
-**Adherence:** met (Phase 6). The probe loop polls the
-ARP cache entry's `state_changed_at` for an advance
-attributable to the inbound Reply, and additionally
-verifies the entry's MAC still equals the cached
-`gateway_mac` (a different MAC at the same IP means a
-different physical gateway → fail the probe).
+**Adherence:** met. The probe loop reads ARP frames off
+the raw link socket and matches the gateway's Reply via
+`Ip4Acd._is_gateway_reply` — an ARP Reply whose sender is
+the cached gateway on **both** the IPv4 (`ar$spa`) and the
+MAC (`ar$sha`); a different MAC at the same IP means a
+different physical gateway and is not a match, so the probe
+keeps waiting until the timeout.
 
 > "If no unicast ARP Reply is received within the
 >  timeout period, then DNAv4 has failed for that
@@ -251,20 +285,23 @@ there.
 ### §4 / §5 — DNAv4 probe + INIT-REBOOT integration (Phase 6)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientDnav4`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientDnav4`
   - `dnav4_disabled_by_default_for_lease_without_mac` —
     no recorded `gateway_mac` → probe returns False, no
     ARP traffic.
   - `dnav4_disabled_by_sysctl_returns_false` —
-    `dhcp.dnav4=0` short-circuits to False without
-    emitting a Request.
+    `dhcp.dnav4=0` short-circuits to False without calling
+    `acd.probe_reachable`.
   - `dnav4_returns_true_when_gateway_answers` —
-    cache mock advances `state_changed_at` post-send →
-    probe returns True; the one and only TX is the
-    unicast ARP Request.
+    `acd.probe_reachable` reports the gateway answered →
+    probe returns True; the probe is delegated with
+    `target` / `target_mac` / `sender` / `timeout`.
   - `dnav4_returns_false_on_silent_gateway` —
-    `state_changed_at` never advances within the
-    50 ms test window → probe returns False.
+    `acd.probe_reachable` reports no reply → probe
+    returns False.
+  - `dnav4_returns_false_without_acd_engine` — no ACD
+    engine wired (sync-mode `fetch()`) → probe returns
+    False, falls through to INIT-REBOOT.
   - `init_reboot_short_circuits_on_dnav4_success` —
     FSM transitions to BOUND with zero DHCP TX when
     `_dnav4_probe` returns True.
@@ -272,10 +309,21 @@ there.
     FSM runs the standard INIT-REBOOT REQUEST when
     `_dnav4_probe` returns False; ACK → BOUND.
 
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__reachable.py`
+  - `TestIp4AcdGatewayReplyPredicate` — `_is_gateway_reply`
+    matches a Reply from the cached gateway IP + MAC and
+    rejects a wrong IP or wrong MAC.
+  - `TestIp4AcdProbeReachable` — over a mocked raw socket,
+    `probe_reachable` unicasts to the gateway MAC with the
+    candidate `ar$spa`, returns True on the gateway's
+    Reply, ignores an unrelated ARP, and returns False on a
+    silent gateway.
+
 ### Cache format v2 — gateway_mac round-trip
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__lease_cache.py`
   - `round_trip_persists_gateway_mac` — explicit
     `gateway_mac` survives the JSON serialisation.
   - `round_trip_with_no_gateway_mac` — None / missing
@@ -311,13 +359,18 @@ there.
 
 **Principal compliance note.** DNAv4 was unblocked
 once Phase 5 added cached-lease persistence and Phase 6
-extended the cache schema with `gateway_mac`. The
-unicast-ARP API has been part of the ARP cache since the
-PROBE-state implementation
-(`stack.packet_handler.send_arp_unicast_request`); Phase
-6 routes one such Request to the cached gateway on
-INIT-REBOOT entry and polls the ARP entry's
-`state_changed_at` for the inbound Reply.
+extended the cache schema with `gateway_mac`. The probe
+now runs entirely over the `Ip4Acd` engine's AF_PACKET
+raw link socket (`acd.probe_reachable`) — the same
+userspace raw-link surface RFC 5227 ACD uses — building
+and unicasting the ARP Request and reading the gateway's
+Reply off that socket. This replaced an earlier
+implementation that reached into the stack's ARP-TX path
+(`send_arp_unicast_request`) and polled the ARP cache
+entry's private `state_changed_at`; the client now talks
+to the stack only through sanctioned surfaces (the raw
+socket), the Phase-3 kernel/userspace boundary a real
+Linux DHCP client / `arping` observes.
 
 The single remaining gap is §4.2 — multiple-candidate
 parallel probing. PyTCP caches exactly one lease, so the

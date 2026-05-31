@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 5682. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §1.1
 Conventions, §2.2 / §3.2 Discussion narrative, §4
@@ -175,7 +175,7 @@ ACKs feed `update()` normally).
 ### §2.1 step 1 — RTO snapshot
 
 - **Integration:** F-RTO integration tests under
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_timeout.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__retransmit_timeout.py`
   drive an RTO and verify that
   `_frto_pre_cwnd` / `_frto_pre_ssthresh` /
   `_frto_pre_snd_max` are snapshotted before the

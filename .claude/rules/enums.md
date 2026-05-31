@@ -144,9 +144,10 @@ would silently match `IP_TTL=2` if both are bare ints).
 
 ### 2.3 Protocol wire enum — already a ProtoEnum, no bare alias
 
-Used for protocol wire codepoints under `net_proto/`.
-`ProtoEnum` is the existing PyTCP base (subclasses
-`aenum.Enum` with `from_int` / `from_bytes` machinery).
+Used for protocol wire codepoints under `packages/net_proto/net_proto/`.
+`ProtoEnum` is the existing PyTCP base (subclasses the
+stdlib `enum.Enum` with `from_int` / `from_bytes` machinery
+and a native `_missing_` hook for unknown wire codepoints).
 Members are accessed via enum-member syntax; no bare
 module-level aliases.
 
@@ -163,6 +164,53 @@ if proto is IpProto.UDP: ...
 
 The full inventory:
 [`net_proto.md`](net_proto.md) §11.
+
+#### 2.3.1 `ProtoEnum` is NOT an `IntEnum` — member ≠ int
+
+`ProtoEnum` subclasses the **plain** `enum.Enum`, not `IntEnum`.
+This is deliberate: it keeps the codepoint **spaces type-isolated**
+— an `EtherType` is never equal to an `IpProto` even when their
+underlying numbers coincide (and protocol numbers collide
+constantly: 6 is TCP as an IP proto, something else as an option
+kind, etc.). With `IntEnum` the members *are* ints and those
+cross-domain values would compare equal, silently. Plain `Enum`
+makes "is this the TCP protocol or the value 6" a type-checked
+question.
+
+The consequence every author must internalise: **a `ProtoEnum`
+member is NOT `==` its integer.**
+
+```python
+Icmp4Type.TIME_EXCEEDED == 11        # -> False   (Enum, not IntEnum)
+int(Icmp4Type.TIME_EXCEEDED) == 11   # -> True    (explicit cross)
+```
+
+This is the opposite of the §2.1 / §2.2 socket constants, which
+**are** `IntEnum` (so `IP_TTL == 2` holds) — because there the
+int-ness is the stdlib-parity contract. At the `net_proto` wire
+boundary the int-ness is explicitly *not* the contract; conversion
+is via `from_int` / `from_bytes` / `__bytes__` / `int()`.
+
+So a `ProtoEnum`-typed field is handled with three boundary rules
+— never an implicit `member == int`:
+
+- **Member → int at the wire / log edge:** `int(self.value)` in
+  `__buffer__`, `__str__`, and error-message interpolation. (Wire
+  bytes are unchanged — `int(member)` packs identically.)
+- **Member ↔ member in memory:** compare members to members
+  (`self.flag is Flag.TS_ONLY`, `x in (Flag.A, Flag.B)`); guard a
+  bad value with `not member.is_unknown`.
+- **Raw byte → reject, then construct, on the parse path:**
+  reject an out-of-set wire byte against `Enum.get_known_values()`
+  (an `int` list — no `UNKNOWN_*` materialisation) *before*
+  building the member, then cross int→member with
+  `from_int(byte)`.
+
+Typing a frozen-dataclass field as the `ProtoEnum` (not `int`) is
+the enforcement: mypy's `arg-type` check turns every raw-int
+construction site into a compile error — the field-honesty net.
+A round-trip test comparing `parsed.value == 1` will fail
+(`member != int`); pin the expected value as the **member**.
 
 ## 3. Stdlib socket parity — the load-bearing constraint
 
@@ -265,29 +313,29 @@ noise without type-safety value:
 
 | Enum class | Module | Style |
 |---|---|---|
-| `Icmp4Type`, `Icmp6Type` | `net_proto/protocols/icmp{4,6}/message/icmp{4,6}__message.py` | `ProtoEnum`; member access only |
-| `IpProto` | `net_proto/lib/enums.py` | `ProtoEnum`; member access only |
-| `EtherType` | `net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
-| `ArpHardwareType`, `ArpOperation` | `net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
-| `IpVersion` | `net_addr/ip_version.py` | `IntEnum`; member access only |
-| `AddressFamily`, `SocketType` | `pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
-| `SocketOption` (TCP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `SolSocketOption` (SO_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `IpOption` (IP_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `IpV6Option` (IPV6_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `MsgFlag` (MSG_*) | `pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
-| `SoEeOrigin` | `pytcp/socket/error_queue.py` | IntEnum, member access only (§2.1 — not in stdlib socket) |
+| `Icmp4Type`, `Icmp6Type` | `packages/net_proto/net_proto/protocols/icmp{4,6}/message/icmp{4,6}__message.py` | `ProtoEnum`; member access only |
+| `IpProto` | `packages/net_proto/net_proto/lib/enums.py` | `ProtoEnum`; member access only |
+| `EtherType` | `packages/net_proto/net_proto/protocols/ethernet/ethernet__enums.py` | `ProtoEnum`; member access only |
+| `ArpHardwareType`, `ArpOperation` | `packages/net_proto/net_proto/protocols/arp/arp__enums.py` | `ProtoEnum`; member access only |
+| `IpVersion` | `packages/net_addr/net_addr/ip_version.py` | `IntEnum`; member access only |
+| `AddressFamily`, `SocketType` | `packages/pytcp/pytcp/socket/__init__.py` | `NameEnum`; member access only (stdlib parity is the `AF_INET = AddressFamily.INET4` family) |
+| `SocketOption` (TCP_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `SolSocketOption` (SO_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `IpOption` (IP_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `IpV6Option` (IPV6_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `MsgFlag` (MSG_*) | `packages/pytcp/pytcp/socket/__init__.py` | IntEnum + bare aliases (§2.2 — stdlib parity) |
+| `SoEeOrigin` | `packages/pytcp/pytcp/socket/error_queue.py` | IntEnum, member access only (§2.1 — not in stdlib socket) |
 
 ### 7.2 Existing bare ints that are scalars (correctly NOT enums)
 
 | Constant | Module | Why scalar |
 |---|---|---|
-| `UDP__HEADER__LEN = 8` | `net_proto/protocols/udp/udp__header.py` | byte length |
-| `ARP_CACHE__ENTRY_MAX_AGE__SEC = 60` | `pytcp/protocols/arp/arp__constants.py` | timeout |
-| `ERROR_QUEUE__MAX_LEN = 32` | `pytcp/socket/error_queue.py` | capacity |
-| `INADDR_ANY = 0` | `pytcp/socket/__init__.py` | sentinel address (stdlib-mirrored) |
-| `IPPROTO_IP = 0` | `pytcp/socket/__init__.py` | default-protocol sentinel (stdlib-mirrored; conceptually NOT an `IpProto` value because IANA next-header 0 is HOPOPT) |
-| `SOL_SOCKET = 1` | `pytcp/socket/__init__.py` | setsockopt level sentinel; only one value in this "domain" today, so no enum |
+| `UDP__HEADER__LEN = 8` | `packages/net_proto/net_proto/protocols/udp/udp__header.py` | byte length |
+| `ARP_CACHE__ENTRY_MAX_AGE__SEC = 60` | `packages/pytcp/pytcp/protocols/arp/arp__constants.py` | timeout |
+| `ERROR_QUEUE__MAX_LEN = 32` | `packages/pytcp/pytcp/socket/error_queue.py` | capacity |
+| `INADDR_ANY = 0` | `packages/pytcp/pytcp/socket/__init__.py` | sentinel address (stdlib-mirrored) |
+| `IPPROTO_IP = 0` | `packages/pytcp/pytcp/socket/__init__.py` | default-protocol sentinel (stdlib-mirrored; conceptually NOT an `IpProto` value because IANA next-header 0 is HOPOPT) |
+| `SOL_SOCKET = 1` | `packages/pytcp/pytcp/socket/__init__.py` | setsockopt level sentinel; only one value in this "domain" today, so no enum |
 
 `IPPROTO_IP` and `SOL_SOCKET` are borderline — they're
 each effectively single-value "domains" today
@@ -346,7 +394,7 @@ don't need to round-trip through the enum.
 - [`source_files.md`](source_files.md) §7 — general
   naming convention (`ALL_CAPS` for constants applies
   to the bare aliases in §2.2).
-- [`pytcp.md`](pytcp.md) — `pytcp/socket/` is where the
+- [`pytcp.md`](pytcp.md) — `packages/pytcp/pytcp/socket/` is where the
   bulk of the stdlib-parity bare-alias surface lives.
 - Linux numeric reference: `/usr/include/linux/in.h`,
   `/usr/include/linux/in6.h`, `/usr/include/linux/errqueue.h`,

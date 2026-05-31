@@ -107,7 +107,7 @@ will land with the Phase-2 forwarder.
 `_phrx_ip4` after the destination filter when the dst is not
 owned; the decrement + Time-Exceeded emission go there. The
 ICMPv4 Time Exceeded message type is already implemented
-(`net_proto/protocols/icmp4/messages/icmp4__message__time_exceeded.py`).
+(`packages/net_proto/net_proto/protocols/icmp4/messages/icmp4__message__time_exceeded.py`).
 
 ## §4.3.2.8 ICMP Error Rate Limiting
 
@@ -115,7 +115,7 @@ ICMPv4 Time Exceeded message type is already implemented
 > mechanism for the generation of ICMP error messages."
 
 **Adherence:** met (host-side; also applies to routers). The
-ICMPv4 rate limiter at `pytcp/protocols/icmp/icmp__rate_limiter.py`
+ICMPv4 rate limiter at `packages/pytcp/pytcp/protocols/icmp/icmp__rate_limiter.py`
 is consumed by every ICMP error path in PyTCP
 (`packet_handler__ip4__rx.py:233-256` and
 `packet_handler__ip4__rx.py:258-300`). Token-bucket parameters
@@ -144,10 +144,10 @@ default-gateway preference, multipath, etc.) is **Phase 2**.
 ### §4.3.2.8 ICMP error rate limiting
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/icmp/test__icmp__rate_limiter.py`
+  `packages/pytcp/pytcp/tests/unit/protocols/icmp/test__icmp__rate_limiter.py`
   Token-bucket algorithm under sustained / burst load.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   ICMP Parameter Problem / Destination Unreachable rate-limit
   suppression paths.
 

@@ -14,7 +14,7 @@
 
 PyTCP is **fully compliant** with RFC 7739 for the IPv6 TX
 path. The IPv6 fragmentation emit site
-(`pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py::_phtx_ip6_frag`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6_frag__tx.py::_phtx_ip6_frag`)
 draws a fresh 32-bit Fragment Identification per outbound
 datagram from `secrets.randbelow(2**32)` — Python's
 cryptographic-quality random source.
@@ -33,7 +33,7 @@ ID-collision attack surface.
 
 The `_generate_ip6_frag_id()` helper is a module-level
 function rather than a method so the test infrastructure
-in `pytcp/tests/lib/network_testcase.py` can override it
+in `packages/pytcp/pytcp/tests/lib/network_testcase.py` can override it
 with a deterministic counter — fixture-based integration
 tests that bake specific Identification values into wire-
 frame fixtures retain their existing IDs.
@@ -99,9 +99,9 @@ contention concern.
 
 | Clause | Test file / class |
 |--------|-------------------|
-| Per-burst randomization (not monotonic +1) | `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__tx.py::TestPacketHandlerIp6FragTx::test__stack__packet_handler__ip6_frag__tx__frag_id_is_randomized_per_burst` |
+| Per-burst randomization (not monotonic +1) | `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__ip6_frag__tx.py::TestPacketHandlerIp6FragTx::test__stack__packet_handler__ip6_frag__tx__frag_id_is_randomized_per_burst` |
 | ID stable within a burst (all fragments share one ID) | Same class :: `test__stack__packet_handler__ip6_frag__tx__id_shared_within_burst` |
-| Existing fixture-driven tests retain known IDs via `NetworkTestCase` patch | `pytcp/tests/lib/network_testcase.py::NetworkTestCase.setUp` (patches `_generate_ip6_frag_id` with a deterministic counter) |
+| Existing fixture-driven tests retain known IDs via `NetworkTestCase` patch | `packages/pytcp/pytcp/tests/lib/network_testcase.py::NetworkTestCase.setUp` (patches `_generate_ip6_frag_id` with a deterministic counter) |
 
 The randomization assertion uses a 10-draw sequence and
 asserts that the deltas are not all `+1`. Probability of

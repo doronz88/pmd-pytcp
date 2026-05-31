@@ -17,10 +17,10 @@ rules are Phase 2 (covered by RFC 1812 audit when forwarding
 lands).
 
 The audit was performed by reading the RFC text fresh and
-inspecting `net_addr/ip4_address.py`,
-`net_addr/ip4_network.py`,
-`pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
-`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
+inspecting `packages/net_addr/net_addr/ip4_address.py`,
+`packages/net_addr/net_addr/ip4_network.py`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__rx.py`, and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`
 directly; no prior memory or rule-file content was reused.
 Non-normative content (§1 Introduction, §2 Why Broadcasts, §3
 History, §4 Broadcast Classes discussion, §8 Acknowledgments)
@@ -35,7 +35,7 @@ PyTCP **meets** the host-side broadcast rules from RFC 919:
 - The limited-broadcast address `255.255.255.255` is
   recognised on receive and rejected as a source address.
 - Network-broadcast `{net, -1}` addresses are recognised
-  per-`Ip4Host` and admitted on receive.
+  per-`Ip4IfAddr` and admitted on receive.
 - TX-side source replacement honours the host-stack policy
   (replace bcast/mcast source with primary unicast).
 
@@ -64,7 +64,7 @@ The §6 gateway broadcast-forwarding rules are Phase 2.
 against the union of `_ip4_unicast ∪ _ip4_multicast ∪
 _ip4_broadcast` — admitting any of the three. The
 `_ip4_broadcast` set is populated at boot from each
-`Ip4Host.network.broadcast` (`Ip4Network.broadcast` is the
+`Ip4IfAddr.network.broadcast` (`Ip4Network.broadcast` is the
 {net, subnet, -1} address) plus the limited broadcast
 `255.255.255.255`.
 
@@ -134,7 +134,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### §5 / §7 RX admission of broadcast destinations
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__rx.py`
   Covers limited-broadcast and network-broadcast destination
   admission paths.
 
@@ -143,7 +143,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### §7 Source-address sanity (limited-broadcast ban)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__sanity_checks.py`
   Per-branch rejection with `pointer=12`.
 
 **Status:** locked in.
@@ -151,7 +151,7 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### TX source-address replacement (broadcast source → primary unicast)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Matrix for src=limited-broadcast, src=network-broadcast.
 
 **Status:** locked in.
@@ -159,12 +159,12 @@ lands, these rules become relevant. See RFC 1812 audit (Phase
 ### TX broadcast-destination policy gate (`ip4.allow_broadcast`)
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4AllowBroadcastSysctl`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/test__ip4__constants.py::TestIp4AllowBroadcastSysctl`
   Pins the default value (0), the registration, the
   validator's {0, 1} acceptance, and the rejection of
   out-of-range / non-int / bool values.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py::TestPacketHandlerIp4TxRfc919AllowBroadcast`
   Drives the gate: default-deny drops both
   255.255.255.255 and the subnet-directed broadcast with
   the new TxStatus and counter bump; override-on permits

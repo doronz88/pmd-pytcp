@@ -18,7 +18,7 @@ statement in RFC 5925.
 ## Top-line adherence
 
 PyTCP has **zero TCP-AO support**. A grep across
-`pytcp/`, `net_proto/`, and `net_addr/` returns no
+`packages/pytcp/pytcp/`, `packages/net_proto/net_proto/`, and `packages/net_addr/net_addr/` returns no
 references to TCP-AO, TCP_AO, MD5 signature, MAC
 algorithm, Master Key Tuple (MKT), traffic key, or
 any RFC 5925 wire-format identifier.
@@ -38,7 +38,7 @@ rather than a paragraph-by-paragraph evaluation.
 > by the MAC algorithm."
 
 **Adherence:** not implemented. PyTCP's
-`net_proto/protocols/tcp/options/` does not include a
+`packages/net_proto/net_proto/protocols/tcp/options/` does not include a
 `tcp__option__ao.py`. The TCP option parser would
 treat any inbound Kind=29 option as unknown and
 ignore it.

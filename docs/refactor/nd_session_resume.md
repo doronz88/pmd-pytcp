@@ -1,5 +1,14 @@
 # ND Parity — Session Resume Guide
 
+> **SUPERSEDED point-in-time snapshot (note added 2026-05-25).** The
+> "What's left" items below have since shipped: Optimistic DAD (§20,
+> RFC 4429) and RFC 8981 temporary addresses (§18b/c) have integration
+> tests under `tests/integration/protocols/icmp6/nd/`, and RFC 6724
+> source-address selection (§12c/§18d) shipped on its own track
+> (`rfc6724_source_selection.md`, all phases). ND parity (Tiers 1–6)
+> is complete; this guide is kept as archaeology. Authoritative status:
+> `nd_linux_parity.md` §0 and `v3_0_6_remaining_work.md`.
+
 State at the time of writing: branch `PyTCP_3_0__pre_release`,
 HEAD `aa9f4858`, all session commits pushed to origin.
 
@@ -55,12 +64,12 @@ boot flow is sequential per-address. §20 needs that to
 become async — fairly invasive.
 
 Files involved:
-- `pytcp/runtime/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` (`_perform_ip6_nd_dad`,
   `_create_stack_ip6_addressing`)
-- `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
+- `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   (`send_icmp6_neighbor_advertisement` — Override flag handling)
-- `net_addr/ip6_host.py` or sidecar (state field)
-- `pytcp/protocols/icmp6/nd/nd__router_state.py` or
+- `packages/net_addr/net_addr/ip6_ifaddr.py` or sidecar (state field)
+- `packages/pytcp/pytcp/protocols/icmp6/nd/nd__router_state.py` or
   `nd__constants.py` (sysctl `icmp6.optimistic_dad`)
 
 ### §12c / §18d — RFC 6724 source-address selection
@@ -79,8 +88,8 @@ needs to be created).
 Per-prefix temp-address table parallel to
 `_icmp6_slaac_addresses`. When a PI is admitted AND
 `icmp6.use_tempaddr` is non-zero, generate a temp address
-via `Ip6Host.from_rfc8981_temp(...)`, claim it via DAD,
-insert into `_ip6_host`. RFC 8981 §3.4 lifetime clamps
+via `Ip6IfAddr.from_rfc8981_temp(...)`, claim it via DAD,
+insert into `_ip6_ifaddr`. RFC 8981 §3.4 lifetime clamps
 (TEMP_PREFERRED_LIFETIME default 1 day, TEMP_VALID_LIFETIME
 default 7 days). ~150 lines.
 

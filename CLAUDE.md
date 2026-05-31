@@ -35,7 +35,7 @@ Design decisions made in Phase 1 / Phase 2 must not foreclose Phase 3. Concretel
 
 - **Every new user-observable knob lands on one of the sanctioned APIs.** Socket option, socket method, sysctl entry, or one of the link / address / route / neighbor / introspection APIs above. Never as a direct attribute on a `PacketHandler` / `TcpStack` / `NdCache` instance that consumers are expected to read or write.
 - **No "userspace" reach-through to stack internals.** Consumers MUST NOT import from `pytcp.runtime.packet_handler.*`, `pytcp.protocols.tcp.tcp__session`, or any other implementation-detail module. If a piece of state needs to be visible outside the stack, expose it through `getsockopt` / `setsockopt`, a sysctl, or one of the dedicated control APIs (link / address / route / neighbor / introspection). Mark Phase-1/2 reach-throughs in tests with `# Phase 3: ...` so the cleanup path is greppable.
-- **Configuration mutations go through the API for their plane.** Address changes go through the address API, not `packet_handler._ip6_host.append(...)`. Route changes go through the route API, not `Ip4Host.gateway = ...`. Sysctl changes go through `sysctl_module.override(...)` or `pytcp.stack.sysctl["key"] = value`, not direct module-attribute assignment. Each plane's API is the boundary; the underlying attribute is implementation.
+- **Configuration mutations go through the API for their plane.** Address changes go through the address API, not `packet_handler._ip6_ifaddr.append(...)`. Route changes go through the route API, not `Ip4IfAddr.gateway = ...`. Sysctl changes go through `sysctl_module.override(...)` or `pytcp.stack.sysctl["key"] = value`, not direct module-attribute assignment. Each plane's API is the boundary; the underlying attribute is implementation.
 - **State introspection is read-only and copy-by-value.** Route-table / neighbor-cache / socket-list / packet-counter accessors return immutable snapshots, never live references the caller could mutate. The Linux equivalent is `/proc/net/*` text — readable, never writable by reading.
 - **Stack lifecycle is its own API surface.** `stack.init()` / `stack.start()` / `stack.stop()` (and the `stack.mock__init()` test affordance) are the boundary; treat them like `clone(2)` / `exit(2)` rather than ordinary function calls. Adding a new stack-wide singleton means extending that boundary, not piggy-backing on import-time module state.
 - **The socket factory's `__new__` dispatch is the user/kernel transition.** Keep it dumb — argument validation, family / type / proto match, allocate the per-flavour socket object. Putting protocol logic in the factory pulls Phase-3 work into the wrong layer.
@@ -86,10 +86,10 @@ make clean                # remove venv, caches, build artifacts
 
 ```bash
 # unittest is the test framework — run a specific test file directly
-PYTHONPATH=. python -m unittest net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
+PYTHONPATH=. python -m unittest packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
 
 # Or run an entire suite via the find-glob the Makefile uses
-PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
+PYTHONPATH=. python -m unittest $(find packages/net_proto/net_proto/tests/unit -name 'test__*.py')
 ```
 
 ## Architecture
@@ -98,9 +98,36 @@ PYTHONPATH=. python -m unittest $(find net_proto/tests/unit -name 'test__*.py')
 
 | Package | Role |
 |---|---|
-| `net_addr/` | Standalone address library: `Ip4Address`, `Ip6Address`, `MacAddress`, etc. No dependency on the other packages. |
-| `net_proto/` | Protocol packet library: parse/assemble/validate. Depends on `net_addr` only. |
-| `pytcp/` | Running stack: threads, sockets, ARP/ND caches, RX/TX rings. Depends on both. |
+| `packages/net_addr/net_addr/` | Standalone address library: `Ip4Address`, `Ip6Address`, `MacAddress`, etc. No dependency on the other packages. Published as its own dist (see below). |
+| `packages/net_proto/net_proto/` | Protocol packet library: parse/assemble/validate. Depends on `net_addr` only. Published as its own dist (see below). |
+| `packages/pytcp/pytcp/` | Running stack: threads, sockets, ARP/ND caches, RX/TX rings. Depends on both. Published as the `PyTCP` dist (see below). |
+
+All three packages have been extracted into their own PEP 517
+projects under `packages/` for independent PyPI publication. The
+folder ↔ dist ↔ import mapping (one invariant: project folder ==
+import name, no exceptions):
+
+| Project folder | PyPI dist | Import |
+|---|---|---|
+| `packages/net_addr` | `PyTCP-net_addr` | `net_addr` |
+| `packages/net_proto` | `PyTCP-net_proto` | `net_proto` |
+| `packages/pytcp` | `PyTCP` | `pytcp` |
+
+The repo-root `pyproject.toml` is now tooling-only (no
+`[build-system]`/`[project]`) — the workspace root carrying the
+shared lint/type config. All three packages are resolved in
+development via editable installs (`make venv` runs
+`pip install -e packages/net_addr` → `… net_proto` → `… pytcp`,
+all `--config-settings editable_mode=compat` so mypy can follow
+them); imports are unchanged (`from net_addr import ...`,
+`from net_proto import ...`, `from pytcp import ...`). The
+`PyTCP` dist depends on `PyTCP-net_proto==<ver>` +
+`PyTCP-net_addr==<ver>` (lockstep); `net_proto` depends only
+on `PyTCP-net_addr` (the former `aenum` dependency was removed
+— `ProtoEnum` extends unknown wire codepoints via a native
+stdlib `enum.Enum._missing_` hook); `net_addr`'s `click`-typed
+CLI helpers are an opt-in `[cli]` extra, lazily imported, so
+importing `net_addr` is stdlib-only.
 
 ### Packet flow
 
@@ -112,13 +139,13 @@ TAP/TUN fd
                      <── Socket send / ARP probe / ICMPv6 ND / DHCP
 ```
 
-RX and TX handlers live in `pytcp/runtime/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are 20 handler files covering Ethernet, 802.3, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, and UDP — one RX file and one TX file per protocol.
+RX and TX handlers live in `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__<proto>__<rx|tx>.py`. There are 20 handler files covering Ethernet, 802.3, ARP, IPv4, IPv6, IPv6-frag, ICMPv4, ICMPv6, TCP, and UDP — one RX file and one TX file per protocol.
 
-The stack is threaded; every subsystem extends `pytcp/runtime/subsystem.py` (`Subsystem` base class) and implements `_subsystem_loop()`. Startup / shutdown use `threading.Event`.
+The stack is threaded; every subsystem extends `packages/pytcp/pytcp/runtime/subsystem.py` (`Subsystem` base class) and implements `_subsystem_loop()`. Startup / shutdown use `threading.Event`.
 
-The socket API (`pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `RawSocket` are returned by a factory `__new__` on the abstract `socket` class. TCP's FSM is a separate runtime under `pytcp/protocols/tcp/`, with `tcp__session.py` (the `TcpSession` class), `tcp__enums.py`, `tcp__constants.py`, plus a dedicated `pytcp/protocols/tcp/fsm/` subdirectory containing the dispatch table `tcp__fsm.py` and one `tcp__fsm__<state>.py` free-function module per FSM state. `pytcp/socket/tcp__socket.py` is the BSD-facade shim that delegates to `TcpSession`.
+The socket API (`packages/pytcp/pytcp/socket/`) mimics BSD sockets: `TcpSocket`, `UdpSocket`, `RawSocket` are returned by a factory `__new__` on the abstract `socket` class. TCP's FSM is a separate runtime under `packages/pytcp/pytcp/protocols/tcp/`, with `tcp__session.py` (the `TcpSession` class), `tcp__enums.py`, `tcp__constants.py`, plus a dedicated `packages/pytcp/pytcp/protocols/tcp/fsm/` subdirectory containing the dispatch table `tcp__fsm.py` and one `tcp__fsm__<state>.py` free-function module per FSM state. `packages/pytcp/pytcp/socket/tcp__socket.py` is the BSD-facade shim that delegates to `TcpSession`.
 
-Stack-wide configuration constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, logger channels) live in `pytcp/stack/__init__.py`.
+Stack-wide configuration constants (IP/MAC addresses, ARP/ND cache timers, MTU, port ranges, logger channels) live in `packages/pytcp/pytcp/stack/__init__.py`.
 
 ### Per-RFC adherence
 
@@ -135,9 +162,9 @@ PyTCP has ten canonical rule files in `.claude/rules/`. They are auto-loaded int
 | [`typing.md`](.claude/rules/typing.md) | mypy strict, annotations, generics, `Self` / `@override`, `Protocol` / `TypedDict`, `cast` and `# type: ignore` policy | Any annotation |
 | [`enums.md`](.claude/rules/enums.md) | enum discipline — protocol codepoints / socket-option numbers / flag bits as IntEnum/ProtoEnum members; stdlib-socket-parity bare-alias pattern; forbidden bare-int-as-enum constants | Any new constant representing one of a set |
 | [`source_files.md`](.claude/rules/source_files.md) | general source-file mechanics — file skeleton, copyright block, module docstring, imports, naming, formatting, inline comments, source docstrings | Any new source file |
-| [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `net_addr/` |
-| [`net_proto.md`](.claude/rules/net_proto.md) | `net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `net_proto/protocols/` |
-| [`pytcp.md`](.claude/rules/pytcp.md) | `pytcp/` runtime services — `Subsystem` base, packet-handler mixins, BSD socket facade, sysctl registry, stack configuration | Any new runtime service under `pytcp/` |
+| [`net_addr.md`](.claude/rules/net_addr.md) | `net_addr/` value-type library (at `packages/net_addr/net_addr/`) — ABC hierarchy, slot-based value types, multi-form `__init__`, equality / hashing, `click` CLI helpers | Any new value type under `packages/net_addr/net_addr/` |
+| [`net_proto.md`](.claude/rules/net_proto.md) | `packages/net_proto/net_proto/` per-protocol six-file layout (`*Header` / `*HeaderProperties` / `*Base` / `*Parser` / `*Assembler` / `*Errors`), options, enums, validation helpers, error templates, buffer/struct conventions | Any new protocol authoring under `packages/net_proto/net_proto/protocols/` |
+| [`pytcp.md`](.claude/rules/pytcp.md) | `pytcp/` runtime services (at `packages/pytcp/pytcp/`) — `Subsystem` base, packet-handler mixins, BSD socket facade, sysctl registry, stack configuration | Any new runtime service under `packages/pytcp/pytcp/` |
 | [`unit_testing.md`](.claude/rules/unit_testing.md) | unit tests (framework, mocking discipline §6a, isolation §10a, modern Python features §10b, the §7.2 docstring audit) | Any new unit test |
 | [`integration_testing.md`](.claude/rules/integration_testing.md) | integration tests (harness hierarchy, drive_rx / probe / fluent-assert pattern, stat-counter assertions) | Any new integration test |
 

@@ -36,7 +36,7 @@ The TCP socket-API error-queue surface landed:
   `notify_parameter_problem` / `notify_pmtu` / `recvmsg`
   / `_recvmsg_errqueue` mirror the UDP shape, sharing
   the `build_icmp_error_entry` helper extracted to
-  `pytcp/socket/error_queue.py`.
+  `packages/pytcp/pytcp/socket/error_queue.py`.
 - ICMPv4 / ICMPv6 demux TCP dispatchers
   (`packet_handler__icmp{4,6}__rx.py`) now call
   `socket.notify_*` alongside the existing
@@ -46,7 +46,7 @@ The TCP socket-API error-queue surface landed:
   Icmp{4,6}TimeExceededCode / Icmp{4,6}ParameterProblemCode)
   + `SoEeOrigin.ICMP{,6}` + offender + embedded.
 - 13 new integration tests in
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py`
   cover get/set round-trip, ICMPv4 dest-unreachable /
   frag-needed / time-exceeded / parameter-problem,
   ICMPv6 dest-unreachable / packet-too-big, gating,
@@ -62,7 +62,7 @@ The RFC 6935 §5 alternative-mode per-port opt-in
 landed despite the original "defer until consumer"
 recommendation:
 
-- `pytcp/socket/__init__.py`: `SOL_UDP=17`,
+- `packages/pytcp/pytcp/socket/__init__.py`: `SOL_UDP=17`,
   `UdpOption(IntEnum)` with `UDP_NO_CHECK6_TX=101` /
   `UDP_NO_CHECK6_RX=102` + bare aliases (Linux
   numbering for stdlib parity).
@@ -85,7 +85,7 @@ recommendation:
   the parse with the bypass when an opted-in socket
   is found.
 - 6 new integration tests in
-  `pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
   cover: get/set round-trip for TX and RX; TX opt-in
   emits cksum=0x0000 literal; TX default emits
   computed non-zero cksum; RX opt-in delivers cksum=0
@@ -103,7 +103,7 @@ The unified PLPMTUD engine and the UDP-side manual probe
 API landed across Phases 0-4 of
 `docs/refactor/plpmtud_unified_engine.md`:
 
-- `pytcp/lib/plpmtud.py` — `PmtuSearch[A]` shared engine
+- `packages/pytcp/pytcp/lib/plpmtud.py` — `PmtuSearch[A]` shared engine
   with the RFC 8899 §5 state machine (BASE / SEARCHING /
   SEARCH_COMPLETE / ERROR), §5.3 binary-search ladder,
   §5.1 timer/constant defaults, §7 black-hole detection.
@@ -131,8 +131,8 @@ The enum-discipline rule (`.claude/rules/enums.md` §5)
 mandates that bare-int-as-enum patterns be fixed on
 touch. The first wave (~36 constants) is shipped; legacy
 code may still contain candidates the survey missed.
-When touching files in `pytcp/`, `net_proto/`, or
-`net_addr/`, check for the `FOO: int = N` pattern.
+When touching files in `packages/pytcp/pytcp/`, `packages/net_proto/net_proto/`, or
+`packages/net_addr/net_addr/`, check for the `FOO: int = N` pattern.
 
 ## Broader project tracks (not introduced this session)
 
@@ -156,7 +156,7 @@ NetworkTestCase
 ├── IcmpTestCase           — FakeTimer + ICMP probes + rate-limiter snapshots
 │   └── NdTestCase         — ND IS an ICMPv6 family
 ├── ArpTestCase            — ARP DAD + monotonic-clock patching
-├── TcpSessionTestCase     — TCP segment factory + FSM-aware assertions
+├── TcpTestCase     — TCP segment factory + FSM-aware assertions
 ├── UdpTestCase            — UDP socket + recvmsg helpers (new)
 ├── Ip4TestCase            — IPv4 frame builders + Ip4Probe (new)
 └── Ip6TestCase            — IPv6 frame builders + Ip6Probe (new)
@@ -165,7 +165,7 @@ NetworkTestCase
 When adding a new socket-touching harness later (e.g. a
 `RawTestCase` if Raw sockets grow integration coverage),
 consider extracting `_SocketsAwareNetworkTestCase` —
-`IcmpTestCase`, `TcpSessionTestCase`, and `UdpTestCase`
+`IcmpTestCase`, `TcpTestCase`, and `UdpTestCase`
 all redundantly snapshot `stack.sockets`. Marked with
 greppable `Phase 3: extract _SocketsAware base when the
 fourth socket-touching harness lands.` comment in

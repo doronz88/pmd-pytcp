@@ -1,8 +1,8 @@
 VENV := venv
 ROOT_PATH:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-PYTCP_PATH := pytcp
-NET_ADDR_PATH := net_addr
-NET_PROTO_PATH := net_proto
+PYTCP_PATH := packages/pytcp/pytcp
+NET_ADDR_PATH := packages/net_addr/net_addr
+NET_PROTO_PATH := packages/net_proto/net_proto
 EXAMPLES_PATH := examples
 PYTCP_FILES := $(shell find ${PYTCP_PATH} -name '*.py')
 NET_ADDR_FILES := $(shell find ${NET_ADDR_PATH} -name '*.py')
@@ -14,19 +14,48 @@ ROOT_FILES := tests_runner.py
 # all accept many paths at once), plus the packages mypy checks in
 # '-p' package mode.
 LINT_FILES := $(PYTCP_FILES) $(NET_ADDR_FILES) $(NET_PROTO_FILES) $(EXAMPLES_FILES) $(ROOT_FILES)
-MYPY_PACKAGES := $(PYTCP_PATH) $(NET_ADDR_PATH) $(NET_PROTO_PATH) $(EXAMPLES_PATH)
+# mypy '-p' takes import names, not paths. net_addr now lives at
+# packages/net_addr/net_addr (resolved via its editable install in
+# the 'venv' target), so its name is decoupled from its path here.
+MYPY_PACKAGES := pytcp net_addr net_proto examples
 
+# If any recipe fails, delete its target file. Without this a
+# failed (or interrupted) 'venv' build leaves a half-populated
+# venv whose 'bin/activate' is newer than the requirements
+# files, so every later 'make' considers the venv up to date
+# and never reinstalls — the exact reason a package listed in
+# requirements_dev.txt could be missing from the venv.
+.DELETE_ON_ERROR:
+
+# 'venv/bin/activate' is the timestamp marker for the venv. It
+# is rebuilt whenever either requirements file is newer. The
+# rebuild is from a clean slate ('rm -rf') so a stale or
+# half-built venv cannot survive, and the marker is 'touch'ed
+# only as the LAST step so its mtime reflects a fully
+# successful install — not venv-dir creation, which would
+# stamp it before pip ran.
 $(VENV)/bin/activate: requirements.txt requirements_dev.txt
+	@rm -rf $(VENV)
 	@python3.14 -m venv $(VENV)
-	@echo "export PYTHONPATH=$(ROOT_PATH)" >> venv/bin/activate
+	@echo "export PYTHONPATH=$(ROOT_PATH)" >> $(VENV)/bin/activate
 	@./$(VENV)/bin/python -m pip install --upgrade pip
 	@./$(VENV)/bin/pip install -r requirements.txt
 	@./$(VENV)/bin/pip install -r requirements_dev.txt
+	@./$(VENV)/bin/pip install -e packages/net_addr --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/net_proto --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/pytcp --config-settings editable_mode=compat
+	@touch $(VENV)/bin/activate
 
 venv: $(VENV)/bin/activate
 
 run: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py
+
+# Bind the stack to two TAP interfaces at once (multi-homed host). Needs
+# both taps up and bridged first: 'sudo make tap7 tap9 bridge'. Each NIC
+# autoconfigures (DHCPv4 / SLAAC).
+run_multi: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --stack-interface tap7 --stack-interface tap9
 
 run_tun: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --interface tun7 --ip4-address 10.0.0.2/24
@@ -62,15 +91,15 @@ lint: venv
 
 test__pytcp__integration: venv
 	@echo '<<< UNITTEST PYTCP INTEGRATION'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'pytcp/tests/integration' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pytcp/pytcp/tests/integration' -name 'test__*.py')
 
 test__net_addr__unit: venv
 	@echo '<<< UNITTEST NET_ADDR UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests/unit' -name 'test__*.py')
 
 test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_proto/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_proto/net_proto/tests/unit' -name 'test__*.py')
 
 test__examples__unit: venv
 	@echo '<<< UNITTEST EXAMPLES UNIT'
@@ -78,7 +107,7 @@ test__examples__unit: venv
 
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'net_addr/tests' 'net_proto/tests' 'pytcp/tests' 'examples/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests' 'packages/net_proto/net_proto/tests' 'packages/pytcp/pytcp/tests' 'examples/tests' -name 'test__*.py')
 
 validate: lint test
 
@@ -123,16 +152,35 @@ bridge:
 	@brctl addbr br0
 
 install: venv
-	@./$(VENV)/bin/pip install -e .
+	@./$(VENV)/bin/pip install -e packages/pytcp
 
 package: venv
-	@./$(VENV)/bin/python -m build
+	@./$(VENV)/bin/python -m build packages/pytcp
 
 dist: package
 
 pypi: dist
-	@./$(VENV)/bin/twine check dist/*
-	@./$(VENV)/bin/twine upload dist/*
+	@./$(VENV)/bin/twine check packages/pytcp/dist/*
+	@./$(VENV)/bin/twine upload packages/pytcp/dist/*
+
+# Build + validate the standalone PyTCP-net_addr dist. Publishing
+# is via the OIDC publish.yml workflow on a GitHub Release (no
+# local twine upload), mirroring the umbrella PyTCP flow.
+build__net_addr: venv
+	@./$(VENV)/bin/python -m build packages/net_addr
+	@./$(VENV)/bin/twine check packages/net_addr/dist/*
+
+# Build + validate the standalone PyTCP-net_proto dist. Publishing
+# is via the OIDC publish.yml workflow on a GitHub Release.
+build__net_proto: venv
+	@./$(VENV)/bin/python -m build packages/net_proto
+	@./$(VENV)/bin/twine check packages/net_proto/dist/*
+
+# Build + validate the PyTCP dist (the dissolved umbrella: the
+# pytcp package depending on PyTCP-net_proto + PyTCP-net_addr).
+build__pytcp: venv
+	@./$(VENV)/bin/python -m build packages/pytcp
+	@./$(VENV)/bin/twine check packages/pytcp/dist/*
 
 tun3:
 	@ip tuntap add name tun3 mode tun
@@ -168,9 +216,9 @@ remove_interfaces:
 	@ip tuntap del name tap7 mode tap
 	@ip tuntap del name tap9 mode tap
 
-.PHONY: venv run run_tun capture clean lint \
+.PHONY: venv run run_multi run_tun capture clean lint \
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \
-	bridge install package dist pypi \
+	bridge install package dist pypi build__net_addr build__net_proto build__pytcp \
 	tun3 tun5 tap7 tap9 add_interfaces remove_interfaces

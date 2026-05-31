@@ -30,7 +30,7 @@ connects to the TCP Echo service and sends messages.
 
 examples/client__tcp_echo.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import threading
@@ -178,6 +178,7 @@ class TcpEchoClient(Client):
 @click.pass_context
 def cli(
     ctx: click.Context,
+    /,
     *,
     message_count: int,
     message_delay: int,

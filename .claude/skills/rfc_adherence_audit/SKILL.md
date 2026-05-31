@@ -81,7 +81,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC <number>. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/` and `net_proto/` directly; no prior
+under `packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly; no prior
 memory or rule-file content was reused. Adherence
 levels are described in plain language. Sections that
 contain no normative content (Introduction, Terminology,
@@ -246,8 +246,8 @@ For each requirement claimed as **met** or **partial**:
 
 1. Find the unit / integration tests that exercise the
    behaviour. Search both
-   `pytcp/tests/{unit,integration}/` and
-   `net_proto/tests/unit/` (wire-level option tests
+   `packages/pytcp/pytcp/tests/{unit,integration}/` and
+   `packages/net_proto/net_proto/tests/unit/` (wire-level option tests
    live in net_proto).
 2. List each test with its full
    `path::TestClass::test_method` path.
@@ -306,7 +306,7 @@ algorithm.
 
 ### File:line references
 
-Use the inline-code form: `pytcp/protocols/tcp/tcp__session.py:144-147`.
+Use the inline-code form: `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:144-147`.
 For multi-site references, list each separately rather
 than collapsing into a range.
 

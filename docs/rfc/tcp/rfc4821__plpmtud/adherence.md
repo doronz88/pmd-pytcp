@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 4821. The audit was performed by
 reading the RFC text fresh against the codebase under
-`pytcp/` and `net_proto/` directly. Sections that
+`packages/pytcp/pytcp/` and `packages/net_proto/net_proto/` directly. Sections that
 contain no normative content (Introduction, Terminology,
 References, Security Considerations boilerplate) are
 omitted.
@@ -21,14 +21,18 @@ omitted.
 
 ## Top-line adherence
 
-PyTCP has the **PLPMTUD engine + ack/RTO hooks but not yet
-probe-segment emit on TCP**. After the
-`plpmtud_unified_engine` plan Phases 1-4 (commits through
-`7ad011c1` on `PyTCP_3_0__pre_release`), the PmtuSearch
-state machine, classical-PMTUD coexistence, ack/RTO
-detection, and the UDP manual probe API are all shipped;
-the remaining gap is the TCP probe-segment emit path
-(Phase 3c, deferred).
+PyTCP has the **PLPMTUD engine + ack/RTO hooks + TCP
+probe-segment emit + operator-facing cold-start enable**
+all shipped. After the `plpmtud_unified_engine` plan
+Phases 1-4 (commits through `7ad011c1` on
+`PyTCP_3_0__pre_release`) the PmtuSearch state machine,
+classical-PMTUD coexistence, ack/RTO detection, and the
+UDP manual probe API landed; the probe-segment emit hook
+landed in Phase 3c-min; the operator-facing
+`tcp.mtu_probing` / `tcp.base_mss` cold-start enable
+that makes the TCP "Probing without ICMP" scenario
+reachable in default deployments landed in the
+`plpmtud_closeout` Phases 1-2 (2026-05-28).
 
 | Mechanism                                              | Status                            |
 |--------------------------------------------------------|-----------------------------------|
@@ -36,22 +40,25 @@ the remaining gap is the TCP probe-segment emit path
 | TCP `_apply_pmtu_update` callback (classical)          | met                               |
 | UDP `notify_pmtu` callback (classical)                 | met                               |
 | `_effective_pmtu()` socket accessor (IP_MTU/IPV6_MTU)  | met                               |
-| Active probing engine (search_low/search_high/eff_pmtu)| met (`pytcp/lib/plpmtud.py`)      |
+| Active probing engine (search_low/search_high/eff_pmtu)| met (`packages/pytcp/pytcp/lib/plpmtud.py`)      |
 | Black-hole detection (MAX_PROBES → ERROR clamp)        | met (`PmtuSearch.on_probe_loss`)  |
 | Re-probe periodically (PMTU_RAISE_TIMER)               | met (`PmtuSearch.next_probe_size`) |
 | ICMP coexistence (shrink-only, ERROR recovery)         | met (`PmtuSearch.on_classical_pmtu`) |
 | TCP adapter (ack / RTO hooks)                          | met (`TcpPlpmtudAdapter`)         |
-| TCP probe-segment emit                                 | met (Phase 3c-min, default-off)   |
+| TCP probe-segment emit                                 | met (Phase 3c-min)                |
+| TCP operator-facing enable (`tcp.mtu_probing` sysctl)  | met (`tcp.mtu_probing=2`, `tcp.base_mss` seed) |
 | TCP cwnd-exempt + probe-only RTO (RFC §7.4 / §7.5)     | **Linux-pragmatic deviation** (probes share cwnd / regular RTO; matches Linux tcp_mtu_probing) |
 | UDP manual probe API (probe_pmtu / ack_probe / timeout)| met (`UdpSocket.probe_pmtu` ...)  |
 
 The "PmtuSearch unified engine" plan at
 `docs/refactor/plpmtud_unified_engine.md` is the
-implementation track. Phase 3c (TCP probe-segment emit) is
-the single remaining piece — the engine is fully exercised
-from the UDP side and from the TCP ack/RTO hooks, but the
-TCP TX path does not yet pad data segments to
-`candidate_mtu` for active probing.
+implementation track, closed by the close-out at
+`docs/refactor/plpmtud_closeout.md` (Phases 1-2 added the
+per-interface `tcp.mtu_probing` tristate and the
+`tcp.base_mss` cold-start seed, plus the four-clamp-site
+`_mss_ceiling()` helper that keeps the seed alive past
+the handshake — so the engine's `candidate_mtu > snd_mss`
+gate trips immediately on `tcp.mtu_probing=2`).
 
 ---
 
@@ -65,12 +72,12 @@ TCP TX path does not yet pad data segments to
 
 **Adherence:** met (substrate). `stack.pmtu_cache:
 dict[Ip4Address | Ip6Address, int]` keys on
-destination address (`pytcp/stack/__init__.py:299`).
+destination address (`packages/pytcp/pytcp/stack/__init__.py:299`).
 ICMPv4 Frag-Needed and ICMPv6 Packet-Too-Big handlers
 populate it via `TcpSession._apply_pmtu_update`
-(`pytcp/protocols/tcp/tcp__session.py:779-816`) and
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:779-816`) and
 `UdpSocket.notify_pmtu`
-(`pytcp/socket/udp__socket.py:879`).
+(`packages/pytcp/pytcp/socket/udp__socket.py:879`).
 
 > "Network or subnet numbers MUST NOT be used as
 > representations of a path[...]"
@@ -98,7 +105,7 @@ prefix.
 **Adherence:** not implemented. PyTCP stores only the
 classical-PMTUD scalar — `pmtu_cache[dst]` is the
 single value, no search-range state. The plan
-introduces `PmtuSearch[A]` at `pytcp/lib/plpmtud.py`
+introduces `PmtuSearch[A]` at `packages/pytcp/pytcp/lib/plpmtud.py`
 with `_min_mtu` / `_candidate_mtu` / `_max_mtu` /
 `_ack_size` corresponding to RFC 4821's three state
 variables.
@@ -237,7 +244,7 @@ better matches Linux's pragmatic behaviour. ERROR recovery
 follows two paths: classical ICMP signal via
 `on_classical_pmtu` immediately resets the engine to
 SEARCHING with the reported MTU as the new ceiling, or the
-PMTU_RAISE_TIMER (`pytcp/lib/plpmtud.py:97`) re-enters BASE
+PMTU_RAISE_TIMER (`packages/pytcp/pytcp/lib/plpmtud.py:97`) re-enters BASE
 after 600 s to try connectivity confirmation again.
 
 ---
@@ -277,14 +284,14 @@ The shipped surface is locked in by:
 
 ### §5.2 per-destination cache + registry
 
-- **Unit:** `pytcp/tests/unit/stack/test__pmtu_cache.py` —
+- **Unit:** `packages/pytcp/pytcp/tests/unit/stack/test__pmtu_cache.py` —
   pins cache shape, lifetime, IPv4/IPv6 keying.
-- **Unit:** `pytcp/tests/unit/lib/test__lib__pmtu_state.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__pmtu_state.py`
   — pins the PmtuSearch registry shape, lazy fallback to
   legacy cache, per-destination isolation, IPv6 keying.
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py`,
-  `pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp4/test__icmp4__pmtud.py`,
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__icmp6__pmtud.py`
   — ICMP Frag-Needed / Packet-Too-Big populates cache +
   state.
 
@@ -292,7 +299,7 @@ The shipped surface is locked in by:
 
 ### §7.1 search_low/high/eff_pmtu state machine
 
-- **Unit:** `pytcp/tests/unit/lib/test__lib__plpmtud.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/lib/test__lib__plpmtud.py`
   (21 tests) — pins the PmtuState transitions (BASE →
   SEARCHING → SEARCH_COMPLETE / ERROR), the binary-search
   ladder, family-floor invariants, PROBE_TIMER and
@@ -302,18 +309,18 @@ The shipped surface is locked in by:
 
 ### §7.6 probe-result feedback to engine
 
-- **Unit:** `pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`
   (12 tests) — pins `TcpPlpmtudAdapter`'s `on_snd_una_advance`
   → `engine.on_probe_ack` dispatch and `on_rto_timeout` →
   `engine.on_probe_loss` dispatch, including the no-op-when-no-
   probes-in-flight invariant.
-- **Unit:** `pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`
+- **Unit:** `packages/pytcp/pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`
   (13 tests) — pins `UdpPlpmtudAdapter`'s probe / ack /
   timeout API + single-outstanding invariant.
-- **Integration:** `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`
   (5 tests) — pins TcpSession adapter wiring + classical
   PMTU route + snd.una advance hook.
-- **Integration:** `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
   (6 tests) — pins UdpSocket manual probe API end-to-end.
 
 **Status:** locked in.
@@ -321,11 +328,11 @@ The shipped surface is locked in by:
 ### §7.7 black-hole clamp to min
 
 - **Unit:** `test__plpmtud__three_consecutive_losses_enter_error`
-  in `pytcp/tests/unit/lib/test__lib__plpmtud.py`.
+  in `packages/pytcp/pytcp/tests/unit/lib/test__lib__plpmtud.py`.
 - **Unit:** `test__tcp__plpmtud_adapter__rto_max_probes_enters_error`
-  in `pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`.
+  in `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`.
 - **Integration:** `test__udp__plpmtud__timeout_probe_count_enters_error`
-  in `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`.
+  in `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`.
 
 **Status:** locked in.
 
@@ -369,7 +376,7 @@ Phase 3c lands, the natural tests are:
 | §7.1 Active probing state machine                   | met                          |
 | §7.3 Binary-search probe selection                  | met                          |
 | §7.4 Probes excluded from cwnd                      | **Linux-pragmatic deviation** (Linux probes share cwnd; ~15 years deployment without observed harm) |
-| §7.5 Probe-segment emit (TCP)                       | met (Phase 3c-min; default-off via `_plpmtud_probing_enabled`) |
+| §7.5 Probe-segment emit (TCP)                       | met (Phase 3c-min + operator enable via `tcp.mtu_probing=2`) |
 | §7.5 Probe-only RTO                                 | **Linux-pragmatic deviation** (Linux uses regular RTO for probe-loss detection) |
 | §7.5 Probe-segment emit (UDP manual API)            | met                          |
 | §7.6 Probe-result feedback to engine                | met                          |

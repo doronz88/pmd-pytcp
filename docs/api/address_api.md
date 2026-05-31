@@ -22,36 +22,36 @@ land when an IPv6-specific address-control consumer
 materialises.
 
 Per CLAUDE.md Phase-3: **the surface IS the Phase-3
-seam**. The DHCPv4 client (`pytcp/protocols/dhcp4/`)
+seam**. The DHCPv4 client (`packages/pytcp/pytcp/protocols/dhcp4/`)
 and the RFC 3927 link-local autoconfig client
-(`pytcp/protocols/ip4/link_local/`) consume the API
-without reaching into `packet_handler._ip4_host`.
+(`packages/pytcp/pytcp/protocols/ip4/link_local/`) consume the API
+without reaching into `packet_handler._ip4_ifaddr`.
 
 ## Address-list management
 
 ```python
 from pytcp.stack import address
-from net_addr import Ip4Host
+from net_addr import Ip4IfAddr
 
 # Install — Linux 'ip addr add 10.0.0.5/24 dev eth0'.
-address.add_host(ip4_host=Ip4Host("10.0.0.5/24"))
+address.add_ifaddr(ip4_ifaddr=Ip4IfAddr("10.0.0.5/24"))
 
 # List — Linux 'ip addr show' / '/proc/net/route' equivalent.
-hosts = address.list_ip4_hosts()         # tuple[Ip4Host, ...]; copy-by-value snapshot
+hosts = address.list_ip4_ifaddrs()         # tuple[Ip4IfAddr, ...]; copy-by-value snapshot
 
 # Remove — Linux 'ip addr del'.
-address.remove_host(ip4_address=Ip4Address("10.0.0.5"))
+address.remove_ifaddr(ip4_address=Ip4Address("10.0.0.5"))
 
 # Replace — atomic-ish swap (new added before old removed).
-address.replace_host(
+address.replace_ifaddr(
     old_address=Ip4Address("10.0.0.5"),
-    new_host=Ip4Host("10.0.0.6/24"),
+    new_ifaddr=Ip4IfAddr("10.0.0.6/24"),
 )
 ```
 
 ### TCP-session ABORT policy on remove / replace
 
-`remove_host` and `replace_host` accept
+`remove_ifaddr` and `replace_ifaddr` accept
 `abort_bound_sessions: bool = True` (the default). When
 True, every TCP session bound to the removed local
 address is issued `SysCall.ABORT` (RFC 9293 §3.10.7.4 —
@@ -72,7 +72,7 @@ and RFC 3927 link-local (per-candidate Probe + Announce).
 ### Probe → Announce → Install (composite)
 
 ```python
-result = address.claim_with_acd(ip4_host=Ip4Host("169.254.5.7/16"))
+result = address.claim_with_acd(ip4_ifaddr=Ip4IfAddr("169.254.5.7/16"))
 if result.success:
     # Probe was clean, announce burst fired, host is installed.
     print(f"Claimed {result.address}")
@@ -165,13 +165,13 @@ the Phase-3 "introspection is read-only" constraint.
 
 ## Examples in the repo
 
-- `pytcp/protocols/dhcp4/dhcp4__client.py` — DHCP DAD via
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` — DHCP DAD via
   `address.probe(address=...)`; gratuitous announce via
   `address.announce(address=...)` at BOUND.
-- `pytcp/protocols/ip4/link_local/link_local__client.py`
+- `packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`
   — RFC 3927 §2.1.1 probe + §2.4 announce + §2.5 defend /
   abandon via the conflict-subscription surface.
-- `pytcp/stack/__init__.py::init` — constructs the
+- `packages/pytcp/pytcp/stack/__init__.py::init` — constructs the
   singleton `address: Ip4AddressApi` after
   `packet_handler` is built.
 
@@ -180,11 +180,11 @@ the Phase-3 "introspection is read-only" constraint.
 - **IPv6 address control** — a unified `AddressApi` or
   parallel `Ip6AddressApi` is planned but not yet
   consumer-driven. SLAAC currently mutates
-  `packet_handler._ip6_host` directly via the ND track's
+  `packet_handler._ip6_ifaddr` directly via the ND track's
   internal helpers; promoting that to a sanctioned API
   surface is a follow-up.
 - **`ip addr show eth0` per-interface filter** — Phase-1
-  is single-interface, so `list_ip4_hosts()` returns the
+  is single-interface, so `list_ip4_ifaddrs()` returns the
   whole list. Multi-interface Phase-2 will need either
   per-interface API instances (`stack.address["tap7"]`)
   or an ifname-filtered list.
@@ -198,7 +198,7 @@ the Phase-3 "introspection is read-only" constraint.
 - Refactor plan: `docs/refactor/rfc3927_link_local_autoconfig.md`
   (Phase 0.5 extracted the ACD API from inline DHCP /
   link-local code).
-- Source: `pytcp/stack/address.py`.
+- Source: `packages/pytcp/pytcp/stack/address.py`.
 - Adherence: `docs/rfc/ip4/rfc3927__ip4_link_local/adherence.md`.
 - Per-RFC: `docs/rfc/ip4/rfc5227__address_conflict_detection/`
   (when authored).

@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 6937. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction
 narrative, §2 Definitions boilerplate, §3.1 worked
@@ -37,7 +37,7 @@ during fast recovery.
 
 **Adherence:** met. The fast-retransmit entry in
 `_retransmit_packet_request` at
-`pytcp/protocols/tcp/tcp__session.py:2795-2840`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2795-2840`
 performs all four initialisations:
 
 ```python
@@ -65,7 +65,7 @@ CUBIC. This satisfies "CongCtrlAlg()".
 across two sites:
 
 - Cum-ACK delta: `_process_ack_packet` at
-  `pytcp/protocols/tcp/tcp__session.py:3120-3126`:
+  `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3120-3126`:
 
   ```python
   bytes_acked = (packet_rx_md.tcp__ack - self._snd_una) & 0xFFFF_FFFF
@@ -75,7 +75,7 @@ across two sites:
   ```
 
 - SACK delta: `_ingest_sack_info` at
-  `pytcp/protocols/tcp/tcp__session.py:2194-2201`:
+  `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:2194-2201`:
 
   ```python
   bytes_before = self._sack_scoreboard.total_sacked_bytes() if self._recovery_point != 0 else 0
@@ -103,7 +103,7 @@ specifically, but the logical exclusion is correct.
 >     prr_out += (data sent)"
 
 **Adherence:** met. The transmit path at
-`pytcp/protocols/tcp/tcp__session.py:1581-1592`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1581-1592`:
 
 ```python
 # RFC 6937 §3.1 PRR: track 'prr_out' across every
@@ -127,7 +127,7 @@ seq), matching the §3 "data sent" semantics.
 > }"
 
 **Adherence:** met. The in-recovery cwnd update at
-`pytcp/protocols/tcp/tcp__session.py:3151-3156`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3151-3156`:
 
 ```python
 current_pipe = pipe(...)
@@ -158,7 +158,7 @@ subtraction of `prr_out` matches §3 verbatim.
 > }"
 
 **Adherence:** met. The Reduction Bound branch at
-`pytcp/protocols/tcp/tcp__session.py:3157-3168`:
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:3157-3168`:
 
 ```python
 else:
@@ -224,7 +224,7 @@ example shows.
 **Adherence:** the implementation matches the
 worked example wire output (verified by
 integration tests at
-`pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr`).
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr`).
 
 ---
 
@@ -233,7 +233,7 @@ integration tests at
 ### §3 PRR initialisation at recovery entry
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr::test__cwnd__prr__entry_initializes_recover_fs_prr_delivered_prr_out`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py::TestTcpCwndPrr::test__cwnd__prr__entry_initializes_recover_fs_prr_delivered_prr_out`
   drives a fast-retransmit entry and asserts all
   four initialisations (`_recover_fs == flight_size`,
   `_prr_delivered == 0`, `_prr_out == 0`,

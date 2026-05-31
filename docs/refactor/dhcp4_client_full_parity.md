@@ -2,11 +2,11 @@
 
 | Field           | Value                                                |
 |-----------------|------------------------------------------------------|
-| Status          | Plan — implementation not yet started                |
+| Status          | Phases 0–8 SHIPPED; Phase 9 deferred (each item dependency-blocked on a consumer PyTCP does not have today — see below) |
 | Plan author     | Audit pass (2026-05-11)                              |
 | Source audit    | `docs/rfc/dhcp4/rfcXXXX__*/adherence.md` (11 records)|
 | Target branch   | `PyTCP_3_0__pre_release`                             |
-| Touch points    | `pytcp/protocols/dhcp4/dhcp4__client.py`, `net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
+| Touch points    | `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py`, `packages/net_proto/net_proto/protocols/dhcp4/`, new lib helpers, sysctl framework, test harness |
 
 This document is the implementation plan for taking
 PyTCP's minimal one-shot DHCPv4 client to full Linux
@@ -23,7 +23,7 @@ analysis across 11 RFCs).
 
 ## 1. Goal
 
-Bring `pytcp/protocols/dhcp4/dhcp4__client.py` (229 lines, linear
+Bring `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (229 lines, linear
 DISCOVER → OFFER → REQUEST → ACK) into compliance with
 the dominant client-relevant DHCPv4 RFCs (2131, 2132,
 4361, 3442, 4436, 6842) and partial compliance with the
@@ -109,9 +109,8 @@ like Linux dhcpcd at the wire level:
 - Client FQDN (RFC 4702).
 - FORCERENEW (RFC 3203 — gated on RFC 3118 auth).
 - Captive-Portal option (RFC 8910).
-- Option Overload (option 52) parsing of
-  `sname`/`file` extension areas.
-- RFC 3396 long-option concatenation.
+- RFC 3396 long-option concatenation. *(Client/receive
+  side SHIPPED 2026-05-25 — see Phase 8.3.)*
 
 ---
 
@@ -124,13 +123,13 @@ run without the next.
 ### Phase 0 — Quick wins (1 commit; ~1 hour)
 
 Five tiny fixes, each gated by a single-file change in
-`pytcp/protocols/dhcp4/dhcp4__client.py` plus minimal additions to
+`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` plus minimal additions to
 the options accessor.
 
 **0.1 Client Identifier in REQUEST** (RFC 2131 §2 MUST)
 
 ```python
-# pytcp/protocols/dhcp4/dhcp4__client.py — _send_request, ~line 195
+# packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py — _send_request, ~line 195
 Dhcp4OptionClientId(b"\x01" + bytes(self._mac_address)),
 ```
 
@@ -147,7 +146,7 @@ if dhcp4_packet_rx.xid != xid:
 **0.3 CID echo validation** (RFC 6842 §3 MUST)
 
 Add `client_id` accessor to `Dhcp4Options`
-(`net_proto/protocols/dhcp4/options/dhcp4__options.py`)
+(`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`)
 mirroring `server_id` / `subnet_mask` etc.
 
 Then in `_recv_offer` / `_recv_ack`:
@@ -183,18 +182,18 @@ unused. Plumb it into the returned object:
 ```python
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Dhcp4Lease:
-    ip4_host: Ip4Host
+    ip4_host: Ip4IfAddr
     lease_time__sec: int         # 0xffffffff = infinity
     server_id: Ip4Address
     acquired_at_monotonic: float
 ```
 
 `Dhcp4Client.fetch()` returns `Dhcp4Lease | None`
-instead of `Ip4Host | None`. Update the one call site
-in `pytcp/runtime/packet_handler/__init__.py` to read
+instead of `Ip4IfAddr | None`. Update the one call site
+in `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` to read
 `lease.ip4_host`.
 
-**Tests** (extend `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`):
+**Tests** (extend `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`):
 
 - CID present in REQUEST.
 - Wrong-xid OFFER silently dropped.
@@ -307,7 +306,7 @@ The existing `_create_stack_ip4_addressing` becomes:
 ```python
 if lease := Dhcp4Client(mac_address=self._mac_unicast).fetch():
     # ARP DAD already passed (Dhcp4Client did it)
-    self._ip4_host_candidate.append(lease.ip4_host)
+    self._ip4_ifaddr_candidate.append(lease.ip4_host)
 ```
 
 The current top-level RFC 5227 DAD loop at
@@ -324,7 +323,7 @@ DAD-verified inside `Dhcp4Client.fetch()`).
 
 ### Phase 3 — DUID / IAID Client Identifier (RFC 4361) (1 commit; ~4 hours)
 
-**3.1 New helper** `pytcp/lib/dhcp_uid.py`:
+**3.1 New helper** `packages/pytcp/pytcp/lib/dhcp_uid.py`:
 
 ```python
 class DhcpUniqueIdentifier:
@@ -387,7 +386,7 @@ diagram.
 
 **4.1 `Dhcp4Lifecycle(Subsystem)` skeleton**
 
-New file `pytcp/lib/dhcp4_lifecycle.py`:
+New file `packages/pytcp/pytcp/lib/dhcp4_lifecycle.py`:
 
 ```python
 class Dhcp4State(Enum):
@@ -473,18 +472,18 @@ def _stop(self) -> None:
 **4.5 Stack integration via the address API (Phase-3 seam)**
 
 The `Dhcp4Lifecycle` subsystem must NOT mutate
-`packet_handler._ip4_host` directly — that would be a
+`packet_handler._ip4_ifaddr` directly — that would be a
 Phase-3 boundary violation (per `CLAUDE.md` Phase-3
 design implications: "Configuration mutations go
 through the API for their plane. Address changes go
 through the address API, not
-`packet_handler._ip6_host.append(...)`").
+`packet_handler._ip6_ifaddr.append(...)`").
 
 Introduce a minimal Phase-1 address-API stub that the
 DHCP client is the first consumer of:
 
 ```python
-# pytcp/stack/address.py — NEW
+# packages/pytcp/pytcp/stack/address.py — NEW
 class Ip4AddressApi:
     """
     Phase-1 IPv4 address-control surface. Mirrors Linux
@@ -496,17 +495,17 @@ class Ip4AddressApi:
 
     Consumer code (DHCP client, future operator-config
     surfaces) imports this — never reaches into
-    `packet_handler._ip4_host` directly.
+    `packet_handler._ip4_ifaddr` directly.
     """
 
-    def add_host(
+    def add_ifaddr(
         self,
         *,
-        ip4_host: Ip4Host,
-        origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+        ip4_host: Ip4IfAddr,
+        origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None: ...
 
-    def remove_host(
+    def remove_ifaddr(
         self,
         *,
         ip4_address: Ip4Address,
@@ -520,12 +519,12 @@ class Ip4AddressApi:
         only for diagnostics.
         """
 
-    def replace_host(
+    def replace_ifaddr(
         self,
         *,
         old_address: Ip4Address,
-        new_host: Ip4Host,
-        new_origin: Ip4HostOrigin = Ip4HostOrigin.DHCP,
+        new_ifaddr: Ip4IfAddr,
+        new_origin: Ip4IfAddrSource = Ip4IfAddrSource.DHCP,
     ) -> None:
         """
         Atomic swap. Install `new` BEFORE removing `old` so
@@ -534,7 +533,7 @@ class Ip4AddressApi:
         once `new` is bound (RFC 5227 §2.4 final SHOULD).
         """
 
-    def list_ip4_hosts(self) -> tuple[Ip4Host, ...]:
+    def list_ip4_ifaddrs(self) -> tuple[Ip4IfAddr, ...]:
         """Read-only copy-by-value snapshot — Linux
         equivalent is `/proc/net/route` + `ip addr show`."""
 ```
@@ -551,7 +550,7 @@ when `ip4_dhcp=True`:
 `dhcp4_lifecycle.start_and_wait_for_bind(timeout=N)`.
 
 Phase-1 implementation of `Ip4AddressApi` is a thin
-wrapper around `packet_handler._ip4_host.append(...)`
+wrapper around `packet_handler._ip4_ifaddr.append(...)`
 / `_abandon_ipv4_address(...)`. Phase-3 swap replaces
 the wrapper internals with RTNETLINK-equivalent
 message bus routing; **consumer code does not change**.
@@ -583,12 +582,12 @@ above):
 
 | Transition                                  | Address-API call                       | TCP-session impact                  |
 |---------------------------------------------|----------------------------------------|-------------------------------------|
-| `INIT → BOUND` (first lease)                | `add_host(host, DHCP)`                 | none                                |
+| `INIT → BOUND` (first lease)                | `add_ifaddr(host, DHCP)`                 | none                                |
 | `BOUND → BOUND` (RENEW ACK, same IP)        | none (internal lease bookkeeping)      | none                                |
-| `BOUND → REBINDING → BOUND` (different IP)  | `replace_host(old, new, DHCP)`         | sessions on `old` abort             |
-| `RENEW/REBIND NAK → INIT → BOUND` (different IP) | `replace_host(old, new, DHCP)`    | sessions on `old` abort             |
-| `lease expiry, no new ACK`                  | `remove_host(addr)` + halt IPv4        | sessions on `addr` abort            |
-| `stack.stop()` (graceful)                   | `send_release()` + `remove_host(addr)` | sessions abort with RST before RELEASE |
+| `BOUND → REBINDING → BOUND` (different IP)  | `replace_ifaddr(old, new, DHCP)`         | sessions on `old` abort             |
+| `RENEW/REBIND NAK → INIT → BOUND` (different IP) | `replace_ifaddr(old, new, DHCP)`    | sessions on `old` abort             |
+| `lease expiry, no new ACK`                  | `remove_ifaddr(addr)` + halt IPv4        | sessions on `addr` abort            |
+| `stack.stop()` (graceful)                   | `send_release()` + `remove_ifaddr(addr)` | sessions abort with RST before RELEASE |
 
 **Deliberate deviation from Linux: active TCP-session
 abort.**
@@ -601,7 +600,7 @@ with the existing `_abandon_ipv4_address` hook
 implements RFC 5227 §2.4 final SHOULD ("hosts SHOULD
 actively attempt to reset any existing connections
 using that address"). Reusing it on every
-`remove_host` / `replace_host` is cleaner than
+`remove_ifaddr` / `replace_ifaddr` is cleaner than
 Linux's behaviour.
 
 This is a deliberate improvement; the RFC 2131
@@ -609,12 +608,12 @@ adherence record should mark it under "deviation
 noted (cleaner than Linux)" rather than as a gap.
 Document the choice with an inline comment at the
 `abort_bound_sessions` parameter in
-`Ip4AddressApi.remove_host`.
+`Ip4AddressApi.remove_ifaddr`.
 
 **Route-table cleanup deferred to Phase 7.**
 
 Phase 4 only handles the single-gateway case via
-`Ip4Host.gateway`, which is auto-cleared when the
+`Ip4IfAddr.gateway`, which is auto-cleared when the
 host is removed. Routes from DHCP option 3 (single
 default gateway) ride along with the host.
 
@@ -626,28 +625,28 @@ dhcpcd's per-lease route-tracking list.
 
 **Tests for 4.5:**
 
-- Same-IP RENEW ACK → `_ip4_host` unchanged, no
+- Same-IP RENEW ACK → `_ip4_ifaddr` unchanged, no
   abort.
-- Different-IP after NAK → `_ip4_host` swap atomic
+- Different-IP after NAK → `_ip4_ifaddr` swap atomic
   (assert both never co-exist outside the
-  `replace_host` window).
+  `replace_ifaddr` window).
 - TCP session bound to the old IP after swap → asserted
   aborted (RST emitted, session removed from
   `stack.sockets`).
-- Lease expiry → `_ip4_host` empty + IPv4 disabled +
+- Lease expiry → `_ip4_ifaddr` empty + IPv4 disabled +
   abort happened.
 - `stack.stop()` while BOUND → DHCPRELEASE on wire,
-  THEN `remove_host` + abort.
+  THEN `remove_ifaddr` + abort.
 
 **Tests for §4.4 (extended):** new integration
-harness `pytcp/tests/lib/dhcp4_testcase.py`:
+harness `packages/pytcp/pytcp/tests/lib/dhcp4_testcase.py`:
 
 - Boot path: stub server replies → BOUND.
 - T1 fires → RENEWING → unicast REQUEST → BOUND
-  (same IP, no `replace_host` call).
+  (same IP, no `replace_ifaddr` call).
 - T2 fires (no RENEWING ACK) → REBINDING.
 - Lease expires (no REBINDING ACK) → INIT + halt.
-- Stack stop → DHCPRELEASE + `remove_host`.
+- Stack stop → DHCPRELEASE + `remove_ifaddr`.
 
 **Adherence record refresh:** RFC 2131 §4.4 marked
 met; §4.4.5 lease-expiry behaviour pinned. Add a
@@ -658,7 +657,7 @@ note about the Linux deviation.
 **5.1 Cached lease persistence**
 
 New sysctl `dhcp.lease_cache_path` (default
-`/var/lib/pytcp/dhcp4_lease` or in-memory if empty).
+`/var/lib/packages/pytcp/pytcp/dhcp4_lease` or in-memory if empty).
 On successful BOUND, the lifecycle serialises the
 lease (IP, mask, gateway, server-id, lease-time,
 acquired-at) to the cache file. On boot, the cache
@@ -696,6 +695,11 @@ def _do_rebooting(self, now: float) -> None:
 
 Built on top of Phase 5 (cached lease prerequisite).
 
+(reconciled 2026-05-30: DNAv4 closed its last Phase-3
+reach-through — the probe now runs over `Ip4Acd.probe_reachable`
+on the AF_PACKET raw link socket, so the client is boundary-clean
+like DHCPv6; commit `e2998736`.)
+
 ```python
 def _do_init_reboot(self) -> None:
     if nd_const.DHCP4__DNAV4 and self._cached_lease.gateway_mac is not None:
@@ -711,12 +715,20 @@ def _do_init_reboot(self) -> None:
 
 `_dnav4_probe` sends a unicast ARP Request to the
 cached gateway MAC for the cached gateway IP, waits
-1 second (RFC 4436 §4.1), and returns True if a reply
-arrives.
+for the `dhcp.dnav4_timeout_ms` window (RFC 4436 §4.1),
+and returns True if a reply arrives.
 
-Requires ARP cache to support unicast probe emission
-(currently only broadcast — single function addition
-to `pytcp/protocols/arp/arp__cache.py`).
+As shipped (reconciled 2026-05-30, commit `e2998736`),
+this is **not** an ARP-cache addition. `_dnav4_probe`
+delegates to `Ip4Acd.probe_reachable(...)`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py` —
+`probe_reachable` + `_is_gateway_reply` +
+`_send(..., dst_mac=...)`), which emits the unicast ARP
+Request over the per-address AF_PACKET raw link socket
+and reads the reply off that same socket. The stack's
+ARP cache / ARP-TX path is uninvolved.
+`send_arp_unicast_request` was kept (the ARP cache still
+uses it for cache refresh) but DNAv4 does not use it.
 
 **New sysctl:** `dhcp.dnav4` (default 1; set 0 to
 disable).
@@ -728,14 +740,28 @@ disable).
 - Cached lease + ARP timeout → INIT-REBOOT path
   (REQUEST broadcast).
 
-### Phase 7 — Classless Static Routes (RFC 3442) (1-2 commits; ~6 hours)
+### Phase 7 — Classless Static Routes (RFC 3442) — SHIPPED
 
-**Prerequisite:** A routing-table API. Currently
-PyTCP's `Ip4Host` carries a single gateway field; a
-real routing table is needed for multiple routes.
+Shipped 2026-05-25 (option-121 codec + RFC 3396
+concatenation + client request/install). The host-mode
+FIB / Route API (prerequisite below) landed first
+(`docs/refactor/routing_table_host_mode.md`), removing
+the single-gateway `Ip4IfAddr` limitation. Full
+adherence record:
+`docs/rfc/dhcp4/rfc3442__classless_static_route/adherence.md`.
+The one deviation: router-0.0.0.0 (Local Subnet Routes)
+entries are ignored per the RFC-permitted "stack does
+not provide this capability" branch (Phase 2: install
+on-link once DHCP-learned routes carry an output-interface
+index in the FIB).
+
+**Prerequisite (now satisfied):** A routing-table API.
+Currently PyTCP's `Ip4IfAddr` carries a single gateway
+field; a real routing table is needed for multiple
+routes.
 
 **7.1 Wire codec** — `Dhcp4OptionClasslessStaticRoute`
-at `net_proto/protocols/dhcp4/options/`. Compact
+at `packages/net_proto/net_proto/protocols/dhcp4/options/`. Compact
 encoding per RFC 3442 ("Destination descriptors
 describe..."): width byte + significant octets + 4-byte
 router.
@@ -786,17 +812,38 @@ Dhcp4OptionLeaseTime(lease_time__sec=86400)  # 1 day suggestion
 Sysctl `dhcp.requested_lease_time__sec` (default
 86400).
 
-**8.3 RFC 3396 long-option concatenation**
+**8.3 RFC 3396 long-option concatenation** — SHIPPED
+(2026-05-25, client/receive side, for the option-121
+concatenation-requiring option). `Dhcp4Options.from_buffer`
+joins the data of all same-code option-121 instances
+before decoding. Server-side splitting on assembly
+(option 121 TX, RFC 4702 FQDN TX) is a Phase-2
+DHCP-server concern.
 
 Update parser to concatenate split options before
 typed-codec invocation. Required by RFC 3442 and
 RFC 4702.
 
-**8.4 Option Overload (option 52)**
+**8.4 Option Overload (option 52)** — SHIPPED
 
 Parse `sname` / `file` overload — when option 52 is
 present with value 1, 2, or 3, parse those fields as
 additional options.
+
+Shipped in `Dhcp4Parser._apply_option_overload` at
+`packages/net_proto/net_proto/protocols/dhcp4/dhcp4__parser.py:115-176`.
+The option dataclass is at
+`packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__overload.py`
+with `includes_file` / `includes_sname` accessors.
+Hostile-wire safety: each overloaded sub-block is preflighted
+through `Dhcp4Options.validate_integrity(offset=0)` so a
+truncated / over-length option inside the overlay raises a
+typed `Dhcp4IntegrityError` before `from_buffer` dispatches
+(commit `4c84b682`). Tests:
+`packages/net_proto/net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__overload.py`
+(10 tests, codec round-trip + integrity) and
+`test__dhcp4__parser__option_overload.py` (6 tests,
+parser-side merge happy + hostile paths).
 
 ### Phase 9 — Deferred RFCs
 
@@ -843,42 +890,42 @@ invocation per knob, classify as policy.
 
 ### New source files
 
-- `pytcp/stack/address.py` (Phase 4) —
+- `packages/pytcp/pytcp/stack/address.py` (Phase 4) —
   `Ip4AddressApi` (and `Ip6AddressApi` skeleton for
   symmetry); the Phase-3 north-star address-control
   surface. DHCP client is the first consumer; future
   operator-config code (manual `ip addr add`-like
   surfaces) layers on top.
-- `pytcp/lib/route_api.py` (Phase 7 prereq) —
+- `packages/pytcp/pytcp/lib/route_api.py` (Phase 7 prereq) —
   `Ip4RouteApi` mirroring `RTM_NEWROUTE` /
   `RTM_DELROUTE`. Phase 4 uses
   `Ip4AddressApi`-implicit single-gateway only; Phase 7
   introduces N-route tracking.
-- `pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
+- `packages/pytcp/pytcp/lib/dhcp4_lifecycle.py` (Phase 4) —
   `Dhcp4Lifecycle(Subsystem)` FSM. Consumes
   `stack.address` exclusively; never touches
-  `_ip4_host` directly.
-- `pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
-- `pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
+  `_ip4_ifaddr` directly.
+- `packages/pytcp/pytcp/lib/dhcp_uid.py` (Phase 3) — DUID/IAID helper.
+- `packages/pytcp/pytcp/lib/dhcp4_lease_cache.py` (Phase 5) —
   serialised lease cache.
-- `net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py`
   (Phase 7).
-- `net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__client_fqdn.py`
   (Phase 9, deferred).
-- `net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option__max_msg_size.py`
   (Phase 8).
-- `pytcp/lib/dhcp4_constants.py` — sysctl-backed
+- `packages/pytcp/pytcp/lib/dhcp4_constants.py` — sysctl-backed
   policy constants (per `pytcp.md` §2).
 
 ### Touched source files
 
-- `pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (Phases 0, 1, 2, 3,
   8) — every phase.
-- `pytcp/runtime/packet_handler/__init__.py` (Phase 4,
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` (Phase 4,
   5) — replace `_create_stack_ip4_addressing` DHCP
   block with `dhcp4_lifecycle` integration; harness
   snapshot/restore.
-- `pytcp/stack/__init__.py` (Phase 4) — add
+- `packages/pytcp/pytcp/stack/__init__.py` (Phase 4) — add
   `stack.address: Ip4AddressApi` and
   `stack.dhcp4_lifecycle: Dhcp4Lifecycle` singletons;
   update `stack.init()`, `stack.start()`,
@@ -886,42 +933,44 @@ invocation per knob, classify as policy.
   contract (`integration_testing.md` §5.4 — any new
   module-level state requires snapshot/restore in
   `NetworkTestCase` setUp/tearDown).
-- `net_proto/protocols/dhcp4/options/dhcp4__option.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__option.py`
   (Phase 7) — extend `Dhcp4OptionType` enum.
-- `net_proto/protocols/dhcp4/options/dhcp4__options.py`
+- `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`
   (Phase 0.3, 7, 8) — new accessors: `client_id`,
   `classless_static_routes`, etc.
-- `pytcp/protocols/arp/arp__cache.py` (Phase 6) —
-  unicast ARP Request emission for DNAv4 probe.
-- `pytcp/stack/sysctl.py` registry — populated via the
+- `packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py` (Phase 6) —
+  `Ip4Acd.probe_reachable` emits the DNAv4 unicast ARP Request over
+  the AF_PACKET raw link socket (shipped this way in `e2998736`; the
+  original arp__cache.py plan was superseded).
+- `packages/pytcp/pytcp/stack/sysctl.py` registry — populated via the
   `sysctl_knob` skill per Phase.
 
 ### New test files
 
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__fsm.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__fsm.py`
   (Phase 4) — full FSM state-by-state.
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__retransmission.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__retransmission.py`
   (Phase 1).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__decline.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__decline.py`
   (Phase 2).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__init_reboot.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__init_reboot.py`
   (Phase 5).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__dnav4.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__dnav4.py`
   (Phase 6).
-- `pytcp/tests/integration/protocols/dhcp4/test__dhcp4__classless_routes.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/dhcp4/test__dhcp4__classless_routes.py`
   (Phase 7).
-- `pytcp/tests/unit/lib/test__lib__dhcp_uid.py` (Phase 3).
-- `pytcp/tests/unit/lib/test__lib__dhcp4_lease_cache.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp_uid.py` (Phase 3).
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_lease_cache.py`
   (Phase 5).
-- `pytcp/tests/lib/dhcp4_testcase.py` (Phase 4) — new
+- `packages/pytcp/pytcp/tests/lib/dhcp4_testcase.py` (Phase 4) — new
   integration test harness extending `NetworkTestCase`
   with stub server + FakeTimer + lease helpers.
 
 ### Touched test files
 
-- `pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__dhcp4_client.py`
   (Phases 0, 1, 2, 3) — extend with new contract tests.
-- `pytcp/tests/lib/network_testcase.py` (Phase 4) —
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py` (Phase 4) —
   snapshot/restore `stack.dhcp4_lifecycle` per the
   `integration_testing.md` §5.4 contract.
 
@@ -934,7 +983,7 @@ re-confirm with the user before implementing the
 relevant phase.
 
 1. **Lease cache storage format.** JSON in
-   `/var/lib/pytcp/dhcp4_lease`? Or a small sysctl-
+   `/var/lib/packages/pytcp/pytcp/dhcp4_lease`? Or a small sysctl-
    serialised blob? Phase 5.
 2. **DUID flavour.** RFC 3315 lists DUID-LL, DUID-LLT,
    DUID-UUID. Plan defaults to DUID-LL (link-layer);
@@ -961,7 +1010,7 @@ relevant phase.
    DHCP-only for Phase 4 and broaden later? User
    decision.
 6. **Routing-table API scope.** Phase 4 uses the
-   single-gateway `Ip4Host.gateway` field (option 3).
+   single-gateway `Ip4IfAddr.gateway` field (option 3).
    Phase 7 (RFC 3442) requires N independent routes
    per lease — necessitates an `Ip4RouteApi` mirroring
    `RTM_NEWROUTE` / `RTM_DELROUTE`. Should `Ip4RouteApi`
@@ -983,7 +1032,7 @@ relevant phase.
    default 30 000 ms — matches Linux dhcpcd's
    default `oneshot` 30-s timeout.
 8. **TCP-session abort policy on lease change.**
-   The plan defaults `Ip4AddressApi.remove_host`'s
+   The plan defaults `Ip4AddressApi.remove_ifaddr`'s
    `abort_bound_sessions=True` (active abort, cleaner
    than Linux). Should this be configurable via a
    sysctl `dhcp.abort_sessions_on_lease_change`
@@ -998,7 +1047,7 @@ relevant phase.
 The wire-format library already has ~8 900 unit-test
 lines. The plan does not add to that; instead, every
 phase adds **integration tests** under
-`pytcp/tests/integration/protocols/dhcp4/` exercising
+`packages/pytcp/pytcp/tests/integration/protocols/dhcp4/` exercising
 the client end-to-end via the new
 `Dhcp4TestCase` harness (Phase 4 prerequisite).
 
@@ -1132,8 +1181,8 @@ cutover.
 | Concern                  | Linux                                                                                    | PyTCP Phase 1 (this plan)                                       | PyTCP Phase 3 (north-star)                                  |
 |--------------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------|
 | DHCP code lives in       | Userspace daemon (`dhcpcd`, `dhclient`, `systemd-networkd`)                              | Same Python process as the TCP/IP stack                         | Logically userspace (DHCP becomes a consumer of the kernel-equivalent address API) |
-| Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_host(...)` / `.remove_host(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
-| Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4Host.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
+| Address mutation         | `RTM_NEWADDR` / `RTM_DELADDR` over `AF_NETLINK NETLINK_ROUTE`                            | `stack.address.add_ifaddr(...)` / `.remove_ifaddr(...)`             | Same surface; internals route via in-process RTNETLINK-equivalent message bus |
+| Route mutation           | `RTM_NEWROUTE` / `RTM_DELROUTE` over `AF_NETLINK`                                        | `Ip4IfAddr.gateway` field auto-managed with host (single-gateway only) | `stack.route.add_*` / `.remove_*` (Phase 7 introduces)      |
 | TCP-session on removed IP| Kernel silently lets RTO accumulate; no proactive RST                                    | Active abort via `_abandon_ipv4_address` (RFC 5227 §2.4 final SHOULD) | Same — Linux-deviation deliberate                          |
 | Lease persistence        | `/var/lib/dhcp/dhcpcd.lease` (per-interface)                                             | `dhcp.lease_cache_path` sysctl (Phase 5)                        | Same                                                        |
 | DUID storage             | `/var/lib/dhcp/dhcpcd.duid`                                                              | `dhcp.duid` sysctl (Phase 3)                                    | Same                                                        |
@@ -1155,7 +1204,7 @@ Concretely:
   `stack.route` (Phase 7), `stack.sockets` (already
   Phase-3-clean), `sysctl_module`.
 - `Dhcp4Lifecycle` does NOT import
-  `packet_handler._ip4_host`, `_arp_defend__*`,
+  `packet_handler._ip4_ifaddr`, `_arp_defend__*`,
   `_abandon_ipv4_address`, or any other
   packet-handler private state. **If it needs
   something, that thing becomes part of the

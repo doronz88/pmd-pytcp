@@ -12,8 +12,8 @@
 This document records, paragraph by paragraph, how the current
 PyTCP codebase relates to each normative statement in RFC 5494.
 The audit was performed by reading the RFC text fresh and
-inspecting the codebase under `net_proto/protocols/arp/` and
-`net_proto/lib/enums.py` directly.
+inspecting the codebase under `packages/net_proto/net_proto/protocols/arp/` and
+`packages/net_proto/net_proto/lib/enums.py` directly.
 
 RFC 5494 is administrative — it establishes the IANA
 allocation policy for the three ARP wire-format fields
@@ -51,7 +51,7 @@ relevant and otherwise omitted.
 **Adherence:** **vacuous (consumer of registry, not
 allocator)**. PyTCP does not request new `ar$hrd` values;
 it consumes the already-allocated `ETHERNET = 0x0001` from
-the registry (`net_proto/protocols/arp/arp__enums.py:41`).
+the registry (`packages/net_proto/net_proto/protocols/arp/arp__enums.py:41`).
 The "Expert Review / First Come First Served" gating is an
 IANA-side procedural rule with no implementation surface.
 
@@ -76,7 +76,7 @@ uses is `ETHERNET = 1`, which fits both spaces.
 
 **Adherence:** **met**. PyTCP's ARP header `prtype` field
 is typed as `EtherType`
-(`net_proto/protocols/arp/arp__header.py:82-86`), with
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:82-86`), with
 `EtherType.IP4 = 0x0800` consumed from the same registry
 that governs the Ethernet II `type` field. The shared
 registry semantic is preserved at the type-system level —
@@ -101,7 +101,7 @@ single-protocol restriction, not a registry violation.
 **Adherence:** **vacuous**. PyTCP does not request new
 opcodes; it consumes the registered values
 `REQUEST = 0x0001` and `REPLY = 0x0002` from the registry
-(`net_proto/protocols/arp/arp__enums.py:49-50`). IETF
+(`packages/net_proto/net_proto/protocols/arp/arp__enums.py:49-50`). IETF
 Review / IESG Approval is an IANA-side rule.
 
 ---
@@ -120,7 +120,7 @@ experimental values on RX)**. PyTCP's `ArpHardwareType`
 enum defines only `ETHERNET = 0x0001`; any incoming frame
 with `ar$hrd = 36` or `ar$hrd = 256` is silently rejected
 as `ArpIntegrityError`
-(`net_proto/protocols/arp/arp__parser.py:84-85`). PyTCP
+(`packages/net_proto/net_proto/protocols/arp/arp__parser.py:84-85`). PyTCP
 does not produce frames with these experimental values, so
 no collision is possible on the TX side. This is the
 expected behaviour for a non-experimental host.
@@ -135,7 +135,7 @@ PyTCP's `ArpOperation` enum defines only `REQUEST = 1` and
 `REPLY = 2`. Inbound frames with `ar$op = 24`, `ar$op =
 25`, or any other unknown opcode are caught by the sanity
 check at
-`net_proto/protocols/arp/arp__parser.py:110-114` —
+`packages/net_proto/net_proto/protocols/arp/arp__parser.py:110-114` —
 `if self._header.oper.is_unknown` raises an
 `ArpSanityError` (note: the `from_int` factory in
 `ProtoEnumWord` constructs an "unknown" enum member rather
@@ -174,6 +174,19 @@ type construction. The hard-locked
 `ArpHeader` prevents `ar$hrd = 0` or `ar$hrd = 65535` on
 emit.
 
+A subtler path — passing `arp__oper=ArpOperation.from_int(99)`
+(or any other unknown numeric value) — would synthesise an
+`UNKNOWN_99` pseudo-member via the `ProtoEnum._missing_`
+hook and pass the typed-enum constructor. `ArpAssembler`
+guards against this with an explicit
+`assert not arp__oper.is_unknown` at the TX boundary,
+mirroring the closed-set strict-TX pattern used in
+DHCPv4 (`Dhcp4OperationCode` / `Dhcp4MessageType`),
+ICMPv4 (`Icmp4Type` codes), and ICMPv6 (every closed
+`Icmp6*Code` subclass). The RFC 826 + RFC 5494 §3
+"only REQUEST and REPLY are defined" rule is therefore
+enforced symmetrically on RX and TX.
+
 ---
 
 ## Test coverage audit
@@ -181,7 +194,7 @@ emit.
 ### §2 — `ar$hrd` consumed value (ETHERNET)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__hrtype_default`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__hrtype_default`
   — pins `ArpHeader().hrtype == ArpHardwareType.ETHERNET`.
 - **Unit:**
   `..::test__arp__header__hrtype_cannot_be_overridden` —
@@ -193,7 +206,7 @@ emit.
 ### §2 — `ar$pro` registry-shared semantic
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__prtype_default`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__prtype_default`
   — pins `ArpHeader().prtype == EtherType.IP4`.
 - **Unit:**
   `..::test__arp__header__prlen_default` — pins
@@ -204,11 +217,11 @@ emit.
 ### §2 — `ar$op` consumed values (REQUEST / REPLY)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py::TestArpAssemblerPackets::test__arp__assembler__oper`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py::TestArpAssemblerPackets::test__arp__assembler__oper`
   — pins both `REQUEST` and `REPLY` round-trip on the
   wire.
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py::TestArpParserSanityChecks::test__arp__parser__sanity_error`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py::TestArpParserSanityChecks::test__arp__parser__sanity_error`
   — parametrised case "`oper` field value is unknown"
   raises `ArpSanityError`. This is the path that rejects
   experimental opcodes (24, 25) and reserved values (0,
@@ -219,7 +232,7 @@ emit.
 ### §3 — Rejection of experimental hardware-type values
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__parser__integrity_checks.py::TestArpParserIntegrityChecks::test__arp__parser__integrity_error`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__integrity_checks.py::TestArpParserIntegrityChecks::test__arp__parser__integrity_error`
   — parametrised case "hrtype != ETHERNET" raises
   `ArpIntegrityError` for any non-Ethernet hardware type
   including the experimental values (36, 256) and the

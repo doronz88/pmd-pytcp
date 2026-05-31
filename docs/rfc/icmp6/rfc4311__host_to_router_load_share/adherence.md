@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 4311. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/runtime/packet_handler/__init__.py` directly.
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
 **n/a**.
@@ -46,7 +46,7 @@ spread across the router set.
 
 **Adherence:** met.
 `_get_icmp6_default_router_for_destination` at
-`pytcp/runtime/packet_handler/__init__.py:974-1002`
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:974-1002`
 implements the §3 modulo-hash algorithm:
 
 ```python
@@ -104,7 +104,7 @@ extension without changing the API surface.
 ### §3 Load-sharing algorithm
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__default_router_list.py`
   — covers multi-router preference handling end-to-end
   through the RA RX path; the load-sharing modulo hash
   is exercised whenever the test fixture supplies two or
@@ -150,5 +150,5 @@ constraint.
 - `docs/rfc/icmp6/rfc8028__first_hop_router_selection/adherence.md`
   — sibling multihoming-aware first-hop selection (Phase-1
   deferred).
-- Source: `pytcp/runtime/packet_handler/__init__.py:974-1002`
+- Source: `packages/pytcp/pytcp/runtime/packet_handler/__init__.py:974-1002`
   (`_get_icmp6_default_router_for_destination`).

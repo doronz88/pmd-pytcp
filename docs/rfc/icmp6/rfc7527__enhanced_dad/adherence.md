@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 7527. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/runtime/packet_handler/packet_handler__icmp6__{tx,rx}.py`
-plus `pytcp/lib/dad_slot_registry.py` directly.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__{tx,rx}.py`
+plus `packages/pytcp/pytcp/lib/dad_slot_registry.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
 **n/a**.
@@ -45,7 +45,7 @@ misconfigured layer-2 device reflects the probe back.
 >  the host MUST include a Nonce option."
 
 **Adherence:** met. `_send_icmp6_nd_dad_message` at
-`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
 accepts an `nonce: bytes | None` parameter; when supplied
 (every Phase-1 caller passes a fresh random nonce), the
 probe carries an `Icmp6NdOptionNonce(nonce=nonce)` in the
@@ -109,7 +109,7 @@ RX-receive-nonce-check.
 
 **Adherence:** met. The `icmp6.use_enhanced_dad` sysctl
 (declared in
-`pytcp/protocols/icmp6/nd/nd__constants.py`, default 1)
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__constants.py`, default 1)
 controls whether the nonce is generated and emitted. With
 the knob disabled, the DAD probe is the bare RFC 4862
 form (no Nonce option) and the RX path's `LOOP_HAIRPIN`
@@ -122,7 +122,7 @@ case never fires.
 ### §4.1 / §4.2 Loop-hairpin detection
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`
   — drives a self-echoed NS through the RX path, asserts
   the `loop_hairpin__drop` counter increments and the
   DAD slot is NOT signalled as a conflict (the local
@@ -133,7 +133,7 @@ case never fires.
 ### §4.3 Operator knob
 
 - **Integration / unit:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py`
   exercises the on/off paths via
   `sysctl_module.override("icmp6.use_enhanced_dad", ...)`.
 
@@ -169,8 +169,8 @@ the TX-emit and the RX-receive threads.
   — parent classification (SHOULD).
 - `docs/rfc/icmp6/rfc4862__ipv6_slaac/adherence.md` —
   parent SLAAC / DAD record.
-- Source: `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
+- Source: `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:170-194`
   (`_send_icmp6_nd_dad_message`),
-  `pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:874-892`
-  (NS RX Nonce-check), `pytcp/lib/dad_slot_registry.py`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py:874-892`
+  (NS RX Nonce-check), `packages/pytcp/pytcp/lib/dad_slot_registry.py`
   (atomic registry).

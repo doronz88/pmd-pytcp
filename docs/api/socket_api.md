@@ -128,9 +128,9 @@ hostnames into IPs, then feed numeric IPs into PyTCP's
 ## Examples in the repo
 
 - `examples/stack.py` — TCP and UDP service registration.
-- `pytcp/tests/integration/protocols/tcp/test__tcp__session__*.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__*.py`
   — end-to-end TCP session scenarios.
-- `pytcp/protocols/dhcp4/dhcp4__client.py` — UDP socket
+- `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` — UDP socket
   consumer (DHCP DISCOVER / OFFER / REQUEST / ACK).
 
 ## Deferred / out of scope

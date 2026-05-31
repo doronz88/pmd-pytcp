@@ -14,8 +14,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 9293. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/`, `net_proto/protocols/tcp/`,
-and `pytcp/socket/` directly; no prior memory or
+under `packages/pytcp/pytcp/protocols/tcp/`, `packages/net_proto/net_proto/protocols/tcp/`,
+and `packages/pytcp/pytcp/socket/` directly; no prior memory or
 rule-file content was reused. Sections that contain no
 normative content (Abstract, §1 Purpose and Scope,
 §2 Introduction, §2.1 Requirements Language, §2.2
@@ -40,7 +40,7 @@ duplicating the content.
 > options, with the wire-level format..."
 
 **Adherence:** met. The wire format is implemented at
-`net_proto/protocols/tcp/tcp__header.py` (parser /
+`packages/net_proto/net_proto/protocols/tcp/tcp__header.py` (parser /
 assembler / asserts). Fields:
 
 - Source port, destination port (16-bit each)
@@ -63,7 +63,7 @@ All fields parsed and assembled correctly.
 > Kind 5: SACK / Kind 8: Timestamps / Kind 34: TFO"
 
 **Adherence:** met. PyTCP implements all listed
-options at `net_proto/protocols/tcp/options/`:
+options at `packages/net_proto/net_proto/protocols/tcp/options/`:
 - `tcp__option__nop.py` (kind 1)
 - `tcp__option__eol.py` (kind 0)
 - `tcp__option__mss.py` (kind 2)
@@ -73,8 +73,74 @@ options at `net_proto/protocols/tcp/options/`:
 - `tcp__option__timestamps.py` (kind 8)
 - `tcp__option__fastopen.py` (kind 34)
 
-Plus the AccECN option (RFC 9341) and the
+Plus the AccECN option (RFC 9768) and the
 ECN-related TCP control bits.
+
+---
+
+## §3.1 / §3.2 Parser integrity & sanity surface
+
+PyTCP's TCP parser exposes two staged checks:
+`_validate_integrity` (structural pre-parse — IP-layer
+length bounds, Data Offset, one's-complement checksum,
+container TLV walk) and `_validate_sanity` (post-parse
+field semantics). Hostile-wire values that would otherwise
+trip a dataclass `__post_init__` assert are caught at
+integrity and re-raised as `TcpIntegrityError` so the IP
+RX handler's `PacketValidationError` catch can drop the
+frame cleanly.
+
+### TCP base header (`tcp__parser.py`)
+
+| Phase | Check | RFC clause |
+|-------|-------|------------|
+| Integrity | `20 <= ip__payload_len <= len(frame)` | RFC 9293 §3.1 (20-octet fixed header floor; IP-bounded) |
+| Integrity | `20 <= hlen <= ip__payload_len <= len(frame)` | RFC 9293 §3.1 (Data Offset ≥ 5 32-bit words) |
+| Integrity | `inet_cksum(frame, init=pshdr_sum) == 0` | RFC 9293 §3.1 (one's-complement over pseudo-header + segment); RFC 1071 |
+| Integrity | TCP options container TLV walk (Length ≥ 2, fits within Data Offset) | RFC 9293 §3.2 |
+| Sanity | `sport != 0` | RFC 9293 §3.1 + RFC 6335 §6 (IANA reserves port 0) |
+| Sanity | `dport != 0` | RFC 9293 §3.1 + RFC 6335 §6 |
+| Sanity | `not (flag_syn and flag_fin)` | RFC 9293 §3.1 (SYN initiates / FIN closes — mutually exclusive) |
+| Sanity | `not (flag_syn and flag_rst)` | RFC 9293 §3.1 / RFC 5961 §4 (SYN/RST hardening) |
+| Sanity | `not (flag_fin and flag_rst)` | RFC 9293 §3.1 (orderly close vs abrupt abort) |
+| Sanity | `flag_fin → flag_ack` | RFC 9293 §3.10.4 / §3.1 (ACK set on every segment after establishment) |
+
+### Per-option parser integrity
+
+Every TCP option file carries a `_validate_integrity`
+static method. The Kind / Length / fixed-shape checks
+catch the recurring hostile-wire `AssertionError` leak
+class before `from_buffer` reaches `cls(...)`.
+
+| Option | `_validate_integrity` enforces | RFC clause |
+|--------|--------------------------------|------------|
+| EOL (kind 0) | type-byte (Case-1 TLV, no length) | RFC 9293 §3.2 |
+| NOP (kind 1) | type-byte (Case-1 TLV, no length) | RFC 9293 §3.2 |
+| MSS (kind 2) | `length == 4` | RFC 9293 §3.7.1 / RFC 6691 |
+| WSCALE (kind 3) | `length == 3` | RFC 7323 §2 |
+| SACK-Permitted (kind 4) | `length == 2` | RFC 2018 §2 |
+| SACK (kind 5) | `length ≤ buffer`; `(length − 2) % 8 == 0`; **block count ≤ 4** | RFC 2018 §3 |
+| Timestamps (kind 8) | `length == 10` | RFC 7323 §3 |
+| FastOpen (kind 34) | `length ≥ 2`; `length ≤ buffer`; `cookie_len ∈ {0} ∪ [4..16]` | RFC 7413 §2 |
+| AccECN0 (kind 172) | `length ∈ {2, 5, 8, 11}` | RFC 9768 §3.2.3 |
+| AccECN1 (kind 174) | `length ∈ {2, 5, 8, 11}` | RFC 9768 §3.2.3 |
+| Unknown | `length ≤ buffer` (Case-2 TLV catch-all) | RFC 9293 §3.2 |
+
+The SACK 4-block ceiling check is duplicated in the
+dataclass `__post_init__` — the former is the parser-level
+integrity gate (reachable from hostile wire), the latter
+is the construction-time invariant for API consumers
+building option objects programmatically. The duplication
+is deliberate and load-bearing, same pattern as the IPv4
+and IPv6 per-option passes.
+
+WSCALE has one deliberate divergence: RFC 7323 §2.3
+("If a Window Scale option is received with a shift.cnt
+value larger than 14, the TCP SHOULD log the error but
+MUST use 14 instead of the specified value") is honoured
+by clamping in `from_buffer`, NOT by raising at integrity
+— the over-14 case is a tolerated spec deviation, not an
+integrity violation.
 
 ---
 
@@ -116,7 +182,7 @@ level urgent semantics — see RFC 6093 audit.
 **Adherence:** met. PyTCP's `FsmState` enum
 (`tcp__enums.py`) defines all 11 states. Each state
 has a dedicated FSM handler at
-`pytcp/protocols/tcp/tcp__fsm__<state>.py`. The
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__<state>.py`. The
 state machine transitions match the RFC 9293 §3.3.2
 diagram.
 
@@ -159,7 +225,7 @@ collision resistance.
 > "Three-way handshake: SYN, SYN+ACK, ACK"
 
 **Adherence:** met. The active-open path is at
-`pytcp/protocols/tcp/tcp__fsm__syn_sent.py` and the
+`packages/pytcp/pytcp/protocols/tcp/tcp__fsm__syn_sent.py` and the
 passive-open path is at `tcp__fsm__listen.py` /
 `tcp__fsm__syn_rcvd.py`. The handshake transitions
 match the RFC 9293 §3.5 sequence.
@@ -198,7 +264,7 @@ in place.
 > sends FIN but allows continued read."
 
 **Adherence:** met. The `shutdown(SHUT_WR)` socket-
-API at `pytcp/socket/tcp__socket.py` triggers FIN
+API at `packages/pytcp/pytcp/socket/tcp__socket.py` triggers FIN
 emission while keeping the read-half open
 (CLOSE-WAIT or FIN-WAIT-1 transitions).
 
@@ -325,17 +391,17 @@ RECEIVE / CLOSE / STATUS / ABORT / FLUSH user-API
 calls.
 
 **Adherence:** met via the `TcpSocket` BSD-API
-facade at `pytcp/socket/tcp__socket.py`:
+facade at `packages/pytcp/pytcp/socket/tcp__socket.py`:
 
 | §3.9.1 call    | PyTCP method                   |
 |----------------|--------------------------------|
 | OPEN (active)  | `connect(...)`                 |
 | OPEN (passive) | `listen(...)` + `accept()`     |
-| SEND           | `send(data=...)`               |
-| RECEIVE        | `recv(bufsize=...)`            |
-| CLOSE          | `close()`, `shutdown(how)`     |
+| SEND           | `send(data=...)`, `sendmsg(buffers, ancdata, ...)` (scatter-gather; ancillary data accepted, Phase-1 ignored) |
+| RECEIVE        | `recv(bufsize=...)`, `recvmsg(bufsize, ancbufsize, flags, ...)` (`flags & MSG_ERRQUEUE` drains the IP_RECVERR error queue) |
+| CLOSE          | `close()`, `shutdown(how)`. `close()` honours `SO_LINGER`: linger-off/unset → graceful FIN (§3.10.4); `{l_onoff=1, l_linger>0}` → graceful FIN then block until CLOSED or the timeout elapses; `{l_onoff=1, l_linger=0}` → abortive close routed through the ABORT path (RST, §3.10.5). |
 | STATUS         | `status()` → `TcpStatus`       |
-| ABORT          | `abort()`                      |
+| ABORT          | `abort()`; also reached by `close()` under `SO_LINGER {l_onoff=1, l_linger=0}` |
 | FLUSH          | n/a (application-discretionary; RFC framing) |
 
 ### §3.9.2 TCP/Lower-Level Interface
@@ -383,24 +449,42 @@ Cross-cut with RFC 5961 (audited).
 
 **Adherence:** met. `send` at `tcp__socket.py` and
 the underlying `_tx_buffer` mechanism implement
-the §3.10.2 sequencing.
+the §3.10.2 sequencing. `sendmsg(buffers, ...)`
+concatenates the scatter-gather buffer list and
+feeds the same `_tx_buffer` path; a non-`None`
+`address` is rejected with `EISCONN` (a destination
+is invalid on a connected stream socket).
 
 ### §3.10.3 RECEIVE Call
 
 **Adherence:** met. `recv` consumes from
 `_rx_buffer`; `_rcv_wnd` advertisement reflects
-buffer occupancy.
+buffer occupancy. `recvmsg(...)` exposes the same
+byte stream plus the ancillary-data / `MSG_ERRQUEUE`
+surface (IP_RECVERR error-queue dequeue).
 
 ### §3.10.4 CLOSE Call
 
 **Adherence:** met. `close` triggers FIN emission
 and the appropriate state transition based on
-current state.
+current state. The disposition is selected by the
+`SO_LINGER` socket option: linger-off / unset is the
+default graceful close; `{l_onoff=1, l_linger>0}`
+emits the FIN then blocks until the session reaches
+CLOSED or the linger timeout elapses (the RX / timer
+threads advance the FSM via the `TcpSession.
+_event__closed` signal); `{l_onoff=1, l_linger=0}`
+diverts to the ABORT path (§3.10.5) — the BSD
+"SO_LINGER zero → RST" idiom.
 
 ### §3.10.5 ABORT Call
 
 **Adherence:** met. `abort` triggers RST emission
-and immediate CLOSED transition.
+and immediate CLOSED transition. Also invoked
+implicitly by `close()` when the socket carries
+`SO_LINGER {l_onoff=1, l_linger=0}`, so an abortive
+close discards queued data and emits a RST rather
+than the graceful FIN exchange.
 
 ### §3.10.6 STATUS Call
 
@@ -450,20 +534,20 @@ state-machine rules.
 
 RFC 9293 conformance is verified by the entire TCP
 test suite — every test in
-`pytcp/tests/integration/protocols/tcp/` exercises
+`packages/pytcp/pytcp/tests/integration/protocols/tcp/` exercises
 some §3.x clause directly or indirectly. The audit
 table below cross-references the per-clause test
 locations:
 
 | §3.x clause                         | Test location / cross-ref                                |
 |-------------------------------------|----------------------------------------------------------|
-| §3.1 Header format                  | `net_proto/tests/unit/protocols/tcp/test__tcp__*.py`     |
-| §3.2 Option definitions             | `net_proto/tests/unit/protocols/tcp/options/`            |
-| §3.3.2 State machine                | `pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__*.py` + close tests |
+| §3.1 Header format                  | `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__*.py`     |
+| §3.2 Option definitions             | `packages/net_proto/net_proto/tests/unit/protocols/tcp/options/`            |
+| §3.3.2 State machine                | `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__handshake__*.py` + close tests |
 | §3.4 Sequence numbers               | `test__tcp__session__seq_wraparound.py` + `tcp__seq.py` unit |
 | §3.4.1 ISS                          | RFC 6528 audit                                           |
 | §3.5 Connection establishment       | handshake tests                                          |
-| §3.6 Connection closing             | close tests (close__normal, close__rst, close__simultaneous, close__time_wait) |
+| §3.6 Connection closing             | close tests (close__normal, close__rst, close__simultaneous, close__time_wait); SO_LINGER disposition in `test__tcp__session__so_linger.py` |
 | §3.7 Segmentation                   | RFC 6691 audit + jumbogram cases                         |
 | §3.8.1 RTO                          | RFC 6298 audit                                           |
 | §3.8.2 Congestion control           | RFC 5681 + RFC 9438 audits                               |
@@ -472,7 +556,7 @@ locations:
 | §3.8.6.1 Persist timer              | data_transfer__send / window persist tests              |
 | §3.8.6.2 SWS                        | window tests                                             |
 | §3.8.6.3 Delayed ACK                | data_transfer__recv tests                                |
-| §3.9 Interfaces                     | socket tests + harness_smoke                             |
+| §3.9 Interfaces                     | socket tests + harness_smoke; `sendmsg` in `test__socket__tcp__socket.py::TestTcpSocketSendmsg`; SO_LINGER setsockopt/getsockopt in `::TestTcpSocketSoLinger` + close-path in `test__tcp__session__so_linger.py` |
 | §3.10.7 Per-state SEGMENT ARRIVES   | per-state test files                                     |
 | §3.10.8 Timeouts                    | RTO + persist + keep-alive + TIME-WAIT tests             |
 

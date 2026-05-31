@@ -20,20 +20,20 @@ work:
 
 - **§4.3.2.5 (Source Address)** — outbound ICMP errors source from
   the egress interface address. Adherence: met via
-  `pytcp/runtime/packet_handler/packet_handler__udp__rx.py:197`,
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py:197`,
   which sets `ip4__src=packet_rx.ip4.dst` (reflection of the
   inbound destination, which is the stack's own address for
   unicast-delivered datagrams).
 - **§4.3.2.8 (Rate-Limiting)** — token-bucket rate limit on
   originated ICMP error messages. Adherence: met (post-Phase α1.1).
-  Implemented in `pytcp/protocols/icmp/icmp__error_emitter.py`
+  Implemented in `packages/pytcp/pytcp/protocols/icmp/icmp__error_emitter.py`
   via `IcmpErrorRateLimiter`; instantiated per-version on
   `pytcp.stack.icmp4_error_rate_limiter` and consumed by
   `try_emit_icmp_error()` from the UDP closed-port path. Default
   rate=100 pps, burst=50.
 - **§4.3.3.6 (Echo Request / Reply)** — MUST NOT reply to bcast/
   mcast Echo Request. Adherence: met (post-A1) via
-  `pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`.
+  `packages/pytcp/pytcp/protocols/icmp4/icmp4__echo_gate.py::should_emit_echo_reply`.
   The MUST form (RFC 1812) is stricter than the MAY form
   (RFC 1122 §3.2.2.6) — PyTCP applies the stricter rule even
   though it is a host, because the same Smurf vector applies.

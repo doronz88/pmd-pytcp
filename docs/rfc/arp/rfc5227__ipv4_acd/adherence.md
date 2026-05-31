@@ -21,34 +21,48 @@ closed" entries; the bulk of those gaps are now closed —
 this refresh re-derives every adherence verdict from the
 current code state without re-using prior content.
 
-The ACD machinery is exposed to consumers (DHCPv4 client,
-RFC 3927 link-local autoconfig client, future operator-config
-tools) via the sanctioned `Ip4AddressApi` surface in
-`pytcp/stack/address.py`:
+As of Phase 4.4, all ACD is a **userspace** function over the
+`Ip4Acd` engine (`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`) — the
+Linux `sd-ipv4acd` / `n-acd` model. Each managed address that
+wants conflict handling owns an `Ip4Acd` bound to its
+interface's MAC + ifindex and runs probe / announce / ongoing
+defense over its own AF_PACKET socket. The kernel-equivalent
+stack ARP RX path performs **no** conflict detection. The
+engine surface:
 
-- `probe(*, address)` — runs the §2.1.1 probe sequence and
-  returns success / conflict + peer info.
+- `probe(*, address)` — runs the §2.1.1 Probe sequence over a
+  throwaway socket; returns an `AcdResult` (success + peer MAC
+  on conflict).
 - `announce(*, address)` — emits the §2.3 ANNOUNCE_NUM burst.
-- `claim_with_acd(*, ip4_host)` — composite probe + announce
-  + install for simple consumers.
-- `send_gratuitous_arp(*, address)` — single defensive ARP
-  for §2.4(b).
-- `subscribe_conflicts(*, address, on_conflict)` /
-  `unsubscribe_conflicts(*, handle)` — post-claim conflict
-  notification surface; the underlying `_fire_conflict_event`
-  is dispatched from the ARP RX path. Used by RFC 3927
-  link-local for the §2.5 defend / abandon decision tree.
-- `abort_bound_tcp_sessions(*, address)` — RFC 5227 §2.4-final
-  SHOULD primitive that ABORTs every `TcpSession` bound to
-  the yielded address.
+- `claim(*, address)` — probe + announce, then HOLDS the
+  socket for ongoing defense.
+- `start_defense(*, address)` — announce + hold, for a caller
+  whose Probe ran separately (the DHCPv4 split flow).
+- `poll_conflict()` — non-blocking §2.4 ongoing-conflict drain
+  on the held socket → peer MAC or None.
+- `defend()` — single §2.4(b) defensive gratuitous ARP.
+- `release()` — drop the claim / close the socket.
 
-Consumers MUST NOT reach into the `_arp_dad_*` /
-`_send_gratuitous_arp` helpers on `PacketHandler` directly —
-those are private implementation detail of the API as of the
-RFC 3927 Phase 0.5 commit (`6970c042`). The file:line
-references below describe the underlying helpers, which still
-exist and still implement the wire protocol; the public
-surface is the API.
+Consumers:
+
+- **Static host** (`PacketHandlerL2._create_stack_ip4_addressing`):
+  `probe` + `announce`, no ongoing defender (bare `ip addr
+  add`).
+- **DHCPv4 client**: `probe` on the offered address (DECLINE
+  on conflict), `start_defense` on BOUND, `poll_conflict` each
+  tick → DHCPDECLINE + re-acquire on conflict.
+- **RFC 3927 link-local client**: `claim` + `poll_conflict`,
+  `defend` / abandon per its §2.5 decision tree.
+
+`Ip4AddressApi` (`packages/pytcp/pytcp/stack/address.py`) is now the pure
+`ip addr` surface (`add_ifaddr` / `remove_ifaddr` /
+`replace_ifaddr` / `list_ip4_ifaddrs`); `remove_ifaddr` ABORTs
+bound TCP sessions per the §2.4-final SHOULD (via the internal
+`_abort_bound_tcp_sessions` helper). (The former `probe` /
+`announce` / `claim_with_acd` / `send_gratuitous_arp` /
+`subscribe_conflicts` API surface and the in-RX
+`_handle_arp_conflict` / `_arp_dad_*` machinery were removed in
+Phase 4.4c-4.5.)
 
 Adherence levels use the canonical descriptive language:
 **met**, **not met**, **partial**, **not implemented**,
@@ -72,17 +86,21 @@ inform a normative §2 requirement, and otherwise omitted.
 > the address is already in use, by broadcasting ARP Probe
 > packets."
 
-**Adherence:** **met**. PyTCP's claim path —
-`Ip4AddressApi.claim_with_acd`
-(`pytcp/stack/address.py:290-313`) — runs the §2.1.1 probe
-sequence via `_arp_dad_probe_address` before admitting a
-candidate address to `self._ip4_host`. Same primitive backs
-the DHCPv4 DAD path
-(`pytcp/protocols/dhcp4/dhcp4__client.py` via the
-`arp_dad_verifier` callback wired in
-`pytcp/stack/__init__.py:476`) and the RFC 3927 link-local
-candidate-probe loop
-(`pytcp/protocols/ip4/link_local/link_local__client.py`).
+**Adherence:** **met**. As of Phase 4.4a every claim path runs
+the §2.1.1 probe sequence over the userspace `Ip4Acd` engine
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`), the Linux
+`sd-ipv4acd` model — each managed address probes (and, on a clean
+probe, announces) over its own AF_PACKET socket, with the stack's
+ARP RX path uninvolved. The static-host claim
+(`PacketHandlerL2._create_stack_ip4_addressing`) builds one
+`Ip4Acd` per candidate and calls `probe` then `announce` before
+admitting the address to `self._ip4_ifaddr`. The DHCPv4 DAD path
+(`packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` via the
+`arp_dad_verifier` callback wired to `Ip4Acd.probe` in
+`packages/pytcp/pytcp/stack/lifecycle.py`) and the RFC 3927
+link-local candidate-probe loop
+(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py`,
+via `Ip4Acd.claim`) use the same engine.
 
 > "A host MUST NOT perform this check periodically as a
 > matter of course."
@@ -104,15 +122,16 @@ static-host configure). There is no scheduled re-probe path.
 > all zeroes. The 'target IP address' field MUST be set to
 > the address being probed."
 
-**Adherence:** **met**. `_send_arp_probe`
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:194-218`)
-sets every field exactly as required:
+**Adherence:** **met**. `Ip4Acd._send`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`), invoked from the
+Probe loop with `oper=REQUEST, spa=Ip4Address(), tpa=address`,
+builds every field exactly as required:
 - `arp__oper = ArpOperation.REQUEST`
-- `arp__sha = self._mac_unicast`
+- `arp__sha = self._mac` (the engine's interface MAC)
 - `arp__spa = Ip4Address()` — all-zeroes per MUST
 - `arp__tha = MacAddress()` — all-zeroes per SHOULD
-- `arp__tpa = ip4_unicast` (the candidate)
-- `ethernet__dst = MacAddress(0xFFFFFFFFFFFF)` — broadcast
+- `arp__tpa = address` (the candidate)
+- `ethernet__dst = 0xFFFFFFFFFFFF` — broadcast
 
 > "When ready to begin probing, the host should then wait
 > for a random time interval selected uniformly in the
@@ -121,22 +140,25 @@ sets every field exactly as required:
 > spaced randomly and uniformly, PROBE_MIN to PROBE_MAX
 > seconds apart."
 
-**Adherence:** **met**. `_arp_dad_probe_address`
-(`pytcp/runtime/packet_handler/__init__.py:1796-1833`)
-implements the full sequence:
+**Adherence:** **met**. `Ip4Acd._run_probe`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`) implements the full
+sequence over the ACD socket:
 
-1. `time.sleep(random.uniform(0, ARP__PROBE_WAIT))` at
-   `:1817` — initial 0..PROBE_WAIT random delay.
-2. `for _ in range(ARP__PROBE_NUM): _send_arp_probe(...)` at
-   `:1821-1825` — exactly PROBE_NUM probes.
-3. `time.sleep(random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))`
-   at `:1825` — uniform inter-probe spacing.
+1. `_watch_for_conflict(sock, address, random.uniform(0,
+   ARP__PROBE_WAIT))` — initial 0..PROBE_WAIT random delay
+   (spent watching the socket for an early conflict).
+2. `for _ in range(ARP__PROBE_NUM): _send(...)` — exactly
+   PROBE_NUM probes.
+3. `_watch_for_conflict(sock, address,
+   random.uniform(ARP__PROBE_MIN, ARP__PROBE_MAX))` between
+   probes — uniform inter-probe spacing.
 
-Default constants from `pytcp/protocols/arp/arp__constants.py`:
+Default constants from `packages/pytcp/pytcp/protocols/arp/arp__constants.py`:
 `ARP__PROBE_WAIT = 1`, `ARP__PROBE_NUM = 3`, `ARP__PROBE_MIN
-= 1`, `ARP__PROBE_MAX = 2`. All four are sysctl-registered at
-`arp__constants.py:154-194` so operators can tune them at
-boot or runtime.
+= 1`, `ARP__PROBE_MAX = 2`. All four are sysctl-registered so
+operators can tune them at boot or runtime; the engine reads
+them through qualified `arp__constants.*` access so an
+override takes effect on the next run.
 
 > "If during this period, from the beginning of the probing
 > process until ANNOUNCE_WAIT seconds after the last probe
@@ -146,29 +168,17 @@ boot or runtime.
 > address being probed for, then the host MUST treat this
 > address as being in use by some other host ..."
 
-**Adherence:** **met**. The probe-window conflict surface
-runs through a per-candidate `DadSlotRegistry` slot
-(`pytcp/lib/dad_slot_registry.py:102-198`): the claim path
-installs a slot before the first probe, the RX path signals
-conflicts atomically via `try_signal_conflict`, and the
-post-probe check at
-`pytcp/runtime/packet_handler/__init__.py:1833` returns False
-if any conflict was signalled during the probe + ANNOUNCE_WAIT
-window. The historical RX-vs-DAD "two unrelated sets" bug
-that prior audit text described is closed by the registry
-abstraction.
-
-Three RX paths feed the registry:
-
-- `__phrx_arp__request` SPA=candidate detection at
-  `packet_handler__arp__rx.py:266` — gratuitous Request
-  claiming our candidate.
-- `__phrx_arp__request` simultaneous-probe (SPA=0,
-  TPA=candidate, foreign SHA) detection at
-  `packet_handler__arp__rx.py:269-289`.
-- `__phrx_arp__reply` direct Reply to our probe
-  (`spa=candidate`, `tpa=0`, L2-unicast to us) at
-  `packet_handler__arp__rx.py:419,424-442`.
+**Adherence:** **met**. The probe-window conflict surface is
+`Ip4Acd._watch_for_conflict`, which reads ARP off the engine's
+own AF_PACKET socket for the full probe + ANNOUNCE_WAIT window
+and returns the offending peer MAC the moment `_is_conflict`
+matches. `_is_conflict(arp, address)` flags any frame (Request
+or Reply) whose `arp.spa == address` from a foreign SHA — the
+exact predicate the RFC mandates. Because the engine reads
+its own socket, conflict detection no longer depends on the
+stack ARP RX path or a `DadSlotRegistry` slot (the IPv4 use
+of that registry was removed in Phase 4.4c; the class remains
+for IPv6 ND DAD).
 
 > "In addition, if during this period the host receives any
 > ARP Probe where the packet's 'target IP address' is the
@@ -177,26 +187,24 @@ Three RX paths feed the registry:
 > the host's interfaces, then the host SHOULD similarly
 > treat this as an address conflict ..."
 
-**Adherence:** **met (§1.2.4 simultaneous-probe case)**. The
-explicit simultaneous-probe detector at
-`packet_handler__arp__rx.py:269-289` triggers when an inbound
-Probe carries SPA=0 + TPA=our-candidate + foreign SHA. The
-preceding self-loopback guard (foreign SHA check) at
-`:259-264` prevents our own echoed Probes from being
-mis-flagged. The `arp__op_request__simultaneous_probe`
-counter is bumped on detection.
+**Adherence:** **met (§1.2.4 simultaneous-probe case)**.
+`Ip4Acd._is_conflict` also returns True when `arp.spa.is_unspecified
+and arp.tpa == address` (with a foreign SHA) — a peer probing
+the same address. Covered by
+`test__ip4__acd__conflict.py::test__ip4_acd__conflict_simultaneous_probe`.
 
 > "NOTE: The check that the packet's 'sender hardware
 > address' is not the hardware address of any of the host's
 > interfaces is important. ... a host is not confused when
 > it sees its own ARP packets echoed back."
 
-**Adherence:** **met (loop guards present)**. PyTCP drops
-looped Probes at `packet_handler__arp__rx.py:259-264` and
-looped Replies at `:413-418`: when `arp.sha ==
-self._mac_unicast`, the frame is treated as a loopback and
-dropped before any conflict path runs. The
-`arp__op_request__looped__drop` / `arp__op_reply__looped__drop`
+**Adherence:** **met (loop guard present)**.
+`Ip4Acd._is_conflict` (and `_is_ongoing_conflict`) returns
+False immediately when `arp.sha == self._mac`, so the engine
+never mis-flags its own echoed Probes / Announcements. Covered
+by `test__ip4__acd__conflict.py::test__ip4_acd__own_frame_is_not_conflict`.
+The stack ARP RX path additionally drops looped frames
+(`arp__op_request__looped__drop` / `arp__op_reply__looped__drop`
 counters are bumped on each drop.
 
 > "A host implementing this specification MUST take
@@ -210,11 +218,11 @@ counters are bumped on each drop.
 **Adherence:** **met (in the RFC 3927 link-local
 subsystem)**. The MAX_CONFLICTS / RATE_LIMIT_INTERVAL gate
 is enforced in the link-local candidate-rotation loop
-(`pytcp/protocols/ip4/link_local/link_local__client.py:242-249`):
+(`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__client.py:242-249`):
 after `MAX_CONFLICTS` conflicts within a tracking window,
 the subsystem inserts a `RATE_LIMIT_INTERVAL` sleep before
 the next probe attempt. The constants live in
-`pytcp/protocols/ip4/link_local/link_local__constants.py:45,51`
+`packages/pytcp/pytcp/protocols/ip4/link_local/link_local__constants.py:45,51`
 and are sysctl-registered at `:75-90`
 (`ip4_link_local.max_conflicts` default 10;
 `ip4_link_local.rate_limit_interval_s` default 60).
@@ -230,13 +238,11 @@ DHCPv4 Phase 9 backlog).
 > has been received, then the host has successfully
 > determined that the desired address may be used safely."
 
-**Adherence:** **met**. `_arp_dad_probe_address` sleeps
-`ARP__ANNOUNCE_WAIT` seconds after the last Probe at
-`pytcp/runtime/packet_handler/__init__.py:1831` before
-returning the success / conflict verdict. Late conflicting
-ARPs arriving within this window still feed the registry
-slot via the RX paths above; only after the quiet period
-does `has_signal(...)` at `:1833` decide the outcome.
+**Adherence:** **met**. `Ip4Acd._run_probe` ends with
+`_watch_for_conflict(sock, address, ARP__ANNOUNCE_WAIT)` after
+the last Probe before returning the success / conflict
+verdict. Late conflicting ARPs arriving within this window are
+read off the engine's socket and abort the claim.
 `ARP__ANNOUNCE_WAIT = 2` default; sysctl-tunable.
 
 ---
@@ -250,7 +256,7 @@ does `has_signal(...)` at `:1833` decide the outcome.
 
 **Adherence:** **met (no deviation; all timing tunable)**.
 PyTCP uses RFC-default constants from
-`pytcp/protocols/arp/arp__constants.py`. Every timing
+`packages/pytcp/pytcp/protocols/arp/arp__constants.py`. Every timing
 constant (PROBE_WAIT, PROBE_NUM, PROBE_MIN, PROBE_MAX,
 ANNOUNCE_NUM, ANNOUNCE_INTERVAL, ANNOUNCE_WAIT,
 DEFEND_INTERVAL) is registered with `pytcp.stack.sysctl` so
@@ -271,31 +277,30 @@ timing parameters across hosts are non-disruptive.
 > by broadcasting ANNOUNCE_NUM ARP Announcements, spaced
 > ANNOUNCE_INTERVAL seconds apart."
 
-**Adherence:** **met**. `_arp_dad_announce_address`
-(`pytcp/runtime/packet_handler/__init__.py:1835-1847`) loops
+**Adherence:** **met**. `Ip4Acd._run_announce`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`) loops
 `ARP__ANNOUNCE_NUM` times with `time.sleep(ARP__ANNOUNCE_INTERVAL)`
 between successive sends:
 
 ```
-for announce_idx in range(ARP__ANNOUNCE_NUM):
+for announce_idx in range(arp__constants.ARP__ANNOUNCE_NUM):
     if announce_idx > 0:
-        time.sleep(ARP__ANNOUNCE_INTERVAL)
-    self._send_arp_announcement(ip4_unicast=ip4_unicast)
+        time.sleep(arp__constants.ARP__ANNOUNCE_INTERVAL)
+    self._send(sock, oper=ArpOperation.REQUEST, spa=address, tpa=address)
 ```
 
 Defaults: `ARP__ANNOUNCE_NUM = 2`, `ARP__ANNOUNCE_INTERVAL =
-2` per `arp__constants.py:63-64`; both sysctl-registered at
-`arp__constants.py:195-217`.
+2` per `arp__constants.py`; both sysctl-registered.
 
 > "An ARP Announcement is identical to the ARP Probe
 > described above, except that now the sender and target IP
 > addresses are both set to the host's newly selected IPv4
 > address."
 
-**Adherence:** **met**. `_send_arp_announcement`
-(`packet_handler__arp__tx.py:142-166`) emits a Request with
-`arp__sha = self._mac_unicast`, `arp__spa = ip4_unicast`,
-`arp__tha = MacAddress()`, `arp__tpa = ip4_unicast`,
+**Adherence:** **met**. `Ip4Acd._send` (invoked from
+`_run_announce` with `oper=REQUEST, spa=tpa=address`) emits a
+Request with `arp__sha = self._mac`, `arp__spa = address`,
+`arp__tha = MacAddress()`, `arp__tpa = address`,
 `ethernet__dst = 0xFFFFFFFFFFFF` — exactly the §2.3 wire
 form.
 
@@ -310,27 +315,38 @@ form.
 > the host's own interface addresses, then this is a
 > conflicting ARP packet ..."
 
-**Adherence:** **met (detection)**. Both
-`__phrx_arp__request`
-(`packet_handler__arp__rx.py:259-267`) and
-`__phrx_arp__reply` (`:413-422`) test exactly this
-predicate: `arp.spa in self._ip4_unicast` AND `arp.sha !=
-self._mac_unicast`. Both feed the shared
-`_handle_arp_conflict` helper at `:95-131`.
+**Adherence:** **met (detection — userspace, per address)**.
+As of Phase 4.4c the stack's ARP RX path performs **no**
+conflict detection: `packet_handler__arp__rx` only answers
+Requests for owned IPs, learns the cache, and notes
+gratuitous ARPs. This matches the Linux model, where the
+kernel ARP code does no IPv4 ACD and a userspace daemon
+(`sd-ipv4acd` / `n-acd`) reads ARP off its own AF_PACKET
+socket to detect conflicts.
+
+PyTCP's userspace ACD actor is `Ip4Acd`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py`). Its
+`poll_conflict` implements exactly this predicate against the
+claimed address — `arp.sha != self._mac` AND `arp.spa ==
+claimed` (`_is_ongoing_conflict`) — reading ARP off the
+defense socket held since the address was claimed. Each
+managed address that wants ongoing defense runs its own
+`Ip4Acd`; a statically configured address (Phase 4.4a) gets
+probe + announce only and **no** ongoing defender, exactly as
+a bare Linux `ip addr add` does.
 
 > "(a) Upon receiving a conflicting ARP packet, a host MAY
 > elect to immediately cease using the address ..."
 
-**Adherence:** **partial — option not chosen by default**.
-PyTCP defaults to (b)/(c) defense. The (a) immediate-abandon
-behaviour is available to consumers via the conflict-
-subscription surface: a subscriber to
-`Ip4AddressApi.subscribe_conflicts(address=..., on_conflict=
-abandon_callback)` can call
-`Ip4AddressApi.remove_host(ip4_address=..., abort_bound_sessions=True)`
-on first conflict for the (a) semantics. The RFC 3927
-link-local client uses this surface for its §2.5 defend /
-abandon decision tree.
+**Adherence:** **met — chosen by the DHCPv4 client**. The
+DHCPv4 client polls `Ip4Acd.poll_conflict` each BOUND tick
+and, on a sustained conflict, takes the (a) immediate-cease
+path: `Dhcp4Client._handle_bound_conflict`
+(`protocols/dhcp4/dhcp4__client.py`) emits a DHCPDECLINE to
+the leasing server, drops the address, releases the ACD
+claim, and re-enters INIT to re-acquire — the
+systemd-networkd / dhcpcd response for a server-assigned
+address (Phase 4.4b).
 
 > "(b) If a host currently has active TCP connections or
 > other reasons to prefer to keep the same IPv4 address,
@@ -340,19 +356,17 @@ abandon decision tree.
 > time that the conflicting ARP packet was received, and
 > then broadcasting one single ARP Announcement ..."
 
-**Adherence:** **met**. `_handle_arp_conflict`
-(`packet_handler__arp__rx.py:95-131`) keeps a per-IP
-"last defense at" timestamp in
-`self._arp_defend__last_emitted: dict[Ip4Address, float]`
-and a per-IP "last conflict at" timestamp tracking the
-previous conflict's timestamp. On a first conflict (no prior
-within `ARP__DEFEND_INTERVAL`), the handler:
-
-1. Records the conflict timestamp.
-2. Records the defense-emit timestamp.
-3. Calls `_send_gratuitous_arp(ip4_unicast=...)` once.
-
-`ARP__DEFEND_INTERVAL = 10` per `arp__constants.py:77`,
+**Adherence:** **met — chosen by the RFC 3927 link-local
+client**. `Ip4Acd.defend` broadcasts the single defensive
+gratuitous ARP (an ARP Reply with sender = target = the
+claimed address). The §2.4(b) "defend, but only once per
+DEFEND_INTERVAL" / §2.4(b) "abandon on the second conflict
+within the window" decision tree lives in the link-local
+client's BOUND-conflict handler
+(`protocols/ip4/link_local/link_local__client.py`), which
+owns the per-address conflict-timing state. `Ip4Acd` provides
+the mechanism (`defend` / `release`); the consumer owns the
+policy. `ARP__DEFEND_INTERVAL = 10` per `arp__constants.py`,
 sysctl-registered.
 
 > "However, if this is not the first conflicting ARP packet
@@ -362,17 +376,13 @@ sysctl-registered.
 > cease using this address and signal an error to the
 > configuring agent ..."
 
-**Adherence:** **met**. The second-conflict-within-window
-branch at `packet_handler__arp__rx.py:119-123` calls
-`_abandon_ipv4_address(ip4_unicast=...)` which:
-
-1. ABORTs every `TcpSession` bound to the address (RFC 9293
-   §3.10.7.4 SysCall.ABORT path; emits RST).
-2. Removes the address from `self._ip4_host`.
-3. Fires the conflict-subscription callback (carries the
-   abandoned-address signal to the consumer).
-
-Implementation at `packet_handler__arp__rx.py:132-165`.
+**Adherence:** **met**. The link-local client's BOUND-conflict
+handler abandons the address (removing it via the Address API,
+which ABORTs bound TCP sessions per the §2.4-final SHOULD) and
+returns to its INIT state to pick a fresh candidate; the
+DHCPv4 client declines and re-acquires. The
+`Ip4AddressApi.remove_ifaddr(..., abort_bound_sessions=True)`
+path is the shared teardown primitive.
 
 > "(c) If a host has been configured such that it should
 > not give up its address under any circumstances ... then
@@ -383,30 +393,25 @@ Implementation at `packet_handler__arp__rx.py:132-165`.
 > then the host MUST NOT send another defensive ARP
 > Announcement."
 
-**Adherence:** **met (DEFEND_INTERVAL rate-limit pinned at
-the (b) ceiling)**. PyTCP's defense path falls under (b) +
-abandon-after-second-conflict, not (c) indefinite-defend.
-The DEFEND_INTERVAL-MUST-NOT clause from (c) is honoured
-trivially because the (b) path abandons after the second
-conflict rather than defending again. A future (c)-mode
-hook (configurable "this address is too important to yield")
-would re-enter the rate-limit guard at `:127-130` which
-already short-circuits defense within `ARP__DEFEND_INTERVAL`
-of the previous defense.
+**Adherence:** **partial — (c) indefinite-defend not chosen
+by default**. PyTCP's managed-address consumers fall under
+(b) + abandon-after-second-conflict, not (c). A future
+(c)-mode hook (configurable "this address is too important to
+yield") would live in the consuming client and reuse
+`Ip4Acd.defend` under its own DEFEND_INTERVAL rate-limit; the
+mechanism is in place.
 
 > "Before abandoning an address due to a conflict, hosts
 > SHOULD actively attempt to reset any existing connections
 > using that address."
 
-**Adherence:** **met**. `_abandon_ipv4_address` at
-`packet_handler__arp__rx.py:132-165` invokes
-`SysCall.ABORT` on every `TcpSession` whose local address
-equals the abandoned IP — the RFC 9293 ABORT primitive
-emits RST and tears the session down. The public surface
-`Ip4AddressApi.abort_bound_tcp_sessions(address=...)` at
-`pytcp/stack/address.py:329-339` exposes the same
-primitive to consumers running their own abandon logic
-(e.g. DHCPDECLINE flows when they land).
+**Adherence:** **met**. The abandon paths remove the address
+through `Ip4AddressApi.remove_ifaddr(...,
+abort_bound_sessions=True)`, which issues `SysCall.ABORT` to
+every `TcpSession` whose local address equals the abandoned IP
+(via the internal `_abort_bound_tcp_sessions` helper) — the
+RFC 9293 §3.10.7.4 ABORT primitive emits RST and tears the
+session down.
 
 ---
 
@@ -418,7 +423,7 @@ primitive to consumers running their own abandon logic
 > the ARP specification [RFC826]."
 
 **Adherence:** **met**. The Reply path runs unconditionally
-once the candidate has been admitted to `self._ip4_host`:
+once the candidate has been admitted to `self._ip4_ifaddr`:
 `packet_handler__arp__rx.py:378-386` calls
 `_send_arp_reply(...)` for any Request whose TPA matches our
 IP.
@@ -461,59 +466,59 @@ link-local does not flip this — see
 > link-layer broadcast."
 
 **Adherence:** **met**. `__phrx_arp__reply` explicitly
-handles broadcast-destined Replies at
-`packet_handler__arp__rx.py:453-476`; the gratuitous-Reply
+handles broadcast-destined Replies; the gratuitous-Reply
 form (broadcast L2 dst, `arp.spa == arp.tpa`) is parsed,
-logged as `arp__op_reply__gratuitous`, flagged into the
-DAD registry if it conflicts with a candidate, and then
-runs the cache learn.
+logged as `arp__op_reply__gratuitous`, and runs the cache
+learn. (Conflict detection on such a Reply is no longer done
+here — a managed address's own `Ip4Acd` reads the same Reply
+off its defense socket; Phase 4.4c.)
 
 ---
 
 ## Test coverage audit
 
-### §2.1 / §2.1.1 — ARP Probe wire format
+### §2.1 / §2.1.1 — ARP Probe wire format + count
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
-  — `_send_arp_probe` case asserts the exact 28-byte ARP
-  Probe wire form (`spa=0.0.0.0`, `tha=unspecified`,
-  `tpa=candidate IP`, broadcast L2).
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py::TestIp4AcdEngine::test__ip4_acd__probe_clean_succeeds_and_emits_probes`
+  — a clean `Ip4Acd.probe` emits exactly `ARP__PROBE_NUM`
+  ARP Probes onto the interface's TxRing. The Probe wire
+  form (`oper=REQUEST`, `spa=0.0.0.0`, `tha=unspecified`,
+  `tpa=candidate`, broadcast L2) is built by `Ip4Acd._send`.
+- **Static-host glue:**
+  `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad`
+  — asserts `_create_stack_ip4_addressing` runs the probe
+  (over `Ip4Acd`) before admitting a candidate.
+
+The RFC 5227 §2.1.1 timing constants (`PROBE_WAIT`,
+`PROBE_MIN`/`MAX`, `ANNOUNCE_WAIT`) are read live from the
+`arp.*` sysctls by `Ip4Acd._run_probe`; the engine tests
+collapse them to ~0 for determinism rather than asserting
+wall-clock spacing.
 
 **Status:** locked in.
 
-### §2.1.1 — Probe count, PROBE_WAIT initial delay, inter-probe spacing
+### §2.1.1 — Probe-window conflict detection
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadProbeSequence`
-  (cases at `:394-427`) — asserts the initial PROBE_WAIT
-  random delay, the PROBE_NUM count, and the
-  PROBE_MIN..PROBE_MAX inter-probe spacing.
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py::TestIp4AcdEngine::test__ip4_acd__probe_detects_conflict`
+  — injects a conflicting ARP onto the ACD socket and
+  asserts the probe fails, reporting the peer MAC.
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__conflict.py`
+  — pins the `_is_conflict` predicate across every wire
+  shape (peer using the address; simultaneous probe with
+  `spa=0`, `tpa=candidate`; own-frame and unrelated-address
+  non-conflicts).
 
-**Status:** locked in.
-
-### §2.1.1 — RX-side conflict detection (probe window)
-
-- **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py`
-  (cases at `:109-312`) — drives an inbound conflicting ARP
-  during the probe window and asserts the claim aborts.
-  Covers all four conflict shapes:
-  - gratuitous Request with SPA=candidate
-  - simultaneous-probe (SPA=0, TPA=candidate, foreign SHA)
-  - direct Reply to our probe (`spa=candidate`, `tpa=0`)
-  - gratuitous Reply (broadcast Reply with SPA=candidate)
-- **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDad__ConflictDuringAnnounceWait`
-  — drives a conflict in the post-probe ANNOUNCE_WAIT window
-  and asserts the claim still aborts.
-
-**Status:** locked in.
+**Status:** locked in (detection moved to the userspace
+`Ip4Acd` socket; the stack ARP RX path no longer detects
+conflicts — Phase 4.4c).
 
 ### §2.1.1 — MAX_CONFLICTS / RATE_LIMIT_INTERVAL
 
 - **Unit:**
-  `pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__claiming.py::test__ip4_link_local__claiming_max_conflicts_rate_limits`
   — drives `MAX_CONFLICTS` conflicts in succession, asserts
   the next probe is gated by a `RATE_LIMIT_INTERVAL` sleep.
 
@@ -521,76 +526,77 @@ runs the cache learn.
 path has no candidate-rotation today so the gate is dormant
 there).
 
-### §2.3 — Announcement wire format
+### §2.3 — Announcement wire format + ANNOUNCE_NUM
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxConvenienceHelpers`
-  — `_send_arp_announcement` case asserts the wire bytes
-  (REQUEST opcode, `spa=tpa=our IP`, broadcast L2).
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py::TestIp4AcdEngine::test__ip4_acd__announce_emits_announce_num_frames`
+  — `Ip4Acd.announce` emits exactly `ARP__ANNOUNCE_NUM`
+  gratuitous ARPs (REQUEST opcode, `spa=tpa=address`,
+  built by `Ip4Acd._send`).
+- **Integration:**
+  `..::test__ip4_acd__start_defense_announces_and_holds_socket`
+  — the BOUND-transition announce-and-hold entry emits the
+  ANNOUNCE_NUM burst with no Probes.
+
+**Status:** locked in. (`ANNOUNCE_INTERVAL` is read live from
+the sysctl by `_run_announce`; the engine tests collapse it to
+0 for determinism.)
+
+### §2.4 — Conflict detection (ongoing, on the claimed address)
+
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py::TestIp4AcdEngine::test__ip4_acd__poll_conflict_detects_then_drains`
+  — injects an ARP for the claimed address onto the held
+  defense socket and asserts `poll_conflict` reports the
+  peer MAC then drains.
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__conflict.py`
+  — pins `_is_ongoing_conflict` (peer using the address;
+  bare probe NOT an ongoing conflict; own-frame ignored).
 
 **Status:** locked in.
 
-### §2.3 — ANNOUNCE_NUM=2 + ANNOUNCE_INTERVAL spacing
+### §2.4(b) — Single defensive gratuitous ARP
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__dad.py::TestArpDadAnnounceSequence`
-  (cases at `:313-388`) — asserts two Announcements are
-  emitted, separated by `ARP__ANNOUNCE_INTERVAL`.
+  `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py::TestIp4AcdEngine::test__ip4_acd__defend_emits_gratuitous_arp`
+  — `Ip4Acd.defend` broadcasts exactly one defensive
+  gratuitous ARP for the claimed address.
+
+The per-address DEFEND_INTERVAL / abandon-after-second-
+conflict policy lives in the consuming clients (RFC 3927
+link-local BOUND-conflict handler); `Ip4Acd` supplies the
+`defend` / `release` mechanism.
 
 **Status:** locked in.
 
-### §2.4 — Conflict detection (Request and Reply)
+### §2.4(a) — Abandon on sustained conflict (DHCPv4)
 
 - **Unit:**
-  `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__conflict_defend`
-  — asserts a Request with SPA = our IP and SHA != our MAC
-  triggers the defense path.
-- **Unit:**
-  `..::TestPacketHandlerArpRxReply::test__stack__packet_handler__arp__rx__reply_conflict_defend`
-  — same for Reply.
-
-**Status:** locked in.
-
-### §2.4(b) — DEFEND_INTERVAL rate-limit + first-defense behaviour
-
-- **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__FirstConflict`
-  (cases at `:122-232`) — asserts first conflict triggers
-  exactly one gratuitous Announcement.
-- **Integration:**
-  `..::TestArpDefendInterval__PerIpIndependence` — asserts
-  per-IP timestamps don't cross-contaminate defenses.
-
-**Status:** locked in.
-
-### §2.4(b) — Abandon after second conflict in DEFEND_INTERVAL
-
-- **Integration:**
-  `pytcp/tests/integration/protocols/arp/test__arp__defend_interval.py::TestArpDefendInterval__SecondConflictAbandons`
-  — asserts the second conflict within `DEFEND_INTERVAL`
-  drops the address from `_ip4_host` and ABORTs bound
-  sessions.
+  `packages/pytcp/pytcp/tests/unit/protocols/dhcp4/test__dhcp4__client.py::TestDhcp4ClientLeaseLifecycle::test__dhcp4_client__do_bound_conflict_declines_and_resets_to_init`
+  — a BOUND-state `Ip4Acd.poll_conflict` hit makes the client
+  emit DHCPDECLINE, release the claim, and re-enter INIT.
 
 **Status:** locked in.
 
 ### §2.4-final — Reset connections before abandoning (SHOULD)
 
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__RemoveHost`
-  (cases at `:188-225`) — asserts `remove_host` issues
-  `SysCall.ABORT` to every `TcpSession` bound to the
-  removed address.
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__address.py::TestIp4AddressApiRemoveHost::test__ip4_address_api__remove_host_default_aborts_bound_sessions`
+  — asserts `remove_ifaddr` issues `SysCall.ABORT` to every
+  `TcpSession` bound to the removed address (the shared
+  abandon teardown).
 - **Unit:**
-  `pytcp/tests/unit/lib/test__lib__address_api.py::TestIp4AddressApi__AbortBoundTcpSessions`
-  (cases at `:394-469`) — asserts the standalone primitive
-  is consumer-callable for RFC 3927 §2.5(a) abandon paths.
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__address.py::TestIp4AddressApiAbortBoundSessions`
+  — asserts the standalone primitive is consumer-callable
+  for RFC 3927 §2.5(a) abandon paths.
 
 **Status:** locked in.
 
 ### §2.5 — Continuing operation (Reply to Request)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — "request for stack MAC, broadcasted" and "request for
   stack MAC, unicasted" both verify a Reply is emitted
   with the correct field swap.
@@ -610,7 +616,7 @@ the §2.6 broadcast form either.
 ### §1.2.1 — Broadcast Reply handling
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — gratuitous-Reply (broadcast L2, SPA=SPA=peer-IP) case
   asserts the cache-learn path runs.
 
@@ -650,7 +656,7 @@ the §2.6 broadcast form either.
 | §2.1.1      | PROBE_WAIT initial 0..PROBE_WAIT random delay | met                                        |
 | §2.1.1      | PROBE_NUM = 3                                | met                                         |
 | §2.1.1      | PROBE_MIN..PROBE_MAX inter-probe spacing     | met                                         |
-| §2.1.1      | RX-side conflict registration                | met (via `DadSlotRegistry`)                 |
+| §2.1.1      | Probe-window conflict detection              | met (via `Ip4Acd` socket)                   |
 | §2.1.1      | Conflict aborts claim end-to-end             | met                                         |
 | §2.1.1      | Simultaneous-probe (SPA = 0) detection       | met                                         |
 | §2.1.1      | Self-loopback ignore (NOTE)                  | met                                         |
@@ -660,11 +666,11 @@ the §2.6 broadcast form either.
 | §2.3        | Announcement wire format                     | met                                         |
 | §2.3        | ANNOUNCE_NUM = 2, ANNOUNCE_INTERVAL = 2 s    | met                                         |
 | §2.4        | Ongoing conflict detection                   | met                                         |
-| §2.4 (a)    | Immediate-abandon path (consumer-controlled) | partial (default declines (a); subscribe_conflicts exposes it) |
-| §2.4 (b)    | Defense via single gratuitous Announcement   | met (DEFEND_INTERVAL rate-limited)          |
-| §2.4 (b)    | DEFEND_INTERVAL rate-limit                   | met                                         |
-| §2.4 (b)    | Abandon after second conflict                | met                                         |
-| §2.4 (c)    | Indefinite-defend mode                       | n/a (not configured; (b) abandon supersedes) |
+| §2.4 (a)    | Immediate-abandon path                       | met (DHCPv4: DECLINE + re-acquire)          |
+| §2.4 (b)    | Defense via single gratuitous Announcement   | met (`Ip4Acd.defend`)                       |
+| §2.4 (b)    | DEFEND_INTERVAL rate-limit                   | met (consumer policy)                       |
+| §2.4 (b)    | Abandon after second conflict                | met (link-local §2.5 tree)                  |
+| §2.4 (c)    | Indefinite-defend mode                       | partial (not configured; (b) abandon supersedes) |
 | §2.4 final  | Reset connections before abandon (SHOULD)    | met                                         |
 | §2.5        | Reply to Requests during use                 | met                                         |
 | §2.5        | Reply to Probe Requests (SPA = 0)            | met                                         |
@@ -673,18 +679,21 @@ the §2.6 broadcast form either.
 
 PyTCP fully implements RFC 5227 for IPv4 ACD. Every Phase-1
 normative requirement is met; the only "partial" entry is
-§2.4(a) immediate-abandon, which the RFC explicitly lists as
-a MAY option not chosen by the default policy — and consumers
-who want (a)-mode semantics can wire it via the
-conflict-subscription surface (`subscribe_conflicts` →
-`remove_host(abort_bound_sessions=True)`).
+§2.4(c) indefinite-defend, which the RFC lists as a MAY mode
+not chosen by the default policy (managed-address consumers
+defend once then abandon per §2.4(b)).
 
-The ACD machinery has clean Phase-3 boundaries: all consumer
-access flows through `pytcp.stack.address` (`Ip4AddressApi`);
-the underlying `_arp_dad_*` and `_send_gratuitous_arp`
-helpers on `PacketHandler` are implementation detail. DHCPv4
-and RFC 3927 link-local both consume the public API, not
-the internals.
+As of Phase 4.4 the ACD machinery is a **userspace** function
+over the `Ip4Acd` engine, mirroring Linux `sd-ipv4acd` — the
+kernel-equivalent stack ARP RX path performs no conflict
+detection. Each managed address (DHCPv4 lease, RFC 3927
+link-local) runs its own `Ip4Acd` over a per-address AF_PACKET
+socket; a statically configured address gets probe + announce
+only, no ongoing defender (bare `ip addr add`). `Ip4AddressApi`
+(`pytcp.stack.address`) is the pure `ip addr` surface; the
+former in-RX `_handle_arp_conflict` / `_arp_dad_*` machinery
+and the `claim_with_acd` / `probe` / `announce` API wrappers
+were removed in Phase 4.4c.
 
 ### History
 
@@ -701,5 +710,8 @@ the internals.
 - RFC 3927 link-local track (commits `b48d7fc3` → `8f09846b`)
   closed MAX_CONFLICTS / RATE_LIMIT_INTERVAL via the
   candidate-rotation loop.
+- Userspace ACD migration (Phase 4.1-4.4c) moved all ACD onto
+  the `Ip4Acd` AF_PACKET engine and deleted the in-RX conflict
+  detector + probe-time DAD machinery (the `sd-ipv4acd` model).
 - Audit refresh (this commit) re-derived every adherence
   verdict from the current code state.

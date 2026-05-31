@@ -12,8 +12,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 9131. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
-plus `pytcp/runtime/packet_handler/__init__.py` directly.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
+plus `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
 **n/a**.
@@ -55,7 +55,7 @@ track per CLAUDE.md Project North Star.
 
 **Adherence:** met.
 `send_icmp6_neighbor_advertisement_gratuitous` at
-`pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
 emits the gratuitous NA:
 
 ```python
@@ -71,7 +71,7 @@ for _ in range(nd__constants.ICMP6__GRATUITOUS_NA_COUNT):
 ```
 
 The DAD-success caller at
-`pytcp/runtime/packet_handler/__init__.py:1580-1585`
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1580-1585`
 invokes the helper immediately after the DAD slot
 declares the address VALID:
 
@@ -112,7 +112,7 @@ lossy links can bump it to 2 or 3.
 
 **Adherence:** met. The `icmp6.gratuitous_na_count`
 sysctl (declared in
-`pytcp/protocols/icmp6/nd/nd__constants.py`) is the
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__constants.py`) is the
 on/off + emit-count knob. Setting it to 0 disables
 gratuitous NA emission entirely; the DAD-success path
 falls through the helper's for-loop trivially without
@@ -156,7 +156,7 @@ gratuitous NAs equally.
 ### §3 Host-side gratuitous NA on DAD success
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__gratuitous_na.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__gratuitous_na.py`
   — drives an address claim through DAD success, asserts
   the gratuitous NA(s) appear on the wire with the
   correct wire shape (target = address, dst = ff02::1,
@@ -208,7 +208,7 @@ lands.
   path that triggers the gratuitous NA emit.
 - IPv4 parallel: `docs/rfc/arp/rfc5227__ipv4_acd/adherence.md`
   §2.3 (gratuitous ARP Announcement after DAD).
-- Source: `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
+- Source: `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py:480-512`
   (`send_icmp6_neighbor_advertisement_gratuitous`),
-  `pytcp/runtime/packet_handler/__init__.py:1580-1585`
+  `packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1580-1585`
   (DAD-success trigger).

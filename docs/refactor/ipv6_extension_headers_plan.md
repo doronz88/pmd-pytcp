@@ -1,8 +1,14 @@
 # IPv6 Extension Headers — Deployment Plan
 
-**Status:** ready to execute (post-compaction).
-**Branch:** `PyTCP_3_0__pre_release`.
-**Resume prompt:** see §10 — paste the prompt verbatim after a `/compact` or new conversation start.
+**Status:** **SHIPPED** on `PyTCP_3_0_6`. All phases landed: the
+`Ip6_HBH` / `IP6_ROUTING` / `IP6_DEST_OPTS` / `IP6_NO_NEXT_HEADER`
+`IpProto` members, the typed HBH / Destination-Options / Routing-Header
+parsers + options (`packages/net_proto/net_proto/protocols/ip6_hbh/`,
+`ip6_dest_opts/`, `ip6_routing/`), the IPv6 RX chain-walker dispatch,
+and the RFC 8200 / RFC 5095 adherence records. The sections below are
+retained as the implementation guide / archaeology.
+**Branch:** delivered on `PyTCP_3_0_6` (this plan was authored on the
+earlier `PyTCP_3_0__pre_release` line).
 
 ---
 
@@ -62,7 +68,7 @@ correctness on real networks.
 - **Inbound IPv6 packets carrying any non-Frag extension header
   are dropped with Parameter Problem code 1.** The catch-all
   unrecognized-next-header path in
-  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
   rejects HBH (next=0), Routing (43), DestOpts (60). Linux
   freely uses these; PyTCP silently breaks interop with hosts
   that send them.
@@ -86,15 +92,15 @@ correctness on real networks.
 
 | Component | RFC | Files added | Notes |
 |---|---|---|---|
-| Hop-by-Hop Options package | 8200 §4.3 | `net_proto/protocols/ip6_hbh/` (6 files + `options/` subdir) | Mirrors `net_proto/protocols/ip6_frag/` shape |
+| Hop-by-Hop Options package | 8200 §4.3 | `packages/net_proto/net_proto/protocols/ip6_hbh/` (6 files + `options/` subdir) | Mirrors `packages/net_proto/net_proto/protocols/ip6_frag/` shape |
 | Pad1, PadN options | 8200 §4.2 | `ip6_hbh/options/ip6_hbh__option__{pad1,padn}.py` | TLV padding |
 | Router Alert option | 2711 | `ip6_hbh/options/ip6_hbh__option__router_alert.py` | Type 0x05, length 2 |
 | Jumbo Payload option | 2675 | `ip6_hbh/options/ip6_hbh__option__jumbo_payload.py` | Type 0xC2, length 4; with payload-length=0 semantics |
 | CALIPSO option | 5570 | `ip6_hbh/options/ip6_hbh__option__calipso.py` | Type 0x07; shallow (DOI + opaque tags), Linux NetLabel parity |
-| Destination Options package | 8200 §4.6 | `net_proto/protocols/ip6_dest_opts/` | Same shape as `ip6_hbh/` |
+| Destination Options package | 8200 §4.6 | `packages/net_proto/net_proto/protocols/ip6_dest_opts/` | Same shape as `ip6_hbh/` |
 | Destination Options Pad1, PadN | 8200 §4.2 | `ip6_dest_opts/options/...` | Re-use Pad1/PadN — see decision §3.4 |
 | Tunnel Encapsulation Limit | 2473 §4 | `ip6_dest_opts/options/ip6_dest_opts__option__tunnel_encapsulation_limit.py` | Linux parity |
-| Routing Header package | 8200 §4.4 + RFC 5095 | `net_proto/protocols/ip6_routing/` | RH0 hard-drop, others parsed-as-opaque |
+| Routing Header package | 8200 §4.4 + RFC 5095 | `packages/net_proto/net_proto/protocols/ip6_routing/` | RH0 hard-drop, others parsed-as-opaque |
 | Chain-walker dispatch | 8200 §4.1 + §4.2 | edits in `packet_handler__ip6__rx.py` | Forward chain walk; Frag re-entry preserved |
 | MLDv2 HBH Router Alert | 3810 §5 + 2711 | edits in `packet_handler__icmp6__tx.py` (or wherever MLDv2 reports are emitted) | Outbound MLDv2 reports MUST carry HBH RA |
 | Adherence records | 8200, 5095 | `docs/rfc/ip6/rfc8200__ipv6/adherence.md`, `docs/rfc/ip6/rfc5095__deprecate_rh0/adherence.md` | Phase-by-phase clause-pinning audit |
@@ -147,10 +153,10 @@ the same packet. Concretely:
 ### 3.1 Per-extension package layout
 
 Each extension header gets its own package under
-`net_proto/protocols/`, peer of `ip6_frag/`:
+`packages/net_proto/net_proto/protocols/`, peer of `ip6_frag/`:
 
 ```
-net_proto/protocols/ip6_hbh/
+packages/net_proto/net_proto/protocols/ip6_hbh/
   ip6_hbh__header.py       # frozen dataclass + RFC 8200 §4.3 wire format
   ip6_hbh__base.py         # dunders + property accessors
   ip6_hbh__parser.py       # 3-phase pipeline + chain advance
@@ -309,7 +315,7 @@ transport. Phase-2 forwarders will re-emit the same bytes.
 
 ### 3.8 IpProto enum extensions
 
-`net_proto/lib/enums.py` adds four new members (Phase 0 commit):
+`packages/net_proto/net_proto/lib/enums.py` adds four new members (Phase 0 commit):
 
 ```python
 class IpProto(ProtoEnumByte):
@@ -381,7 +387,7 @@ different agents but each commit is atomic.
 
 ### Phase -1 — Fix `IpProto.IP4` IANA value + decouple BSD `IPPROTO_IP` (1 commit)
 
-**Subject:** `net_proto/enums + pytcp/socket: align IpProto.IP4 with IANA, decouple BSD IPPROTO_IP`
+**Subject:** `packages/net_proto/net_proto/enums + packages/pytcp/pytcp/socket: align IpProto.IP4 with IANA, decouple BSD IPPROTO_IP`
 
 **Why first:** the existing `IpProto.IP4 = 0` (introduced in
 commit `f344cfc04` 2024-09-14 as a rename of the legacy
@@ -402,9 +408,9 @@ because the BSD-spec sentinel `0` doesn't match any of the
 factory's `IpProto.TCP | None` cases.
 
 **Scope:**
-- `net_proto/lib/enums.py`: change `IpProto.IP4 = 0 → IP4 = 4`
+- `packages/net_proto/net_proto/lib/enums.py`: change `IpProto.IP4 = 0 → IP4 = 4`
   (IANA RFC 2003).
-- `pytcp/socket/__init__.py`:
+- `packages/pytcp/pytcp/socket/__init__.py`:
   - `IPPROTO_IP: int = 0` (plain int, decoupled from `IpProto`).
     Inline comment cites BSD `<netinet/in.h>`.
   - Rename `IPPROTO_IP4 → IPPROTO_IPIP` (matches Linux's
@@ -414,7 +420,7 @@ factory's `IpProto.TCP | None` cases.
     BSD `IPPROTO_IP` sentinel (plain int `0`) to `None`
     before dispatch, so `socket(AF_INET, SOCK_STREAM, 0)`
     correctly returns `TcpSocket`.
-- `pytcp/socket/raw__socket.py`:
+- `packages/pytcp/pytcp/socket/raw__socket.py`:
   - Remove the `protocol or IpProto.IP4` / `protocol or IpProto.IP6`
     fallbacks. Raise `OSError(errno.EPROTONOSUPPORT, ...)`
     when no protocol is specified (Linux parity:
@@ -423,10 +429,10 @@ factory's `IpProto.TCP | None` cases.
     more `None`).
 
 **Tests-first (MANDATORY per CLAUDE.md):**
-- `net_proto/tests/unit/lib/test__lib__enums.py`:
+- `packages/net_proto/net_proto/tests/unit/lib/test__lib__enums.py`:
   - `IpProto.IP4` value is `4`, bytes is `b'\x04'`,
     `from_int(4) is IpProto.IP4`, `from_int(0) is not IpProto.IP4`
-- `pytcp/tests/unit/socket/test__socket__base.py`:
+- `packages/pytcp/pytcp/tests/unit/socket/test__socket__base.py`:
   - `IPPROTO_IP == 0` (plain int) and `not isinstance(IPPROTO_IP, IpProto)`
   - `IPPROTO_IPIP is IpProto.IP4`
   - `socket(AF_INET, SOCK_STREAM, IPPROTO_IP)` returns `TcpSocket`
@@ -435,7 +441,7 @@ factory's `IpProto.TCP | None` cases.
   - The old `test__socket__ipproto_aliases` rewritten to reflect
     the new contract (some entries become `is`, others become
     `==` against `int`)
-- `pytcp/tests/unit/socket/test__socket__raw__socket.py`:
+- `packages/pytcp/pytcp/tests/unit/socket/test__socket__raw__socket.py`:
   - `socket(AF_INET, SOCK_RAW)` (no protocol) raises
     `OSError(EPROTONOSUPPORT)`
   - Same for `AF_INET6`
@@ -459,10 +465,10 @@ staging.
 
 ### Phase 0 — IpProto enum extensions (1 commit)
 
-**Subject:** `net_proto/enums: add IP6_HBH/IP6_ROUTING/IP6_DEST_OPTS/IP6_NO_NEXT_HEADER to IpProto`
+**Subject:** `packages/net_proto/net_proto/enums: add IP6_HBH/IP6_ROUTING/IP6_DEST_OPTS/IP6_NO_NEXT_HEADER to IpProto`
 
 **Scope:**
-- Add 4 enum members to `net_proto/lib/enums.py::IpProto`
+- Add 4 enum members to `packages/net_proto/net_proto/lib/enums.py::IpProto`
 - Update `__str__` match for human-readable names ("IPv6_HBH",
   "IPv6_Routing", "IPv6_DestOpts", "IPv6_NoNextHeader")
 - Update `from_proto` factory to map the new packages once
@@ -470,7 +476,7 @@ staging.
   dispatch added yet)
 
 **Tests-first:**
-- `net_proto/tests/unit/lib/test__lib__enums.py` extended with
+- `packages/net_proto/net_proto/tests/unit/lib/test__lib__enums.py` extended with
   parametrized cases for each new member: `IpProto.from_int(0)
   == IP6_HBH` / `IpProto.from_int(43) == IP6_ROUTING` / etc.
 - Verify `__str__` mapping for each.
@@ -480,7 +486,7 @@ members existing.
 
 **Commit message template:**
 ```
-net_proto/enums: add IP6_HBH/IP6_ROUTING/IP6_DEST_OPTS/IP6_NO_NEXT_HEADER
+packages/net_proto/net_proto/enums: add IP6_HBH/IP6_ROUTING/IP6_DEST_OPTS/IP6_NO_NEXT_HEADER
 
 Extends the IpProto enum with the four IANA-assigned
 next-header values that PyTCP's IPv6 RX path will dispatch
@@ -500,7 +506,7 @@ Reference: RFC 8200 §4.7 (No Next Header, next=59).
 **Subject:** `ip6_hbh: package skeleton + Pad1/PadN options`
 
 **Scope:**
-- Create `net_proto/protocols/ip6_hbh/` mirroring `ip6_frag/`
+- Create `packages/net_proto/net_proto/protocols/ip6_hbh/` mirroring `ip6_frag/`
   (header / base / parser / assembler / errors)
 - Wire format per RFC 8200 §4.3:
   - 1-byte Next Header
@@ -539,7 +545,7 @@ Reference: RFC 8200 §4.7 (No Next Header, next=59).
     return-`None`-if-absent — empty until Phases 2-4 land)
 
 **Tests-first (MANDATORY per CLAUDE.md):**
-- `net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__header__asserts.py`
+- `packages/net_proto/net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__header__asserts.py`
   — header dataclass field bounds (`next`, `hdr_ext_len`)
 - `test__ip6_hbh__parser__integrity_checks.py` — every integrity
   branch (truncated frame, hdr_ext_len overrun, options-walk
@@ -567,7 +573,7 @@ clauses RFC 8200 §4.2 (TLV format), RFC 8200 §4.3 (HBH header).
 commit. PyTCP's running stack still drops HBH packets via the
 unrecognized-next-header path. Phase 8 wires it up.
 
-**Re-exports:** `net_proto/__init__.py` adds `Ip6HbhParser`,
+**Re-exports:** `packages/net_proto/net_proto/__init__.py` adds `Ip6HbhParser`,
 `Ip6HbhAssembler`, `Ip6HbhHeader`, `Ip6HbhOptions`,
 `Ip6HbhOptionPad1`, `Ip6HbhOptionPadN`,
 `Ip6HbhIntegrityError`, `Ip6HbhSanityError` to the public
@@ -663,7 +669,7 @@ staging.
 
 **Scope:**
 - Mirror Phase 1 for Destination Options:
-  `net_proto/protocols/ip6_dest_opts/` with header / base /
+  `packages/net_proto/net_proto/protocols/ip6_dest_opts/` with header / base /
   parser / assembler / errors + `options/` subdir.
 - Wire format identical to HBH (RFC 8200 §4.6 references §4.2).
 - TLV options: Pad1, PadN, Unknown — mirrors Phase 1 verbatim
@@ -692,7 +698,7 @@ staging.
 **Subject:** `ip6_routing: package + parser + RH0 hard-drop (RFC 5095 §3)`
 
 **Scope:**
-- `net_proto/protocols/ip6_routing/` (header / base / parser /
+- `packages/net_proto/net_proto/protocols/ip6_routing/` (header / base / parser /
   assembler / errors / `enums.py`)
 - Wire format per RFC 8200 §4.4:
   - Next Header (uint8)
@@ -731,7 +737,7 @@ staging.
 **Subject:** `ip6/rx: chain-walk dispatch with HBH/Routing/DestOpts handlers`
 
 **Scope:**
-- Refactor `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
+- Refactor `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
   per §3.2 above. Add three new handler methods:
   - `_phrx_ip6_hbh(packet_rx)` — calls `Ip6HbhParser`, advances
     `packet_rx.frame`, sets `packet_rx.ip6_hbh`. Applies RFC
@@ -755,7 +761,7 @@ staging.
   currently process IPv6 extension headers") to reflect new
   reality.
 
-**New counters in `pytcp/lib/packet_stats.py`:**
+**New counters in `packages/pytcp/pytcp/lib/packet_stats.py`:**
 - `ip6_hbh__pre_parse`
 - `ip6_hbh__failed_parse`
 - `ip6_hbh__option__skipped`
@@ -777,13 +783,13 @@ guard at `test__lib__packet_stats.py` requires bumping the
 constants.)
 
 **Test-framework state additions:**
-- `pytcp/tests/lib/network_testcase.py` may need updating if
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py` may need updating if
   any new module-level state was introduced. Per the
   `MEMORY.md` rule: every module-level state addition must
   also update `_STACK__PATCHED_ATTRS` in lockstep. (For Phase
   8: probably no module-level state, but check.)
 
-**Tests-first integration matrix (`pytcp/tests/integration/protocols/ip6/`):**
+**Tests-first integration matrix (`packages/pytcp/pytcp/tests/integration/protocols/ip6/`):**
 - `test__ip6__rx__hbh_router_alert.py` — inbound packet with
   HBH carrying Router Alert; verify it reaches the transport
 - `test__ip6__rx__rh0_dropped.py` — RH0 hard-dropped, Param
@@ -816,9 +822,9 @@ Header).
 
 **Scope:**
 - Locate the MLDv2 TX path. (Likely
-  `pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py`
   or a dedicated MLD subsystem at
-  `pytcp/protocols/icmp6/icmp6__mld2*.py` — agent: grep for
+  `packages/pytcp/pytcp/protocols/icmp6/icmp6__mld2*.py` — agent: grep for
   "mld" / "MLDv2" / "Mld2" before starting.)
 - Build an `Ip6HbhAssembler` carrying a single
   `Ip6HbhOptionRouterAlert(value=0)` (value 0 = MLD per RFC
@@ -829,7 +835,7 @@ Header).
   PyTCP follows convention; verify).
 
 **Tests-first integration:**
-- `pytcp/tests/integration/protocols/icmp6/test__mld2__tx__router_alert.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/icmp6/test__mld2__tx__router_alert.py`
   — Triggers an MLDv2 Report emission (e.g. by joining a
   multicast group or driving a query). Captures the outbound
   frame. Asserts:
@@ -893,15 +899,15 @@ to decide based on what they find in the code:
 4. **CALIPSO sysctl knob.** Linux has
    `net.ipv4.ip6_calipso_doi_default`. Should PyTCP add a
    `STACK__IP6__CALIPSO_DEFAULT_DOI` config in
-   `pytcp/stack/__init__.py`? Defer to Phase 2 — no PyTCP
+   `packages/pytcp/pytcp/stack/__init__.py`? Defer to Phase 2 — no PyTCP
    consumer yet.
 
 5. **Test counter-bumping discipline.** Each new counter
-   added to `pytcp/lib/packet_stats.py` requires updating the
+   added to `packages/pytcp/pytcp/lib/packet_stats.py` requires updating the
    `field_count` constants in the test guard. Phase 8 adds
    ~15 counters; verify the guard is updated in lockstep.
 
-6. **Re-export naming in `net_proto/__init__.py`.** Should
+6. **Re-export naming in `packages/net_proto/net_proto/__init__.py`.** Should
    `Ip6HbhOptions`'s individual options be re-exported by
    short name (`Ip6HbhOptionRouterAlert` → `Ip6HbhRA`) or
    full name? Convention from IPv4 options is full name. Use
@@ -956,11 +962,11 @@ Phase 9: 1 integration test file (MLDv2 outbound RA byte-exact).
 
 ### 7.3 Existing tests that may need updates
 
-- `net_proto/tests/unit/lib/test__lib__enums.py` — add new
+- `packages/net_proto/net_proto/tests/unit/lib/test__lib__enums.py` — add new
   IpProto member coverage (Phase 0).
-- `pytcp/tests/unit/lib/test__lib__packet_stats.py` — bump
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__packet_stats.py` — bump
   `field_count` constants for the ~15 new counters (Phase 8).
-- `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__rx.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip6__rx.py`
   — golden frame matrices may need an HBH/DestOpts/Routing
   case added; spot-check after Phase 8.
 
@@ -1025,14 +1031,14 @@ Phase 8 adds ~15 counters. Each requires bumping the
 `field_count` constants in
 `test__lib__packet_stats.py` AND any handler-level test
 guards. Easy to miss — verify with a `grep -nE
-"field_count" pytcp/tests/`.
+"field_count" packages/pytcp/pytcp/tests/`.
 
 ### 8.3 Test-framework state (per `MEMORY.md` rule)
 
 If any phase adds module-level state to
-`pytcp/stack/__init__.py` (config knobs, dicts, etc.), the
+`packages/pytcp/pytcp/stack/__init__.py` (config knobs, dicts, etc.), the
 same commit MUST update `_STACK__PATCHED_ATTRS` in
-`pytcp/tests/lib/network_testcase.py`. Failing this leads to
+`packages/pytcp/pytcp/tests/lib/network_testcase.py`. Failing this leads to
 "passes-in-isolation, fails-in-suite" bugs.
 
 This plan doesn't currently introduce module-level state,
@@ -1155,10 +1161,10 @@ anything not covered by the plan.
   `d9f4c50e`, `995a5587`, `1439bbd6`, `822f5dce`, `19c169de`,
   `00a0ee7b`, `388e035b`
 - Existing extension-header implementation:
-  `net_proto/protocols/ip6_frag/`,
-  `pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`
+  `packages/net_proto/net_proto/protocols/ip6_frag/`,
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py`
 - IPv6 RX dispatch entry point:
-  `pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py:151-167`
 - RFCs in-tree:
   - `docs/rfc/ip6/rfc8200__ipv6/rfc8200.txt`
   - `docs/rfc/ip6/rfc5095__deprecate_rh0/rfc5095.txt`

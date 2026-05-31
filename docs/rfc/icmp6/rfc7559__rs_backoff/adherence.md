@@ -12,7 +12,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 7559. The audit was performed by reading the RFC
 text fresh and inspecting
-`pytcp/runtime/packet_handler/__init__.py` directly.
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py` directly.
 
 Adherence levels: **met**, **partial**, **not implemented**,
 **n/a**.
@@ -47,7 +47,7 @@ releases. All four timing constants are sysctl-tunable.
 
 **Adherence:** met.
 `_send_icmp6_nd_router_solicitations_with_backoff` at
-`pytcp/runtime/packet_handler/__init__.py:1431-1456`
+`packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1431-1456`
 implements the algorithm:
 
 ```python
@@ -105,7 +105,7 @@ RS goes out.
 
 **Adherence:** met (sysctl-backed). The three RFC 7559
 constants are sysctl-registered in
-`pytcp/protocols/icmp6/nd/nd__constants.py`:
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__constants.py`:
 
 | Sysctl key                            | RFC 7559 name           | Default |
 |---------------------------------------|-------------------------|---------|
@@ -124,7 +124,7 @@ finer jitter knob; the spec value is universally fine).
 ### §2 Backoff algorithm
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`
   — drives a sequence of RS emissions with no RA
   response, asserts the inter-RS spacing follows the
   RT, 2*RT, 4*RT, ... up to MRT progression and the
@@ -135,7 +135,7 @@ finer jitter knob; the spec value is universally fine).
 ### §3 RA receipt short-circuit
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py`
   — drives an RA mid-backoff and asserts no further RS
   is emitted.
 
@@ -174,5 +174,5 @@ thread wakes immediately.
   — parent classification (MUST).
 - `docs/rfc/icmp6/rfc4861__ipv6_nd/adherence.md` — parent
   ND record.
-- Source: `pytcp/runtime/packet_handler/__init__.py:1431-1456`
+- Source: `packages/pytcp/pytcp/runtime/packet_handler/__init__.py:1431-1456`
   (`_send_icmp6_nd_router_solicitations_with_backoff`).

@@ -12,9 +12,9 @@
 This document records, paragraph by paragraph, how the current
 PyTCP codebase relates to each normative statement in RFC 826.
 The audit was performed by reading the RFC text fresh and
-inspecting the codebase under `net_proto/protocols/arp/`,
-`pytcp/stack/arp_cache.py`, and
-`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
+inspecting the codebase under `packages/net_proto/net_proto/protocols/arp/`,
+`packages/pytcp/pytcp/stack/arp_cache.py`, and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
 directly. Adherence levels use the canonical descriptive
 language: **met**, **not met**, **partial**, **not implemented**,
 **vacuous**.
@@ -48,9 +48,9 @@ audited in
 
 **Adherence:** **met**. PyTCP defines `ArpOperation.REQUEST =
 0x0001` and `ArpOperation.REPLY = 0x0002`
-(`net_proto/protocols/arp/arp__enums.py:49-50`); it defines
+(`packages/net_proto/net_proto/protocols/arp/arp__enums.py:49-50`); it defines
 `ArpHardwareType.ETHERNET = 0x0001`
-(`net_proto/protocols/arp/arp__enums.py:41`). Both enums
+(`packages/net_proto/net_proto/protocols/arp/arp__enums.py:41`). Both enums
 inherit `ProtoEnumWord`, giving big-endian 16-bit wire
 encoding ("high byte transmitted first").
 
@@ -72,9 +72,9 @@ encoding ("high byte transmitted first").
 **Adherence:** **met**. The on-the-wire layout is fixed at 28
 bytes for Ethernet/IPv4 ARP:
 `ARP__HEADER__LEN = 28`
-(`net_proto/protocols/arp/arp__header.py:67`),
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:67`),
 `ARP__HEADER__STRUCT = "! HH BBH 6s L 6s L"`
-(`net_proto/protocols/arp/arp__header.py:68`). The struct
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:68`). The struct
 format pins big-endian (`!`) byte order. Field lengths in
 the struct match the RFC: 2-byte hrtype, 2-byte prtype,
 1-byte hrlen, 1-byte prlen, 2-byte oper, 6-byte sha (Ethernet
@@ -86,7 +86,7 @@ MAC), 4-byte spa (IPv4), 6-byte tha, 4-byte tpa.
 **Adherence:** **met**. The leading `!` in
 `ARP__HEADER__STRUCT` enforces network (big-endian) byte
 order on every pack/unpack
-(`net_proto/protocols/arp/arp__header.py:68,135-148,159`).
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:68,135-148,159`).
 
 > "There are no padding bytes between addresses."
 
@@ -107,15 +107,15 @@ bytes, matching `ARP__HEADER__LEN`.
 **Adherence:** **partial**. On a cache miss, PyTCP discards
 the original packet and generates an ARP Request via
 `send_arp_request()`
-(`pytcp/stack/arp_cache.py:175-181`,
-`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:231-255`).
+(`packages/pytcp/pytcp/stack/arp_cache.py:175-181`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:231-255`).
 It does **not** save / requeue the discarded packet (RFC 1122
 §2.3.2.2 SHOULD; see
 [`../rfc1122__host_requirements_arp/adherence.md`](../rfc1122__host_requirements_arp/adherence.md)).
 The Ethernet type field on outbound ARP frames resolves
 via `EtherType.from_proto(ArpAssembler) = EtherType.ARP =
 0x0806` (the runtime
-`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`
 selects EtherType from the payload class).
 
 > "The Address Resolution module then sets the ar$hrd field
@@ -129,13 +129,13 @@ selects EtherType from the payload class).
 
 **Adherence:** **met**. The `ArpHeader` dataclass forces
 hrtype/prtype/hrlen/prlen via `field(init=False, default=...)`
-(`net_proto/protocols/arp/arp__header.py:77-96`), so any
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:77-96`), so any
 caller-constructed Request gets the correct
 ETHERNET/IP4/6/4 quadruplet. `send_arp_request()` populates
 sha = our MAC, spa = our first IP (or `0.0.0.0` if none
 claimed yet), tpa = caller's target, and tha = `MacAddress()`
 (unspecified)
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:231-244`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:231-244`).
 
 > "It does not set ar$tha to anything in particular, because
 > it is this value that it is trying to determine. It could
@@ -145,7 +145,7 @@ claimed yet), tpa = caller's target, and tha = `MacAddress()`
 
 **Adherence:** **met**. PyTCP sets `arp__tha = MacAddress()`
 (unspecified, all-zeroes) on outbound Requests
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:242,182,130`
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:242,182,130`
 across `send_arp_request`, `_send_arp_probe`, and
 `_send_arp_announcement`). This is the more-specified of the
 two RFC-permitted choices and aligns with Linux's ARP code.
@@ -159,7 +159,7 @@ two RFC-permitted choices and aligns with Linux's ARP code.
 `_send_gratuitous_arp` all set `ethernet__dst =
 MacAddress(0xFFFFFFFFFFFF)` (FF:FF:FF:FF:FF:FF) on the
 outbound Ethernet frame
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:126,152,178,238`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:126,152,178,238`).
 
 ---
 
@@ -173,19 +173,19 @@ outbound Ethernet frame
 **Adherence:** **met**. Integrity checks reject any frame
 that does not match the Ethernet/IPv4 quadruplet:
 - `hrtype != ETHERNET` → `ArpIntegrityError`
-  (`net_proto/protocols/arp/arp__parser.py:84-85`)
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:84-85`)
 - `prtype != IP4` → `ArpIntegrityError`
-  (`net_proto/protocols/arp/arp__parser.py:87-88`)
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:87-88`)
 - `hrlen != 6` → `ArpIntegrityError`
-  (`net_proto/protocols/arp/arp__parser.py:90-91`)
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:90-91`)
 - `prlen != 4` → `ArpIntegrityError`
-  (`net_proto/protocols/arp/arp__parser.py:93-94`)
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py:93-94`)
 
 The "Negative conditionals indicate an end of processing and
 a discarding of the packet" rule is observed: integrity
 errors bump `arp__failed_parse__drop` and return without
 generating a reply
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:99-104`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:99-104`).
 
 > "Merge_flag := false. If the pair <protocol type, sender
 > protocol address> is already in my translation table,
@@ -196,7 +196,7 @@ generating a reply
 **Adherence:** **partial**. The cache merge happens
 unconditionally at the end of `__phrx_arp__request` and
 `__phrx_arp__reply` via `__update_arp_cache`
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
 but the call is **gated** by three conditions:
 1. `packet_rx.arp.spa in host.network` (the sender IP must
    belong to one of our local subnets);
@@ -217,7 +217,7 @@ a local subnet (the `arp_accept` / `arp_announce` /
 The `Merge_flag` itself is not represented as an explicit
 boolean — the code path simply re-enters `add_entry`, which
 overwrites any existing entry in the dict
-(`pytcp/stack/arp_cache.py:144-159`).
+(`packages/pytcp/pytcp/stack/arp_cache.py:144-159`).
 
 > "?Am I the target protocol address? Yes: If Merge_flag is
 > false, add the triplet <protocol type, sender protocol
@@ -228,7 +228,7 @@ overwrites any existing entry in the dict
 `packet_rx.arp.tpa in self._ip4_unicast` to gate the
 Reply path and distinguishes "TPA matches us" from "TPA is
 unknown"
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:207-242`),
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:207-242`),
 but the cache merge in `__update_arp_cache` runs for both
 branches (the merge does not require "I am the target"). RFC
 826's algorithm only merges on the "Am I the target?" path
@@ -254,8 +254,8 @@ prefer the cache-warming behaviour.
 incoming tpa>` (our IP that was being asked about),
 `arp__tha=<the incoming sha>` (requester's MAC),
 `arp__tpa=<the incoming spa>` (requester's IP)
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:237-242`,
-`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:197-229`).
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:237-242`,
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:197-229`).
 The Reply uses `arp__oper=ArpOperation.REPLY` and is unicast
 back to the requester (`ethernet__dst=arp__tha`). The
 "on the same hardware on which the request was received"
@@ -267,7 +267,7 @@ clause is vacuous in PyTCP's single-interface stack.
 
 **Adherence:** **met (semantically)**. PyTCP's RX flow
 inspects `oper` first to dispatch
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:108-118`)
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:108-118`)
 and the cache merge is performed at the bottom of each
 `__phrx_arp__{request,reply}` call before the function
 returns, but in both branches the merge runs
@@ -288,7 +288,7 @@ preserved.
 **Adherence:** **met**. `ArpCache.add_entry()` performs an
 unconditional dict replace —
 `self._arp_cache[ip4_address] = CacheEntry(...)`
-(`pytcp/stack/arp_cache.py:144-159`) — so a fresher SHA
+(`packages/pytcp/pytcp/stack/arp_cache.py:144-159`) — so a fresher SHA
 overrides the stale one immediately.
 
 ---
@@ -304,7 +304,7 @@ overrides the stale one immediately.
 implements only `<ar$hrd, ar$hln> = <1, 6>` (Ethernet); the
 parser rejects every other hardware type as an integrity
 error
-(`net_proto/protocols/arp/arp__parser.py:84-85,90-91`).
+(`packages/net_proto/net_proto/protocols/arp/arp__parser.py:84-85,90-91`).
 RFC 5494 §3 marks `0` and `65535` as reserved; PyTCP rejects
 them as part of the "must equal ETHERNET = 1" check.
 Non-Ethernet hardware (Packet Radio, FDDI, ATM, etc.) is
@@ -318,7 +318,7 @@ out of scope per the project North Star.
 **Adherence:** **vacuous**. PyTCP supports only
 `<ar$hrd, ar$pro> = <ETHERNET, IP4>`; the protocol field is
 hard-locked via `field(init=False, default=EtherType.IP4)`
-(`net_proto/protocols/arp/arp__header.py:82-86`).
+(`packages/net_proto/net_proto/protocols/arp/arp__header.py:82-86`).
 
 ---
 
@@ -360,7 +360,7 @@ desync from `hrtype` / `prtype`.
 **Adherence:** **met**. PyTCP populates `tpa` on outbound
 Replies (`_send_arp_reply` sets `arp__tpa=<the requester's
 spa>`,
-`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:215`),
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:215`),
 matching the RFC's "included for completeness".
 
 > "The target hardware address is included for completeness
@@ -373,35 +373,54 @@ matching the RFC's "included for completeness".
 (unspecified) on outbound Requests and `tha =
 <requester's sha>` on outbound Replies; the wire form
 matches the RFC narrative
-(`pytcp/runtime/packet_handler/packet_handler__arp__tx.py:130,156,182,242`
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py:130,156,182,242`
 for Requests and probes/announcements/gratuitous ARP;
 `:215` for Replies).
 
 ---
 
-## Sanity checks beyond the RFC
+## Sanity checks — RFC backing
 
-PyTCP's `_validate_sanity` enforces a number of additional
-invariants that RFC 826 does not require but that any
-sensible implementation enforces (and that Linux applies via
-`net/ipv4/arp.c::arp_rcv` filters):
+PyTCP's `_validate_sanity` enforces invariants that fall under
+several RFCs other than 826 plus one PyTCP-only hardening
+rule. Each check below cites the canonical source:
 
-- `oper` must be REQUEST or REPLY; unknown opcodes raise
-  `ArpSanityError`
-  (`net_proto/protocols/arp/arp__parser.py:110-114`).
-- `sha` must not be unspecified, multicast, or broadcast
-  (`net_proto/protocols/arp/arp__parser.py:116-123`).
-- For Replies: `spa` must not be unspecified
-  (`net_proto/protocols/arp/arp__parser.py:125-130`).
-- `spa` must not be multicast or limited broadcast
-  (`net_proto/protocols/arp/arp__parser.py:132-138`).
-- If the parent Ethernet frame is available, the ARP `sha`
-  must equal `ethernet.src`
-  (`net_proto/protocols/arp/arp__parser.py:140-145`).
+- **`oper` must be REQUEST or REPLY.** RFC 826 *Definitions*
+  (only `ares_op$REQUEST=1` and `ares_op$REPLY=2` are defined
+  for IPv4 ARP); RFC 5494 §3 marks `oper=0` and `oper=65535`
+  as reserved. Unknown opcodes raise `ArpSanityError`
+  (`packages/net_proto/net_proto/protocols/arp/arp__parser.py`).
+- **`sha` must not be unspecified / multicast / broadcast.**
+  RFC 826 *Packet Generation* "ar$sha with the 48.bit
+  ethernet address of itself"; RFC 5227 §1.1 reinforces "MUST
+  contain the hardware address of the interface sending the
+  packet"; IEEE 802.3 forbids the all-zeros, group-bit-set,
+  or all-ones MAC as a unicast source.
+- **REPLY `spa` must not be unspecified.** RFC 5227 §1.1 —
+  `spa=0.0.0.0` is reserved for ARP Probes (Request form
+  only); a Reply with `spa=0.0.0.0` is malformed.
+- **`spa` must not be loopback / multicast / limited
+  broadcast.** RFC 1122 §3.2.1.3 — a sender's IPv4 source
+  address MUST NOT be 127/8, 224/4, or 255.255.255.255.
+- **`tpa` must not be multicast / limited broadcast.**
+  RFC 1112 §6.4 — IPv4 multicast resolves algorithmically
+  to `01:00:5e:xx:xx:xx`, bypassing ARP entirely. Limited
+  broadcast resolves to `ff:ff:ff:ff:ff:ff` directly. Neither
+  is ever a legitimate ARP target. **Stricter than Linux**,
+  which does not filter these at `arp_rcv`.
 
-These are **not normative under RFC 826** but are also not
-inconsistent with it; they harden the parser against
-malformed or hostile traffic.
+The RFC-backed checks above are normative under their cited
+RFCs even though RFC 826 itself is silent on the point. The
+two PyTCP-only hardenings (`tpa.is_multicast` and
+`tpa.is_limited_broadcast`) are explicit local policy and are
+documented as such in the parser source.
+
+A previous PyTCP-only check that required ARP `sha` to equal
+the parent Ethernet `src` was removed (commit on the
+`PyTCP_3_0_6` branch): it was not RFC-normative, Linux's
+`net/ipv4/arp.c::arp_rcv` does not enforce it, and the value
+of catching cross-layer MAC drift is more naturally a
+receiver-policy concern than a parser-level invariant.
 
 ---
 
@@ -414,11 +433,11 @@ malformed or hostile traffic.
 **Adherence:** **met (in scope of RFC 1122)**. RFC 826
 explicitly defers aging to the implementation. PyTCP
 implements timeout-based aging in `ArpCache._subsystem_loop`
-(`pytcp/stack/arp_cache.py:106-142`), with
+(`packages/pytcp/pytcp/stack/arp_cache.py:106-142`), with
 `stack.ARP__CACHE__ENTRY_MAX_AGE = 3600` seconds
-(`pytcp/stack/__init__.py:137`) and a refresh window of
+(`packages/pytcp/pytcp/stack/__init__.py:137`) and a refresh window of
 `stack.ARP__CACHE__ENTRY_REFRESH_TIME = 300` seconds
-(`pytcp/stack/__init__.py:138`). The full audit of the
+(`packages/pytcp/pytcp/stack/__init__.py:138`). The full audit of the
 host-requirements layer (RFC 1122 §2.3.2) lives at
 [`../rfc1122__host_requirements_arp/adherence.md`](../rfc1122__host_requirements_arp/adherence.md).
 
@@ -434,7 +453,7 @@ PyTCP runs a refresh attempt for entries with `hit_count >
 0` whose age has crossed the `ARP__CACHE__ENTRY_MAX_AGE -
 ARP__CACHE__ENTRY_REFRESH_TIME` threshold, but the refresh
 goes out as a **broadcast ARP Request**
-(`pytcp/stack/arp_cache.py:127-139` →
+(`packages/pytcp/pytcp/stack/arp_cache.py:127-139` →
 `packet_handler.send_arp_request(arp__tpa=...)` →
 `packet_handler__arp__tx.py:238` `ethernet__dst =
 0xFFFFFFFFFFFF`). Linux uses the unicast-probe form (see
@@ -450,11 +469,11 @@ more link bandwidth.
 ### Wire format / `ArpHeader` dataclass
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderAsserts`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderAsserts`
   — asserts that every field rejects a wrong type
   (`oper`, `sha`, `spa`, `tha`, `tpa`).
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__hrtype_default`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py::TestArpHeaderDefaults::test__arp__header__hrtype_default`
   / `..._prtype_default` / `..._hrlen_default` /
   `..._prlen_default` — asserts the four `field(init=False,
   default=...)` constants.
@@ -477,7 +496,7 @@ more link bandwidth.
 ### Integrity checks (RFC 826 hardware/protocol-type guards)
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__parser__integrity_checks.py::TestArpParserIntegrityChecks::test__arp__parser__integrity_error`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__integrity_checks.py::TestArpParserIntegrityChecks::test__arp__parser__integrity_error`
   — parametrised matrix of `hrtype != ETHERNET`,
   `prtype != IP4`, `hrlen != 6`, `prlen != 4`, and
   `len(frame) < ARP__HEADER__LEN`. Each case asserts
@@ -488,21 +507,32 @@ more link bandwidth.
 
 **Status:** **locked in**.
 
-### Sanity checks beyond RFC 826
+### Sanity checks — RFC backing
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py::TestArpParserSanityChecks::test__arp__parser__sanity_error`
+  `packages/net_proto/net_proto/tests/unit/protocols/arp/test__arp__parser__sanity_checks.py::TestArpParserSanityChecks::test__arp__parser__sanity_error`
   — parametrised matrix covering every `_validate_sanity`
-  branch (unknown opcode; sha = unspecified / multicast /
-  broadcast; reply with spa = unspecified; spa = multicast
-  / limited-broadcast; SHA / Ethernet-src mismatch).
+  branch: unknown opcode (RFC 826 / 5494 §3); sha =
+  unspecified / multicast / broadcast (RFC 826 + 5227 §1.1 +
+  IEEE 802.3); reply with spa = unspecified (RFC 5227 §1.1);
+  spa = loopback / multicast / limited-broadcast (RFC 1122
+  §3.2.1.3); tpa = multicast / limited-broadcast (RFC 1112
+  §6.4).
+- **Unit:**
+  `..._sanity__valid_reply_parses_cleanly` /
+  `..._sanity__request_with_unspecified_spa_allowed` /
+  `..._sanity__sha_mismatch_with_ethernet_src_allowed` —
+  happy-path coverage: valid Reply parses; ARP Probe with
+  spa=0.0.0.0 parses (RFC 5227 §1.1); ARP frame whose sha
+  differs from the parent Ethernet src parses (regression net
+  against re-introducing the dropped PyTCP-only hardening).
 
 **Status:** **locked in**.
 
 ### Packet Reception — Request handling (algorithm body)
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — parametrised matrix covering: unknown TPA on local
   network (drop, no reply); unknown TPA off-network
   (drop); unsupported opcode (drop, parse-time gate);
@@ -513,7 +543,7 @@ more link bandwidth.
   request with SPA = our IP (defend by gratuitous-ARP);
   looped frames sourced from our own MAC (drop).
 - **Unit:**
-  `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__regular_request_replies_and_updates_cache`
+  `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__regular_request_replies_and_updates_cache`
   — asserts the Reply field swap (`arp__sha = our MAC`,
   `arp__spa = our IP`, `arp__tha = requester's SHA`,
   `arp__tpa = requester's SPA`).
@@ -523,14 +553,14 @@ more link bandwidth.
 ### Packet Reception — Reply handling
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__rx.py`
   — Reply matrix: looped reply (drop), reply with SPA =
   our IP (conflict-defend), direct reply (cache update),
   gratuitous reply (cache update with SPA == TPA),
   gratuitous reply where SPA is a candidate (probe
   conflict).
 - **Unit:**
-  `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxReply::test__stack__packet_handler__arp__rx__reply_direct_updates_cache`
+  `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxReply::test__stack__packet_handler__arp__rx__reply_direct_updates_cache`
   — asserts the cache learn for a direct unicast reply.
 
 **Status:** **locked in**.
@@ -538,14 +568,14 @@ more link bandwidth.
 ### Cache merge gates (Linux-aligned deviation)
 
 - **Unit:**
-  `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__regular_request_replies_and_updates_cache`
+  `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__arp__rx.py::TestPacketHandlerArpRxRequest::test__stack__packet_handler__arp__rx__regular_request_replies_and_updates_cache`
   — happy path covers the in-subnet learn.
 - **Unit:**
   the various probe / gratuitous / looped tests above
   exercise the negative branches (do-not-learn) of the
   three gating conditions.
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheAddFind::test__arp_cache__add_entry_overwrites`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheAddFind::test__arp_cache__add_entry_overwrites`
   — pins the "new SHA supersedes old" rule.
 
 **Status:** **locked in**.
@@ -553,12 +583,12 @@ more link bandwidth.
 ### Packet Generation — Request, Reply, and broadcast destination
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxBuildsCorrectFrame`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py::TestPacketHandlerArpTxBuildsCorrectFrame`
   — asserts both Request (broadcast resolution lookup) and
   Reply (unicast direct response) produce wire-correct
   frames.
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__arp__tx.py`
   — convenience-helper matrix over `_send_arp_announcement`,
   `_send_gratuitous_arp`, `_send_arp_probe`,
   `_send_arp_reply`, `send_arp_request`, asserting the
@@ -569,7 +599,7 @@ more link bandwidth.
 ### Aging / refresh / expiry
 
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheSubsystemLoop::test__arp_cache__loop_skips_permanent_entry`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheSubsystemLoop::test__arp_cache__loop_skips_permanent_entry`
   — asserts permanent entries are not aged.
 - **Unit:**
   `..._loop_expires_old_entry` — asserts an entry older

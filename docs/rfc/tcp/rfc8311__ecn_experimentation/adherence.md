@@ -13,7 +13,7 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 8311. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/` directly; no prior memory
+under `packages/pytcp/pytcp/protocols/tcp/` directly; no prior memory
 or rule-file content was reused. Sections that contain
 no normative content (Abstract, §1 Introduction, §1.1
 Terminology, §1.2 Requirements, §2 Overview, §3 ECN
@@ -49,7 +49,7 @@ relaxation via two mechanisms:
    the cwnd reduction on ECE event uses a 17/20
    multiplier instead of RFC 3168's strict 1/2.
    Implemented in `compute_ecn_event_ssthresh` at
-   `pytcp/protocols/tcp/tcp__cwnd.py:145-175`. The
+   `packages/pytcp/pytcp/protocols/tcp/tcp__cwnd.py:145-175`. The
    inline citation explicitly references RFC 8511.
 
 2. **RFC 9341 AccECN (Accurate ECN)**: PyTCP
@@ -101,7 +101,7 @@ adopted it.
 **Adherence:** PyTCP follows the original RFC 3168
 restriction — control packets (SYN, FIN, RST,
 pure ACKs) and retransmits do NOT carry ECT. The
-gate at `pytcp/protocols/tcp/tcp__session.py:1500`:
+gate at `packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1500`:
 
 ```python
 ip__ecn = 2 if (self._ecn_enabled and data) else 0
@@ -140,7 +140,7 @@ with RFC 8311 §4.3 relaxation".
 ### §4.1 ABE / AccECN cwnd response
 
 - **Integration:** ABE tests under
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__cwnd.py`
   pin the 17/20 ssthresh reduction.
 - **Integration:** AccECN tests pin the more
   granular feedback codepoints.

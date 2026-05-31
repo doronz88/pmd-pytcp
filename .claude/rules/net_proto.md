@@ -1,7 +1,7 @@
-# PyTCP — `net_proto/` Authoring Rule
+# PyTCP — `packages/net_proto/net_proto/` Authoring Rule
 
 This rule codifies the architecture of every protocol family
-under `net_proto/protocols/<proto>/`: the per-protocol
+under `packages/net_proto/net_proto/protocols/<proto>/`: the per-protocol
 six-file pattern (`*Header` / `*HeaderProperties` / `*Base` /
 `*Parser` / `*Assembler` / `*Errors`), options-bearing
 protocols, enums, dataclass shape, validation helpers, error
@@ -11,10 +11,10 @@ header packs and unpacks against.
 It complements [`source_files.md`](source_files.md) (general
 file mechanics applied to every subpackage) and the two
 sibling subpackage rules — [`net_addr.md`](net_addr.md) for
-the value-type library `net_addr/` and
-[`pytcp.md`](pytcp.md) for the runtime services in `pytcp/`.
+the value-type library `packages/net_addr/net_addr/` and
+[`pytcp.md`](pytcp.md) for the runtime services in `packages/pytcp/pytcp/`.
 
-The `net_addr/` package does **not** follow the six-file
+The `packages/net_addr/net_addr/` package does **not** follow the six-file
 protocol layout — it is a pure value-type library. See
 [`net_addr.md`](net_addr.md) for its authoring rules.
 
@@ -22,7 +22,7 @@ protocol layout — it is a pure value-type library. See
 
 ## 1. Per-protocol file layout
 
-Every protocol at `net_proto/protocols/<proto>/` contains the
+Every protocol at `packages/net_proto/net_proto/protocols/<proto>/` contains the
 same file set, double-underscore-separated:
 
 | File                        | Role                                                  |
@@ -35,9 +35,9 @@ same file set, double-underscore-separated:
 | `<proto>__enums.py`         | Protocol-specific enums (optional; only if the protocol has them). |
 | `options/<proto>__option.py`, `options/<proto>__option__<name>.py`, `options/<proto>__options.py` | TLV option support (optional; only for TCP, IPv4 options, IPv6 HBH/DO, etc.). |
 
-Reference (canonical minimum): `net_proto/protocols/udp/` (no
+Reference (canonical minimum): `packages/net_proto/net_proto/protocols/udp/` (no
 options, no enums — the simplest possible protocol).
-Reference (full): `net_proto/protocols/tcp/` (options
+Reference (full): `packages/net_proto/net_proto/protocols/tcp/` (options
 container, per-option files, enums).
 
 ## 2. Dataclasses
@@ -135,7 +135,7 @@ Every header file defines two classes in this order:
 ### 4.1 `<Proto>Header(ProtoStruct)` — the frozen dataclass
 
 - Inherits from `ProtoStruct` (defined in
-  `net_proto/lib/proto_struct.py`).
+  `packages/net_proto/net_proto/lib/proto_struct.py`).
 - Fields listed in wire order (matches the ASCII diagram
   above).
 - Implements, always with `@override`:
@@ -217,7 +217,7 @@ Every header file defines two classes in this order:
   `frozen=True` via `object.__setattr__`. The TX packet
   handlers rewrite these two fields at send time after route
   lookup (see
-  `pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
+  `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
   so the setters are load-bearing and must remain. Every
   such setter must carry the inline comment `# Hack to
   bypass the 'frozen=True' dataclass decorator.` so the
@@ -404,6 +404,8 @@ Rules:
 ## 9. Error classes (`<proto>__errors.py`)
 
 ```python
+from typing import override
+
 from net_proto.lib.errors import PacketIntegrityError, PacketSanityError
 
 
@@ -412,6 +414,7 @@ class TcpIntegrityError(PacketIntegrityError):
     Exception raised when TCP packet integrity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[TCP] " + message)
 
@@ -421,24 +424,203 @@ class TcpSanityError(PacketSanityError):
     Exception raised when TCP packet sanity check fails.
     """
 
+    @override
     def __init__(self, message: str, /) -> None:
         super().__init__("[TCP] " + message)
 ```
 
 - One file per protocol, containing exactly two classes:
-  `<Proto>IntegrityError` and `<Proto>SanityError`.
-- Base classes from `net_proto/lib/errors.py`:
+  `<Proto>IntegrityError` and `<Proto>SanityError`. Additional
+  subclasses are allowed when RFC-justified — see §9.1.
+- Base classes from `packages/net_proto/net_proto/lib/errors.py`:
   `PacketIntegrityError` prepends `"[INTEGRITY ERROR]"` (no
   trailing space); `PacketSanityError` prepends `"[SANITY
   ERROR]"` (no trailing space). Do not duplicate those
   prefixes — your subclass adds only `"[<PROTO>] "` (with
   one trailing space).
 - Constructor signature: `def __init__(self, message: str, /) -> None:`
-  — `message` is positional-only.
+  — `message` is positional-only. The constructor MAY be
+  extended with RFC-driven keyword-only kwargs (e.g.
+  `pointer`, `multicast_only`); see §9.1.
+- `@override` decorator on every overridden `__init__` per
+  [`typing.md`](typing.md) §11.
 - The combined rendered form is therefore
   `"[INTEGRITY ERROR][TCP] the original message"`. Tests
   assert on this exact string; do not change the format
   without updating all test fixtures.
+
+### 9.1 Allowed extensions
+
+The canonical two-class shape covers most protocols. Five
+files in the existing codebase carry RFC-justified
+extensions; new code following the same pattern is
+acceptable when the extension is RFC-driven and consumed by
+a real call site.
+
+**Extra subclasses.** A protocol MAY add a third
+`*Error` subclass when an RFC-distinct rejection path needs
+to be observable separately from the generic Integrity /
+Sanity buckets — typically so the RX packet handler can
+bump a dedicated stat counter. Canonical example:
+
+```python
+class UdpZeroCksumIp6Error(UdpIntegrityError):
+    """
+    Exception raised when an inbound IPv6 UDP datagram carries
+    cksum=0 on a port not configured for RFC 6935 zero-checksum
+    mode. Subclassed from 'UdpIntegrityError' so existing
+    'PacketValidationError' catches continue to drop the packet
+    correctly; the dedicated subclass lets the RX packet handler
+    bump 'udp__ip6_zero_cksum__drop' separately from the generic
+    'udp__failed_parse__drop' counter for operational
+    observability.
+    """
+```
+
+The extra class:
+
+- Subclasses one of the two protocol errors (so existing
+  `except <Proto>IntegrityError` catches continue to work).
+- Carries an inline docstring citing the RFC clause.
+- Does NOT override `__init__` — the parent's `[<PROTO>] `
+  prefix is reused as-is.
+
+**Constructor extension kwargs.** When the RX packet handler
+needs structured context to emit an ICMP Parameter Problem
+response (RFC 1122 §3.2.2.5, RFC 792, RFC 4443 §3.4, RFC
+8200 §4.2 chain-walker, RFC 5095 §3 RH0 hard-drop), the
+error MAY carry extra keyword-only attributes. Canonical
+shape:
+
+```python
+class Ip4SanityError(PacketSanityError):
+    """
+    Exception raised when IPv4 packet sanity check fails.
+
+    Carries an optional 'pointer' field — the byte offset of the
+    offending header field, used by the packet handler when emitting
+    an ICMPv4 Parameter Problem (Code 0) per RFC 1122 §3.2.2.5 / RFC
+    792.
+    """
+
+    pointer: int | None
+
+    @override
+    def __init__(self, message: str, /, *, pointer: int | None = None) -> None:
+        super().__init__("[IPv4] " + message)
+        self.pointer = pointer
+```
+
+Rules for the extension:
+
+- The extra parameters are **keyword-only** (bare `*`
+  separator), each with a sane default so existing
+  `raise SomeError("msg")` call sites keep working.
+- Each extension attribute is **declared at class level**
+  with an explicit annotation per
+  [`typing.md`](typing.md) §5.2 — mypy strict accepts
+  inference from `__init__`, but the canonical pattern is
+  the explicit declaration so an IDE / external reader
+  sees the full attribute set without walking `__init__`.
+- The docstring cites the consuming RFC clause inline so
+  the extension's purpose is greppable.
+- The extension may sit on either `IntegrityError` or
+  `SanityError` depending on the rejection class:
+  `Ip6RoutingIntegrityError.pointer` is on Integrity
+  because the RFC 5095 §3 RH0 hard-drop is a wire-shape
+  rejection that ALSO emits ICMP; the chain-walker errors
+  (`Ip6HbhSanityError`, `Ip6DestOptsSanityError`) are on
+  Sanity because the per-option action-on-unrecognized
+  dispatch is a logical (not structural) rejection.
+
+### 9.2 Error discipline: wire-input vs programmer-input
+
+Two boundaries, two tools:
+
+| Boundary | Direction | Tool | Why |
+|---|---|---|---|
+| `_validate_integrity` / `_validate_sanity` / options walker `validate_integrity` / `validate_sanity` | wire → user | `raise <Proto>IntegrityError` / `<Proto>SanityError` | Hostile-wire defense; **MUST** run unconditionally, including under `python -O` |
+| dataclass `__post_init__` / `*Assembler.__init__` | user → wire | `assert ...` | Programmer-error guard; stripped under `python -O` (the application has already been tested with assertions enabled) |
+
+**Why the split matters under `python -O`:**
+
+Production deployments may run with `-O` (assertions stripped).
+The Parser path constructs typed objects via `from_buffer` →
+`cls(...)` → `__post_init__` runs, so any `assert` in
+`__post_init__` is reachable from wire input — and **stripped
+under `-O`**. A wire-input bound enforced ONLY by a
+`__post_init__` assert is therefore unprotected in production.
+
+The mitigation is **mirroring**: every wire-reachable bound
+that has a `__post_init__` assert must ALSO be enforced by a
+typed `raise *IntegrityError` in `_validate_integrity` (or
+in the options walker for TLV protocols). The typed raise
+runs unconditionally; the assert is then either redundant
+(for wire-reachable bounds) or guards only the
+direct-construction programmer-error path (for
+wire-unreachable bounds — e.g. cross-field constraints the
+parser cannot produce, or `isinstance` checks that
+`struct.unpack` already guarantees).
+
+**Concrete rules for authors:**
+
+- A new `_validate_integrity` / `_validate_sanity` body
+  MUST use `raise <Proto>(Integrity|Sanity)Error(...)`.
+  Never `assert ...` — under `-O` it would silently let
+  hostile wire through.
+- A new `__post_init__` or `*Assembler.__init__` body MUST
+  use `assert ...`. Never `raise <Proto>(Integrity|Sanity)Error(...)`
+  — those are wire-shape errors, not API misuse. A typed
+  raise at the user boundary muddies the contract (a
+  caller's `except <Proto>IntegrityError` would catch their
+  own bugs as "hostile network traffic", and the wait-loop
+  drop path would mask the real defect).
+- A new `__post_init__` bound that is **reachable from wire
+  input** MUST be mirrored into the parser-side
+  `_validate_integrity` as a typed raise. The DHCPv4 / IPv4
+  per-option pointer-leak fixes (parser pass commit
+  `3f8c18e8`), the ICMPv6 ND `from_int` migration (assembler
+  pass commit `8535e9b2`), and the DHCPv4 wrap deletion
+  (assembler pass commit `77b543b9`) are the reference
+  examples.
+- Bare `AssertionError`, `UnicodeDecodeError`, or
+  `NetAddrError` MUST NOT leak past `Dhcp4Parser._parse` /
+  any other protocol's `_parse`. Fix the leak at origin
+  (mirror into `_validate_integrity` typed raise); do not
+  paper over with a `try/except` wrap in the parser.
+
+**Anti-pattern (forbidden):**
+
+```python
+def _validate_integrity(self) -> None:
+    # WRONG — stripped under -O, hostile wire gets through.
+    assert len(self._frame) >= MIN_HEADER_LEN, "frame too short"
+
+@dataclass
+class Foo:
+    def __post_init__(self) -> None:
+        # WRONG — type contract leakage; callers catch their own bugs
+        # as "hostile traffic".
+        if not is_uint16(self.field):
+            raise FooIntegrityError("field too big")
+```
+
+**Correct pattern:**
+
+```python
+def _validate_integrity(self) -> None:
+    # Right — typed raise, runs under -O.
+    if len(self._frame) < MIN_HEADER_LEN:
+        raise FooIntegrityError(f"frame too short: {len(self._frame)}")
+
+@dataclass
+class Foo:
+    def __post_init__(self) -> None:
+        # Right — programmer-error guard, stripped under -O.
+        assert is_uint16(self.field), f"field must be uint16, got {self.field}"
+```
+
+---
 
 ## 10. Options (TLV-bearing protocols)
 
@@ -477,7 +659,7 @@ route options through the container.
 ## 11. Enums
 
 - Inherit from `ProtoEnumByte` (8-bit) or `ProtoEnumWord`
-  (16-bit), from `net_proto/lib/proto_enum.py`. Do not
+  (16-bit), from `packages/net_proto/net_proto/lib/proto_enum.py`. Do not
   subclass stdlib `Enum` directly for protocol fields.
 - Members listed in the order they appear in the relevant
   RFC / wire enumeration.
@@ -511,12 +693,14 @@ route options through the container.
   concrete protocol object. Use early returns and
   `isinstance` checks; end with `assert False, f"Unknown
   protocol: {type(proto)}"` for the unreachable fallback.
-- Unknown values at runtime are injected via
-  `aenum.extend_enum(...)` inside `ProtoEnumByte` /
-  `ProtoEnumWord`'s `_missing_` hook — do not re-implement
-  it per enum.
+- Unknown wire values at runtime are materialised natively
+  by the stdlib `enum.Enum._missing_` hook on the
+  `ProtoEnum` base: it builds an `UNKNOWN_<value>`
+  pseudo-member and caches it in `_value2member_map_` so
+  every later `cls(value)` is identity-stable. No third-party
+  `aenum`; do not re-implement `_missing_` per enum.
 
-## 12. Validation helpers (`net_proto/lib/int_checks.py`)
+## 12. Validation helpers (`packages/net_proto/net_proto/lib/int_checks.py`)
 
 - `is_uint6`, `is_uint8`, `is_uint16`, `is_uint32`,
   `is_uint64` — use these in header `__post_init__` asserts
@@ -611,27 +795,27 @@ novel variant.
 
 When in doubt, mirror the structure of:
 
-- `net_proto/protocols/udp/udp__header.py` — minimal header
+- `packages/net_proto/net_proto/protocols/udp/udp__header.py` — minimal header
   class, the `*HeaderProperties` mixin, RFC diagram style.
-- `net_proto/protocols/udp/udp__base.py` — the simplest
+- `packages/net_proto/net_proto/protocols/udp/udp__base.py` — the simplest
   `*Base` shape (dunders + `header` / `payload` properties).
-- `net_proto/protocols/udp/udp__parser.py` — canonical
+- `packages/net_proto/net_proto/protocols/udp/udp__parser.py` — canonical
   three-phase pipeline, parent-layer prefix idiom, walrus
   sanity checks.
-- `net_proto/protocols/udp/udp__assembler.py` — kw-only
+- `packages/net_proto/net_proto/protocols/udp/udp__assembler.py` — kw-only
   ctor, `TX` tracker, checksum injection in `assemble()`.
-- `net_proto/protocols/udp/udp__errors.py` — the two-class
+- `packages/net_proto/net_proto/protocols/udp/udp__errors.py` — the two-class
   template for protocol errors (identical shape: `[UDP] `
   prefix in both).
-- `net_proto/protocols/tcp/` — full pattern including
+- `packages/net_proto/net_proto/protocols/tcp/` — full pattern including
   options container, per-option files, enums, PEP 695
   generics on the assembler.
-- `net_proto/lib/proto.py` — `Proto` ABC with the default
+- `packages/net_proto/net_proto/lib/proto.py` — `Proto` ABC with the default
   dunder set every protocol inherits.
-- `net_proto/lib/errors.py` — the canonical
+- `packages/net_proto/net_proto/lib/errors.py` — the canonical
   `PacketIntegrityError` / `PacketSanityError` chain and how
   the tag prefixes compose.
-- `net_proto/lib/enums.py` + `net_proto/lib/proto_enum.py`
+- `packages/net_proto/net_proto/lib/enums.py` + `packages/net_proto/net_proto/lib/proto_enum.py`
   — `ProtoEnumByte` / `ProtoEnumWord` pattern, match/case
   `__str__`, `from_proto` factory.
 
@@ -663,6 +847,23 @@ typing anti-patterns live in
 - **Hand-rolling the `[INTEGRITY ERROR]` / `[SANITY ERROR]`
   prefix** in a message string instead of raising the
   canonical exception class.
+- **Using `assert` in `_validate_integrity` / `_validate_sanity`
+  / options walker `validate_integrity` / `validate_sanity`.**
+  These checks defend against hostile wire input and MUST
+  run unconditionally — `python -O` strips asserts. Use
+  `raise <Proto>(Integrity|Sanity)Error(...)`. See §9.2.
+- **Using `raise <Proto>(Integrity|Sanity)Error(...)` in
+  dataclass `__post_init__` or `*Assembler.__init__`.** Those
+  are user-input boundaries (programmer error, not hostile
+  wire). Use `assert ...` so the check is stripped under
+  `python -O` once the application has been tested. See §9.2.
+- **Wire-reachable `__post_init__` assert without a typed
+  raise mirror in `_validate_integrity`.** Under `python -O`
+  the assert is stripped; hostile wire would slip through.
+  Every wire-reachable bound must be enforced by a typed
+  raise in `_validate_integrity` (the dataclass assert
+  becomes a defensive parallel that catches programmer
+  error). See §9.2.
 - **Inlining `struct` format strings** instead of defining a
   module constant.
 - **Silently tightening or widening a type annotation on a
@@ -673,11 +874,11 @@ typing anti-patterns live in
 
 ## 18. Workflow when adding a new protocol
 
-1. Create `net_proto/protocols/<proto>/` with the six-file
+1. Create `packages/net_proto/net_proto/protocols/<proto>/` with the six-file
    skeleton (§1). Copy a lean reference (`udp/`) and rename.
 2. Fill the RFC diagram + constants in `<proto>__header.py`.
 3. Fill the dataclass + `*HeaderProperties`. Get
-   `python -m compileall net_proto/protocols/<proto>` clean.
+   `python -m compileall packages/net_proto/net_proto/protocols/<proto>` clean.
 4. Fill `<proto>__base.py` (dunders, `header` / `payload`
    properties).
 5. Fill `<proto>__errors.py`.
@@ -686,8 +887,8 @@ typing anti-patterns live in
 7. Fill `<proto>__assembler.py` — kw-only ctor,
    `assemble()`.
 8. Wire the protocol into the dispatch tables
-   (`net_proto/lib/enums.py`'s `from_proto`, the relevant
-   packet handler in `pytcp/runtime/packet_handler/`).
+   (`packages/net_proto/net_proto/lib/enums.py`'s `from_proto`, the relevant
+   packet handler in `packages/pytcp/pytcp/runtime/packet_handler/`).
 9. Write tests per
    [`unit_testing.md`](unit_testing.md). Do **not** skip
    the header-asserts / parser-integrity / parser-sanity /
@@ -703,7 +904,7 @@ typing anti-patterns live in
 - [`source_files.md`](source_files.md) — general source-file
   mechanics (file skeleton, copyright block, imports,
   naming, formatting).
-- [`pytcp.md`](pytcp.md) — `pytcp/` runtime
+- [`pytcp.md`](pytcp.md) — `packages/pytcp/pytcp/` runtime
   services (`Subsystem`, packet handlers, sockets, sysctls).
 - [`python_features.md`](python_features.md) — modern Python
   features (PEP 604 / 585 / 695 / 696 / 698 / 649) consumed

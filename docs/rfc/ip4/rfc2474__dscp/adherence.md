@@ -11,7 +11,7 @@
 
 This document records the PyTCP codebase's adherence to RFC 2474
 clause by clause. The audit was performed by reading the RFC
-text fresh and inspecting `net_proto/protocols/ip4/ip4__header.py`
+text fresh and inspecting `packages/net_proto/net_proto/protocols/ip4/ip4__header.py`
 and the IPv4 RX/TX handlers directly; no prior memory or
 rule-file content was reused. Non-normative content
 (§1 Introduction, §2 Terminology, §6 IANA, §7 Security, §8/§9)
@@ -38,6 +38,7 @@ target routers and DS-domain boundaries — n/a for host scope.
 | Section | Topic                                                  | Status |
 |---------|--------------------------------------------------------|--------|
 | §3      | DS field structure (6-bit DSCP + 2-bit CU)             | met (wire codec) |
+| §3      | Application DSCP marking (socket IP_TOS / IPV6_TCLASS → wire, preserved across fragmentation) | met (2026-05-29) |
 | §3      | Match PHB on entire 6-bit DSCP                         | n/a (no PHB tier) |
 | §3      | CU bits MUST be ignored by PHB selection               | n/a (no PHB tier; CU bits are ECN per RFC 3168) |
 | §3      | Configurable codepoint-to-PHB mapping                  | n/a (no PHB tier) |
@@ -55,7 +56,7 @@ target routers and DS-domain boundaries — n/a for host scope.
 
 **Adherence:** met (with CU bits redefined). `Ip4Header.dscp:
 int` is a 6-bit field
-(`net_proto/protocols/ip4/ip4__header.py:99,128`) and
+(`packages/net_proto/net_proto/protocols/ip4/ip4__header.py:99,128`) and
 `Ip4Header.ecn: int` is the 2-bit field that occupies the
 former CU slot
 (`ip4__header.py:100,130`). The TOS-byte pack at
@@ -69,11 +70,27 @@ RFC 3168 subsequently allocated them as the ECN field
 `docs/rfc/ip4/rfc3168__ecn/adherence.md`). PyTCP follows the
 post-3168 split.
 
+**Application marking (socket → wire), shipped 2026-05-29.**
+The DSCP is now settable per-socket and marked on every
+outbound packet, not just stored in the header struct. A
+`setsockopt(IPPROTO_IP, IP_TOS, dscp<<2 | ecn)` /
+`setsockopt(IPPROTO_IPV6, IPV6_TCLASS, …)` threads the high
+6 bits through `socket._effective_ip_dscp()` →
+`ip__dscp` / `ip4__dscp` / `ip6__dscp` → the IPv4 / IPv6
+assembler's `dscp` field, across UDP, TCP, and raw sockets
+(M4 of `docs/refactor/socket_linux_parity_audit.md`). Linux
+parity: the socket DSCP marks all of that socket's traffic;
+ECN on TCP stays RFC-3168 stack-driven while DSCP is
+orthogonal. Each IP fragment inherits the original
+datagram's DSCP + ECN (RFC 791 §2.3 / RFC 8200 §4.5) — the
+fragmenter copies the source packet's DS field onto every
+fragment rather than zeroing it.
+
 > "DS-compliant nodes MUST select PHBs by matching against the
 > entire 6-bit DSCP field."
 
 **Adherence:** n/a. PyTCP has no PHB-mapping layer — there is
-a single FIFO output (`pytcp/lib/tx_ring.py`) and no
+a single FIFO output (`packages/pytcp/pytcp/lib/tx_ring.py`) and no
 priority queueing. DSCP is preserved across the stack but does
 not drive any local forwarding-class decision because there is
 no forwarding plane. Phase 2 forwarding may grow PHB-aware
@@ -132,15 +149,15 @@ behaviour is implemented.
 ### §3 Wire codec — DSCP/ECN split, 6+2 bit width
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py`
   Boundary asserts: `dscp` must be uint6 (under_min, over_max),
   `ecn` must be uint2.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__parser__operation.py`
   Round-trip matrix includes non-zero DSCP and ECN values
   across the full 6+2 bit range.
 - **Unit:**
-  `net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/ip4/test__ip4__assembler__operation.py`
   Assembler round-trip parametric over DSCP / ECN settings.
 
 **Status:** locked in.
@@ -148,11 +165,31 @@ behaviour is implemented.
 ### §3 Default DSCP=0 on TX absent caller override
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ip4__tx.py`
   Default TX cases ship with `dscp=0`. A dedicated case
   pinning "no caller override → dscp == 0" is trivial.
 
 **Status:** locked in indirectly.
+
+### §3 Application DSCP marking (socket → wire)
+
+- **Integration:**
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__socket_api.py::TestUdpSocketApiIpDscpOnWire`
+  (UDP v4 + v6) and
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_dscp.py`
+  (TCP SYN + data, v4 + v6) — `setsockopt(IP_TOS /
+  IPV6_TCLASS)` marks the outbound `dscp` field while the
+  ECN bits behave per family.
+- **Integration (fragmentation):**
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__fragmentation.py::TestUdpFragmentationDscp`
+  — every IPv4 / IPv6 fragment of an over-MTU datagram
+  carries the DSCP + ECN, not just the first.
+- **Unit:**
+  `packages/pytcp/pytcp/tests/unit/socket/test__socket__raw__socket.py::TestRawSocketDscp`
+  — `_effective_ip_dscp()` high-6-bit extraction (v4 + v6)
+  and the raw-send `ip4__dscp` threading.
+
+**Status:** locked in.
 
 ### §3 Unrecognised codepoint accepted without malfunction
 
@@ -176,6 +213,7 @@ layer; the audit explicitly classifies this as n/a.
 | §3 DSCP wire codec (6-bit field, packed in TOS byte)  | locked in |
 | §3 CU bits split (now ECN per RFC 3168)               | locked in (cross-ref RFC 3168 audit) |
 | §3 Default DSCP=0 on send                             | locked in indirectly |
+| §3 Application DSCP marking (socket IP_TOS / IPV6_TCLASS → wire) | locked in (UDP/TCP v4+v6 + fragmentation) |
 | §3 Unrecognised codepoint accepted                    | locked in by construction |
 | §4.1 Default PHB available                            | met trivially (single FIFO) |
 | §4.2.2 Class Selector PHB compliance                  | n/a (no PHB tier) |

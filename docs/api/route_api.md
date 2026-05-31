@@ -13,8 +13,8 @@ The Route API will be PyTCP's routing-control consumer
 surface — the canonical way to add / remove / list routes
 and gateways, mirroring Linux's `ip route` family. Not yet
 shipped because PyTCP today has no real route table: the
-single-interface stack uses per-host `Ip4Host.gateway` /
-`Ip6Host.gateway` for the default-route lookup, and there
+single-interface stack uses per-host `Ip4IfAddr.gateway` /
+`Ip6IfAddr.gateway` for the default-route lookup, and there
 is no FIB.
 
 Per CLAUDE.md Project North Star Phase 2: **router-grade
@@ -28,7 +28,7 @@ The Route API is the consumer-facing slice of that work.
 PyTCP's routing today is implicit:
 
 - Outbound packets choose a gateway via the
-  per-`Ip4Host` / `Ip6Host` `.gateway` attribute.
+  per-`Ip4IfAddr` / `Ip6IfAddr` `.gateway` attribute.
 - "Are we on-link?" is decided by network-mask
   comparison against the bound host networks.
 - No FIB; no LPM lookup; no policy routing; no metric.
@@ -55,8 +55,8 @@ stack.route.set_default_gateway(version=IpVersion.IP4, gateway=Ip4Address(...))
 ```
 
 The `Ip4Route` / `Ip6Route` value types are not designed
-yet; they will live in `net_addr/` alongside `Ip4Host` /
-`Ip6Host`.
+yet; they will live in `packages/net_addr/net_addr/` alongside `Ip4IfAddr` /
+`Ip6IfAddr`.
 
 ## Linux equivalents the API needs to cover
 
@@ -95,7 +95,7 @@ Other deferred items (Phase-2):
 
 ## Cross-API dependencies (anticipated)
 
-- **Address API**: route → host binding is "which Ip4Host
+- **Address API**: route → host binding is "which Ip4IfAddr
   is the source-address candidate for this route?" —
   Phase-1 source-selection logic ports over.
 - **Link API**: routes carry an `oif` (outgoing

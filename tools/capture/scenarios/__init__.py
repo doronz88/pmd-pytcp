@@ -28,7 +28,7 @@ COMMANDS is the registry the top-level group adds them from.
 
 tools/capture/scenarios/__init__.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import click

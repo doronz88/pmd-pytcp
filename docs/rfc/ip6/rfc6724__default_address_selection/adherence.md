@@ -14,13 +14,13 @@ PyTCP runs the RFC 6724 §5 default source-address-selection
 algorithm on every outbound IPv6 packet whose source is
 unspecified (`::`). The selector is `_select_ip6_source` on
 the IPv6 TX mixin
-(`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`); it
-enumerates candidate sources from `_ip6_host`, applies a
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`); it
+enumerates candidate sources from `_ip6_ifaddr`, applies a
 lexicographic sort encoded with rules 1, 2, 3, 6, 7, and 8,
 and returns the winner. The pure helpers — RFC 4007/4291
 scope extraction and the §2.2 CommonPrefixLen — live in
-`pytcp/lib/ip6_source_selection.py`; the §10.3 default policy
-table backing rule 6 lives in `pytcp/lib/ip6_policy_table.py`.
+`packages/pytcp/pytcp/lib/ip6_source_selection.py`; the §10.3 default policy
+table backing rule 6 lives in `packages/pytcp/pytcp/lib/ip6_policy_table.py`.
 Rules 4 (home address), 5 (outgoing interface), and 5.5
 (next-hop) are no-ops on a single-interface host stack.
 
@@ -49,8 +49,8 @@ Per-RFC mechanism inventory:
 
 | §          | Mechanism                                                  | Status                             | Where                                                                                            |
 |------------|------------------------------------------------------------|------------------------------------|--------------------------------------------------------------------------------------------------|
-| §2.1       | Configurable address-selection policy table                | met (default table)                | `pytcp/lib/ip6_policy_table.py` exposes `DEFAULT_POLICY_TABLE`; sysctl override deferred         |
-| §2.2       | CommonPrefixLen helper                                     | met                                | `common_prefix_len` (`pytcp/lib/ip6_source_selection.py`)                                        |
+| §2.1       | Configurable address-selection policy table                | met (default table)                | `packages/pytcp/pytcp/lib/ip6_policy_table.py` exposes `DEFAULT_POLICY_TABLE`; sysctl override deferred         |
+| §2.2       | CommonPrefixLen helper                                     | met                                | `common_prefix_len` (`packages/pytcp/pytcp/lib/ip6_source_selection.py`)                                        |
 | §3.1       | Scope comparisons                                          | met                                | `ip6_address_scope` returns RFC 4007 / 4291 codepoints                                           |
 | §5 rule 1  | Prefer same address                                        | met                                | `_select_ip6_source` short-circuits when the destination is owned                                |
 | §5 rule 2  | Prefer appropriate scope                                   | met                                | sort key encodes `(scope >= dst_scope, -scope)`; the selector additionally returns `None` when the winner's scope < dst (RFC 4007 §6 hardening) |
@@ -67,7 +67,7 @@ Per-RFC mechanism inventory:
 
 ## Test coverage
 
-- `pytcp/tests/unit/lib/test__lib__ip6_source_selection.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip6_source_selection.py`
   - `TestIp6AddressScope` — RFC 4007/4291 scope mapping for
     loopback, link-local, ULA, GUA, and the four multicast
     scope codepoints (interface-, link-, site-, global-)
@@ -78,7 +78,7 @@ Per-RFC mechanism inventory:
     monotonic
   - `TestCommonPrefixLenInvariants` — `[0, 128]` bounds and
     matching the disagreement-bit definition
-- `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection.py`
   - `TestRfc6724Rule1SameAddress` — rule 1 short-circuit
   - `TestRfc6724Rule2Scope` — global / link-local scope
     matching; selector returns `None` when only smaller-scope
@@ -93,7 +93,7 @@ Per-RFC mechanism inventory:
   - `TestRfc6724SelectorBoundaries` — empty candidate set
     returns `None`; rule order is preserved
     (rule 1 > rule 3)
-- `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_7.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_7.py`
   - `TestRfc6724Rule7TempPreferenceEnabled` — `use_tempaddr=2`
     prefers temp over stable; outranks rule 8; rule 3
     (PREFERRED-over-DEPRECATED) still wins
@@ -102,26 +102,26 @@ Per-RFC mechanism inventory:
   - `TestRfc6724Rule7TempDisabled` — `use_tempaddr=0` keeps
     rule 7 a no-op even if a temp address slips into the
     candidate set
-- `pytcp/tests/unit/lib/test__lib__ip6_policy_table.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip6_policy_table.py`
   - `TestIp6PolicyTableLookup` — RFC §10.3 (precedence, label)
     pairs for ::1, 6to4, Teredo, ULA, deprecated site-local,
     deprecated 6bone, IPv4-mapped, IPv4-compatible,
     catch-all GUA, and link-local (falls through to ::/0)
   - `TestIp6PolicyTableShape` — 9-entry default table,
     typed records, ::/0 catch-all present
-- `pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_6.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_rule_6.py`
   - `TestRfc6724Rule6PolicyLabel` — matching label outranks
     longer non-matching prefix (rule 6 > rule 8); ULA
     source for ULA destination; rule 8 fallback when rule 6
     ties; rule 3 outranks rule 6
-- `pytcp/tests/unit/lib/test__lib__ip4_source_selection.py`
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__ip4_source_selection.py`
   - `TestIp4AddressScope` — loopback / link-local / global
     scope mapping for the v4 family
   - `TestIp4CommonPrefixLen` — 32-bit common-prefix
     arithmetic; symmetric, bounded
   - `TestIp4SourceSelectionInvariants` — scope monotonicity,
     `[0, 32]` bounds
-- `pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py`
   - `TestRfc6724Ip4Rule1SameAddress` — rule 1 short-circuit
   - `TestRfc6724Ip4Rule2Scope` — global-dst picks global
     source; link-local-dst picks link-local source

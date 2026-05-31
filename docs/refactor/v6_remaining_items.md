@@ -34,6 +34,13 @@ Tests: 9317 passing, 4 skipped, 0 failed. `make lint` clean.
 
 ## Remaining items (priority order)
 
+> **Note (2026-05-30):** Everything below (#281-#286) has shipped —
+> #281 `ip6_frag__overlap__drop`, #282 `ip6_frag__atomic__defrag`,
+> #283 RA prefix lifetime / 2-hour rule, #286 adherence record
+> `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md`. The
+> priority-ordered framing and the "Resume prompt" block at the end of
+> this file are archaeology / no longer actionable.
+
 ### #281 — Overlap fragment detection (RFC 5722 / RFC 8504 §16)
 
 **Why first:** security MUST. Closes a known fragmentation-
@@ -44,9 +51,9 @@ any overlap.
 **Implementation sketch (paused mid-design):**
 
 1. Add a `discarded: bool = False` field to `IpFragData` in
-   `pytcp/lib/ip_frag.py`, plus a `mark_discarded()` helper
+   `packages/pytcp/pytcp/lib/ip_frag.py`, plus a `mark_discarded()` helper
    (frozen-dataclass mutation via `object.__setattr__`).
-2. In `pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py::__defragment_ip6_packet`:
+2. In `packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py::__defragment_ip6_packet`:
    - On entry, check `if flow_id in self._ip6_frag_flows
      and self._ip6_frag_flows[flow_id].discarded:` — bump
      `ip6_frag__overlap__drop` counter and return None.
@@ -58,9 +65,9 @@ any overlap.
      None. Subsequent fragments hit the discarded-flow
      check above and silently drop.
 3. Add `ip6_frag__overlap__drop: int = 0` to
-   `pytcp/lib/packet_stats.py::PacketStatsRx` and bump the
+   `packages/pytcp/pytcp/lib/packet_stats.py::PacketStatsRx` and bump the
    `field_count` constant in
-   `pytcp/tests/unit/lib/test__lib__packet_stats.py` (was
+   `packages/pytcp/pytcp/tests/unit/lib/test__lib__packet_stats.py` (was
    134 after Phase 8a; will be 135 after this).
 
 **Strict-vs-lenient:** RFC 5722 strict reading discards even
@@ -72,6 +79,14 @@ but the sender will retransmit the whole thing. Cite "RFC
 
 **Latent bug encountered during this investigation, NOT in
 scope for #281 but worth a separate follow-up commit:**
+
+> **RESOLVED / OBSOLETE (2026-05-30):** This bug no longer exists.
+> Fragment handling was rewritten to delegate to
+> `IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)` (see
+> `runtime/packet_handler/__init__.py`); the inverted in-handler
+> `_ip6_frag_flows` cleanup expression described below is gone. The
+> paragraph is retained only as archaeology of the original
+> investigation.
 
 The flow-cleanup expression at line 95 of
 `packet_handler__ip6_frag__rx.py` is inverted:
@@ -86,7 +101,7 @@ the #281 commit body or split into its own commit.
 **Tests-first per CLAUDE.md MUST:**
 
 Write integration tests at
-`pytcp/tests/integration/protocols/ip6/test__ip6__rx__overlap_fragments.py`
+`packages/pytcp/pytcp/tests/integration/protocols/ip6/test__ip6__rx__overlap_fragments.py`
 (create the file). Test cases:
 
 - Two fragments where the second overlaps the first → no TX,
@@ -136,7 +151,7 @@ without validating preferred-vs-valid lifetime ordering or
 the 2-hour rule on extending an existing prefix's lifetime.
 
 **Implementation sketch:** in the RA-handler (find via
-`grep RouterAdvertisement pytcp/stack/`), per RFC 4862
+`grep RouterAdvertisement packages/pytcp/pytcp/stack/`), per RFC 4862
 §5.5.3 step (e):
 
 - If `preferred_lifetime > valid_lifetime` → silently ignore
@@ -227,14 +242,14 @@ fresh agent will hit them too without warning.
 3. **`from_proto` updates land with each protocol.** When
    adding a new protocol package that shows up as an IPv6
    payload, also add the matching `isinstance` arm to
-   `IpProto.from_proto` in `net_proto/lib/enums.py`. This
+   `IpProto.from_proto` in `packages/net_proto/net_proto/lib/enums.py`. This
    bit me in Phase 8b — Phase 0 deferred the wiring with
    "as packages ship" but I forgot until the integration
    test caught it.
 
 4. **`packet_stats.py::field_count` test guard.** Adding any
    new counter requires bumping the constant in
-   `pytcp/tests/unit/lib/test__lib__packet_stats.py`
+   `packages/pytcp/pytcp/tests/unit/lib/test__lib__packet_stats.py`
    (currently 134 after Phase 8a). The test fails loudly if
    you forget.
 
@@ -249,8 +264,10 @@ fresh agent will hit them too without warning.
    (it's at the end of the loop body).
 
 6. **`IP6__FRAG_FLOW_TIMEOUT` cleanup is broken** — see
-   the #281 entry above. Worth fixing in the #281 commit
-   or splitting out.
+   the #281 entry above. **RESOLVED / OBSOLETE (2026-05-30):**
+   no longer true; frag handling now delegates to
+   `IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)` and the
+   inverted cleanup expression is gone.
 
 7. **Phase 8a left a partial gap on RX-side HBH+transport.**
    The #279 commit message documents that the chain walker

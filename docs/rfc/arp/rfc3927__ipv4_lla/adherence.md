@@ -36,7 +36,7 @@ The pre-implementation text listed several "principal gaps"
 |-----------------------------------------------------------------|-----------------------------------------------------|--------------------------------------------------|
 | §1.9 / §2.11 DHCP-fallback coordination missing                 | `Ip4LinkLocal._reconcile_with_dhcp`                 | `4c7cbc49` (Phase 4)                             |
 | §2.1 MAC-seeded RNG candidate generation missing                | `link_local__rng.candidate_from_mac`            | `b48d7fc3` (Phase 1)                             |
-| §2.2 ARP Probe / §2.4 Announce wire path missing                | Via `Ip4AddressApi.claim_with_acd`                  | `6970c042` (Phase 0.5) + `e6f88f9c` (Phase 2)    |
+| §2.2 ARP Probe / §2.4 Announce wire path missing                | Via the `Ip4Acd` engine (`claim` / `poll_conflict` / `defend`) | `6970c042` (Phase 0.5) → userspace `Ip4Acd` (Phase 4.3) |
 | §2.5 defend / abandon decision tree missing                     | `Ip4LinkLocal._on_bound_conflict`                   | `4f2935f6` (Phase 3)                             |
 | §2.6 TX-source scope-mismatch gate missing                      | `_phtx_ip4` scope check + DROPPED counter           | `a845d5a1` (Phase 0)                             |
 | §9 MAX_CONFLICTS / RATE_LIMIT_INTERVAL                          | `link_local__constants` + claim loop            | `b48d7fc3` (Phase 1) + `e6f88f9c` (Phase 2)      |

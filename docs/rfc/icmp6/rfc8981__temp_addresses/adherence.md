@@ -12,8 +12,8 @@
 
 ### What ships now (§18a + §18b)
 
-**§18a** — `Ip6Host.from_rfc8981_temp(*, ip6_network)` at
-`net_addr/ip6_host.py`. Each call produces a fresh 64-bit
+**§18a** — `Ip6IfAddr.from_rfc8981_temp(*, ip6_network)` at
+`packages/net_addr/net_addr/ip6_ifaddr.py`. Each call produces a fresh 64-bit
 random IID via `secrets.token_bytes(8)`, regenerates if the
 draw lands in the RFC 5453 / RFC 2526 §3 reserved range
 (Subnet-Router Anycast IID==0 or
@@ -32,7 +32,7 @@ RA RX path immediately after the stable
 `_update_icmp6_slaac_address` call; it is sysctl-gated by
 `icmp6.use_tempaddr` (default 0). When enabled:
 
-- New prefix → generate via `Ip6Host.from_rfc8981_temp`,
+- New prefix → generate via `Ip6IfAddr.from_rfc8981_temp`,
   spawn an async DAD claim via the §20.1
   `_claim_ip6_address_async` helper (which runs DAD on a
   daemon worker thread without blocking the RX path),
@@ -68,7 +68,7 @@ Per-RFC mechanism inventory:
 | §       | Mechanism                                              | Status   | Where                                                                |
 |---------|--------------------------------------------------------|----------|----------------------------------------------------------------------|
 | §3.1    | `use_tempaddr` knob                                    | met      | `icmp6.use_tempaddr` sysctl, tristate {0,1,2}                        |
-| §3.3.2  | Random 64-bit IID generation                           | met      | `Ip6Host.from_rfc8981_temp` — §18a                                   |
+| §3.3.2  | Random 64-bit IID generation                           | met      | `Ip6IfAddr.from_rfc8981_temp` — §18a                                   |
 | §3.3.2  | Reserved-IID avoidance (RFC 5453 / 2526)               | met      | `_is_reserved_iid()` helper                                          |
 | §3.3.3  | Re-derive on DAD failure (`MAX_DESYNC_FACTOR` retries) | gap      | §18c / §20.3 (DAD-failure retry) — `IDGEN_RETRIES`                   |
 | §3.4    | Per-PI lifetime refresh (preserve address)             | met      | `_update_icmp6_temp_address` existing-entry path                     |
@@ -103,7 +103,7 @@ adds additional unlinkability for outbound flows once
 
 ### Tests
 
-`net_addr/tests/unit/test__ip6_host.py::TestNetAddrIp6HostFromRfc8981Temp`
+`packages/net_addr/net_addr/tests/unit/test__ip6_ifaddr.py::TestNetAddrIp6HostFromRfc8981Temp`
 (§18a wire generator — already shipped):
 - Output keeps source /64 prefix.
 - Two consecutive calls yield different IIDs.
@@ -111,7 +111,7 @@ adds additional unlinkability for outbound flows once
 - Reserved-IID values regenerated to non-reserved.
 - Retry exhaustion raises RuntimeError.
 
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc8981_temp.py`
 (§18b wire-state + RX-driven claim — this commit):
 - `TestIcmp6Nd__Rfc8981Temp__SysctlRegistration` —
   `icmp6.use_tempaddr` registered with default 0,
@@ -125,7 +125,7 @@ adds additional unlinkability for outbound flows once
   RA via the RX path with sysctl=1 creates one stable
   + one temp entry; sysctl=0 creates only the stable
   entry; the DAD worker installs the temp address into
-  `_ip6_host` after passing.
+  `_ip6_ifaddr` after passing.
 
 ## Cross-references
 

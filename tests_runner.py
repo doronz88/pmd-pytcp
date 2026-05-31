@@ -37,14 +37,14 @@ on a TTY check plus the 'NO_COLOR' environment variable.
 
 tests_runner.py
 
-ver 3.0.4
+ver 3.0.6
 """
 
 import os
 import sys
 import time
 import unittest
-from typing import Any
+from typing import Any, override
 
 import click
 
@@ -116,6 +116,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         exc_type, exc_value, _ = err
         return f"{exc_type.__name__}: {exc_value}"
 
+    @override
     def startTest(self, test: unittest.TestCase) -> None:
         """
         Bypass the base class's "<method> ... " prefix print; the
@@ -124,6 +125,7 @@ class TestslideStyleResult(unittest.TextTestResult):
 
         unittest.TestResult.startTest(self, test)
 
+    @override
     def addSuccess(self, test: unittest.TestCase) -> None:
         """
         Record a passing test and emit a green method-name line.
@@ -132,6 +134,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addSuccess(self, test)
         self._emit(test, "pass")
 
+    @override
     def addFailure(self, test: unittest.TestCase, err: Any) -> None:
         """
         Record a failing test and emit a red method-name line with
@@ -141,6 +144,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addFailure(self, test, err)
         self._emit(test, "fail", suffix=f": {self._format_exception_short(err)}")
 
+    @override
     def addError(self, test: unittest.TestCase, err: Any) -> None:
         """
         Record an unexpected-exception test and emit a red
@@ -150,6 +154,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addError(self, test, err)
         self._emit(test, "error", suffix=f": {self._format_exception_short(err)}")
 
+    @override
     def addSkip(self, test: unittest.TestCase, reason: str) -> None:
         """
         Record a skipped test and emit a yellow method-name line.
@@ -158,6 +163,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addSkip(self, test, reason)
         self._emit(test, "skip")
 
+    @override
     def addExpectedFailure(self, test: unittest.TestCase, err: Any) -> None:
         """
         Record an expected-failure test and emit a yellow
@@ -167,6 +173,7 @@ class TestslideStyleResult(unittest.TextTestResult):
         unittest.TestResult.addExpectedFailure(self, test, err)
         self._emit(test, "xfail")
 
+    @override
     def addUnexpectedSuccess(self, test: unittest.TestCase) -> None:
         """
         Record an unexpected-success test and emit a magenta
@@ -216,6 +223,7 @@ class TestslideStyleResult(unittest.TextTestResult):
             _line("Unexpected pass", unexpected, "magenta")
         self.stream.flush()
 
+    @override
     def printErrors(self) -> None:
         """
         Print a testslide-style 'Failures:' block listing every
@@ -267,6 +275,7 @@ class TestslideStyleRunner(unittest.TextTestRunner):
         kwargs["verbosity"] = 2
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
+    @override
     def run(self, test: Any) -> Any:
         """
         Run the test suite, then print the testslide-style summary

@@ -1,5 +1,16 @@
 # RFC 6724 — Default Source Address Selection — Implementation Plan
 
+> **SHIPPED (reconciled 2026-05-25).** All four phases in the status
+> table below are shipped (IPv4 + IPv6 source selection, code at
+> `packages/pytcp/pytcp/protocols/ip6/ip6__source_selection.py` and
+> `packages/pytcp/pytcp/protocols/ip4/ip4__source_selection.py` —
+> the planned `lib/` paths below are historical; the code shipped
+> under `protocols/ip{4,6}/`. Integration tests under
+> `tests/integration/protocols/ip{4,6}/test__ip{4,6}__rfc6724_*`).
+> The "single remaining piece is source-address selection" prose
+> further down is the original plan framing and is now historical —
+> that piece landed.
+
 This document tracks the multi-commit implementation arc for
 RFC 6724 (Default Address Selection for IPv6) in PyTCP.
 Originally tracked as `nd_linux_parity §12c / §18d`; lifted
@@ -21,11 +32,11 @@ Neighbor-Discovery concern.
 ND parity is **substantially complete** in terms of address
 lifecycle:
 
-- `_ip6_host` is fully dynamic — stable SLAAC addresses are
+- `_ip6_ifaddr` is fully dynamic — stable SLAAC addresses are
   claimed at boot AND on post-boot PI admission (§12a.runtime);
   RFC 8981 temp addresses are minted per-PI (§18b), regenerated
   before preferred-lifetime expiry (§18c.2), and swept from both
-  the tracking table and `_ip6_host` at valid-lifetime expiry
+  the tracking table and `_ip6_ifaddr` at valid-lifetime expiry
   (§18c.1, §12a.runtime).
 - DAD is async and per-address (§20.1); failures retry with
   `dad_counter` increment up to `icmp6.idgen_retries` (§20.3);
@@ -100,7 +111,7 @@ a rule-based candidate sort.
 
 ### Current state
 
-`pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`:
 the source-validation logic lives in
 `__validate_src_ip6_address` (around line 173, ~115 lines).
 Today it does:
@@ -115,19 +126,19 @@ Today it does:
   (src=::).
 
 Verify the current line range with
-`grep -n "def __validate_src_ip6_address" pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
+`grep -n "def __validate_src_ip6_address" packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__tx.py`
 before editing — the file has been growing.
 
 ### Target shape
 
 Extract a new `_select_ip6_source(*, ip6__dst) -> Ip6Address |
 None` method on the TX mixin. It enumerates candidate sources
-from `_ip6_host`, applies RFC 6724 §5 rules in order, and
+from `_ip6_ifaddr`, applies RFC 6724 §5 rules in order, and
 returns the winner.
 
 ```python
 def _select_ip6_source(self, *, ip6__dst: Ip6Address) -> Ip6Address | None:
-    candidates: list[Ip6Address] = [h.address for h in self._ip6_host]
+    candidates: list[Ip6Address] = [h.address for h in self._ip6_ifaddr]
 
     # Rule 1 — prefer same address.
     if ip6__dst in candidates:
@@ -162,7 +173,7 @@ Cover each rule in isolation:
   with the longest common prefix to `ip6__dst`.
 
 Tests live at
-`pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc6724_source_selection_rules_1_2_3_8.py`
+`packages/pytcp/pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc6724_source_selection_rules_1_2_3_8.py`
 (or split into multiple files per rule if cleaner).
 
 ## §12c.2 — Rule 7 (temp-address preference)
@@ -197,9 +208,10 @@ Rule 6 — match label of source to label of destination.
 Rule 8 also uses precedence as a secondary sort key.
 
 Ships:
-- New `pytcp/lib/ip6_policy_table.py` exposing the default
-  table plus a `lookup(address) → (precedence, label)`
-  function.
+- New policy table exposing the default table plus a
+  `lookup(address) → (precedence, label)` function. (Shipped as
+  `packages/pytcp/pytcp/protocols/ip6/ip6__policy_table.py`, not the
+  planned `lib/ip6_policy_table.py`.)
 - Optional sysctl-driven override (deferred to §12c.3.b
   if needed).
 - Rule 6 wired into `_select_ip6_source`.
@@ -209,7 +221,7 @@ Ships:
 RFC 6724 §6 covers IPv4-mapped IPv6 addresses; PyTCP's
 IPv4 path is currently a separate "first host with
 gateway" heuristic in
-`pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip4__tx.py`.
 This phase aligns the IPv4 selection with the same rule
 structure.
 

@@ -75,15 +75,15 @@ transport adapter is the right factoring.
 
 ## 3. Architecture
 
-### 3.1 Shared engine — `pytcp/lib/plpmtud.py`
+### 3.1 Shared engine — `packages/pytcp/pytcp/lib/plpmtud.py`
 
 `PmtuSearch` is stateful runtime machinery — per-destination
 state, timer-driven, ACK-feedback-driven, registered on
-`stack.pmtu_state`. That places it in `pytcp/`, not
-`net_proto/` (which is the stateless packet
+`stack.pmtu_state`. That places it in `packages/pytcp/pytcp/`, not
+`packages/net_proto/net_proto/` (which is the stateless packet
 parse/assemble/validate library — see `CLAUDE.md` package
 boundaries). The canonical precedent is the generic
-`NeighborCache[A, P]` base at `pytcp/lib/neighbor.py`: same
+`NeighborCache[A, P]` base at `packages/pytcp/pytcp/lib/neighbor.py`: same
 PEP 695 shape, same stateful-runtime classification, same
 consumed-by-stack-level-adapters pattern.
 
@@ -253,12 +253,12 @@ forward pointer to Phases 1-4.
 ### Phase 1 — `PmtuSearch` shared engine — SHIPPED 2026-05-14
 
 **Goal:** ship the state machine as a stateful runtime
-class under `pytcp/lib/plpmtud.py` with full unit-test
+class under `packages/pytcp/pytcp/lib/plpmtud.py` with full unit-test
 coverage. No integration.
 
-**Shipped:** `pytcp/lib/plpmtud.py` (`PmtuSearch[A]` +
+**Shipped:** `packages/pytcp/pytcp/lib/plpmtud.py` (`PmtuSearch[A]` +
 `PmtuState` + module-level RFC-default constants) plus
-21 unit tests at `pytcp/tests/unit/lib/test__lib__plpmtud.py`
+21 unit tests at `packages/pytcp/pytcp/tests/unit/lib/test__lib__plpmtud.py`
 covering the §7.5 Phase-1 test matrix. Engine initializes
 with `current_mtu = interface_mtu` so it stays
 compatible with classical-PMTUD callers; the BASE_PLPMTU
@@ -266,13 +266,13 @@ constant is the size of the initial probe, not the
 working PLPMTU.
 
 **Touches:**
-- `pytcp/lib/plpmtud.py` — new file. PEP 695 generic
+- `packages/pytcp/pytcp/lib/plpmtud.py` — new file. PEP 695 generic
   class, RFC 8899 §5 state machine, candidate MTU
   ladder, timer machinery, black-hole detection, ICMP
   signal absorption. Sits alongside
-  `pytcp/lib/neighbor.py` as a peer stateful-runtime
+  `packages/pytcp/pytcp/lib/neighbor.py` as a peer stateful-runtime
   helper.
-- `pytcp/tests/unit/lib/test__lib__plpmtud.py` —
+- `packages/pytcp/pytcp/tests/unit/lib/test__lib__plpmtud.py` —
   per-state transition tests, ladder convergence,
   black-hole entry/exit, ICMP-signal short-circuit.
 
@@ -311,24 +311,24 @@ legacy `pmtu_cache`; `_apply_pmtu_update` (TCP) and
 registry; `_effective_pmtu()` reads via the precedence
 helper (engine state preferred, cache as fallback). The
 three socket-touching test harnesses
-(`IcmpTestCase` / `TcpSessionTestCase` / `UdpTestCase`)
+(`IcmpTestCase` / `TcpTestCase` / `UdpTestCase`)
 snapshot+clear+restore `stack.pmtu_state` alongside
 `pmtu_cache` so the new module state cannot leak
 across tests. Six new unit tests at
-`pytcp/tests/unit/lib/test__lib__pmtu_state.py` pin the
+`packages/pytcp/pytcp/tests/unit/lib/test__lib__pmtu_state.py` pin the
 registry shape, lazy fallback to legacy cache,
 per-destination isolation, and IPv4 / IPv6 keying.
 
 **Touches:**
-- `pytcp/stack/__init__.py` — add `pmtu_state` dict +
+- `packages/pytcp/pytcp/stack/__init__.py` — add `pmtu_state` dict +
   `current_pmtu(dst)` helper. Mark `pmtu_cache` as
   deprecated alias (`pmtu_cache` becomes a property /
   view derived from `pmtu_state`).
-- `pytcp/protocols/tcp/tcp__session.py::_apply_pmtu_update`
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py::_apply_pmtu_update`
   — call into `pmtu_state[dst].on_classical_pmtu(mtu)`
   instead of writing the scalar directly.
-- `pytcp/socket/udp__socket.py::notify_pmtu` — same.
-- `pytcp/socket/__init__.py::_effective_pmtu` — read via
+- `packages/pytcp/pytcp/socket/udp__socket.py::notify_pmtu` — same.
+- `packages/pytcp/pytcp/socket/__init__.py::_effective_pmtu` — read via
   `current_pmtu(dst)`.
 - Both `_apply_pmtu_update` and `notify_pmtu` call sites
   need to lazy-create the `PmtuSearch` on first ICMP
@@ -338,7 +338,7 @@ per-destination isolation, and IPv4 / IPv6 keying.
 - Existing classical-PMTUD tests stay green (no
   behavioural change).
 - New unit test in
-  `pytcp/tests/unit/lib/test__lib__pmtu_state.py`:
+  `packages/pytcp/pytcp/tests/unit/lib/test__lib__pmtu_state.py`:
   on-classical-pmtu lazily allocates a PmtuSearch in
   state=SEARCH_COMPLETE with current=mtu.
 - Integration: existing
@@ -347,7 +347,7 @@ per-destination isolation, and IPv4 / IPv6 keying.
 
 **Test-harness snapshot/restore:** new module-level
 state `stack.pmtu_state` requires the same commit to
-update `TcpSessionTestCase` / `IcmpTestCase` /
+update `TcpTestCase` / `IcmpTestCase` /
 `NetworkTestCase` `setUp`/`tearDown` to
 snapshot+clear+restore — see `integration_testing.md`
 §5.4 and the project memory note. Failure mode if
@@ -355,13 +355,24 @@ omitted: passes-alone / fails-in-suite.
 
 **Effort:** ~half-day.
 
-### Phase 3 — TCP adapter + probe emission — PARTIAL (3a + 3b shipped 2026-05-14)
+### Phase 3 — TCP adapter + probe emission — SHIPPED 2026-05-14 / 2026-05-28
+
+> **Close-out 2026-05-28.** The operator-facing enable that
+> made the active-probing gate REACHABLE in default
+> deployments — `tcp.mtu_probing` tristate sysctl +
+> `tcp.base_mss` cold-start seed + `_mss_ceiling()`
+> helper that keeps the seed alive past the handshake —
+> shipped under the close-out plan at
+> `docs/refactor/plpmtud_closeout.md` (Phases 1-2,
+> commits `0f02938e` + `59466338`). The "Known
+> limitation" paragraph in §3c-minimum below was the
+> precise gap this close-out plan closed.
 
 **Shipped (3a + 3b):**
-- `pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — adapter
+- `packages/pytcp/pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — adapter
   class wrapping `PmtuSearch` engine + in-flight probe
   tracking. 12 unit tests at
-  `pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`.
+  `packages/pytcp/pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py`.
 - `TcpSession.__init__` constructs a per-session adapter.
 - `_apply_pmtu_update` routes classical-PMTUD signals
   through the adapter + mirrors the engine into
@@ -375,7 +386,7 @@ omitted: passes-alone / fails-in-suite.
   in-flight probes are declared lost; no-op when no
   probes in flight (RFC 4821 §7.5).
 - 5 integration tests at
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`.
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_wiring.py`.
 
 **3c-minimum (SHIPPED 2026-05-14):**
 - Probe-segment emit hook in `TcpSession._transmit_data`:
@@ -391,17 +402,25 @@ omitted: passes-alone / fails-in-suite.
   peek properties (do not arm PROBE_TIMER) so the
   feasibility check can run before committing.
 - 4 integration tests at
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_probe_emit.py`.
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_probe_emit.py`.
 
-**Known limitation:** the probe-emit gate
-`probe_payload > snd_mss` only fires when `snd_mss` is
-below the engine's candidate. In PyTCP's current
-classical-PMTUD coupling, `snd_mss` saturates at
-`interface_mtu - overhead`, so probe-emit fires only
-under artificially-shrunken `snd_mss` conditions (or
-post-ICMP shrink where the engine's binary search has
-walked the candidate above the new `snd_mss` ceiling —
-rare in practice).
+**Known limitation (CLOSED 2026-05-28):** the
+probe-emit gate `probe_payload > snd_mss` only fires
+when `snd_mss` is below the engine's candidate. As
+originally shipped (Phase 3c-min) `snd_mss` saturated at
+`interface_mtu - overhead` once the handshake clamp
+ran, so probe-emit fired only under artificially-
+shrunken `snd_mss` conditions (or post-ICMP shrink with
+search-band headroom — rare in practice).
+**Closed** by `docs/refactor/plpmtud_closeout.md`
+Phases 1-2 (2026-05-28): the new `tcp.mtu_probing`
+sysctl + `tcp.base_mss` cold-start seed +
+`TcpSession._mss_ceiling()` helper consumed by the
+four handshake `snd_mss`-clamp sites mean operators
+flipping `tcp.mtu_probing=2` get an `snd_mss` seeded
+below `interface_mtu - overhead` and the seed survives
+the handshake — the gate trips on the first
+sufficiently-buffered data send.
 
 **3d Linux-aligned (SHIPPED 2026-05-14):**
 - Engine fix: `on_classical_pmtu` now shrinks
@@ -423,7 +442,7 @@ rare in practice).
   before/after snapshot so the hook only fires on actual
   probe-ack, not on every snd.una advance.
 - 4 new integration tests at
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_linux.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_linux.py`
   covering default-off behavior, search_high invariance,
   probe-ack snd_mss growth, post-ICMP upward probing.
 
@@ -443,10 +462,10 @@ adherence records as "met (Linux-pragmatic; RFC §7.4 /
 state transition.
 
 **Touches:**
-- `pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — new
+- `packages/pytcp/pytcp/protocols/tcp/tcp__plpmtud_adapter.py` — new
   file. Subclass `PmtuAdapter[Ip4Address | Ip6Address]`,
   bind to a `TcpSession`.
-- `pytcp/protocols/tcp/tcp__session.py`:
+- `packages/pytcp/pytcp/protocols/tcp/tcp__session.py`:
   - Construct the adapter at session init; arm a
     `PMTU_PROBE_TIMER` (RFC 4821 §7.1 default 60 s).
   - In the session's per-tick logic, call
@@ -477,7 +496,7 @@ is based on probe-only RTO, not on regular RTO.
 **Test plan:**
 
 1. Integration:
-   `pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud.py`
+   `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud.py`
    - Drive a session to ESTABLISHED; advance the
      PMTU_PROBE_TIMER; assert a probe-segment is
      emitted with the candidate size.
@@ -506,10 +525,10 @@ protocols that have their own ACK channel (QUIC-style,
 echo-server-style) can drive PLPMTUD.
 
 **Shipped:**
-- `pytcp/protocols/udp/udp__plpmtud_adapter.py` —
+- `packages/pytcp/pytcp/protocols/udp/udp__plpmtud_adapter.py` —
   `UdpPlpmtudAdapter` wrapping `PmtuSearch` with a
   single-outstanding-probe slot. 13 unit tests at
-  `pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`.
+  `packages/pytcp/pytcp/tests/unit/protocols/udp/test__udp__plpmtud_adapter.py`.
 - `UdpSocket` gains lazy-allocated `_plpmtud_adapter`,
   `_ensure_plpmtud_adapter` helper, and three public
   methods:
@@ -524,17 +543,17 @@ echo-server-style) can drive PLPMTUD.
   the per-socket adapter and mirrors the engine into
   `stack.pmtu_state`.
 - 6 integration tests at
-  `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
   cover probe-emit (sized datagram on wire), ack → state
   transition, MAX_PROBES timeouts → ERROR + min clamp,
   concurrent-probe rejection, unconnected-socket
   rejection, ack-then-reprobe chain.
 
 **Touches:**
-- `pytcp/protocols/udp/udp__plpmtud_adapter.py` — new
+- `packages/pytcp/pytcp/protocols/udp/udp__plpmtud_adapter.py` — new
   file. Subclass `PmtuAdapter[...]`, bind to a
   `UdpSocket`.
-- `pytcp/socket/udp__socket.py`:
+- `packages/pytcp/pytcp/socket/udp__socket.py`:
   - `UdpSocket.probe_pmtu(size: int)` — emits a
     `sendto`-style probe of the given size. Tracks
     the in-flight probe.
@@ -553,7 +572,7 @@ SCTP's HEARTBEAT chunks are the production model.
 **Test plan:**
 
 1. Integration:
-   `pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
+   `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`
    - Bind a socket; call `probe_pmtu(1500)`; assert a
      1500-byte UDP datagram is on the wire.
    - Call `ack_probe(1500)`; assert
@@ -711,7 +730,7 @@ behaviour.
 | Probe RTO triggered by coincident data loss | 3 | Separate probe-timer; data-RTO doesn't feed probe-loss (§5.2) |
 | ICMP signal overrides ack-confirmed MTU | 1 / 5.3 | Engine prefers ack feedback; ICMP only shrinks |
 | Black-hole detection fires on transient loss burst | 1 | PROBE_COUNT default = 3 (RFC 8899); only consecutive losses on same candidate count |
-| pmtu_state leaks across tests | 2 | TcpSessionTestCase / IcmpTestCase snapshot+restore |
+| pmtu_state leaks across tests | 2 | TcpTestCase / IcmpTestCase snapshot+restore |
 | IPv6 MIN_PMTU violated by engine arithmetic | 1 / 5.4 | Hard clamp inside engine; assertion in unit tests |
 | Probe sent before SYN ACK → wasted segment | 3 | Adapter gate: only probe in ESTABLISHED |
 | UDP manual API races on `probe_pmtu` while one in flight | 4 | API rejects re-probe while engine `is_probing` |
@@ -758,7 +777,7 @@ row's test is in the same commit (or the immediately
 preceding tests-first commit) as the implementation that
 flips it green.
 
-#### Phase 1 — engine unit tests (`pytcp/tests/unit/lib/test__lib__plpmtud.py`)
+#### Phase 1 — engine unit tests (`packages/pytcp/pytcp/tests/unit/lib/test__lib__plpmtud.py`)
 
 | Clause / failure mode                              | TestClass                       | test_method                                                       |
 |----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
@@ -783,7 +802,7 @@ flips it green.
 | §6 IPv6 MIN_PMTU invariant under any input         | TestPmtuSearch__Construction    | test__plpmtud__ip6_min_pmtu_invariant_under_lower_icmp_signal     |
 | §6 Transient single-loss does NOT enter ERROR      | TestPmtuSearch__BlackHole       | test__plpmtud__single_loss_does_not_enter_error                   |
 
-#### Phase 2 — registry tests (`pytcp/tests/unit/lib/test__lib__pmtu_state.py`)
+#### Phase 2 — registry tests (`packages/pytcp/pytcp/tests/unit/lib/test__lib__pmtu_state.py`)
 
 | Concern                                            | TestClass                       | test_method                                                       |
 |----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
@@ -793,7 +812,7 @@ flips it green.
 | Harness setUp clears stack.pmtu_state              | TestPmtuStateHarness            | test__pmtu_state__harness_setup_clears_registry                   |
 | Harness tearDown restores stack.pmtu_state         | TestPmtuStateHarness            | test__pmtu_state__harness_teardown_restores_registry              |
 
-#### Phase 3 — TCP adapter integration tests (`pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud.py`)
+#### Phase 3 — TCP adapter integration tests (`packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud.py`)
 
 | Clause / failure mode                              | TestClass                       | test_method                                                       |
 |----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
@@ -812,7 +831,7 @@ flips it green.
 | §6 No probe before ESTABLISHED                     | TestTcpPlpmtud__StateGates      | test__tcp__plpmtud__no_probe_before_established                   |
 | §6 IPv4 + IPv6 parallel destinations independent   | TestTcpPlpmtud__Multidest       | test__tcp__plpmtud__ip4_ip6_parallel_search_states                |
 
-Plus segment-factory unit tests at `net_proto/tests/unit/protocols/tcp/test__tcp__segment_factory__plpmtud.py`:
+Plus segment-factory unit tests at `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__segment_factory__plpmtud.py`:
 
 | Aspect                                             | TestClass                       | test_method                                                       |
 |----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|
@@ -820,7 +839,7 @@ Plus segment-factory unit tests at `net_proto/tests/unit/protocols/tcp/test__tcp
 | build_probe_segment zero-padded payload            | TestTcpSegmentFactory__Probe    | test__tcp__segment_factory__probe_payload_is_zero_padded          |
 | build_probe_segment seq = snd.nxt - 1              | TestTcpSegmentFactory__Probe    | test__tcp__segment_factory__probe_seq_is_snd_nxt_minus_one        |
 
-#### Phase 4 — UDP adapter integration tests (`pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`)
+#### Phase 4 — UDP adapter integration tests (`packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py`)
 
 | Clause / failure mode                              | TestClass                       | test_method                                                       |
 |----------------------------------------------------|---------------------------------|-------------------------------------------------------------------|

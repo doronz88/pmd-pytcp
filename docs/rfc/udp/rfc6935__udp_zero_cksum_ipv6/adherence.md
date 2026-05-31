@@ -97,13 +97,13 @@ RFC 768 / RFC 2460 / RFC 6935. See
 [RFC 768 audit](../rfc768__udp/adherence.md) §"Fields —
 Checksum" for the implementation details and the
 locking unit tests at
-`net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`.
+`packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py::TestUdpAssemblerMisc`.
 
 > "IPv6 receivers MUST by default discard UDP packets
 >  containing a zero checksum and SHOULD log the error."
 
 **Adherence:** met. The parser at
-`net_proto/protocols/udp/udp__parser.py` distinguishes
+`packages/net_proto/net_proto/protocols/udp/udp__parser.py` distinguishes
 the IP version on the cksum=0 path:
 
 ```python
@@ -123,7 +123,7 @@ if raw_cksum == 0:
 `UdpIntegrityError` so the existing
 `PacketValidationError` catches continue to drop the
 packet correctly. The UDP RX handler at
-`pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__udp__rx.py`
 catches it specifically to bump the dedicated
 `udp__ip6_zero_cksum__drop` counter — separating the
 RFC-6935 discard path from generic UDP parse failures
@@ -241,7 +241,7 @@ The RFC 6935 §5 alternative-mode per-port opt-in landed
 in May 2026:
 
 1. **`UdpOption(IntEnum)`** + bare aliases for stdlib
-   parity in `pytcp/socket/__init__.py`: `SOL_UDP=17`,
+   parity in `packages/pytcp/pytcp/socket/__init__.py`: `SOL_UDP=17`,
    `UDP_NO_CHECK6_TX=101`, `UDP_NO_CHECK6_RX=102`.
 2. **`UdpSocket._udp_no_check6_tx` / `_udp_no_check6_rx`**
    flags + `_sol_udp_setsockopt` / `_sol_udp_getsockopt`
@@ -271,17 +271,17 @@ in May 2026:
 ### RFC 6935 §5 / RFC 6936 §4 constraint 5 — default-discard
 
 - **Unit:**
-  `net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py::TestUdpParserIntegrityZeroCksumIp6::test__udp__parser__integrity__ipv6_zero_cksum_rejected`
+  `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py::TestUdpParserIntegrityZeroCksumIp6::test__udp__parser__integrity__ipv6_zero_cksum_rejected`
   — constructs a UDP frame with cksum=0, stubs the IP
   layer with `ver=IpVersion.IP6`, asserts
   `UdpZeroCksumIp6Error` is raised and that it
   subclasses `UdpIntegrityError`.
 - **Unit:**
-  `net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py::TestUdpParserIntegrityBoundary::test__udp__parser__integrity__zero_cksum_skips_validation_ipv4`
+  `packages/net_proto/net_proto/tests/unit/protocols/udp/test__udp__parser__integrity_checks.py::TestUdpParserIntegrityBoundary::test__udp__parser__integrity__zero_cksum_skips_validation_ipv4`
   — companion positive-control test that the IPv4
   cksum=0 acceptance still works (RFC 768 compatibility).
 - **Integration:**
-  `pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxIp6ZeroCksumDrop`
+  `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__udp__rx.py::TestPacketHandlerUdpRxIp6ZeroCksumDrop`
   — drives an Ethernet/IPv6/UDP frame with cksum=0
   through the full RX path; asserts: no TX frame
   emitted, `udp__ip6_zero_cksum__drop` counter bumps
@@ -294,7 +294,7 @@ in May 2026:
 ### RFC 6935 §5 — alternative-mode per-port opt-in
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/udp/test__udp__no_check6.py`
   covers six pins: setsockopt/getsockopt round-trip for
   both TX and RX optnames; opt-in TX emits literal
   `0x0000` cksum on the wire; default TX emits a
@@ -359,5 +359,5 @@ four to "met."
 - UDP host requirements: [`../rfc1122__host_requirements_udp/adherence.md`](../rfc1122__host_requirements_udp/adherence.md) — §4.1.3.4 cross-references RFC 6935
 - UDP usage guidelines: [`../rfc8085__udp_usage_guidelines/adherence.md`](../rfc8085__udp_usage_guidelines/adherence.md) — §3.4.1 directly invokes RFC 6935/6936
 - IPv6 base spec: [`../../ip6/rfc8200__ipv6/adherence.md`](../../ip6/rfc8200__ipv6/adherence.md) — RFC 2460's §8.1 is the rule RFC 6935 amends
-- ICMP demux for embedded-datagram consistency: `pytcp/protocols/icmp/icmp__error_demux.py` + [RFC 5927 audit](../../tcp/rfc5927__icmp_tcp_attacks/adherence.md)
+- ICMP demux for embedded-datagram consistency: `packages/pytcp/pytcp/protocols/icmp/icmp__error_demux.py` + [RFC 5927 audit](../../tcp/rfc5927__icmp_tcp_attacks/adherence.md)
 - Socket-API parity (`UDP_NO_CHECK6_RX` / `UDP_NO_CHECK6_TX`): `docs/refactor/socket_linux_parity_audit.md`

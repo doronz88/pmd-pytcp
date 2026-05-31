@@ -25,8 +25,8 @@ the RFC 5227 probe / announce / defense audit lives at
 [`../rfc5227__ipv4_acd/adherence.md`](../rfc5227__ipv4_acd/adherence.md).
 
 The audit was performed by reading the RFC text fresh and
-inspecting the codebase under `pytcp/stack/arp_cache.py` and
-`pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
+inspecting the codebase under `packages/pytcp/pytcp/stack/arp_cache.py` and
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__{rx,tx}.py`
 directly. Adherence levels use the canonical descriptive
 language: **met**, **not met**, **partial**, **not implemented**,
 **vacuous**.
@@ -48,14 +48,14 @@ as MUST NOT default-on, MAY support — PyTCP's choice of
 
 **Adherence:** **met**. PyTCP's `ArpCache._subsystem_loop`
 runs a periodic age-based eviction
-(`pytcp/stack/arp_cache.py:106-142`): every 100 ms (the
+(`packages/pytcp/pytcp/stack/arp_cache.py:106-142`): every 100 ms (the
 shared `SUBSYSTEM_SLEEP_TIME__SEC = 0.1`) the loop walks
 every cached entry and discards any non-permanent entry
 whose age exceeds `stack.ARP__CACHE__ENTRY_MAX_AGE = 3600`
 seconds. The discard log line is at
-`pytcp/stack/arp_cache.py:118-122`. The `permanent`
+`packages/pytcp/pytcp/stack/arp_cache.py:118-122`. The `permanent`
 sentinel on `CacheEntry` is the lone exception
-(`pytcp/stack/arp_cache.py:55,113-114`); RFC 1122 §2.3.2.1
+(`packages/pytcp/pytcp/stack/arp_cache.py:55,113-114`); RFC 1122 §2.3.2.1
 mentions "manual flush" as a non-mandatory implementation
 detail and PyTCP's approach is consistent.
 
@@ -65,7 +65,7 @@ detail and PyTCP's approach is consistent.
 **Adherence:** **met**. The two timeout values
 (`ARP__CACHE__ENTRY_MAX_AGE`,
 `ARP__CACHE__ENTRY_REFRESH_TIME`) live in
-`pytcp/protocols/arp/arp__constants.py` as the compile-time
+`packages/pytcp/pytcp/protocols/arp/arp__constants.py` as the compile-time
 defaults (3600 s / 300 s). `pytcp.stack.init()` accepts
 `arp_cache_max_age=` and `arp_cache_refresh_time=` kwargs
 that override the live constants in place — sysctl-style
@@ -95,12 +95,12 @@ until multi-interface support lands (Phase 2).
 
 **Adherence:** **not met**. PyTCP's
 `ArpCache.find_entry()` issues an ARP Request on every
-cache miss (`pytcp/stack/arp_cache.py:161-181`) without
+cache miss (`packages/pytcp/pytcp/stack/arp_cache.py:161-181`) without
 any rate limit, deduplication, or in-flight-resolution
 tracking. A burst of TX attempts to an unresolved IP
 produces a burst of ARP Requests at the same rate.
 Likewise the cache-refresh path
-(`pytcp/stack/arp_cache.py:127-139`) fires from the
+(`packages/pytcp/pytcp/stack/arp_cache.py:127-139`) fires from the
 100 ms subsystem loop with no per-destination rate limit
 beyond the loop cadence (which is stricter than 1 / sec
 but not by design — it's incidental to the loop period).
@@ -139,12 +139,12 @@ is generous for a non-proxy-ARP environment.
 
 **Adherence:** **met**. Implementation (1) is what PyTCP
 does
-(`pytcp/stack/arp_cache.py:117-122`). The "even if they
+(`packages/pytcp/pytcp/stack/arp_cache.py:117-122`). The "even if they
 are in use" wording is satisfied by the absence of a hit-
 count-based reprieve from expiry — the only effect of a
 non-zero `hit_count` is to **trigger a refresh attempt**
 when the entry crosses the `MAX_AGE - REFRESH_TIME`
-threshold (`pytcp/stack/arp_cache.py:127-139`), not to
+threshold (`packages/pytcp/pytcp/stack/arp_cache.py:127-139`), not to
 postpone expiry.
 
 > "(1) ... Note that this timeout should be restarted when
@@ -155,12 +155,12 @@ postpone expiry.
 **Adherence:** **met**. `ArpCache.add_entry()` overwrites
 the existing entry with a fresh `CacheEntry(...)` whose
 `create_time` defaults to `int(time.time())`
-(`pytcp/stack/arp_cache.py:144-159`,
-`pytcp/stack/arp_cache.py:55-59`). The
+(`packages/pytcp/pytcp/stack/arp_cache.py:144-159`,
+`packages/pytcp/pytcp/stack/arp_cache.py:55-59`). The
 `__update_arp_cache` helper in the RX handler runs this
 path on every RFC-826-compliant ARP packet (Request **or**
 Reply) whose SPA falls in our subnet
-(`pytcp/runtime/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
+(`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__rx.py:120-152,244-247,324`),
 which is the "regardless of target address" requirement
 satisfied.
 
@@ -174,8 +174,8 @@ no failed-poll counter**. PyTCP's near-expiry refresh path
 now sends the poll as a **unicast** ARP Request via
 `stack.packet_handler.send_arp_unicast_request(arp__tpa=...,
 ethernet__dst=cached_mac)`
-(`pytcp/protocols/arp/arp__cache.py` refresh branch →
-`pytcp/runtime/packet_handler/packet_handler__arp__tx.py::send_arp_unicast_request`).
+(`packages/pytcp/pytcp/protocols/arp/arp__cache.py` refresh branch →
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__arp__tx.py::send_arp_unicast_request`).
 RFC 1122 §2.3.2.1 IMPLEMENTATION (2) calls for the
 "point-to-point" form so that only the actual cached
 neighbour wakes up to reply rather than every host on the
@@ -195,7 +195,7 @@ unicast wire-form half is met.
 > cache entry."
 
 **Adherence:** **not implemented**. The TX ring
-(`pytcp/runtime/tx_ring.py`) does report `os.writev` errors
+(`packages/pytcp/pytcp/runtime/tx_ring.py`) does report `os.writev` errors
 via `tx_ring__os_error__drop` on the shared
 `PacketStatsTx` (post the recent rings refactor), but
 there is no plumbing back from "writev failed for a packet
@@ -229,10 +229,10 @@ flushes them all on resolution, mirroring the Linux
 - On a cache miss the IPv4 Ethernet-TX path calls
   `stack.arp_cache.enqueue_pending(...)` for both the
   on-link and the gateway branch
-  (`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
+  (`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`),
   appending the dropped Ethernet frame to the INCOMPLETE
   entry's pending queue.
-- The generic `NeighborCache` (`pytcp/lib/neighbor.py`)
+- The generic `NeighborCache` (`packages/pytcp/pytcp/lib/neighbor.py`)
   holds the pending packets in a `deque` bounded by the
   `neighbor.unres_qlen` sysctl (Linux
   `net.ipv4.neigh.default.unres_qlen`; default 64,
@@ -307,7 +307,7 @@ is the highest-leverage user-visible improvement.
 ### §2.3.2.1 — Timeout-based eviction
 
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheSubsystemLoop::test__arp_cache__loop_skips_permanent_entry`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheSubsystemLoop::test__arp_cache__loop_skips_permanent_entry`
   — pins that permanent entries are never aged.
 - **Unit:**
   `..::test__arp_cache__loop_expires_old_entry` — pins the
@@ -326,7 +326,7 @@ is the highest-leverage user-visible improvement.
 ### §2.3.2.1 — "Timeout restarted on refresh"
 
 - **Unit:**
-  `pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheAddFind::test__arp_cache__add_entry_overwrites`
+  `packages/pytcp/pytcp/tests/unit/stack/test__stack__arp_cache.py::TestArpCacheAddFind::test__arp_cache__add_entry_overwrites`
   — pins that re-calling `add_entry` for the same IP
   produces a fresh `CacheEntry` (and therefore a fresh
   `create_time`).
@@ -376,18 +376,18 @@ target IP as TPA).
 
 **Locked in.** Pinned at both layers:
 
-- Unit (`pytcp/tests/unit/lib/test__lib__neighbor.py`,
+- Unit (`packages/pytcp/pytcp/tests/unit/lib/test__lib__neighbor.py`,
   `TestNeighborCachePendingQueue`): all queued packets
   flush in FIFO order on resolution; the queue is bounded
   by `neighbor.unres_qlen` and drops the **oldest** on
   overflow (keeping the newest within the bound).
 - Integration
-  (`pytcp/tests/integration/protocols/arp/test__arp__resolution_flow.py`):
+  (`packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__resolution_flow.py`):
   drives three outbound IPv4 packets to an unresolved IP,
   then an inbound ARP Reply, and asserts all three are
   flushed in FIFO arrival order with the resolved MAC.
 - Adapter
-  (`pytcp/tests/unit/protocols/arp/test__arp__cache.py`):
+  (`packages/pytcp/pytcp/tests/unit/protocols/arp/test__arp__cache.py`):
   `enqueue_pending` appends to the INCOMPLETE entry's
   pending queue.
 

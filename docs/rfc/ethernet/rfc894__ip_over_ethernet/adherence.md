@@ -11,8 +11,8 @@
 This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative statement
 in RFC 894. The audit was performed by reading the RFC
-text fresh against the codebase under `net_proto/` and
-`pytcp/` directly. Sections that contain no normative
+text fresh against the codebase under `packages/net_proto/net_proto/` and
+`packages/pytcp/pytcp/` directly. Sections that contain no normative
 content (Status of this Memo, Introduction, References,
 the Trailer Formats notes about historic Unix 4.2bsd
 deviation) are omitted except where the deviation
@@ -57,14 +57,14 @@ out of scope.
 > data."
 
 **Adherence:** met. The Ethernet II header is implemented
-at `net_proto/protocols/ethernet/ethernet__header.py:60-120`
+at `packages/net_proto/net_proto/protocols/ethernet/ethernet__header.py:60-120`
 as a 14-byte fixed-shape `EthernetHeader` (dst: 6,
 src: 6, type: 2 bytes). The IP-over-Ethernet codepoint
 is `EtherType.IP4 = 0x0800`
-(`net_proto/lib/enums.py:45`). `EthernetAssembler`
+(`packages/net_proto/net_proto/lib/enums.py:45`). `EthernetAssembler`
 binds the EtherType from the payload object via
 `EtherType.from_proto(payload)`
-(`net_proto/lib/enums.py:67-90`); when the payload is an
+(`packages/net_proto/net_proto/lib/enums.py:67-90`); when the payload is an
 `Ip4` instance, the frame's `type` field is `0x0800`.
 
 ---
@@ -81,7 +81,7 @@ binds the EtherType from the payload object via
 **Adherence:** delegated to the link-layer driver
 (out of scope at PyTCP layer). PyTCP's
 `EthernetAssembler.assemble`
-(`net_proto/protocols/ethernet/ethernet__assembler.py:75-83`)
+(`packages/net_proto/net_proto/protocols/ethernet/ethernet__assembler.py:75-83`)
 emits exactly the 14-byte header followed by the IP
 payload — no zero-padding to a 46-octet floor. This
 matches Linux's pragmatic behaviour: zero-padding to the
@@ -111,7 +111,7 @@ datagram bound from it).
 **Adherence:** met. PyTCP's link-layer MTU is configured
 via `stack.interface_mtu` (default 1500 per
 `INTERFACE__TAP__MTU` / `INTERFACE__TUN__MTU` in
-`pytcp/stack/__init__.py`). Outbound IP segments respect
+`packages/pytcp/pytcp/stack/__init__.py`). Outbound IP segments respect
 this MTU through the IP-layer fragmentation / TCP MSS
 machinery. Jumbo-frame support (interface_mtu > 1500) is
 operator-configurable.
@@ -129,7 +129,7 @@ behaviour is deferred to Phase 2 per
 `CLAUDE.md` north-star. When forwarding lands, transit
 fragmentation will be added; the IPv4 fragmentation
 machinery for *originated* packets already exists
-(`net_proto/protocols/ip4/`) so the gap is the
+(`packages/net_proto/net_proto/protocols/ip4/`) so the gap is the
 forward-vs-deliver dispatch, not the fragmentation
 logic itself.
 
@@ -163,7 +163,7 @@ for IPv4 address resolution; no static-table mode exists.
 dynamic discovery; outbound Ethernet TX consults the
 cache via `stack.arp_cache.find_entry(...)` and triggers
 ARP requests on miss (see
-`pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`).
+`packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py`).
 
 ---
 
@@ -174,16 +174,45 @@ ARP requests on miss (see
 > mapped to the broadcast Ethernet address (of all binary
 > ones, FF-FF-FF-FF-FF-FF hex)."
 
-**Adherence:** met. `pytcp/runtime/packet_handler/
+**Adherence:** met. `packages/pytcp/pytcp/runtime/packet_handler/
 packet_handler__ethernet__tx.py:211-238` maps both the
 limited broadcast (`255.255.255.255`) and the network
 broadcast (per-subnet `network.broadcast`) to
 `MacAddress(0xFFFFFFFFFFFF)`. The `net_addr` library
 provides the constant at
-`net_addr/mac_address.py:42` (`MAC__BROADCAST =
+`packages/net_addr/net_addr/mac_address.py:42` (`MAC__BROADCAST =
 0xFFFF_FFFF_FFFF`). The `is_broadcast` predicate at
-`net_addr/mac_address.py:154` recognises the broadcast
+`packages/net_addr/net_addr/mac_address.py:154` recognises the broadcast
 MAC on the inbound path.
+
+---
+
+## §"Frame Format" — Source MAC Unicast Invariant
+
+> RFC 894 inherits the underlying Ethernet / IEEE 802.3 MAC
+> address semantics: the source MAC field on a transmitted
+> frame is the sending interface's hardware address, which
+> by IEEE 802.3 is a unicast address (group bit / I/G bit
+> clear; not all-zeros; not all-ones).
+
+**Adherence:** met (parser sanity, added in the
+RFC-adherence pass). The Ethernet II parser's
+`_validate_sanity` rejects any frame whose `src` MAC is
+unspecified (all-zeros), multicast (group bit set), or
+broadcast (all-ones) with `EthernetSanityError`
+(`packages/net_proto/net_proto/protocols/ethernet/ethernet__parser.py::_validate_sanity`).
+The 802.3 parser carries the same three checks
+(`packages/net_proto/net_proto/protocols/ethernet_802_3/ethernet_802_3__parser.py::_validate_sanity`).
+`dst` is deliberately NOT subject to these checks because a
+destination MAC may legitimately be multicast (e.g. IPv6 ND
+`33:33:xx:xx:xx:xx`, IPv4 multicast `01:00:5e:xx:xx:xx`) or
+broadcast (`ff:ff:ff:ff:ff:ff`).
+
+This is stricter than Linux's `net/ethernet/eth.c::eth_type_trans`,
+which does not enforce a unicast-source invariant — it's
+PyTCP's RFC-aligned hardening of the parse path. RX-side
+counters for malformed frames are
+`ethernet__failed_parse__drop` / `ethernet_802_3__failed_parse__drop`.
 
 ---
 
@@ -215,7 +244,7 @@ implement it."
 **Adherence:** met. PyTCP's struct-pack format strings
 use the `"!"` prefix throughout
 (`ETHERNET__HEADER__STRUCT = "! 6s 6s H"` at
-`net_proto/protocols/ethernet/ethernet__header.py:57`),
+`packages/net_proto/net_proto/protocols/ethernet/ethernet__header.py:57`),
 which selects network (big-endian) byte order. Every IP
 / TCP / UDP header struct similarly uses `"!"`.
 
@@ -228,15 +257,19 @@ unit-test corpus and integration tests at:
 
 ### Ethernet header / parser / assembler
 
-- **Unit:** `net_proto/tests/unit/protocols/ethernet/test__ethernet__header__asserts.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__header__asserts.py`
   — pins MacAddress / EtherType field-validation asserts on
   `EthernetHeader.__post_init__`.
-- **Unit:** `net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__operation.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__operation.py`
   — pins frame parsing with IPv4 / IPv6 / ARP / raw-payload
   cases.
-- **Unit:** `net_proto/tests/unit/protocols/ethernet/test__ethernet__assembler__operation.py`
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__sanity_checks.py`
+  — pins both sanity branches: sub-0x0600 `type` (legacy
+  802.3 length framing) and the three `src`-non-unicast
+  rejections (unspecified, multicast, broadcast).
+- **Unit:** `packages/net_proto/net_proto/tests/unit/protocols/ethernet/test__ethernet__assembler__operation.py`
   — pins frame assembly + EtherType binding from payload type.
-- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__rx.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__rx.py`
   + the per-protocol RX harness tests that drive Ethernet
   frames into the stack and assert delivery / dispatch.
 
@@ -244,11 +277,11 @@ unit-test corpus and integration tests at:
 
 ### Broadcast IP → MAC FF:FF:FF:FF:FF:FF mapping
 
-- **Integration:** `pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__ethernet__tx.py`
   — the limited-broadcast / network-broadcast / multicast
   resolution paths assert
   `ethernet__dst = MacAddress(0xFFFFFFFFFFFF)`.
-- **Integration:** `pytcp/tests/integration/protocols/arp/test__arp__tx.py`
+- **Integration:** `packages/pytcp/pytcp/tests/integration/protocols/arp/test__arp__tx.py`
   — ARP request emission uses
   `ethernet__dst = MAC__BROADCAST`.
 

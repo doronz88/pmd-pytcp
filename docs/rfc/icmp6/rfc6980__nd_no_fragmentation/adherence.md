@@ -130,7 +130,7 @@ evasion and reassembly-DoS vectors §3 describes.
 
 | Clause | Test file / class |
 |--------|-------------------|
-| Fragmented NS silent-drop + counter | `pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp6__rx.py::TestPacketHandlerIcmp6RxNd::test__stack__packet_handler__icmp6__rx__fragmented_neighbor_solicitation_dropped` |
+| Fragmented NS silent-drop + counter | `packages/pytcp/pytcp/tests/unit/stack/packet_handler/test__stack__packet_handler__icmp6__rx.py::TestPacketHandlerIcmp6RxNd::test__stack__packet_handler__icmp6__rx__fragmented_neighbor_solicitation_dropped` |
 | Gate scope is ND-only (Echo Request still passes) | Same class :: `test__stack__packet_handler__icmp6__rx__fragmented_echo_request_passes_through` |
 | `PacketRx.was_fragmented` defaults to False | Implicit — every existing icmp6 / ip6 / tcp / udp test constructs a `PacketRx` from a wire frame and runs to completion (none of which would happen if the new attribute were True by default) |
 | `was_fragmented` set on reassembled PacketRx | Implicit — the gate's positive test only triggers because the IPv6 frag-RX handler sets the flag on its forwarded reassembled packet (commit's frag-rx edit) |

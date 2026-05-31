@@ -1,14 +1,29 @@
 # PyTCP Packet Handler Rewrite Plan
 
-A phased, tests-first rewrite of the `pytcp/runtime/packet_handler/`
+A phased, tests-first rewrite of the `packages/pytcp/pytcp/runtime/packet_handler/`
 subsystem. The goal is to retire the 20-mixin, single-interface
 god-class in favor of a per-`Interface` composed handler model that
 admits multi-interface operation and ships the seven sanctioned
 Phase-3 API surfaces inline as their underlying state lands.
 
-This document is the architectural anchor for the rewrite. No code
-lands until Sebastian signs off on the design decisions in the
-final section.
+**Status: SUPERSEDED / DELIVERED on `PyTCP_3_0_6`.** The rewrite shipped
+by a different (more incremental) route than this monolithic plan
+assumed. Delivered: the per-`ifindex` `InterfaceTable` + per-interface
+rings/caches, six of the seven Phase-3 API surfaces as dedicated
+modules (link / address / route / neighbor / sysctl / socket).
+**Reconciled 2026-05-30:** introspection did NOT ship as a dedicated
+`pytcp.stack.introspection` module — it landed only as scattered
+read-only copy-by-value accessors on the stack module (e.g.
+`local_ip4_hosts()`). Also delivered: the egress seam, the
+RFC 1812 `forward_or_deliver` seam (host-mode stub), singleton retirement
++ Neighbor API (`e5dc77f5`), and the mixin→composition collapse + RX
+dispatch registry (`6a7f13d8`..`3abdcf5c`, tracked in
+`packet_handler_composition.md`). Phase-2 router/forwarding logic behind
+the `forward_or_deliver` seam remains a deliberate future-phase stub.
+This document is retained as the architectural anchor / archaeology;
+the per-phase plan below predates the as-shipped sequencing.
+
+This document was the architectural anchor for the rewrite.
 
 ---
 
@@ -26,7 +41,7 @@ facade.
 | BSD `socket()`          | `pytcp.socket`                  | `socket(2)`                       | Already exists; reach-throughs cleaned on touch |
 | Sysctl registry         | `pytcp.stack.sysctl`            | `/proc/sys/net/`                  | Already exists; cadences added in Phase 5       |
 | Link API                | `pytcp.stack.link`              | `ip link` / `RTM_NEWLINK`         | Phase 3                                         |
-| Introspection API       | `pytcp.stack.introspection`     | `/proc/net/*`, `ss`               | Phase 4                                         |
+| Introspection API       | read-only accessors on `pytcp.stack` (e.g. `local_ip4_hosts()`) — NO dedicated `pytcp.stack.introspection` module shipped | `/proc/net/*`, `ss`               | Phase 4                                         |
 | Address API             | `pytcp.stack.address`           | `ip addr` / `RTM_NEWADDR`         | Phase 8                                         |
 | Neighbor API            | `pytcp.stack.neighbor`          | `ip neighbor` / `RTM_NEWNEIGH`    | Phase 8                                         |
 | Route API               | `pytcp.stack.route`             | `ip route` / `RTM_NEWROUTE`       | Phase 9                                         |
@@ -43,13 +58,13 @@ Three rules govern every API module:
    state. Linux equivalent: reading `/proc/net/*` is text — readable,
    never writable by reading.
 3. **Mutation goes through the right plane.** Address changes go
-   through `pytcp.stack.address`, never `packet_handler._ip6_host.append(...)`.
-   Route changes through `pytcp.stack.route`, never `Ip4Host.gateway = ...`.
+   through `pytcp.stack.address`, never `packet_handler._ip6_ifaddr.append(...)`.
+   Route changes through `pytcp.stack.route`, never `Ip4IfAddr.gateway = ...`.
    Each plane's API is the boundary; the underlying attribute is
    implementation detail.
 
 Reach-throughs in tests / examples / internal callers (the DHCP4
-client mutates `Ip4Host.gateway` directly today, for example) are
+client mutates `Ip4IfAddr.gateway` directly today, for example) are
 **Phase-3 violations cleaned on touch**, per the
 `feature_implementation.md` modernisation-on-touch rule. The
 phase that touches a violating call site fixes it in the same
@@ -59,13 +74,13 @@ commit; no separate sweep.
 
 ## Read-out of current state
 
-- `pytcp/runtime/packet_handler/__init__.py` is 2040 lines: an
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` is 2040 lines: an
   abstract `PacketHandler(Subsystem)` (state-rich) + concrete
   `PacketHandlerL2` and `PacketHandlerL3` that diamond-inherit 20
   `PacketHandler<Proto><Dir>(ABC)` mixins. Mixin cross-calls are
   MRO-resolved; each mixin uses a `TYPE_CHECKING` block to declare
   the cross-call surface it needs. There is no enforcement.
-- `pytcp/stack/__init__.py` declares **module-level singletons** for
+- `packages/pytcp/pytcp/stack/__init__.py` declares **module-level singletons** for
   `timer`, `rx_ring`, `tx_ring`, `arp_cache`, `nd_cache`,
   `packet_handler`, plus shared dicts `sockets`, `pmtu_cache`, and
   the two `Icmp*ErrorRateLimiter` instances. There is no
@@ -87,10 +102,10 @@ commit; no separate sweep.
   exists and is used by TCP, but periodic ND tasks bypass it and
   live on the RX hot path.
 - `NeighborCache[A]` is generic over address type
-  (`pytcp/lib/neighbor.py`). Today there are two singletons:
+  (`packages/pytcp/pytcp/lib/neighbor.py`). Today there are two singletons:
   `arp_cache` (IPv4) and `nd_cache` (IPv6). They are not keyed by
   interface.
-- `TcpSessionTestCase` (`pytcp/tests/lib/tcp_session_testcase.py`)
+- `TcpTestCase` (`packages/pytcp/pytcp/tests/lib/tcp_testcase.py`)
   builds on `NetworkTestCase`. It mocks `TxRing` to capture frames,
   mocks `ArpCache`/`NdCache` with a static lookup table, constructs
   a real `PacketHandlerL2` with the test stack addressing, calls
@@ -99,14 +114,14 @@ commit; no separate sweep.
   `_drive_rx(frame=...)` calling `self._packet_handler._phrx_ethernet(PacketRx(frame))`.
   TX assertions parse captured frames into a `TcpProbe`. This is
   the canonical pattern the new harness mirrors.
-- Existing `pytcp/tests/integration/protocols/<proto>/test__<proto>__*__rx.py`
+- Existing `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*__rx.py`
   / `__tx.py` files (~17 files) are the legacy harness — they
   extend `NetworkTestCase` directly.
 
 Current Phase-3 violations to inventory in Phase 0 (non-exhaustive):
-- `pytcp/lib/dhcp4_client.py` mutates `Ip4Host.gateway` directly
+- `packages/pytcp/pytcp/lib/dhcp4_client.py` mutates `Ip4IfAddr.gateway` directly
 - Several examples import from `pytcp.runtime.packet_handler.*`
-- `TcpSessionTestCase` reaches into `_packet_handler._ip6_host` for
+- `TcpTestCase` reaches into `_packet_handler._ip6_ifaddr` for
   fixture setup
 - `NetworkTestCase` reads / writes module-level singletons directly
 
@@ -161,11 +176,11 @@ and is deleted in Phase 10.
 **Dependencies.** Phase 0.
 
 **Deliverables.**
-- `pytcp/tests/lib/packet_handler_testcase.py` — new file. Class
+- `packages/pytcp/pytcp/tests/lib/packet_handler_testcase.py` — new file. Class
   `PacketHandlerTestCase(TestCase)`. Layout mirrors
-  `TcpSessionTestCase`:
+  `TcpTestCase`:
   - `setUp` snapshots and clears the same module-global state
-    `TcpSessionTestCase` does (`stack.sockets`, `stack.pmtu_cache`,
+    `TcpTestCase` does (`stack.sockets`, `stack.pmtu_cache`,
     `stack.icmp{4,6}_error_rate_limiter`, the
     `_STACK__PATCHED_ATTRS` set), plus the new `stack.interfaces`
     dict landed in Phase 8 (a no-op until then).
@@ -186,7 +201,7 @@ and is deleted in Phase 10.
   - `_drive_tx(*, interface, call)` — invoke a TX entry by passing
     a small wrapper that captures the assembler call.
   - `_advance(*, ms)` — drives the `FakeTimer`
-    (`pytcp/tests/lib/fake_timer.py`).
+    (`packages/pytcp/pytcp/tests/lib/fake_timer.py`).
 - Typed `EthernetProbe`, `Ip4Probe`, `Ip6Probe`, `ArpProbe`,
   `Icmp4Probe`, `Icmp6Probe` — frozen dataclasses analogous to
   `TcpProbe`, in the same file. Populated by re-parsing captured
@@ -195,8 +210,8 @@ and is deleted in Phase 10.
 - Stack-state isolation helpers — `_snapshot_stack_state()` /
   `_restore_stack_state()` factored out of `setUp`/`tearDown` so
   derived test classes can re-snapshot mid-test.
-- `pytcp/tests/lib/__init__.py` re-exports the new symbols.
-- `pytcp/tests/lib/network_testcase.py` becomes a thin compat
+- `packages/pytcp/pytcp/tests/lib/__init__.py` re-exports the new symbols.
+- `packages/pytcp/pytcp/tests/lib/network_testcase.py` becomes a thin compat
   alias: `NetworkTestCase = PacketHandlerTestCase`. Existing
   tests that subclass `NetworkTestCase` continue to work
   unmodified through the rewrite; they migrate to
@@ -204,13 +219,13 @@ and is deleted in Phase 10.
 - *No production code changes* in this phase.
 
 **Tests.** One harness smoke test per layer:
-- `pytcp/tests/integration/protocols/_harness/test__harness__l2_smoke.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_harness/test__harness__l2_smoke.py`
   — drive a known ARP request frame through a single L2 test
   interface, assert one ARP reply frame is captured.
-- `pytcp/tests/integration/protocols/_harness/test__harness__l3_smoke.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_harness/test__harness__l3_smoke.py`
   — same with an ICMPv6 Echo Request through a single L3 test
   interface.
-- `pytcp/tests/integration/protocols/_harness/test__harness__multi_interface.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_harness/test__harness__multi_interface.py`
   — build *two* interfaces, drive a frame into one, assert no TX
   appears on the other. Locks in the contract Phase 8 will
   satisfy in production.
@@ -235,7 +250,7 @@ we want to know about *now* rather than during the rewrite.
 **Dependencies.** Phase 1.
 
 **Deliverables.** New tests under
-`pytcp/tests/integration/protocols/<proto>/` (matching the
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/` (matching the
 documented cross-cutting test path):
 - `arp/test__arp__request_response.py`,
   `arp/test__arp__acd_conflict.py` (RFC 5227),
@@ -262,7 +277,7 @@ documented cross-cutting test path):
   `icmp4/test__icmp4__error_emission_rate_limit.py`
 - `udp/test__udp__deliver_or_port_unreachable.py`,
   `tcp/test__tcp__demux.py` (TCP FSM detail stays under
-  `TcpSessionTestCase`; this only pins demux)
+  `TcpTestCase`; this only pins demux)
 - For each test class, the docstring carries the
   `Reference: RFC X §Y (clause).` line per `unit_testing.md` §7.
 
@@ -293,13 +308,13 @@ ships *the abstraction*, not multi-interface activation.
 **Dependencies.** Phase 2.
 
 **Deliverables.**
-- `pytcp/stack/interface.py` — new file. Class `Interface`:
+- `packages/pytcp/pytcp/stack/interface.py` — new file. Class `Interface`:
   - Identity: `name`, `layer: InterfaceLayer`, `mtu`, `mac`
     (only when `layer is L2`).
   - Owned subsystems: `rx_ring: RxRing`, `tx_ring: TxRing` —
     per-Interface attributes, not module-level singletons.
-  - Per-AF config containers (in `pytcp/stack/interface_ip4.py`
-    and `pytcp/stack/interface_ip6.py`): `Ip4DeviceConfig` and
+  - Per-AF config containers (in `packages/pytcp/pytcp/stack/interface_ip4.py`
+    and `packages/pytcp/pytcp/stack/interface_ip6.py`): `Ip4DeviceConfig` and
     `Ip6DeviceConfig` (host/multicast/broadcast lists, frag-ID
     counters, DAD/ACD state, RA-learned default-router list,
     SLAAC table, temp-addr table, RA-parameter mirror, RFC 7217
@@ -307,7 +322,7 @@ ships *the abstraction*, not multi-interface activation.
   - Per-AF L2-bound caches: `arp_cache`, `nd_cache` (still
     singletons under the hood in this phase; Phase 4/8 lifts the
     singleton constraint).
-- **`pytcp/stack/link/__init__.py` — Link API.** Public functions:
+- **`packages/pytcp/pytcp/stack/link/__init__.py` — Link API.** Public functions:
   - `add(*, name: str, layer: InterfaceLayer, mtu: int, mac: MacAddress | None) -> None`
   - `remove(*, name: str) -> None`
   - `up(*, name: str) -> None`, `down(*, name: str) -> None`
@@ -317,14 +332,14 @@ ships *the abstraction*, not multi-interface activation.
     `LinkInfo` dataclasses (name, layer, mtu, mac, oper_state).
   - All take/return value types only. No `Interface` references
     leak across the boundary.
-- `pytcp/stack/__init__.py` — `init()` constructs an `Interface`
+- `packages/pytcp/pytcp/stack/__init__.py` — `init()` constructs an `Interface`
   via `pytcp.stack.link.add(...)` and stores it in a new
   `stack.interfaces: dict[str, Interface]` (single-entry initially)
   plus a `stack.default_interface: Interface` shortcut. Legacy
   module-level `timer`, `rx_ring`, `tx_ring`, `arp_cache`,
   `nd_cache`, `packet_handler` names stay as aliases resolving to
   `default_interface.<x>`. Rename without breaking.
-- `pytcp/runtime/packet_handler/__init__.py` — `PacketHandler.__init__`
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` — `PacketHandler.__init__`
   takes an `interface: Interface` parameter; per-interface state
   (MAC, host lists, multicast lists, frag counters, ND tables)
   moves off `self` and behind `self._interface.<x>` properties.
@@ -338,18 +353,18 @@ ships *the abstraction*, not multi-interface activation.
   (one example tweak; no behavioural change).
 
 **Tests.** Re-run Phase 2 + the legacy
-`pytcp/tests/integration/protocols/<proto>/test__<proto>__*` suite; both must
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*` suite; both must
 pass identically. New:
-- `pytcp/tests/integration/api/link/test__link__add_remove.py` —
+- `packages/pytcp/pytcp/tests/integration/api/link/test__link__add_remove.py` —
   add and remove an interface via the Link API, assert it
   appears/disappears in `list()`.
-- `pytcp/tests/integration/api/link/test__link__mtu_mac.py` —
+- `packages/pytcp/pytcp/tests/integration/api/link/test__link__mtu_mac.py` —
   set MTU and MAC via the Link API, assert observable on the
   underlying packet flow.
-- `pytcp/tests/integration/api/link/test__link__no_internal_refs.py`
+- `packages/pytcp/pytcp/tests/integration/api/link/test__link__no_internal_refs.py`
   — assert `list()` returns immutable dataclasses, mutating them
   does not affect stack state.
-- `pytcp/tests/integration/protocols/_interface/test__interface__lifecycle.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__interface__lifecycle.py`
   — construct/start/stop an `Interface` in isolation; assert no
   leakage into module globals.
 
@@ -394,23 +409,23 @@ state objects.
   its own `ArpCache` and `NdCache` instance (lands in Phase 8).
 
 **Deliverables.** New state-object modules:
-- `pytcp/stack/state/ip4_device.py` — `Ip4DeviceState` with a
+- `packages/pytcp/pytcp/stack/state/ip4_device.py` — `Ip4DeviceState` with a
   `snapshot() -> Ip4DeviceSnapshot` returning an immutable
   dataclass.
-- `pytcp/stack/state/ip6_device.py` — `Ip6DeviceState` + snapshot.
-- `pytcp/stack/state/icmp6_nd.py` — `Icmp6NdState` (DAD per-address
+- `packages/pytcp/pytcp/stack/state/ip6_device.py` — `Ip6DeviceState` + snapshot.
+- `packages/pytcp/pytcp/stack/state/icmp6_nd.py` — `Icmp6NdState` (DAD per-address
   dicts, RA prefix list, RA event semaphore, default-router list,
   SLAAC table, temp-addr table, RA parameter mirror, last-sweep
   timestamp) + snapshot.
-- `pytcp/stack/state/arp_acd.py` — `ArpAcdState` (probe-conflict
+- `packages/pytcp/pytcp/stack/state/arp_acd.py` — `ArpAcdState` (probe-conflict
   set, defend-last-emitted dict, last-conflict-at dict) + snapshot.
-- `pytcp/stack/state/ip_reassembler.py` — wrap `IpFragTable` per
+- `packages/pytcp/pytcp/stack/state/ip_reassembler.py` — wrap `IpFragTable` per
   AF + snapshot.
-- `pytcp/runtime/packet_handler/__init__.py` — `PacketHandler`
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` — `PacketHandler`
   shrinks dramatically; methods that today read
   `self._icmp6_default_routers` go through
   `self._interface.icmp6_nd.default_routers`.
-- **`pytcp/stack/introspection/__init__.py` — Introspection API.**
+- **`packages/pytcp/pytcp/stack/introspection/__init__.py` — Introspection API.**
   Public functions:
   - `interfaces() -> tuple[InterfaceSnapshot, ...]`
   - `ip4_addresses(*, ifname: str) -> tuple[Ip4HostSnapshot, ...]`
@@ -429,20 +444,20 @@ state objects.
     re-snapshot rather than cache.
 
 **Phase-3 reach-through cleanup (on-touch).**
-- Test fixtures that read `_packet_handler._ip6_host`,
+- Test fixtures that read `_packet_handler._ip6_ifaddr`,
   `_icmp6_default_routers`, etc. for assertions migrate to
   `pytcp.stack.introspection.*` calls in the same commit.
 - DHCP4 client reads of stack state migrate (writes deferred to
   Phase 8 when the Address API lands).
 
 **Tests.** Phase 2 + 3 + legacy must pass. New:
-- `pytcp/tests/integration/api/introspection/test__introspection__copy_by_value.py`
+- `packages/pytcp/pytcp/tests/integration/api/introspection/test__introspection__copy_by_value.py`
   — assert mutating returned snapshots does not affect subsequent
   snapshot() calls.
-- `pytcp/tests/integration/api/introspection/test__introspection__per_interface_isolation.py`
+- `packages/pytcp/pytcp/tests/integration/api/introspection/test__introspection__per_interface_isolation.py`
   — build two interfaces, mutate ND state on one, assert the
   other's introspection snapshot is unchanged.
-- `pytcp/tests/integration/protocols/_interface/test__interface__state_isolation.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__interface__state_isolation.py`
   — same invariant at the state-object level.
 
 **Modernisation-on-touch.** Every state-extraction commit touches
@@ -467,18 +482,18 @@ subsystem. Cadences become sysctl knobs via the existing
 act on).
 
 **Deliverables.**
-- `pytcp/runtime/packet_handler/__init__.py` — delete
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` — delete
   `_maybe_run_periodic_tasks`. `_subsystem_loop` is back to
   "dequeue and dispatch."
-- `pytcp/stack/state/icmp6_nd.py` —
+- `packages/pytcp/pytcp/stack/state/icmp6_nd.py` —
   `Icmp6NdState.register_timers(timer, interface)` registers
   `_icmp6_sweep_temp_addresses`, `_icmp6_regen_temp_addresses`,
   `_icmp6_sweep_slaac_addresses` with `timer.register_method(...)`
   keyed on `interface.name` so multi-interface registration is
   naturally distinct.
-- `pytcp/stack/state/arp_acd.py` — same pattern for ARP defend
+- `packages/pytcp/pytcp/stack/state/arp_acd.py` — same pattern for ARP defend
   timers.
-- `pytcp/stack/__init__.py::init()` — after constructing each
+- `packages/pytcp/pytcp/stack/__init__.py::init()` — after constructing each
   `Interface`, call its state objects' `register_timers(timer,
   interface)` methods.
 - New sysctl knobs via the `sysctl_knob` skill:
@@ -493,13 +508,13 @@ act on).
 cadence values were already constants, not consumer-facing.
 
 **Tests.** All prior phases + legacy pass. New:
-- `pytcp/tests/integration/protocols/_interface/test__timer__nd_sweep_register.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__timer__nd_sweep_register.py`
   — assert `Timer` has the expected registered methods after
   `Interface` construction.
-- `pytcp/tests/integration/protocols/_interface/test__timer__nd_sweep_fires.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__timer__nd_sweep_fires.py`
   — drive `FakeTimer` past the configured sweep interval, assert
   an expired temp-addr is removed.
-- `pytcp/tests/integration/protocols/_interface/test__timer__sysctl_overrides_cadence.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__timer__sysctl_overrides_cadence.py`
   — set the sysctl to a different value, assert the next sweep
   fires at the new cadence.
 
@@ -531,13 +546,13 @@ back-reference to its `Interface` without a hot-path lookup;
 makes per-interface dispatch tables (Phase 7) trivial.
 
 **Deliverables.** New handler module per protocol:
-- `pytcp/stack/protocols/ethernet_handler.py` — `EthernetHandler`
+- `packages/pytcp/pytcp/stack/protocols/ethernet_handler.py` — `EthernetHandler`
   with `process_rx(pkt)` and `emit_tx(*, src, dst, payload)`.
   Holds back-reference to owning `Interface`.
-- `pytcp/stack/protocols/{ethernet_802_3_handler,arp_handler,
+- `packages/pytcp/pytcp/stack/protocols/{ethernet_802_3_handler,arp_handler,
   ip4_handler,ip6_handler,ip6_frag_handler,icmp4_handler,
   icmp6_handler,tcp_handler,udp_handler}.py` — analogous.
-- A new `pytcp/runtime/packet_handler/__init__.py` that is **glue
+- A new `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` that is **glue
   only** — instantiates the handlers, wires their cross-references,
   exposes a single `dispatch_rx(packet_rx)` entry the RX ring
   calls. Target ≤200 lines (final shape achieved after Phase 7).
@@ -556,7 +571,7 @@ migrates to drive_rx + probe pattern in the same commit.
 
 **Tests.** All prior phases + legacy stay green throughout. Each
 per-protocol migration adds a
-`pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__handler_composition.py`
+`packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__<proto>__handler_composition.py`
 that asserts the handler can be instantiated standalone (i.e.
 without the god-class) and that its RX/TX entries behave
 identically to the pre-migration mixin path. Tests-first commit
@@ -584,30 +599,30 @@ handler.
 **Dependencies.** Phase 6.
 
 **Deliverables.**
-- `pytcp/stack/dispatch.py` — new file. `EthertypeRegistry`,
+- `packages/pytcp/pytcp/stack/dispatch.py` — new file. `EthertypeRegistry`,
   `IpProtoRegistry`, `Ip6ExtensionHeaderRegistry` — typed dict
   classes mapping a wire codepoint to a callable
   `(packet_rx) -> None`.
-- `pytcp/stack/interface.py` —
+- `packages/pytcp/pytcp/stack/interface.py` —
   `Interface.register_default_handlers()` builds the registries
   based on `self.layer` and per-AF support flags. L2 interface
   registers ARP/IP4/IP6 in the EtherType registry; L3 interface
   registers only IP4/IP6 in a TUN-PI registry.
-- `pytcp/stack/protocols/ethernet_handler.py::process_rx` —
+- `packages/pytcp/pytcp/stack/protocols/ethernet_handler.py::process_rx` —
   replaces the `match`/`case` with
   `self._interface.ethertype_registry.dispatch(packet_rx.ethernet.type, packet_rx)`.
-- `pytcp/stack/protocols/ip6_handler.py::_walk_chain` — same
+- `packages/pytcp/pytcp/stack/protocols/ip6_handler.py::_walk_chain` — same
   conversion for the EH chain.
 
 **Phase-3 reach-through cleanup (on-touch).** None — dispatch is
 stack-internal.
 
 **Tests.** All prior phases + legacy stay green. New:
-- `pytcp/tests/integration/protocols/_interface/test__registry__l2_l3_difference.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__registry__l2_l3_difference.py`
   — assert an L3 `Interface`'s EtherType registry is empty (no
   ARP); unknown EtherType on L2 still produces the existing
   `ethernet__no_proto_support__drop` stat bump.
-- `pytcp/tests/integration/protocols/_interface/test__registry__custom_handler.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__registry__custom_handler.py`
   — register a fake handler in the test, drive a frame, assert
   the fake handler ran. Pins that the registry is the *only*
   dispatch path; future protocol additions cannot regress to
@@ -633,12 +648,12 @@ surfaces backed by per-Interface state.
 **Dependencies.** Phases 3-7.
 
 **Deliverables.**
-- `pytcp/stack/__init__.py` — `init()` is renamed to
+- `packages/pytcp/pytcp/stack/__init__.py` — `init()` is renamed to
   `add_interface(*, name, layer, mtu, mac=None, ...)`; called
   once per interface. The old single-shot `init(...)` becomes a
   thin wrapper that calls `add_interface` once and sets the
   `default_interface` shortcut.
-- `pytcp/stack/__init__.py` — `start()` / `stop()` iterate
+- `packages/pytcp/pytcp/stack/__init__.py` — `start()` / `stop()` iterate
   `stack.interfaces.values()`. Legacy module-level aliases
   (`rx_ring`, `tx_ring`, `arp_cache`, `nd_cache`,
   `packet_handler`) are removed; remaining call sites route
@@ -653,16 +668,16 @@ surfaces backed by per-Interface state.
 - `NeighborCache` becomes per-Interface — each Interface
   constructs its own `ArpCache`/`NdCache`. Module-level
   `arp_cache` / `nd_cache` aliases deleted.
-- **`pytcp/stack/address/__init__.py` — Address API.** Public
+- **`packages/pytcp/pytcp/stack/address/__init__.py` — Address API.** Public
   functions:
-  - `add_ip4(*, ifname: str, host: Ip4Host) -> None`
+  - `add_ip4(*, ifname: str, host: Ip4IfAddr) -> None`
   - `remove_ip4(*, ifname: str, address: Ip4Address) -> None`
-  - `add_ip6(*, ifname: str, host: Ip6Host) -> None`
+  - `add_ip6(*, ifname: str, host: Ip6IfAddr) -> None`
   - `remove_ip6(*, ifname: str, address: Ip6Address) -> None`
   - `flush(*, ifname: str, family: AddressFamily) -> None`
   - `list_ip4(*, ifname: str) -> tuple[Ip4HostSnapshot, ...]`
   - `list_ip6(*, ifname: str) -> tuple[Ip6HostSnapshot, ...]`
-- **`pytcp/stack/neighbor/__init__.py` — Neighbor API.** Public
+- **`packages/pytcp/pytcp/stack/neighbor/__init__.py` — Neighbor API.** Public
   functions:
   - `add_static_arp(*, ifname: str, ip: Ip4Address, mac: MacAddress) -> None`
   - `add_static_nd(*, ifname: str, ip: Ip6Address, mac: MacAddress) -> None`
@@ -672,28 +687,28 @@ surfaces backed by per-Interface state.
   - `list_nd(*, ifname: str) -> tuple[NeighborSnapshot, ...]`
 
 **Phase-3 reach-through cleanup (on-touch).**
-- DHCP4 client's `Ip4Host.gateway = ...` mutation migrates to
+- DHCP4 client's `Ip4IfAddr.gateway = ...` mutation migrates to
   `pytcp.stack.address.add_ip4(...)` + `pytcp.stack.route.add(...)`
   (the route part is a forward reference to Phase 9's Route API,
   which is already specified). Cleaned in this commit using a
   thin shim if Phase 9 has not landed yet.
 - `stack.mock__init` callers in tests migrate to per-API calls.
-- Examples that touch `_ip6_host`, `_ip4_host`, etc. directly
+- Examples that touch `_ip6_ifaddr`, `_ip4_ifaddr`, etc. directly
   migrate to the Address API.
 
 **Tests.** All prior phases + legacy stay green. New:
-- `pytcp/tests/integration/protocols/_interface/test__multi_interface__rx_isolation.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__multi_interface__rx_isolation.py`
   — two interfaces, frame into A, assert no TX on B and B's
   stats are zero.
-- `pytcp/tests/integration/protocols/_interface/test__multi_interface__arp_caches_are_separate.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__multi_interface__arp_caches_are_separate.py`
   — populate ARP cache on A, assert lookup on B misses.
-- `pytcp/tests/integration/protocols/_interface/test__multi_interface__nd_dad_concurrent.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__multi_interface__nd_dad_concurrent.py`
   — DAD claims on A and B for the same address run independently.
-- `pytcp/tests/integration/api/address/test__address__add_remove_ip4.py`,
+- `packages/pytcp/pytcp/tests/integration/api/address/test__address__add_remove_ip4.py`,
   `test__address__add_remove_ip6.py`,
   `test__address__flush.py`,
   `test__address__list_immutable.py`.
-- `pytcp/tests/integration/api/neighbor/test__neighbor__add_static_arp.py`,
+- `packages/pytcp/pytcp/tests/integration/api/neighbor/test__neighbor__add_static_arp.py`,
   `test__neighbor__add_static_nd.py`,
   `test__neighbor__flush.py`,
   `test__neighbor__list_immutable.py`.
@@ -721,7 +736,7 @@ what matters.
 
 **Dependencies.** Phase 8.
 
-**Routing layer placement.** New subsystem `pytcp/stack/routing/`.
+**Routing layer placement.** New subsystem `packages/pytcp/pytcp/stack/routing/`.
 Linux equivalent: `net/ipv4/fib_*.c` and `net/ipv6/route.c`. The
 FIB is a stack-level singleton (mirrors Linux's per-net-namespace
 `struct net.ipv4.fib_main`); per-interface "connected" routes are
@@ -740,33 +755,33 @@ packets; the EH walk for forwarded packets is a Phase-2 concern
 marked `# Phase 2: forwarding path`.
 
 **Deliverables.**
-- `pytcp/stack/routing/__init__.py` — package marker.
-- `pytcp/stack/routing/fib.py` — `Fib` class, single global
+- `packages/pytcp/pytcp/stack/routing/__init__.py` — package marker.
+- `packages/pytcp/pytcp/stack/routing/fib.py` — `Fib` class, single global
   `stack.fib: Fib`. Methods `lookup(dst) -> FibResult` (with
   `result.egress_interface`, `result.next_hop`, `result.is_local`,
   `result.is_blackhole`).
-- `pytcp/stack/routing/fib_entry.py` — `FibEntry` dataclass
+- `packages/pytcp/pytcp/stack/routing/fib_entry.py` — `FibEntry` dataclass
   (prefix, next-hop, egress interface, metric, source:
   connected/static/RA-learned).
-- `pytcp/stack/interface.py` — when an `Interface` gains a host
+- `packages/pytcp/pytcp/stack/interface.py` — when an `Interface` gains a host
   address (via the Address API from Phase 8), install a connected
   route into `stack.fib`. When an RA arrives carrying a default
   router, install a default route via that interface (Phase 1
   hosts only consume RAs; this is the hook Phase 2 grows).
-- `pytcp/stack/protocols/ip6_handler.py::process_rx` — insert FIB
+- `packages/pytcp/pytcp/stack/protocols/ip6_handler.py::process_rx` — insert FIB
   lookup + `forward_or_deliver` seam.
-- `pytcp/stack/protocols/ip4_handler.py::process_rx` — same.
-- `pytcp/stack/protocols/ip6_handler.py::forward_or_deliver` —
+- `packages/pytcp/pytcp/stack/protocols/ip4_handler.py::process_rx` — same.
+- `packages/pytcp/pytcp/stack/protocols/ip6_handler.py::forward_or_deliver` —
   Phase-1 stub: log + increment `ip6__forward_drop` stat. Marked
   `# Phase 2: full forwarding implementation here`.
-- `pytcp/stack/protocols/icmp4_handler.py` and
+- `packages/pytcp/pytcp/stack/protocols/icmp4_handler.py` and
   `icmp6_handler.py` — stub `_emit_redirect()` (RFC 1812 §5.2.7.2),
   wired-but-unreachable in Phase 1. Marked `# Phase 2`.
 - TX path egress-selection: `Ip6Handler.emit_tx` and
   `Ip4Handler.emit_tx` consult
   `stack.fib.lookup(dst).egress_interface` to choose which
   Interface's `tx_ring` to enqueue on.
-- **`pytcp/stack/route/__init__.py` — Route API.** Public
+- **`packages/pytcp/pytcp/stack/route/__init__.py` — Route API.** Public
   functions:
   - `add(*, prefix: Ip4Network | Ip6Network, gateway: Ip4Address | Ip6Address | None = None, ifname: str | None = None, metric: int = 0) -> None`
   - `remove(*, prefix: Ip4Network | Ip6Network, gateway: Ip4Address | Ip6Address | None = None) -> None`
@@ -780,26 +795,26 @@ marked `# Phase 2: forwarding path`.
 - DHCP4 client's gateway-install path (started in Phase 8)
   completes — `pytcp.stack.route.add(prefix=Ip4Network("0.0.0.0/0"),
   gateway=...)`.
-- `Ip4Host.gateway` attribute and `Ip6Host.gateway` attribute are
+- `Ip4IfAddr.gateway` attribute and `Ip6IfAddr.gateway` attribute are
   marked `# Phase 3: implementation detail of the address store;
   not the consumer-facing route`. They stay for now (still used
   internally by route insertion), but consumer code never reads
   or writes them after this phase.
 
 **Tests.** All prior phases + legacy stay green. New:
-- `pytcp/tests/integration/protocols/_interface/test__fib__lookup_local.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__fib__lookup_local.py`
   — packet for our own address resolves to `is_local=True`.
-- `pytcp/tests/integration/protocols/_interface/test__fib__lookup_off_link.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__fib__lookup_off_link.py`
   — packet for off-link destination resolves to default route via
   the right interface.
-- `pytcp/tests/integration/protocols/_interface/test__fib__forward_drops.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__fib__forward_drops.py`
   — Phase-1 stub: a transit packet gets dropped + the counter
   bumps. Phase 2 will flip this test green by implementing the
   forward path.
-- `pytcp/tests/integration/protocols/_interface/test__multi_interface__egress_selection.py`
+- `packages/pytcp/pytcp/tests/integration/protocols/_interface/test__multi_interface__egress_selection.py`
   — two interfaces, two FIB entries, packet to dest A egresses
   interface A, packet to dest B egresses interface B.
-- `pytcp/tests/integration/api/route/test__route__add_remove.py`,
+- `packages/pytcp/pytcp/tests/integration/api/route/test__route__add_remove.py`,
   `test__route__list_immutable.py`,
   `test__route__lookup.py`,
   `test__route__connected_auto_install.py`.
@@ -819,22 +834,22 @@ revert.
 
 **Goal.** Retire the legacy harness once the new harness equals
 coverage; delete dead code; remove the `NetworkTestCase` compat
-alias; the new `pytcp/runtime/packet_handler/__init__.py` is ≤200
+alias; the new `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` is ≤200
 lines of glue. Final reach-through residue cleanup.
 
 **Dependencies.** All prior phases.
 
 **Deliverables.**
-- Delete `pytcp/tests/integration/protocols/<proto>/test__<proto>__*__rx.py`
+- Delete `packages/pytcp/pytcp/tests/integration/protocols/<proto>/test__<proto>__*__rx.py`
   / `__tx.py` (17 files) — only after coverage diff confirms the
   new harness's tests cover every behavior the old tests pinned.
   Delete the `NetworkTestCase` compat alias in
-  `pytcp/tests/lib/network_testcase.py`.
+  `packages/pytcp/pytcp/tests/lib/network_testcase.py`.
 - Delete every `packet_handler__*__rx.py` / `__tx.py` mixin file
   (20 files).
-- `pytcp/runtime/packet_handler/__init__.py` reduced to
+- `packages/pytcp/pytcp/runtime/packet_handler/__init__.py` reduced to
   `PacketHandler` glue + dispatch entry. Verify ≤200 lines.
-- Verify `pytcp/stack/__init__.py` no longer carries module-level
+- Verify `packages/pytcp/pytcp/stack/__init__.py` no longer carries module-level
   subsystem singletons; only the multi-interface dict + cross-
   interface globals (TCP stack, PMTU cache, ICMP rate limiters)
   remain.
@@ -859,11 +874,11 @@ the deleted-and-replaced files are gone by definition.
 
 | # | Decision | Recommendation | Rationale |
 |---|----------|----------------|-----------|
-| 1 | Top-level `Interface` class? | **Yes**, in `pytcp/stack/interface.py`, owns rings + per-AF device-config sub-objects. | Mirrors Linux `struct net_device`; without it multi-interface is structurally impossible. |
+| 1 | Top-level `Interface` class? | **Yes**, in `packages/pytcp/pytcp/stack/interface.py`, owns rings + per-AF device-config sub-objects. | Mirrors Linux `struct net_device`; without it multi-interface is structurally impossible. |
 | 2 | Per-interface vs global state split | **Per-interface**: addresses, multicast, MTU, DAD, ARP ACD, RA-learned routers, SLAAC tables, frag-ID counters. **Global**: TCP stack, PMTU cache, ICMP rate limiters, FIB. | Matches Linux's `in_device`/`inet6_dev` vs `net.ipv4.fib_main` boundary. |
 | 3 | Handler ownership | **Per-Interface instances** of each `<Proto><Dir>Handler`, with back-reference to owning Interface. | Per-interface dispatch tables (Phase 7) become trivial; cross-handler calls do not need an interface parameter. |
 | 4 | Dispatch/registration | **Per-Interface registries** populated by the Interface based on layer + AF support. | An L3 interface does not register the Ethernet handler; per-interface `# disable IPv6` becomes a one-line change. |
-| 5 | Routing layer placement | New subsystem `pytcp/stack/routing/` with global `Fib`; `Interface` installs connected routes on address gain. | Mirrors Linux `net/route.c` boundary; keeps FIB out of `pytcp/stack/__init__.py`. |
+| 5 | Routing layer placement | New subsystem `packages/pytcp/pytcp/stack/routing/` with global `Fib`; `Interface` installs connected routes on address gain. | Mirrors Linux `net/route.c` boundary; keeps FIB out of `packages/pytcp/pytcp/stack/__init__.py`. |
 | 6 | Forwarding seam | `forward_or_deliver` called from `IpXHandler.process_rx` immediately after parse and **before** the destination-is-mine check, with Phase-1 stub that always drops transit traffic. | Cannot run before parse; must run before upper-layer demux because demux implies delivery. |
 | 7 | Test harness migration | **Replace** `NetworkTestCase` with `PacketHandlerTestCase`; legacy harness becomes a thin alias deleted in Phase 10. | Cleanest end state; migration cost bounded by Phase 2 backfill. |
 | 8 | Phase-3 API delivery model | **Inline** — each phase ships its API alongside the structural work; no end-of-rewrite facade. Five new modules: `pytcp.stack.{link,address,route,neighbor,introspection}`. | Each plane has a distinct surface per CLAUDE.md; a single facade would foreclose the seven-API model. |
@@ -912,7 +927,7 @@ named for the audit trail:
 3. **Netdev event model.** Linux has `notifier_chain` for events
    like NETDEV_UP/DOWN/CHANGEADDR. PyTCP currently has none.
    **Recommendation:** out-of-scope for this rewrite; add TODO in
-   `pytcp/stack/interface.py`. Becomes a follow-up alongside
+   `packages/pytcp/pytcp/stack/interface.py`. Becomes a follow-up alongside
    long-term Phase-3 daemon-mode IPC work.
 4. **Phase-2 forwarding interaction with HBH/RH.** Forwarders must
    process HBH but must *not* consume the segment-1 destination of
@@ -925,7 +940,7 @@ named for the audit trail:
    destination, not with the host's address as the source. Current
    `try_emit_icmp_error` is host-shaped. **Recommendation:** flag
    with `# Phase 2 (forwarder error emission)` in
-   `pytcp/protocols/icmp/icmp__error_emitter.py`.
+   `packages/pytcp/pytcp/protocols/icmp/icmp__error_emitter.py`.
 6. **`stack.mock__init` after Phase 8.** Current single-singleton
    `mock__init` does not generalise to N interfaces. The new
    harness uses per-API calls (`pytcp.stack.link.add(...)`,
@@ -956,19 +971,19 @@ named for the audit trail:
 
 ## Critical files for implementation
 
-- `/root/PyTCP/pytcp/runtime/packet_handler/__init__.py` — the
+- `/root/PyTCP/packages/pytcp/pytcp/runtime/packet_handler/__init__.py` — the
   2040-line god-class being decomposed; the plan's gravity well.
-- `/root/PyTCP/pytcp/stack/__init__.py` — module-level singletons
+- `/root/PyTCP/packages/pytcp/pytcp/stack/__init__.py` — module-level singletons
   that become per-Interface; the multi-interface activation
   surface.
-- `/root/PyTCP/pytcp/tests/lib/tcp_session_testcase.py` — reference
+- `/root/PyTCP/packages/pytcp/pytcp/tests/lib/tcp_testcase.py` — reference
   design for the new `PacketHandlerTestCase`; the proven
   snapshot-and-restore pattern to mirror.
-- `/root/PyTCP/pytcp/lib/neighbor.py` — `NeighborCache[A]` already
+- `/root/PyTCP/packages/pytcp/pytcp/lib/neighbor.py` — `NeighborCache[A]` already
   generic; per-Interface keying lives here in Phase 4/8.
-- `/root/PyTCP/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
+- `/root/PyTCP/packages/pytcp/pytcp/runtime/packet_handler/packet_handler__ip6__rx.py`
   — IPv6 RX path where the `forward_or_deliver` seam lands in
   Phase 9; the most spec-loaded file outside the god-class.
-- `/root/PyTCP/pytcp/lib/dhcp4_client.py` — canonical Phase-3
-  reach-through (mutates `Ip4Host.gateway` directly); migrates
+- `/root/PyTCP/packages/pytcp/pytcp/lib/dhcp4_client.py` — canonical Phase-3
+  reach-through (mutates `Ip4IfAddr.gateway` directly); migrates
   through Phase 8 (Address API) + Phase 9 (Route API).

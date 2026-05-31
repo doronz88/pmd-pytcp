@@ -13,8 +13,8 @@ This document records, paragraph by paragraph, how the
 current PyTCP codebase relates to each normative
 statement in RFC 7323. The audit was performed by
 reading the RFC text fresh and inspecting the codebase
-under `pytcp/protocols/tcp/`, `pytcp/socket/`, and
-`net_proto/protocols/tcp/options/` directly; no prior
+under `packages/pytcp/pytcp/protocols/tcp/`, `packages/pytcp/pytcp/socket/`, and
+`packages/net_proto/net_proto/protocols/tcp/options/` directly; no prior
 memory or rule-file content was reused. Sections that
 contain no normative content (Abstract, §1
 Introduction narrative, §1.1–§1.3 motivation, §1.4
@@ -35,7 +35,7 @@ plus the §2.4 window-retraction rule.
 
 **Adherence:** met. The wire-level encoding is
 implemented at
-`net_proto/protocols/tcp/options/tcp__option__wscale.py`
+`packages/net_proto/net_proto/protocols/tcp/options/tcp__option__wscale.py`
 with kind=3 and length=3 exactly per the RFC.
 
 ### Bilateral negotiation
@@ -66,7 +66,7 @@ option presence:
 
 **Adherence:** met (need to verify the clamp). The
 default `_rcv_wsc = 7`
-(`pytcp/protocols/tcp/tcp__session.py:165`) yields a
+(`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:165`) yields a
 ~8 MB max receive window (65535 << 7), well within
 the 14 cap. The wire-level option's `shift_count`
 field accepts up to 255 at the assembler level
@@ -82,7 +82,7 @@ window field shifts.
 > scaled."
 
 **Adherence:** met. The outbound TX path at
-`pytcp/protocols/tcp/tcp__session.py:1278-1297`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1278-1297`
 unconditionally caps `tcp__win` at 0xFFFF on SYN /
 SYN+ACK (literal RCV.WND, not pre-shift) and applies
 the right-shift only on non-SYN segments.
@@ -148,7 +148,7 @@ under the RFC 1122 record.
 > "Kind: 8 / Length: 10 bytes / TSval (4) | TSecr (4)"
 
 **Adherence:** met. The wire-level encoding at
-`net_proto/protocols/tcp/options/tcp__option__timestamps.py`
+`packages/net_proto/net_proto/protocols/tcp/options/tcp__option__timestamps.py`
 implements kind=8 and length=10 exactly.
 
 ### TSecr semantics
@@ -159,7 +159,7 @@ implements kind=8 and length=10 exactly.
 > ignore the value of the TSecr field."
 
 **Adherence:** met. The TSopt emission at
-`pytcp/protocols/tcp/tcp__session.py:1348-1370`
+`packages/pytcp/pytcp/protocols/tcp/tcp__session.py:1348-1370`
 constructs `(tsval, tsecr)` per the §4.3 rules:
 on SYN, tsecr=0; on SYN+ACK or non-SYN, tsecr =
 `_ts_recent`.
@@ -404,7 +404,7 @@ typical PyTCP use cases.
 ### §2.2 WSCALE wire format
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__wscale.py`
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__wscale.py`
   covers the kind/length/shift_count assembler /
   parser / asserts.
 
@@ -413,7 +413,7 @@ typical PyTCP use cases.
 ### §2.2 / §2.3 Bilateral negotiation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__wscale.py`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__wscale.py`
   pins active-open WSCALE advertisement, passive-open
   WSCALE echo, and the bilateral-not-offered fallback.
 
@@ -431,14 +431,14 @@ typical PyTCP use cases.
 ### §3.2 TSopt wire format
 
 - **Wire-level unit:**
-  `net_proto/tests/unit/protocols/tcp/test__tcp__option__timestamps.py`.
+  `packages/net_proto/net_proto/tests/unit/protocols/tcp/test__tcp__option__timestamps.py`.
 
 **Status:** locked in.
 
 ### §3.2 TSopt on every non-RST segment after negotiation
 
 - **Integration:**
-  `pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py::TestTcpTimestampsPhase2`
+  `packages/pytcp/pytcp/tests/integration/protocols/tcp/test__tcp__session__timestamps.py::TestTcpTimestampsPhase2`
   pins the per-segment emission post-bilateral-
   negotiation.
 

@@ -1,41 +1,19 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "PyTCP"
-version = "3.0.4"
-description = "Pure-Python, zero-dependency TCP/IP stack — Ethernet through RFC 9293 TCP — running in user space on a TAP/TUN interface, with a Berkeley-sockets API."
-readme = "README.md"
-authors = [{ name = "Sebastian Majewski", email = "ccie18643@gmail.com" }]
-license = "GPL-3.0-or-later"
-classifiers = [
-    "Programming Language :: Python :: 3.14",
-    "Development Status :: 3 - Alpha",
-    "Operating System :: POSIX :: Linux",
-    "Natural Language :: English",
-    "Environment :: Console",
-    "Topic :: System :: Networking",
-    "Typing :: Typed",
-]
-keywords = [
-    "pytcp",
-    "stack",
-    "networking",
-    "tcp",
-    "ip",
-    "ipv4",
-    "ipv6",
-    "arp",
-    "ethernet",
-    "icmp",
-]
-dependencies = []
-requires-python = ">=3.14"
-
-[project.urls]
-"Homepage" = "https://github.com/ccie18643/PyTCP"
-"Bug Tracker" = "https://github.com/ccie18643/PyTCP/issues"
+# PyTCP monorepo — workspace root.
+#
+# This file is intentionally NOT a buildable project: it has no
+# [build-system] and no [project]. The three distributions each
+# live in their own PEP 517 project and are built from there:
+#
+#   packages/net_addr   -> PyTCP-net_addr   (import: net_addr)
+#   packages/net_proto  -> PyTCP-net_proto  (import: net_proto)
+#   packages/pytcp      -> PyTCP            (import: pytcp)
+#
+# This root only carries the shared lint/type tooling config that
+# the Makefile applies across the whole tree (run from the repo
+# root with explicit file lists, so these [tool.*] sections are
+# the single source of truth — no per-package tool config, no
+# drift). Dev resolution is via editable-compat installs of all
+# three packages (`make venv`).
 
 [tool.black]
 line-length = 120
@@ -43,7 +21,7 @@ target-version = ["py314"]
 
 [tool.isort]
 profile = "black"
-src_paths = ["pytcp", "examples", "net_addr", "net_proto"]
+src_paths = ["packages/pytcp", "examples", "packages/net_addr", "packages/net_proto"]
 line_length = 120
 honor_noqa = true
 
@@ -55,20 +33,24 @@ ignore-words-list = "ect, ether, nd, tha, assertIn, sourc"
 max-line-length = 120
 ignore = ["E203", "E266", "E701", "E704", "W503", "E731", "E741"]
 per-file-ignores = [
-    "pytcp/stack/__init__.py:F821",
+    "packages/pytcp/pytcp/stack/__init__.py:F821",
 ]
 
 [tool.mypy]
 python_version = "3.14"
-check_untyped_defs = true
-disallow_untyped_defs = true
+strict = true
 disallow_any_unimported = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_return_any = true
-warn_unused_ignores = true
 show_error_codes = true
+enable_error_code = ["explicit-override"]
+
+# Test modules are exempt from 'explicit-override': the
+# @override-on-setUp/tearDown expectation (unit_testing.md
+# §10b.1) stays a written convention rather than a mechanical
+# gate, so the test corpus is not forced to decorate every
+# fixture hook. Source code is enforced.
+[[tool.mypy.overrides]]
+module = ["*.tests.*"]
+disable_error_code = ["explicit-override"]
 
 [tool.pylint.master]
 max-line-length = 120
@@ -103,7 +85,3 @@ disable = """
     consider-using-with,
     abstract-class-instantiated
 """
-
-[tool.setuptools.packages.find]
-include = ["pytcp", "net_addr", "net_proto"]
-
