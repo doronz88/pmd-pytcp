@@ -50,6 +50,7 @@ pytcp/ipc/ipc__values.py
 ver 3.0.7
 """
 
+import base64
 import dataclasses
 from enum import Enum
 from typing import Any
@@ -129,6 +130,11 @@ def encode_value(value: Any, /) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
 
+    # Raw bytes (e.g. a setsockopt value / getsockopt return) — encoded
+    # as a base64 ASCII string since JSON has no byte-string form.
+    if isinstance(value, (bytes, bytearray)):
+        return {_TAG_KEY: "bytes", _VAL_KEY: base64.b64encode(bytes(value)).decode("ascii")}
+
     if isinstance(value, list):
         return [encode_value(item) for item in value]
 
@@ -176,6 +182,9 @@ def decode_value(data: Any, /) -> Any:
 
         tag = data[_TAG_KEY]
         payload = data[_VAL_KEY]
+
+        if tag == "bytes":
+            return base64.b64decode(payload)
 
         if tag == "tuple":
             return tuple(decode_value(item) for item in payload)

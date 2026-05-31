@@ -102,6 +102,37 @@ class TestIpcValuesRoundTrip(TestCase):
                     msg=f"net_addr value {value!r} must round-trip to an equal value.",
                 )
 
+    def test__ipc__values__bytes_round_trip(self) -> None:
+        """
+        Ensure a bytes value round-trips unchanged via its base64 tagged
+        form, so a setsockopt value / getsockopt return that is raw
+        bytes survives the JSON-bodied control channel.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in [b"", b"\x00\x01\x02\xff", b"SO_OPT", bytes(range(256))]:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    decode_value(encode_value(value)),
+                    value,
+                    msg=f"Bytes value {value!r} must round-trip unchanged.",
+                )
+
+    def test__ipc__values__bytes_encoded_form_is_json_serialisable(self) -> None:
+        """
+        Ensure the encoded bytes form contains only JSON-native
+        structures, so it survives a json.dumps / json.loads cycle.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            decode_value(json.loads(json.dumps(encode_value(b"\xde\xad\xbe\xef")))),
+            b"\xde\xad\xbe\xef",
+            msg="An encoded bytes value must survive a JSON serialise/parse cycle.",
+        )
+
     def test__ipc__values__enums_round_trip_to_same_member(self) -> None:
         """
         Ensure each control-plane enum round-trips to the identical
