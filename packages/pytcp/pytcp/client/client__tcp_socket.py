@@ -39,11 +39,16 @@ ver 3.0.7
 """
 
 import socket
+from typing import Self
 
 from net_proto.lib.enums import IpProto
 from pytcp.ipc.ipc__client import IpcClient
-from pytcp.ipc.ipc__socket_rpc import open_socket, socket_call
+from pytcp.ipc.ipc__socket_rpc import accept_socket, open_socket, socket_call
 from pytcp.socket import AddressFamily, SocketType
+
+# Default accept-queue depth when 'listen' is called without an explicit
+# backlog (mirrors the daemon-side 'TCP__DEFAULT_BACKLOG').
+IPC__CLIENT_TCP__DEFAULT_BACKLOG: int = 16
 
 
 class ClientTcpSocket:
@@ -114,6 +119,38 @@ class ClientTcpSocket:
         """
 
         socket_call(self._client, method="connect", handle=self._handle, args={"address": address})
+
+    def listen(self, *, backlog: int = IPC__CLIENT_TCP__DEFAULT_BACKLOG) -> None:
+        """
+        Mark the daemon socket as a passive listener with an accept queue
+        bounded by 'backlog'.
+        """
+
+        socket_call(self._client, method="listen", handle=self._handle, args={"backlog": backlog})
+
+    def accept(self) -> tuple[Self, tuple[str, int]]:
+        """
+        Block until an inbound connection completes, returning a new
+        'ClientTcpSocket' for the accepted connection (its data path is
+        the passed descriptor) and the peer's '(host, port)' address.
+        """
+
+        child_handle, peer, data_fd = accept_socket(self._client, handle=self._handle)
+        return self._adopt(self._client, child_handle, data_fd), peer
+
+    @classmethod
+    def _adopt(cls, client: IpcClient, handle: int, data_fd: int, /) -> Self:
+        """
+        Build a shim around an already-opened daemon socket handle and its
+        passed data-channel descriptor (an accepted child connection),
+        bypassing the open-a-new-socket constructor.
+        """
+
+        instance = cls.__new__(cls)
+        instance._client = client
+        instance._handle = handle
+        instance._data_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=data_fd)
+        return instance
 
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """

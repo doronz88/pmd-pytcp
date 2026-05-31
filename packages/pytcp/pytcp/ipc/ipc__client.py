@@ -69,6 +69,7 @@ class IpcClient:
 
         self._lock = threading.Lock()
         self._next_req_id = 0
+        self._timeout = timeout
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.settimeout(timeout)
         self._socket.connect(socket_path)
@@ -102,13 +103,24 @@ class IpcClient:
 
             return IpcMessage.from_bytes(payload)
 
-    def request_with_fd(self, op: int, /, *, body: Buffer = b"") -> tuple[IpcMessage, int | None]:
+    def request_with_fd(
+        self,
+        op: int,
+        /,
+        *,
+        body: Buffer = b"",
+        blocking: bool = False,
+    ) -> tuple[IpcMessage, int | None]:
         """
         Send a request for 'op' and return the daemon's response together
         with the file descriptor passed alongside it (the data-channel
         end for a newly opened socket), or None when the response carried
         no descriptor (an fd-less error response). The returned fd is
         owned by the caller.
+
+        'blocking' drops the response timeout for the round trip — used by
+        'accept', whose response can take arbitrarily long (it waits for
+        an inbound connection). The default timeout is restored after.
 
         Serialised under the same lock as 'request' so a fd-bearing call
         is atomic with respect to other calls on the shared client.
@@ -125,9 +137,14 @@ class IpcClient:
                 body=bytes(body),
             )
 
-            send_frame(self._socket, request.to_bytes())
-
-            payload, fd = recv_frame_with_fd(self._socket)
+            if blocking:
+                self._socket.settimeout(None)
+            try:
+                send_frame(self._socket, request.to_bytes())
+                payload, fd = recv_frame_with_fd(self._socket)
+            finally:
+                if blocking:
+                    self._socket.settimeout(self._timeout)
 
             return IpcMessage.from_bytes(payload), fd
 

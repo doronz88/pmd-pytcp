@@ -50,6 +50,7 @@ ver 3.0.7
 """
 
 import socket
+import threading
 from typing import Any
 
 from net_proto.lib.enums import EtherType, IpProto
@@ -71,13 +72,14 @@ from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__socket import UdpSocket
 
-# The socket methods a client may invoke over SOCKET_CALL. 'listen' /
-# 'accept' are deliberately absent — passive open is Phase 4.
+# The socket methods a client may invoke over SOCKET_CALL.
 _ALLOWED_METHODS: frozenset[str] = frozenset(
     {
         "socket",
         "bind",
         "connect",
+        "listen",
+        "accept",
         "setsockopt",
         "getsockopt",
         "shutdown",
@@ -86,6 +88,10 @@ _ALLOWED_METHODS: frozenset[str] = frozenset(
         "getpeername",
     },
 )
+
+# Poll interval for the blocking 'accept' loop so it can re-check the
+# server stop event between waits for an inbound connection.
+IPC__SESSION__ACCEPT_POLL__SEC: float = 0.2
 
 
 class _DaemonSocket:
@@ -195,13 +201,15 @@ class SocketSession:
     The per-client socket-handle table backing the SOCKET_CALL op.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, stop_event: threading.Event) -> None:
         """
-        Start with an empty handle table.
+        Start with an empty handle table. 'stop_event' lets the blocking
+        'accept' loop bail out on server shutdown.
         """
 
         self._sockets: dict[int, _DaemonSocket | _DaemonPacketSocket] = {}
         self._next_handle = 0
+        self._stop_event = stop_event
 
     def handle(self, request: IpcMessage, /) -> tuple[IpcMessage, socket.socket | None]:
         """
@@ -281,6 +289,15 @@ class SocketSession:
                 sock.connect(request.args["address"])
                 daemon_socket.start_bridge()
                 return None, None
+            case "listen":
+                if not isinstance(sock, TcpSocket):
+                    raise OSError("listen() is supported only on a stream socket.")
+                sock.listen(backlog=request.args["backlog"])
+                return None, None
+            case "accept":
+                if not isinstance(sock, TcpSocket):
+                    raise OSError("accept() is supported only on a stream socket.")
+                return self._accept(sock)
             case "setsockopt":
                 sock.setsockopt(request.args["level"], request.args["optname"], request.args["value"])
                 return None, None
@@ -324,6 +341,32 @@ class SocketSession:
                 return None, None
 
         raise KeyError(f"Method {request.method!r} is not permitted on an AF_PACKET socket.")
+
+    def _accept(self, listening: TcpSocket, /) -> tuple[dict[str, Any], socket.socket]:
+        """
+        Block (polling, so server shutdown interrupts) until an inbound
+        connection completes its handshake, then build a data channel for
+        the accepted child and return its handle and peer address with the
+        client end to pass.
+        """
+
+        while not self._stop_event.is_set():
+            try:
+                child, peer = listening.accept(timeout=IPC__SESSION__ACCEPT_POLL__SEC)
+            except TimeoutError:
+                continue
+
+            assert isinstance(child, TcpSocket)
+            data_end, client_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+            child_socket = _DaemonSocket(child, SocketBridge(child, data_end))
+            child_socket.start_bridge()
+
+            handle = self._next_handle
+            self._next_handle += 1
+            self._sockets[handle] = child_socket
+            return {"handle": handle, "peer": peer}, client_end
+
+        raise OSError("accept() interrupted by daemon shutdown.")
 
     def _open(
         self,

@@ -156,7 +156,7 @@ class IpcServer(Subsystem):
         kernel closing a process's fds on exit.
         """
 
-        session = SocketSession()
+        session = SocketSession(self._event__stop_subsystem)
         try:
             while not self._event__stop_subsystem.is_set():
                 try:
