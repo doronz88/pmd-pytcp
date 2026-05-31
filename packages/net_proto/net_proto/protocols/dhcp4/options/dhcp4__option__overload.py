@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Self, override
 
 from net_proto.lib.buffer import Buffer
+from net_proto.lib.proto_enum import ProtoEnumByte
 from net_proto.protocols.dhcp4.dhcp4__errors import Dhcp4IntegrityError
 from net_proto.protocols.dhcp4.options.dhcp4__option import (
     DHCP4__OPTION__LEN,
@@ -61,9 +62,15 @@ from net_proto.protocols.dhcp4.options.dhcp4__option import (
 DHCP4__OPTION__OVERLOAD__LEN = 3
 DHCP4__OPTION__OVERLOAD__STRUCT = "! BB B"
 
-DHCP4__OPTION__OVERLOAD__FILE: int = 1
-DHCP4__OPTION__OVERLOAD__SNAME: int = 2
-DHCP4__OPTION__OVERLOAD__BOTH: int = 3
+
+class Dhcp4OptionOverloadValue(ProtoEnumByte):
+    """
+    The DHCPv4 Option Overload option 'value' codepoint (RFC 2132 §9.3).
+    """
+
+    FILE = 1  # 'file' field carries additional options.
+    SNAME = 2  # 'sname' field carries additional options.
+    BOTH = 3  # both 'file' and 'sname' carry additional options.
 
 
 @dataclass(frozen=True, kw_only=False, slots=True)
@@ -83,7 +90,7 @@ class Dhcp4OptionOverload(Dhcp4Option):
         default=DHCP4__OPTION__OVERLOAD__LEN,
     )
 
-    value: int
+    value: Dhcp4OptionOverloadValue
 
     @override
     def __post_init__(self) -> None:
@@ -91,11 +98,10 @@ class Dhcp4OptionOverload(Dhcp4Option):
         Ensure integrity of the DHCPv4 Option Overload option fields.
         """
 
-        assert self.value in (
-            DHCP4__OPTION__OVERLOAD__FILE,
-            DHCP4__OPTION__OVERLOAD__SNAME,
-            DHCP4__OPTION__OVERLOAD__BOTH,
-        ), f"The 'value' field must be 1, 2, or 3 per RFC 2132 §9.3. Got: {self.value}"
+        assert not self.value.is_unknown, (
+            f"The 'value' field must be a known Dhcp4OptionOverloadValue "
+            f"(FILE/SNAME/BOTH) per RFC 2132 §9.3. Got: {self.value!r}"
+        )
 
     @override
     def __str__(self) -> str:
@@ -103,7 +109,7 @@ class Dhcp4OptionOverload(Dhcp4Option):
         Get the DHCPv4 Option Overload option log string.
         """
 
-        return f"option_overload {self.value}"
+        return f"option_overload {int(self.value)}"
 
     @property
     def includes_file(self) -> bool:
@@ -112,8 +118,8 @@ class Dhcp4OptionOverload(Dhcp4Option):
         """
 
         return self.value in (
-            DHCP4__OPTION__OVERLOAD__FILE,
-            DHCP4__OPTION__OVERLOAD__BOTH,
+            Dhcp4OptionOverloadValue.FILE,
+            Dhcp4OptionOverloadValue.BOTH,
         )
 
     @property
@@ -123,8 +129,8 @@ class Dhcp4OptionOverload(Dhcp4Option):
         """
 
         return self.value in (
-            DHCP4__OPTION__OVERLOAD__SNAME,
-            DHCP4__OPTION__OVERLOAD__BOTH,
+            Dhcp4OptionOverloadValue.SNAME,
+            Dhcp4OptionOverloadValue.BOTH,
         )
 
     @override
@@ -162,11 +168,7 @@ class Dhcp4OptionOverload(Dhcp4Option):
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
             )
 
-        if (value := buffer[2]) not in (
-            DHCP4__OPTION__OVERLOAD__FILE,
-            DHCP4__OPTION__OVERLOAD__SNAME,
-            DHCP4__OPTION__OVERLOAD__BOTH,
-        ):
+        if (value := buffer[2]) not in Dhcp4OptionOverloadValue.get_known_values():
             raise Dhcp4IntegrityError(
                 f"The DHCPv4 Option Overload value must be 1, 2, or 3. Got: {value!r}",
             )
@@ -190,4 +192,4 @@ class Dhcp4OptionOverload(Dhcp4Option):
 
         cls._validate_integrity(buffer)
 
-        return cls(int(buffer[2]))
+        return cls(Dhcp4OptionOverloadValue(buffer[2]))

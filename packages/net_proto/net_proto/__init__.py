@@ -114,6 +114,7 @@ from net_proto.protocols.dhcp4.options.dhcp4__option__message_type import (
 )
 from net_proto.protocols.dhcp4.options.dhcp4__option__overload import (
     Dhcp4OptionOverload,
+    Dhcp4OptionOverloadValue,
 )
 from net_proto.protocols.dhcp4.options.dhcp4__option__pad import (
     DHCP4__OPTION__PAD__LEN,
@@ -671,6 +672,7 @@ __all__ = [
     "Dhcp4OptionMaxMsgSize",
     "Dhcp4OptionMessageType",
     "Dhcp4OptionOverload",
+    "Dhcp4OptionOverloadValue",
     "Dhcp4OptionPad",
     "Dhcp4OptionParamReqList",
     "Dhcp4OptionRebindingTime",

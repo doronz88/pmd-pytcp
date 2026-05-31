@@ -36,7 +36,43 @@ from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
-from net_proto import Dhcp4IntegrityError, Dhcp4OptionOverload, Dhcp4OptionType
+from net_proto import (
+    Dhcp4IntegrityError,
+    Dhcp4OptionOverload,
+    Dhcp4OptionOverloadValue,
+    Dhcp4OptionType,
+)
+from net_proto.lib.proto_enum import ProtoEnumByte
+
+
+class TestDhcp4OptionOverloadValueEnum(TestCase):
+    """
+    The DHCPv4 Option Overload 'value' codepoint enum tests.
+    """
+
+    def test__dhcp4__option__overload__value_is_proto_enum_byte(self) -> None:
+        """
+        Ensure 'Dhcp4OptionOverloadValue' is a 'ProtoEnumByte' whose
+        members carry the defined codepoint integers (1/2/3), so the
+        overload value is a typed wire codepoint rather than a bare
+        int.
+
+        Reference: RFC 2132 §9.3 (value 1 = file, 2 = sname, 3 = both).
+        """
+
+        self.assertTrue(
+            issubclass(Dhcp4OptionOverloadValue, ProtoEnumByte),
+            msg="Dhcp4OptionOverloadValue must be a ProtoEnumByte.",
+        )
+        self.assertEqual(
+            (
+                int(Dhcp4OptionOverloadValue.FILE),
+                int(Dhcp4OptionOverloadValue.SNAME),
+                int(Dhcp4OptionOverloadValue.BOTH),
+            ),
+            (1, 2, 3),
+            msg="The FILE / SNAME / BOTH members must carry the RFC codepoints 1 / 2 / 3.",
+        )
 
 
 class TestDhcp4OptionOverloadAsserts(TestCase):
@@ -46,36 +82,36 @@ class TestDhcp4OptionOverloadAsserts(TestCase):
 
     def test__dhcp4__option__overload__rejects_zero(self) -> None:
         """
-        Ensure the constructor raises when 'value' is 0 — the
-        defined values are exactly 1/2/3.
+        Ensure the constructor raises when 'value' is the unknown
+        codepoint 0 — the defined values are exactly 1/2/3.
 
         Reference: RFC 2132 §9.3 (value must be 1, 2, or 3).
         """
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionOverload(0)
+            Dhcp4OptionOverload(Dhcp4OptionOverloadValue.from_int(0))
 
         self.assertIn(
-            "must be 1, 2, or 3",
+            "must be a known",
             str(error.exception),
-            msg="value=0 must trigger the enum assertion.",
+            msg="An unknown overload codepoint must trigger the value assertion.",
         )
 
     def test__dhcp4__option__overload__rejects_four(self) -> None:
         """
-        Ensure the constructor raises when 'value' is 4 (out of
-        the defined 1/2/3 set).
+        Ensure the constructor raises when 'value' is the unknown
+        codepoint 4 (out of the defined 1/2/3 set).
 
         Reference: RFC 2132 §9.3 (value must be 1, 2, or 3).
         """
 
         with self.assertRaises(AssertionError) as error:
-            Dhcp4OptionOverload(4)
+            Dhcp4OptionOverload(Dhcp4OptionOverloadValue.from_int(4))
 
         self.assertIn(
-            "must be 1, 2, or 3",
+            "must be a known",
             str(error.exception),
-            msg="value=4 must trigger the enum assertion.",
+            msg="An unknown overload codepoint must trigger the value assertion.",
         )
 
 
@@ -83,39 +119,39 @@ class TestDhcp4OptionOverloadAsserts(TestCase):
     [
         {
             "_description": "Overload value 1 — 'file' field carries options.",
-            "_args": [1],
+            "_args": [Dhcp4OptionOverloadValue.FILE],
             "_results": {
                 "__len__": 3,
                 "__str__": "option_overload 1",
-                "__repr__": "Dhcp4OptionOverload(value=1)",
+                "__repr__": "Dhcp4OptionOverload(value=<Dhcp4OptionOverloadValue.FILE: 1>)",
                 "__bytes__": b"\x34\x01\x01",
-                "value": 1,
+                "value": Dhcp4OptionOverloadValue.FILE,
                 "includes_file": True,
                 "includes_sname": False,
             },
         },
         {
             "_description": "Overload value 2 — 'sname' field carries options.",
-            "_args": [2],
+            "_args": [Dhcp4OptionOverloadValue.SNAME],
             "_results": {
                 "__len__": 3,
                 "__str__": "option_overload 2",
-                "__repr__": "Dhcp4OptionOverload(value=2)",
+                "__repr__": "Dhcp4OptionOverload(value=<Dhcp4OptionOverloadValue.SNAME: 2>)",
                 "__bytes__": b"\x34\x01\x02",
-                "value": 2,
+                "value": Dhcp4OptionOverloadValue.SNAME,
                 "includes_file": False,
                 "includes_sname": True,
             },
         },
         {
             "_description": "Overload value 3 — both fields carry options.",
-            "_args": [3],
+            "_args": [Dhcp4OptionOverloadValue.BOTH],
             "_results": {
                 "__len__": 3,
                 "__str__": "option_overload 3",
-                "__repr__": "Dhcp4OptionOverload(value=3)",
+                "__repr__": "Dhcp4OptionOverload(value=<Dhcp4OptionOverloadValue.BOTH: 3>)",
                 "__bytes__": b"\x34\x01\x03",
-                "value": 3,
+                "value": Dhcp4OptionOverloadValue.BOTH,
                 "includes_file": True,
                 "includes_sname": True,
             },

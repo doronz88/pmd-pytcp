@@ -45,6 +45,7 @@ from net_proto import (
     Dhcp4OptionLeaseTime,
     Dhcp4OptionMessageType,
     Dhcp4OptionOverload,
+    Dhcp4OptionOverloadValue,
     Dhcp4OptionRouter,
     Dhcp4OptionServerId,
     Dhcp4OptionSubnetMask,
@@ -88,7 +89,7 @@ def _build_overload_frame(
                 dhcp4__options=Dhcp4Options(
                     Dhcp4OptionMessageType(message_type=Dhcp4MessageType.ACK),
                     Dhcp4OptionServerId(server_id=Ip4Address("10.0.0.200")),
-                    Dhcp4OptionOverload(overload_value),
+                    Dhcp4OptionOverload(Dhcp4OptionOverloadValue(overload_value)),
                     Dhcp4OptionEnd(),
                 ),
             )
