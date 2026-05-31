@@ -37,6 +37,7 @@ from typing import Self, override
 from net_addr import Ip4Address
 from net_proto.lib.buffer import Buffer
 from net_proto.lib.int_checks import is_uint8
+from net_proto.lib.proto_enum import ProtoEnumByte
 from net_proto.protocols.ip4.ip4__errors import Ip4IntegrityError
 from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 
@@ -53,10 +54,16 @@ from net_proto.protocols.ip4.options.ip4__option import Ip4Option, Ip4OptionType
 IP4__OPTION__TIMESTAMP__HDR_LEN = 4
 IP4__OPTION__TIMESTAMP__POINTER_BASE = 5
 
-# Flag values (RFC 791 §3.1):
-IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY = 0  # timestamps only
-IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR = 1  # each timestamp preceded by recording host's IP
-IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC = 3  # only listed routers may record (addresses prespecified)
+
+class Ip4OptionTimestampFlag(ProtoEnumByte):
+    """
+    The IPv4 Timestamp option 'flag' codepoint (RFC 791 §3.1).
+    """
+
+    TS_ONLY = 0  # timestamps only.
+    TS_AND_ADDR = 1  # each timestamp preceded by recording host's IP.
+    TS_PRESPEC = 3  # only listed routers may record (addresses prespecified).
+
 
 # Entry sizes per flag.
 IP4__OPTION__TIMESTAMP__ENTRY_LEN__TS_ONLY = 4
@@ -64,17 +71,13 @@ IP4__OPTION__TIMESTAMP__ENTRY_LEN__WITH_ADDR = 8
 
 IP4__OPTION__TIMESTAMP__STRUCT = "! BBBB"
 
+# Numeric flag values whose entries carry a recording-host address.
+# Kept as a frozenset of ints (built from the enum members) because
+# the wire-parse path tests the raw nibble before a member exists.
 _FLAG_VALUES_WITH_ADDRESS: frozenset[int] = frozenset(
     {
-        IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
-        IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC,
-    }
-)
-_FLAG_VALUES_ALL: frozenset[int] = frozenset(
-    {
-        IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
-        IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
-        IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC,
+        int(Ip4OptionTimestampFlag.TS_AND_ADDR),
+        int(Ip4OptionTimestampFlag.TS_PRESPEC),
     }
 )
 
@@ -151,7 +154,7 @@ class Ip4OptionTimestamp(Ip4Option):
 
     pointer: int
     overflow: int
-    flag: int
+    flag: Ip4OptionTimestampFlag
     entries: list[Ip4TimestampEntry]
 
     @override
@@ -168,23 +171,23 @@ class Ip4OptionTimestamp(Ip4Option):
 
         assert 0 <= self.overflow <= 15, f"The 'overflow' field must fit in 4 bits (0..15). Got: {self.overflow!r}"
 
-        assert self.flag in _FLAG_VALUES_ALL, f"The 'flag' field must be one of {{0, 1, 3}}. Got: {self.flag!r}"
+        assert not self.flag.is_unknown, f"The 'flag' field must be one of {{0, 1, 3}}. Got: {int(self.flag)!r}"
 
-        entry_len = _entry_len_for_flag(self.flag)
+        entry_len = _entry_len_for_flag(int(self.flag))
         assert (self.pointer - IP4__OPTION__TIMESTAMP__POINTER_BASE) % entry_len == 0, (
             f"The 'pointer' field must be aligned to the {entry_len}-byte entry "
-            f"boundary for flag={self.flag}. Got: {self.pointer!r}"
+            f"boundary for flag={int(self.flag)}. Got: {self.pointer!r}"
         )
 
         assert len(self.entries) >= 1, f"The 'entries' field must have at least 1 entry. Got: {len(self.entries)!r}"
 
-        if self.flag == IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY:
+        if self.flag is Ip4OptionTimestampFlag.TS_ONLY:
             assert all(entry.address is None for entry in self.entries), (
                 "All entries must be timestamp-only (no address) when flag=0. " f"Got: {self.entries!r}"
             )
         else:
             assert all(entry.address is not None for entry in self.entries), (
-                f"All entries must carry an address when flag={self.flag}. " f"Got: {self.entries!r}"
+                f"All entries must carry an address when flag={int(self.flag)}. " f"Got: {self.entries!r}"
             )
 
         total_len = IP4__OPTION__TIMESTAMP__HDR_LEN + entry_len * len(self.entries)
@@ -214,7 +217,7 @@ class Ip4OptionTimestamp(Ip4Option):
 
         return (
             f"timestamp [{', '.join(str(entry) for entry in self.entries)}] "
-            f"ptr={self.pointer} oflw={self.overflow} flag={self.flag}"
+            f"ptr={self.pointer} oflw={self.overflow} flag={int(self.flag)}"
         )
 
     @override
@@ -230,7 +233,7 @@ class Ip4OptionTimestamp(Ip4Option):
             int(self.type),
             self.len,
             self.pointer,
-            (self.overflow << 4) | (self.flag & 0x0F),
+            (self.overflow << 4) | (int(self.flag) & 0x0F),
         )
 
         offset = IP4__OPTION__TIMESTAMP__HDR_LEN
@@ -252,7 +255,7 @@ class Ip4OptionTimestamp(Ip4Option):
         # timestamps only; 1 = each timestamp preceded by recording
         # host's IP; 3 = only listed routers may record (addresses
         # pre-specified). Flag=2 and 4..15 are reserved.
-        if flag not in _FLAG_VALUES_ALL:
+        if flag not in Ip4OptionTimestampFlag.get_known_values():
             raise Ip4IntegrityError(
                 f"The IPv4 Timestamp option flag value must be one of {{0, 1, 3}}. " f"Got: {flag!r}"
             )
@@ -351,6 +354,6 @@ class Ip4OptionTimestamp(Ip4Option):
         return cls(
             pointer=pointer,
             overflow=overflow,
-            flag=flag,
+            flag=Ip4OptionTimestampFlag.from_int(flag),
             entries=entries,
         )

@@ -501,12 +501,10 @@ from net_proto.protocols.ip4.options.ip4__option__ssrr import (  # noqa: F401
 from net_proto.protocols.ip4.options.ip4__option__timestamp import (  # noqa: F401
     IP4__OPTION__TIMESTAMP__ENTRY_LEN__TS_ONLY,
     IP4__OPTION__TIMESTAMP__ENTRY_LEN__WITH_ADDR,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC,
     IP4__OPTION__TIMESTAMP__HDR_LEN,
     IP4__OPTION__TIMESTAMP__POINTER_BASE,
     Ip4OptionTimestamp,
+    Ip4OptionTimestampFlag,
     Ip4TimestampEntry,
 )
 from net_proto.protocols.ip4.options.ip4__option__unknown import (
@@ -778,9 +776,6 @@ __all__ = [
     "IP4__OPTION__SSRR__HDR_LEN",
     "IP4__OPTION__SSRR__POINTER_BASE",
     "IP4__OPTION__SSRR__SLOT_LEN",
-    "IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR",
-    "IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY",
-    "IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC",
     "IP4__PAYLOAD__MAX_LEN",
     "IP6_FRAG__HEADER__LEN",
     "IP6__DEFAULT_HOP_LIMIT",
@@ -892,6 +887,7 @@ __all__ = [
     "Ip4OptionRr",
     "Ip4OptionSsrr",
     "Ip4OptionTimestamp",
+    "Ip4OptionTimestampFlag",
     "Ip4OptionType",
     "Ip4OptionUnknown",
     "Ip4TimestampEntry",

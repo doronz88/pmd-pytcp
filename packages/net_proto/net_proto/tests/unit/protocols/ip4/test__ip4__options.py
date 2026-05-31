@@ -47,6 +47,7 @@ from net_proto import (
     Ip4Options,
     Ip4OptionSsrr,
     Ip4OptionTimestamp,
+    Ip4OptionTimestampFlag,
     Ip4OptionType,
     Ip4OptionUnknown,
 )
@@ -529,7 +530,7 @@ class TestIp4OptionCopyFlag(TestCase):
         option = Ip4OptionTimestamp(
             pointer=5,
             overflow=0,
-            flag=0,
+            flag=Ip4OptionTimestampFlag.TS_ONLY,
             entries=[Ip4TimestampEntry(timestamp=0)],
         )
         self.assertFalse(
@@ -807,7 +808,9 @@ class TestIp4OptionsLookupProperties(TestCase):
 
         from net_proto.protocols.ip4.options.ip4__option__timestamp import Ip4TimestampEntry
 
-        option = Ip4OptionTimestamp(pointer=5, overflow=0, flag=0, entries=[Ip4TimestampEntry(timestamp=0)])
+        option = Ip4OptionTimestamp(
+            pointer=5, overflow=0, flag=Ip4OptionTimestampFlag.TS_ONLY, entries=[Ip4TimestampEntry(timestamp=0)]
+        )
         self.assertIs(
             self._options_with(option).timestamp,
             option,

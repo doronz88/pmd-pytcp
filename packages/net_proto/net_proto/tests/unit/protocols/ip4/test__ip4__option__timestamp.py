@@ -37,14 +37,43 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from net_addr import Ip4Address
 from net_proto import (
-    IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC,
     Ip4IntegrityError,
     Ip4OptionTimestamp,
+    Ip4OptionTimestampFlag,
     Ip4OptionType,
     Ip4TimestampEntry,
 )
+from net_proto.lib.proto_enum import ProtoEnumByte
+
+
+class TestIp4OptionTimestampFlagEnum(TestCase):
+    """
+    The IPv4 Timestamp option 'flag' codepoint enum tests.
+    """
+
+    def test__ip4__option__timestamp__flag_is_proto_enum_byte(self) -> None:
+        """
+        Ensure 'Ip4OptionTimestampFlag' is a 'ProtoEnumByte' whose
+        members carry the defined codepoint integers (0/1/3, with 2 the
+        reserved gap), so the flag is a typed wire codepoint rather than
+        a bare int.
+
+        Reference: RFC 791 §3.1 (flag 0 = TS only, 1 = TS+addr, 3 = prespecified).
+        """
+
+        self.assertTrue(
+            issubclass(Ip4OptionTimestampFlag, ProtoEnumByte),
+            msg="Ip4OptionTimestampFlag must be a ProtoEnumByte.",
+        )
+        self.assertEqual(
+            (
+                int(Ip4OptionTimestampFlag.TS_ONLY),
+                int(Ip4OptionTimestampFlag.TS_AND_ADDR),
+                int(Ip4OptionTimestampFlag.TS_PRESPEC),
+            ),
+            (0, 1, 3),
+            msg="The TS_ONLY / TS_AND_ADDR / TS_PRESPEC members must carry codepoints 0 / 1 / 3.",
+        )
 
 
 class TestIp4OptionTimestampAsserts(TestCase):
@@ -65,7 +94,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=4,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[Ip4TimestampEntry(timestamp=0)],
             )
 
@@ -87,7 +116,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=16,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[Ip4TimestampEntry(timestamp=0)],
             )
 
@@ -109,7 +138,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=0,
-                flag=2,
+                flag=Ip4OptionTimestampFlag.from_int(2),
                 entries=[Ip4TimestampEntry(timestamp=0)],
             )
 
@@ -131,7 +160,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=6,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[Ip4TimestampEntry(timestamp=0)],
             )
 
@@ -153,7 +182,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=9,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+                flag=Ip4OptionTimestampFlag.TS_AND_ADDR,
                 entries=[Ip4TimestampEntry(timestamp=0, address=Ip4Address("10.0.0.1"))],
             )
 
@@ -176,7 +205,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[],
             )
 
@@ -201,7 +230,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[Ip4TimestampEntry(timestamp=0) for _ in range(64)],
             )
 
@@ -224,7 +253,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[Ip4TimestampEntry(timestamp=0, address=Ip4Address("10.0.0.1"))],
             )
 
@@ -246,7 +275,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             Ip4OptionTimestamp(
                 pointer=5,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+                flag=Ip4OptionTimestampFlag.TS_AND_ADDR,
                 entries=[Ip4TimestampEntry(timestamp=0)],
             )
 
@@ -263,13 +292,13 @@ class TestIp4OptionTimestampAsserts(TestCase):
             "_description": "Timestamp option flag=0 (TS only) with one entry, pointer at start.",
             "_pointer": 5,
             "_overflow": 0,
-            "_flag": IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+            "_flag": Ip4OptionTimestampFlag.TS_ONLY,
             "_entries": [Ip4TimestampEntry(timestamp=0)],
             "_results": {
                 "__len__": 8,
                 "__str__": "timestamp [0] ptr=5 oflw=0 flag=0",
                 "__repr__": (
-                    "Ip4OptionTimestamp(pointer=5, overflow=0, flag=0, "
+                    "Ip4OptionTimestamp(pointer=5, overflow=0, flag=<Ip4OptionTimestampFlag.TS_ONLY: 0>, "
                     "entries=[Ip4TimestampEntry(timestamp=0, address=None)])"
                 ),
                 # IPv4 Timestamp wire frame (8 bytes):
@@ -285,7 +314,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             "_description": "Timestamp option flag=0 (TS only) with two entries, pointer past last.",
             "_pointer": 13,
             "_overflow": 0,
-            "_flag": IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+            "_flag": Ip4OptionTimestampFlag.TS_ONLY,
             "_entries": [
                 Ip4TimestampEntry(timestamp=1234),
                 Ip4TimestampEntry(timestamp=5678),
@@ -294,7 +323,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
                 "__len__": 12,
                 "__str__": "timestamp [1234, 5678] ptr=13 oflw=0 flag=0",
                 "__repr__": (
-                    "Ip4OptionTimestamp(pointer=13, overflow=0, flag=0, "
+                    "Ip4OptionTimestamp(pointer=13, overflow=0, flag=<Ip4OptionTimestampFlag.TS_ONLY: 0>, "
                     "entries=[Ip4TimestampEntry(timestamp=1234, address=None), "
                     "Ip4TimestampEntry(timestamp=5678, address=None)])"
                 ),
@@ -312,7 +341,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             "_description": "Timestamp option flag=1 (addr+TS) with two entries.",
             "_pointer": 21,
             "_overflow": 3,
-            "_flag": IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+            "_flag": Ip4OptionTimestampFlag.TS_AND_ADDR,
             "_entries": [
                 Ip4TimestampEntry(timestamp=1234, address=Ip4Address("10.0.0.1")),
                 Ip4TimestampEntry(timestamp=5678, address=Ip4Address("10.0.0.2")),
@@ -321,7 +350,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
                 "__len__": 20,
                 "__str__": ("timestamp [10.0.0.1:1234, 10.0.0.2:5678] ptr=21 oflw=3 flag=1"),
                 "__repr__": (
-                    "Ip4OptionTimestamp(pointer=21, overflow=3, flag=1, entries=["
+                    "Ip4OptionTimestamp(pointer=21, overflow=3, flag=<Ip4OptionTimestampFlag.TS_AND_ADDR: 1>, entries=["
                     "Ip4TimestampEntry(timestamp=1234, address=Ip4Address('10.0.0.1')), "
                     "Ip4TimestampEntry(timestamp=5678, address=Ip4Address('10.0.0.2'))])"
                 ),
@@ -343,7 +372,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
             "_description": "Timestamp option flag=3 (prespecified addrs) with one entry.",
             "_pointer": 13,
             "_overflow": 0,
-            "_flag": IP4__OPTION__TIMESTAMP__FLAG__TS_PRESPEC,
+            "_flag": Ip4OptionTimestampFlag.TS_PRESPEC,
             "_entries": [
                 Ip4TimestampEntry(timestamp=1234, address=Ip4Address("10.0.0.1")),
             ],
@@ -351,7 +380,7 @@ class TestIp4OptionTimestampAsserts(TestCase):
                 "__len__": 12,
                 "__str__": "timestamp [10.0.0.1:1234] ptr=13 oflw=0 flag=3",
                 "__repr__": (
-                    "Ip4OptionTimestamp(pointer=13, overflow=0, flag=3, entries=["
+                    "Ip4OptionTimestamp(pointer=13, overflow=0, flag=<Ip4OptionTimestampFlag.TS_PRESPEC: 3>, entries=["
                     "Ip4TimestampEntry(timestamp=1234, address=Ip4Address('10.0.0.1'))])"
                 ),
                 # IPv4 Timestamp wire frame (12 bytes, flag=3):
@@ -374,7 +403,7 @@ class TestIp4OptionTimestampAssembler(TestCase):
     _description: str
     _pointer: int
     _overflow: int
-    _flag: int
+    _flag: Ip4OptionTimestampFlag
     _entries: list[Ip4TimestampEntry]
     _results: dict[str, Any]
 

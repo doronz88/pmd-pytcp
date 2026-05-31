@@ -35,8 +35,6 @@ ver 3.0.6
 
 from net_addr import Ip4Address, MacAddress
 from net_proto import (
-    IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
-    IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
     EthernetAssembler,
     Icmp4Assembler,
     Icmp4MessageEchoRequest,
@@ -49,6 +47,7 @@ from net_proto import (
     Ip4Options,
     Ip4OptionSsrr,
     Ip4OptionTimestamp,
+    Ip4OptionTimestampFlag,
     Ip4Parser,
     Ip4TimestampEntry,
     PacketRx,
@@ -331,7 +330,7 @@ class TestIcmp4EchoOptions(IcmpTestCase):
             Ip4OptionTimestamp(
                 pointer=13,
                 overflow=2,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+                flag=Ip4OptionTimestampFlag.TS_ONLY,
                 entries=[
                     Ip4TimestampEntry(timestamp=1234),
                     Ip4TimestampEntry(timestamp=5678),
@@ -353,7 +352,7 @@ class TestIcmp4EchoOptions(IcmpTestCase):
         assert reply_ts is not None  # for the type-checker
         self.assertEqual(
             reply_ts.flag,
-            IP4__OPTION__TIMESTAMP__FLAG__TS_ONLY,
+            Ip4OptionTimestampFlag.TS_ONLY,
             msg="Echo Reply Timestamp flag must match the inbound flag.",
         )
         self.assertEqual(
@@ -388,7 +387,7 @@ class TestIcmp4EchoOptions(IcmpTestCase):
             Ip4OptionTimestamp(
                 pointer=21,
                 overflow=0,
-                flag=IP4__OPTION__TIMESTAMP__FLAG__TS_AND_ADDR,
+                flag=Ip4OptionTimestampFlag.TS_AND_ADDR,
                 entries=[
                     Ip4TimestampEntry(timestamp=1234, address=Ip4Address("10.0.1.10")),
                     Ip4TimestampEntry(timestamp=5678, address=Ip4Address("10.0.1.20")),
