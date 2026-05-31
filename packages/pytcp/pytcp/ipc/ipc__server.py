@@ -43,28 +43,38 @@ import threading
 from collections.abc import Callable, Mapping
 from typing import override
 
+from pytcp.ipc.ipc__control import handle_control_call
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__errors import IpcFrameError, IpcMessageError
 from pytcp.ipc.ipc__frame import recv_frame, send_frame
 from pytcp.ipc.ipc__message import IpcMessage
 from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
-type IpcRequestHandler = Callable[[IpcMessage], bytes]
+# A handler takes the decoded request and returns the full response
+# message, so it owns the response 'kind' (a control handler returns
+# RESPONSE_OK or RESPONSE_ERROR depending on the call's outcome).
+type IpcRequestHandler = Callable[[IpcMessage], IpcMessage]
 
 IPC__SERVER__LISTEN_BACKLOG: int = 64
 IPC__SERVER__CLIENT_JOIN_TIMEOUT__SEC: float = 2.0
 
 
-def _handle_ping(request: IpcMessage) -> bytes:
+def _handle_ping(request: IpcMessage, /) -> IpcMessage:
     """
     Handle a PING request — answer with a fixed 'PONG' body.
     """
 
-    return b"PONG"
+    return IpcMessage(
+        kind=IpcMessageKind.RESPONSE_OK,
+        op=request.op,
+        req_id=request.req_id,
+        body=b"PONG",
+    )
 
 
 DEFAULT_HANDLERS: dict[int, IpcRequestHandler] = {
     IpcOp.PING: _handle_ping,
+    IpcOp.CONTROL_CALL: handle_control_call,
 }
 
 
@@ -188,12 +198,7 @@ class IpcServer(Subsystem):
                 body=f"unsupported op {request.op}".encode(),
             )
 
-        return IpcMessage(
-            kind=IpcMessageKind.RESPONSE_OK,
-            op=request.op,
-            req_id=request.req_id,
-            body=handler(request),
-        )
+        return handler(request)
 
     @override
     def _stop(self) -> None:

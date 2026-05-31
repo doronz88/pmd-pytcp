@@ -23,70 +23,26 @@
 
 
 """
-This module contains the IPC-layer error classes.
+This package contains the PyTCP client — the userspace half of the
+kernel/userspace boundary.
 
-pytcp/ipc/ipc__errors.py
+A client process talks to a running PyTCP daemon over the AF_UNIX IPC
+control channel through a surface that mirrors the in-process
+'pytcp.stack' control APIs. 'connect()' opens a connection and returns a
+'ClientStack' whose '.sysctl' / '.route' / '.link' / '.address' /
+'.neighbor' / '.membership' attributes carry the same method signatures
+as the daemon-side singletons, marshalling each call across the boundary.
+
+This is an encapsulated subpackage (source_files.md §2.4.1): the only
+public symbols are 'connect' and 'ClientStack'; every other module here
+('client__*') is private implementation. The per-API proxy objects are
+reached through 'ClientStack' attributes, never imported directly.
+
+pytcp/client/__init__.py
 
 ver 3.0.7
 """
 
-from typing import override
+from pytcp.client.client_stack import ClientStack, connect
 
-from net_proto.lib.errors import PyTcpError
-
-
-class IpcError(PyTcpError):
-    """
-    The base class for all IPC-layer exceptions.
-    """
-
-    @override
-    def __init__(self, message: str, /) -> None:
-        super().__init__("[IPC] " + message)
-
-
-class IpcFrameError(IpcError):
-    """
-    Exception raised when stream frame encoding or decoding fails.
-    """
-
-
-class IpcMessageError(IpcError):
-    """
-    Exception raised when control-channel message encoding or decoding
-    fails (truncated header, unknown message kind or op code).
-    """
-
-
-class IpcConnectionError(IpcError):
-    """
-    Exception raised when an IPC client operation fails because the
-    daemon connection is closed or unusable.
-    """
-
-
-class IpcValueError(IpcError):
-    """
-    Exception raised when a control-plane value cannot be encoded to or
-    decoded from its tagged wire form (unsupported type, missing type
-    tag, or unknown type tag).
-    """
-
-
-class IpcRemoteError(IpcError):
-    """
-    Exception raised client-side when a control-plane RPC call fails on
-    the daemon. Carries the remote exception's class name ('error_type')
-    and message ('remote_message') so the caller can see what went wrong
-    across the boundary. A Phase-1 simplification: the original exception
-    type is reported, not reconstructed — every remote failure surfaces
-    as this single type.
-    """
-
-    error_type: str
-    remote_message: str
-
-    def __init__(self, *, error_type: str, message: str) -> None:
-        super().__init__(f"{error_type}: {message}")
-        self.error_type = error_type
-        self.remote_message = message
+__all__ = ["ClientStack", "connect"]

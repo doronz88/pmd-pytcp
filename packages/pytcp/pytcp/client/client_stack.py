@@ -23,70 +23,70 @@
 
 
 """
-This module contains the IPC-layer error classes.
+This module contains the 'ClientStack' — the client-side mirror of the
+'pytcp.stack' control surface.
 
-pytcp/ipc/ipc__errors.py
+'ClientStack' owns one IPC control connection to the daemon and exposes
+a per-plane proxy ('.sysctl', and — as later Phase-1 commits land —
+'.route' / '.link' / '.address' / '.neighbor' / '.membership'). Each
+proxy mirrors the in-process API's method signatures and marshals calls
+across the boundary. 'connect()' is the entry point.
+
+pytcp/client/client_stack.py
 
 ver 3.0.7
 """
 
-from typing import override
+from types import TracebackType
+from typing import Self
 
-from net_proto.lib.errors import PyTcpError
+from pytcp.client.client__sysctl import ClientSysctl
+from pytcp.ipc.ipc__client import IpcClient
 
 
-class IpcError(PyTcpError):
+class ClientStack:
     """
-    The base class for all IPC-layer exceptions.
-    """
-
-    @override
-    def __init__(self, message: str, /) -> None:
-        super().__init__("[IPC] " + message)
-
-
-class IpcFrameError(IpcError):
-    """
-    Exception raised when stream frame encoding or decoding fails.
+    The client-side mirror of the 'pytcp.stack' control surface.
     """
 
+    def __init__(self, *, socket_path: str) -> None:
+        """
+        Open an IPC control connection and build the per-plane proxies.
+        """
 
-class IpcMessageError(IpcError):
+        self._client = IpcClient(socket_path=socket_path)
+        self.sysctl = ClientSysctl(self._client)
+
+    def close(self) -> None:
+        """
+        Close the control connection to the daemon.
+        """
+
+        self._client.close()
+
+    def __enter__(self) -> Self:
+        """
+        Enter the client-stack context, returning the connected stack.
+        """
+
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """
+        Close the control connection on context exit.
+        """
+
+        self.close()
+
+
+def connect(*, socket_path: str) -> ClientStack:
     """
-    Exception raised when control-channel message encoding or decoding
-    fails (truncated header, unknown message kind or op code).
+    Connect to a PyTCP daemon and return a 'ClientStack' mirror.
     """
 
-
-class IpcConnectionError(IpcError):
-    """
-    Exception raised when an IPC client operation fails because the
-    daemon connection is closed or unusable.
-    """
-
-
-class IpcValueError(IpcError):
-    """
-    Exception raised when a control-plane value cannot be encoded to or
-    decoded from its tagged wire form (unsupported type, missing type
-    tag, or unknown type tag).
-    """
-
-
-class IpcRemoteError(IpcError):
-    """
-    Exception raised client-side when a control-plane RPC call fails on
-    the daemon. Carries the remote exception's class name ('error_type')
-    and message ('remote_message') so the caller can see what went wrong
-    across the boundary. A Phase-1 simplification: the original exception
-    type is reported, not reconstructed — every remote failure surfaces
-    as this single type.
-    """
-
-    error_type: str
-    remote_message: str
-
-    def __init__(self, *, error_type: str, message: str) -> None:
-        super().__init__(f"{error_type}: {message}")
-        self.error_type = error_type
-        self.remote_message = message
+    return ClientStack(socket_path=socket_path)

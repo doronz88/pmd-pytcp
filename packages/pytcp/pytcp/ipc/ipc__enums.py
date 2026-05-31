@@ -57,3 +57,4 @@ class IpcOp(IntEnum):
     """
 
     PING = 0
+    CONTROL_CALL = 1
