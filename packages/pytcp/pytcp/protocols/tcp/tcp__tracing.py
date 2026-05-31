@@ -31,14 +31,11 @@ pytcp/protocols/tcp/tcp__tracing.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 import functools
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from pytcp.protocols.tcp.session import TcpSession
+from pytcp.protocols.tcp.session import TcpSession
 
 
 def trace_fsm(function: Callable[[Any], Any]) -> Callable[[Any], Any]:

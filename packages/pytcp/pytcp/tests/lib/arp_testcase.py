@@ -54,8 +54,6 @@ pytcp/tests/lib/arp_testcase.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 from typing import cast
 from unittest.mock import MagicMock, patch
 

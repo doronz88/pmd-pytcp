@@ -30,13 +30,11 @@ pytcp/socket/raw__socket.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 import errno
 import os
 import threading
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, cast, override
+from typing import cast, override
 
 from net_addr import (
     Ip4Address,
@@ -57,10 +55,8 @@ from pytcp.socket import (
     gaierror,
     socket,
 )
+from pytcp.socket.raw__metadata import RawMetadata
 from pytcp.socket.socket__bind_helpers import pick_local_ip_address
-
-if TYPE_CHECKING:
-    from pytcp.socket.raw__metadata import RawMetadata
 
 
 class RawSocket(socket):

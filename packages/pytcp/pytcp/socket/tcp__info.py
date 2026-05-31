@@ -52,16 +52,11 @@ pytcp/socket/tcp__info.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 import struct
 from enum import IntEnum, IntFlag
-from typing import TYPE_CHECKING
 
+from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState
-
-if TYPE_CHECKING:
-    from pytcp.protocols.tcp.session import TcpSession
 
 
 class TcpInfoState(IntEnum):

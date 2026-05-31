@@ -30,15 +30,14 @@ pytcp/socket/tcp__socket.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 import errno
 import os
 import threading
 import time
 from collections import deque
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, cast, override
+from threading import Semaphore
+from typing import cast, override
 
 from net_addr import (
     Ip4Address,
@@ -91,13 +90,8 @@ from pytcp.socket.socket__bind_helpers import (
     pick_local_port,
     pick_local_port_for,
 )
+from pytcp.socket.tcp__metadata import TcpMetadata
 from pytcp.socket.tcp__status import TcpStatus
-
-if TYPE_CHECKING:
-    from threading import Semaphore
-
-    from pytcp.socket.tcp__metadata import TcpMetadata
-
 
 # Linux 'include/net/tcp.h' TCP_MIN_MSS = 88. The acceptance floor
 # for 'setsockopt(IPPROTO_TCP, TCP_MAXSEG, ...)' — Linux rejects

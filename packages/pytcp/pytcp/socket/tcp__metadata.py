@@ -30,18 +30,13 @@ pytcp/socket/tcp__metadata.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from net_addr import Ip4Address, Ip6Address, IpVersion
+from net_proto import Tracker
 from pytcp.protocols.tcp.tcp__seq import Seq32
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket.socket_id import SocketId
-
-if TYPE_CHECKING:
-    from net_proto import Tracker
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

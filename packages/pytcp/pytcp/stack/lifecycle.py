@@ -40,8 +40,6 @@ pytcp/stack/lifecycle.py
 ver 3.0.6
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from net_addr import (
