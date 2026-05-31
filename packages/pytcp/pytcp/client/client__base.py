@@ -23,68 +23,62 @@
 
 
 """
-This module contains the client-side mirror of the sysctl control API.
+This module contains the shared base classes for the client API proxies.
 
-'ClientSysctl' marshals each sysctl operation across the IPC control
-channel to the daemon's 'pytcp.stack.sysctl' registry, mirroring the
-in-process module functions ('get' / 'set' / 'list_keys' / 'describe' /
-'snapshot' / 'reset_to_defaults') with the same signatures.
+'_ClientApiProxy' binds a proxy to an IPC client and an optional interface
+scope, and provides '_call' — the one-line bridge from a mirrored method
+to a control-plane RPC. '_DeviceScopedProxy' adds the 'interface(ifindex)'
+chaining the device-scoped control APIs use, returning a fresh proxy of
+the same flavour carrying the selected scope.
 
-pytcp/client/client__sysctl.py
+pytcp/client/client__base.py
 
 ver 3.0.7
 """
 
-from typing import Any, cast
+from typing import Any, Self
 
-from pytcp.client.client__base import _ClientApiProxy
+from pytcp.ipc.ipc__client import IpcClient
+from pytcp.ipc.ipc__rpc import control_call
 
 
-class ClientSysctl(_ClientApiProxy):
+class _ClientApiProxy:
     """
-    The client-side mirror of the sysctl control API.
+    The base for a client-side control-API proxy.
     """
 
-    _api_name = "sysctl"
+    _api_name: str
 
-    def get(self, key: str) -> Any:
+    def __init__(self, client: IpcClient, ifindex: int | None = None, /) -> None:
         """
-        Get the current value of the sysctl knob 'key'.
-        """
-
-        return self._call("get", {"key": key})
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set the sysctl knob 'key' to 'value'.
+        Bind the proxy to an IPC client and an optional interface scope.
         """
 
-        self._call("set", {"key": key, "value": value})
+        self._client = client
+        self._ifindex = ifindex
 
-    def list_keys(self) -> list[str]:
+    def _call(self, method: str, args: dict[str, Any], /) -> Any:
         """
-        List every registered sysctl key.
-        """
-
-        return cast(list[str], self._call("list_keys", {}))
-
-    def describe(self, key: str) -> str:
-        """
-        Describe the sysctl knob 'key'.
+        Issue a control-plane call for one of this API's methods.
         """
 
-        return cast(str, self._call("describe", {"key": key}))
+        return control_call(
+            self._client,
+            api=self._api_name,
+            method=method,
+            ifindex=self._ifindex,
+            args=args,
+        )
 
-    def snapshot(self) -> dict[str, Any]:
+
+class _DeviceScopedProxy(_ClientApiProxy):
+    """
+    The base for a device-scoped client-side control-API proxy.
+    """
+
+    def interface(self, ifindex: int, /) -> Self:
         """
-        Return a snapshot of every sysctl key and its current value.
+        Return a proxy bound to the interface registered under 'ifindex'.
         """
 
-        return cast(dict[str, Any], self._call("snapshot", {}))
-
-    def reset_to_defaults(self) -> None:
-        """
-        Reset every sysctl knob to its registered default.
-        """
-
-        self._call("reset_to_defaults", {})
+        return type(self)(self._client, ifindex)

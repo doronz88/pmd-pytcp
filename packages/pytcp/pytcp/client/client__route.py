@@ -23,68 +23,71 @@
 
 
 """
-This module contains the client-side mirror of the sysctl control API.
+This module contains the client-side mirror of the route control API.
 
-'ClientSysctl' marshals each sysctl operation across the IPC control
-channel to the daemon's 'pytcp.stack.sysctl' registry, mirroring the
-in-process module functions ('get' / 'set' / 'list_keys' / 'describe' /
-'snapshot' / 'reset_to_defaults') with the same signatures.
+'ClientRoute' marshals each routing operation across the IPC control
+channel to the daemon's 'pytcp.stack.route' API, mirroring its method
+signatures. Routing is global (no interface scope), matching the
+in-process 'RouteApi'.
 
-pytcp/client/client__sysctl.py
+pytcp/client/client__route.py
 
 ver 3.0.7
 """
 
-from typing import Any, cast
+from typing import cast
 
+from net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
 from pytcp.client.client__base import _ClientApiProxy
+from pytcp.runtime.fib import Route, RouteProtocol
+from pytcp.socket import AddressFamily
+
+type _AnyRoute = Route[Ip4Address, Ip4Network] | Route[Ip6Address, Ip6Network]
 
 
-class ClientSysctl(_ClientApiProxy):
+class ClientRoute(_ClientApiProxy):
     """
-    The client-side mirror of the sysctl control API.
+    The client-side mirror of the route control API.
     """
 
-    _api_name = "sysctl"
+    _api_name = "route"
 
-    def get(self, key: str) -> Any:
+    def list_routes(self, *, family: AddressFamily | None = None) -> tuple[_AnyRoute, ...]:
         """
-        Get the current value of the sysctl knob 'key'.
-        """
-
-        return self._call("get", {"key": key})
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set the sysctl knob 'key' to 'value'.
+        List the installed routes, optionally filtered by address family.
         """
 
-        self._call("set", {"key": key, "value": value})
+        return cast(tuple[_AnyRoute, ...], self._call("list_routes", {"family": family}))
 
-    def list_keys(self) -> list[str]:
+    def add_route(self, *, route: _AnyRoute) -> None:
         """
-        List every registered sysctl key.
-        """
-
-        return cast(list[str], self._call("list_keys", {}))
-
-    def describe(self, key: str) -> str:
-        """
-        Describe the sysctl knob 'key'.
+        Install a route.
         """
 
-        return cast(str, self._call("describe", {"key": key}))
+        self._call("add_route", {"route": route})
 
-    def snapshot(self) -> dict[str, Any]:
+    def remove_route(
+        self,
+        *,
+        destination: Ip4Network | Ip6Network,
+        gateway: Ip4Address | Ip6Address | None = None,
+    ) -> int:
         """
-        Return a snapshot of every sysctl key and its current value.
-        """
-
-        return cast(dict[str, Any], self._call("snapshot", {}))
-
-    def reset_to_defaults(self) -> None:
-        """
-        Reset every sysctl knob to its registered default.
+        Remove the routes matching 'destination' (and optional gateway).
         """
 
-        self._call("reset_to_defaults", {})
+        return cast(int, self._call("remove_route", {"destination": destination, "gateway": gateway}))
+
+    def replace_default(self, *, gateway: Ip4Address | Ip6Address, protocol: RouteProtocol) -> None:
+        """
+        Replace the default route for the gateway's address family.
+        """
+
+        self._call("replace_default", {"gateway": gateway, "protocol": protocol})
+
+    def remove_default(self, *, family: AddressFamily) -> int:
+        """
+        Remove the default route for 'family'.
+        """
+
+        return cast(int, self._call("remove_default", {"family": family}))

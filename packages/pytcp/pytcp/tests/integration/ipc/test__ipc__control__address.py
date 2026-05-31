@@ -23,68 +23,52 @@
 
 
 """
-This module contains the client-side mirror of the sysctl control API.
+Integration tests for the out-of-process address control mirror.
 
-'ClientSysctl' marshals each sysctl operation across the IPC control
-channel to the daemon's 'pytcp.stack.sysctl' registry, mirroring the
-in-process module functions ('get' / 'set' / 'list_keys' / 'describe' /
-'snapshot' / 'reset_to_defaults') with the same signatures.
-
-pytcp/client/client__sysctl.py
+pytcp/tests/integration/ipc/test__ipc__control__address.py
 
 ver 3.0.7
 """
 
-from typing import Any, cast
+from pytcp import stack
+from pytcp.socket import AddressFamily
+from pytcp.tests.lib.ipc_control_testcase import IpcControlTestCase
 
-from pytcp.client.client__base import _ClientApiProxy
 
-
-class ClientSysctl(_ClientApiProxy):
+class TestIpcControlAddress(IpcControlTestCase):
     """
-    The client-side mirror of the sysctl control API.
+    The out-of-process address control-mirror tests.
     """
 
-    _api_name = "sysctl"
-
-    def get(self, key: str) -> Any:
+    def test__ipc__control__address_list_matches_in_process(self) -> None:
         """
-        Get the current value of the sysctl knob 'key'.
-        """
+        Ensure an out-of-process list_ifaddrs returns the same interface
+        addresses the in-process API reports, so Ip4IfAddr / Ip6IfAddr
+        values round-trip across the boundary.
 
-        return self._call("get", {"key": key})
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set the sysctl knob 'key' to 'value'.
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._call("set", {"key": key, "value": value})
+        client = self._connect()
 
-    def list_keys(self) -> list[str]:
-        """
-        List every registered sysctl key.
-        """
+        self.assertEqual(
+            client.address.interface(self._ifindex).list_ifaddrs(),
+            stack.address.interface(self._ifindex).list_ifaddrs(),
+            msg="A client list_ifaddrs must match the in-process interface addresses.",
+        )
 
-        return cast(list[str], self._call("list_keys", {}))
-
-    def describe(self, key: str) -> str:
+    def test__ipc__control__address_list_family_filter_matches_in_process(self) -> None:
         """
-        Describe the sysctl knob 'key'.
-        """
+        Ensure an out-of-process list_ifaddrs filtered by address family
+        matches the in-process family-filtered result.
 
-        return cast(str, self._call("describe", {"key": key}))
-
-    def snapshot(self) -> dict[str, Any]:
-        """
-        Return a snapshot of every sysctl key and its current value.
+        Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        return cast(dict[str, Any], self._call("snapshot", {}))
+        client = self._connect()
 
-    def reset_to_defaults(self) -> None:
-        """
-        Reset every sysctl knob to its registered default.
-        """
-
-        self._call("reset_to_defaults", {})
+        self.assertEqual(
+            client.address.interface(self._ifindex).list_ifaddrs(family=AddressFamily.INET4),
+            stack.address.interface(self._ifindex).list_ifaddrs(family=AddressFamily.INET4),
+            msg="A client family-filtered list_ifaddrs must match the in-process result.",
+        )

@@ -40,6 +40,11 @@ ver 3.0.7
 from types import TracebackType
 from typing import Self
 
+from pytcp.client.client__address import ClientAddress
+from pytcp.client.client__link import ClientLink
+from pytcp.client.client__membership import ClientMembership
+from pytcp.client.client__neighbor import ClientNeighbor
+from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
 from pytcp.ipc.ipc__client import IpcClient
 
@@ -56,6 +61,11 @@ class ClientStack:
 
         self._client = IpcClient(socket_path=socket_path)
         self.sysctl = ClientSysctl(self._client)
+        self.route = ClientRoute(self._client)
+        self.link = ClientLink(self._client)
+        self.address = ClientAddress(self._client)
+        self.neighbor = ClientNeighbor(self._client)
+        self.membership = ClientMembership(self._client)
 
     def close(self) -> None:
         """

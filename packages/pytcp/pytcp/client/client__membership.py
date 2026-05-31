@@ -23,68 +23,50 @@
 
 
 """
-This module contains the client-side mirror of the sysctl control API.
+This module contains the client-side mirror of the membership control API.
 
-'ClientSysctl' marshals each sysctl operation across the IPC control
-channel to the daemon's 'pytcp.stack.sysctl' registry, mirroring the
-in-process module functions ('get' / 'set' / 'list_keys' / 'describe' /
-'snapshot' / 'reset_to_defaults') with the same signatures.
+'ClientMembership' marshals each multicast-membership operation across the
+IPC control channel to the daemon's 'pytcp.stack.membership' API,
+mirroring its 'interface(ifindex)' selector and its join / leave / list
+methods. The in-process 'set_socket_filter' / 'clear_socket_filter'
+methods are daemon-internal socket plumbing (token-keyed, carrying an
+'Ip4MulticastFilter') and are deliberately not mirrored.
 
-pytcp/client/client__sysctl.py
+pytcp/client/client__membership.py
 
 ver 3.0.7
 """
 
-from typing import Any, cast
+from typing import cast
 
-from pytcp.client.client__base import _ClientApiProxy
+from net_addr import Ip4Address
+from pytcp.client.client__base import _DeviceScopedProxy
 
 
-class ClientSysctl(_ClientApiProxy):
+class ClientMembership(_DeviceScopedProxy):
     """
-    The client-side mirror of the sysctl control API.
+    The client-side mirror of the membership control API.
     """
 
-    _api_name = "sysctl"
+    _api_name = "membership"
 
-    def get(self, key: str) -> Any:
+    def join(self, *, group: Ip4Address) -> None:
         """
-        Get the current value of the sysctl knob 'key'.
-        """
-
-        return self._call("get", {"key": key})
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set the sysctl knob 'key' to 'value'.
+        Join the IPv4 multicast group 'group' on the bound interface.
         """
 
-        self._call("set", {"key": key, "value": value})
+        self._call("join", {"group": group})
 
-    def list_keys(self) -> list[str]:
+    def leave(self, *, group: Ip4Address) -> None:
         """
-        List every registered sysctl key.
-        """
-
-        return cast(list[str], self._call("list_keys", {}))
-
-    def describe(self, key: str) -> str:
-        """
-        Describe the sysctl knob 'key'.
+        Leave the IPv4 multicast group 'group' on the bound interface.
         """
 
-        return cast(str, self._call("describe", {"key": key}))
+        self._call("leave", {"group": group})
 
-    def snapshot(self) -> dict[str, Any]:
+    def list_memberships(self) -> tuple[Ip4Address, ...]:
         """
-        Return a snapshot of every sysctl key and its current value.
-        """
-
-        return cast(dict[str, Any], self._call("snapshot", {}))
-
-    def reset_to_defaults(self) -> None:
-        """
-        Reset every sysctl knob to its registered default.
+        List the bound interface's IPv4 multicast group memberships.
         """
 
-        self._call("reset_to_defaults", {})
+        return cast(tuple[Ip4Address, ...], self._call("list_memberships", {}))

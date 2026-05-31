@@ -23,68 +23,56 @@
 
 
 """
-This module contains the client-side mirror of the sysctl control API.
+This module contains the client-side mirror of the neighbor control API.
 
-'ClientSysctl' marshals each sysctl operation across the IPC control
-channel to the daemon's 'pytcp.stack.sysctl' registry, mirroring the
-in-process module functions ('get' / 'set' / 'list_keys' / 'describe' /
-'snapshot' / 'reset_to_defaults') with the same signatures.
+'ClientNeighbor' marshals each neighbour operation across the IPC control
+channel to the daemon's 'pytcp.stack.neighbor' API, mirroring its
+'interface(ifindex)' selector and its add / remove / flush / list methods.
 
-pytcp/client/client__sysctl.py
+pytcp/client/client__neighbor.py
 
 ver 3.0.7
 """
 
-from typing import Any, cast
+from typing import cast
 
-from pytcp.client.client__base import _ClientApiProxy
+from net_addr import Ip4Address, Ip6Address, MacAddress
+from pytcp.client.client__base import _DeviceScopedProxy
+from pytcp.socket import AddressFamily
+from pytcp.stack.neighbor import NeighborSnapshot
 
 
-class ClientSysctl(_ClientApiProxy):
+class ClientNeighbor(_DeviceScopedProxy):
     """
-    The client-side mirror of the sysctl control API.
+    The client-side mirror of the neighbor control API.
     """
 
-    _api_name = "sysctl"
+    _api_name = "neighbor"
 
-    def get(self, key: str) -> Any:
+    def add(self, *, ip: Ip4Address | Ip6Address, mac: MacAddress) -> None:
         """
-        Get the current value of the sysctl knob 'key'.
-        """
-
-        return self._call("get", {"key": key})
-
-    def set(self, key: str, value: Any) -> None:
-        """
-        Set the sysctl knob 'key' to 'value'.
+        Install a permanent neighbour entry mapping 'ip' to 'mac'.
         """
 
-        self._call("set", {"key": key, "value": value})
+        self._call("add", {"ip": ip, "mac": mac})
 
-    def list_keys(self) -> list[str]:
+    def remove(self, *, ip: Ip4Address | Ip6Address) -> None:
         """
-        List every registered sysctl key.
-        """
-
-        return cast(list[str], self._call("list_keys", {}))
-
-    def describe(self, key: str) -> str:
-        """
-        Describe the sysctl knob 'key'.
+        Remove the neighbour entry for 'ip'.
         """
 
-        return cast(str, self._call("describe", {"key": key}))
+        self._call("remove", {"ip": ip})
 
-    def snapshot(self) -> dict[str, Any]:
+    def flush(self, *, family: AddressFamily) -> None:
         """
-        Return a snapshot of every sysctl key and its current value.
-        """
-
-        return cast(dict[str, Any], self._call("snapshot", {}))
-
-    def reset_to_defaults(self) -> None:
-        """
-        Reset every sysctl knob to its registered default.
+        Flush the bound interface's neighbour cache for 'family'.
         """
 
-        self._call("reset_to_defaults", {})
+        self._call("flush", {"family": family})
+
+    def list_neighbors(self, *, family: AddressFamily | None = None) -> tuple[NeighborSnapshot, ...]:
+        """
+        List the bound interface's neighbour-cache entries.
+        """
+
+        return cast(tuple[NeighborSnapshot, ...], self._call("list_neighbors", {"family": family}))

@@ -55,12 +55,34 @@ from pytcp.ipc.ipc__rpc import (
 
 # Per-API method allowlist. A wire-supplied method name is invoked only
 # when it is a member here, so a malicious or buggy peer cannot reach a
-# private method or dunder off a stack object. Entries are added as later
-# Phase-1 commits wire each API.
+# private method or dunder off a stack object. The 'interface' selector is
+# absent — the client resolves it locally and threads the scope into the
+# request's 'ifindex'. 'membership.set_socket_filter' / 'clear_socket_filter'
+# are absent — they are daemon-internal socket plumbing, not user control.
 _ALLOWED_METHODS: dict[str, frozenset[str]] = {
     "sysctl": frozenset(
         {"get", "set", "list_keys", "describe", "snapshot", "reset_to_defaults"},
     ),
+    "route": frozenset(
+        {"list_routes", "add_route", "remove_route", "replace_default", "remove_default"},
+    ),
+    "link": frozenset(
+        {
+            "list_interfaces",
+            "set_mtu",
+            "set_mac_address",
+            "mac_address",
+            "mtu",
+            "name",
+            "interface_layer",
+            "is_running",
+            "stats",
+            "flags",
+        },
+    ),
+    "address": frozenset({"add", "remove", "replace", "list_ifaddrs"}),
+    "neighbor": frozenset({"add", "remove", "flush", "list_neighbors"}),
+    "membership": frozenset({"join", "leave", "list_memberships"}),
 }
 
 
@@ -69,10 +91,23 @@ def _resolve_api(name: str, /) -> Any:
     Resolve a control-API name to the object its methods are called on.
     """
 
-    if name == "sysctl":
-        from pytcp.stack import sysctl as sysctl_module
+    from pytcp import stack
 
-        return sysctl_module
+    match name:
+        case "sysctl":
+            from pytcp.stack import sysctl as sysctl_module
+
+            return sysctl_module
+        case "route":
+            return stack.route
+        case "link":
+            return stack.link
+        case "address":
+            return stack.address
+        case "neighbor":
+            return stack.neighbor
+        case "membership":
+            return stack.membership
 
     raise KeyError(f"Unknown control API {name!r}.")
 
@@ -94,7 +129,14 @@ def _invoke(control: ControlRequest, /) -> Any:
     if control.ifindex is not None:
         api_object = api_object.interface(control.ifindex)
 
-    return getattr(api_object, control.method)(**control.args)
+    target = getattr(api_object, control.method)
+
+    # A method is called with the request's args; a read property (e.g.
+    # 'LinkApi.mtu') resolves to its value directly and takes no args.
+    if callable(target):
+        return target(**control.args)
+
+    return target
 
 
 def handle_control_call(request: IpcMessage, /) -> IpcMessage:
