@@ -31,7 +31,7 @@ This module contains integration tests for the IPv4 TX packet-handler path.
 
 pytcp/tests/integration/protocols/ip4/test__ip4__tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any, override

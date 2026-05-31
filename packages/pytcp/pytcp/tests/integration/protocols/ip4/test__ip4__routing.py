@@ -29,7 +29,7 @@ Phases 2 / 5 add the next-hop and static-route scenarios.
 
 pytcp/tests/integration/protocols/ip4/test__ip4__routing.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import cast

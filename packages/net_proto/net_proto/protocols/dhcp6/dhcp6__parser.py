@@ -27,7 +27,7 @@ This module contains the DHCPv6 packet parser class.
 
 net_proto/protocols/dhcp6/dhcp6__parser.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

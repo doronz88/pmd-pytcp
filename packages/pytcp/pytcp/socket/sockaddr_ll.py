@@ -31,7 +31,7 @@ exchanged by 'PacketSocket.bind' / '.sendto' / '.recvfrom' the way the
 
 pytcp/socket/sockaddr_ll.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from dataclasses import dataclass, field

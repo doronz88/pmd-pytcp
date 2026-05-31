@@ -38,7 +38,7 @@ the runtime read seam.
 
 pytcp/tests/unit/lib/test__lib__neighbor__sysctl_per_interface.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

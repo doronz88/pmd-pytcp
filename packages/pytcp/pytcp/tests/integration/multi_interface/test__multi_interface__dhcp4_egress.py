@@ -32,7 +32,7 @@ on a multi-homed (multiple-interface) host.
 
 pytcp/tests/integration/multi_interface/test__multi_interface__dhcp4_egress.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

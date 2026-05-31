@@ -29,7 +29,7 @@ discipline + the §5.7 idle-baseline timestamp.
 
 pytcp/protocols/tcp/state/tcp__state__rtt_sample.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from dataclasses import dataclass

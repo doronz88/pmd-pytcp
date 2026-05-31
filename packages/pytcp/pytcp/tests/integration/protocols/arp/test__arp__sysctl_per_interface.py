@@ -34,7 +34,7 @@ plan at 'docs/refactor/sysctl_per_interface.md'.
 
 pytcp/tests/integration/protocols/arp/test__arp__sysctl_per_interface.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

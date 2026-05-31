@@ -27,7 +27,7 @@ This module contains the DHCPv4 packet assembler class.
 
 net_proto/protocols/dhcp4/dhcp4__assembler.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

@@ -27,7 +27,7 @@ This module contains unit tests for the 'SocketTable' registry.
 
 pytcp/tests/unit/socket/test__socket__socket_table.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import threading

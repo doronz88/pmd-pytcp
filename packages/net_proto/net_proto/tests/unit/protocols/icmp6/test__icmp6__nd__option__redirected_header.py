@@ -27,7 +27,7 @@ Module contains tests for the ICMPv6 ND Redirected Header option (RFC 4861 §4.6
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__redirected_header.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

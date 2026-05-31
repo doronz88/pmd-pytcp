@@ -28,7 +28,7 @@ payload (the IpProto.IGMP wire integration).
 
 net_proto/tests/unit/protocols/igmp/test__igmp__ip4_payload.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

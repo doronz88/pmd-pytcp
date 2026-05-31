@@ -31,7 +31,7 @@ upper-layer parsers can pick up the payload transparently.
 
 net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__operation.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

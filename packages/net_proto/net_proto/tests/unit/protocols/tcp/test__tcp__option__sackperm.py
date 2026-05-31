@@ -27,7 +27,7 @@ Module contains tests for the TCP Sackperm (SACK Permitted) option code.
 
 net_proto/tests/unit/protocols/tcp/test__tcp__option__sackperm.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

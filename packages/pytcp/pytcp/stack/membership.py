@@ -33,7 +33,7 @@ state this API maintains.
 
 pytcp/stack/membership.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import TYPE_CHECKING

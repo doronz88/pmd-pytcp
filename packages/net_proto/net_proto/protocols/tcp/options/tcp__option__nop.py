@@ -27,7 +27,7 @@ This module contains the TCP Nop (No Operation) option support code.
 
 net_proto/protocols/tcp/options/tcp__option__nop.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from dataclasses import dataclass, field

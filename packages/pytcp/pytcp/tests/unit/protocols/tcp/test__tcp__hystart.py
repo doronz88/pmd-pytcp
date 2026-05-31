@@ -28,7 +28,7 @@ functions and constants in 'pytcp/protocols/tcp/tcp__hystart.py'.
 
 pytcp/tests/unit/protocols/tcp/test__tcp__hystart.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

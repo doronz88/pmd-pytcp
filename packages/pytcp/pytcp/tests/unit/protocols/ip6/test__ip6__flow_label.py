@@ -28,7 +28,7 @@ This module contains tests for the IPv6 Flow Label generator
 
 pytcp/tests/unit/protocols/ip6/test__ip6__flow_label.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

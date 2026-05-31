@@ -30,7 +30,7 @@ socket.
 
 pytcp/tests/unit/socket/test__socket__packet__socket_table.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import cast, override

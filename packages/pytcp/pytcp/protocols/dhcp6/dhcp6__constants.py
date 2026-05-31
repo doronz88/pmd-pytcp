@@ -33,7 +33,7 @@ at boot or 'pytcp.stack.sysctl["dhcp6...."]' at runtime.
 
 pytcp/protocols/dhcp6/dhcp6__constants.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from net_addr import Ip6Address

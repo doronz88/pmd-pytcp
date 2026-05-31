@@ -30,7 +30,7 @@ sysctls ('ip4.accept_source_route', 'ip4.frag.flow_timeout_s',
 
 pytcp/tests/integration/stack/test__stack__sysctls.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

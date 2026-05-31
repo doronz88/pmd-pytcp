@@ -44,7 +44,7 @@ iperf3 server. Use this script instead.
 
 tools/udp_flood.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import socket

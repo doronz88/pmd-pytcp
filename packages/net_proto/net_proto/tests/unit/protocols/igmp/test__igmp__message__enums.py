@@ -27,7 +27,7 @@ This module contains tests for the IGMP message 'type' enum.
 
 net_proto/tests/unit/protocols/igmp/test__igmp__message__enums.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

@@ -27,7 +27,7 @@ This module contains tests for the NetProto EtherType and IpProto enums.
 
 net_proto/tests/unit/lib/test__lib__enums.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

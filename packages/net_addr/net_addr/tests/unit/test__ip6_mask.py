@@ -27,7 +27,7 @@ This module contains tests for the NetAddr package IPv6 mask support class.
 
 net_addr/tests/unit/test__ip6_mask.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

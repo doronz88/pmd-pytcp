@@ -40,7 +40,7 @@ absent from that event's table - the dispatcher uses dict
 
 pytcp/protocols/tcp/fsm/tcp__fsm.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from __future__ import annotations

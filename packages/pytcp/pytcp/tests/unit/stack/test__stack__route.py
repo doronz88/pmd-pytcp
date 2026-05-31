@@ -28,7 +28,7 @@ Phase-1 boot default-route dual-write helper.
 
 pytcp/tests/unit/stack/test__stack__route.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

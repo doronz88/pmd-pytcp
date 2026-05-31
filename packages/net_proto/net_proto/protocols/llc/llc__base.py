@@ -27,7 +27,7 @@ This module contains the LLC protocol base class.
 
 net_proto/protocols/llc/llc__base.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

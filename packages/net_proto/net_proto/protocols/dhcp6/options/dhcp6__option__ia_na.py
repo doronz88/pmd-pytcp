@@ -28,7 +28,7 @@ Addresses (IA_NA) option support code.
 
 net_proto/protocols/dhcp6/options/dhcp6__option__ia_na.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import struct

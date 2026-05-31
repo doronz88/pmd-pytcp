@@ -31,7 +31,7 @@ Report on join, a Leave on stop) and logs datagrams received on it.
 
 examples/service__mcast_listener.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import contextlib

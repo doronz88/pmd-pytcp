@@ -28,7 +28,7 @@ Query parser.
 
 net_proto/tests/unit/protocols/igmp/test__igmp__message__query__integrity_checks.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

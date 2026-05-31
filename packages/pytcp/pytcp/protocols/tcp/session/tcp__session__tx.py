@@ -47,7 +47,7 @@ unchanged.
 
 packages/pytcp/pytcp/protocols/tcp/session/tcp__session__tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import time

@@ -47,7 +47,7 @@ docs/refactor/plpmtud_unified_engine.md
 
 pytcp/protocols/tcp/tcp__plpmtud_adapter.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from net_addr import Ip4Address, Ip6Address

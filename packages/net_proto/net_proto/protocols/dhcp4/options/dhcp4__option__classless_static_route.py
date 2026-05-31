@@ -28,7 +28,7 @@ support code (option 121, RFC 3442).
 
 net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from dataclasses import dataclass, field

@@ -36,7 +36,7 @@ corresponding rejection case here.
 
 net_proto/tests/unit/protocols/snap/test__snap__parser__sanity_checks.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

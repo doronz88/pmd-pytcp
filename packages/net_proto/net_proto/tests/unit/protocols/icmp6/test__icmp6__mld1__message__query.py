@@ -28,7 +28,7 @@ Query message (type 130, 24-octet form) support class.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__mld1__message__query.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

@@ -28,7 +28,7 @@ integrity checks.
 
 net_proto/tests/unit/protocols/icmp4/test__icmp4__message__time_exceeded__parser__integrity_checks.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from types import SimpleNamespace
