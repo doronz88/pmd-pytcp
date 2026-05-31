@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phase 0 complete; Phase 1 in progress (machinery + sysctl mirror done; 5 API mirrors remain).** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0 & 1 complete; Phase 2 (TCP socket syscall RPC + data-channel fd passing) next.** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -332,11 +332,27 @@ Design notes:
   (carrying the remote type name + message) — Phase-1 simplification; the
   original exception type is reported, not reconstructed.
 
-**Remaining (5 API mirrors):** `route`, `link`, `address`, `neighbor`,
-`membership`. Each adds a `client__<api>.py` proxy (the four
-device-scoped APIs mirror the `interface(ifindex)` chaining into the RPC
-body's `ifindex`), an allowlist + resolver entry in `ipc__control.py`,
-and a `NetworkTestCase`-based integration test exercising the proxy
-against the harness's `mock__init`-populated `stack.<api>` singletons.
+- `dcecd15d` — the five remaining mirrors (`route` / `link` / `address`
+  / `neighbor` / `membership`), Phase 1 complete. Shared proxy bases
+  (`client__base.py`: `_ClientApiProxy` + `_DeviceScopedProxy` for the
+  `interface(ifindex)` chaining), the per-API proxies, `ClientStack`
+  wiring, the dispatcher resolver/allowlist + property-read support, and
+  the `IpcControlTestCase` harness. 13 integration tests.
 
-### Phase 2 — TCP socket syscall RPC + data-channel fd passing — later
+Notes that landed with the mirrors:
+- `LinkApi`'s read **properties** marshal as zero-arg RPC reads; the
+  dispatcher reads a property value vs. calls a method via a `callable()`
+  check.
+- Two in-process-only surfaces are **omitted by design** (they can't
+  cross a process boundary): `address.add`'s `dad_conflict_callback`, and
+  `membership.set_socket_filter` / `clear_socket_filter` (token-keyed
+  `Ip4MulticastFilter` socket plumbing).
+- The `neighbor` integration fixture swaps **real** ARP/ND caches onto
+  the boot interface — `NetworkTestCase` mocks them for RX/TX, but the
+  neighbor control API needs a real entry store.
+- The harness silences the `stack` log channel **per class** in
+  `setUpClass` so the server's cleanup-time stop log (an `addCleanup`
+  that runs after `NetworkTestCase.tearDown` restores its snapshot) does
+  not leak.
+
+### Phase 2 — TCP socket syscall RPC + data-channel fd passing — next
