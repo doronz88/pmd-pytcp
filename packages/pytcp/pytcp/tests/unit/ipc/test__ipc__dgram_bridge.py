@@ -1,0 +1,158 @@
+################################################################################
+##                                                                            ##
+##   PyTCP - Python TCP/IP stack                                              ##
+##   Copyright (C) 2020-present Sebastian Majewski                            ##
+##                                                                            ##
+##   This program is free software: you can redistribute it and/or modify     ##
+##   it under the terms of the GNU General Public License as published by     ##
+##   the Free Software Foundation, either version 3 of the License, or        ##
+##   (at your option) any later version.                                      ##
+##                                                                            ##
+##   This program is distributed in the hope that it will be useful,          ##
+##   but WITHOUT ANY WARRANTY; without even the implied warranty of           ##
+##   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the             ##
+##   GNU General Public License for more details.                             ##
+##                                                                            ##
+##   You should have received a copy of the GNU General Public License        ##
+##   along with this program. If not, see <https://www.gnu.org/licenses/>.    ##
+##                                                                            ##
+##   Author's email: ccie18643@gmail.com                                      ##
+##   Github repository: https://github.com/ccie18643/PyTCP                    ##
+##                                                                            ##
+################################################################################
+
+
+"""
+Tests for the daemon-side per-socket datagram bridge.
+
+The stack datagram socket the bridge drives is stood in for by
+'_DatagramSocketStub', a queue-backed adapter exposing the
+'recvfrom(bufsize, timeout)' / 'sendto' / 'send' surface the bridge
+calls. A test injects an inbound datagram to exercise the RX direction
+and inspects the stub's outbound list to exercise the TX direction.
+
+pytcp/tests/unit/ipc/test__ipc__dgram_bridge.py
+
+ver 3.0.7
+"""
+
+import queue
+import socket
+import time
+from typing import override
+from unittest import TestCase
+
+from pytcp.ipc.ipc__dgram_bridge import DatagramBridge
+from pytcp.ipc.ipc__dgram_frame import decode_dgram, encode_dgram
+
+_DEADLINE__SEC: float = 5.0
+
+
+class _DatagramSocketStub:
+    """
+    A queue-backed stand-in for a stack datagram socket.
+    """
+
+    def __init__(self) -> None:
+        self._inbound: queue.Queue[tuple[bytes, tuple[str, int]]] = queue.Queue()
+        self.outbound: list[tuple[bytes, tuple[str, int] | None]] = []
+
+    def inject(self, data: bytes, address: tuple[str, int], /) -> None:
+        self._inbound.put((data, address))
+
+    def recvfrom(self, bufsize: int | None, timeout: float | None) -> tuple[bytes, tuple[str, int]]:
+        try:
+            return self._inbound.get(timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError from None
+
+    def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+        self.outbound.append((data, address))
+        return len(data)
+
+    def send(self, data: bytes) -> int:
+        self.outbound.append((data, None))
+        return len(data)
+
+
+class TestIpcDatagramBridge(TestCase):
+    """
+    The daemon-side per-socket datagram-bridge tests.
+    """
+
+    @override
+    def setUp(self) -> None:
+        """
+        Wire a datagram bridge between a stack-socket stub and a
+        SOCK_DGRAM data socketpair (daemon end driven by the bridge,
+        client end the simulated client fd).
+        """
+
+        self._stack = _DatagramSocketStub()
+        self._data_end, self._client_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self._client_end.settimeout(_DEADLINE__SEC)
+        self.addCleanup(self._client_end.close)
+
+        self._bridge = DatagramBridge(self._stack, self._data_end)
+        self._bridge.start()
+        self.addCleanup(self._bridge.stop)
+
+    def _wait_for_outbound(self) -> tuple[bytes, tuple[str, int] | None]:
+        """
+        Block until the stub has received a datagram from the TX pump.
+        """
+
+        deadline = time.monotonic() + _DEADLINE__SEC
+        while time.monotonic() < deadline:
+            if self._stack.outbound:
+                return self._stack.outbound[0]
+            time.sleep(0.01)
+        raise AssertionError("The TX pump did not deliver a datagram to the stack.")
+
+    def test__ipc__dgram_bridge__rx_frames_sender_address(self) -> None:
+        """
+        Ensure a datagram the stack receives is framed with its sender
+        address and pumped to the client end.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._stack.inject(b"down", ("10.0.1.91", 5000))
+
+        self.assertEqual(
+            decode_dgram(self._client_end.recv(65600)),
+            (("10.0.1.91", 5000), b"down"),
+            msg="The RX pump must frame a received datagram with its sender address.",
+        )
+
+    def test__ipc__dgram_bridge__tx_replays_address_as_sendto(self) -> None:
+        """
+        Ensure an addressed datagram the client writes is replayed into
+        the stack as a 'sendto' to that address.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._client_end.send(encode_dgram(("10.0.1.7", 80), b"up"))
+
+        self.assertEqual(
+            self._wait_for_outbound(),
+            (b"up", ("10.0.1.7", 80)),
+            msg="The TX pump must replay an addressed datagram as a sendto.",
+        )
+
+    def test__ipc__dgram_bridge__tx_no_address_is_connected_send(self) -> None:
+        """
+        Ensure an address-less datagram the client writes is replayed
+        into the stack as a connected 'send'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._client_end.send(encode_dgram(None, b"conn"))
+
+        self.assertEqual(
+            self._wait_for_outbound(),
+            (b"conn", None),
+            msg="The TX pump must replay an address-less datagram as a connected send.",
+        )
