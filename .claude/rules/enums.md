@@ -165,6 +165,53 @@ if proto is IpProto.UDP: ...
 The full inventory:
 [`net_proto.md`](net_proto.md) §11.
 
+#### 2.3.1 `ProtoEnum` is NOT an `IntEnum` — member ≠ int
+
+`ProtoEnum` subclasses the **plain** `enum.Enum`, not `IntEnum`.
+This is deliberate: it keeps the codepoint **spaces type-isolated**
+— an `EtherType` is never equal to an `IpProto` even when their
+underlying numbers coincide (and protocol numbers collide
+constantly: 6 is TCP as an IP proto, something else as an option
+kind, etc.). With `IntEnum` the members *are* ints and those
+cross-domain values would compare equal, silently. Plain `Enum`
+makes "is this the TCP protocol or the value 6" a type-checked
+question.
+
+The consequence every author must internalise: **a `ProtoEnum`
+member is NOT `==` its integer.**
+
+```python
+Icmp4Type.TIME_EXCEEDED == 11        # -> False   (Enum, not IntEnum)
+int(Icmp4Type.TIME_EXCEEDED) == 11   # -> True    (explicit cross)
+```
+
+This is the opposite of the §2.1 / §2.2 socket constants, which
+**are** `IntEnum` (so `IP_TTL == 2` holds) — because there the
+int-ness is the stdlib-parity contract. At the `net_proto` wire
+boundary the int-ness is explicitly *not* the contract; conversion
+is via `from_int` / `from_bytes` / `__bytes__` / `int()`.
+
+So a `ProtoEnum`-typed field is handled with three boundary rules
+— never an implicit `member == int`:
+
+- **Member → int at the wire / log edge:** `int(self.value)` in
+  `__buffer__`, `__str__`, and error-message interpolation. (Wire
+  bytes are unchanged — `int(member)` packs identically.)
+- **Member ↔ member in memory:** compare members to members
+  (`self.flag is Flag.TS_ONLY`, `x in (Flag.A, Flag.B)`); guard a
+  bad value with `not member.is_unknown`.
+- **Raw byte → reject, then construct, on the parse path:**
+  reject an out-of-set wire byte against `Enum.get_known_values()`
+  (an `int` list — no `UNKNOWN_*` materialisation) *before*
+  building the member, then cross int→member with
+  `from_int(byte)`.
+
+Typing a frozen-dataclass field as the `ProtoEnum` (not `int`) is
+the enforcement: mypy's `arg-type` check turns every raw-int
+construction site into a compile error — the field-honesty net.
+A round-trip test comparing `parsed.value == 1` will fail
+(`member != int`); pin the expected value as the **member**.
+
 ## 3. Stdlib socket parity — the load-bearing constraint
 
 PyTCP's `pytcp.socket` module is a drop-in replacement
