@@ -52,15 +52,9 @@ from net_addr import Ip4Address
 from pytcp.protocols.tcp.tcp__enums import FsmState
 from pytcp.socket import IPPROTO_TCP, TCP_INFO, AddressFamily
 from pytcp.socket.tcp__info import (
-    TCP_INFO__STATE__CLOSE,
-    TCP_INFO__STATE__ESTABLISHED,
-    TCP_INFO__STATE__LISTEN,
-    TCP_INFO__STATE__SYN_SENT,
-    TCP_INFO__STATE__TIME_WAIT,
     TCP_INFO__STRUCT,
-    TCPI_OPT__SACK,
-    TCPI_OPT__TIMESTAMPS,
-    TCPI_OPT__WSCALE,
+    TcpInfoOption,
+    TcpInfoState,
 )
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.tests.lib.network_testcase import (
@@ -125,7 +119,7 @@ class TestTcpSocketGetsockoptTcpInfo(TcpTestCase):
         # State byte (offset 0) must be TCP_CLOSE = 7.
         self.assertEqual(
             info[0],
-            TCP_INFO__STATE__CLOSE,
+            TcpInfoState.CLOSE,
             msg="State byte for a session-less socket must be TCP_CLOSE.",
         )
         # Every byte past the state byte must be zero.
@@ -152,8 +146,8 @@ class TestTcpSocketGetsockoptTcpInfo(TcpTestCase):
         assert isinstance(info, bytes)
         self.assertEqual(
             info[0],
-            TCP_INFO__STATE__ESTABLISHED,
-            msg=f"ESTABLISHED session must map to tcpi_state={TCP_INFO__STATE__ESTABLISHED}.",
+            TcpInfoState.ESTABLISHED,
+            msg=f"ESTABLISHED session must map to tcpi_state={TcpInfoState.ESTABLISHED}.",
         )
 
     def test__tcp_info__snd_mss_matches_session_state(self) -> None:
@@ -271,18 +265,18 @@ class TestTcpSocketGetsockoptTcpInfo(TcpTestCase):
         # 'tcpi_options' is the 6th u8 (offset 5).
         options = info[5]
         self.assertEqual(
-            options & TCPI_OPT__TIMESTAMPS,
-            TCPI_OPT__TIMESTAMPS,
+            options & TcpInfoOption.TIMESTAMPS,
+            TcpInfoOption.TIMESTAMPS,
             msg="TCPI_OPT_TIMESTAMPS must be set when timestamps bilaterally negotiated.",
         )
         self.assertEqual(
-            options & TCPI_OPT__SACK,
-            TCPI_OPT__SACK,
+            options & TcpInfoOption.SACK,
+            TcpInfoOption.SACK,
             msg="TCPI_OPT_SACK must be set when SACK bilaterally negotiated.",
         )
         self.assertEqual(
-            options & TCPI_OPT__WSCALE,
-            TCPI_OPT__WSCALE,
+            options & TcpInfoOption.WSCALE,
+            TcpInfoOption.WSCALE,
             msg="TCPI_OPT_WSCALE must be set when WSCALE bilaterally negotiated.",
         )
 
@@ -341,29 +335,83 @@ class TestTcpSocketGetsockoptTcpInfo(TcpTestCase):
         # tools test for directly.
         self.assertEqual(
             _FSM_TO_TCP_INFO_STATE[FsmState.CLOSED],
-            TCP_INFO__STATE__CLOSE,
+            TcpInfoState.CLOSE,
             msg="FsmState.CLOSED must map to TCP_CLOSE (7).",
         )
         self.assertEqual(
             _FSM_TO_TCP_INFO_STATE[FsmState.LISTEN],
-            TCP_INFO__STATE__LISTEN,
+            TcpInfoState.LISTEN,
             msg="FsmState.LISTEN must map to TCP_LISTEN (10).",
         )
         self.assertEqual(
             _FSM_TO_TCP_INFO_STATE[FsmState.SYN_SENT],
-            TCP_INFO__STATE__SYN_SENT,
+            TcpInfoState.SYN_SENT,
             msg="FsmState.SYN_SENT must map to TCP_SYN_SENT (2).",
         )
         self.assertEqual(
             _FSM_TO_TCP_INFO_STATE[FsmState.ESTABLISHED],
-            TCP_INFO__STATE__ESTABLISHED,
+            TcpInfoState.ESTABLISHED,
             msg="FsmState.ESTABLISHED must map to TCP_ESTABLISHED (1).",
         )
         self.assertEqual(
             _FSM_TO_TCP_INFO_STATE[FsmState.TIME_WAIT],
-            TCP_INFO__STATE__TIME_WAIT,
+            TcpInfoState.TIME_WAIT,
             msg="FsmState.TIME_WAIT must map to TCP_TIME_WAIT (6).",
         )
+
+    def test__tcp_info__state_and_option_constants_are_typed_enums(self) -> None:
+        """
+        Ensure the tcpi_state values and tcpi_options bit flags are
+        modelled as typed enum members carrying the Linux ABI integer
+        values — 'TcpInfoState' an 'IntEnum' (one mutually-exclusive
+        state per value) and 'TcpInfoOption' an 'IntFlag' (OR-combinable
+        bits) — and that the FsmState map yields 'TcpInfoState' members.
+
+        Reference: Linux include/uapi/linux/tcp.h enum tcp_states (1..11).
+        Reference: Linux include/uapi/linux/tcp.h tcpi_options bit flags.
+        """
+
+        from enum import IntEnum, IntFlag
+
+        from pytcp.socket.tcp__info import _FSM_TO_TCP_INFO_STATE
+
+        self.assertTrue(
+            issubclass(TcpInfoState, IntEnum),
+            msg="TcpInfoState must be an IntEnum (mutually-exclusive states).",
+        )
+        self.assertTrue(
+            issubclass(TcpInfoOption, IntFlag),
+            msg="TcpInfoOption must be an IntFlag (OR-combinable bits).",
+        )
+        # Canonical state values from the kernel enum.
+        self.assertEqual(
+            TcpInfoState.ESTABLISHED,
+            1,
+            msg="TcpInfoState.ESTABLISHED must carry the Linux value 1.",
+        )
+        self.assertEqual(
+            TcpInfoState.CLOSING,
+            11,
+            msg="TcpInfoState.CLOSING must carry the Linux value 11.",
+        )
+        # Canonical option bits.
+        self.assertEqual(
+            TcpInfoOption.SACK,
+            2,
+            msg="TcpInfoOption.SACK must carry the Linux bit value 2.",
+        )
+        self.assertEqual(
+            TcpInfoOption.SYN_DATA,
+            32,
+            msg="TcpInfoOption.SYN_DATA must carry the Linux bit value 32.",
+        )
+        # Every FsmState map value must be a TcpInfoState member.
+        for fsm_state, info_state in _FSM_TO_TCP_INFO_STATE.items():
+            self.assertIsInstance(
+                info_state,
+                TcpInfoState,
+                msg=f"_FSM_TO_TCP_INFO_STATE[{fsm_state.name}] must be a TcpInfoState member.",
+            )
 
     @override
     def setUp(self) -> None:

@@ -55,6 +55,7 @@ ver 3.0.6
 from __future__ import annotations
 
 import struct
+from enum import IntEnum, IntFlag
 from typing import TYPE_CHECKING
 
 from pytcp.protocols.tcp.tcp__enums import FsmState
@@ -63,45 +64,56 @@ if TYPE_CHECKING:
     from pytcp.protocols.tcp.session import TcpSession
 
 
-# Linux include/uapi/linux/tcp.h tcpi_state values. The enum
-# ordering mirrors 'enum {...}' in the kernel header verbatim
-# so a diagnostic tool consuming the byte recognises the value.
-TCP_INFO__STATE__ESTABLISHED: int = 1
-TCP_INFO__STATE__SYN_SENT: int = 2
-TCP_INFO__STATE__SYN_RECV: int = 3
-TCP_INFO__STATE__FIN_WAIT1: int = 4
-TCP_INFO__STATE__FIN_WAIT2: int = 5
-TCP_INFO__STATE__TIME_WAIT: int = 6
-TCP_INFO__STATE__CLOSE: int = 7
-TCP_INFO__STATE__CLOSE_WAIT: int = 8
-TCP_INFO__STATE__LAST_ACK: int = 9
-TCP_INFO__STATE__LISTEN: int = 10
-TCP_INFO__STATE__CLOSING: int = 11
+class TcpInfoState(IntEnum):
+    """
+    Linux 'include/uapi/linux/tcp.h' tcpi_state values.
+    """
 
-# Linux include/uapi/linux/tcp.h tcpi_options bit flags. The
-# values are stable kernel ABI; consumers test individual bits.
-TCPI_OPT__TIMESTAMPS: int = 1
-TCPI_OPT__SACK: int = 2
-TCPI_OPT__WSCALE: int = 4
-TCPI_OPT__ECN: int = 8  # ECN negotiated at session init (RFC 3168)
-TCPI_OPT__ECN_SEEN: int = 16  # at least one ECT segment received
-TCPI_OPT__SYN_DATA: int = 32  # SYN-ACK acked SYN-data (RFC 7413)
+    # Member ordering mirrors 'enum {...}' in the kernel header
+    # verbatim so a diagnostic tool consuming the byte recognises
+    # the value.
+    ESTABLISHED = 1
+    SYN_SENT = 2
+    SYN_RECV = 3
+    FIN_WAIT1 = 4
+    FIN_WAIT2 = 5
+    TIME_WAIT = 6
+    CLOSE = 7
+    CLOSE_WAIT = 8
+    LAST_ACK = 9
+    LISTEN = 10
+    CLOSING = 11
+
+
+class TcpInfoOption(IntFlag):
+    """
+    Linux 'include/uapi/linux/tcp.h' tcpi_options bit flags.
+    """
+
+    # The values are stable kernel ABI; consumers test individual
+    # bits.
+    TIMESTAMPS = 1
+    SACK = 2
+    WSCALE = 4
+    ECN = 8  # ECN negotiated at session init (RFC 3168).
+    ECN_SEEN = 16  # At least one ECT segment received.
+    SYN_DATA = 32  # SYN-ACK acked SYN-data (RFC 7413).
 
 
 # PyTCP FsmState -> Linux tcpi_state. Every PyTCP FsmState has a
 # direct Linux counterpart so the mapping is total.
-_FSM_TO_TCP_INFO_STATE: dict[FsmState, int] = {
-    FsmState.CLOSED: TCP_INFO__STATE__CLOSE,
-    FsmState.LISTEN: TCP_INFO__STATE__LISTEN,
-    FsmState.SYN_SENT: TCP_INFO__STATE__SYN_SENT,
-    FsmState.SYN_RCVD: TCP_INFO__STATE__SYN_RECV,
-    FsmState.ESTABLISHED: TCP_INFO__STATE__ESTABLISHED,
-    FsmState.FIN_WAIT_1: TCP_INFO__STATE__FIN_WAIT1,
-    FsmState.FIN_WAIT_2: TCP_INFO__STATE__FIN_WAIT2,
-    FsmState.CLOSING: TCP_INFO__STATE__CLOSING,
-    FsmState.CLOSE_WAIT: TCP_INFO__STATE__CLOSE_WAIT,
-    FsmState.LAST_ACK: TCP_INFO__STATE__LAST_ACK,
-    FsmState.TIME_WAIT: TCP_INFO__STATE__TIME_WAIT,
+_FSM_TO_TCP_INFO_STATE: dict[FsmState, TcpInfoState] = {
+    FsmState.CLOSED: TcpInfoState.CLOSE,
+    FsmState.LISTEN: TcpInfoState.LISTEN,
+    FsmState.SYN_SENT: TcpInfoState.SYN_SENT,
+    FsmState.SYN_RCVD: TcpInfoState.SYN_RECV,
+    FsmState.ESTABLISHED: TcpInfoState.ESTABLISHED,
+    FsmState.FIN_WAIT_1: TcpInfoState.FIN_WAIT1,
+    FsmState.FIN_WAIT_2: TcpInfoState.FIN_WAIT2,
+    FsmState.CLOSING: TcpInfoState.CLOSING,
+    FsmState.CLOSE_WAIT: TcpInfoState.CLOSE_WAIT,
+    FsmState.LAST_ACK: TcpInfoState.LAST_ACK,
+    FsmState.TIME_WAIT: TcpInfoState.TIME_WAIT,
 }
 
 
@@ -221,7 +233,7 @@ def pack_tcp_info(session: TcpSession | None, /) -> bytes:
         # 56 struct fields total; first is the state byte.
         return struct.pack(
             TCP_INFO__STRUCT,
-            TCP_INFO__STATE__CLOSE,  # tcpi_state
+            TcpInfoState.CLOSE,  # tcpi_state
             *([0] * 55),  # Every remaining field zero-padded.
         )
 
@@ -240,17 +252,17 @@ def pack_tcp_info(session: TcpSession | None, /) -> bytes:
 
     # tcpi_options bit field (RFC 7323 / RFC 2018 / RFC 3168
     # negotiated state).
-    options = 0
+    options = TcpInfoOption(0)
     if session._ts.send_ts:  # RFC 7323 §2 TS bilaterally negotiated.
-        options |= TCPI_OPT__TIMESTAMPS
+        options |= TcpInfoOption.TIMESTAMPS
     if session._advertise.send_sack:  # RFC 2018 §2 SACK bilateral.
-        options |= TCPI_OPT__SACK
+        options |= TcpInfoOption.SACK
     if session._win.snd_wsc or session._win.rcv_wsc:
         # WSCALE negotiated when either side's wscale is non-zero.
-        options |= TCPI_OPT__WSCALE
+        options |= TcpInfoOption.WSCALE
     if session._ecn.enabled or session._accecn.enabled:
         # RFC 3168 classic ECN OR RFC 9768 AccECN negotiated.
-        options |= TCPI_OPT__ECN
+        options |= TcpInfoOption.ECN
 
     # Pack snd_wscale (low nibble) + rcv_wscale (high nibble).
     wscale_byte = (session._win.snd_wsc & 0x0F) | ((session._win.rcv_wsc & 0x0F) << 4)
