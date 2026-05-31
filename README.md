@@ -16,11 +16,11 @@
 
 **PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack.
 
-The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extension headers and fragmentation), ICMPv4 and ICMPv6, IPv6 Neighbor Discovery and SLAAC, a DHCPv4 client, UDP, and RFC 9293 TCP. The TCP implementation includes the full finite state machine, congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and RFC 5961 hardening. It exchanges traffic with other hosts on the local segment and over the Internet.
+The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extension headers and fragmentation), ICMPv4 and ICMPv6, IPv6 Neighbor Discovery and SLAAC, IPv4 and IPv6 multicast group membership (IGMP / MLD), DHCPv4 and DHCPv6 clients, UDP, and RFC 9293 TCP. The TCP implementation includes the full finite state machine, congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and RFC 5961 hardening. It exchanges traffic with other hosts on the local segment and over the Internet.
 
 The project's goal is a pure-Python stack that is feature-equivalent to the Linux kernel network stack. RFC text is the primary authority; where a spec is silent or offers a choice, PyTCP follows Linux. Host-stack parity is the current scope; router-grade forwarding is planned.
 
-Behaviour is covered by roughly 11,400 unit and integration tests and tracked against more than 110 per-RFC adherence audits kept in the repository under `docs/rfc/`.
+Behaviour is covered by roughly 12,400 unit and integration tests and tracked against more than 125 per-RFC adherence audits kept in the repository under `docs/rfc/`.
 
 The stack has zero runtime dependencies (standard library only) and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer. It is organised as three independently-published, strictly-layered packages — each usable on its own:
 
@@ -47,7 +47,7 @@ Contributions are welcome.
  - Per-protocol packet-flow stat counters; TX-path feedback so send failures reach sockets.
  - Homegrown high-performance logger (no third-party logging dependency).
  - Berkeley-sockets-style API for TCP / UDP / RAW / `AF_PACKET`: `fileno()`/eventfd + `selectors` integration, blocking & non-blocking modes, errno-mapped `OSError`, `getaddrinfo` family, common `setsockopt` options, `IP_RECVERR`/`MSG_ERRQUEUE` error queue.
- - Native `unittest` suite (~11,400 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
+ - Native `unittest` suite (~12,400 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
 
 #### Ethernet
 
@@ -66,7 +66,7 @@ Contributions are welcome.
  - Multiple host addresses; private, special-purpose and broadcast address handling (RFC 1918, RFC 6890, RFC 919, RFC 922)
  - ECN, DSCP and Router Alert support (RFC 3168, RFC 2474, RFC 6398)
  - IPv4 link-local autoconfiguration (RFC 3927)
- - Host-side IP multicasting (RFC 1112)
+ - IPv4 multicast group membership — host-side IGMPv1 / v2 / v3, with v1/v2 querier-version fallback, source-specific multicast and per-socket source filters (RFC 1112, RFC 2236, RFC 3376)
 
 #### ICMPv4
 
@@ -88,7 +88,7 @@ Contributions are welcome.
  - Stable opaque and temporary (privacy) addresses (RFC 7217, RFC 8981)
  - Optimistic DAD, Enhanced DAD and Gratuitous NA (RFC 4429, RFC 7527, RFC 9131)
  - Neighbor Discovery with a NUD cache and Router Solicitation backoff (RFC 4861, RFC 7559)
- - MLDv2 listener (RFC 3810)
+ - Multicast Listener Discovery — MLDv2 listener with MLDv1 compatibility fallback (RFC 3810, RFC 2710)
 
 #### UDP
 
@@ -113,6 +113,12 @@ Contributions are welcome.
  - Full DHCPv4 client: lease acquisition, RENEW / REBIND / DECLINE, INIT-REBOOT with a persistent lease cache (RFC 2131, RFC 1542)
  - Detecting Network Attachment and client-ID handling (RFC 4436, RFC 6842, RFC 4361)
  - Classless Static Routes installed into the FIB, with Router-option suppression and RFC 3396 option concatenation (RFC 3442, RFC 3396)
+
+#### DHCPv6 client
+
+ - DHCPv6 client: stateful SOLICIT / ADVERTISE / REQUEST / REPLY with IA_NA, and stateless INFORMATION-REQUEST, triggered by the Router Advertisement M/O flags (RFC 8415)
+ - DUID, Elapsed Time, Rapid Commit, server-preference selection, alternate-server fallback, and the RENEW / REBIND / RELEASE / DECLINE lease lifecycle (RFC 8415)
+ - Addresses assigned through the Address API with DAD; a DAD conflict declines the lease and re-solicits
 
 ---
 

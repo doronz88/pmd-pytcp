@@ -37,10 +37,12 @@ dataclass, with integrity + sanity validation and typed wire enums.
 | ICMPv4 | RFC 792 / 1122 |
 | ICMPv6 | RFC 4443 |
 | ICMPv6 Neighbor Discovery (+ options) | RFC 4861 / 8106 |
-| ICMPv6 MLDv2 | RFC 3810 |
+| ICMPv6 MLDv2 (+ MLDv1 compatibility) | RFC 3810 / 2710 |
+| IGMP (host membership: IGMPv1/v2/v3 + source-specific) | RFC 1112 / 2236 / 3376 |
 | TCP (+ options: MSS, WScale, SACK, Timestamps, AccECN, Fast-Open) | RFC 9293 / 2018 / 7323 / 9768 / 7413 |
 | UDP | RFC 768 |
 | DHCPv4 (+ options) | RFC 2131 / 2132 |
+| DHCPv6 (+ options) | RFC 8415 |
 
 ## The six-file pattern
 
@@ -112,7 +114,7 @@ modern typing throughout).
 
 ## Current state (3.0.6)
 
-- ~220 source modules; **5220 unit tests**, ~99% source coverage
+- ~260 source modules; **5770 unit tests**, ~99% source coverage
   (the remaining lines are protocol dunders, `from_buffer`
   unpacking, and a few integrity-rejection branches with no
   dedicated rejection test — test-completeness, not defects).

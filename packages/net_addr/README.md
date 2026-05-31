@@ -137,7 +137,7 @@ typing).
 
 ## Current state (3.0.6)
 
-- 23 source modules; **2606 unit tests**, ~99% source coverage (the
+- 23 source modules; **2610 unit tests**, ~99% source coverage (the
   remaining lines are `@abstractmethod` stub bodies, a documented
   unreachable `NoReturn` guard, and the lazy-`click` `__getattr__`
   exercised in subprocess probes).

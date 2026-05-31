@@ -13,11 +13,12 @@ from pytcp import socket, stack
 A full, RFC-grounded TCP/IP stack implemented entirely in Python:
 Ethernet II / 802.3 (LLC/SNAP), ARP, IPv4 / IPv6 (with Hop-by-Hop /
 Destination-Options / Routing / Fragment extension headers),
-ICMPv4 / ICMPv6 (incl. Neighbor Discovery and MLDv2), UDP, and a
-RFC 9293 TCP with a real FSM, congestion control (Reno / NewReno /
-CUBIC), SACK / timestamps / window-scaling, and a BSD-sockets
-facade. It runs on a TAP/TUN interface in user space — no kernel
-module, no privileged data path.
+ICMPv4 / ICMPv6 (incl. Neighbor Discovery, MLDv2 with MLDv1 fallback,
+and IGMP IPv4 multicast group membership), DHCPv4 and DHCPv6 clients,
+UDP, and a RFC 9293 TCP with a real FSM, congestion control
+(Reno / NewReno / CUBIC), SACK / timestamps / window-scaling, and a
+BSD-sockets facade. It runs on a TAP/TUN interface in user space — no
+kernel module, no privileged data path.
 
 The project's north star is **feature-equivalence with the Linux
 host network stack**: where an RFC is unambiguous PyTCP follows it,
@@ -47,8 +48,9 @@ TAP/TUN fd ─> RxRing ─> PacketHandler (per protocol, RX) ─> Socket queues 
 ```
 
 - **`Subsystem` base** — every background service (RX/TX rings,
-  neighbor caches, timer, DHCPv4 client, link-local / ACD) extends
-  `Subsystem` and runs its own thread with an event-driven loop.
+  neighbor caches, timer, DHCPv4 / DHCPv6 clients, link-local / ACD)
+  extends `Subsystem` and runs its own thread with an event-driven
+  loop.
 - **Packet handlers** — RX and TX paths are composed from
   per-protocol sub-handlers (`packet_handler__<proto>__<rx|tx>.py`).
   Every branch bumps a per-protocol stat counter for observability.
@@ -102,7 +104,9 @@ factory returns `TcpSocket` / `UdpSocket` / `RawSocket` /
 `PacketSocket`, with `bind` / `listen` / `accept` / `connect` /
 `send` / `recv` / `close`, `fileno()` + eventfd for `selectors`
 integration, blocking & non-blocking modes, errno-mapped `OSError`,
-`getaddrinfo`, common `setsockopt` options, and an
+`getaddrinfo`, common `setsockopt` options, IPv4/IPv6 multicast group
+membership and source-filter options (`IP_ADD_MEMBERSHIP`,
+`IP_ADD_SOURCE_MEMBERSHIP`, `IPV6_JOIN_GROUP`, …), and an
 `IP_RECVERR` / `MSG_ERRQUEUE` error queue. Stdlib-parity constants
 (`AF_INET`, `SOCK_STREAM`, `IP_*`, `SO_*`, `MSG_*`) are exposed as
 bare module names backed by `IntEnum`s.
@@ -141,9 +145,9 @@ Python **3.14+**, Linux (TAP/TUN), POSIX.
 
 ## Current state (3.0.6)
 
-- ~160 source modules; the pytcp suite runs ~3,500 unit + integration
+- ~175 source modules; the pytcp suite runs ~4,000 unit + integration
   tests (the full repo suite, across all three packages + examples, is
-  ~11,400). Lint clean (codespell + isort + black + flake8 + mypy
+  ~12,400). Lint clean (codespell + isort + black + flake8 + mypy
   strict + pylint).
 - Host-stack feature-complete (North Star Phase 1). Phase-2
   router/forwarding sits behind the `forward_or_deliver` seam as a
