@@ -43,6 +43,7 @@ from net_proto.lib.inet_cksum import inet_cksum
 from net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from net_proto.protocols.ip4.ip4__assembler import Ip4Assembler
 from net_proto.protocols.raw.raw__assembler import RawAssembler
+from pytcp import stack
 from pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilter,
     Ip4MulticastFilterMode,
@@ -63,6 +64,21 @@ _SOURCE = Ip4Address("10.0.0.5")
 _QUERY_GROUP = Ip4Address("239.8.8.8")
 _ROUTER_MAC = MacAddress("02:00:00:00:00:91")
 _ROUTER_IP = Ip4Address("10.0.1.1")
+
+
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+
+def setUpModule() -> None:
+    """Silence the stack log channels for this module's tests."""
+
+    stack.LOG__CHANNEL = set()
+
+
+def tearDownModule() -> None:
+    """Restore the original log channels after this module's tests."""
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
 def _group_specific_query_frame(group: Ip4Address, /) -> bytes:

@@ -38,10 +38,25 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from net_addr import Ip4Address, IpVersion
+from pytcp import stack
 from pytcp.protocols.tcp.session import TcpSession
 from pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pytcp.socket.socket_table import SocketTable
 from pytcp.socket.tcp__metadata import TcpMetadata
+
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+
+def setUpModule() -> None:
+    """Silence the stack log channels for this module's tests."""
+
+    stack.LOG__CHANNEL = set()
+
+
+def tearDownModule() -> None:
+    """Restore the original log channels after this module's tests."""
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
 class _TcpSessionFsmFixture(TestCase):

@@ -53,6 +53,7 @@ ver 3.0.6
 import errno
 from unittest import TestCase
 
+from pytcp import stack
 from pytcp.socket import (
     MSG_OOB,
     SO_OOBINLINE,
@@ -60,6 +61,20 @@ from pytcp.socket import (
     AddressFamily,
 )
 from pytcp.socket.udp__socket import UdpSocket
+
+_ORIGINAL_LOG_CHANNEL: set[str] = stack.LOG__CHANNEL
+
+
+def setUpModule() -> None:
+    """Silence the stack log channels for this module's tests."""
+
+    stack.LOG__CHANNEL = set()
+
+
+def tearDownModule() -> None:
+    """Restore the original log channels after this module's tests."""
+
+    stack.LOG__CHANNEL = _ORIGINAL_LOG_CHANNEL
 
 
 class TestSocketMsgOobConstants(TestCase):

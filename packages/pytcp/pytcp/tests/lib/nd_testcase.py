@@ -39,6 +39,9 @@ pytcp/tests/lib/nd_testcase.py
 ver 3.0.6
 """
 
+import threading
+from typing import override
+
 from net_addr import Ip6Address, MacAddress
 from net_proto import (
     EthernetAssembler,
@@ -68,6 +71,24 @@ class NdTestCase(IcmpTestCase):
     one-off fixtures but does not scale to ND's per-phase variety
     of NS / NA / RS / RA / Redirect cases).
     """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Join any DAD daemon thread spawned during the test before the
+        harness tears down 'stack'. An address-claim worker
+        ('_claim_ip6_address_async' -> '_perform_ip6_nd_dad') that
+        outlives the fixture would otherwise reach 'stack.timer' after
+        teardown removed it and raise from the daemon thread
+        (unit_testing.md §10a.3). Joining here lets the worker finish
+        against the still-installed 'FakeTimer'.
+        """
+
+        for thread in threading.enumerate():
+            if thread.name.startswith("DAD-") and thread.is_alive():
+                thread.join(timeout=5.0)
+
+        super().tearDown()
 
     def _make_nd_redirect_frame(
         self,
