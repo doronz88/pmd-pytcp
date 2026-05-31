@@ -56,3 +56,10 @@ class IpcMessageError(IpcError):
     Exception raised when control-channel message encoding or decoding
     fails (truncated header, unknown message kind or op code).
     """
+
+
+class IpcConnectionError(IpcError):
+    """
+    Exception raised when an IPC client operation fails because the
+    daemon connection is closed or unusable.
+    """
