@@ -695,6 +695,11 @@ def _do_rebooting(self, now: float) -> None:
 
 Built on top of Phase 5 (cached lease prerequisite).
 
+(reconciled 2026-05-30: DNAv4 closed its last Phase-3
+reach-through — the probe now runs over `Ip4Acd.probe_reachable`
+on the AF_PACKET raw link socket, so the client is boundary-clean
+like DHCPv6; commit `e2998736`.)
+
 ```python
 def _do_init_reboot(self) -> None:
     if nd_const.DHCP4__DNAV4 and self._cached_lease.gateway_mac is not None:
@@ -710,12 +715,20 @@ def _do_init_reboot(self) -> None:
 
 `_dnav4_probe` sends a unicast ARP Request to the
 cached gateway MAC for the cached gateway IP, waits
-1 second (RFC 4436 §4.1), and returns True if a reply
-arrives.
+for the `dhcp.dnav4_timeout_ms` window (RFC 4436 §4.1),
+and returns True if a reply arrives.
 
-Requires ARP cache to support unicast probe emission
-(currently only broadcast — single function addition
-to `packages/pytcp/pytcp/protocols/arp/arp__cache.py`).
+As shipped (reconciled 2026-05-30, commit `e2998736`),
+this is **not** an ARP-cache addition. `_dnav4_probe`
+delegates to `Ip4Acd.probe_reachable(...)`
+(`packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py` —
+`probe_reachable` + `_is_gateway_reply` +
+`_send(..., dst_mac=...)`), which emits the unicast ARP
+Request over the per-address AF_PACKET raw link socket
+and reads the reply off that same socket. The stack's
+ARP cache / ARP-TX path is uninvolved.
+`send_arp_unicast_request` was kept (the ARP cache still
+uses it for cache refresh) but DNAv4 does not use it.
 
 **New sysctl:** `dhcp.dnav4` (default 1; set 0 to
 disable).
@@ -925,8 +938,10 @@ invocation per knob, classify as policy.
 - `packages/net_proto/net_proto/protocols/dhcp4/options/dhcp4__options.py`
   (Phase 0.3, 7, 8) — new accessors: `client_id`,
   `classless_static_routes`, etc.
-- `packages/pytcp/pytcp/protocols/arp/arp__cache.py` (Phase 6) —
-  unicast ARP Request emission for DNAv4 probe.
+- `packages/pytcp/pytcp/protocols/ip4/acd/ip4_acd.py` (Phase 6) —
+  `Ip4Acd.probe_reachable` emits the DNAv4 unicast ARP Request over
+  the AF_PACKET raw link socket (shipped this way in `e2998736`; the
+  original arp__cache.py plan was superseded).
 - `packages/pytcp/pytcp/stack/sysctl.py` registry — populated via the
   `sysctl_knob` skill per Phase.
 

@@ -34,6 +34,13 @@ Tests: 9317 passing, 4 skipped, 0 failed. `make lint` clean.
 
 ## Remaining items (priority order)
 
+> **Note (2026-05-30):** Everything below (#281-#286) has shipped —
+> #281 `ip6_frag__overlap__drop`, #282 `ip6_frag__atomic__defrag`,
+> #283 RA prefix lifetime / 2-hour rule, #286 adherence record
+> `docs/rfc/ip6/rfc8504__ipv6_node_reqs/adherence.md`. The
+> priority-ordered framing and the "Resume prompt" block at the end of
+> this file are archaeology / no longer actionable.
+
 ### #281 — Overlap fragment detection (RFC 5722 / RFC 8504 §16)
 
 **Why first:** security MUST. Closes a known fragmentation-
@@ -72,6 +79,14 @@ but the sender will retransmit the whole thing. Cite "RFC
 
 **Latent bug encountered during this investigation, NOT in
 scope for #281 but worth a separate follow-up commit:**
+
+> **RESOLVED / OBSOLETE (2026-05-30):** This bug no longer exists.
+> Fragment handling was rewritten to delegate to
+> `IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)` (see
+> `runtime/packet_handler/__init__.py`); the inverted in-handler
+> `_ip6_frag_flows` cleanup expression described below is gone. The
+> paragraph is retained only as archaeology of the original
+> investigation.
 
 The flow-cleanup expression at line 95 of
 `packet_handler__ip6_frag__rx.py` is inverted:
@@ -249,8 +264,10 @@ fresh agent will hit them too without warning.
    (it's at the end of the loop body).
 
 6. **`IP6__FRAG_FLOW_TIMEOUT` cleanup is broken** — see
-   the #281 entry above. Worth fixing in the #281 commit
-   or splitting out.
+   the #281 entry above. **RESOLVED / OBSOLETE (2026-05-30):**
+   no longer true; frag handling now delegates to
+   `IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)` and the
+   inverted cleanup expression is gone.
 
 7. **Phase 8a left a partial gap on RX-side HBH+transport.**
    The #279 commit message documents that the chain walker

@@ -253,15 +253,20 @@ retransmit scheduling is guarded on Timer availability so the stateless
 `NetworkTestCase` harness (no Timer subsystem) still sends the
 immediate Report.
 
-**Still deferred (remaining Phase-5 work):** the RFC 3376 §7
-querier-version (v1/v2) report-form fallback + the older-querier-present
-state machine, the v2-querier "Leave Group to 224.0.0.2" form, the
-per-group response to a Group-Specific Query, the IGMPv1 default Max
-Resp Time, and an `igmp.version` (`force_igmp_version`) knob — these
-form a cohesive legacy-interop block with no consumer until the
-version state machine lands. **Lifted to its own plan:**
-`docs/refactor/igmp_version_fallback.md` (the way RFC 6724 was lifted
-out of the ND track).
+**Shipped (was the deferred Phase-5 legacy-interop block, now landed
+2026-05-30):** the RFC 3376 §7 querier-version (v1/v2) report-form
+fallback + the older-querier-present state machine
+(`_igmp_host_compatibility_mode` in `packet_handler__igmp__rx.py`), the
+v2-querier "Leave Group to 224.0.0.2" form, the per-group response to a
+Group-Specific Query, the IGMPv1 default Max Resp Time, and the
+`igmp.version` (`force_igmp_version`) + `igmp.query_interval` knobs
+(`igmp__constants.py`). These were lifted to and completed in
+`docs/refactor/igmp_version_fallback.md`; the source-filter leg landed
+in `docs/refactor/igmp_source_specific_multicast.md`.
+
+**Still deferred (Phase-2 / router-grade only):** the IGMPv3
+router/querier role and MLDv2/MLDv1 leave-reporting — out of scope for
+host parity.
 
 **Moved here from Phase 4** (gated by the knobs this phase introduces):
 the RFC 3376 §5.1 Robustness-Variable retransmission of the

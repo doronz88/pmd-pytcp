@@ -23,6 +23,17 @@ when the package is 100% done:
 North Star. The bar per package: no Phase-1 gap left open, no stale/false
 doc claim, no half-finished in-scope refactor.
 
+> **Reconciled 2026-05-30:** since this readiness pass (HEAD `b181d4b8`)
+> three tracks landed and are NOT covered by the dated snapshot below:
+> (1) the **DHCPv6 RFC 8415 host client** reached fully-met — the pass
+> predates it (adherence `docs/rfc/dhcp6/rfc8415__dhcpv6/adherence.md`;
+> plan `dhcp6_client.md`); (2) **DHCPv4 DNAv4** shipped and its last
+> Phase-3 reach-through was closed (the probe now runs over
+> `Ip4Acd.probe_reachable` on the AF_PACKET raw socket, commit
+> `e2998736`); (3) **PLPMTUD closeout CLOSED 2026-05-28** (see
+> `v3_0_6_remaining_work.md` §2.1). The original body below is retained
+> as the dated readiness snapshot.
+
 ---
 
 ## 0. Baseline & preconditions

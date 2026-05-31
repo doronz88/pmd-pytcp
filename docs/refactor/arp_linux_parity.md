@@ -1,5 +1,19 @@
 # ARP → Linux-host Parity Audit & Punch List
 
+> **Reconciled 2026-05-30:** the in-RX ARP conflict-detection
+> model described below (`PacketHandler._handle_arp_conflict`,
+> `_abandon_ipv4_address`, the RX probe-conflict machinery in
+> `__phrx_arp__request`) was REMOVED in the sd-ipv4acd userspace
+> migration. IPv4 ACD now runs entirely in userspace over
+> per-address `Ip4Acd` AF_PACKET sockets
+> (`protocols/ip4/acd/ip4_acd.py`:
+> `probe`/`announce`/`claim`/`start_defense`/`poll_conflict`/`defend`/`release`);
+> ARP RX (`packet_handler__arp__rx.py`) does NO conflict
+> detection — it only answers Requests for owned IPs, learns the
+> cache, and notes gratuitous ARPs. See `raw_link_socket.md` §10
+> and `rfc3927_link_local_autoconfig.md`. The §1/§2/§13 in-RX
+> designs below are archaeology.
+
 This document captures the ARP-related work needed to bring
 PyTCP's host-stack ARP behaviour to default-Linux parity. It
 records what shipped, what's still open, and the implementation

@@ -1,10 +1,17 @@
 # `net_proto` per-protocol RFC integrity/sanity adherence pass
 
-**Status: CLOSED 2026-05-20** — all `net_proto` protocols audited
-(ARP, DHCPv4, Ethernet, ICMPv4, ICMPv6, IPv4, IPv6 + 4 ext-headers,
-TCP, UDP). The recurring `__post_init__` AssertionError-on-wire-input
-defect class has been closed across every protocol that exhibited
-it. 11106 tests passing, lint clean, §7.2 audits clean.
+**Status: CLOSED 2026-05-20** — the nine `net_proto` protocols in
+scope at the time were audited (ARP, DHCPv4, Ethernet, ICMPv4,
+ICMPv6, IPv4, IPv6 + 4 ext-headers, TCP, UDP). The recurring
+`__post_init__` AssertionError-on-wire-input defect class has been
+closed across every protocol that exhibited it. 11106 tests passing,
+lint clean, §7.2 audits clean.
+
+**Reconciled 2026-05-30** — this pass is closed for its scope. Two
+protocols were added afterward and were never part of it: `igmp/` and
+`dhcp6/`. They carry their own per-RFC adherence records under
+`docs/rfc/.../adherence.md` rather than being folded back into this
+pass.
 
 Per-protocol review of every parser's `_validate_integrity` and
 `_validate_sanity` blocks under
@@ -46,7 +53,10 @@ Test count after the pass: **11106 passing** (no new tests — UDP was annotatio
 
 ## Remaining
 
-**None.** All `net_proto` protocols audited. Pass closed.
+**None in scope.** The nine protocols in scope at closure were all
+audited; pass closed. The later-added `igmp/` and `dhcp6/` protocols
+were never in this pass's scope and carry their own per-RFC adherence
+records (see the 2026-05-30 reconciliation note above).
 
 ---
 

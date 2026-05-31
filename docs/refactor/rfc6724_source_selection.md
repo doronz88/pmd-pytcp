@@ -2,7 +2,10 @@
 
 > **SHIPPED (reconciled 2026-05-25).** All four phases in the status
 > table below are shipped (IPv4 + IPv6 source selection, code at
-> `pytcp/lib/*source_selection*` with integration tests under
+> `packages/pytcp/pytcp/protocols/ip6/ip6__source_selection.py` and
+> `packages/pytcp/pytcp/protocols/ip4/ip4__source_selection.py` —
+> the planned `lib/` paths below are historical; the code shipped
+> under `protocols/ip{4,6}/`. Integration tests under
 > `tests/integration/protocols/ip{4,6}/test__ip{4,6}__rfc6724_*`).
 > The "single remaining piece is source-address selection" prose
 > further down is the original plan framing and is now historical —
@@ -205,9 +208,10 @@ Rule 6 — match label of source to label of destination.
 Rule 8 also uses precedence as a secondary sort key.
 
 Ships:
-- New `packages/pytcp/pytcp/lib/ip6_policy_table.py` exposing the default
-  table plus a `lookup(address) → (precedence, label)`
-  function.
+- New policy table exposing the default table plus a
+  `lookup(address) → (precedence, label)` function. (Shipped as
+  `packages/pytcp/pytcp/protocols/ip6/ip6__policy_table.py`, not the
+  planned `lib/ip6_policy_table.py`.)
 - Optional sysctl-driven override (deferred to §12c.3.b
   if needed).
 - Rule 6 wired into `_select_ip6_source`.

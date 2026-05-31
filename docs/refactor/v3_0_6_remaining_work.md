@@ -8,6 +8,9 @@ shipped; §2.0 now records the IGMP host stack as feature-complete; plus
 the post-IGMP hardening sweep in §1.3).
 **Suite:** ~11,695 passing, lint clean, source tree zero TODO/FIXME/XXX.
 **HEAD at last reconcile:** `f13b8527`.
+**Reconciled 2026-05-30:** HEAD `e2998736`. Suite green, grown by the
+DHCPv6 track (RFC 8415 host client reached fully-met — see §1.4) and the
+DNAv4 reach-through closure (see §2.2 / §4).
 **Purpose:** the single authoritative "what's left for 3.0.6" list,
 produced by a full staleness sweep of all `docs/refactor/*.md` (each
 claim cross-checked against the actual code + referenced commits).
@@ -132,6 +135,20 @@ N1, P1 all SHIPPED). No honest residual remains on the IGMP / source-
 filter front; the narrower `socket_linux_parity_audit.md` §X1
 conclusion was superseded in the same sweep (see §4 of the audit).
 
+### 1.4 DHCPv6 RFC 8415 host client — fully-met (post-reconcile)
+
+After this ledger's last reconcile, the DHCPv6 host client — the
+missing IPv6 autoconfig leg (RA M/O flags were parsed-but-unconsumed)
+— shipped end-to-end and reached **fully-met** RFC 8415 adherence:
+net_proto `dhcp6/` wire codec; DUID + INFORMATION-REQUEST; the stateful
+SOLICIT / ADVERTISE / REQUEST / REPLY + IA_NA + Rapid Commit exchange;
+the RA M/O trigger at `packet_handler__icmp6__rx.py`; and the
+RENEW / REBIND / RELEASE / DECLINE lease lifecycle (DAD-conflict →
+DECLINE wired through the Address API). Adherence record:
+`docs/rfc/dhcp6/rfc8415__dhcpv6/adherence.md` (fully-met). Plan/ledger:
+`docs/refactor/dhcp6_client.md` (status flipped to SHIPPED). Relay-agent
+support and IA_PD prefix delegation are deferred Phase-2 (router-track).
+
 ---
 
 ## 2. Genuinely open Phase-1 items — deferred with a plan (not blocking)
@@ -207,6 +224,13 @@ The three items that ledger listed as open are resolved:
   Only **8.4 (Option Overload parse)** and **Phase 9 (RFCs 4702 / 3203 /
   8910)** remain, both explicitly deferred — see
   `dhcp4_client_full_parity.md`.
+- **DNAv4 reach-through closure (2026-05-30, commit `e2998736`)** — the
+  DHCPv4 client's last Phase-3 boundary violation. The Phase-6 DNAv4
+  probe was migrated off the in-stack ARP path onto
+  `Ip4Acd.probe_reachable(...)` over the per-address AF_PACKET raw link
+  socket; `_dnav4_probe` now delegates to the ACD engine. The client is
+  boundary-clean like DHCPv6. See `dhcp4_client_full_parity.md` Phase 6
+  and §4 below.
 - **ARP simultaneous-probe detection (RFC 5227 §2.1.1)** — shipped
   (commit `3f051584`); `arp_linux_parity.md` §0 status table records it.
   (The 2026-05-24 §2.2 entry and the `arp_linux_parity.md` §1 prose were

@@ -12,6 +12,12 @@ diagram-label harmonization, and the wire-input vs
 programmer-input error-discipline codification (all closed on
 2026-05-20 / 2026-05-21).
 
+**Reconciled 2026-05-30** — the A–L methodology audits are closed for
+their scope. Two protocols (`igmp/` and `dhcp6/`) were added after this
+sweep and were never in its scope; they carry their own per-RFC
+adherence records under `docs/rfc/.../adherence.md` rather than being
+folded into the A–L set.
+
 The doc enumerated twelve follow-up audits (A–L), ordered by
 expected defect yield; the Tier 1/2/3 sections below are the
 self-contained methodology for each. All have since been run

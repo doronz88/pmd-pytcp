@@ -8,6 +8,18 @@
 | Couples | R7 (graceful leave on shutdown — shares the leave path)              |
 | Scope   | Make IPv4 multicast membership reference-counted so a group survives until the last holder leaves, and release a socket's memberships on `close()`. NOT new IGMP wire behaviour — the state-change Reports (R1) are unchanged; only *when* the join/leave edges fire changes. |
 
+> **Reconciliation note (2026-05-30):** the intermediate refcount data
+> model described below — `MembershipRefKind` (OPERATOR / SOCKET), the
+> per-group `_Ip4MulticastRefs`, and the socket's
+> `self._ip4_memberships: set[tuple[int, Ip4Address]]` join-set — was
+> **superseded by the source-filter model** of the SSM track (see
+> `igmp_source_specific_multicast.md`). `MembershipRefKind` no longer
+> exists; the socket now holds
+> `_ip4_source_filters: dict[(ifindex, group), Ip4MulticastFilter]` and
+> membership goes through `set_socket_filter` / `clear_socket_filter`
+> on the membership API (`stack/membership.py`). The body below is
+> retained as archaeology.
+
 ---
 
 ## 1. Problem — today's behaviour
@@ -133,7 +145,9 @@ that records into it and `close()` releases each entry.
   blast radius. Tracked as a follow-on near R4 (which fixes the cap's
   errno: `EINVAL`→`ENOBUFS`).
 - **Source-specific membership** (`IP_ADD_SOURCE_MEMBERSHIP`, RFC 3376
-  §9) — separate feature track.
+  §9) — separate feature track (since shipped — see
+  `igmp_source_specific_multicast.md`; `socket/__init__.py`
+  `IP_ADD_SOURCE_MEMBERSHIP` + `_apply_source_op`).
 - **MLDv2 parity.** The IPv6 side has the same presence-based shape;
   mirror this model there as a sibling task once R3 lands for IPv4.
 

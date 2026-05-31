@@ -2,10 +2,27 @@
 
 | Field | Value |
 |-------|-------|
-| Status | PLANNED |
+| Status | SHIPPED — fully-met RFC 8415 host client |
 | Target RFC | RFC 8415 (DHCPv6, consolidates 3315/3633/…), with RFC 3646 (DNS options) |
 | North Star | Phase 1 (host-stack parity). The missing IPv6 autoconfig leg. |
 | Template | the shipped DHCPv4 client: `packages/net_proto/net_proto/protocols/dhcp4/` (wire codec) + `packages/pytcp/pytcp/protocols/dhcp4/dhcp4__client.py` (FSM/subsystem) + `dhcp4__uid.py` (client identity). Mirror its structure throughout. |
+
+> **Reconciled 2026-05-30:** all of Phases 1-5 shipped. Phase 1 net_proto
+> `dhcp6/` wire codec; Phase 2 DUID (`dhcp6__uid.py`) + stateless
+> INFORMATION-REQUEST; Phase 3 stateful SOLICIT / ADVERTISE / REQUEST /
+> REPLY + IA_NA + Rapid Commit; Phase 4 RA M/O trigger at
+> `packet_handler__icmp6__rx.py`; Phase 5 RENEW / REBIND / RELEASE /
+> DECLINE lease lifecycle. Beyond the original plan, the §18.2.x gaps
+> were also closed: Elapsed Time advanced on each retransmit, Advertise
+> preference ordering (§18.2.9), top-level Reply Status Code handling
+> (§18.2.10 UnspecFail / UseMulticast / NotOnLink reject), SOL_MAX_DELAY
+> initial-SOLICIT jitter (§18.2.1), and alternate-server fallback on a
+> non-responding or unusable REPLY. DAD-conflict → DECLINE is wired
+> through the Address API. The per-RFC adherence record
+> [`docs/rfc/dhcp6/rfc8415__dhcpv6/adherence.md`](../rfc/dhcp6/rfc8415__dhcpv6/adherence.md)
+> is **fully-met**. Relay-agent support and IA_PD prefix delegation
+> remain deferred Phase-2 (router-track) follow-ups. The per-phase body
+> below is retained as archaeology.
 
 ## 0. The gap (surveyed this session)
 
@@ -50,7 +67,7 @@ DHCPv6 client: M=1 → stateful (address assignment), O=1 → stateless
 
 ## 2. Phasing (each phase = its own tests-first commit(s))
 
-### Phase 1 — net_proto DHCPv6 wire codec
+### Phase 1 (SHIPPED) — net_proto DHCPv6 wire codec
 New `packages/net_proto/net_proto/protocols/dhcp6/` mirroring `dhcp4/`:
 - `dhcp6__header.py` — the 4-byte client/server message header
   (msg-type + 3-byte transaction-id) + `Dhcp6MessageType` enum + the
@@ -72,7 +89,7 @@ New `packages/net_proto/net_proto/protocols/dhcp6/` mirroring `dhcp4/`:
 - Full net_proto test matrix per message/option (asserts / parser
   integrity+sanity+operation / assembler operation).
 
-### Phase 2 — DUID + stateless client (O flag), the smaller first cut
+### Phase 2 (SHIPPED) — DUID + stateless client (O flag), the smaller first cut
 - `packages/pytcp/pytcp/protocols/dhcp6/dhcp6__uid.py` — DUID
   derivation (DUID-LL from the interface MAC; mirror `dhcp4__uid.py`).
 - `dhcp6__client.py` — a `Subsystem` (or socket-driven client mirroring
@@ -86,7 +103,7 @@ New `packages/net_proto/net_proto/protocols/dhcp6/` mirroring `dhcp4/`:
   randomized exponential backoff), ports, multicast addr. Classify
   policy knobs for later sysctl migration (`pytcp.md` §2).
 
-### Phase 3 — stateful client (M flag): SOLICIT/REQUEST/REPLY + IA_NA
+### Phase 3 (SHIPPED) — stateful client (M flag): SOLICIT/REQUEST/REPLY + IA_NA
 - The 4-message FSM (SOLICIT → ADVERTISE-select → REQUEST → REPLY),
   rapid-commit handling, IA_NA/IA_Address parse, Status Code handling.
 - On a successful REPLY, assign the address via the **Address API**
@@ -96,7 +113,7 @@ New `packages/net_proto/net_proto/protocols/dhcp6/` mirroring `dhcp4/`:
 - RFC 8415 §15 retransmission (RT, IRT, MRT, MRC, MRD per message
   type) — mirror the dhcp4 retransmit/backoff.
 
-### Phase 4 — RA M/O trigger wiring
+### Phase 4 (SHIPPED) — RA M/O trigger wiring
 - In the RA RX handler (`packet_handler__icmp6__rx.py`
   `__phrx_icmp6__nd_router_advertisement`): on `flag_m` → kick the
   stateful client; on `flag_o` (and not M) → kick the stateless client.
@@ -107,7 +124,7 @@ New `packages/net_proto/net_proto/protocols/dhcp6/` mirroring `dhcp4/`:
   via `stack.start()` / stopped via `stack.stop()` (the §6.1 boundary);
   harness snapshot/restore if it adds `stack`-module state.
 
-### Phase 5 — RENEW/REBIND/RELEASE + adherence
+### Phase 5 (SHIPPED) — RENEW/REBIND/RELEASE + adherence
 - T1/T2-driven RENEW (5) / REBIND (6); RELEASE (8) on
   address-drop / `stack.stop()` (mirror the IGMP graceful-leave R7).
 - DECLINE (9) on DAD failure of a DHCPv6-assigned address.

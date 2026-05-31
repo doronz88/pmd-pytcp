@@ -9,8 +9,12 @@ Phase-3 API surfaces inline as their underlying state lands.
 **Status: SUPERSEDED / DELIVERED on `PyTCP_3_0_6`.** The rewrite shipped
 by a different (more incremental) route than this monolithic plan
 assumed. Delivered: the per-`ifindex` `InterfaceTable` + per-interface
-rings/caches, the seven Phase-3 API surfaces (link / address / route /
-neighbor / introspection / sysctl / socket), the egress seam, the
+rings/caches, six of the seven Phase-3 API surfaces as dedicated
+modules (link / address / route / neighbor / sysctl / socket).
+**Reconciled 2026-05-30:** introspection did NOT ship as a dedicated
+`pytcp.stack.introspection` module — it landed only as scattered
+read-only copy-by-value accessors on the stack module (e.g.
+`local_ip4_hosts()`). Also delivered: the egress seam, the
 RFC 1812 `forward_or_deliver` seam (host-mode stub), singleton retirement
 + Neighbor API (`e5dc77f5`), and the mixin→composition collapse + RX
 dispatch registry (`6a7f13d8`..`3abdcf5c`, tracked in
@@ -37,7 +41,7 @@ facade.
 | BSD `socket()`          | `pytcp.socket`                  | `socket(2)`                       | Already exists; reach-throughs cleaned on touch |
 | Sysctl registry         | `pytcp.stack.sysctl`            | `/proc/sys/net/`                  | Already exists; cadences added in Phase 5       |
 | Link API                | `pytcp.stack.link`              | `ip link` / `RTM_NEWLINK`         | Phase 3                                         |
-| Introspection API       | `pytcp.stack.introspection`     | `/proc/net/*`, `ss`               | Phase 4                                         |
+| Introspection API       | read-only accessors on `pytcp.stack` (e.g. `local_ip4_hosts()`) — NO dedicated `pytcp.stack.introspection` module shipped | `/proc/net/*`, `ss`               | Phase 4                                         |
 | Address API             | `pytcp.stack.address`           | `ip addr` / `RTM_NEWADDR`         | Phase 8                                         |
 | Neighbor API            | `pytcp.stack.neighbor`          | `ip neighbor` / `RTM_NEWNEIGH`    | Phase 8                                         |
 | Route API               | `pytcp.stack.route`             | `ip route` / `RTM_NEWROUTE`       | Phase 9                                         |

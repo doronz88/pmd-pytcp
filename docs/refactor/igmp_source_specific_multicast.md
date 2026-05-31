@@ -2,7 +2,7 @@
 
 | Field        | Value                                                                 |
 |--------------|-----------------------------------------------------------------------|
-| Status       | COMPLETE — Phases 1-5 SHIPPED (data model + §3.2 merge + source socket options + §5.1 source state-change reports + §5.2 query-response source math + adherence sweep) + the data-plane RX source-delivery filter (`ip_mc_sf_allow`, UDP). RAW-socket data-plane gate is a natural extension with no current consumer. |
+| Status       | COMPLETE — Phases 1-5 SHIPPED (data model + §3.2 merge + source socket options + §5.1 source state-change reports + §5.2 query-response source math + adherence sweep) + the data-plane RX source-delivery filter (`ip_mc_sf_allow`) on BOTH UDP and RAW (shipped 2026-05-30). |
 | Plan author  | IGMP §9 track (2026-05-26)                                            |
 | Target       | RFC 3376 source-filter membership: §3.1 (socket state), §3.2 (interface-state merge), §4.2.12 (Group Records), §5.1 (source state-change reports), §5.2 rule 5 + group-timer expiry table |
 | Parent       | `docs/refactor/igmp_host_membership.md` (host shipped) + the §7 fallback (`igmp_version_fallback.md`) + §5.2 per-group timer (shipped). This closes the EXCLUDE{}-only simplification. |
@@ -98,12 +98,14 @@ extend it to carry the source list).
 - **Control plane** was the bulk of this track (the IGMP *signalling* of
   source filters). The **data-plane** RX source filter (dropping a
   received datagram from a non-admitted source before socket delivery,
-  Linux `ip_mc_sf_allow`) shipped as a follow-on for UDP:
-  `Ip4MulticastFilter.allows(source)` gates each candidate socket in
-  `UdpRxHandler.__phrx_udp__multicast_source_allowed` (a filtered source
-  bumps `udp__multicast_source_filtered__drop`); a socket with no
-  source filter keeps any-source delivery. The same gate on RAW sockets
-  is a natural extension with no current consumer.
+  Linux `ip_mc_sf_allow`) shipped as a follow-on for UDP and then RAW
+  (RAW shipped 2026-05-30): `socket._ip4_multicast_source_admits(...)`
+  (backed by `Ip4MulticastFilter.allows(source)`) is the shared
+  delivery gate for both paths. UDP filtering bumps
+  `udp__multicast_source_filtered__drop`; the RAW gate in
+  `packet_handler__ip4__rx.py` bumps
+  `raw__multicast_source_filtered__drop`. A socket with no source
+  filter keeps any-source delivery on both paths.
 - MSFv1 `IP_MSFILTER` / `MCAST_*` protocol-independent API: deferred.
 - IGMPv1/v2 compatibility mode: source filters collapse to the
   any-source form (v1/v2 have no source concept) — a source membership

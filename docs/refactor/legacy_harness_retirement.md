@@ -10,8 +10,12 @@ packet-handler mixin is now a composed sub-handler over a typed
 **Status: COMPLETE 2026-05-24.** All 13 legacy per-handler smoke files
 retired across 6 per-protocol commits + 1 harness-consistency commit
 (`be259380` sign-off … `0a94137e`). The
-`tests/integration/packet_handler/` tree now holds only the three
-out-of-scope `test__packet_socket__*` files.
+`tests/integration/packet_handler/` tree now holds only the out-of-scope
+files: the three `test__packet_socket__*` files
+(`test__packet_socket__bind.py`, `test__packet_socket__rx_tap.py`,
+`test__packet_socket__tx.py`) plus the later-added
+`test__packet_handler__stats_thread_safety.py` (P1 no-gil regression
+test) — four files total.
 
 Decisions (locked): 1→(b) fold into `protocols/<proto>/` + delete smoke
 file; 2→keep direct construction (drop the link/address-API aspiration);

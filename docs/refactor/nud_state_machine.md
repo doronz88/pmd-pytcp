@@ -9,8 +9,8 @@ states Linux's `net/core/neighbour.c` implements.
 
 The FSM is generic over address type from day one. Both the
 IPv4 ARP cache (`packages/pytcp/pytcp/protocols/arp/arp__cache.py`) and the
-IPv6 ND cache (currently at `packages/pytcp/pytcp/stack/nd_cache.py`,
-unrelocated) become thin adapters over a single
+IPv6 ND cache (now relocated to
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py`) become thin adapters over a single
 `NeighborCache[A]` at `packages/pytcp/pytcp/lib/neighbor.py` — matching
 Linux's factoring and avoiding the duplication that would
 result from putting the FSM under either protocol's package.
@@ -233,7 +233,7 @@ preserved as the `INCOMPLETE`-state solicit path.
 ## §5 NdCache adapter
 
 `packages/pytcp/pytcp/stack/nd_cache.py` migrates to
-`packages/pytcp/pytcp/protocols/icmp6/nd__cache.py` (matching the ARP
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` (matching the ARP
 relocation done in commit `e29e6b1e`) and becomes:
 
 ```python
@@ -425,7 +425,7 @@ to work.
 ### Phase 3 — NdCache adapter + ND cache relocation ✅ shipped (this commit)
 
 Relocate `packages/pytcp/pytcp/stack/nd_cache.py` →
-`packages/pytcp/pytcp/protocols/icmp6/nd__cache.py` (matching commit
+`packages/pytcp/pytcp/protocols/icmp6/nd/nd__cache.py` (matching commit
 `e29e6b1e`'s ARP relocation). Refactor as
 `NdCache(NeighborCache[Ip6Address])`. ND constants migrate
 out of `packages/pytcp/pytcp/stack/__init__.py` to a sibling
