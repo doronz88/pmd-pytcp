@@ -63,3 +63,11 @@ class IpcConnectionError(IpcError):
     Exception raised when an IPC client operation fails because the
     daemon connection is closed or unusable.
     """
+
+
+class IpcValueError(IpcError):
+    """
+    Exception raised when a control-plane value cannot be encoded to or
+    decoded from its tagged wire form (unsupported type, missing type
+    tag, or unknown type tag).
+    """
