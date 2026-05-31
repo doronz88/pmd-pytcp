@@ -79,14 +79,16 @@ def send_frame_with_fd(sock: socket.socket, payload: Buffer, fd: int, /) -> None
     sock.sendall(bytes(payload))
 
 
-def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
+def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     """
     Receive a length-prefixed frame and the descriptor attached to it.
 
     Returns '(payload, fd)' where 'fd' is the received descriptor (a new
-    descriptor in this process). Raises 'IpcFrameError' on a truncated
-    or oversize frame, or when the prefix carried other than one
-    descriptor; the received descriptor is closed before raising so it
+    descriptor in this process), or None when the frame carried no
+    descriptor — an fd-less RESPONSE_ERROR on the otherwise fd-bearing
+    socket-creation path is the canonical case. Raises 'IpcFrameError' on
+    a truncated or oversize frame, or when the prefix carried more than
+    one descriptor; a received descriptor is closed before raising so it
     does not leak.
     """
 
@@ -95,7 +97,8 @@ def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
     length = int(struct.unpack(IPC__FRAME__LENGTH_PREFIX_STRUCT, prefix)[0])
 
     if length > IPC__FRAME__MAX_PAYLOAD_LEN:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
         raise IpcFrameError(
             f"Frame length prefix {length} exceeds the maximum " f"of {IPC__FRAME__MAX_PAYLOAD_LEN} bytes.",
         )
@@ -103,7 +106,8 @@ def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
     payload = recv_exactly(sock, length)
 
     if len(payload) < length:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
         raise IpcFrameError(
             f"Stream closed mid-frame: expected {length} payload bytes, " f"got {len(payload)}.",
         )
@@ -111,9 +115,10 @@ def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
     return payload, fd
 
 
-def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
+def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     """
-    Read the length prefix, capturing exactly one SCM_RIGHTS descriptor.
+    Read the length prefix, capturing the SCM_RIGHTS descriptor if one is
+    attached (zero or one; more than one is a protocol error).
     """
 
     chunks: list[bytes] = []
@@ -140,11 +145,11 @@ def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int]:
             "Stream closed mid-frame while reading the 4-byte length prefix.",
         )
 
-    if len(fds) != 1:
+    if len(fds) > 1:
         for fd in fds:
             os.close(fd)
         raise IpcFrameError(
-            f"Expected exactly one passed file descriptor, received {len(fds)}.",
+            f"Expected at most one passed file descriptor, received {len(fds)}.",
         )
 
-    return prefix, fds[0]
+    return prefix, (fds[0] if fds else None)

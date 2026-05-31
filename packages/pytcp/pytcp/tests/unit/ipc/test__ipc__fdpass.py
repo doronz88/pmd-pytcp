@@ -37,7 +37,7 @@ from unittest import TestCase
 
 from pytcp.ipc.ipc__errors import IpcFrameError
 from pytcp.ipc.ipc__fdpass import recv_frame_with_fd, send_frame_with_fd
-from pytcp.ipc.ipc__frame import IPC__FRAME__MAX_PAYLOAD_LEN
+from pytcp.ipc.ipc__frame import IPC__FRAME__MAX_PAYLOAD_LEN, send_frame
 
 
 class TestIpcFdPass(TestCase):
@@ -70,12 +70,31 @@ class TestIpcFdPass(TestCase):
 
         send_frame_with_fd(self._sock_a, b"with-fd", self._pipe_r)
         payload, received_fd = recv_frame_with_fd(self._sock_b)
+        assert received_fd is not None
         self.addCleanup(lambda: os.close(received_fd))
 
         self.assertEqual(
             payload,
             b"with-fd",
             msg="recv_frame_with_fd must recover the framed payload intact.",
+        )
+
+    def test__ipc__fdpass__no_fd_returns_none(self) -> None:
+        """
+        Ensure a frame sent with no attached descriptor (a plain
+        'send_frame') is received with a None fd rather than raising, so
+        the fd-bearing receive path tolerates an fd-less error response.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        send_frame(self._sock_a, b"no-fd")
+        payload, received_fd = recv_frame_with_fd(self._sock_b)
+
+        self.assertEqual(
+            (payload, received_fd),
+            (b"no-fd", None),
+            msg="A frame with no attached descriptor must yield a None fd, not raise.",
         )
 
     def test__ipc__fdpass__descriptor_is_working_duplicate(self) -> None:
@@ -89,6 +108,7 @@ class TestIpcFdPass(TestCase):
 
         send_frame_with_fd(self._sock_a, b"", self._pipe_r)
         _, received_fd = recv_frame_with_fd(self._sock_b)
+        assert received_fd is not None
         self.addCleanup(lambda: os.close(received_fd))
 
         os.write(self._pipe_w, b"through-the-fd")
@@ -111,6 +131,7 @@ class TestIpcFdPass(TestCase):
         for index in range(3):
             send_frame_with_fd(self._sock_a, f"msg{index}".encode(), self._pipe_r)
             payload, received_fd = recv_frame_with_fd(self._sock_b)
+            assert received_fd is not None
             os.write(self._pipe_w, b"x")
             results.append(payload + os.read(received_fd, 1))
             os.close(received_fd)
