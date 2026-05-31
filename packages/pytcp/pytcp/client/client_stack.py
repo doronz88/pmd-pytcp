@@ -40,14 +40,15 @@ ver 3.0.7
 from types import TracebackType
 from typing import Self
 
+from net_proto.lib.enums import IpProto
 from pytcp.client.client__address import ClientAddress
+from pytcp.client.client__datagram_socket import ClientRawSocket, ClientUdpSocket
 from pytcp.client.client__link import ClientLink
 from pytcp.client.client__membership import ClientMembership
 from pytcp.client.client__neighbor import ClientNeighbor
 from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
 from pytcp.client.client__tcp_socket import ClientTcpSocket
-from pytcp.client.client__udp_socket import ClientUdpSocket
 from pytcp.ipc.ipc__client import IpcClient
 from pytcp.socket import AddressFamily, SocketType
 
@@ -74,12 +75,15 @@ class ClientStack:
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-    ) -> ClientTcpSocket | ClientUdpSocket:
+        protocol: IpProto | None = None,
+    ) -> ClientTcpSocket | ClientUdpSocket | ClientRawSocket:
         """
         Open a socket on the daemon, returning a client shim whose data
         path is a real selectable descriptor. Mirrors the in-process
-        'socket()' factory's family / type arguments; STREAM yields a
-        'ClientTcpSocket', DGRAM a 'ClientUdpSocket'.
+        'socket()' factory's family / type / protocol arguments: STREAM
+        yields a 'ClientTcpSocket', DGRAM a 'ClientUdpSocket', and RAW a
+        'ClientRawSocket' (which requires an explicit IANA next-header
+        'protocol').
         """
 
         match type:
@@ -87,6 +91,10 @@ class ClientStack:
                 return ClientTcpSocket(self._client, family=family)
             case SocketType.DGRAM:
                 return ClientUdpSocket(self._client, family=family)
+            case SocketType.RAW:
+                if protocol is None:
+                    raise ValueError("A raw socket requires an explicit IANA next-header protocol.")
+                return ClientRawSocket(self._client, family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {type!r}.")
 

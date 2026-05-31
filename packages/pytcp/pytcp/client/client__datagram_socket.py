@@ -23,17 +23,20 @@
 
 
 """
-This module contains the client-side UDP socket shim.
+This module contains the client-side datagram socket shims.
 
-'ClientUdpSocket' mirrors the BSD-style 'UdpSocket' surface across the
-process boundary. Its data path is the client end of the daemon's
-SOCK_DGRAM socketpair, which preserves message boundaries; each datagram
-is framed with its peer address (see 'ipc__dgram_frame') so 'sendto' /
-'recvfrom' carry the address across. Control methods (bind / connect /
-setsockopt / getsockopt / getsockname / getpeername / close) marshal over
-the SOCKET_CALL op keyed by the daemon-assigned handle.
+'ClientUdpSocket' and 'ClientRawSocket' mirror the BSD-style 'UdpSocket' /
+'RawSocket' surfaces across the process boundary. They share the
+'_ClientDatagramBase' plumbing: a data path over the client end of the
+daemon's SOCK_DGRAM socketpair (boundary-preserving), with each datagram
+framed by its peer address (see 'ipc__dgram_frame') so 'sendto' /
+'recvfrom' carry the address; and control methods (bind / connect /
+setsockopt / getsockopt / getsockname / getpeername / close) marshalled
+over the SOCKET_CALL op keyed by the daemon-assigned handle. The two
+differ only in how they open: a UDP socket by type, a raw socket by type
+plus an IANA next-header protocol.
 
-pytcp/client/client__udp_socket.py
+pytcp/client/client__datagram_socket.py
 
 ver 3.0.7
 """
@@ -49,22 +52,21 @@ from pytcp.socket import AddressFamily, SocketType
 
 # Default receive bound — the maximum UDP payload, so 'recvfrom' without
 # an explicit bufsize never truncates a legal datagram.
-IPC__CLIENT_UDP__MAX_PAYLOAD: int = 65535
+IPC__CLIENT_DGRAM__MAX_PAYLOAD: int = 65535
 
 
-class ClientUdpSocket:
+class _ClientDatagramBase:
     """
-    A client-side UDP socket backed by a daemon socket over IPC.
+    Shared client-side datagram-socket plumbing (UDP and raw).
     """
 
-    def __init__(self, client: IpcClient, /, *, family: AddressFamily = AddressFamily.INET4) -> None:
+    def __init__(self, client: IpcClient, handle: int, data_fd: int, /) -> None:
         """
-        Open a daemon-side UDP socket and adopt its passed SOCK_DGRAM
-        data-channel descriptor as this socket's real, selectable fd.
+        Adopt the passed SOCK_DGRAM data-channel descriptor and bind the
+        shim to its daemon handle.
         """
 
         self._client = client
-        handle, data_fd = open_socket(client, family=family, type_=SocketType.DGRAM)
         self._handle = handle
         self._data_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM, fileno=data_fd)
 
@@ -108,7 +110,7 @@ class ClientUdpSocket:
         self._data_socket.send(encode_dgram(None, data))
         return len(data)
 
-    def recvfrom(self, bufsize: int = IPC__CLIENT_UDP__MAX_PAYLOAD) -> tuple[bytes, tuple[str, int]]:
+    def recvfrom(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> tuple[bytes, tuple[str, int]]:
         """
         Receive one datagram with the sender's '(host, port)' address,
         truncating the payload to 'bufsize'.
@@ -120,7 +122,7 @@ class ClientUdpSocket:
         assert address is not None, "A received datagram frame carried no sender address."
         return payload[:bufsize], address
 
-    def recv(self, bufsize: int = IPC__CLIENT_UDP__MAX_PAYLOAD) -> bytes:
+    def recv(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> bytes:
         """
         Receive one datagram's payload, truncated to 'bufsize'.
         """
@@ -191,3 +193,41 @@ class ClientUdpSocket:
             socket_call(self._client, method="close", handle=self._handle, args={})
         finally:
             self._data_socket.close()
+
+
+class ClientUdpSocket(_ClientDatagramBase):
+    """
+    A client-side UDP socket backed by a daemon socket over IPC.
+    """
+
+    def __init__(self, client: IpcClient, /, *, family: AddressFamily = AddressFamily.INET4) -> None:
+        """
+        Open a daemon-side UDP socket and adopt its passed SOCK_DGRAM
+        data-channel descriptor.
+        """
+
+        handle, data_fd = open_socket(client, family=family, type_=SocketType.DGRAM)
+        super().__init__(client, handle, data_fd)
+
+
+class ClientRawSocket(_ClientDatagramBase):
+    """
+    A client-side raw IP socket backed by a daemon socket over IPC.
+    """
+
+    def __init__(
+        self,
+        client: IpcClient,
+        /,
+        *,
+        protocol: IpProto,
+        family: AddressFamily = AddressFamily.INET4,
+    ) -> None:
+        """
+        Open a daemon-side raw socket for the given IANA next-header
+        'protocol' and adopt its passed SOCK_DGRAM data-channel
+        descriptor.
+        """
+
+        handle, data_fd = open_socket(client, family=family, type_=SocketType.RAW, protocol=protocol)
+        super().__init__(client, handle, data_fd)

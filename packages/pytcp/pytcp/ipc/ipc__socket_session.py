@@ -52,6 +52,7 @@ ver 3.0.7
 import socket
 from typing import Any
 
+from net_proto.lib.enums import IpProto
 from pytcp.ipc.ipc__dgram_bridge import DatagramBridge
 from pytcp.ipc.ipc__enums import IpcMessageKind
 from pytcp.ipc.ipc__message import IpcMessage
@@ -64,6 +65,7 @@ from pytcp.ipc.ipc__socket_rpc import (
 )
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket import socket as pytcp_socket
+from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__socket import UdpSocket
 
@@ -91,7 +93,7 @@ class _DaemonSocket:
 
     def __init__(
         self,
-        sock: TcpSocket | UdpSocket,
+        sock: TcpSocket | UdpSocket | RawSocket,
         bridge: SocketBridge | DatagramBridge,
         /,
     ) -> None:
@@ -105,7 +107,7 @@ class _DaemonSocket:
         self._bridge_started = False
 
     @property
-    def socket(self) -> TcpSocket | UdpSocket:
+    def socket(self) -> TcpSocket | UdpSocket | RawSocket:
         """
         Get the underlying daemon-side stack socket.
         """
@@ -209,7 +211,11 @@ class SocketSession:
             raise KeyError(f"Method {request.method!r} is not a permitted socket call.")
 
         if request.method == "socket":
-            return self._open(family=request.args["family"], socket_type=request.args["type"])
+            return self._open(
+                family=request.args["family"],
+                socket_type=request.args["type"],
+                protocol=request.args.get("protocol"),
+            )
 
         daemon_socket = self._sockets.get(request.handle) if request.handle is not None else None
         if daemon_socket is None:
@@ -251,6 +257,7 @@ class SocketSession:
         *,
         family: AddressFamily,
         socket_type: SocketType,
+        protocol: IpProto | None,
     ) -> tuple[dict[str, int], socket.socket]:
         """
         Create a daemon-side socket of the requested type plus its data
@@ -263,6 +270,10 @@ class SocketSession:
                 return self._open_stream(family=family)
             case SocketType.DGRAM:
                 return self._open_dgram(family=family)
+            case SocketType.RAW:
+                if protocol is None:
+                    raise ValueError("A raw socket requires an IANA next-header protocol.")
+                return self._open_raw(family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {socket_type!r}.")
 
@@ -289,6 +300,20 @@ class SocketSession:
 
         data_end, client_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
         daemon_socket = _DaemonSocket(udp_socket, DatagramBridge(udp_socket, data_end))
+        daemon_socket.start_bridge()
+        return self._register(daemon_socket, client_end)
+
+    def _open_raw(self, *, family: AddressFamily, protocol: IpProto) -> tuple[dict[str, int], socket.socket]:
+        """
+        Create a daemon raw IP socket (over a SOCK_DGRAM data bridge,
+        started immediately) for the given IANA next-header protocol.
+        """
+
+        raw_socket = pytcp_socket(family=family, type=SocketType.RAW, protocol=protocol)
+        assert isinstance(raw_socket, RawSocket)
+
+        data_end, client_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        daemon_socket = _DaemonSocket(raw_socket, DatagramBridge(raw_socket, data_end))
         daemon_socket.start_bridge()
         return self._register(daemon_socket, client_end)
 
