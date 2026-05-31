@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0, 1 & 2 complete; Phase 3 UDP datagram plane complete (out-of-process UDP echo passing); Phase-3 raw/AF_PACKET families + recvmsg cmsg ancillary remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0, 1, 2 & 3 complete (TCP + UDP + raw + AF_PACKET out-of-process, recvmsg cmsg ancillary; echoes passing for every family); Phases 4-6 remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -438,7 +438,7 @@ socketpair + bridge for the child internal socket and returns the new fd
 via `SCM_RIGHTS` in the accept response. `listen` / `accept` were left
 off the SOCKET_CALL allowlist for exactly this reason.
 
-### Phase 3 — Datagram sockets — UDP plane complete
+### Phase 3 — Datagram sockets (UDP / raw / AF_PACKET + cmsg) (complete)
 
 The datagram data plane uses a SOCK_DGRAM socketpair (boundary-
 preserving — one PyTCP datagram per AF_UNIX datagram), each datagram
@@ -470,21 +470,53 @@ framed with its peer address so the address survives the boundary.
   handshake, so both directions run inline; stable across repeated runs.
   2 integration tests.
 
-**Remaining in Phase 3 (datagram families + ancillary):**
+The raw + AF_PACKET families + the recvmsg cmsg ancillary:
 
-1. **`recvmsg` cmsg ancillary.** The frame format carries only
-   `{address, payload}` today; extend it to `{address, cmsg, payload}` so
-   the RX pump can `recvmsg` (capturing IP_TOS / IPV6_TCLASS / IP_OPTIONS
-   and the IP_RECVERR error-queue cmsgs) and the client `recvmsg` can
-   read them. The daemon UdpSocket already produces these cmsgs
-   (`udp__socket._recvmsg` / `_recvmsg_errqueue`); only the data-channel
-   framing + a client `recvmsg` are missing.
-2. **Raw sockets (`RawSocket`).** IP-level datagram socket — its own
-   `_open_raw` + a raw client shim. Address shape differs (no port).
-3. **AF_PACKET (`PacketSocket`).** Link-level frames — `SockAddrLl`
-   addressing; its own session + client shim.
+- `15cda1fe` — raw IP socket family. 'RawSocket' reuses the datagram
+  bridge (same recvfrom / sendto surface, `(host, port)` addressing); the
+  daemon `_open` dispatches RAW on an INET family to `_open_raw`,
+  threading the required IANA next-header. The client datagram shims are
+  consolidated onto a shared `_ClientDatagramBase` (replacing the
+  standalone udp module); `ClientRawSocket` joins it, and
+  `ClientStack.socket()` gains the `protocol` argument. End-to-end raw
+  IPv4 echo. 2 integration tests.
+- `ac109d4f` — the value codec crosses the AF_PACKET address types
+  (`SockAddrLl` dataclass + EtherType / PacketType enums) for the control
+  bind. 1 unit test.
+- `f8c35329` — AF_PACKET data-channel frame codec (`ipc__packet_frame`,
+  a fixed 13-byte sockaddr_ll + frame) + `PacketBridge` (the link-layer
+  analogue of DatagramBridge). 5 unit tests.
+- `042bb047` — AF_PACKET link-layer socket family. A separate daemon path
+  (`_DaemonPacketSocket`, `_invoke_packet` with bind/close only — sendto
+  / recvfrom ride the bridge, started at creation) reached when the
+  `socket` call names the PACKET family. `ClientPacketSocket` shims the
+  SockAddrLl surface; `ClientStack.socket()` dispatches RAW on PACKET to
+  it. End-to-end AF_PACKET echo (verbatim frame capture + verbatim
+  egress). 2 integration tests.
+- `765e6734` — recvmsg ancillary cmsgs. The datagram frame extends to
+  `{address, cmsg, payload}`; the DatagramBridge RX pump drives `recvmsg`
+  (ancbufsize 256) so per-datagram IP_TOS / IPV6_TCLASS / IP_OPTIONS
+  cmsgs cross; `ClientUdpSocket` / `ClientRawSocket` gain a stdlib-shaped
+  `recvmsg` (IPv6 4-tuple address). End-to-end UDP recvmsg IP_TOS case.
+  Frame + bridge cmsg unit tests + 1 integration test.
+
+Design notes that landed:
+- **RawSocket fits the datagram bridge unchanged** — it already exposes
+  recvfrom / sendto / send with `(host, port)` addressing, so only a new
+  `_open_raw` + a client shim were needed.
+- **AF_PACKET is the one family that does not fit the generic dispatch**
+  — its bind / sendto address with a `SockAddrLl`, not `(host, port)`, so
+  it gets a dedicated `_DaemonPacketSocket`, packet frame codec, packet
+  bridge, and `_invoke_packet`. AF_PACKET egress is `enqueue_raw_frame`
+  (verbatim), distinct from the IP TX path.
+- **The bridge always `recvmsg`s** after the cmsg work; a socket with no
+  RECV* option set simply frames an empty cmsg list, so the recvfrom path
+  is unaffected. The IP_RECVERR **error-queue** cmsg path
+  (`recvmsg(MSG_ERRQUEUE)`) is on-demand, not pumped by the bridge — it
+  remains a later (Phase 4-ish) item if a consumer needs it.
 
 ### Phases 4-6 — later
 
 `accept()` fd passing (passive open), examples migration, daemon
-lifecycle — see §4.
+lifecycle — see §4. The IP_RECVERR error-queue `recvmsg(MSG_ERRQUEUE)`
+path is a small deferred datagram-plane follow-up.
