@@ -52,10 +52,11 @@ ver 3.0.7
 import socket
 from typing import Any
 
-from net_proto.lib.enums import IpProto
+from net_proto.lib.enums import EtherType, IpProto
 from pytcp.ipc.ipc__dgram_bridge import DatagramBridge
 from pytcp.ipc.ipc__enums import IpcMessageKind
 from pytcp.ipc.ipc__message import IpcMessage
+from pytcp.ipc.ipc__packet_bridge import PacketBridge
 from pytcp.ipc.ipc__socket_bridge import SocketBridge
 from pytcp.ipc.ipc__socket_rpc import (
     SocketRequest,
@@ -65,6 +66,7 @@ from pytcp.ipc.ipc__socket_rpc import (
 )
 from pytcp.socket import AddressFamily, SocketType
 from pytcp.socket import socket as pytcp_socket
+from pytcp.socket.packet__socket import PacketSocket
 from pytcp.socket.raw__socket import RawSocket
 from pytcp.socket.tcp__socket import TcpSocket
 from pytcp.socket.udp__socket import UdpSocket
@@ -143,6 +145,51 @@ class _DaemonSocket:
             self._socket.close()
 
 
+class _DaemonPacketSocket:
+    """
+    A daemon-side AF_PACKET socket paired with its client packet bridge.
+    """
+
+    def __init__(self, packet_socket: PacketSocket, bridge: PacketBridge, /) -> None:
+        """
+        Bind a daemon AF_PACKET socket to its packet bridge, leaving the
+        bridge unstarted.
+        """
+
+        self._socket = packet_socket
+        self._bridge = bridge
+        self._bridge_started = False
+
+    @property
+    def socket(self) -> PacketSocket:
+        """
+        Get the underlying daemon-side AF_PACKET socket.
+        """
+
+        return self._socket
+
+    def start_bridge(self) -> None:
+        """
+        Start the packet bridge once (idempotent). An AF_PACKET socket
+        captures from creation, so its bridge starts immediately.
+        """
+
+        if not self._bridge_started:
+            self._bridge.start()
+            self._bridge_started = True
+
+    def close(self, *, abort: bool) -> None:
+        """
+        Stop the bridge and unregister the AF_PACKET socket's capture
+        filter. 'abort' is accepted for a uniform reap interface and
+        ignored — a link-layer socket has no connection to abort.
+        """
+
+        _ = abort
+        self._bridge.stop()
+        self._socket.close()
+
+
 class SocketSession:
     """
     The per-client socket-handle table backing the SOCKET_CALL op.
@@ -153,7 +200,7 @@ class SocketSession:
         Start with an empty handle table.
         """
 
-        self._sockets: dict[int, _DaemonSocket] = {}
+        self._sockets: dict[int, _DaemonSocket | _DaemonPacketSocket] = {}
         self._next_handle = 0
 
     def handle(self, request: IpcMessage, /) -> tuple[IpcMessage, socket.socket | None]:
@@ -221,6 +268,9 @@ class SocketSession:
         if daemon_socket is None:
             raise KeyError(f"Unknown socket handle {request.handle!r}.")
 
+        if isinstance(daemon_socket, _DaemonPacketSocket):
+            return self._invoke_packet(daemon_socket, request)
+
         sock = daemon_socket.socket
 
         match request.method:
@@ -252,12 +302,35 @@ class SocketSession:
 
         raise KeyError(f"Method {request.method!r} is not a permitted socket call.")
 
+    def _invoke_packet(
+        self,
+        daemon_socket: _DaemonPacketSocket,
+        request: SocketRequest,
+        /,
+    ) -> tuple[Any, socket.socket | None]:
+        """
+        Route an AF_PACKET socket's call. A link-layer socket addresses
+        with a 'sockaddr_ll' and supports only 'bind' / 'close' as control
+        methods; sendto / recvfrom ride the packet bridge.
+        """
+
+        match request.method:
+            case "bind":
+                daemon_socket.socket.bind(request.args["address"])
+                return None, None
+            case "close":
+                self._sockets.pop(request.handle)  # type: ignore[arg-type]
+                daemon_socket.close(abort=False)
+                return None, None
+
+        raise KeyError(f"Method {request.method!r} is not permitted on an AF_PACKET socket.")
+
     def _open(
         self,
         *,
         family: AddressFamily,
         socket_type: SocketType,
-        protocol: IpProto | None,
+        protocol: IpProto | EtherType | int | None,
     ) -> tuple[dict[str, int], socket.socket]:
         """
         Create a daemon-side socket of the requested type plus its data
@@ -271,8 +344,12 @@ class SocketSession:
             case SocketType.DGRAM:
                 return self._open_dgram(family=family)
             case SocketType.RAW:
-                if protocol is None:
-                    raise ValueError("A raw socket requires an IANA next-header protocol.")
+                if family is AddressFamily.PACKET:
+                    if isinstance(protocol, IpProto):
+                        raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
+                    return self._open_packet(protocol=protocol)
+                if not isinstance(protocol, IpProto):
+                    raise ValueError("A raw IP socket requires an IpProto next-header protocol.")
                 return self._open_raw(family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {socket_type!r}.")
@@ -317,9 +394,25 @@ class SocketSession:
         daemon_socket.start_bridge()
         return self._register(daemon_socket, client_end)
 
+    def _open_packet(self, *, protocol: EtherType | int | None) -> tuple[dict[str, int], socket.socket]:
+        """
+        Create a daemon AF_PACKET socket over a SOCK_DGRAM packet bridge,
+        started immediately (a link-layer socket captures from creation).
+        The 'protocol' is the ethertype capture filter (None = capture
+        all).
+        """
+
+        packet_socket = pytcp_socket(family=AddressFamily.PACKET, type=SocketType.RAW, protocol=protocol)
+        assert isinstance(packet_socket, PacketSocket)
+
+        data_end, client_end = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        daemon_socket = _DaemonPacketSocket(packet_socket, PacketBridge(packet_socket, data_end))
+        daemon_socket.start_bridge()
+        return self._register(daemon_socket, client_end)
+
     def _register(
         self,
-        daemon_socket: _DaemonSocket,
+        daemon_socket: _DaemonSocket | _DaemonPacketSocket,
         client_end: socket.socket,
         /,
     ) -> tuple[dict[str, int], socket.socket]:

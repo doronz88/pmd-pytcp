@@ -40,17 +40,18 @@ ver 3.0.7
 from types import TracebackType
 from typing import Self
 
-from net_proto.lib.enums import IpProto
+from net_proto.lib.enums import EtherType, IpProto
 from pytcp.client.client__address import ClientAddress
 from pytcp.client.client__datagram_socket import ClientRawSocket, ClientUdpSocket
 from pytcp.client.client__link import ClientLink
 from pytcp.client.client__membership import ClientMembership
 from pytcp.client.client__neighbor import ClientNeighbor
+from pytcp.client.client__packet_socket import ClientPacketSocket
 from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
 from pytcp.client.client__tcp_socket import ClientTcpSocket
 from pytcp.ipc.ipc__client import IpcClient
-from pytcp.socket import AddressFamily, SocketType
+from pytcp.socket import ETH_P_ALL, AddressFamily, SocketType
 
 
 class ClientStack:
@@ -75,15 +76,16 @@ class ClientStack:
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-        protocol: IpProto | None = None,
-    ) -> ClientTcpSocket | ClientUdpSocket | ClientRawSocket:
+        protocol: IpProto | EtherType | int | None = None,
+    ) -> ClientTcpSocket | ClientUdpSocket | ClientRawSocket | ClientPacketSocket:
         """
         Open a socket on the daemon, returning a client shim whose data
         path is a real selectable descriptor. Mirrors the in-process
         'socket()' factory's family / type / protocol arguments: STREAM
-        yields a 'ClientTcpSocket', DGRAM a 'ClientUdpSocket', and RAW a
-        'ClientRawSocket' (which requires an explicit IANA next-header
-        'protocol').
+        yields a 'ClientTcpSocket', DGRAM a 'ClientUdpSocket', RAW on an
+        INET family a 'ClientRawSocket' (with an IANA next-header
+        'protocol'), and RAW on the PACKET family a 'ClientPacketSocket'
+        (with an ethertype filter, default capture-all).
         """
 
         match type:
@@ -92,8 +94,15 @@ class ClientStack:
             case SocketType.DGRAM:
                 return ClientUdpSocket(self._client, family=family)
             case SocketType.RAW:
-                if protocol is None:
-                    raise ValueError("A raw socket requires an explicit IANA next-header protocol.")
+                if family is AddressFamily.PACKET:
+                    if isinstance(protocol, IpProto):
+                        raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
+                    return ClientPacketSocket(
+                        self._client,
+                        protocol=ETH_P_ALL if protocol is None else protocol,
+                    )
+                if not isinstance(protocol, IpProto):
+                    raise ValueError("A raw IP socket requires an explicit IpProto next-header protocol.")
                 return ClientRawSocket(self._client, family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {type!r}.")

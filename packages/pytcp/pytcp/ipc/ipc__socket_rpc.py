@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from typing import Any, NoReturn
 
 from net_proto.lib.buffer import Buffer
-from net_proto.lib.enums import IpProto
+from net_proto.lib.enums import EtherType, IpProto
 from pytcp.ipc.ipc__client import IpcClient
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__errors import IpcConnectionError, IpcRemoteError
@@ -176,12 +176,13 @@ def open_socket(
     *,
     family: AddressFamily,
     type_: SocketType,
-    protocol: IpProto | None = None,
+    protocol: IpProto | EtherType | int | None = None,
 ) -> tuple[int, int]:
     """
     Issue the fd-bearing 'socket' call and return '(handle, data_fd)',
     where 'data_fd' is the passed data-channel descriptor the client owns.
-    A raw socket supplies its IANA next-header 'protocol'.
+    A raw IP socket supplies its IANA next-header 'protocol'; an AF_PACKET
+    socket supplies its ethertype filter.
 
     Raises 'IpcRemoteError' on a remote failure (the fd-less error path)
     and closes any stray passed descriptor before raising.

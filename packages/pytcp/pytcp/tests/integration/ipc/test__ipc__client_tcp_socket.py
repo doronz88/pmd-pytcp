@@ -35,8 +35,11 @@ pytcp/tests/integration/ipc/test__ipc__client_tcp_socket.py
 ver 3.0.7
 """
 
+from typing import cast
+
+from pytcp.client import ClientTcpSocket
 from pytcp.ipc.ipc__errors import IpcRemoteError
-from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET
+from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET, AddressFamily, SocketType
 from pytcp.tests.lib.ipc_control_testcase import IpcControlTestCase
 
 
@@ -55,7 +58,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
         self.addCleanup(sock.close)
 
         self.assertGreaterEqual(
@@ -73,7 +76,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
         self.addCleanup(sock.close)
 
         sock.bind(("0.0.0.0", 40010))
@@ -93,7 +96,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
         self.addCleanup(sock.close)
 
         sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
@@ -113,7 +116,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
 
         sock.close()
 
