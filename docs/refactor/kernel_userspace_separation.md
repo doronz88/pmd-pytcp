@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0 & 1 complete; Phase 2 in progress (fd-pass + data bridge primitives done; socket-syscall RPC + client socket + echo test remain).** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0, 1 & 2 complete (TCP socket syscall RPC + SCM_RIGHTS data channel, end-to-end out-of-process echo passing); Phases 3-6 remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -355,9 +355,9 @@ Notes that landed with the mirrors:
   that runs after `NetworkTestCase.tearDown` restores its snapshot) does
   not leak.
 
-### Phase 2 — TCP socket syscall RPC + data-channel fd passing — in progress
+### Phase 2 — TCP socket syscall RPC + data-channel fd passing (complete)
 
-The two novel data-plane primitives are done and tested:
+The two novel data-plane primitives:
 
 - `3b305c38` — SCM_RIGHTS fd-passing (`ipc__fdpass.py`):
   `send_frame_with_fd` / `recv_frame_with_fd`. The fd rides the 4-byte
@@ -375,34 +375,68 @@ The two novel data-plane primitives are done and tested:
   than a selector on the eventfd `fileno()` — same underlying readiness,
   simpler, with a poll for prompt stop. 5 unit tests (socketpair stub).
 
-**Remaining (2b-ii — socket-syscall RPC + client socket + echo test):**
+The socket-syscall RPC + client socket + echo (2b-ii):
 
-1. **Value codec — add `bytes`** (base64-tagged) to `ipc__values.py`:
-   `setsockopt` value / `getsockopt` return can be `bytes`.
-2. **`SOCKET_CALL` op + per-client socket session.** A new
-   `IpcOp.SOCKET_CALL`; the server's `_serve_client` owns a per-client
-   `dict[handle, _DaemonSocket]`. `socket()` creates a real `TcpSocket`
-   (via the `socket()` factory) + a socketpair + a `SocketBridge`
-   (started on the daemon end), assigns a handle, and returns
-   `{handle}` **with the client end passed via `send_frame_with_fd`**;
-   the daemon then closes its own client-end ref. `bind` / `connect` /
-   `setsockopt` / `getsockopt` / `shutdown` / `close` / `getsockname` /
-   `getpeername` are plain RPC keyed by handle. (`listen` / `accept` are
-   **Phase 4**, not here.) On client disconnect the session closes every
-   socket (bridge.stop + tcp_socket.close) — kernel-reaps-on-exit.
-3. **`ClientTcpSocket`** in `pytcp/client/`: `fileno()` returns the
-   passed socketpair fd; `send`/`recv` are `os.write`/`os.read` (or
-   socket send/recv) on that fd; control methods marshal over
-   `SOCKET_CALL`. The `socket()` response is read with
-   `recv_frame_with_fd` (the one fd-bearing response path).
-4. **Echo integration test** (`TcpTestCase`-based): an out-of-process
-   client `connect()`s to a peer simulated on the TAP wire and echoes.
-   Coordination wrinkle: the client's blocking `connect()` RPC is served
-   on the daemon dispatch thread (which blocks in `TcpSocket.connect`),
-   so the **test must drive the SYN-ACK / data RX frames from a
-   background thread** while the main thread blocks in `client.connect()`
-   — the dispatch thread and the wire-driver are different threads, so
-   no deadlock, but the test has to spawn the wire-driver itself.
+- `82eda4dc` — value codec gains `bytes` (base64-tagged): a setsockopt
+  value / getsockopt return can be raw bytes. 2 unit tests.
+- `20623a6a` — `IpcOp.SOCKET_CALL` + the socket-syscall body codec
+  (`ipc__socket_rpc.py`): a `SocketRequest` (method + per-client handle +
+  typed kwargs), `{value}` OK / `{error,message}` error bodies. The
+  socket-plane analogue of `ipc__rpc`. 3 unit tests.
+- `32e21744` — `recv_frame_with_fd` tolerates a zero-fd frame (returns
+  `(payload, None)`): the socket-creation path's fd-less RESPONSE_ERROR
+  must not raise. 1 new unit test.
+- `3f9cec1f` — the value codec crosses the socket-option enum family
+  (IpProto / SolLevel / SocketOption / SolSocketOption / IpOption /
+  IpV6Option / MsgFlag) faithfully as members, **not** ints: an
+  IPPROTO_\* level is an `IpProto` ProtoEnum whose member ≠ its integer,
+  so the daemon's `==` option dispatch only matches a member. 1 unit test.
+- `1b348462` — the daemon per-client socket session
+  (`ipc__socket_session.py`): each connection owns a `SocketSession`
+  handle table of real `TcpSocket`s, each paired with a `SocketBridge`.
+  `socket()` creates a socketpair + daemon socket and hands the client
+  end back via `send_frame_with_fd`; the bridge starts on `connect`
+  (the stack socket has no session to read before then). bind / connect /
+  setsockopt / getsockopt / shutdown / close / getsockname / getpeername
+  are handle-keyed RPC. `close_all` reaps every open socket abortively on
+  disconnect (kernel-reaps-on-exit). Wired into `IpcServer._serve_client`
+  via `_serve_socket_call`; `IpcClient.request_with_fd` is the fd-bearing
+  client primitive. 6 integration tests.
+- `f27ecf92` — `ClientTcpSocket` + `ClientStack.socket()`: data path is
+  the passed socketpair end (real selectable fd; `send`/`recv` are
+  ordinary socket I/O); control methods marshal over `SOCKET_CALL`.
+  `ipc__socket_rpc` gains the `socket_call` / `open_socket` client
+  helpers. 4 integration tests.
+- `695d3653` — end-to-end out-of-process TCP echo (`TcpTestCase` +
+  IpcServer): client connects to a TAP-wire peer and exchanges data both
+  directions over its real fd. The blocking `connect()` runs on a
+  background thread while the main thread drives the SYN-ACK (different
+  threads → no deadlock). 2 integration tests; stable across repeated
+  runs.
+
+Design notes that landed:
+- `listen` / `accept` are deliberately **out of scope** here — passive
+  open + the accept fd-pass are Phase 4.
+- The bridge starts at `connect`, not at `socket()` creation: the stack
+  socket's `recv` asserts a live session, so an RX pump started before
+  connect would crash. The fd is still passed at `socket()` time; only
+  the pump start defers.
+- Socket-option **family / type** cross as typed enum members (the
+  daemon dispatches the factory on them); option **level / optname**
+  also cross as members (not ints) because of the ProtoEnum `==` rule
+  above. setsockopt **value** crosses as int or bytes.
+- Per-client session is single-threaded (one dispatch loop reads
+  requests sequentially), so the handle table needs no lock; the bridge
+  pumps run on their own threads and touch only `recv` / `send`, the
+  same concurrency the in-process stack already handles.
+
+### Phase 4 preview — `accept()` fd passing
+
+The session table + `_serve_socket_call` fd-pass path generalise to
+`accept()`: on a completed passive open the daemon spawns a fresh
+socketpair + bridge for the child internal socket and returns the new fd
+via `SCM_RIGHTS` in the accept response. `listen` / `accept` were left
+off the SOCKET_CALL allowlist for exactly this reason.
 
 ### Phases 3-6 — later
 
