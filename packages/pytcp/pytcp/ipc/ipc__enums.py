@@ -58,3 +58,4 @@ class IpcOp(IntEnum):
 
     PING = 0
     CONTROL_CALL = 1
+    SOCKET_CALL = 2
