@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0, 1, 2 & 3 complete (TCP + UDP + raw + AF_PACKET out-of-process, recvmsg cmsg ancillary; echoes passing for every family); Phases 4-6 remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0-4 complete (TCP + UDP + raw + AF_PACKET out-of-process, recvmsg cmsg, passive-open accept() fd-passing; echoes passing for every family); Phases 5-6 remain (examples migration, daemon lifecycle).** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -515,8 +515,39 @@ Design notes that landed:
   (`recvmsg(MSG_ERRQUEUE)`) is on-demand, not pumped by the bridge — it
   remains a later (Phase 4-ish) item if a consumer needs it.
 
-### Phases 4-6 — later
+### Phase 4 — accept() fd passing (passive open) (complete)
 
-`accept()` fd passing (passive open), examples migration, daemon
-lifecycle — see §4. The IP_RECVERR error-queue `recvmsg(MSG_ERRQUEUE)`
-path is a small deferred datagram-plane follow-up.
+- `6e29c404` — `listen` / `accept` over SOCKET_CALL. The daemon's
+  `_accept` blocks (polling, so a server stop interrupts it) until
+  `TcpSocket.accept` yields a completed inbound connection, then spawns a
+  fresh socketpair + SocketBridge for the accepted child, assigns a new
+  handle, and returns `{handle, peer}` with the child's client-end fd
+  passed via SCM_RIGHTS — the same fd-bearing response path as `socket`.
+  The per-client SocketSession carries the server stop event for the
+  bail-out; `IpcClient.request_with_fd` gains a `blocking` mode (no
+  response timeout) because an accept response can take arbitrarily long.
+  `ClientTcpSocket` gains `listen` + a blocking `accept` that returns a
+  new `ClientTcpSocket` (adopted around the passed child fd via `_adopt`)
+  and the peer address. End-to-end out-of-process passive accept
+  (background-thread accept + main-thread handshake driving). 1
+  integration test.
+
+Design notes that landed:
+- **accept() reuses the socket() fd-passing path.** The accepted child is
+  just another handle with a SocketBridge; the only new wire shape is the
+  `{handle, peer}` accept-OK body. `listen` / `accept` were left off the
+  allowlist in Phase 2 precisely so this could slot in.
+- **Blocking on the dispatch thread is bounded by a poll + stop event.**
+  The daemon accept loops on `accept(timeout=0.2s)` and re-checks the
+  server stop event, so teardown is clean. Known Phase-4 limitation: a
+  client that disconnects *mid-accept* (without the connection ever
+  completing) leaves the dispatch thread polling until server stop — a
+  selectable / cancelable accept is a later refinement.
+
+### Phases 5-6 — later
+
+Examples migration (socket examples become clients of a `make run`
+daemon) and daemon lifecycle (`python -m pytcp.daemon`, socket-path
+config, readiness signalling) — see §4. The IP_RECVERR error-queue
+`recvmsg(MSG_ERRQUEUE)` path is a small deferred datagram-plane
+follow-up.
