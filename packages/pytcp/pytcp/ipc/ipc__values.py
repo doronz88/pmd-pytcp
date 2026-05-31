@@ -66,7 +66,7 @@ from net_addr import (
     Ip6Network,
     MacAddress,
 )
-from net_proto.lib.enums import IpProto
+from net_proto.lib.enums import EtherType, IpProto
 from pytcp.ipc.ipc__errors import IpcValueError
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.neighbor import NudState
@@ -76,11 +76,13 @@ from pytcp.socket import (
     IpOption,
     IpV6Option,
     MsgFlag,
+    PacketType,
     SocketOption,
     SocketType,
     SolLevel,
     SolSocketOption,
 )
+from pytcp.socket.sockaddr_ll import SockAddrLl
 from pytcp.stack.link import LinkFlag, LinkStats
 from pytcp.stack.neighbor import NeighborSnapshot
 
@@ -115,7 +117,9 @@ _ENUM_TYPES: tuple[type[Enum], ...] = (
     InterfaceLayer,
     LinkFlag,
     IpProto,
+    EtherType,
     SocketType,
+    PacketType,
     SolLevel,
     SocketOption,
     SolSocketOption,
@@ -131,6 +135,7 @@ _DATACLASS_TYPES: tuple[type[Any], ...] = (
     Route,
     NeighborSnapshot,
     LinkStats,
+    SockAddrLl,
 )
 _DATACLASS_TYPE_BY_TAG: dict[str, type[Any]] = {t.__name__: t for t in _DATACLASS_TYPES}
 

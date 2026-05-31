@@ -45,6 +45,7 @@ from net_addr import (
     Ip6Network,
     MacAddress,
 )
+from net_proto.lib.enums import EtherType
 from pytcp.ipc.ipc__errors import IpcValueError
 from pytcp.ipc.ipc__values import decode_value, encode_value
 from pytcp.lib.interface_layer import InterfaceLayer
@@ -58,8 +59,10 @@ from pytcp.socket import (
     SOL_SOCKET,
     TCP_NODELAY,
     AddressFamily,
+    PacketType,
     SocketType,
 )
+from pytcp.socket.sockaddr_ll import SockAddrLl
 from pytcp.stack.link import LinkFlag, LinkStats
 from pytcp.stack.neighbor import NeighborSnapshot
 
@@ -289,6 +292,30 @@ class TestIpcValuesRoundTrip(TestCase):
                     decode_value(encode_value(snapshot)),
                     snapshot,
                     msg=f"NeighborSnapshot {snapshot!r} must round-trip.",
+                )
+
+    def test__ipc__values__sockaddr_ll_round_trip(self) -> None:
+        """
+        Ensure a SockAddrLl link-layer address round-trips field-by-field,
+        including its EtherType / PacketType enum members and MacAddress.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for address in [
+            SockAddrLl(
+                ifindex=2,
+                ethertype=EtherType.ARP,
+                pkttype=PacketType.PACKET_HOST,
+                mac=MacAddress("02:00:00:00:00:91"),
+            ),
+            SockAddrLl(),
+        ]:
+            with self.subTest(address=address):
+                self.assertEqual(
+                    decode_value(encode_value(address)),
+                    address,
+                    msg=f"SockAddrLl {address!r} must round-trip field-by-field.",
                 )
 
     def test__ipc__values__link_stats_snapshot(self) -> None:
