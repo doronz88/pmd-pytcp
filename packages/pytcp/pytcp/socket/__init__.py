@@ -75,19 +75,31 @@ IPPROTO_ICMPV6 = IpProto.ICMP6
 IPPROTO_ICMP6 = IpProto.ICMP6
 IPPROTO_RAW = IpProto.RAW
 
-# BSD setsockopt 'level' parameter for socket-level options.
-# Linux number, matching stdlib 'socket.SOL_SOCKET'. The TCP-
-# level option counterpart reuses 'IPPROTO_TCP' (= IpProto.TCP
-# = 6) above, keeping the existing module surface.
-SOL_SOCKET: int = 1
 
-# BSD setsockopt 'level' parameter for UDP-level options
-# (Linux number from <netinet/udp.h>, matching stdlib
-# 'socket.SOL_UDP' / 'socket.IPPROTO_UDP' on Linux). Used as
-# the 'level' argument for 'UDP_NO_CHECK6_TX' /
-# 'UDP_NO_CHECK6_RX' (RFC 6935 §5 zero-cksum opt-in for
-# tunnel encapsulations).
-SOL_UDP: int = 17
+class SolLevel(IntEnum):
+    """
+    BSD setsockopt 'level' values for the socket-option levels that
+    are not IP-protocol numbers (Linux 'SOL_*').
+    """
+
+    # Socket-level options (Linux number, matching stdlib
+    # 'socket.SOL_SOCKET'). The TCP- / IP- / IPv6-level option
+    # counterparts reuse 'IPPROTO_TCP' / 'IPPROTO_IP' /
+    # 'IPPROTO_IPV6' as their level, keeping the existing surface.
+    SOL_SOCKET = 1
+
+    # UDP-level options (Linux number from <netinet/udp.h>, matching
+    # stdlib 'socket.SOL_UDP' / 'socket.IPPROTO_UDP'). Used as the
+    # 'level' for 'UDP_NO_CHECK6_TX' / 'UDP_NO_CHECK6_RX' (RFC 6935
+    # §5 zero-cksum opt-in for tunnel encapsulations).
+    SOL_UDP = 17
+
+
+# Bare module-level aliases — match the Python stdlib socket module
+# surface so 'from pytcp.socket import SOL_SOCKET' works exactly like
+# 'from socket import SOL_SOCKET' (enums.md §2.2 stdlib parity).
+SOL_SOCKET = SolLevel.SOL_SOCKET
+SOL_UDP = SolLevel.SOL_UDP
 
 
 class SocketOption(IntEnum):
