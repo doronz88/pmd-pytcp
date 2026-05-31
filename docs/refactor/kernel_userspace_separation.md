@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phase 0 in progress.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phase 0 complete; Phase 1 next.** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -277,4 +277,34 @@ daemon can be stood up in a harness. Doc + README refresh.
 
 _(updated as phases land)_
 
-- _Phase 0 — pending._
+### Phase 0 — IPC transport + wire-protocol scaffolding (complete)
+
+The `pytcp/ipc/` package + an out-of-process PING → PONG round-trip.
+
+- `cee3fa2e` — length-prefixed stream framing codec
+  (`ipc__frame.py` + `ipc__errors.py`: `IpcError` / `IpcFrameError`).
+  12 unit tests over a real socketpair.
+- `d5f681c2` — control-channel message envelope + op-tag enums
+  (`ipc__enums.py`: `IpcMessageKind` / `IpcOp`; `ipc__message.py`:
+  `IpcMessage`). `op` decodes as a tolerant raw int (ENOSYS-style),
+  `kind` is strict. 10 unit tests.
+- `ce2a3f84` — AF_UNIX server `Subsystem` + client connector
+  (`ipc__server.py`: `IpcServer` thread-per-client; `ipc__client.py`:
+  `IpcClient` synchronous request/response; `IpcConnectionError`).
+  6 integration tests over a real AF_UNIX socket + live server thread.
+
+Design notes that landed:
+- The envelope `op` field is a raw 16-bit opcode, not an `IpcOp`
+  member; an unknown op is answered with `RESPONSE_ERROR` at dispatch
+  rather than dropping the connection (forward/backward op-vocabulary
+  compat). `kind` stays strict (a fixed 3-value framing concept).
+- The server is thread-per-client (matches "owns the per-client
+  dispatch loop"); `_stop()` uses `shutdown(SHUT_RDWR)` to interrupt a
+  dispatch thread blocked in `recv_frame` (a bare `close()` can leave
+  the syscall pending on Linux).
+- The client carries a 5 s response timeout so a hung daemon surfaces
+  loudly instead of wedging a caller (and the suite).
+
+### Phase 1 — Control-plane RPC (the netlink half) — next
+
+Marshal the six control APIs + introspection over the control channel.
