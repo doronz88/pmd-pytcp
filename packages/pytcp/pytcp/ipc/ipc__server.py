@@ -46,8 +46,10 @@ from typing import override
 from pytcp.ipc.ipc__control import handle_control_call
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__errors import IpcFrameError, IpcMessageError
+from pytcp.ipc.ipc__fdpass import send_frame_with_fd
 from pytcp.ipc.ipc__frame import recv_frame, send_frame
 from pytcp.ipc.ipc__message import IpcMessage
+from pytcp.ipc.ipc__socket_session import SocketSession
 from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # A handler takes the decoded request and returns the full response
@@ -149,8 +151,12 @@ class IpcServer(Subsystem):
         """
         Serve one client connection until it closes or the server stops:
         read a framed request, dispatch it, write the framed response.
+        Each connection owns a 'SocketSession' (its open-socket table),
+        reaped when the connection ends — the daemon's analogue of a
+        kernel closing a process's fds on exit.
         """
 
+        session = SocketSession()
         try:
             while not self._event__stop_subsystem.is_set():
                 try:
@@ -168,15 +174,54 @@ class IpcServer(Subsystem):
                     # header) — a protocol violation; drop the client.
                     break
 
+                if request.op == IpcOp.SOCKET_CALL:
+                    if not self._serve_socket_call(conn, session, request):
+                        break
+                    continue
+
                 try:
                     send_frame(conn, self._dispatch(request).to_bytes())
                 except OSError:
                     break
         finally:
+            session.close_all()
             try:
                 conn.close()
             except OSError:
                 pass
+
+    def _serve_socket_call(
+        self,
+        conn: socket.socket,
+        session: SocketSession,
+        request: IpcMessage,
+        /,
+    ) -> bool:
+        """
+        Serve one SOCKET_CALL on the connection's session and write the
+        response, passing the data-channel fd when the call opened a
+        socket. Return False (stop serving) on a write error.
+
+        The passed client-end socket is closed once handed off — the
+        client now owns the kernel object via SCM_RIGHTS, so the daemon
+        drops its reference whether or not the send succeeded.
+        """
+
+        response, fd_socket = session.handle(request)
+        try:
+            if fd_socket is not None:
+                send_frame_with_fd(conn, response.to_bytes(), fd_socket.fileno())
+            else:
+                send_frame(conn, response.to_bytes())
+        except OSError:
+            return False
+        finally:
+            if fd_socket is not None:
+                try:
+                    fd_socket.close()
+                except OSError:
+                    pass
+        return True
 
     def _dispatch(self, request: IpcMessage, /) -> IpcMessage:
         """

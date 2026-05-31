@@ -44,6 +44,7 @@ from typing import Self
 from net_proto.lib.buffer import Buffer
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__errors import IpcConnectionError
+from pytcp.ipc.ipc__fdpass import recv_frame_with_fd
 from pytcp.ipc.ipc__frame import recv_frame, send_frame
 from pytcp.ipc.ipc__message import IpcMessage
 
@@ -100,6 +101,35 @@ class IpcClient:
                 )
 
             return IpcMessage.from_bytes(payload)
+
+    def request_with_fd(self, op: int, /, *, body: Buffer = b"") -> tuple[IpcMessage, int | None]:
+        """
+        Send a request for 'op' and return the daemon's response together
+        with the file descriptor passed alongside it (the data-channel
+        end for a newly opened socket), or None when the response carried
+        no descriptor (an fd-less error response). The returned fd is
+        owned by the caller.
+
+        Serialised under the same lock as 'request' so a fd-bearing call
+        is atomic with respect to other calls on the shared client.
+        """
+
+        with self._lock:
+            req_id = self._next_req_id
+            self._next_req_id = (self._next_req_id + 1) & IPC__CLIENT__REQ_ID_MASK
+
+            request = IpcMessage(
+                kind=IpcMessageKind.REQUEST,
+                op=op,
+                req_id=req_id,
+                body=bytes(body),
+            )
+
+            send_frame(self._socket, request.to_bytes())
+
+            payload, fd = recv_frame_with_fd(self._socket)
+
+            return IpcMessage.from_bytes(payload), fd
 
     def ping(self) -> bytes:
         """
