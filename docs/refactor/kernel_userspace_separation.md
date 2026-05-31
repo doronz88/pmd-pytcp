@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0 & 1 complete; Phase 2 (TCP socket syscall RPC + data-channel fd passing) next.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0 & 1 complete; Phase 2 in progress (fd-pass + data bridge primitives done; socket-syscall RPC + client socket + echo test remain).** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -355,4 +355,56 @@ Notes that landed with the mirrors:
   that runs after `NetworkTestCase.tearDown` restores its snapshot) does
   not leak.
 
-### Phase 2 — TCP socket syscall RPC + data-channel fd passing — next
+### Phase 2 — TCP socket syscall RPC + data-channel fd passing — in progress
+
+The two novel data-plane primitives are done and tested:
+
+- `3b305c38` — SCM_RIGHTS fd-passing (`ipc__fdpass.py`):
+  `send_frame_with_fd` / `recv_frame_with_fd`. The fd rides the 4-byte
+  length prefix's `sendmsg`; the receiver `recvmsg`s the prefix to
+  capture it, then reads the payload via the now-public `recv_exactly`.
+  Received fds are closed on any framing error so they don't leak.
+  5 unit tests (real socketpair + pipe; the received fd is a working
+  duplicate).
+- `bc8ca718` — the per-socket data bridge (`ipc__socket_bridge.py`):
+  `SocketBridge`, two blocking pump threads (RX stack→client, TX
+  client→stack) over a `BridgedSocket` Protocol (`recv(bufsize,
+  timeout)` / `send` / `shutdown`). Half-close (`recv` of b"") →
+  `shutdown(SHUT_WR)` on the far side; backpressure implicit (socketpair
+  buffer = socket buffer). Uses a short-timeout blocking `recv` rather
+  than a selector on the eventfd `fileno()` — same underlying readiness,
+  simpler, with a poll for prompt stop. 5 unit tests (socketpair stub).
+
+**Remaining (2b-ii — socket-syscall RPC + client socket + echo test):**
+
+1. **Value codec — add `bytes`** (base64-tagged) to `ipc__values.py`:
+   `setsockopt` value / `getsockopt` return can be `bytes`.
+2. **`SOCKET_CALL` op + per-client socket session.** A new
+   `IpcOp.SOCKET_CALL`; the server's `_serve_client` owns a per-client
+   `dict[handle, _DaemonSocket]`. `socket()` creates a real `TcpSocket`
+   (via the `socket()` factory) + a socketpair + a `SocketBridge`
+   (started on the daemon end), assigns a handle, and returns
+   `{handle}` **with the client end passed via `send_frame_with_fd`**;
+   the daemon then closes its own client-end ref. `bind` / `connect` /
+   `setsockopt` / `getsockopt` / `shutdown` / `close` / `getsockname` /
+   `getpeername` are plain RPC keyed by handle. (`listen` / `accept` are
+   **Phase 4**, not here.) On client disconnect the session closes every
+   socket (bridge.stop + tcp_socket.close) — kernel-reaps-on-exit.
+3. **`ClientTcpSocket`** in `pytcp/client/`: `fileno()` returns the
+   passed socketpair fd; `send`/`recv` are `os.write`/`os.read` (or
+   socket send/recv) on that fd; control methods marshal over
+   `SOCKET_CALL`. The `socket()` response is read with
+   `recv_frame_with_fd` (the one fd-bearing response path).
+4. **Echo integration test** (`TcpTestCase`-based): an out-of-process
+   client `connect()`s to a peer simulated on the TAP wire and echoes.
+   Coordination wrinkle: the client's blocking `connect()` RPC is served
+   on the daemon dispatch thread (which blocks in `TcpSocket.connect`),
+   so the **test must drive the SYN-ACK / data RX frames from a
+   background thread** while the main thread blocks in `client.connect()`
+   — the dispatch thread and the wire-driver are different threads, so
+   no deadlock, but the test has to spawn the wire-driver itself.
+
+### Phases 3-6 — later
+
+Datagram sockets (UDP / raw / AF_PACKET), `accept()` fd passing,
+examples migration, daemon lifecycle — see §4.
