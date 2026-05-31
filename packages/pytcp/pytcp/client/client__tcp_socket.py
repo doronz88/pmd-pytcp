@@ -70,6 +70,22 @@ class ClientTcpSocket:
 
         return self._data_socket.fileno()
 
+    def settimeout(self, timeout: float | None, /) -> None:
+        """
+        Set the data-channel timeout (seconds, or None for blocking).
+        Acts on the local descriptor only — no daemon round trip.
+        """
+
+        self._data_socket.settimeout(timeout)
+
+    def setblocking(self, flag: bool, /) -> None:
+        """
+        Set the data channel blocking or non-blocking. Acts on the local
+        descriptor only — no daemon round trip.
+        """
+
+        self._data_socket.setblocking(flag)
+
     def send(self, data: bytes) -> int:
         """
         Send 'data' to the connected peer over the data channel.
