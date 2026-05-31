@@ -46,7 +46,9 @@ from pytcp.client.client__membership import ClientMembership
 from pytcp.client.client__neighbor import ClientNeighbor
 from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
+from pytcp.client.client__tcp_socket import ClientTcpSocket
 from pytcp.ipc.ipc__client import IpcClient
+from pytcp.socket import AddressFamily, SocketType
 
 
 class ClientStack:
@@ -66,6 +68,22 @@ class ClientStack:
         self.address = ClientAddress(self._client)
         self.neighbor = ClientNeighbor(self._client)
         self.membership = ClientMembership(self._client)
+
+    def socket(
+        self,
+        family: AddressFamily = AddressFamily.INET4,
+        type: SocketType = SocketType.STREAM,
+    ) -> ClientTcpSocket:
+        """
+        Open a TCP socket on the daemon, returning a client shim whose
+        data path is a real selectable descriptor. Mirrors the in-process
+        'socket()' factory's family / type arguments; only STREAM (TCP)
+        is supported on the client today.
+        """
+
+        assert type is SocketType.STREAM, f"Only SocketType.STREAM is supported; got {type!r}."
+
+        return ClientTcpSocket(self._client, family=family)
 
     def close(self) -> None:
         """

@@ -33,16 +33,21 @@ control channel through a surface that mirrors the in-process
 '.neighbor' / '.membership' attributes carry the same method signatures
 as the daemon-side singletons, marshalling each call across the boundary.
 
+'ClientStack.socket()' opens a TCP socket on the daemon and returns a
+'ClientTcpSocket' whose data path is a real, selectable descriptor.
+
 This is an encapsulated subpackage (source_files.md §2.4.1): the only
-public symbols are 'connect' and 'ClientStack'; every other module here
-('client__*') is private implementation. The per-API proxy objects are
-reached through 'ClientStack' attributes, never imported directly.
+public symbols are 'connect', 'ClientStack', and 'ClientTcpSocket'; every
+other module here ('client__*') is private implementation. The per-API
+proxy objects are reached through 'ClientStack' attributes, and a
+'ClientTcpSocket' through 'ClientStack.socket()', never imported directly.
 
 pytcp/client/__init__.py
 
 ver 3.0.7
 """
 
+from pytcp.client.client__tcp_socket import ClientTcpSocket
 from pytcp.client.client_stack import ClientStack, connect
 
-__all__ = ["ClientStack", "connect"]
+__all__ = ["ClientStack", "ClientTcpSocket", "connect"]

@@ -44,12 +44,16 @@ ver 3.0.7
 """
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
 from net_proto.lib.buffer import Buffer
-from pytcp.ipc.ipc__errors import IpcRemoteError
+from pytcp.ipc.ipc__client import IpcClient
+from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
+from pytcp.ipc.ipc__errors import IpcConnectionError, IpcRemoteError
 from pytcp.ipc.ipc__values import decode_value, encode_value
+from pytcp.socket import AddressFamily
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -132,4 +136,64 @@ def raise_socket_error(body: Buffer, /) -> NoReturn:
     raise IpcRemoteError(
         error_type=document["error"],
         message=document["message"],
+    )
+
+
+def socket_call(
+    client: IpcClient,
+    /,
+    *,
+    method: str,
+    handle: int,
+    args: dict[str, Any],
+) -> Any:
+    """
+    Issue a handle-keyed (non-fd) socket call over the client and return
+    its decoded result, raising 'IpcRemoteError' if the daemon reported a
+    failure.
+    """
+
+    response = client.request(
+        IpcOp.SOCKET_CALL,
+        body=encode_socket_request(method=method, handle=handle, args=args),
+    )
+
+    if response.kind is IpcMessageKind.RESPONSE_OK:
+        return decode_socket_value(response.body)
+
+    if response.kind is IpcMessageKind.RESPONSE_ERROR:
+        raise_socket_error(response.body)
+
+    raise IpcConnectionError(
+        f"Daemon returned an unexpected response kind {response.kind!r} to a socket call.",
+    )
+
+
+def open_socket(client: IpcClient, /, *, family: AddressFamily) -> tuple[int, int]:
+    """
+    Issue the fd-bearing 'socket' call and return '(handle, data_fd)',
+    where 'data_fd' is the passed data-channel descriptor the client owns.
+
+    Raises 'IpcRemoteError' on a remote failure (the fd-less error path)
+    and closes any stray passed descriptor before raising.
+    """
+
+    response, fd = client.request_with_fd(
+        IpcOp.SOCKET_CALL,
+        body=encode_socket_request(method="socket", handle=None, args={"family": family}),
+    )
+
+    if response.kind is IpcMessageKind.RESPONSE_OK:
+        if fd is None:
+            raise IpcConnectionError("Daemon opened a socket but passed no data-channel descriptor.")
+        return int(decode_socket_value(response.body)["handle"]), fd
+
+    if fd is not None:
+        os.close(fd)
+
+    if response.kind is IpcMessageKind.RESPONSE_ERROR:
+        raise_socket_error(response.body)
+
+    raise IpcConnectionError(
+        f"Daemon returned an unexpected response kind {response.kind!r} to a socket-open call.",
     )
