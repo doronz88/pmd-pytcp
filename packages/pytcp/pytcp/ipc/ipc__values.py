@@ -66,11 +66,20 @@ from net_addr import (
     Ip6Network,
     MacAddress,
 )
+from net_proto.lib.enums import IpProto
 from pytcp.ipc.ipc__errors import IpcValueError
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.neighbor import NudState
 from pytcp.runtime.fib import Route, RouteProtocol, RouteScope
-from pytcp.socket import AddressFamily
+from pytcp.socket import (
+    AddressFamily,
+    IpOption,
+    IpV6Option,
+    MsgFlag,
+    SocketOption,
+    SolLevel,
+    SolSocketOption,
+)
 from pytcp.stack.link import LinkFlag, LinkStats
 from pytcp.stack.neighbor import NeighborSnapshot
 
@@ -92,7 +101,11 @@ _STR_TYPES: tuple[type[Any], ...] = (
 )
 _STR_TYPE_BY_TAG: dict[str, type[Any]] = {t.__name__: t for t in _STR_TYPES}
 
-# Control-plane enums — encoded by member name, rebuilt by name lookup.
+# Control-plane and socket-option enums — encoded by member name,
+# rebuilt by name lookup. The socket-option levels / names cross
+# faithfully as members (not bare ints) because an IPPROTO_* level is an
+# 'IpProto' ProtoEnum, which is deliberately not equal to its integer —
+# the daemon's '==' option dispatch only matches a member, never an int.
 _ENUM_TYPES: tuple[type[Enum], ...] = (
     AddressFamily,
     RouteProtocol,
@@ -100,6 +113,13 @@ _ENUM_TYPES: tuple[type[Enum], ...] = (
     NudState,
     InterfaceLayer,
     LinkFlag,
+    IpProto,
+    SolLevel,
+    SocketOption,
+    SolSocketOption,
+    IpOption,
+    IpV6Option,
+    MsgFlag,
 )
 _ENUM_TYPE_BY_TAG: dict[str, type[Enum]] = {t.__name__: t for t in _ENUM_TYPES}
 

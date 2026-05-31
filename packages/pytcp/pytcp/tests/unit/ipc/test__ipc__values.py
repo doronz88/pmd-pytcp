@@ -50,7 +50,15 @@ from pytcp.ipc.ipc__values import decode_value, encode_value
 from pytcp.lib.interface_layer import InterfaceLayer
 from pytcp.lib.neighbor import NudState
 from pytcp.runtime.fib import Route, RouteProtocol, RouteScope
-from pytcp.socket import AddressFamily
+from pytcp.socket import (
+    IP_TTL,
+    IPPROTO_TCP,
+    IPV6_UNICAST_HOPS,
+    SO_KEEPALIVE,
+    SOL_SOCKET,
+    TCP_NODELAY,
+    AddressFamily,
+)
 from pytcp.stack.link import LinkFlag, LinkStats
 from pytcp.stack.neighbor import NeighborSnapshot
 
@@ -156,6 +164,31 @@ class TestIpcValuesRoundTrip(TestCase):
                     decode_value(encode_value(value)),
                     value,
                     msg=f"Enum {value!r} must round-trip to the identical member.",
+                )
+
+    def test__ipc__values__socket_option_enums_round_trip(self) -> None:
+        """
+        Ensure each setsockopt / getsockopt level and option-name enum
+        round-trips to the identical member, so an IPPROTO_* level (a
+        net_proto ProtoEnum, which is not equal to its integer) survives
+        the boundary and still compares equal on the daemon side.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        for value in [
+            SOL_SOCKET,
+            SO_KEEPALIVE,
+            IPPROTO_TCP,
+            TCP_NODELAY,
+            IP_TTL,
+            IPV6_UNICAST_HOPS,
+        ]:
+            with self.subTest(value=value):
+                self.assertIs(
+                    decode_value(encode_value(value)),
+                    value,
+                    msg=f"Socket-option enum {value!r} must round-trip to the identical member.",
                 )
 
     def test__ipc__values__containers(self) -> None:
