@@ -49,11 +49,12 @@ import os
 import tempfile
 import threading
 import time
-from typing import override
+from typing import cast, override
 
 from pytcp import stack
 from pytcp.client import ClientStack, ClientTcpSocket, connect
 from pytcp.ipc.ipc__server import IpcServer
+from pytcp.socket import AddressFamily, SocketType
 from pytcp.tests.lib.network_testcase import HOST_A__IP4_ADDRESS, STACK__IP4_HOST
 from pytcp.tests.lib.tcp_segment_factory import build_tcp4
 from pytcp.tests.lib.tcp_testcase import TcpTestCase
@@ -216,7 +217,7 @@ class TestIpcEcho(TcpTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
         self.addCleanup(sock.close)
         sock.settimeout(_DEADLINE__SEC)
 
@@ -238,7 +239,7 @@ class TestIpcEcho(TcpTestCase):
         """
 
         client = self._connect()
-        sock = client.socket()
+        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
         self.addCleanup(sock.close)
         sock.settimeout(_DEADLINE__SEC)
 

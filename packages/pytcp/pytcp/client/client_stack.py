@@ -47,6 +47,7 @@ from pytcp.client.client__neighbor import ClientNeighbor
 from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
 from pytcp.client.client__tcp_socket import ClientTcpSocket
+from pytcp.client.client__udp_socket import ClientUdpSocket
 from pytcp.ipc.ipc__client import IpcClient
 from pytcp.socket import AddressFamily, SocketType
 
@@ -73,17 +74,21 @@ class ClientStack:
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
-    ) -> ClientTcpSocket:
+    ) -> ClientTcpSocket | ClientUdpSocket:
         """
-        Open a TCP socket on the daemon, returning a client shim whose
-        data path is a real selectable descriptor. Mirrors the in-process
-        'socket()' factory's family / type arguments; only STREAM (TCP)
-        is supported on the client today.
+        Open a socket on the daemon, returning a client shim whose data
+        path is a real selectable descriptor. Mirrors the in-process
+        'socket()' factory's family / type arguments; STREAM yields a
+        'ClientTcpSocket', DGRAM a 'ClientUdpSocket'.
         """
 
-        assert type is SocketType.STREAM, f"Only SocketType.STREAM is supported; got {type!r}."
+        match type:
+            case SocketType.STREAM:
+                return ClientTcpSocket(self._client, family=family)
+            case SocketType.DGRAM:
+                return ClientUdpSocket(self._client, family=family)
 
-        return ClientTcpSocket(self._client, family=family)
+        raise ValueError(f"Unsupported socket type {type!r}.")
 
     def close(self) -> None:
         """
