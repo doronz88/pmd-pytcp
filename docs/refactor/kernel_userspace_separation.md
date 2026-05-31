@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0, 1 & 2 complete (TCP socket syscall RPC + SCM_RIGHTS data channel, end-to-end out-of-process echo passing); Phases 3-6 remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0, 1 & 2 complete; Phase 3 UDP datagram plane complete (out-of-process UDP echo passing); Phase-3 raw/AF_PACKET families + recvmsg cmsg ancillary remain.** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -438,7 +438,53 @@ socketpair + bridge for the child internal socket and returns the new fd
 via `SCM_RIGHTS` in the accept response. `listen` / `accept` were left
 off the SOCKET_CALL allowlist for exactly this reason.
 
-### Phases 3-6 — later
+### Phase 3 — Datagram sockets — UDP plane complete
 
-Datagram sockets (UDP / raw / AF_PACKET), `accept()` fd passing,
-examples migration, daemon lifecycle — see §4.
+The datagram data plane uses a SOCK_DGRAM socketpair (boundary-
+preserving — one PyTCP datagram per AF_UNIX datagram), each datagram
+framed with its peer address so the address survives the boundary.
+
+- `e2c00891` — datagram data-channel frame codec (`ipc__dgram_frame`):
+  `tag(1) [port(2) ip(4|16)] payload`, tag 0 = no address (connected
+  send), 4 = IPv4, 6 = IPv6. net_proto + stdlib only. 6 unit tests.
+- `98d286eb` — the datagram bridge (`ipc__dgram_bridge`): `DatagramBridge`
+  RX pump frames each `recvfrom` with its sender address; TX pump decodes
+  the framed address and replays it as `sendto` (or `send` for a
+  connected socket). A SOCK_DGRAM socketpair has no peer-close EOF
+  (closed far end just times out), so teardown is `stop`-driven from the
+  control-channel disconnect; a stack-refused datagram is dropped
+  (UDP best-effort). 3 unit tests.
+- `c6140539` — daemon DGRAM session support: the `socket` call carries
+  the socket `type`; `_DaemonSocket` is generalised over a
+  TcpSocket+SocketBridge or UdpSocket+DatagramBridge; the DGRAM bridge
+  starts at creation (a datagram socket can receive before connect); UDP
+  close is a plain unregister; `shutdown` is rejected on a datagram
+  handle. The value codec crosses `SocketType` as a member. 2 integration
+  + 1 unit test.
+- `88cbf623` — `ClientUdpSocket` + `ClientStack.socket()` type dispatch
+  (STREAM -> `ClientTcpSocket`, DGRAM -> `ClientUdpSocket`). `sendto` /
+  `recvfrom` frame/unframe the peer address over the SOCK_DGRAM fd.
+  End-to-end out-of-process UDP echo (UdpTestCase + IpcServer): a peer
+  datagram is delivered to the client with its sender address (RX), and a
+  client `sendto` reaches the wire addressed to the peer (TX). UDP has no
+  handshake, so both directions run inline; stable across repeated runs.
+  2 integration tests.
+
+**Remaining in Phase 3 (datagram families + ancillary):**
+
+1. **`recvmsg` cmsg ancillary.** The frame format carries only
+   `{address, payload}` today; extend it to `{address, cmsg, payload}` so
+   the RX pump can `recvmsg` (capturing IP_TOS / IPV6_TCLASS / IP_OPTIONS
+   and the IP_RECVERR error-queue cmsgs) and the client `recvmsg` can
+   read them. The daemon UdpSocket already produces these cmsgs
+   (`udp__socket._recvmsg` / `_recvmsg_errqueue`); only the data-channel
+   framing + a client `recvmsg` are missing.
+2. **Raw sockets (`RawSocket`).** IP-level datagram socket — its own
+   `_open_raw` + a raw client shim. Address shape differs (no port).
+3. **AF_PACKET (`PacketSocket`).** Link-level frames — `SockAddrLl`
+   addressing; its own session + client shim.
+
+### Phases 4-6 — later
+
+`accept()` fd passing (passive open), examples migration, daemon
+lifecycle — see §4.
