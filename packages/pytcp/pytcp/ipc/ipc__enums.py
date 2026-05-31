@@ -23,36 +23,37 @@
 
 
 """
-This module contains the IPC-layer error classes.
+This module contains the IPC control-channel message enumerations.
 
-pytcp/ipc/ipc__errors.py
+The op space is a PyTCP-internal protocol with no stdlib-socket
+counterpart, so the members carry no bare module-level aliases (see
+.claude/rules/enums.md §2.1). New ops are appended as later phases marshal
+the socket syscalls and the control APIs over the channel.
+
+pytcp/ipc/ipc__enums.py
 
 ver 3.0.7
 """
 
-from typing import override
-
-from net_proto.lib.errors import PyTcpError
+from enum import IntEnum
 
 
-class IpcError(PyTcpError):
+class IpcMessageKind(IntEnum):
     """
-    The base class for all IPC-layer exceptions.
-    """
-
-    @override
-    def __init__(self, message: str, /) -> None:
-        super().__init__("[IPC] " + message)
-
-
-class IpcFrameError(IpcError):
-    """
-    Exception raised when stream frame encoding or decoding fails.
+    The control-channel message kind — whether a message is a request
+    or one of the two response flavours (success / error).
     """
 
+    REQUEST = 0
+    RESPONSE_OK = 1
+    RESPONSE_ERROR = 2
 
-class IpcMessageError(IpcError):
+
+class IpcOp(IntEnum):
     """
-    Exception raised when control-channel message encoding or decoding
-    fails (truncated header, unknown message kind or op code).
+    The control-channel operation code identifying which request /
+    response pair a message belongs to. The same 'op' value appears on a
+    request and on its matching response.
     """
+
+    PING = 0
