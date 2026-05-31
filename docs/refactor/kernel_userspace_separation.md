@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phase 0 complete; Phase 1 next.** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phase 0 complete; Phase 1 in progress (machinery + sysctl mirror done; 5 API mirrors remain).** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -305,6 +305,38 @@ Design notes that landed:
 - The client carries a 5 s response timeout so a hung daemon surfaces
   loudly instead of wedging a caller (and the suite).
 
-### Phase 1 — Control-plane RPC (the netlink half) — next
+### Phase 1 — Control-plane RPC (the netlink half) — in progress
 
 Marshal the six control APIs + introspection over the control channel.
+
+- `80a1e2d1` — control-plane tagged value codec (`ipc__values.py`):
+  net_addr types / enums / snapshots / containers <-> JSON-native tagged
+  forms. 12 unit tests.
+- `b584b296` — control-RPC machinery + the **sysctl** mirror end-to-end.
+  `ipc__rpc.py` (CONTROL_CALL body codec + `control_call` client helper),
+  `ipc__control.py` (daemon dispatcher with per-API method allowlist),
+  the `-> IpcMessage` handler-contract change in `ipc__server.py`,
+  `IpcRemoteError`, and the new `pytcp/client/` package
+  (`connect()` -> `ClientStack.sysctl`). 4 unit + 6 integration tests.
+
+Design notes:
+- Control bodies are **JSON** documents (the low-frequency netlink half),
+  not the binary struct framing the data plane uses. Typed values cross
+  via the tagged value codec.
+- One `CONTROL_CALL` op routes on `(api, method)` in the body rather than
+  one op per method — the op space stays tiny.
+- A per-API **method allowlist** in `ipc__control.py` gates which
+  wire-supplied names may be invoked; the dispatcher never reflects an
+  arbitrary attribute off a stack object.
+- Remote failures surface client-side as a single `IpcRemoteError`
+  (carrying the remote type name + message) — Phase-1 simplification; the
+  original exception type is reported, not reconstructed.
+
+**Remaining (5 API mirrors):** `route`, `link`, `address`, `neighbor`,
+`membership`. Each adds a `client__<api>.py` proxy (the four
+device-scoped APIs mirror the `interface(ifindex)` chaining into the RPC
+body's `ifindex`), an allowlist + resolver entry in `ipc__control.py`,
+and a `NetworkTestCase`-based integration test exercising the proxy
+against the harness's `mock__init`-populated `stack.<api>` singletons.
+
+### Phase 2 — TCP socket syscall RPC + data-channel fd passing — later
