@@ -51,6 +51,9 @@ from pytcp.ipc.ipc__errors import IpcFrameError
 IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC: float = 0.2
 IPC__DGRAM_BRIDGE__CHUNK_SIZE: int = 65600
 IPC__DGRAM_BRIDGE__JOIN_TIMEOUT__SEC: float = 2.0
+# Ancillary-data buffer the RX pump offers 'recvmsg', large enough for
+# the data-path cmsgs PyTCP emits (IP_TOS / IPV6_TCLASS / IP_OPTIONS).
+IPC__DGRAM_BRIDGE__ANCBUF_SIZE: int = 256
 
 
 class DatagramSocket(Protocol):
@@ -58,10 +61,16 @@ class DatagramSocket(Protocol):
     The stack datagram-socket surface the datagram bridge drives.
     """
 
-    def recvfrom(self, bufsize: int | None, timeout: float | None) -> tuple[bytes, tuple[str, int]]:
+    def recvmsg(
+        self,
+        bufsize: int | None,
+        ancbufsize: int,
+        flags: int,
+        timeout: float | None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
         """
-        Receive one datagram with its sender address, blocking up to
-        'timeout' seconds.
+        Receive one datagram with its ancillary data and sender address,
+        blocking up to 'timeout' seconds.
         """
 
     def sendto(self, data: bytes, address: tuple[str, int]) -> int:
@@ -107,12 +116,17 @@ class DatagramBridge:
     def _pump_rx(self) -> None:
         """
         Pump stack-received datagrams out to the client, framed with the
-        sender address.
+        sender address and any ancillary control messages.
         """
 
         while not self._event__stop.is_set():
             try:
-                data, address = self._dgram_socket.recvfrom(None, IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC)
+                data, ancdata, _flags, address = self._dgram_socket.recvmsg(
+                    None,
+                    IPC__DGRAM_BRIDGE__ANCBUF_SIZE,
+                    0,
+                    IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC,
+                )
             except TimeoutError:
                 continue
             except OSError:
@@ -122,7 +136,7 @@ class DatagramBridge:
                 continue
 
             try:
-                self._data_end.send(encode_dgram(address, data))
+                self._data_end.send(encode_dgram((address[0], address[1]), data, ancdata))
             except OSError:
                 break
 
@@ -144,7 +158,9 @@ class DatagramBridge:
                 continue
 
             try:
-                address, payload = decode_dgram(blob)
+                # The send side honours no cmsg in PyTCP, so the framed
+                # ancillary data (if any) is decoded and ignored here.
+                address, _cmsg, payload = decode_dgram(blob)
             except IpcFrameError:
                 continue
 

@@ -43,31 +43,33 @@ class TestIpcDgramFrame(TestCase):
 
     def test__ipc__dgram_frame__ipv4_round_trip(self) -> None:
         """
-        Ensure an IPv4 (address, payload) datagram round-trips through the
-        frame codec with the address and payload recovered intact.
+        Ensure an IPv4 (address, cmsg, payload) datagram round-trips
+        through the frame codec with the address, empty cmsg list, and
+        payload recovered intact.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
             decode_dgram(encode_dgram(("10.0.1.91", 50000), b"hello")),
-            (("10.0.1.91", 50000), b"hello"),
+            (("10.0.1.91", 50000), [], b"hello"),
             msg="An IPv4 datagram frame must round-trip its address and payload.",
         )
 
     def test__ipc__dgram_frame__ipv6_round_trip(self) -> None:
         """
-        Ensure an IPv6 (address, payload) datagram round-trips through the
-        frame codec with the address normalised and payload intact.
+        Ensure an IPv6 (address, cmsg, payload) datagram round-trips
+        through the frame codec with the address normalised and payload
+        intact.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        address, payload = decode_dgram(encode_dgram(("2001:db8::91", 50000), b"hi6"))
+        address, cmsg, payload = decode_dgram(encode_dgram(("2001:db8::91", 50000), b"hi6"))
 
         self.assertEqual(
-            (address, payload),
-            (("2001:db8::91", 50000), b"hi6"),
+            (address, cmsg, payload),
+            (("2001:db8::91", 50000), [], b"hi6"),
             msg="An IPv6 datagram frame must round-trip its address and payload.",
         )
 
@@ -81,8 +83,25 @@ class TestIpcDgramFrame(TestCase):
 
         self.assertEqual(
             decode_dgram(encode_dgram(None, b"connected")),
-            (None, b"connected"),
+            (None, [], b"connected"),
             msg="An address-less datagram frame must round-trip to a None address.",
+        )
+
+    def test__ipc__dgram_frame__cmsg_round_trip(self) -> None:
+        """
+        Ensure ancillary control messages round-trip alongside the
+        address and payload, so recvmsg cmsgs (IP_TOS / IP_OPTIONS /
+        IPV6_TCLASS) survive the boundary.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        cmsg = [(0, 1, b"\x10"), (41, 67, b"\x00\x00\x00\x20")]
+
+        self.assertEqual(
+            decode_dgram(encode_dgram(("10.0.1.91", 50000), b"with-cmsg", cmsg)),
+            (("10.0.1.91", 50000), cmsg, b"with-cmsg"),
+            msg="Ancillary cmsgs must round-trip alongside the address and payload.",
         )
 
     def test__ipc__dgram_frame__empty_payload(self) -> None:
@@ -95,7 +114,7 @@ class TestIpcDgramFrame(TestCase):
 
         self.assertEqual(
             decode_dgram(encode_dgram(("10.0.1.91", 7), b"")),
-            (("10.0.1.91", 7), b""),
+            (("10.0.1.91", 7), [], b""),
             msg="An empty-payload datagram frame must round-trip.",
         )
 

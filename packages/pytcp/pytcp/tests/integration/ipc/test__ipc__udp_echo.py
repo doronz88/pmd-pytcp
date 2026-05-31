@@ -32,9 +32,9 @@ End-to-end UDP echo integration test for the kernel/userspace boundary.
 An out-of-process client opens a UDP socket on the daemon, binds it, and
 exchanges datagrams with a peer simulated on the TAP wire over its real
 SOCK_DGRAM descriptor — exercising the datagram data plane (control RPC +
-SCM_RIGHTS data channel + datagram bridge + per-datagram address framing)
-against the live stack. UDP has no handshake, so both directions run
-inline on the main thread.
+SCM_RIGHTS data channel + datagram bridge + per-datagram address framing,
+plus the recvmsg ancillary cmsg path) against the live stack. UDP has no
+handshake, so both directions run inline on the main thread.
 
 pytcp/tests/integration/ipc/test__ipc__udp_echo.py
 
@@ -52,7 +52,7 @@ from net_proto.protocols.udp.udp__assembler import UdpAssembler
 from pytcp import stack
 from pytcp.client import ClientStack, ClientUdpSocket, connect
 from pytcp.ipc.ipc__server import IpcServer
-from pytcp.socket import AddressFamily, SocketType
+from pytcp.socket import IP_RECVTOS, IP_TOS, IPPROTO_IP, AddressFamily, SocketType
 from pytcp.tests.lib.network_testcase import (
     HOST_A__IP4_ADDRESS,
     HOST_A__MAC_ADDRESS,
@@ -143,10 +143,11 @@ class TestIpcUdpEcho(UdpTestCase):
         sock.bind((str(STACK__IP4_HOST.address), _LOCAL_PORT))
         return sock
 
-    def _peer_datagram(self, *, payload: bytes) -> bytes:
+    def _peer_datagram(self, *, payload: bytes, dscp: int = 0) -> bytes:
         """
         Build an Ethernet/IPv4/UDP datagram from the peer to the bound
-        stack socket.
+        stack socket, optionally marked with a DSCP (the high 6 bits of
+        the TOS byte).
         """
 
         return bytes(
@@ -156,6 +157,7 @@ class TestIpcUdpEcho(UdpTestCase):
                 ethernet__payload=Ip4Assembler(
                     ip4__src=HOST_A__IP4_ADDRESS,
                     ip4__dst=STACK__IP4_HOST.address,
+                    ip4__dscp=dscp,
                     ip4__payload=UdpAssembler(
                         udp__sport=_REMOTE_PORT,
                         udp__dport=_LOCAL_PORT,
@@ -181,6 +183,28 @@ class TestIpcUdpEcho(UdpTestCase):
             sock.recvfrom(),
             (b"ping", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT)),
             msg="The client must receive the peer datagram and its sender address over its fd.",
+        )
+
+    def test__udp_echo__recvmsg_carries_ip_tos_cmsg(self) -> None:
+        """
+        Ensure that with IP_RECVTOS enabled, an inbound datagram's TOS is
+        delivered to the out-of-process client as an IP_TOS ancillary
+        control message on recvmsg.
+
+        Reference: RFC 1122 §4.1.4 (IP_TOS reported to the application).
+        """
+
+        sock = self._bound_socket()
+        sock.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+        # DSCP occupies the high 6 bits of the TOS byte: dscp 8 -> TOS 0x20.
+        self._drive_udp_rx(frame=self._peer_datagram(payload=b"marked", dscp=8))
+
+        data, ancdata, _flags, address = sock.recvmsg()
+
+        self.assertEqual(
+            (data, ancdata, address),
+            (b"marked", [(int(IPPROTO_IP), int(IP_TOS), b"\x20")], (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT)),
+            msg="recvmsg must deliver the inbound TOS as an IP_TOS cmsg when IP_RECVTOS is set.",
         )
 
     def test__udp_echo__client_datagram_reaches_the_wire(self) -> None:

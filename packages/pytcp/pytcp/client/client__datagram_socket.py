@@ -60,14 +60,16 @@ class _ClientDatagramBase:
     Shared client-side datagram-socket plumbing (UDP and raw).
     """
 
-    def __init__(self, client: IpcClient, handle: int, data_fd: int, /) -> None:
+    def __init__(self, client: IpcClient, handle: int, data_fd: int, family: AddressFamily, /) -> None:
         """
         Adopt the passed SOCK_DGRAM data-channel descriptor and bind the
-        shim to its daemon handle.
+        shim to its daemon handle. 'family' selects the recvmsg address
+        shape (a 4-tuple for IPv6, mirroring stdlib).
         """
 
         self._client = client
         self._handle = handle
+        self._family = family
         self._data_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM, fileno=data_fd)
 
     def fileno(self) -> int:
@@ -116,11 +118,34 @@ class _ClientDatagramBase:
         truncating the payload to 'bufsize'.
         """
 
-        address, payload = decode_dgram(self._data_socket.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE))
+        address, _cmsg, payload = decode_dgram(self._data_socket.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE))
         # The daemon's RX pump always frames a received datagram with its
         # sender address, so a None address here is a protocol violation.
         assert address is not None, "A received datagram frame carried no sender address."
         return payload[:bufsize], address
+
+    def recvmsg(
+        self,
+        bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD,
+        ancbufsize: int = 0,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
+        """
+        Receive one datagram with its ancillary control messages and
+        sender address, mirroring stdlib 'socket.recvmsg'. The IPv6
+        address is a 4-tuple '(host, port, flowinfo, scope_id)' (flowinfo
+        / scope_id are 0 — PyTCP does not track them per datagram).
+        'ancbufsize' is advisory: the daemon already framed every cmsg the
+        socket enabled.
+        """
+
+        _ = ancbufsize
+        address, cmsg, payload = decode_dgram(self._data_socket.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE))
+        assert address is not None, "A received datagram frame carried no sender address."
+
+        out_address: tuple[str, int] | tuple[str, int, int, int] = (
+            (address[0], address[1], 0, 0) if self._family is AddressFamily.INET6 else address
+        )
+        return payload[:bufsize], cmsg, 0, out_address
 
     def recv(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> bytes:
         """
@@ -207,7 +232,7 @@ class ClientUdpSocket(_ClientDatagramBase):
         """
 
         handle, data_fd = open_socket(client, family=family, type_=SocketType.DGRAM)
-        super().__init__(client, handle, data_fd)
+        super().__init__(client, handle, data_fd, family)
 
 
 class ClientRawSocket(_ClientDatagramBase):
@@ -230,4 +255,4 @@ class ClientRawSocket(_ClientDatagramBase):
         """
 
         handle, data_fd = open_socket(client, family=family, type_=SocketType.RAW, protocol=protocol)
-        super().__init__(client, handle, data_fd)
+        super().__init__(client, handle, data_fd, family)

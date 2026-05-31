@@ -54,17 +54,30 @@ class _DatagramSocketStub:
     """
 
     def __init__(self) -> None:
-        self._inbound: queue.Queue[tuple[bytes, tuple[str, int]]] = queue.Queue()
+        self._inbound: queue.Queue[tuple[bytes, list[tuple[int, int, bytes]], tuple[str, int]]] = queue.Queue()
         self.outbound: list[tuple[bytes, tuple[str, int] | None]] = []
 
-    def inject(self, data: bytes, address: tuple[str, int], /) -> None:
-        self._inbound.put((data, address))
+    def inject(
+        self,
+        data: bytes,
+        address: tuple[str, int],
+        ancdata: list[tuple[int, int, bytes]] | None = None,
+        /,
+    ) -> None:
+        self._inbound.put((data, ancdata or [], address))
 
-    def recvfrom(self, bufsize: int | None, timeout: float | None) -> tuple[bytes, tuple[str, int]]:
+    def recvmsg(
+        self,
+        bufsize: int | None,
+        ancbufsize: int,
+        flags: int,
+        timeout: float | None,
+    ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int]]:
         try:
-            return self._inbound.get(timeout=timeout)
+            data, ancdata, address = self._inbound.get(timeout=timeout)
         except queue.Empty:
             raise TimeoutError from None
+        return data, ancdata, 0, address
 
     def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         self.outbound.append((data, address))
@@ -121,8 +134,24 @@ class TestIpcDatagramBridge(TestCase):
 
         self.assertEqual(
             decode_dgram(self._client_end.recv(65600)),
-            (("10.0.1.91", 5000), b"down"),
+            (("10.0.1.91", 5000), [], b"down"),
             msg="The RX pump must frame a received datagram with its sender address.",
+        )
+
+    def test__ipc__dgram_bridge__rx_frames_ancillary_cmsgs(self) -> None:
+        """
+        Ensure ancillary control messages a 'recvmsg' yields are framed
+        alongside the datagram and pumped to the client end.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._stack.inject(b"tos", ("10.0.1.91", 5000), [(0, 1, b"\x10")])
+
+        self.assertEqual(
+            decode_dgram(self._client_end.recv(65600)),
+            (("10.0.1.91", 5000), [(0, 1, b"\x10")], b"tos"),
+            msg="The RX pump must carry recvmsg cmsgs alongside the datagram.",
         )
 
     def test__ipc__dgram_bridge__tx_replays_address_as_sendto(self) -> None:
