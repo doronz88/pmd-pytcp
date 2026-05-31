@@ -82,7 +82,7 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
     the maximum.
     """
 
-    prefix = _recv_exactly(sock, IPC__FRAME__LENGTH_PREFIX_LEN)
+    prefix = recv_exactly(sock, IPC__FRAME__LENGTH_PREFIX_LEN)
 
     if len(prefix) == 0:
         return None
@@ -99,7 +99,7 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
             f"Frame length prefix {length} exceeds the maximum " f"of {IPC__FRAME__MAX_PAYLOAD_LEN} bytes.",
         )
 
-    payload = _recv_exactly(sock, length)
+    payload = recv_exactly(sock, length)
 
     if len(payload) < length:
         raise IpcFrameError(
@@ -109,7 +109,7 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
     return payload
 
 
-def _recv_exactly(sock: socket.socket, count: int, /) -> bytes:
+def recv_exactly(sock: socket.socket, count: int, /) -> bytes:
     """
     Read exactly 'count' bytes from the stream, looping over partial
     reads. Returns fewer than 'count' bytes only when the peer closes
