@@ -53,7 +53,7 @@ from pytcp.ipc.ipc__client import IpcClient
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__errors import IpcConnectionError, IpcRemoteError
 from pytcp.ipc.ipc__values import decode_value, encode_value
-from pytcp.socket import AddressFamily
+from pytcp.socket import AddressFamily, SocketType
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -169,7 +169,13 @@ def socket_call(
     )
 
 
-def open_socket(client: IpcClient, /, *, family: AddressFamily) -> tuple[int, int]:
+def open_socket(
+    client: IpcClient,
+    /,
+    *,
+    family: AddressFamily,
+    type_: SocketType,
+) -> tuple[int, int]:
     """
     Issue the fd-bearing 'socket' call and return '(handle, data_fd)',
     where 'data_fd' is the passed data-channel descriptor the client owns.
@@ -180,7 +186,7 @@ def open_socket(client: IpcClient, /, *, family: AddressFamily) -> tuple[int, in
 
     response, fd = client.request_with_fd(
         IpcOp.SOCKET_CALL,
-        body=encode_socket_request(method="socket", handle=None, args={"family": family}),
+        body=encode_socket_request(method="socket", handle=None, args={"family": family, "type": type_}),
     )
 
     if response.kind is IpcMessageKind.RESPONSE_OK:

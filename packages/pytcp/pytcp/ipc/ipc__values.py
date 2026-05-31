@@ -77,6 +77,7 @@ from pytcp.socket import (
     IpV6Option,
     MsgFlag,
     SocketOption,
+    SocketType,
     SolLevel,
     SolSocketOption,
 )
@@ -114,6 +115,7 @@ _ENUM_TYPES: tuple[type[Enum], ...] = (
     InterfaceLayer,
     LinkFlag,
     IpProto,
+    SocketType,
     SolLevel,
     SocketOption,
     SolSocketOption,

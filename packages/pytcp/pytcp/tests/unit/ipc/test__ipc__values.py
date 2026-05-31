@@ -58,6 +58,7 @@ from pytcp.socket import (
     SOL_SOCKET,
     TCP_NODELAY,
     AddressFamily,
+    SocketType,
 )
 from pytcp.stack.link import LinkFlag, LinkStats
 from pytcp.stack.neighbor import NeighborSnapshot
@@ -153,6 +154,8 @@ class TestIpcValuesRoundTrip(TestCase):
         for value in [
             AddressFamily.INET4,
             AddressFamily.INET6,
+            SocketType.STREAM,
+            SocketType.DGRAM,
             RouteProtocol.STATIC,
             RouteScope.LINK,
             NudState.PERMANENT,

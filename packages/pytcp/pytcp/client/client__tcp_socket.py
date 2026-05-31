@@ -43,7 +43,7 @@ import socket
 from net_proto.lib.enums import IpProto
 from pytcp.ipc.ipc__client import IpcClient
 from pytcp.ipc.ipc__socket_rpc import open_socket, socket_call
-from pytcp.socket import AddressFamily
+from pytcp.socket import AddressFamily, SocketType
 
 
 class ClientTcpSocket:
@@ -58,7 +58,7 @@ class ClientTcpSocket:
         """
 
         self._client = client
-        handle, data_fd = open_socket(client, family=family)
+        handle, data_fd = open_socket(client, family=family, type_=SocketType.STREAM)
         self._handle = handle
         self._data_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=data_fd)
 

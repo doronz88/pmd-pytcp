@@ -42,7 +42,7 @@ from pytcp.ipc.ipc__client import IpcClient
 from pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
 from pytcp.ipc.ipc__message import IpcMessage
 from pytcp.ipc.ipc__socket_rpc import decode_socket_value, encode_socket_request
-from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET, AddressFamily
+from pytcp.socket import SO_KEEPALIVE, SOL_SOCKET, AddressFamily, SocketType
 from pytcp.tests.lib.ipc_control_testcase import IpcControlTestCase
 
 
@@ -66,6 +66,7 @@ class TestIpcSocketSession(IpcControlTestCase):
         /,
         *,
         family: AddressFamily = AddressFamily.INET4,
+        socket_type: SocketType = SocketType.STREAM,
     ) -> tuple[IpcMessage, int | None]:
         """
         Issue the fd-bearing 'socket' SOCKET_CALL and return the response
@@ -74,7 +75,11 @@ class TestIpcSocketSession(IpcControlTestCase):
 
         return client.request_with_fd(
             IpcOp.SOCKET_CALL,
-            body=encode_socket_request(method="socket", handle=None, args={"family": family}),
+            body=encode_socket_request(
+                method="socket",
+                handle=None,
+                args={"family": family, "type": socket_type},
+            ),
         )
 
     def _call(
@@ -116,6 +121,49 @@ class TestIpcSocketSession(IpcControlTestCase):
             (response.kind, decode_socket_value(response.body), data_end.family),
             (IpcMessageKind.RESPONSE_OK, {"handle": 0}, socket.AF_UNIX),
             msg="The 'socket' call must return handle 0 with a working AF_UNIX data-channel fd.",
+        )
+
+    def test__ipc__socket__dgram_open_returns_dgram_fd(self) -> None:
+        """
+        Ensure a DGRAM 'socket' call returns a handle and passes a
+        working SOCK_DGRAM data-channel descriptor.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        client = self._raw_client()
+        response, fd = self._open(client, socket_type=SocketType.DGRAM)
+        self.assertIsNotNone(fd, msg="The DGRAM 'socket' call must pass a data-channel fd.")
+        assert fd is not None
+        data_end = socket.socket(fileno=fd)
+        self.addCleanup(data_end.close)
+
+        self.assertEqual(
+            (response.kind, decode_socket_value(response.body), data_end.type),
+            (IpcMessageKind.RESPONSE_OK, {"handle": 0}, socket.SOCK_DGRAM),
+            msg="A DGRAM socket() must return handle 0 with a working SOCK_DGRAM data-channel fd.",
+        )
+
+    def test__ipc__socket__dgram_bind_then_getsockname(self) -> None:
+        """
+        Ensure a bind on a DGRAM handle is reflected by a subsequent
+        getsockname over the same handle.
+
+        Reference: RFC 768 (UDP — local socket addressing).
+        """
+
+        client = self._raw_client()
+        _, fd = self._open(client, socket_type=SocketType.DGRAM)
+        assert fd is not None
+        self.addCleanup(socket.socket(fileno=fd).close)
+
+        self._call(client, method="bind", handle=0, args={"address": ("0.0.0.0", 41001)})
+        response = self._call(client, method="getsockname", handle=0, args={})
+
+        self.assertEqual(
+            decode_socket_value(response.body),
+            ("0.0.0.0", 41001),
+            msg="getsockname must reflect the address bound on a DGRAM handle.",
         )
 
     def test__ipc__socket__bind_then_getsockname(self) -> None:
