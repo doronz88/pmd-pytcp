@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0-5 complete (every socket family out-of-process + accept; the daemon exposes an IPC socket and a client example runs as a separate process); Phase 6 remains (dedicated daemon entry point + lifecycle).** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **COMPLETE — all six phases shipped: TCP/UDP/raw/AF_PACKET sockets + active connect + passive accept + recvmsg cmsg out-of-process, the six control APIs mirrored, and a first-class `python -m pytcp.daemon` / `pytcpd` entry point with a client readiness helper. Created 2026-05-31 on `PyTCP_3_0_7`.** Deferred: codec-core extraction for a slim client (§2), IP_RECVERR error-queue cmsg, selectable/cancelable accept. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -570,10 +570,49 @@ Design notes:
   `pytcp` — but it boots nothing. A truly slim client needs the codec
   core extracted into a standalone dist, the deferred §2 work.
 
-### Phase 6 — later
+### Phase 6 — Daemon entry point + lifecycle (complete)
 
-Dedicated daemon entry point (`python -m pytcp.daemon` / a `pytcpd`
-console script), `$XDG_RUNTIME_DIR` socket-path default, readiness
-signalling, and a `mock__`-style harness affordance — see §4. The
-IP_RECVERR error-queue `recvmsg(MSG_ERRQUEUE)` path is a small deferred
-datagram-plane follow-up.
+- `4ec85b8e` — a first-class daemon, no longer only the
+  `examples/stack.py` affordance. `pytcp/daemon/` boots the stack on one
+  interface, serves the AF_UNIX control socket, and blocks until
+  SIGINT/SIGTERM, tearing both down on exit. `default_socket_path()` is
+  `$XDG_RUNTIME_DIR/pytcp.sock` (temp-dir fallback); readiness is an
+  `on_ready(socket_path)` callback (so the run loop is output-free and
+  testable). `python -m pytcp.daemon` parses options with stdlib argparse
+  (the stack is zero-dependency — no Click), and a `pytcpd` console script
+  wraps it. `pytcp.client.wait_for_daemon()` blocks until the socket
+  accepts (for a client that races startup); `IpcClient` now closes its
+  socket on a failed connect so a not-yet-up daemon doesn't orphan a
+  descriptor. 4 unit + 2 integration tests.
+
+Design notes:
+- **argparse, not Click.** The daemon lives in the zero-dependency `pytcp`
+  dist, so its CLI is stdlib `argparse`; only the `examples/` tree (a
+  separate, non-shipped package) uses Click.
+- **Readiness is the socket existing.** `IpcServer` binds+listens in
+  `__init__`, so the control socket accepts connections the moment the
+  server is constructed; `wait_for_daemon` is the client-side poll for
+  that, and the `on_ready` callback the daemon-side announcement.
+
+## 10. Track complete
+
+All six phases are shipped. A separate OS process can now `connect()` to
+a running PyTCP daemon and:
+- open TCP / UDP / raw / AF_PACKET sockets, each backed by a real,
+  selectable fd (SCM_RIGHTS), with active connect and passive accept;
+- read recvmsg ancillary cmsgs on datagram sockets;
+- drive the six control APIs (sysctl / route / link / address / neighbor
+  / membership) — all over one AF_UNIX control channel.
+
+The stack itself was never modified — the whole frontend is additive, and
+the original ~12k in-process tests stayed green throughout.
+
+**Deferred follow-ups** (documented, not blocking):
+1. **Codec-core extraction** (§2) — `pytcp.client` still transitively
+   imports stack types via the value codec; a standalone `PyTCP-net_ipc`
+   dist would give a genuinely slim client.
+2. **IP_RECVERR error-queue** `recvmsg(MSG_ERRQUEUE)` over the boundary —
+   an on-demand path the data bridge does not pump.
+3. **Selectable / cancelable accept** — today a client that disconnects
+   mid-accept leaves the dispatch thread polling until server stop
+   (Phase-4 limitation).
