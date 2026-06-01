@@ -47,7 +47,7 @@ dataclass, with integrity + sanity validation and typed wire enums.
 ## The six-file pattern
 
 Every protocol under `protocols/<proto>/` follows the same layout
-(see [`.claude/rules/net_proto.md`](../../.claude/rules/net_proto.md)):
+(see [`.claude/rules/net_proto.md`](https://github.com/ccie18643/PyTCP/blob/master/.claude/rules/net_proto.md)):
 
 - `<proto>__header.py` — the frozen `*Header` dataclass
   (`@dataclass(frozen=True, kw_only=True, slots=True)`) + the
@@ -112,14 +112,14 @@ library) — no other runtime dependencies. Fully typed (ships
 Python **3.14+** (PEP 695 generics on the assembler stacking,
 modern typing throughout).
 
-## Current state (3.0.6)
+## Current state (3.0.7)
 
 - ~260 source modules; **5770 unit tests**, ~99% source coverage
   (the remaining lines are protocol dunders, `from_buffer`
   unpacking, and a few integrity-rejection branches with no
   dedicated rejection test — test-completeness, not defects).
 - Per-RFC adherence records live in
-  [`docs/rfc/`](../../docs/rfc/) (the wire-format header / parser
+  [`docs/rfc/`](https://github.com/ccie18643/PyTCP/tree/master/docs/rfc) (the wire-format header / parser
   / assembler / options rows are net_proto's surface). The
   parser RFC-adherence pass and the assembler audit pass are both
   CLOSED; follow-up audits A–L are complete (see

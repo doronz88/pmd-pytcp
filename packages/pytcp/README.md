@@ -18,13 +18,16 @@ and IGMP IPv4 multicast group membership), DHCPv4 and DHCPv6 clients,
 UDP, and a RFC 9293 TCP with a real FSM, congestion control
 (Reno / NewReno / CUBIC), SACK / timestamps / window-scaling, and a
 BSD-sockets facade. It runs on a TAP/TUN interface in user space — no
-kernel module, no privileged data path.
+kernel module, no privileged data path. It can be embedded in-process
+as a library, or run as a **daemon** that out-of-process clients drive
+over an AF_UNIX control boundary — the kernel/userspace split described
+below.
 
 The project's north star is **feature-equivalence with the Linux
 host network stack**: where an RFC is unambiguous PyTCP follows it,
 and where it is silent or offers a menu PyTCP picks the Linux
 choice. Per-RFC adherence is audited under
-[`docs/rfc/`](../../docs/rfc/).
+[`docs/rfc/`](https://github.com/ccie18643/PyTCP/tree/master/docs/rfc).
 
 ## The three distributions
 
@@ -111,6 +114,44 @@ membership and source-filter options (`IP_ADD_MEMBERSHIP`,
 (`AF_INET`, `SOCK_STREAM`, `IP_*`, `SO_*`, `MSG_*`) are exposed as
 bare module names backed by `IntEnum`s.
 
+## Daemon mode — out-of-process clients
+
+The stack runs as a **daemon**: a normal in-process stack that also
+listens on an AF_UNIX control socket, so a **separate process** opens
+sockets and drives the control-plane APIs through `pytcp.client` —
+exactly the way a Linux process talks to the kernel. The client never
+boots the stack; it holds real, `selectors`-pollable socket fds handed
+to it across the boundary via `SCM_RIGHTS`.
+
+Start the daemon (it owns the TAP interface); the first-class entry
+point ships in the package as `python -m pytcp.daemon` (or the `pytcpd`
+console script after install), defaulting the control socket to
+`$XDG_RUNTIME_DIR/pytcp.sock`:
+
+```bash
+python -m pytcp.daemon --ipc-socket /tmp/pytcp.sock
+```
+
+Then, from any other process — note it imports `pytcp.client`, boots
+no stack, and calls no `stack.init()`:
+
+```python
+from pytcp.client import connect
+from pytcp.socket import AddressFamily, SocketType
+
+with connect(socket_path="/tmp/pytcp.sock") as client:
+    sock = client.socket(AddressFamily.INET4, SocketType.STREAM)
+    sock.connect(("10.0.1.1", 7))   # a real, selectable fd backs this socket
+    sock.send(b"hello")
+    print(sock.recv(5))
+```
+
+The same `client.socket(...)` factory returns UDP / raw / `AF_PACKET`
+sockets, and `client.sysctl` / `.route` / `.link` / `.address` /
+`.neighbor` / `.membership` mirror the in-process control APIs across
+the boundary. See
+[`examples/client__tcp_echo_ipc.py`](https://github.com/ccie18643/PyTCP/blob/master/examples/client__tcp_echo_ipc.py).
+
 ## Install
 
 ```bash
@@ -135,7 +176,7 @@ make run_multi   # multi-interface demo
 
 PyTCP is consumed as a library through the `stack` lifecycle API and
 the `pytcp.socket` BSD-sockets API. See
-[`examples/`](../../examples/) — `examples/stack.py` is the complete
+[`examples/`](https://github.com/ccie18643/PyTCP/tree/master/examples) — `examples/stack.py` is the complete
 runnable reference (TAP/TUN open, `stack.init(...)`, multi-interface
 bind, runtime interface removal on SIGUSR1).
 
@@ -143,17 +184,21 @@ bind, runtime interface removal on SIGUSR1).
 
 Python **3.14+**, Linux (TAP/TUN), POSIX.
 
-## Current state (3.0.6)
+## Current state (3.0.7)
 
-- ~175 source modules; the pytcp suite runs ~4,000 unit + integration
-  tests (the full repo suite, across all three packages + examples, is
-  ~12,400). Lint clean (codespell + isort + black + flake8 + mypy
-  strict + pylint).
-- Host-stack feature-complete (North Star Phase 1). Phase-2
-  router/forwarding sits behind the `forward_or_deliver` seam as a
-  stub. Authoring contracts in
-  [`.claude/rules/pytcp.md`](../../.claude/rules/pytcp.md); per-RFC
-  adherence in [`docs/rfc/`](../../docs/rfc/).
+- ~210 source modules; 3.0.7 adds the kernel/userspace IPC layer (an
+  `ipc` AF_UNIX RPC + SCM_RIGHTS fd-passing core, a `client`
+  out-of-process mirror, and a first-class `daemon` entry point). The
+  pytcp suite runs ~4,000 unit + integration tests (the full repo
+  suite, across all three packages + examples, is ~12,500). Lint clean
+  (codespell + isort + black + flake8 + mypy strict + pylint).
+- Host-stack feature-complete (North Star Phase 1), now reachable both
+  in-process and over an out-of-process **daemon** boundary (AF_UNIX
+  control plane + SCM_RIGHTS socket-fd passing for TCP / UDP / raw /
+  `AF_PACKET`). Phase-2 router/forwarding sits behind the
+  `forward_or_deliver` seam as a stub. Authoring contracts in
+  [`.claude/rules/pytcp.md`](https://github.com/ccie18643/PyTCP/blob/master/.claude/rules/pytcp.md); per-RFC
+  adherence in [`docs/rfc/`](https://github.com/ccie18643/PyTCP/tree/master/docs/rfc).
 
 ## License
 

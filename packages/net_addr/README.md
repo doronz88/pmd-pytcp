@@ -135,7 +135,7 @@ pip install "PyTCP-net_addr[cli]"   # adds click; exposes the net_addr ClickType
 Python **3.14+** (the library uses PEP 695 generics and modern
 typing).
 
-## Current state (3.0.6)
+## Current state (3.0.7)
 
 - 23 source modules; **2610 unit tests**, ~99% source coverage (the
   remaining lines are `@abstractmethod` stub bodies, a documented
@@ -146,7 +146,7 @@ typing).
   encoded **in code + unit tests**, not in `docs/rfc` — by design,
   since this is a value-type library, not a wire protocol. The
   authoring contract lives in
-  [`.claude/rules/net_addr.md`](../../.claude/rules/net_addr.md).
+  [`.claude/rules/net_addr.md`](https://github.com/ccie18643/PyTCP/blob/master/.claude/rules/net_addr.md).
 
 ## License
 
