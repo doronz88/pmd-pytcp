@@ -179,7 +179,9 @@ make run_multi   # multi-interface demo (runs on tap7 + tap9)
 Point-to-point TUN interfaces (IP), each created pre-addressed and
 needing no bridge, are also available — `make tun3`
 (172.16.1.1/24, 2001:db8:1::1/64) and `make tun5`
-(172.16.2.1/24, 2001:db8:2::1/64). A stack can `init()` with zero
+(172.16.2.1/24, 2001:db8:2::1/64) set up the host side, and
+`make run_tun` / `make run_tun5` run the stack on the matching device
+(taking the `.2` host in each subnet). A stack can `init()` with zero
 interfaces and add / remove them at runtime, so any mix of taps and
 tuns can be attached to one running stack.
 
