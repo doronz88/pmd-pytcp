@@ -34,6 +34,9 @@ dependencies = ["PyTCP-net_addr==3.0.7", "PyTCP-net_proto==3.0.7"]
 requires-python = ">=3.14"
 dynamic = ["version"]
 
+[project.scripts]
+pytcpd = "pytcp.daemon.__main__:main"
+
 [project.urls]
 "Homepage" = "https://github.com/ccie18643/PyTCP"
 "Bug Tracker" = "https://github.com/ccie18643/PyTCP/issues"

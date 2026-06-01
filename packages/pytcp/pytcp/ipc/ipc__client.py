@@ -72,7 +72,13 @@ class IpcClient:
         self._timeout = timeout
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.settimeout(timeout)
-        self._socket.connect(socket_path)
+        try:
+            self._socket.connect(socket_path)
+        except OSError:
+            # Close the just-created socket so a failed connect (e.g. the
+            # daemon not up yet) does not orphan an open descriptor.
+            self._socket.close()
+            raise
 
     def request(self, op: int, /, *, body: Buffer = b"") -> IpcMessage:
         """

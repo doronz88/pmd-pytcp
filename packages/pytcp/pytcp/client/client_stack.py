@@ -37,6 +37,7 @@ pytcp/client/client_stack.py
 ver 3.0.7
 """
 
+import time
 from types import TracebackType
 from typing import Self
 
@@ -51,7 +52,10 @@ from pytcp.client.client__route import ClientRoute
 from pytcp.client.client__sysctl import ClientSysctl
 from pytcp.client.client__tcp_socket import ClientTcpSocket
 from pytcp.ipc.ipc__client import IpcClient
+from pytcp.ipc.ipc__errors import IpcConnectionError
 from pytcp.socket import ETH_P_ALL, AddressFamily, SocketType
+
+IPC__CLIENT__READINESS_POLL__SEC: float = 0.05
 
 
 class ClientStack:
@@ -140,3 +144,24 @@ def connect(*, socket_path: str) -> ClientStack:
     """
 
     return ClientStack(socket_path=socket_path)
+
+
+def wait_for_daemon(*, socket_path: str, timeout: float = 5.0) -> None:
+    """
+    Block until the daemon's control socket accepts a connection, so a
+    client that races the daemon's startup can wait for readiness before
+    'connect()'. Raises 'IpcConnectionError' if the daemon does not become
+    ready within 'timeout' seconds.
+    """
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            IpcClient(socket_path=socket_path).close()
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise IpcConnectionError(
+                    f"PyTCP daemon did not become ready on {socket_path!r} within {timeout}s.",
+                ) from None
+            time.sleep(IPC__CLIENT__READINESS_POLL__SEC)

@@ -23,45 +23,15 @@
 
 
 """
-This package contains the PyTCP client — the userspace half of the
-kernel/userspace boundary.
+This package contains the PyTCP daemon entry point — the first-class
+'python -m pytcp.daemon' / 'pytcpd' runner that boots the stack and serves
+out-of-process 'pytcp.client' consumers over an AF_UNIX control socket.
 
-A client process talks to a running PyTCP daemon over the AF_UNIX IPC
-control channel through a surface that mirrors the in-process
-'pytcp.stack' control APIs. 'connect()' opens a connection and returns a
-'ClientStack' whose '.sysctl' / '.route' / '.link' / '.address' /
-'.neighbor' / '.membership' attributes carry the same method signatures
-as the daemon-side singletons, marshalling each call across the boundary.
-
-'ClientStack.socket()' opens a socket on the daemon and returns a
-'ClientTcpSocket' (STREAM), 'ClientUdpSocket' (DGRAM), 'ClientRawSocket'
-(RAW on an INET family), or 'ClientPacketSocket' (RAW on AF_PACKET) whose
-data path is a real, selectable descriptor. 'wait_for_daemon()' blocks
-until the daemon's control socket is accepting, for clients that race
-startup.
-
-This is an encapsulated subpackage (source_files.md §2.4.1): the only
-public symbols are 'connect', 'ClientStack', and the four 'Client*Socket'
-shims; every other module here ('client__*') is private implementation.
-The per-API proxy objects are reached through 'ClientStack' attributes,
-and a socket shim through 'ClientStack.socket()', never imported directly.
-
-pytcp/client/__init__.py
+pytcp/daemon/__init__.py
 
 ver 3.0.7
 """
 
-from pytcp.client.client__datagram_socket import ClientRawSocket, ClientUdpSocket
-from pytcp.client.client__packet_socket import ClientPacketSocket
-from pytcp.client.client__tcp_socket import ClientTcpSocket
-from pytcp.client.client_stack import ClientStack, connect, wait_for_daemon
+from pytcp.daemon.daemon import default_socket_path, run_daemon
 
-__all__ = [
-    "ClientPacketSocket",
-    "ClientRawSocket",
-    "ClientStack",
-    "ClientTcpSocket",
-    "ClientUdpSocket",
-    "connect",
-    "wait_for_daemon",
-]
+__all__ = ["default_socket_path", "run_daemon"]

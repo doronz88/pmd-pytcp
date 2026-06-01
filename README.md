@@ -239,10 +239,14 @@ listens on an AF_UNIX control socket, so a **separate process** can open
 sockets and drive the control APIs through `pytcp.client` — the way a
 Linux process talks to the kernel. The client never boots the stack.
 
-Start the daemon (it owns the TAP interface):
+Start the daemon (it owns the TAP interface). The first-class entry point
+ships in the package — `python -m pytcp.daemon` (or the `pytcpd` console
+script after install); it defaults the socket to `$XDG_RUNTIME_DIR/pytcp.sock`:
 
 ```bash
 sudo make tap7 && sudo make bridge && make venv
+sudo PYTHONPATH=. venv/bin/python -m pytcp.daemon --ipc-socket /tmp/pytcp.sock
+# or, with the example runner (adds stats / multi-interface / SIGUSR1):
 make daemon            # examples/stack.py --ipc-socket /tmp/pytcp.sock
 ```
 
