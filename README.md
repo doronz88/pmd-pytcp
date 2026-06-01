@@ -14,7 +14,7 @@
 
 <br>
 
-**PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack.
+**PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack. It can be embedded in-process as a library, or run as a **daemon** that out-of-process clients drive over an AF_UNIX control boundary — the way a Linux process talks to the kernel.
 
 The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extension headers and fragmentation), ICMPv4 and ICMPv6, IPv6 Neighbor Discovery and SLAAC, IPv4 and IPv6 multicast group membership (IGMP / MLD), DHCPv4 and DHCPv6 clients, UDP, and RFC 9293 TCP. The TCP implementation includes the full finite state machine, congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and RFC 5961 hardening. It exchanges traffic with other hosts on the local segment and over the Internet.
 
@@ -223,7 +223,7 @@ Every example is produced by the bundled `tools/capture` runner
 and is reproducible. With the TAP/bridge up and the venv built —
 
 ```bash
-sudo make tap7 && sudo make bridge && make venv
+sudo make bridge && sudo make tap7 && make venv
 ```
 
 — run any example with the exact command listed under it (loss is
@@ -244,7 +244,7 @@ ships in the package — `python -m pytcp.daemon` (or the `pytcpd` console
 script after install); it defaults the socket to `$XDG_RUNTIME_DIR/pytcp.sock`:
 
 ```bash
-sudo make tap7 && sudo make bridge && make venv
+sudo make bridge && sudo make tap7 && make venv
 sudo PYTHONPATH=. venv/bin/python -m pytcp.daemon --ipc-socket /tmp/pytcp.sock
 # or, with the example runner (adds stats / multi-interface / SIGUSR1):
 make daemon            # examples/stack.py --ipc-socket /tmp/pytcp.sock

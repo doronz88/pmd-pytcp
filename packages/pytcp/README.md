@@ -1,8 +1,8 @@
 # PyTCP
 
 Pure-Python, zero-dependency TCP/IP stack — Ethernet through
-RFC 9293 TCP — running in user space on a TAP/TUN interface, with
-a Berkeley-sockets API.
+RFC 9293 TCP — running in user space on a TAP/TUN interface,
+embeddable in-process or run as a daemon, with a Berkeley-sockets API.
 
 ```python
 from pytcp import socket, stack
@@ -164,15 +164,24 @@ Fully typed (ships `py.typed`, PEP 561); strict-mypy clean.
 
 ## Running the stack
 
-Running needs a TAP/TUN interface (root for interface / bridge
-setup):
+Running needs one or more TAP/TUN interfaces (root for interface /
+bridge setup). Bridged TAP interfaces (Ethernet) are created on the
+`br0` bridge, so the bridge comes first:
 
 ```bash
-make tap7        # create the tap7 interface (sudo)
-make bridge      # set up the bridge (sudo)
+make bridge      # create the br0 bridge (sudo)
+make tap7        # create tap7, add it to br0 (sudo)
+make tap9        # create a second tap, tap9, on br0 (sudo)
 make run         # run the stack on tap7
-make run_multi   # multi-interface demo
+make run_multi   # multi-interface demo (runs on tap7 + tap9)
 ```
+
+Point-to-point TUN interfaces (IP), each created pre-addressed and
+needing no bridge, are also available — `make tun3`
+(172.16.1.1/24, 2001:db8:1::1/64) and `make tun5`
+(172.16.2.1/24, 2001:db8:2::1/64). A stack can `init()` with zero
+interfaces and add / remove them at runtime, so any mix of taps and
+tuns can be attached to one running stack.
 
 PyTCP is consumed as a library through the `stack` lifecycle API and
 the `pytcp.socket` BSD-sockets API. See
