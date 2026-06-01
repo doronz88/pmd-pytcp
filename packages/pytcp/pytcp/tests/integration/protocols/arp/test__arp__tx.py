@@ -34,7 +34,7 @@ for reference; this file is the canonical migration target.
 
 pytcp/tests/integration/protocols/arp/test__arp__tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

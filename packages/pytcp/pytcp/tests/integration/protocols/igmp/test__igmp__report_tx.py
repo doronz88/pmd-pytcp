@@ -28,7 +28,7 @@ Report TX path.
 
 net_proto/../pytcp/tests/integration/protocols/igmp/test__igmp__report_tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from types import SimpleNamespace

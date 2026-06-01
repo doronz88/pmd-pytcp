@@ -27,7 +27,7 @@ This module contains the Ethernet II protocol error classes.
 
 net_proto/protocols/ethernet/ethernet__errors.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

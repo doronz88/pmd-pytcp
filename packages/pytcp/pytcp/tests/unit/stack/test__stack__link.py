@@ -32,7 +32,7 @@ DHCPv4 and RFC 3927 link-local construction call sites.
 
 pytcp/tests/unit/stack/test__stack__link.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import TYPE_CHECKING, cast

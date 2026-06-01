@@ -28,7 +28,7 @@ This module contains tests for the DHCPv6 stateless client in
 
 pytcp/tests/unit/protocols/dhcp6/test__dhcp6__client.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

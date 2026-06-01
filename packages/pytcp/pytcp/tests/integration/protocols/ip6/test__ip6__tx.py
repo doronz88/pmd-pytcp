@@ -31,7 +31,7 @@ This module contains integration tests for the IPv6 TX packet-handler path.
 
 pytcp/tests/integration/protocols/ip6/test__ip6__tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

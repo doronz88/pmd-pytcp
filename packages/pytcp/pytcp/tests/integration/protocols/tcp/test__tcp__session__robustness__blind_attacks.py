@@ -59,7 +59,7 @@ Reference RFCs:
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__robustness__blind_attacks.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from net_addr import Ip4Address

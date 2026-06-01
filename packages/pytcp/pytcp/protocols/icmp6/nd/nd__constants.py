@@ -36,7 +36,7 @@ their consumers ship.
 
 pytcp/protocols/icmp6/nd/nd__constants.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

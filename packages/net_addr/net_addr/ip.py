@@ -27,7 +27,7 @@ This module contains IP base class.
 
 net_addr/ip.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from abc import ABC

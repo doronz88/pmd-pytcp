@@ -27,7 +27,7 @@ This module contains tests for the UDP protocol packet assembling functionality.
 
 net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

@@ -29,7 +29,7 @@ the Ethernet RX tap queues onto a packet socket.
 
 pytcp/tests/unit/socket/test__socket__packet__metadata.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

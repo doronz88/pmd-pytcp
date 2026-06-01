@@ -27,7 +27,7 @@ This module contains packet handler for inbound the IPv6 fragment extension head
 
 pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import struct

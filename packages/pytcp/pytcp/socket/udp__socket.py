@@ -27,7 +27,7 @@ This module contains the BSD-like UDP socket interface for the stack.
 
 pytcp/socket/udp__socket.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from __future__ import annotations

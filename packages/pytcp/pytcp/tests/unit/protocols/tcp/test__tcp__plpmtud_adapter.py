@@ -46,7 +46,7 @@ Exercises:
 
 pytcp/tests/unit/protocols/tcp/test__tcp__plpmtud_adapter.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

@@ -38,7 +38,7 @@ for the ten knobs themselves.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__sysctls.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

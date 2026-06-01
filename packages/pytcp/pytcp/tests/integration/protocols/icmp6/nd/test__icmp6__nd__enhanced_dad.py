@@ -39,7 +39,7 @@ and is dropped silently rather than aborting DAD.
 
 pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

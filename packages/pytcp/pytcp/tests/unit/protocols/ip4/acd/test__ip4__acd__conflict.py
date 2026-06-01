@@ -30,7 +30,7 @@ candidate address.
 
 pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__conflict.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

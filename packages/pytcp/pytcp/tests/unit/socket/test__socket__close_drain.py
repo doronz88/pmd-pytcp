@@ -27,7 +27,7 @@ This module contains close-during-delivery drain tests for sockets.
 
 pytcp/tests/unit/socket/test__socket__close_drain.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import cast

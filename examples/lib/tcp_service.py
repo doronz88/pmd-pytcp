@@ -27,7 +27,7 @@ This module contains the 'user space' TCP generic service class used in examples
 
 examples/lib/tcp_service.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import threading

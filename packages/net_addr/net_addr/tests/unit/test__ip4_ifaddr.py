@@ -27,7 +27,7 @@ This module contains tests for the NetAddr package IPv4 host support class.
 
 net_addr/tests/unit/test__ip4_ifaddr.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

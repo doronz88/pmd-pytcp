@@ -42,7 +42,7 @@ This module owns:
 
 pytcp/socket/error_queue.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import errno as _errno

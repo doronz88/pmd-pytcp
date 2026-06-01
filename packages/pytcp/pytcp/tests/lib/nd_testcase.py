@@ -36,7 +36,7 @@ their tests demand.
 
 pytcp/tests/lib/nd_testcase.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import threading

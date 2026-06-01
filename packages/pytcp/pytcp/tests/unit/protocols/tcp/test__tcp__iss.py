@@ -37,7 +37,7 @@ Reference RFCs:
 
 pytcp/tests/unit/protocols/tcp/test__tcp__iss.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

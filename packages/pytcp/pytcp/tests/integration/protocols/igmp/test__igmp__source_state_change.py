@@ -31,7 +31,7 @@ and their robustness retransmission.
 
 pytcp/tests/integration/protocols/igmp/test__igmp__source_state_change.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from types import SimpleNamespace

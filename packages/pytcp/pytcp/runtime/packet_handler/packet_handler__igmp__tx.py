@@ -28,7 +28,7 @@ interface.
 
 pytcp/runtime/packet_handler/packet_handler__igmp__tx.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import random

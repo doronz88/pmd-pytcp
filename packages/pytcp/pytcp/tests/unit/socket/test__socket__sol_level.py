@@ -28,7 +28,7 @@ stdlib-parity bare aliases ('SOL_SOCKET' / 'SOL_UDP').
 
 pytcp/tests/unit/socket/test__socket__sol_level.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from enum import IntEnum

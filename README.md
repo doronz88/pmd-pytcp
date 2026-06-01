@@ -14,13 +14,13 @@
 
 <br>
 
-**PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack.
+**PyTCP is a TCP/IP stack written in pure Python.** It runs in user space, attached to a Linux TAP/TUN interface, and implements the protocol layers itself rather than calling the host stack. It can be embedded in-process as a library, or run as a **daemon** that out-of-process clients drive over an AF_UNIX control boundary — the way a Linux process talks to the kernel.
 
 The stack covers Ethernet II and IEEE 802.3 framing, ARP, IPv4 and IPv6 (extension headers and fragmentation), ICMPv4 and ICMPv6, IPv6 Neighbor Discovery and SLAAC, IPv4 and IPv6 multicast group membership (IGMP / MLD), DHCPv4 and DHCPv6 clients, UDP, and RFC 9293 TCP. The TCP implementation includes the full finite state machine, congestion control (CUBIC, NewReno, PRR, HyStart++), SACK and RACK-TLP loss recovery, and RFC 5961 hardening. It exchanges traffic with other hosts on the local segment and over the Internet.
 
 The project's goal is a pure-Python stack that is feature-equivalent to the Linux kernel network stack. RFC text is the primary authority; where a spec is silent or offers a choice, PyTCP follows Linux. Host-stack parity is the current scope; router-grade forwarding is planned.
 
-Behaviour is covered by roughly 12,400 unit and integration tests and tracked against more than 125 per-RFC adherence audits kept in the repository under `docs/rfc/`.
+Behaviour is covered by roughly 12,500 unit and integration tests and tracked against more than 125 per-RFC adherence audits kept in the repository under `docs/rfc/`.
 
 The stack has zero runtime dependencies (standard library only) and exposes a Berkeley-sockets-style API so it can be used in place of the standard socket layer. It is organised as three independently-published, strictly-layered packages — each usable on its own:
 
@@ -47,7 +47,7 @@ Contributions are welcome.
  - Per-protocol packet-flow stat counters; TX-path feedback so send failures reach sockets.
  - Homegrown high-performance logger (no third-party logging dependency).
  - Berkeley-sockets-style API for TCP / UDP / RAW / `AF_PACKET`: `fileno()`/eventfd + `selectors` integration, blocking & non-blocking modes, errno-mapped `OSError`, `getaddrinfo` family, common `setsockopt` options, `IP_RECVERR`/`MSG_ERRQUEUE` error queue.
- - Native `unittest` suite (~12,400 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
+ - Native `unittest` suite (~12,500 unit + integration tests); per-RFC adherence audits in `docs/rfc/`.
 
 #### Ethernet
 
@@ -223,7 +223,7 @@ Every example is produced by the bundled `tools/capture` runner
 and is reproducible. With the TAP/bridge up and the venv built —
 
 ```bash
-sudo make tap7 && sudo make bridge && make venv
+sudo make bridge && sudo make tap7 && make venv
 ```
 
 — run any example with the exact command listed under it (loss is
@@ -231,6 +231,48 @@ random, so a `--loss` run differs every time; everything else is
 deterministic). The general form is
 `sudo PYTHONPATH=. venv/bin/python -m tools.capture [GLOBAL OPTS] <scenario>`;
 `python -m tools.capture --help` lists every scenario and option.
+
+#### Kernel / userspace split — out-of-process socket clients
+
+PyTCP can run as a **daemon**: a normal in-process stack that also
+listens on an AF_UNIX control socket, so a **separate process** can open
+sockets and drive the control APIs through `pytcp.client` — the way a
+Linux process talks to the kernel. The client never boots the stack.
+
+Start the daemon (it owns the TAP interface). The first-class entry point
+ships in the package — `python -m pytcp.daemon` (or the `pytcpd` console
+script after install); it defaults the socket to `$XDG_RUNTIME_DIR/pytcp.sock`:
+
+```bash
+sudo make bridge && sudo make tap7 && make venv
+sudo PYTHONPATH=. venv/bin/python -m pytcp.daemon --ipc-socket /tmp/pytcp.sock
+# or, with the example runner (adds stats / multi-interface / SIGUSR1):
+make daemon            # examples/stack.py --ipc-socket /tmp/pytcp.sock
+```
+
+Then, from any other process, open a TCP socket *through the daemon* and
+echo off a remote server — note the client imports `pytcp.client`, not
+`pytcp.stack` / `pytcp.socket`, and calls no `stack.init()`:
+
+```python
+from pytcp.client import connect
+from pytcp.socket import AddressFamily, SocketType
+
+with connect(socket_path="/tmp/pytcp.sock") as client:
+    sock = client.socket(AddressFamily.INET4, SocketType.STREAM)
+    sock.connect(("10.0.1.1", 7))   # a real, selectable fd backs this socket
+    sock.send(b"hello")
+    print(sock.recv(5))
+    sock.close()
+```
+
+The bundled [`examples/client__tcp_echo_ipc.py`](examples/client__tcp_echo_ipc.py)
+is exactly this — an out-of-process echo client — alongside the
+in-process subsystem form in
+[`examples/client__tcp_echo.py`](examples/client__tcp_echo.py). The same
+`client.socket(...)` factory returns UDP / raw / AF_PACKET sockets, and
+`client.sysctl` / `.route` / `.link` / `.address` / `.neighbor` /
+`.membership` mirror the in-process control APIs across the boundary.
 
 #### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
 

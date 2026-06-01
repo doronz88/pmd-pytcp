@@ -35,7 +35,7 @@ build on.
 
 pytcp/tests/unit/protocols/tcp/test__tcp__sack.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

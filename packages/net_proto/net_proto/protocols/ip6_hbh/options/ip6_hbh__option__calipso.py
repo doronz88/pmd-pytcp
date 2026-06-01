@@ -34,7 +34,7 @@ byte-for-byte for Phase-2 forwarder re-emission.
 
 net_proto/protocols/ip6_hbh/options/ip6_hbh__option__calipso.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import struct

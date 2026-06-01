@@ -27,7 +27,7 @@ This module contains the IGMP packet assembler.
 
 net_proto/protocols/igmp/igmp__assembler.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import cast, override

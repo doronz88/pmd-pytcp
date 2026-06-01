@@ -33,7 +33,7 @@ unification (docs/refactor/address_api_unification.md).
 
 pytcp/stack/address.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from collections.abc import Callable

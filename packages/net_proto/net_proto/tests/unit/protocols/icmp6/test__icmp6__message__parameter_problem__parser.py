@@ -28,7 +28,7 @@ parser operation.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__message__parameter_problem__parser.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from types import SimpleNamespace

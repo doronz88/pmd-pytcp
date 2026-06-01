@@ -31,7 +31,7 @@ Linux 'ip_mc_source' errno mapping.
 
 pytcp/tests/integration/protocols/igmp/test__igmp__source_socket_opts.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import errno

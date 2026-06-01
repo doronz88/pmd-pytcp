@@ -27,7 +27,7 @@ Module contains tests for the IPv4 options support code.
 
 net_proto/tests/unit/protocols/ip4/test__ip4__options.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

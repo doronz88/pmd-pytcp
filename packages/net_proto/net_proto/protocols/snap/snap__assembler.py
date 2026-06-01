@@ -30,7 +30,7 @@ round-trip testing.
 
 net_proto/protocols/snap/snap__assembler.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

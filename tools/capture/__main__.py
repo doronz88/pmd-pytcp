@@ -28,7 +28,7 @@ tool; it registers every scenario command from the registry.
 
 tools/capture/__main__.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

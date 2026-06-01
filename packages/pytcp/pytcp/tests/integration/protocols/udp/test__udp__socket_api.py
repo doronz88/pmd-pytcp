@@ -42,7 +42,7 @@ Covers:
 
 pytcp/tests/integration/protocols/udp/test__udp__socket_api.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from net_addr import MacAddress

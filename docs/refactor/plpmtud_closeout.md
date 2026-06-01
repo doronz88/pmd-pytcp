@@ -315,7 +315,7 @@ future reader doesn't re-discover the gap.
   header flipped from `PARTIAL` to `SHIPPED`. Add a
   one-paragraph note pointing at this close-out doc as
   the follow-up that closed the operator-surface gap.
-- `docs/refactor/v3_0_6_remaining_work.md` — §2.1 flipped
+- `docs/refactor/archive/v3_0_6_remaining_work.md` — §2.1 flipped
   from "open optional" to "CLOSED 2026-05-28" with the
   commits referenced.
 - `docs/rfc/tcp/rfc4821__plpmtud/adherence.md` and

@@ -28,7 +28,7 @@ Option) shallow option code (FIPS-188 / Linux NetLabel).
 
 net_proto/tests/unit/protocols/ip4/test__ip4__option__cipso.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

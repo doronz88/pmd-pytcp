@@ -27,7 +27,7 @@ This module contains tests for the NetProto package stack error classes.
 
 net_proto/tests/unit/lib/test__lib__errors.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

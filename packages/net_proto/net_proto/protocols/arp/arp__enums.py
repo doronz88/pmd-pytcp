@@ -27,7 +27,7 @@ This module contains the ARP protocol enum classes.
 
 net_proto/protocols/arp/arp__enums.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from net_proto.lib.proto_enum import ProtoEnumWord

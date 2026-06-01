@@ -34,7 +34,7 @@ Vendor Extensions and DHCP Options".
 
 net_proto/protocols/dhcp4/options/dhcp4__option.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from dataclasses import dataclass

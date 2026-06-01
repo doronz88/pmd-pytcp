@@ -30,7 +30,7 @@ its annotation matches the design, and its default state is empty.
 
 pytcp/tests/unit/stack/test__pmtu_cache.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import threading

@@ -27,7 +27,7 @@ This module contains the ICMPv6 packet parser.
 
 net_proto/protocols/icmp6/icmp6__parser.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

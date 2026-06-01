@@ -51,17 +51,31 @@ venv: $(VENV)/bin/activate
 run: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py
 
+# Run as a daemon: the stack plus its AF_UNIX control socket, so
+# out-of-process 'pytcp.client' consumers (e.g. examples/client__*_ipc.py)
+# can open sockets and drive the control APIs against this running stack.
+# Needs the bridge + TAP first ('sudo make bridge && sudo make tap7').
+daemon: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --ipc-socket /tmp/pytcp.sock
+
 # Bind the stack to two TAP interfaces at once (multi-homed host). Needs
-# both taps up and bridged first: 'sudo make tap7 tap9 bridge'. Each NIC
+# the bridge + both taps up first: 'sudo make bridge tap7 tap9'. Each NIC
 # autoconfigures (DHCPv4 / SLAAC).
 run_multi: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --stack-interface tap7 --stack-interface tap9
 
+# Run the stack on a point-to-point TUN interface (no bridge). Needs the
+# matching tun device first ('sudo make tun3' / 'sudo make tun5'); each is
+# created pre-addressed on the host side, so the stack takes the .2 host
+# in the same subnet.
 run_tun: venv
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --interface tun7 --ip4-address 10.0.0.2/24
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --stack-interface tun3 --stack-ip4-address 172.16.1.2/24 --stack-ip6-address 2001:db8:1::2/64
+
+run_tun5: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --stack-interface tun5 --stack-ip4-address 172.16.2.2/24 --stack-ip6-address 2001:db8:2::2/64
 
 # Run an example-capture / e2e scenario. Needs root + the TAP/bridge
-# (sudo make tap7 && sudo make bridge). Usage:
+# (sudo make bridge && sudo make tap7). Usage:
 #   sudo make capture SCENARIO=ip6-tcp-monkeys
 #   sudo make capture SCENARIO=ip4-udp-monkeys CAPTURE_ARGS="--payload malpa --raw"
 # With no SCENARIO it prints the list of scenarios.
@@ -216,7 +230,7 @@ remove_interfaces:
 	@ip tuntap del name tap7 mode tap
 	@ip tuntap del name tap9 mode tap
 
-.PHONY: venv run run_multi run_tun capture clean lint \
+.PHONY: venv run daemon run_multi run_tun capture clean lint \
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \

@@ -28,7 +28,7 @@ option.
 
 net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__option__slla.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import Any

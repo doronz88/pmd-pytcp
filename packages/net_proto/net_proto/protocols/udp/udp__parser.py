@@ -27,7 +27,7 @@ This module contains the UDP packet parser.
 
 net_proto/protocols/udp/udp__parser.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

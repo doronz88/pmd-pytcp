@@ -31,7 +31,7 @@ base to run other examples provided as the subsystems.
 
 examples/stack.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import signal
@@ -55,6 +55,7 @@ from net_addr import (
     MacAddress,
 )
 from pytcp import stack
+from pytcp.ipc.ipc__server import IpcServer
 from pytcp.stack import RouteProtocol
 
 
@@ -217,6 +218,16 @@ def _resolve_interface_args(
     default=None,
     help="IPv4 gateway address to be assigned to the stack interface.",
 )
+@click.option(
+    "--ipc-socket",
+    "stack__ipc_socket",
+    default=None,
+    help=(
+        "Run as a daemon: also listen on this AF_UNIX path so out-of-"
+        "process clients can open sockets and drive the control APIs via "
+        "'pytcp.client' (e.g. '--ipc-socket /tmp/pytcp.sock')."
+    ),
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -229,6 +240,7 @@ def cli(
     stack__ip4_support: bool,
     stack__ip4_host: Ip4IfAddr | None,
     stack__ip4_gateway: Ip4Address | None,
+    stack__ipc_socket: str | None = None,
     subsystems: list[Subsystem] | None = None,
 ) -> None:
     """
@@ -323,8 +335,20 @@ def cli(
         if stack__ip4_support and stack__ip4_gateway is not None:
             stack.route.replace_default(gateway=stack__ip4_gateway, protocol=RouteProtocol.BOOT)
 
+    ipc_server: IpcServer | None = None
+
     try:
         stack.start()
+
+        # Daemon mode: expose the AF_UNIX control socket so out-of-process
+        # 'pytcp.client' consumers can open sockets / drive the control
+        # APIs against this running stack. The socket syscalls and the
+        # six control APIs are served once the stack singletons are up.
+        if stack__ipc_socket is not None:
+            ipc_server = IpcServer(socket_path=stack__ipc_socket)
+            ipc_server.start()
+            click.echo(f"IPC: listening on {stack__ipc_socket} (out-of-process clients via pytcp.client)")
+
         for subsystem in subsystems:
             if stack__ip6_support:
                 subsystem.stack_ip6_address = stack__ip6_host.address if stack__ip6_host else Ip6Address()
@@ -381,6 +405,8 @@ def cli(
         for subsystem in subsystems:
             if subsystem.is_alive:
                 subsystem.stop()
+        if ipc_server is not None:
+            ipc_server.stop()
         stack.stop()
 
 

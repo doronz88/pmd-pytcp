@@ -46,7 +46,7 @@ close-out plan one-for-one.
 
 pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_cold_start.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

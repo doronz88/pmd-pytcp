@@ -34,7 +34,7 @@ operator-visible logs surface the unknown codepoint.
 
 net_proto/protocols/dhcp4/options/dhcp4__option__unknown.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import struct

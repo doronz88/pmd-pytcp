@@ -28,7 +28,7 @@ probe ('probe_reachable' + the '_is_gateway_reply' predicate).
 
 pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__reachable.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from typing import override

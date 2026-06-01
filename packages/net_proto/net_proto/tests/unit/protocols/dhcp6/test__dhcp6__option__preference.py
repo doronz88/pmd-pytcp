@@ -27,7 +27,7 @@ This module contains tests for the DHCPv6 Preference option.
 
 net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__preference.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from unittest import TestCase

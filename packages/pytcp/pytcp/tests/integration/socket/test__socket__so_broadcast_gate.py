@@ -42,7 +42,7 @@ acquisition path.
 
 pytcp/tests/integration/socket/test__socket__so_broadcast_gate.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 import errno

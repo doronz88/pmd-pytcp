@@ -31,7 +31,7 @@ an EXCLUDE interface, empty ⇒ no response).
 
 pytcp/tests/integration/protocols/igmp/test__igmp__source_query_response.py
 
-ver 3.0.6
+ver 3.0.7
 """
 
 from types import SimpleNamespace
