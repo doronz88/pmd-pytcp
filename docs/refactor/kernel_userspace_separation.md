@@ -2,7 +2,7 @@
 
 | Field      | Value                                                                 |
 |------------|-----------------------------------------------------------------------|
-| Status     | **ACTIVE — Phases 0-4 complete (TCP + UDP + raw + AF_PACKET out-of-process, recvmsg cmsg, passive-open accept() fd-passing; echoes passing for every family); Phases 5-6 remain (examples migration, daemon lifecycle).** Created 2026-05-31 on `PyTCP_3_0_7`. |
+| Status     | **ACTIVE — Phases 0-5 complete (every socket family out-of-process + accept; the daemon exposes an IPC socket and a client example runs as a separate process); Phase 6 remains (dedicated daemon entry point + lifecycle).** Created 2026-05-31 on `PyTCP_3_0_7`. |
 | Branch     | `PyTCP_3_0_7`                                                          |
 | Motivation | Cut a real process boundary so the stack runs as a daemon and client processes use it from other processes — the North Star Phase-3 kernel/userspace boundary. Independent of the router/forwarding track. |
 
@@ -544,10 +544,36 @@ Design notes that landed:
   completing) leaves the dispatch thread polling until server stop — a
   selectable / cancelable accept is a later refinement.
 
-### Phases 5-6 — later
+### Phase 5 — Examples migration (complete)
 
-Examples migration (socket examples become clients of a `make run`
-daemon) and daemon lifecycle (`python -m pytcp.daemon`, socket-path
-config, readiness signalling) — see §4. The IP_RECVERR error-queue
-`recvmsg(MSG_ERRQUEUE)` path is a small deferred datagram-plane
-follow-up.
+- `86a67a7b` — the daemon runner (`examples/stack.py`) gains
+  `--ipc-socket PATH`: after the stack is up it starts an `IpcServer` on
+  that AF_UNIX path, so out-of-process `pytcp.client` consumers can open
+  sockets and drive the control APIs against the running stack
+  (`make daemon` runs it on `/tmp/pytcp.sock`).
+  `examples/client__tcp_echo_ipc.py` is a TCP echo client that connects
+  over the control socket and opens its socket through `pytcp.client` — it
+  imports neither `pytcp.stack` nor `pytcp.socket` for the socket and
+  calls no `stack.init()`. The in-process subsystem form
+  (`client__tcp_echo.py`) stays for the embedded use case. README
+  documents the split. End-to-end example test (CliRunner-driven client +
+  wire-driven handshake/echo). 1 integration test.
+
+Design notes:
+- **The example is genuinely a separate process model**, even though the
+  test runs it in-thread via CliRunner: it talks to the stack only
+  through `pytcp.client` + the AF_UNIX socket, never importing stack
+  internals or booting the stack.
+- **Import-graph caveat (unchanged from §2):** importing `pytcp.client`
+  still transitively pulls in stack types (the value codec references
+  `Route` / `LinkStats` / etc.), so the client process imports a lot of
+  `pytcp` — but it boots nothing. A truly slim client needs the codec
+  core extracted into a standalone dist, the deferred §2 work.
+
+### Phase 6 — later
+
+Dedicated daemon entry point (`python -m pytcp.daemon` / a `pytcpd`
+console script), `$XDG_RUNTIME_DIR` socket-path default, readiness
+signalling, and a `mock__`-style harness affordance — see §4. The
+IP_RECVERR error-queue `recvmsg(MSG_ERRQUEUE)` path is a small deferred
+datagram-plane follow-up.
