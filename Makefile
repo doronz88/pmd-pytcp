@@ -51,6 +51,13 @@ venv: $(VENV)/bin/activate
 run: venv
 	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py
 
+# Run as a daemon: the stack plus its AF_UNIX control socket, so
+# out-of-process 'pytcp.client' consumers (e.g. examples/client__*_ipc.py)
+# can open sockets and drive the control APIs against this running stack.
+# Needs the TAP/bridge first ('sudo make tap7 && sudo make bridge').
+daemon: venv
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python3 examples/stack.py --ipc-socket /tmp/pytcp.sock
+
 # Bind the stack to two TAP interfaces at once (multi-homed host). Needs
 # both taps up and bridged first: 'sudo make tap7 tap9 bridge'. Each NIC
 # autoconfigures (DHCPv4 / SLAAC).
@@ -216,7 +223,7 @@ remove_interfaces:
 	@ip tuntap del name tap7 mode tap
 	@ip tuntap del name tap9 mode tap
 
-.PHONY: venv run run_multi run_tun capture clean lint \
+.PHONY: venv run daemon run_multi run_tun capture clean lint \
 	test test__pytcp__integration test__net_addr__unit \
 	test__net_proto__unit test__examples__unit validate \
 	bench__rx_ring profile__rx_ring benchmark \

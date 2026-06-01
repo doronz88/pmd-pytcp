@@ -232,6 +232,44 @@ deterministic). The general form is
 `sudo PYTHONPATH=. venv/bin/python -m tools.capture [GLOBAL OPTS] <scenario>`;
 `python -m tools.capture --help` lists every scenario and option.
 
+#### Kernel / userspace split — out-of-process socket clients
+
+PyTCP can run as a **daemon**: a normal in-process stack that also
+listens on an AF_UNIX control socket, so a **separate process** can open
+sockets and drive the control APIs through `pytcp.client` — the way a
+Linux process talks to the kernel. The client never boots the stack.
+
+Start the daemon (it owns the TAP interface):
+
+```bash
+sudo make tap7 && sudo make bridge && make venv
+make daemon            # examples/stack.py --ipc-socket /tmp/pytcp.sock
+```
+
+Then, from any other process, open a TCP socket *through the daemon* and
+echo off a remote server — note the client imports `pytcp.client`, not
+`pytcp.stack` / `pytcp.socket`, and calls no `stack.init()`:
+
+```python
+from pytcp.client import connect
+from pytcp.socket import AddressFamily, SocketType
+
+with connect(socket_path="/tmp/pytcp.sock") as client:
+    sock = client.socket(AddressFamily.INET4, SocketType.STREAM)
+    sock.connect(("10.0.1.1", 7))   # a real, selectable fd backs this socket
+    sock.send(b"hello")
+    print(sock.recv(5))
+    sock.close()
+```
+
+The bundled [`examples/client__tcp_echo_ipc.py`](examples/client__tcp_echo_ipc.py)
+is exactly this — an out-of-process echo client — alongside the
+in-process subsystem form in
+[`examples/client__tcp_echo.py`](examples/client__tcp_echo.py). The same
+`client.socket(...)` factory returns UDP / raw / AF_PACKET sockets, and
+`client.sysctl` / `.route` / `.link` / `.address` / `.neighbor` /
+`.membership` mirror the in-process control APIs across the boundary.
+
 #### Stack startup — IPv6 SLAAC + DAD, MLDv2, IPv4 ACD
 
 **Reproduce:**
