@@ -336,7 +336,7 @@ For each sub-audit:
 
 ```
 I want to run sub-audit G-net_addr from
-docs/refactor/audit_g_test_docstring_sweep.md.
+docs/refactor/archive/audit_g_test_docstring_sweep.md.
 
 This is the verification-only sub-audit — the survey says
 net_addr is already §7.2-clean (16 files, 0 violations).
@@ -347,7 +347,7 @@ Workflow:
    packages/net_addr/net_addr/tests/ to confirm 0 violations.
 2. If 0 violations confirmed: no code changes. Record the
    verification by updating
-   docs/refactor/audit_g_test_docstring_sweep.md with a
+   docs/refactor/archive/audit_g_test_docstring_sweep.md with a
    "verified clean YYYY-MM-DD" note next to the G-net_addr
    sub-audit entry.
 3. If any violations surface (unexpected — survey was clean):
@@ -368,7 +368,7 @@ Replace `<family>` with one of `lib`, `arp`, `dhcp4`,
 
 ```
 I want to run sub-audit G-net_proto-<family> from
-docs/refactor/audit_g_test_docstring_sweep.md.
+docs/refactor/archive/audit_g_test_docstring_sweep.md.
 
 Workflow:
 1. Re-run the §7.2 audit script scoped to
@@ -401,7 +401,7 @@ Replace `<family>` with one of `socket`, `lib`,
 
 ```
 I want to run sub-audit G-pytcp-<family> from
-docs/refactor/audit_g_test_docstring_sweep.md.
+docs/refactor/archive/audit_g_test_docstring_sweep.md.
 
 Workflow:
 1. Re-run the §7.2 audit script scoped to the relevant
@@ -418,7 +418,7 @@ Workflow:
 
 ```
 I want to run sub-audit G-stage2 from
-docs/refactor/audit_g_test_docstring_sweep.md.
+docs/refactor/archive/audit_g_test_docstring_sweep.md.
 
 This is the non-Reference cleanup: ~51 violations total
 across the `Ensure ` opener, inline RFC citation, and

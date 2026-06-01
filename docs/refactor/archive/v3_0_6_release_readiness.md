@@ -90,7 +90,7 @@ classified in/out this pass):
 | `tcp_codebase_improvement_plan.md` | internal code-quality refactors deferred (not conformance) | pytcp |
 | `nud_state_machine.md`, `icmp_remaining_issues.md`, `v6_remaining_items.md`, `post_udp_session_followups.md`, `ip4_audit_punchlist.md`, `net_proto_remaining_audits.md` | snapshots — confirm each open item is deferred-with-rationale, not a Phase-1 gap | per-doc |
 
-**Authoritative ledger — `docs/refactor/v3_0_6_remaining_work.md` — is
+**Authoritative ledger — `docs/refactor/archive/v3_0_6_remaining_work.md` — is
 DRIFTED** (authored 2026-05-24, before this session's work). It must be
 reconciled in the pytcp pass: since it was written we (a) confirmed the
 privileged singletons already retired, (b) shipped the `remove_interface`
@@ -290,7 +290,7 @@ pre-decide DHCPv4 §5–§8).
 ## 7. Resume prompt (paste verbatim in a fresh session after compaction)
 
 ```
-Read docs/refactor/v3_0_6_release_readiness.md end to end — it is the
+Read docs/refactor/archive/v3_0_6_release_readiness.md end to end — it is the
 authoritative per-package release-readiness plan for shipping the three
 PyTCP 3.0.6 dists today (net_addr, net_proto, pytcp). Then read CLAUDE.md
 (North Star) and the relevant .claude/rules/ files.
@@ -329,7 +329,7 @@ plan is a snapshot.
 
 - `CLAUDE.md` — North Star (Phase 1 host / Phase 2 router / Phase 3
   kernel-boundary); the conformance precedence (RFC → Linux tiebreaker).
-- `docs/refactor/v3_0_6_remaining_work.md` — the (drifted) remaining-work
+- `docs/refactor/archive/v3_0_6_remaining_work.md` — the (drifted) remaining-work
   ledger to reconcile.
 - `~/.claude/plans/dreamy-jingling-steele.md` — up-to-date multi-interface
   migration record (no-GIL story, control/egress de-fallback, remove

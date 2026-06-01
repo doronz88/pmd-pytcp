@@ -291,7 +291,7 @@ to expand scope.
 ## 5. Resume prompt (paste verbatim in a fresh session)
 
 ```
-Read docs/refactor/v3_0_6_remaining_work.md end to end — it is the
+Read docs/refactor/archive/v3_0_6_remaining_work.md end to end — it is the
 authoritative "what's left for PyTCP 3.0.6" ledger (reconciled 2026-05-27,
 HEAD f13b8527 on PyTCP_3_0_6). Then read CLAUDE.md (Project North Star)
 and the relevant rule files in .claude/rules/.
