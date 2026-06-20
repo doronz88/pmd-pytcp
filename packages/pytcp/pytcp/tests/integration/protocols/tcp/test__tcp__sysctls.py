@@ -28,7 +28,8 @@ This module contains integration tests for the TCP policy sysctls
 'tcp.delayed_ack.delay_ms', 'tcp.challenge_ack.rate_limit_ms',
 'tcp.persist.timeout_max_ms', 'tcp.keepalive.idle_time_ms',
 'tcp.keepalive.probe_interval_ms', 'tcp.keepalive.probe_max_count',
-'tcp.ts_recent.outdated_threshold_ms').
+'tcp.ts_recent.outdated_threshold_ms', 'tcp.rcv_wnd_max',
+'tcp.snd_mss_max').
 
 The full TCP integration suite is the behavioural regression net —
 every test that depends on the renamed module attributes continues
@@ -197,6 +198,20 @@ class TestTcpSysctlDefaults(NetworkTestCase):
             msg="tcp.ts_recent.outdated_threshold_ms must default to 24*86400*1000 ms.",
         )
 
+    def test__tcp__sysctl__rcv_wnd_max_default_registered(self) -> None:
+        """
+        Ensure 'tcp.rcv_wnd_max' registers with the historical
+        65535-byte advertised-window ceiling default.
+
+        Reference: Linux net.ipv4.tcp_rmem (receive-window max).
+        """
+
+        self.assertEqual(
+            sysctl.get("tcp.rcv_wnd_max"),
+            65535,
+            msg="tcp.rcv_wnd_max must default to 65535 (historical window cap).",
+        )
+
 
 class TestTcpSysctlOverrides(NetworkTestCase):
     """
@@ -241,6 +256,28 @@ class TestTcpSysctlOverrides(NetworkTestCase):
                 new_value,
                 msg="Override must write through to TCP__KEEPALIVE__IDLE_TIME_MS.",
             )
+
+    def test__tcp__sysctl__rcv_wnd_max_override_updates_attr(self) -> None:
+        """
+        Ensure overriding 'tcp.rcv_wnd_max' writes through to the
+        backing module attribute the session init reads to seed the
+        per-session advertised-window ceiling.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with sysctl.override("tcp.rcv_wnd_max", 4 * 1024 * 1024):
+            self.assertEqual(
+                tcp__constants.TCP__RCV_WND_MAX,
+                4 * 1024 * 1024,
+                msg="Override must write through to TCP__RCV_WND_MAX.",
+            )
+
+        self.assertEqual(
+            tcp__constants.TCP__RCV_WND_MAX,
+            65535,
+            msg="Override exit must restore the registered default.",
+        )
 
 
 class TestTcpSysctlValidators(NetworkTestCase):
@@ -335,6 +372,17 @@ class TestTcpSysctlValidators(NetworkTestCase):
                 7_200_000,
                 msg="2 h exactly must be accepted (inclusive RFC floor).",
             )
+
+    def test__tcp__sysctl__rcv_wnd_max_rejects_zero(self) -> None:
+        """
+        Ensure 'tcp.rcv_wnd_max' rejects zero — a zero receive
+        window ceiling would advertise a permanently closed window.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("tcp.rcv_wnd_max", 0)
 
 
 class TestTcpSysctlCrossKnobConstraints(NetworkTestCase):
@@ -460,3 +508,93 @@ class TestTcpSysctlBaseMss(NetworkTestCase):
 
         with self.assertRaises(ValueError):
             sysctl.set("tcp.default.base_mss", 87)
+
+
+class TestTcpSysctlSndMssMax(NetworkTestCase):
+    """
+    The 'tcp.snd_mss_max' per-interface sysctl tests — the
+    opt-in send-side MSS cap, applied independently of the
+    advertised receive MSS. Per-iface storage; bare base key
+    rejected; 0 reserved for "uncapped".
+    """
+
+    @override
+    def tearDown(self) -> None:
+        """
+        Clear every per-iface slot and reset the template so
+        a write in one test cannot leak into the next.
+        """
+
+        sysctl.reset_to_defaults()
+        super().tearDown()
+
+    def test__tcp__sysctl__snd_mss_max_default_is_zero(self) -> None:
+        """
+        Ensure 'tcp.snd_mss_max' registers disabled (0) in the
+        '"default"' template slot, preserving the historical
+        uncapped send-MSS behaviour.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self.assertEqual(
+            sysctl.get("tcp.default.snd_mss_max"),
+            0,
+            msg="tcp.snd_mss_max must default to 0 (uncapped) in the 'default' template.",
+        )
+
+    def test__tcp__sysctl__snd_mss_max_per_iface_override(self) -> None:
+        """
+        Ensure writing 'tcp.<ifname>.snd_mss_max' lands in the
+        per-interface slot only — the '"default"' template stays
+        at 0 and an unconfigured interface still resolves through
+        the template.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        sysctl.set("tcp.tap_x.snd_mss_max", 1340)
+
+        self.assertEqual(
+            sysctl.get("tcp.tap_x.snd_mss_max"),
+            1340,
+            msg="Per-iface write must surface on the same key.",
+        )
+        self.assertEqual(
+            sysctl.get("tcp.default.snd_mss_max"),
+            0,
+            msg="Per-iface write must NOT mutate the 'default' template.",
+        )
+        self.assertEqual(
+            sysctl.get("tcp.tap_y.snd_mss_max"),
+            0,
+            msg="Unconfigured ifaces must fall back to the 'default' template.",
+        )
+
+    def test__tcp__sysctl__snd_mss_max_accepts_zero(self) -> None:
+        """
+        Ensure 'tcp.snd_mss_max' accepts 0 — the documented
+        "uncapped" sentinel.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with sysctl.override("tcp.default.snd_mss_max", 0):
+            self.assertEqual(
+                sysctl.get("tcp.default.snd_mss_max"),
+                0,
+                msg="0 must be accepted (uncapped sentinel).",
+            )
+
+    def test__tcp__sysctl__snd_mss_max_rejects_below_min_mss(self) -> None:
+        """
+        Ensure 'tcp.snd_mss_max' rejects 87 — one below the Linux
+        'TCP_MIN_MSS = 88' floor. A non-zero cap below this floor
+        would size segments uselessly small; 0 is the only sub-88
+        value accepted (it disables the cap).
+
+        Reference: Linux include/net/tcp.h TCP_MIN_MSS=88.
+        """
+
+        with self.assertRaises(ValueError):
+            sysctl.set("tcp.default.snd_mss_max", 87)

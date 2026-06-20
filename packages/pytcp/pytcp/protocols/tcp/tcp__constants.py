@@ -112,6 +112,15 @@ TCP__KEEPALIVE__PROBE_MAX_COUNT = 9
 # arithmetic-friendly.
 TCP__TS_RECENT__OUTDATED_THRESHOLD_MS = 24 * 86_400 * 1_000
 
+# Linux 'net.ipv4.tcp_rmem' (max slot) — the ceiling on the receive window a
+# session will advertise. A bulk inbound transfer is bound by window / RTT, so
+# the historical 65535-byte default throttles high bandwidth-delay-product paths
+# (fast links, tunnels) far below the link rate; raising it lets the peer keep a
+# full BDP in flight. PyTCP negotiates RFC 7323 window scaling (WSCALE 7), so the
+# advertised value can represent well beyond 64 KiB. Kept at 65535 by default to
+# preserve historical behaviour; operators raise it per the deployment's BDP.
+TCP__RCV_WND_MAX = 65535
+
 # Per-interface conf-plane policy storage. 'dict[str, int]' keyed by
 # interface name with a mandatory '"default"' template slot — the
 # operator addresses a specific interface ('tcp.<ifname>.<field>') or
@@ -150,6 +159,18 @@ TCP__BASE_MSS: dict[str, int] = {"default": 1024}
 # 'docs/refactor/plpmtud_closeout.md' §2 for the deferred-with-rationale
 # block.
 TCP__MTU_PROBING: dict[str, int] = {"default": 0}
+
+# Ceiling on the send-side MSS — the largest segment this stack will EMIT —
+# applied independently of the receive MSS advertised to the peer. 0 (default)
+# means uncapped: 'snd_mss' rises to 'interface_mtu - overhead' as today. A
+# non-zero value caps the segments we send WITHOUT lowering the MSS option we
+# advertise, so a large interface MTU can still invite large inbound segments
+# (fast download) while host->peer output stays small. The motivating case is an
+# overlay/tunnel whose host->peer path MTU is smaller than the local interface
+# MTU; classical PMTUD cannot discover that when the small hop is past a relay
+# that does not emit ICMP PTB. Per-interface like 'tcp.base_mss'; floor 88
+# (Linux 'TCP_MIN_MSS') matches the base-MSS knob, with 0 reserved for "off".
+TCP__SND_MSS_MAX: dict[str, int] = {"default": 0}
 
 
 # Sysctl registration. Every constant above is a policy knob,
@@ -203,6 +224,26 @@ def _is_int_at_least(name: str, *, low: int) -> Any:
         if isinstance(value, bool) or not isinstance(value, int) or value < low:
             raise ValueError(
                 f"sysctl {name!r} must be an int ≥ {low}; got {value!r}",
+            )
+
+    return validator
+
+
+def _is_zero_or_int_at_least(name: str, *, low: int) -> Any:
+    """
+    Build a validator that accepts 0 (a documented "disabled" sentinel)
+    or any integer ≥ 'low' — used for opt-in cap knobs whose floor matches
+    a hard limit (e.g. 'tcp.snd_mss_max' off-or-≥-TCP_MIN_MSS).
+    """
+
+    def validator(value: Any) -> None:
+        """
+        Raise 'ValueError' unless 'value' is 0 or an int ≥ low.
+        """
+
+        if isinstance(value, bool) or not isinstance(value, int) or (value != 0 and value < low):
+            raise ValueError(
+                f"sysctl {name!r} must be 0 (disabled) or an int ≥ {low}; got {value!r}",
             )
 
     return validator
@@ -289,6 +330,18 @@ register(
     description="RFC 7323 §5.5 outdated-timestamps threshold in milliseconds (~24 days).",
 )
 register(
+    key="tcp.rcv_wnd_max",
+    module_name=__name__,
+    attr="TCP__RCV_WND_MAX",
+    default=TCP__RCV_WND_MAX,
+    validator=is_positive_int("tcp.rcv_wnd_max"),
+    description=(
+        "Linux 'net.ipv4.tcp_rmem' (max) — ceiling on the advertised "
+        "receive window (default 65535). Raise for high bandwidth-delay-"
+        "product paths; WSCALE lets it exceed 64 KiB on the wire."
+    ),
+)
+register(
     key="tcp.base_mss",
     module_name=__name__,
     attr="TCP__BASE_MSS",
@@ -335,6 +388,20 @@ register(
     description=(
         "Linux 'net.ipv4.tcp_mtu_probing' tristate — 0=off (default), "
         "2=always-on. Mode 1 is deferred (needs RTO-black-hole heuristic)."
+    ),
+    interface_scope=True,
+)
+register(
+    key="tcp.snd_mss_max",
+    module_name=__name__,
+    attr="TCP__SND_MSS_MAX",
+    default=TCP__SND_MSS_MAX["default"],
+    validator=_is_zero_or_int_at_least("tcp.snd_mss_max", low=88),
+    description=(
+        "Ceiling on the send-side MSS (largest segment emitted), applied "
+        "independently of the advertised receive MSS. 0=uncapped (default); "
+        "a non-zero value bounds host->peer output for tunnels whose path "
+        "MTU is below the interface MTU (floor 88 = Linux TCP_MIN_MSS)."
     ),
     interface_scope=True,
 )
