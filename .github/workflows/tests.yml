@@ -1,0 +1,32 @@
+# Cross-platform validation. The stack is Linux-first; these jobs prove it imports and that
+# its host-portability surface (the Unix-only fcntl guard, the logging integration, the
+# stack-init helpers) works on Linux, macOS and Windows. Scoped to the import smoke plus the
+# unit suites that are green today; broadening to the whole suite is tracked separately.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+      - name: Create venv + install packages (editable) + pytest
+        run: |
+          uv venv
+          uv pip install pytest parameterized -e ./packages/pmd_net_addr -e ./packages/pmd_net_proto -e ./packages/pmd_pytcp
+      - name: Import smoke (guards the Windows fcntl import path)
+        run: uv run --no-project python -c "import pmd_pytcp, pmd_pytcp.stack, pmd_pytcp.socket, pmd_net_addr, pmd_net_proto; print('import OK')"
+      - name: Unit tests (logger + stack init)
+        run: uv run --no-project python -m pytest packages/pmd_pytcp/pmd_pytcp/tests/unit/lib packages/pmd_pytcp/pmd_pytcp/tests/unit/stack -q
