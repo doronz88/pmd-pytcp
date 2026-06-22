@@ -8,3 +8,9 @@ PyTCP.egg-info/
 *.egg-info/
 build/
 dist/
+
+.venv/
+.pypirc
+.claude/
+.pytest_cache/
+.idea/
