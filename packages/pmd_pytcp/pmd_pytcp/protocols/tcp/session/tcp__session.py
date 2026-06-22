@@ -103,6 +103,16 @@ if TYPE_CHECKING:
 # the '_reschedule_locked' helper that consumes it.
 _PUMP: str = "tx_pump"
 
+#: Upper bound on data segments emitted in a single '_transmit_data' pump tick. The pump
+#: re-arms every 1 ms, so emitting one segment per tick capped a bulk send at ~1 segment/ms
+#: (~1.3 MB/s with a 1340-byte MSS, far less under contention) no matter how large the peer's
+#: advertised window was. '_transmit_data' now drains up to the usable send window per tick,
+#: which makes the send ACK-clocked (ordinary TCP) instead of pump-clocked. The cap stops a
+#: large cwnd from spinning the FSM thread building thousands of packets in one tick; whatever
+#: does not fit rides the next tick (1 ms later) or the next ACK. 512 * 1340 ≈ 686 KB/tick,
+#: comfortably above the bandwidth-delay product of the userspace tunnel's localhost path.
+_MAX_SEGMENTS_PER_PUMP: int = 512
+
 
 class TcpSession:
     """
@@ -725,8 +735,8 @@ class TcpSession:
     def _has_pump_work(self) -> bool:
         """
         True while the FSM still needs the 1 ms pacing pump:
-        unsent buffered data ('_transmit_data' dribbles one
-        segment per tick), in-flight data (FIN/retransmit
+        unsent buffered data ('_transmit_data' drains up to the
+        usable window per tick), in-flight data (FIN/retransmit
         progression), or a pending close. When none hold — and
         no logical timer is armed — the session is genuinely
         idle and the pump stops (zero-idle-CPU). delayed-ACK /
@@ -742,9 +752,11 @@ class TcpSession:
         Re-arm the 'tx_pump' FSM-pump (1 ms) at the 'tcp_fsm'
         tail while the FSM still needs ticking. The old 1 ms
         periodic was not merely an event-wake — it was a
-        continuous send-pacing clock: '_transmit_data' emits one
-        segment per tick, so a multi-segment send needs a tick
-        per segment until the buffer drains. Re-pump iff this
+        continuous send-pacing clock: '_transmit_data' drains up
+        to the usable send window per tick, so a send larger than
+        the window needs a tick per window-full until the buffer
+        drains (each tick re-opened by the ACKs it elicits).
+        Re-pump iff this
         dispatch was an external stimulus (packet / syscall /
         ICMP), changed state, OR there is still pending pacing
         work ('_has_pump_work'). A fully quiescent TIMER
@@ -1612,12 +1624,37 @@ class TcpSession:
 
     def _transmit_data(self) -> None:
         """
-        Send out data segment from TX buffer using TCP
-        sliding window mechanism. Thin delegator over
-        'TcpTxEngine.transmit_data'.
+        Send out buffered data using the TCP sliding-window
+        mechanism. 'TcpTxEngine.transmit_data' emits at most one
+        segment per call; this delegator drives it in a loop so a
+        single pump tick drains up to the usable send window
+        (bounded by '_MAX_SEGMENTS_PER_PUMP') rather than one
+        segment per 1 ms tick. The loop stops as soon as a call
+        fails to advance SND.NXT — i.e. the engine made no
+        progress because the window is full, the buffer is
+        drained, Nagle deferred a partial, the peer window is
+        closed (persist), or the one-probe-per-tick PLPMTUD gate
+        fired — so every existing single-segment exit condition
+        terminates the drain naturally.
+
+        The drain is confined to the ordinary send path. While the
+        session is in loss recovery ('recovery_point != 0') the
+        volume that may leave per tick is governed by PRR /
+        SACK-based recovery / NewReno, each of which re-evaluates
+        its send budget against every incoming ACK; bursting a
+        tick's worth of segments out before those ACKs arrive would
+        overshoot that budget (e.g. emit several SMSS where PRR
+        permits one). There we keep the original
+        one-segment-per-tick cadence and let the ACK clock pace
+        recovery exactly as before.
         """
 
-        self._tx_engine.transmit_data()
+        max_segments = 1 if self._cc.recovery_point != 0 else _MAX_SEGMENTS_PER_PUMP
+        for _ in range(max_segments):
+            snd_nxt_before = self._snd_seq.nxt
+            self._tx_engine.transmit_data()
+            if self._snd_seq.nxt == snd_nxt_before:
+                break
 
     def _delayed_ack(self) -> None:
         """

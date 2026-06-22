@@ -191,12 +191,18 @@ class TestTcpDataTransfer__Send(TcpTestCase):
         payload = b"X" * 8000
         session.send(data=payload)
 
-        # Tick 1: first MSS chunk goes out, no PSH (more buffered).
+        # Tick 1: the pump drains up to the window edge in a single
+        # tick - exactly the 3 MSS chunks that fit in the 3-MSS
+        # window - then stops. None carry PSH (the write is not yet
+        # exhausted; 3620 bytes stay buffered behind the window).
         tx_1 = self._advance(ms=1)
         self.assertEqual(
             len(tx_1),
-            1,
-            msg=f"Tick 1 must produce one segment. Got {len(tx_1)}.",
+            3,
+            msg=(
+                f"Tick 1 must drain exactly the 3 MSS chunks that fit in the "
+                f"{snd_wnd_limit}-byte window and stop at the window edge. Got {len(tx_1)}."
+            ),
         )
         seg_1 = self._parse_tx(tx_1[0])
         self._assert_segment(
@@ -210,15 +216,7 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             mss=None,
             wscale=None,
         )
-
-        # Tick 2: second MSS chunk.
-        tx_2 = self._advance(ms=1)
-        self.assertEqual(
-            len(tx_2),
-            1,
-            msg=f"Tick 2 must produce one segment. Got {len(tx_2)}.",
-        )
-        seg_2 = self._parse_tx(tx_2[0])
+        seg_2 = self._parse_tx(tx_1[1])
         self._assert_segment(
             seg_2,
             flags=frozenset({"ACK"}),
@@ -230,15 +228,8 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             mss=None,
             wscale=None,
         )
-
-        # Tick 3: third MSS chunk - last that fits in the window.
-        tx_3 = self._advance(ms=1)
-        self.assertEqual(
-            len(tx_3),
-            1,
-            msg=f"Tick 3 must produce one segment. Got {len(tx_3)}.",
-        )
-        seg_3 = self._parse_tx(tx_3[0])
+        # Third MSS chunk - last that fits in the window.
+        seg_3 = self._parse_tx(tx_1[2])
         self._assert_segment(
             seg_3,
             flags=frozenset({"ACK"}),
@@ -251,14 +242,14 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             wscale=None,
         )
 
-        # Tick 4: window is full - no segment must be emitted even
+        # Tick 2: window is full - no segment must be emitted even
         # though 3620 bytes remain buffered.
-        tx_4 = self._advance(ms=1)
+        tx_2 = self._advance(ms=1)
         self.assertEqual(
-            tx_4,
+            tx_2,
             [],
             msg=(
-                "Tick 4 must produce NO segment - the in-flight bytes "
+                "Tick 2 must produce NO segment - the in-flight bytes "
                 f"({3 * 1460}) equal the advertised window "
                 f"({snd_wnd_limit}); RFC 9293 §3.8.6 forbids advancing "
                 "SND.NXT past SND.UNA + SND.WND."
@@ -740,9 +731,10 @@ class TestTcpDataTransfer__Send(TcpTestCase):
         """
         Ensure that an application send() of a payload
         larger than MSS is segmented into MSS-sized chunks,
-        each chunk emitted on a successive virtual-clock
-        tick, with the PSH bit set only on the final segment
-        of the write.
+        all emitted within a single virtual-clock tick (the
+        pump drains up to the usable send window per tick),
+        with the PSH bit set only on the final segment of the
+        write.
 
         Reference: RFC 1122 §4.2.2.2 (PSH on last segment of write).
         """
@@ -762,15 +754,17 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             msg=f"'send()' must accept all {len(payload)} bytes into the TX buffer. Got {bytes_sent}.",
         )
 
-        # Tick 1: first MSS-sized segment, no PSH.
-        tx_tick_1 = self._advance(ms=1)
+        # A single tick drains the whole window: all three MSS-sized
+        # chunks (1460 + 1460 + 1080) leave back-to-back.
+        tx_burst = self._advance(ms=1)
         self.assertEqual(
-            len(tx_tick_1),
-            1,
-            msg="Tick 1 must produce exactly one outbound segment (the first MSS chunk).",
+            len(tx_burst),
+            3,
+            msg="One tick must drain all three segments of the 4000-byte write.",
         )
 
-        seg_1 = self._parse_tx(tx_tick_1[0])
+        # Segment 1: first MSS-sized chunk, no PSH.
+        seg_1 = self._parse_tx(tx_burst[0])
         self._assert_segment(
             seg_1,
             flags=frozenset({"ACK"}),
@@ -784,16 +778,9 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             wscale=None,
         )
 
-        # Tick 2: second MSS-sized segment, still no PSH (1080 bytes
-        # remain in the buffer).
-        tx_tick_2 = self._advance(ms=1)
-        self.assertEqual(
-            len(tx_tick_2),
-            1,
-            msg="Tick 2 must produce exactly one outbound segment (the second MSS chunk).",
-        )
-
-        seg_2 = self._parse_tx(tx_tick_2[0])
+        # Segment 2: second MSS-sized chunk, still no PSH (1080 bytes
+        # remain in the buffer behind it).
+        seg_2 = self._parse_tx(tx_burst[1])
         self._assert_segment(
             seg_2,
             flags=frozenset({"ACK"}),
@@ -807,17 +794,10 @@ class TestTcpDataTransfer__Send(TcpTestCase):
             wscale=None,
         )
 
-        # Tick 3: final 1080-byte segment, PSH set (this drains the
+        # Segment 3: final 1080-byte chunk, PSH set (this drains the
         # TX buffer - per RFC 1122 §4.2.2.2 it is the LAST segment of
         # the write).
-        tx_tick_3 = self._advance(ms=1)
-        self.assertEqual(
-            len(tx_tick_3),
-            1,
-            msg="Tick 3 must produce exactly one outbound segment (the final fragment).",
-        )
-
-        seg_3 = self._parse_tx(tx_tick_3[0])
+        seg_3 = self._parse_tx(tx_burst[2])
         self._assert_segment(
             seg_3,
             flags=frozenset({"PSH", "ACK"}),
@@ -1182,4 +1162,65 @@ class TestTcpDataTransferRfc6691ReqB(TcpTestCase):
                 f"Expected ≤ {max_data_per_segment}, got "
                 f"{len(first.payload)} bytes."
             ),
+        )
+
+    def test__data_transfer__rfc6691__tsopt_full_segments_are_not_nagle_deferred(self) -> None:
+        """
+        Regression: a maximally packed data segment under TSopt
+        carries '_snd_mss - options_overhead' bytes, which is
+        strictly less than '_snd_mss'. Nagle's "is this a partial
+        segment?" test MUST measure against the options-aware
+        maximum ('mss_for_data'), not the raw '_snd_mss';
+        otherwise every full-sized segment of a bulk transfer
+        looks partial and is deferred behind the previous still
+        unacked one, collapsing the connection to one segment per
+        RTT (stop-and-wait) with a wide-open window.
+
+        Here three back-to-back full segments must all fly within
+        a single tick, with no peer ACK in between. The pre-fix
+        behaviour emitted exactly one and Nagle-deferred the rest.
+
+        Reference: RFC 1122 §4.2.3.4 (Nagle gates sub-MSS writes only).
+        """
+
+        session = self._drive_handshake_with_tsopt(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+
+        # Open both the effective and advertised windows wide so the
+        # only thing that could hold segments back is the Nagle gate.
+        max_data_per_segment = PEER__MSS - 12  # TSopt overhead
+        window = 8 * PEER__MSS
+        session._cc.snd_ewn = window
+        session._win.snd_wnd = window
+
+        # Exactly three maximally packed (options-aware) segments.
+        session.send(data=b"X" * (3 * max_data_per_segment))
+
+        tx = self._advance(ms=1)
+        self.assertEqual(
+            len(tx),
+            3,
+            msg=(
+                "All three full (TSopt-reduced) segments must be emitted "
+                "in a single tick without waiting for ACKs - Nagle must "
+                "not treat a maximally packed 'snd_mss - 12'-byte segment "
+                f"as a partial. Got {len(tx)} (1 => pre-fix stop-and-wait)."
+            ),
+        )
+        for idx, frame in enumerate(tx):
+            seg = self._parse_tx(frame)
+            self.assertEqual(
+                len(seg.payload),
+                max_data_per_segment,
+                msg=(
+                    f"Segment {idx} must carry a full options-aware MSS "
+                    f"({max_data_per_segment} bytes), got {len(seg.payload)}."
+                ),
+            )
+
+        # All three are now in flight, unacknowledged - proof that the
+        # sender did not stop-and-wait on the first segment's ACK.
+        self.assertEqual(
+            (session._snd_seq.nxt - session._snd_seq.una) & 0xFFFFFFFF,
+            3 * max_data_per_segment,
+            msg="All three segments' worth of bytes must be in flight (SND.NXT - SND.UNA).",
         )

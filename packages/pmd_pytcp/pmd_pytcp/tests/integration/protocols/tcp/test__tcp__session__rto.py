@@ -245,34 +245,27 @@ class TestTcpRtoSampling(TcpTestCase):
         payload = b"x" * (2 * PEER__MSS)
         session.send(data=payload)
 
-        first_tx = self._advance(ms=1)
+        # Both segments drain in a single tick (the pump drains up to
+        # the usable window per tick). The single-sample-per-RTT
+        # invariant must still hold: the first segment of the burst
+        # starts the pending sample and the second MUST NOT overwrite
+        # it.
+        burst_tx = self._advance(ms=1)
         self.assertEqual(
-            len(first_tx),
-            1,
-            msg=(f"Setup invariant: first tick must produce exactly " f"one segment. Got {len(first_tx)}."),
-        )
-        first_sample_seq = session._rtt.seq
-
-        second_tx = self._advance(ms=1)
-        self.assertEqual(
-            len(second_tx),
-            1,
-            msg=(f"Setup invariant: second tick must produce the " f"second segment. Got {len(second_tx)}."),
+            len(burst_tx),
+            2,
+            msg=(f"Setup invariant: one tick must drain both segments. Got {len(burst_tx)}."),
         )
 
         self.assertEqual(
             session._rtt.seq,
-            first_sample_seq,
-            msg=(
-                "While a sample is pending, subsequent "
-                "outbound segments MUST NOT overwrite "
-                "'_rtt_sample_seq'. Single-sample-per-RTT cadence."
-            ),
-        )
-        self.assertEqual(
-            first_sample_seq,
             LOCAL__ISS + 1,
-            msg=("Setup invariant: first sample seq must equal the " "first segment's seq."),
+            msg=(
+                "The pending RTT sample MUST track the first segment of "
+                "the burst (seq = ISS + 1); the second segment fired in "
+                "the same tick MUST NOT overwrite '_rtt_sample_seq'. "
+                "Single-sample-per-RTT cadence (RFC 6298 §2.2)."
+            ),
         )
 
     def test__rto__post_harvest_next_outbound_starts_fresh_sample(self) -> None:

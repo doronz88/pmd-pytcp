@@ -519,7 +519,22 @@ class TcpTxEngine:
                     # disables R2-based connection-abort progression,
                     # silently hanging the connection.
                     is_retransmit = lt32(session._snd_seq.nxt, session._snd_seq.max)
-                    is_partial = transmit_data_len < session._win.snd_mss
+                    # "Partial" must be measured against the largest
+                    # payload this segment could actually carry -
+                    # 'mss_for_data' (snd_mss minus the per-segment
+                    # options overhead), NOT the raw 'snd_mss'.
+                    # Whenever an option such as the RFC 7323 timestamp
+                    # (12 bytes) rides every segment, a maximally packed
+                    # data segment carries 'snd_mss - 12' bytes; against
+                    # raw 'snd_mss' that always looks "partial", so a
+                    # bulk transfer's full-sized segments are repeatedly
+                    # deferred behind the previous still-unacked one and
+                    # the connection collapses to stop-and-wait (one
+                    # segment per RTT) even with a wide-open window.
+                    # Comparing against 'mss_for_data' classifies a
+                    # full, maximally packed segment as non-partial so
+                    # Nagle gates only genuine sub-MSS tinygrams.
+                    is_partial = transmit_data_len < mss_for_data
                     prev_partial_in_flight = gt32(session._snd_seq.sml, session._snd_seq.una)
                     # RFC 1122 §4.2.3.4: TCP_NODELAY disables
                     # Nagle for latency-sensitive applications;
@@ -572,6 +587,21 @@ class TcpTxEngine:
                     if is_partial:
                         session._snd_seq.sml = session._snd_seq.nxt
                 else:
+                    # transmit_data_len == 0 with data still buffered.
+                    # Two distinct conditions land here:
+                    #   - snd_ewn > 0: we have merely filled a healthy
+                    #     send window this tick (the pump now drains up
+                    #     to the usable window per tick) and must wait
+                    #     for ACKs to slide it forward. Arming persist
+                    #     here would later fire a spurious 1-byte probe
+                    #     at SND.UNA in the middle of an active transfer
+                    #     and risk dup-ACK / spurious fast-retransmit.
+                    #   - snd_ewn == 0: the peer's advertised window is
+                    #     genuinely closed; only this enters persist.
+                    # snd_ewn == min(cwnd, snd_wnd) and cwnd is never 0,
+                    # so snd_ewn == 0 iff the peer window is 0.
+                    if session._cc.snd_ewn != 0:
+                        return
                     # Zero-window state: peer has buffered no receive
                     # space but we have data ready to send. Manage the
                     # persist timer per RFC 9293 §3.8.6.1: arm the timer

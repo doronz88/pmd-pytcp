@@ -458,14 +458,17 @@ class TestTcpClose__Normal(TcpTestCase):
             msg="Setup precondition: '_tx_buffer' must hold 2 MSS of unsent data.",
         )
 
-        # Tick #1: first data segment fires. No FIN.
-        seg1_tx = self._advance(ms=1)
+        # Tick #1: both data segments drain in a single tick (the pump
+        # drains up to the usable window per tick). Neither carries FIN
+        # - the FIN may only appear after the queued data is
+        # segmentized AND acknowledged.
+        data_tx = self._advance(ms=1)
         self.assertEqual(
-            len(seg1_tx),
-            1,
-            msg="Tick #1 must emit exactly one segment (the first data segment).",
+            len(data_tx),
+            2,
+            msg="Tick #1 must drain both buffered data segments.",
         )
-        seg1 = self._parse_tx(seg1_tx[0])
+        seg1 = self._parse_tx(data_tx[0])
         self._assert_segment(
             seg1,
             seq=LOCAL__ISS + 1,
@@ -481,20 +484,7 @@ class TestTcpClose__Normal(TcpTestCase):
                 "SENDs have been segmentized')."
             ),
         )
-        self.assertIs(
-            session.state,
-            FsmState.ESTABLISHED,
-            msg="State must remain ESTABLISHED while data is still in '_tx_buffer'.",
-        )
-
-        # Tick #2: second data segment fires. Still no FIN.
-        seg2_tx = self._advance(ms=1)
-        self.assertEqual(
-            len(seg2_tx),
-            1,
-            msg="Tick #2 must emit exactly one segment (the second data segment).",
-        )
-        seg2 = self._parse_tx(seg2_tx[0])
+        seg2 = self._parse_tx(data_tx[1])
         self._assert_segment(
             seg2,
             seq=LOCAL__ISS + 1 + len(payload_a),
@@ -512,7 +502,7 @@ class TestTcpClose__Normal(TcpTestCase):
         self.assertIs(
             session.state,
             FsmState.ESTABLISHED,
-            msg="State must remain ESTABLISHED until '_tx_buffer' drains.",
+            msg="State must remain ESTABLISHED while data is still in '_tx_buffer'.",
         )
 
         # Peer cumulatively ACKs both segments.
