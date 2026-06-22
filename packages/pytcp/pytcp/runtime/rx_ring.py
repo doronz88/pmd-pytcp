@@ -37,6 +37,7 @@ import selectors
 from typing import override
 
 from net_proto.lib.packet_rx import PacketRx
+from pytcp.lib import io_backend
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx
 from pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
@@ -103,7 +104,7 @@ class RxRing(Subsystem):
         self._rx_deque = collections.deque()
         self._selector = selectors.DefaultSelector()
         self._selector.register(self._fd, selectors.EVENT_READ)
-        self._rx_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
+        self._rx_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
         self._queue_full_drop_count = 0
         self._os_error_drop_count = 0
         # Optional shared 'PacketStatsRx' object — when set, ring
@@ -179,7 +180,7 @@ class RxRing(Subsystem):
 
         while True:
             try:
-                packet_rx = PacketRx(os.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
+                packet_rx = PacketRx(io_backend.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
             except OSError as error:
                 # Transient kernel errors (EINTR / EBADF on
                 # shutdown race / EIO / ENOMEM) — drop the read
@@ -224,7 +225,7 @@ class RxRing(Subsystem):
 
             self._rx_deque.append(packet_rx)
             try:
-                os.eventfd_write(self._rx_event_fd, 1)
+                io_backend.eventfd_write(self._rx_event_fd, 1)
             except OSError:
                 # Eventfd closed (stop in progress) — packet sits
                 # on the deque, will not be drained. Acceptable
@@ -248,7 +249,7 @@ class RxRing(Subsystem):
 
         self._selector.close()
         try:
-            os.close(self._rx_event_fd)
+            io_backend.eventfd_close(self._rx_event_fd)
         except OSError:
             pass
 
@@ -278,7 +279,7 @@ class RxRing(Subsystem):
         # per producer enqueue; a single read clears the kernel-
         # side ready bit. We don't care about the exact count.
         try:
-            os.eventfd_read(self._rx_event_fd)
+            io_backend.eventfd_read(self._rx_event_fd)
         except OSError:
             pass
 

@@ -50,6 +50,7 @@ from net_proto.protocols.ip4.options.ip4__options import (
     IP4__OPTIONS__MAX_LEN,
     Ip4Options,
 )
+from pytcp.lib import io_backend
 from pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilter,
     Ip4MulticastFilterMode,
@@ -549,7 +550,7 @@ class socket(ABC):
         """
 
         del family, type, protocol  # consumed by concrete-class __init__.
-        self._read_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
+        self._read_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
         # Close-during-delivery drain (Phase 5): '_closed' is set under
         # '_lock__io' by 'close()' (via '_mark_closed'); the RX-side
         # delivery methods ('process_*_packet') take the same lock and
@@ -1478,7 +1479,7 @@ class socket(ABC):
         if (fd := self._read_event_fd) < 0:
             return
         try:
-            os.eventfd_write(fd, 1)
+            io_backend.eventfd_write(fd, 1)
         except OSError:
             pass
 
@@ -1494,7 +1495,7 @@ class socket(ABC):
         if (fd := self._read_event_fd) < 0:
             return
         try:
-            os.eventfd_read(fd)
+            io_backend.eventfd_read(fd)
         except OSError:
             pass
 
@@ -1509,7 +1510,7 @@ class socket(ABC):
             return
         self._read_event_fd = -1
         try:
-            os.close(fd)
+            io_backend.eventfd_close(fd)
         except OSError:
             pass
 

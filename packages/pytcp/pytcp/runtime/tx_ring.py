@@ -49,6 +49,7 @@ from net_proto.protocols.ethernet.ethernet__header import ETHERNET__HEADER__LEN
 from net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     ETHERNET_802_3__HEADER__LEN,
 )
+from pytcp.lib import io_backend
 from pytcp.lib.logger import log
 from pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsTx
 from pytcp.lib.tx_status import TxStatus
@@ -193,7 +194,7 @@ class TxRing(Subsystem):
         # packet: ~5-8 µs saved over the prior 'queue.Queue' that
         # used 'Lock + Condition' on every put/get.
         self._tx_deque = collections.deque()
-        self._tx_event_fd = os.eventfd(0, os.EFD_NONBLOCK | os.EFD_CLOEXEC)
+        self._tx_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
         self._queue_full_drop_count = 0
         self._os_error_drop_count = 0
         # Optional shared 'PacketStatsTx' object — see RxRing for
@@ -257,7 +258,7 @@ class TxRing(Subsystem):
         """
 
         try:
-            os.close(self._tx_event_fd)
+            io_backend.eventfd_close(self._tx_event_fd)
         except OSError:
             pass
 
@@ -281,7 +282,7 @@ class TxRing(Subsystem):
         # producer enqueue; we only need 'queue is non-empty', so
         # one read clears the kernel-side ready bit.
         try:
-            os.eventfd_read(self._tx_event_fd)
+            io_backend.eventfd_read(self._tx_event_fd)
         except OSError:
             pass
 
@@ -300,7 +301,7 @@ class TxRing(Subsystem):
                 if not self._send_raw_frame(item):
                     if self._tx_deque:
                         try:
-                            os.eventfd_write(self._tx_event_fd, 1)
+                            io_backend.eventfd_write(self._tx_event_fd, 1)
                         except OSError:
                             pass
                     return
@@ -312,7 +313,7 @@ class TxRing(Subsystem):
                 # for a fresh producer signal.
                 if self._tx_deque:
                     try:
-                        os.eventfd_write(self._tx_event_fd, 1)
+                        io_backend.eventfd_write(self._tx_event_fd, 1)
                     except OSError:
                         pass
                 return
@@ -338,7 +339,7 @@ class TxRing(Subsystem):
         request = _TxRequest(run)
         self._tx_deque.append(request)
         try:
-            os.eventfd_write(self._tx_event_fd, 1)
+            io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
             # Eventfd closed (stop in progress); the request will not
             # be serviced. Surfacing a drop is better than hanging.
@@ -367,7 +368,7 @@ class TxRing(Subsystem):
 
         self._tx_deque.append(request)
         try:
-            os.eventfd_write(self._tx_event_fd, 1)
+            io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
             # Eventfd closed (stop in progress); run inline so the
             # call is not silently lost on the dead deque.
@@ -416,7 +417,7 @@ class TxRing(Subsystem):
         packet_tx.assemble(buffers)
 
         try:
-            os.writev(self._fd, buffers)
+            io_backend.writev(self._fd, buffers)
         except OSError as error:
             if self._packet_stats is not None:
                 self._packet_stats.tx_ring__os_error__drop += 1
@@ -445,7 +446,7 @@ class TxRing(Subsystem):
         """
 
         try:
-            os.writev(self._fd, [frame])
+            io_backend.writev(self._fd, [frame])
         except OSError as error:
             if self._packet_stats is not None:
                 self._packet_stats.tx_ring__os_error__drop += 1
@@ -480,7 +481,7 @@ class TxRing(Subsystem):
 
         self._tx_deque.append(frame)
         try:
-            os.eventfd_write(self._tx_event_fd, 1)
+            io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
             pass
 
@@ -516,7 +517,7 @@ class TxRing(Subsystem):
 
         self._tx_deque.append(packet_tx)
         try:
-            os.eventfd_write(self._tx_event_fd, 1)
+            io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
             # Eventfd closed (stop in progress) — packet sits on
             # the deque, will not be drained. Acceptable during
