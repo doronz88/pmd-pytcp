@@ -35,7 +35,7 @@ ver 3.0.7
 import os
 import sys
 from typing import cast
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 from unittest.mock import MagicMock, create_autospec, patch
 
 import pmd_pytcp.stack as stack
@@ -292,6 +292,7 @@ class TestStackModuleConstants(TestCase):
         )
 
 
+@skipUnless(sys.platform != "win32", "kernel TAP/TUN helpers use fcntl (Unix-only)")
 class TestStackInitializeInterfaceTap(TestCase):
     """
     The 'initialize_interface__tap' helper tests.
@@ -324,7 +325,7 @@ class TestStackInitializeInterfaceTap(TestCase):
 
         with (
             patch("pmd_pytcp.stack.os.open", return_value=42),
-            patch("pmd_pytcp.stack.fcntl.ioctl"),
+            patch("fcntl.ioctl"),
         ):
             result = stack.initialize_interface__tap("tap7")
 
@@ -361,7 +362,7 @@ class TestStackInitializeInterfaceTap(TestCase):
         mac = MacAddress("02:00:00:00:00:99")
         with (
             patch("pmd_pytcp.stack.os.open", return_value=42),
-            patch("pmd_pytcp.stack.fcntl.ioctl"),
+            patch("fcntl.ioctl"),
         ):
             result = stack.initialize_interface__tap("tap7", mac_address=mac)
 
@@ -391,6 +392,7 @@ class TestStackInitializeInterfaceTap(TestCase):
         mock_exit.assert_called_once_with(-1)
 
 
+@skipUnless(sys.platform != "win32", "kernel TAP/TUN helpers use fcntl (Unix-only)")
 class TestStackInitializeInterfaceTun(TestCase):
     """
     The 'initialize_interface__tun' helper tests.
@@ -422,7 +424,7 @@ class TestStackInitializeInterfaceTun(TestCase):
 
         with (
             patch("pmd_pytcp.stack.os.open", return_value=99),
-            patch("pmd_pytcp.stack.fcntl.ioctl"),
+            patch("fcntl.ioctl"),
         ):
             result = stack.initialize_interface__tun("tun7")
 

@@ -354,7 +354,11 @@ class PacketHandler(Subsystem, ABC):
     _icmp6_ra__event: Semaphore
     _mld2_query__pending_response_at_ms: int | None
     _mld2_query__handle: TimerHandle | None
-    _mld__v1_querier_present_until_ms: int | None
+    # Class-level default: PacketHandlerL2.__init__ sets a per-instance value, but
+    # PacketHandlerL3 (used by the L2-bridge / embedded path) does not, and the shared MLD
+    # query handling reads it — without a default that read raises AttributeError and crashes
+    # the address-setup thread. None = no MLDv1 querier seen (MLDv2 mode).
+    _mld__v1_querier_present_until_ms: int | None = None
 
     @override
     def __init__(

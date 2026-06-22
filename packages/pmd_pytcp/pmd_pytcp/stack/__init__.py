@@ -32,7 +32,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import fcntl
 import os
 import secrets
 import struct
@@ -843,6 +842,8 @@ def initialize_interface__tap(interface_name: str, *, mac_address: MacAddress | 
 
     log("stack", f"Assigning MAC address: {mac_address}")
 
+    import fcntl  # Unix-only; the kernel-TAP path opens /dev/net/tun and never runs on Windows.
+
     try:
         fd = os.open("/dev/net/tun", os.O_RDWR)
 
@@ -871,6 +872,8 @@ def initialize_interface__tun(interface_name: str) -> dict[str, Any]:
     """
 
     log("stack", f"Initializing TUN interface: {interface_name}")
+
+    import fcntl  # Unix-only; the kernel-TUN path opens /dev/net/tun and never runs on Windows.
 
     try:
         fd = os.open("/dev/net/tun", os.O_RDWR)

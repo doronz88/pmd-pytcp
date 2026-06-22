@@ -31,9 +31,16 @@ ver 3.0.7
 """
 
 import inspect
+import logging
 import time
 
 LOG__START_TIME = time.time()
+
+#: All stack log channels emit through this logger at DEBUG. The host application controls
+#: visibility via the standard logging module (quiet unless it enables DEBUG for 'pmd_pytcp'),
+#: so the stack never writes to stderr on its own. 'LOG__CHANNEL' still gates which channels
+#: are eligible to emit.
+_LOGGER = logging.getLogger("pmd_pytcp")
 
 
 def _apply_styles(s: str, /) -> str:
@@ -78,9 +85,14 @@ def log(
     Log a message if the channel matches one of the configured channels.
     """
 
-    from pmd_pytcp.stack import LOG__CHANNEL, LOG__DEBUG, LOG__OUTPUT
+    from pmd_pytcp.stack import LOG__CHANNEL, LOG__DEBUG
 
     if channel not in LOG__CHANNEL:
+        return False
+
+    # Cheap exit before any formatting (incl. the LOG__DEBUG inspect.stack() walk) when the
+    # host hasn't enabled DEBUG for the 'pmd_pytcp' logger.
+    if not _LOGGER.isEnabledFor(logging.DEBUG):
         return False
 
     prefix = f" <g>{(time.time() - LOG__START_TIME):07.02f}</> | <b>{channel.upper():7}</>"
@@ -96,6 +108,6 @@ def log(
     else:
         output = f"{prefix} | {message}"
 
-    print(_apply_styles(output), file=LOG__OUTPUT)
+    _LOGGER.debug(_apply_styles(output))
 
     return True

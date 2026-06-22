@@ -94,7 +94,12 @@ class Subsystem(ABC):
         )
 
         self._event__stop_subsystem.clear()
-        self._thread = threading.Thread(target=self._thread__subsystem)
+        # Daemon so a host that embeds the stack and exits without a clean stop() (or whose
+        # stop() cannot join a worker parked in a blocking read) is not held open at
+        # interpreter exit. Subsystems own only in-memory/socket state torn down by stop().
+        self._thread = threading.Thread(
+            target=self._thread__subsystem, name=self._subsystem_name, daemon=True
+        )
         self._thread.start()
         self._start()
 

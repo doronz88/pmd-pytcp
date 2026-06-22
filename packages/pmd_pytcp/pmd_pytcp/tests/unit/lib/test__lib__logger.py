@@ -31,11 +31,43 @@ ver 3.0.7
 """
 
 import io
+import logging
 import time
+from contextlib import contextmanager
+from typing import Iterator
 from unittest import TestCase
 from unittest.mock import patch
 
 from pmd_pytcp.lib.logger import LOG__START_TIME, log
+
+
+@contextmanager
+def _capture_log(*, channels: set[str] = frozenset({"stack"}), debug: bool = False) -> Iterator[io.StringIO]:
+    """Capture 'log()' output.
+
+    The stack emits every channel through the 'pmd_pytcp' logger at DEBUG (via the standard
+    logging module), so a test attaches a StreamHandler at DEBUG and reads the formatted
+    record back. 'LOG__CHANNEL' / 'LOG__DEBUG' still gate eligibility and the caller segment.
+    """
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger = logging.getLogger("pmd_pytcp")
+    saved_level, saved_propagate = logger.level, logger.propagate
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    try:
+        with (
+            patch("pmd_pytcp.stack.LOG__CHANNEL", set(channels)),
+            patch("pmd_pytcp.stack.LOG__DEBUG", debug),
+        ):
+            yield stream
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(saved_level)
+        logger.propagate = saved_propagate
 
 
 class TestLoggerStartTime(TestCase):
@@ -86,13 +118,7 @@ class TestLoggerChannelGate(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stream = io.StringIO()
-
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", stream),
-        ):
+        with _capture_log() as stream:
             result = log("disabled-channel", "irrelevant message")
 
         self.assertFalse(
@@ -102,34 +128,54 @@ class TestLoggerChannelGate(TestCase):
         self.assertEqual(
             stream.getvalue(),
             "",
-            msg="log() must not write to the output stream when the channel is disabled.",
+            msg="log() must not emit anything when the channel is disabled.",
         )
 
     def test__logger__channel_in_log_channel__returns_true(self) -> None:
         """
-        Ensure 'log()' returns True and writes a non-empty line when the
-        channel is enabled.
+        Ensure 'log()' returns True and emits a non-empty line when the
+        channel is enabled and the logger is at DEBUG.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stream = io.StringIO()
-
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", stream),
-        ):
+        with _capture_log() as stream:
             result = log("stack", "hello")
 
         self.assertTrue(
             result,
-            msg="log() must return True when the channel is enabled.",
+            msg="log() must return True when the channel is enabled and DEBUG is on.",
         )
         self.assertNotEqual(
             stream.getvalue(),
             "",
-            msg="log() must write to the output stream when the channel is enabled.",
+            msg="log() must emit a record when the channel is enabled.",
+        )
+
+    def test__logger__channel_enabled_but_logger_below_debug__returns_false(self) -> None:
+        """
+        Ensure 'log()' is a cheap no-op when the host has not enabled DEBUG
+        for the 'pmd_pytcp' logger, even if the channel is in 'LOG__CHANNEL'.
+        This is what lets the stack stay silent by default without a host shim.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        logger = logging.getLogger("pmd_pytcp")
+        saved_level = logger.level
+        logger.setLevel(logging.WARNING)
+        try:
+            with (
+                patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
+                patch("pmd_pytcp.stack.LOG__DEBUG", False),
+            ):
+                result = log("stack", "hello")
+        finally:
+            logger.setLevel(saved_level)
+
+        self.assertFalse(
+            result,
+            msg="log() must return False (and not format) when 'pmd_pytcp' is below DEBUG.",
         )
 
 
@@ -138,32 +184,20 @@ class TestLoggerPlainOutput(TestCase):
     The 'log()' non-debug output-formatting tests.
     """
 
-    def setUp(self) -> None:
-        """
-        Build a StringIO sink for each test and patch the three stack
-        configuration constants before the call.
-        """
-
-        self._stream = io.StringIO()
-
     def test__logger__plain_message_ends_with_newline(self) -> None:
         """
-        Ensure 'log()' uses 'print()' semantics — the written payload
-        ends with a trailing newline.
+        Ensure each emitted record is a single line — the logging
+        StreamHandler terminates the formatted record with a newline.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "hello")
 
         self.assertTrue(
-            self._stream.getvalue().endswith("\n"),
-            msg="log() output must end with a newline (it uses print()).",
+            stream.getvalue().endswith("\n"),
+            msg="log() output must end with a newline (one record per line).",
         )
 
     def test__logger__plain_message_contains_channel_upper(self) -> None:
@@ -175,16 +209,12 @@ class TestLoggerPlainOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "hello")
 
         self.assertIn(
             "STACK  ",
-            self._stream.getvalue(),
+            stream.getvalue(),
             msg="log() must render the channel name upper-cased and padded to width 7.",
         )
 
@@ -196,16 +226,12 @@ class TestLoggerPlainOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "hello world sentinel")
 
         self.assertIn(
             "hello world sentinel",
-            self._stream.getvalue(),
+            stream.getvalue(),
             msg="log() must render the caller-supplied message verbatim.",
         )
 
@@ -217,14 +243,10 @@ class TestLoggerPlainOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "styled")
 
-        output = self._stream.getvalue()
+        output = stream.getvalue()
 
         self.assertNotIn(
             "<g>",
@@ -256,14 +278,10 @@ class TestLoggerPlainOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "<WARN>pay attention</>")
 
-        output = self._stream.getvalue()
+        output = stream.getvalue()
 
         self.assertNotIn(
             "<WARN>",
@@ -284,16 +302,12 @@ class TestLoggerPlainOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", False),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", self._stream),
-        ):
+        with _capture_log() as stream:
             log("stack", "payload")
 
         self.assertNotIn(
             "TestLoggerPlainOutput.",
-            self._stream.getvalue(),
+            stream.getvalue(),
             msg="Non-debug log() output must not include a 'ClassName.method' caller segment.",
         )
 
@@ -312,13 +326,7 @@ class TestLoggerDebugOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stream = io.StringIO()
-
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", True),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", stream),
-        ):
+        with _capture_log(debug=True) as stream:
             log("stack", "debug-payload")
 
         output = stream.getvalue()
@@ -343,8 +351,6 @@ class TestLoggerDebugOutput(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stream = io.StringIO()
-
         def _wrapper() -> None:
             """
             Forward to 'log()' with depth+1 so the inspected frame points
@@ -353,11 +359,7 @@ class TestLoggerDebugOutput(TestCase):
 
             log("stack", "depth-payload", inspect_depth=2)
 
-        with (
-            patch("pmd_pytcp.stack.LOG__CHANNEL", {"stack"}),
-            patch("pmd_pytcp.stack.LOG__DEBUG", True),
-            patch("pmd_pytcp.stack.LOG__OUTPUT", stream),
-        ):
+        with _capture_log(debug=True) as stream:
             _wrapper()
 
         output = stream.getvalue()
