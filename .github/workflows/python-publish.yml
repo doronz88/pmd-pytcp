@@ -30,3 +30,7 @@ jobs:
         with:
           packages-dir: dist
           verbose: true
+          # The three packages version independently; a release that only bumps
+          # one (e.g. pmd-pytcp) still rebuilds all three, so skip the siblings
+          # already present on the index instead of failing the upload.
+          skip-existing: true
